@@ -306,6 +306,12 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.put("/api/files/:id", authenticate, (req, res) => {
+    const { name } = req.body;
+    db.prepare("UPDATE files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(name, req.params.id);
+    res.json({ success: true });
+  });
+
   app.put("/api/files/:id/project", authenticate, (req, res) => {
     const { project_id } = req.body;
     db.prepare("UPDATE files SET project_id = ? WHERE id = ?").run(project_id || null, req.params.id);

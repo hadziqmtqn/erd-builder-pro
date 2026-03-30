@@ -461,6 +461,61 @@ export default function App() {
     }
   };
 
+  const updateFile = async (id: number, name: string) => {
+    try {
+      const res = await fetch(`/api/files/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        setFiles(files.map(f => f.id === id ? { ...f, name } : f));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const updateNoteTitle = async (id: number, title: string) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    try {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...note, title }),
+      });
+      if (res.ok) {
+        setNotesList(notes.map(n => n.id === id ? { ...n, title } : n));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const updateDrawingTitle = async (id: number, title: string) => {
+    const drawing = drawings.find(d => d.id === id);
+    if (!drawing) return;
+    try {
+      const res = await fetch(`/api/drawings/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...drawing, title }),
+      });
+      if (res.ok) {
+        setDrawings(drawings.map(d => d.id === id ? { ...d, title } : d));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
   const updateProject = async (id: number, name: string) => {
     try {
       const res = await fetch(`/api/projects/${id}`, {
@@ -827,6 +882,9 @@ export default function App() {
         onMoveFileToProject={moveFileToProject}
         onMoveNoteToProject={moveNoteToProject}
         onMoveDrawingToProject={moveDrawingToProject}
+        onFileUpdate={updateFile}
+        onNoteUpdate={updateNoteTitle}
+        onDrawingUpdate={updateDrawingTitle}
       />
 
       <main className="flex-1 relative flex flex-col overflow-hidden">
