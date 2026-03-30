@@ -16,15 +16,27 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
   const [title, setTitle] = useState(drawing.title);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [lastId, setLastId] = useState(drawing.id);
   const lastDataRef = useRef(drawing.data);
-  const isInitialLoad = useRef(true);
+  const sceneInitialized = useRef(false); // Track if the scene has been initialized with stored data
 
   useEffect(() => {
     setTitle(drawing.title);
+    
+    // When ID changes, reset initial load counter and update data ref immediately
+    if (drawing.id !== lastId) {
+      setLastId(drawing.id);
+      lastDataRef.current = drawing.data;
+      sceneInitialized.current = false;
+    }
+
     if (excalidrawAPI && drawing.data) {
       try {
         const parsed = JSON.parse(drawing.data);
-        isInitialLoad.current = true;
+        console.log("ExcalidrawEditor: Loading drawing data for ID:", drawing.id);
+        
+        // Mark as NOT initialized yet before updating the scene
+        sceneInitialized.current = false;
         
         // Clean up appState to prevent crashes (e.g. collaborators must be a Map)
         const { collaborators, ...safeAppState } = parsed.appState || {};
@@ -34,6 +46,9 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
           appState: { ...safeAppState, theme: 'dark' },
           files: parsed.files || {},
         });
+        
+        // Now it's safe to mark as initialized
+        sceneInitialized.current = true;
         lastDataRef.current = drawing.data;
       } catch (e) {
         console.error("Failed to parse drawing data", e);
@@ -42,14 +57,15 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
   }, [drawing.id, excalidrawAPI]);
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    // Skip the very first change if it's just the initial load
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false;
+    // If scene is not initialized with prop data, ignore any early onChange events
+    // This prevents "empty" states from overwriting real data on mount/tab switch
+    if (!sceneInitialized.current) {
       return;
     }
 
-    // Only save if there are elements or if it's not the initial empty state
-    if (elements.length > 0 || (lastDataRef.current && lastDataRef.current !== '[]')) {
+    // Only save if there are elements OR if it's not the initial empty state
+    // We want to avoid saving an empty state immediately after loading a non-empty one
+    if (elements.length > 0 || (lastDataRef.current && lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' && lastDataRef.current !== '[]')) {
       // Clean up appState before stringifying (collaborators is a Map and doesn't serialize well)
       const { collaborators, ...safeAppState } = appState;
       const data = JSON.stringify({ elements, appState: safeAppState, files });
@@ -58,6 +74,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
       if (data !== lastDataRef.current) {
         lastDataRef.current = data;
         if (onChange) {
+          console.log("ExcalidrawEditor: Triggering onChange with updated data");
           onChange(data);
         }
       }

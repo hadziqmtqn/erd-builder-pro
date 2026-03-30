@@ -235,6 +235,7 @@ export default function App() {
 
   // Load File Data
   const handleFileSelect = async (id: number) => {
+    flushPendingDrawingSave();
     try {
       const res = await fetch(`/api/files/${id}`);
       if (res.status === 401) {
@@ -276,6 +277,7 @@ export default function App() {
 
   // Load Note Data
   const handleNoteSelect = async (id: number) => {
+    flushPendingDrawingSave();
     const note = notes.find(n => n.id === id) || await (await fetch(`/api/notes/${id}`)).json();
     if (note.is_deleted) {
       return;
@@ -288,6 +290,7 @@ export default function App() {
 
   // Load Drawing Data
   const handleDrawingSelect = async (id: number) => {
+    flushPendingDrawingSave();
     const drawing = drawings.find(d => d.id === id) || await (await fetch(`/api/drawings/${id}`)).json();
     if (drawing.is_deleted) {
       return;
@@ -710,11 +713,25 @@ export default function App() {
       });
       setDrawings(prev => prev.map(d => d.id === updatedDrawing.id ? updatedDrawing : d));
       setSaveStatus('saved');
+      console.log(`App: Successfully saved drawing ${updatedDrawing.id}`);
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
       setSaveStatus('error');
     }
   }, []);
+  
+  const flushPendingDrawingSave = useCallback(() => {
+    if (drawingSaveTimeoutRef.current && activeDrawingId) {
+      console.log(`App: Flushing pending save for drawing ${activeDrawingId} before view change`);
+      clearTimeout(drawingSaveTimeoutRef.current);
+      drawingSaveTimeoutRef.current = null;
+      
+      const drawing = drawings.find(d => d.id === activeDrawingId);
+      if (drawing) {
+        saveDrawing(drawing);
+      }
+    }
+  }, [activeDrawingId, drawings, saveDrawing]);
 
   const moveFileToProject = async (fileId: number, projectId: number | null) => {
     try {
@@ -795,6 +812,7 @@ export default function App() {
     if (!activeDrawingId) return;
 
     // Update local state immediately
+    console.log(`App: Drawing ${activeDrawingId} change detected, queueing save`);
     setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
 
     // Debounce save
@@ -812,6 +830,7 @@ export default function App() {
   }, [activeDrawingId, saveDrawing]);
 
   const handleLogout = async () => {
+    flushPendingDrawingSave();
     try {
       await fetch('/api/logout', { method: 'POST' });
       setIsAuthenticated(false);
