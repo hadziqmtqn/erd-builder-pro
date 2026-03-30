@@ -537,8 +537,10 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Vite middleware for development (ONLY if not on Vercel/Production)
+  const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL_URL;
+  
+  if (process.env.NODE_ENV !== "production" && !isVercel) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -546,9 +548,16 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send("API is running (Static files building...)");
+      }
     });
   }
 

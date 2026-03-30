@@ -1,11 +1,11 @@
-import appPromise from "../server.ts";
+// Register ts-node to allow loading .ts files
+require('ts-node/register');
 
-export default async function handler(req, res) {
-  try {
-    const app = await appPromise;
-    return app(req, res);
-  } catch (err) {
-    console.error("Function Invocation Error:", err);
-    res.status(500).json({ error: "Internal Server Error", message: err.message });
-  }
-}
+// Import the main server file
+const serverModule = require('../server.ts');
+
+// Export the app as handler
+module.exports = async (req, res) => {
+  const app = await serverModule.default;
+  return app(req, res);
+};
