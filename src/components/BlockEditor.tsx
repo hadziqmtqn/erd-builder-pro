@@ -5,11 +5,12 @@ import {
   Type, Heading1, Heading2, Heading3, List, ListOrdered, 
   Quote, Code, MoreVertical, ChevronUp, ChevronDown,
   Sparkles, Bold, Italic, Link as LinkIcon, Underline,
-  Image as ImageIcon, Upload, X
+  Image as ImageIcon, Upload, X, Table as TableIcon,
+  PlusCircle, MinusCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'bullet' | 'number' | 'quote' | 'todo' | 'code' | 'image';
+export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'bullet' | 'number' | 'quote' | 'todo' | 'code' | 'image' | 'table';
 
 export interface Block {
   id: string;
@@ -20,6 +21,10 @@ export interface Block {
   url?: string;
   caption?: string;
   width?: '25%' | '50%' | '75%' | '100%';
+  tableData?: {
+    headers: string[];
+    rows: string[][];
+  };
 }
 
 interface BlockEditorProps {
@@ -100,6 +105,17 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
 
   const handleBlockChange = (id: string, content: string) => {
     const newBlocks = blocks.map(b => b.id === id ? { ...b, content } : b);
+    updateBlocks(newBlocks);
+  };
+
+  const addTableRow = (blockId: string) => {
+    const newBlocks = blocks.map(b => {
+      if (b.id === blockId && b.tableData) {
+        const newRow = new Array(b.tableData.headers.length).fill('');
+        return { ...b, tableData: { ...b.tableData, rows: [...b.tableData.rows, newRow] } };
+      }
+      return b;
+    });
     updateBlocks(newBlocks);
   };
 
@@ -185,7 +201,7 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
       const rect = range.getBoundingClientRect();
       setSelectionMenu({
         x: rect.left + rect.width / 2,
-        y: rect.top - 40
+        y: rect.top < 60 ? rect.bottom + 10 : rect.top - 40
       });
     } else {
       setSelectionMenu(null);
@@ -198,7 +214,19 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
   };
 
   const changeBlockType = (id: string, type: BlockType) => {
-    const newBlocks = blocks.map(b => b.id === id ? { ...b, type } : b);
+    const newBlocks = blocks.map(b => {
+      if (b.id === id) {
+        const base = { ...b, type };
+        if (type === 'table' && !b.tableData) {
+          base.tableData = {
+            headers: ['Column 1', 'Column 2'],
+            rows: [['', ''], ['', '']]
+          };
+        }
+        return base;
+      }
+      return b;
+    });
     updateBlocks(newBlocks);
     setShowMenu(null);
   };
@@ -264,7 +292,7 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4 min-h-full" onMouseUp={handleMouseUp}>
+    <div className="max-w-4xl mx-auto py-12 px-4 pb-[50vh] min-h-full" onMouseUp={handleMouseUp}>
       <Reorder.Group axis="y" values={blocks} onReorder={updateBlocks} className="space-y-1">
         {blocks.map((block, index) => (
           <Reorder.Item 
@@ -297,7 +325,32 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                 <button 
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    setShowMenu({ id: block.id, x: rect.left - 240, y: rect.top });
+                    const menuWidth = 256; 
+                    const menuHeight = 480; 
+                    
+                    let x = rect.left - menuWidth - 12;
+                    let y = rect.top;
+                    
+                    // Flip to right if no space on left
+                    if (x < 20) {
+                      x = rect.right + 12;
+                    }
+
+                    // Smart vertical positioning
+                    const spaceBelow = window.innerHeight - rect.bottom;
+                    const spaceAbove = rect.top;
+
+                    if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+                      // Open upwards
+                      y = Math.max(20, rect.top - menuHeight);
+                    } else {
+                      // Open downwards (default), but ensure it doesn't go off screen
+                      if (y + menuHeight > window.innerHeight) {
+                        y = Math.max(20, window.innerHeight - menuHeight - 20);
+                      }
+                    }
+
+                    setShowMenu({ id: block.id, x, y });
                   }}
                   className="p-1 hover:bg-bg-tertiary rounded text-text-secondary/40 hover:text-text-secondary transition-colors"
                 >
@@ -343,6 +396,11 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                 {block.type === 'image' && (
                   <div className="text-text-secondary/30 mt-1.5">
                     <ImageIcon size={14} />
+                  </div>
+                )}
+                {block.type === 'table' && (
+                  <div className="text-text-secondary/30 mt-1.5">
+                    <TableIcon size={14} />
                   </div>
                 )}
               </div>
@@ -395,6 +453,117 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                     }}
                     className="w-full bg-transparent text-xs text-text-secondary/60 outline-none italic px-2 py-1"
                   />
+                </div>
+              ) : block.type === 'table' ? (
+                <div className="flex-1 overflow-x-auto pb-4 group/table">
+                  <div className="inline-block min-w-full align-middle">
+                    <div className="overflow-hidden border border-border/50 rounded-xl bg-bg-tertiary/20">
+                      <table className="min-w-full divide-y divide-border/50">
+                        <thead className="bg-bg-tertiary/50">
+                          <tr>
+                            {block.tableData?.headers.map((header, hIdx) => (
+                              <th key={hIdx} className="px-4 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-wider relative group/header border-r border-border/30 last:border-r-0">
+                                <input
+                                  type="text"
+                                  value={header}
+                                  onChange={(e) => {
+                                    const newHeaders = [...(block.tableData?.headers || [])];
+                                    newHeaders[hIdx] = e.target.value;
+                                    const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { ...b.tableData!, headers: newHeaders } } : b);
+                                    updateBlocks(newBlocks);
+                                  }}
+                                  className="bg-transparent outline-none w-full"
+                                />
+                                <button
+                                  onClick={() => {
+                                    const newHeaders = (block.tableData?.headers || []).filter((_, i) => i !== hIdx);
+                                    const newRows = (block.tableData?.rows || []).map(row => row.filter((_, i) => i !== hIdx));
+                                    const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { headers: newHeaders, rows: newRows } } : b);
+                                    updateBlocks(newBlocks);
+                                  }}
+                                  className="absolute -top-2 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/header:opacity-100 transition-opacity"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </th>
+                            ))}
+                            <th className="w-10 px-2 py-3">
+                              <button
+                                onClick={() => {
+                                  const newHeaders = [...(block.tableData?.headers || []), `Column ${(block.tableData?.headers.length || 0) + 1}`];
+                                  const newRows = (block.tableData?.rows || []).map(row => [...row, '']);
+                                  const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { headers: newHeaders, rows: newRows } } : b);
+                                  updateBlocks(newBlocks);
+                                }}
+                                className="p-1 hover:bg-accent-primary/10 text-accent-primary rounded-lg transition-colors"
+                              >
+                                <PlusCircle size={14} />
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30">
+                          {block.tableData?.rows.map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-bg-tertiary/30 transition-colors group/row divide-x divide-border/30">
+                              {row.map((cell, cIdx) => (
+                                <td key={cIdx} className="px-4 py-3 text-sm text-text-primary">
+                                  <textarea
+                                    value={cell}
+                                    onChange={(e) => {
+                                      let val = e.target.value;
+                                      // Bullet shortcut: "- " at start of line
+                                      if (val.endsWith('- ')) {
+                                        const lines = val.split('\n');
+                                        if (lines[lines.length - 1] === '- ') {
+                                          lines[lines.length - 1] = '• ';
+                                          val = lines.join('\n');
+                                        }
+                                      }
+                                      const newRows = [...(block.tableData?.rows || [])];
+                                      newRows[rIdx] = [...newRows[rIdx]];
+                                      newRows[rIdx][cIdx] = val;
+                                      const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { ...b.tableData!, rows: newRows } } : b);
+                                      updateBlocks(newBlocks);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        addTableRow(block.id);
+                                      }
+                                    }}
+                                    rows={cell.split('\n').length || 1}
+                                    className="bg-transparent outline-none w-full resize-none overflow-hidden py-0 block"
+                                  />
+                                </td>
+                              ))}
+                              <td className="w-10 px-2 py-3 text-center">
+                                <button
+                                  onClick={() => {
+                                    const newRows = (block.tableData?.rows || []).filter((_, i) => i !== rIdx);
+                                    const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { ...b.tableData!, rows: newRows } } : b);
+                                    updateBlocks(newBlocks);
+                                  }}
+                                  className="p-1 hover:bg-red-500/10 text-red-400 rounded-lg opacity-0 group-hover/row:opacity-100 transition-all"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          <tr>
+                            <td colSpan={(block.tableData?.headers.length || 0) + 1} className="px-4 py-2">
+                              <button
+                                onClick={() => addTableRow(block.id)}
+                                className="flex items-center gap-2 text-xs font-medium text-accent-primary hover:text-accent-primary/80 transition-colors"
+                              >
+                                <Plus size={14} /> Add row
+                              </button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div 
@@ -457,6 +626,7 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
               <MenuButton icon={CheckSquare} label="To-do List" onClick={() => changeBlockType(showMenu.id, 'todo')} />
               <MenuButton icon={Quote} label="Quote" onClick={() => changeBlockType(showMenu.id, 'quote')} />
               <MenuButton icon={Code} label="Code" onClick={() => changeBlockType(showMenu.id, 'code')} />
+              <MenuButton icon={TableIcon} label="Table" onClick={() => changeBlockType(showMenu.id, 'table')} />
               <div className="relative">
                 <MenuButton icon={ImageIcon} label="Image" onClick={() => {}} />
                 <input 
