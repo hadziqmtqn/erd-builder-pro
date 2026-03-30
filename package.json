@@ -48,5 +48,9 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "overrides": {
+    "dompurify": "^3.3.2",
+    "nanoid": "^3.3.8"
   }
 }
