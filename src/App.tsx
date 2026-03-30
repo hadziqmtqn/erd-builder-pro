@@ -197,9 +197,12 @@ export default function App() {
         setIsAuthenticated(false);
         return;
       }
-      const data = await res.json();
-      setFiles(data);
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
+      console.error('Error fetching files:', err);
     }
   };
 
@@ -207,9 +210,12 @@ export default function App() {
   const fetchNotes = async () => {
     try {
       const res = await fetch('/api/notes');
-      const data = await res.json();
-      setNotesList(data);
+      if (res.ok) {
+        const data = await res.json();
+        setNotesList(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
+      console.error('Error fetching notes:', err);
     }
   };
 
@@ -217,9 +223,12 @@ export default function App() {
   const fetchDrawings = async () => {
     try {
       const res = await fetch('/api/drawings');
-      const data = await res.json();
-      setDrawings(data);
+      if (res.ok) {
+        const data = await res.json();
+        setDrawings(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
+      console.error('Error fetching drawings:', err);
     }
   };
 
@@ -227,9 +236,12 @@ export default function App() {
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects');
-      const data = await res.json();
-      setProjects(data);
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
+      console.error('Error fetching projects:', err);
     }
   };
 

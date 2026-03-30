@@ -150,17 +150,22 @@ export default function Sidebar({
 
   const activeProject = projects.find(p => p.id === activeProjectId);
 
+  const safeFiles = Array.isArray(files) ? files : [];
+  const safeNotes = Array.isArray(notes) ? notes : [];
+  const safeDrawings = Array.isArray(drawings) ? drawings : [];
+  const safeProjects = Array.isArray(projects) ? projects : [];
+
   const filteredFiles = (activeProjectId 
-    ? files.filter(f => f.project_id === activeProjectId)
-    : files).filter(f => !f.is_deleted);
+    ? safeFiles.filter(f => f.project_id === activeProjectId)
+    : safeFiles).filter(f => !f.is_deleted);
 
   const filteredNotes = (activeProjectId
-    ? notes.filter(n => n.project_id === activeProjectId)
-    : notes).filter(n => !n.is_deleted);
+    ? safeNotes.filter(n => n.project_id === activeProjectId)
+    : safeNotes).filter(n => !n.is_deleted);
 
   const filteredDrawings = (activeProjectId
-    ? drawings.filter(d => d.project_id === activeProjectId)
-    : drawings).filter(d => !d.is_deleted);
+    ? safeDrawings.filter(d => d.project_id === activeProjectId)
+    : safeDrawings).filter(d => !d.is_deleted);
 
   useEffect(() => {
     if (!activeMenu) return;
@@ -189,7 +194,7 @@ export default function Sidebar({
     };
   }, [activeMenu]);
 
-  const activeProjects = projects.filter(p => !p.is_deleted);
+  const activeProjects = safeProjects.filter(p => !p.is_deleted);
 
   return (
     <div className={cn(

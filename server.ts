@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import Database from "better-sqlite3";
+import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
@@ -11,7 +11,11 @@ import fs from "fs";
 
 dotenv.config();
 
-const db = new Database("erd.db");
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -32,149 +36,6 @@ const upload = multer({ storage });
 const JWT_SECRET = process.env.JWT_SECRET || "erd-builder-secret-key";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
-
-// Initialize Database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    is_deleted BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    project_id INTEGER,
-    is_deleted BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    content TEXT,
-    project_id INTEGER,
-    is_deleted BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS entities (
-    id TEXT PRIMARY KEY,
-    file_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    x REAL NOT NULL,
-    y REAL NOT NULL,
-    color TEXT DEFAULT '#6366f1',
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS columns (
-    id TEXT PRIMARY KEY,
-    entity_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    is_pk BOOLEAN DEFAULT 0,
-    is_nullable BOOLEAN DEFAULT 1,
-    enum_values TEXT,
-    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS relationships (
-    id TEXT PRIMARY KEY,
-    file_id INTEGER NOT NULL,
-    source_entity_id TEXT NOT NULL,
-    target_entity_id TEXT NOT NULL,
-    type TEXT DEFAULT 'one-to-many',
-    label TEXT,
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS drawings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    data TEXT,
-    project_id INTEGER,
-    is_deleted BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
-  );
-`);
-
-// Migration for existing databases
-const migrate = () => {
-  const filesInfo = db.prepare("PRAGMA table_info(files)").all();
-  const filesColumns = filesInfo.map((c: any) => c.name);
-
-  if (!filesColumns.includes("project_id")) {
-    try {
-      db.exec("ALTER TABLE files ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
-      console.log("Added project_id column to files table");
-    } catch (e) {
-      console.error("Error adding project_id to files:", e);
-    }
-  }
-
-  if (!filesColumns.includes("is_deleted")) {
-    try {
-      db.exec("ALTER TABLE files ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
-      console.log("Added is_deleted column to files table");
-    } catch (e) {
-      console.error("Error adding is_deleted to files:", e);
-    }
-  }
-
-  // Check projects table
-  const projectsInfo = db.prepare("PRAGMA table_info(projects)").all();
-  const projectsColumns = projectsInfo.map((c: any) => c.name);
-  if (!projectsColumns.includes("is_deleted")) {
-    try {
-      db.exec("ALTER TABLE projects ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
-      console.log("Added is_deleted column to projects table");
-    } catch (e) {
-      console.error("Error adding is_deleted to projects:", e);
-    }
-  }
-
-  // Check notes table as well
-  const notesInfo = db.prepare("PRAGMA table_info(notes)").all();
-  if (notesInfo.length > 0) {
-    const notesColumns = notesInfo.map((c: any) => c.name);
-    if (!notesColumns.includes("project_id")) {
-      try {
-        db.exec("ALTER TABLE notes ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
-      } catch (e) {}
-    }
-    if (!notesColumns.includes("is_deleted")) {
-      try {
-        db.exec("ALTER TABLE notes ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
-      } catch (e) {}
-    }
-  }
-
-  // Check drawings table
-  const drawingsInfo = db.prepare("PRAGMA table_info(drawings)").all();
-  if (drawingsInfo.length > 0) {
-    const drawingsColumns = drawingsInfo.map((c: any) => c.name);
-    if (!drawingsColumns.includes("project_id")) {
-      try {
-        db.exec("ALTER TABLE drawings ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
-      } catch (e) {}
-    }
-    if (!drawingsColumns.includes("is_deleted")) {
-      try {
-        db.exec("ALTER TABLE drawings ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
-      } catch (e) {}
-    }
-  }
-};
-
-migrate();
 
 async function startServer() {
   const app = express();
@@ -212,24 +73,16 @@ async function startServer() {
     const email = req.body.email?.trim();
     const password = req.body.password;
     
-    console.log(`Login attempt for: "${email}"`);
-    console.log(`Expected email: "${ADMIN_EMAIL}"`);
-    
     if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "24h" });
       res.cookie("token", token, {
         httpOnly: true,
-        secure: true, // Required for SameSite=None
-        sameSite: "none", // Required for cross-origin iframe
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        secure: true,
+        sameSite: "none",
+        maxAge: 24 * 60 * 60 * 1000
       });
-      console.log("Login successful");
       return res.json({ success: true });
     }
-    
-    console.log("Login failed: Invalid credentials");
-    console.log(`Password match: ${password === ADMIN_PASSWORD}`);
-    
     res.status(401).json({ error: "Invalid credentials" });
   });
 
@@ -245,221 +98,377 @@ async function startServer() {
   app.get("/api/me", (req, res) => {
     const token = req.cookies.token;
     if (!token) {
-      console.log("Check auth: No token found");
       return res.status(401).json({ error: "Not logged in" });
     }
     try {
       jwt.verify(token, JWT_SECRET);
-      console.log("Check auth: Valid token");
       res.json({ authenticated: true });
     } catch (err) {
-      console.log("Check auth: Invalid token");
       res.status(401).json({ error: "Invalid token" });
     }
   });
 
-  app.get("/api/files", authenticate, (req, res) => {
-    const files = db.prepare(`
-      SELECT f.* FROM files f 
-      LEFT JOIN projects p ON f.project_id = p.id 
-      WHERE f.is_deleted = 0 AND (f.project_id IS NULL OR p.is_deleted = 0)
-      ORDER BY f.updated_at DESC
-    `).all();
-    res.json(files);
+  app.get("/api/files", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("files")
+      .select("*, projects!left(*)")
+      .eq("is_deleted", false)
+      .or(`project_id.is.null,projects.is_deleted.eq.false`)
+      .order("updated_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.post("/api/files", authenticate, (req, res) => {
+  app.post("/api/files", authenticate, async (req, res) => {
     const { name, project_id } = req.body;
-    const result = db.prepare("INSERT INTO files (name, project_id) VALUES (?, ?)").run(name, project_id || null);
-    res.json({ id: result.lastInsertRowid, name, project_id });
+    const { data, error } = await supabase
+      .from("files")
+      .insert([{ name, project_id: project_id || null }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.get("/api/files/:id", authenticate, (req, res) => {
+  app.get("/api/files/:id", authenticate, async (req, res) => {
     const fileId = req.params.id;
-    const file = db.prepare("SELECT * FROM files WHERE id = ?").get(fileId);
-    if (!file) return res.status(404).json({ error: "File not found" });
+    const { data: file, error: fileError } = await supabase
+      .from("files")
+      .select("*")
+      .eq("id", fileId)
+      .single();
 
-    const entities = db.prepare("SELECT * FROM entities WHERE file_id = ?").all(fileId);
-    const relationships = db.prepare("SELECT * FROM relationships WHERE file_id = ?").all(fileId);
-    
-    const entitiesWithColumns = entities.map(entity => {
-      const columns = db.prepare("SELECT * FROM columns WHERE entity_id = ?").all(entity.id);
-      return { ...entity, columns };
-    });
+    if (fileError || !file) return res.status(404).json({ error: "File not found" });
+
+    const { data: entities, error: entitiesError } = await supabase
+      .from("entities")
+      .select("*")
+      .eq("file_id", fileId);
+
+    if (entitiesError) return res.status(500).json({ error: entitiesError.message });
+
+    const { data: relationships, error: relError } = await supabase
+      .from("relationships")
+      .select("*")
+      .eq("file_id", fileId);
+
+    if (relError) return res.status(500).json({ error: relError.message });
+
+    const entitiesWithColumns = await Promise.all(entities.map(async (entity) => {
+      const { data: columns } = await supabase
+        .from("columns")
+        .select("*")
+        .eq("entity_id", entity.id);
+      return { ...entity, columns: columns || [] };
+    }));
 
     res.json({ ...file, entities: entitiesWithColumns, relationships });
   });
 
-  app.delete("/api/files/:id", authenticate, (req, res) => {
-    // Soft delete
-    db.prepare("UPDATE files SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+  app.delete("/api/files/:id", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("files")
+      .update({ is_deleted: true })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.post("/api/files/:id/restore", authenticate, (req, res) => {
-    db.prepare("UPDATE files SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+  app.post("/api/files/:id/restore", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("files")
+      .update({ is_deleted: false })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/files/:id/permanent", authenticate, (req, res) => {
-    db.prepare("DELETE FROM files WHERE id = ?").run(req.params.id);
+  app.delete("/api/files/:id/permanent", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("files")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.put("/api/files/:id", authenticate, (req, res) => {
+  app.put("/api/files/:id", authenticate, async (req, res) => {
     const { name } = req.body;
-    db.prepare("UPDATE files SET name = ? WHERE id = ?").run(name, req.params.id);
+    const { error } = await supabase
+      .from("files")
+      .update({ name })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.put("/api/files/:id/project", authenticate, (req, res) => {
+  app.put("/api/files/:id/project", authenticate, async (req, res) => {
     const { project_id } = req.body;
-    db.prepare("UPDATE files SET project_id = ? WHERE id = ?").run(project_id || null, req.params.id);
+    const { error } = await supabase
+      .from("files")
+      .update({ project_id: project_id || null })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
   // Projects API
-  app.get("/api/projects", authenticate, (req, res) => {
-    const projects = db.prepare("SELECT * FROM projects WHERE is_deleted = 0 ORDER BY name ASC").all();
-    res.json(projects);
+  app.get("/api/projects", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("is_deleted", false)
+      .order("name", { ascending: true });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.post("/api/projects", authenticate, (req, res) => {
+  app.post("/api/projects", authenticate, async (req, res) => {
     const { name } = req.body;
-    const result = db.prepare("INSERT INTO projects (name) VALUES (?)").run(name);
-    res.json({ id: result.lastInsertRowid, name });
+    const { data, error } = await supabase
+      .from("projects")
+      .insert([{ name }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.put("/api/projects/:id", authenticate, (req, res) => {
+  app.put("/api/projects/:id", authenticate, async (req, res) => {
     const { name } = req.body;
-    db.prepare("UPDATE projects SET name = ? WHERE id = ?").run(name, req.params.id);
+    const { error } = await supabase
+      .from("projects")
+      .update({ name })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/projects/:id", authenticate, (req, res) => {
-    db.prepare("UPDATE projects SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+  app.delete("/api/projects/:id", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("projects")
+      .update({ is_deleted: true })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.post("/api/projects/:id/restore", authenticate, (req, res) => {
-    db.prepare("UPDATE projects SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+  app.post("/api/projects/:id/restore", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("projects")
+      .update({ is_deleted: false })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/projects/:id/permanent", authenticate, (req, res) => {
+  app.delete("/api/projects/:id/permanent", authenticate, async (req, res) => {
     const projectId = req.params.id;
-    const transaction = db.transaction(() => {
-      // Delete all associated data
-      db.prepare("DELETE FROM relationships WHERE file_id IN (SELECT id FROM files WHERE project_id = ?)").run(projectId);
-      db.prepare("DELETE FROM columns WHERE entity_id IN (SELECT id FROM entities WHERE file_id IN (SELECT id FROM files WHERE project_id = ?))").run(projectId);
-      db.prepare("DELETE FROM entities WHERE file_id IN (SELECT id FROM files WHERE project_id = ?)").run(projectId);
-      db.prepare("DELETE FROM files WHERE project_id = ?").run(projectId);
-      db.prepare("DELETE FROM notes WHERE project_id = ?").run(projectId);
-      db.prepare("DELETE FROM drawings WHERE project_id = ?").run(projectId);
-      db.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
-    });
-    transaction();
-    res.json({ success: true });
+    
+    // In Supabase, we can use cascading deletes if configured in DB,
+    // but here we'll do it manually to match the previous logic.
+    // However, Supabase doesn't have a simple "transaction" block in the JS client like better-sqlite3.
+    // We should use a Postgres function (RPC) for complex transactions, 
+    // but for now we'll do sequential deletes.
+    
+    try {
+      // Get file IDs first
+      const { data: files } = await supabase.from("files").select("id").eq("project_id", projectId);
+      const fileIds = files?.map(f => f.id) || [];
+
+      if (fileIds.length > 0) {
+        await supabase.from("relationships").delete().in("file_id", fileIds);
+        const { data: entities } = await supabase.from("entities").select("id").in("file_id", fileIds);
+        const entityIds = entities?.map(e => e.id) || [];
+        if (entityIds.length > 0) {
+          await supabase.from("columns").delete().in("entity_id", entityIds);
+        }
+        await supabase.from("entities").delete().in("file_id", fileIds);
+        await supabase.from("files").delete().in("id", fileIds);
+      }
+      
+      await supabase.from("notes").delete().eq("project_id", projectId);
+      await supabase.from("drawings").delete().eq("project_id", projectId);
+      await supabase.from("projects").delete().eq("id", projectId);
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Notes API
-  app.get("/api/notes", authenticate, (req, res) => {
-    const notes = db.prepare(`
-      SELECT n.* FROM notes n
-      LEFT JOIN projects p ON n.project_id = p.id
-      WHERE n.is_deleted = 0 AND (n.project_id IS NULL OR p.is_deleted = 0)
-      ORDER BY n.updated_at DESC
-    `).all();
-    res.json(notes);
+  app.get("/api/notes", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("notes")
+      .select("*, projects!left(*)")
+      .eq("is_deleted", false)
+      .or(`project_id.is.null,projects.is_deleted.eq.false`)
+      .order("updated_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.post("/api/notes", authenticate, (req, res) => {
+  app.post("/api/notes", authenticate, async (req, res) => {
     const { title, content, project_id } = req.body;
-    const result = db.prepare("INSERT INTO notes (title, content, project_id) VALUES (?, ?, ?)")
-      .run(title, content || "", project_id || null);
-    res.json({ id: result.lastInsertRowid, title, content, project_id });
+    const { data, error } = await supabase
+      .from("notes")
+      .insert([{ title, content: content || "", project_id: project_id || null }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.get("/api/notes/:id", authenticate, (req, res) => {
-    const note = db.prepare("SELECT * FROM notes WHERE id = ?").get(req.params.id);
-    if (!note) return res.status(404).json({ error: "Note not found" });
-    res.json(note);
+  app.get("/api/notes/:id", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("notes")
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: "Note not found" });
+    res.json(data);
   });
 
-  app.put("/api/notes/:id", authenticate, (req, res) => {
+  app.put("/api/notes/:id", authenticate, async (req, res) => {
     const { title, content, project_id } = req.body;
-    db.prepare("UPDATE notes SET title = ?, content = ?, project_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(title, content, project_id || null, req.params.id);
+    const { error } = await supabase
+      .from("notes")
+      .update({ title, content, project_id: project_id || null, updated_at: new Date().toISOString() })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/notes/:id", authenticate, (req, res) => {
-    db.prepare("UPDATE notes SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+  app.delete("/api/notes/:id", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("notes")
+      .update({ is_deleted: true })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.post("/api/notes/:id/restore", authenticate, (req, res) => {
-    db.prepare("UPDATE notes SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+  app.post("/api/notes/:id/restore", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("notes")
+      .update({ is_deleted: false })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/notes/:id/permanent", authenticate, (req, res) => {
-    db.prepare("DELETE FROM notes WHERE id = ?").run(req.params.id);
+  app.delete("/api/notes/:id/permanent", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("notes")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
   // Trash API
-  app.get("/api/trash", authenticate, (req, res) => {
-    const files = db.prepare("SELECT * FROM files WHERE is_deleted = 1").all();
-    const notes = db.prepare("SELECT * FROM notes WHERE is_deleted = 1").all();
-    const drawings = db.prepare("SELECT * FROM drawings WHERE is_deleted = 1").all();
-    const projects = db.prepare("SELECT * FROM projects WHERE is_deleted = 1").all();
-    res.json({ files, notes, drawings, projects });
+  app.get("/api/trash", authenticate, async (req, res) => {
+    const { data: files } = await supabase.from("files").select("*").eq("is_deleted", true);
+    const { data: notes } = await supabase.from("notes").select("*").eq("is_deleted", true);
+    const { data: drawings } = await supabase.from("drawings").select("*").eq("is_deleted", true);
+    const { data: projects } = await supabase.from("projects").select("*").eq("is_deleted", true);
+    res.json({ files: files || [], notes: notes || [], drawings: drawings || [], projects: projects || [] });
   });
 
   // Drawings API
-  app.get("/api/drawings", authenticate, (req, res) => {
-    const drawings = db.prepare(`
-      SELECT d.* FROM drawings d
-      LEFT JOIN projects p ON d.project_id = p.id
-      WHERE d.is_deleted = 0 AND (d.project_id IS NULL OR p.is_deleted = 0)
-      ORDER BY d.updated_at DESC
-    `).all();
-    res.json(drawings);
+  app.get("/api/drawings", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("drawings")
+      .select("*, projects!left(*)")
+      .eq("is_deleted", false)
+      .or(`project_id.is.null,projects.is_deleted.eq.false`)
+      .order("updated_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   });
 
-  app.post("/api/drawings", authenticate, (req, res) => {
+  app.post("/api/drawings", authenticate, async (req, res) => {
     const { title, data, project_id } = req.body;
-    const result = db.prepare("INSERT INTO drawings (title, data, project_id) VALUES (?, ?, ?)")
-      .run(title, data || "[]", project_id || null);
-    res.json({ id: result.lastInsertRowid, title, data, project_id });
+    const { data: inserted, error } = await supabase
+      .from("drawings")
+      .insert([{ title, data: data || "[]", project_id: project_id || null }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(inserted);
   });
 
-  app.get("/api/drawings/:id", authenticate, (req, res) => {
-    const drawing = db.prepare("SELECT * FROM drawings WHERE id = ?").get(req.params.id);
-    if (!drawing) return res.status(404).json({ error: "Drawing not found" });
-    res.json(drawing);
+  app.get("/api/drawings/:id", authenticate, async (req, res) => {
+    const { data, error } = await supabase
+      .from("drawings")
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: "Drawing not found" });
+    res.json(data);
   });
 
-  app.put("/api/drawings/:id", authenticate, (req, res) => {
+  app.put("/api/drawings/:id", authenticate, async (req, res) => {
     const { title, data, project_id } = req.body;
-    db.prepare("UPDATE drawings SET title = ?, data = ?, project_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(title, data, project_id || null, req.params.id);
+    const { error } = await supabase
+      .from("drawings")
+      .update({ title, data, project_id: project_id || null, updated_at: new Date().toISOString() })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/drawings/:id", authenticate, (req, res) => {
-    db.prepare("UPDATE drawings SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+  app.delete("/api/drawings/:id", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("drawings")
+      .update({ is_deleted: true })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.post("/api/drawings/:id/restore", authenticate, (req, res) => {
-    db.prepare("UPDATE drawings SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+  app.post("/api/drawings/:id/restore", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("drawings")
+      .update({ is_deleted: false })
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
-  app.delete("/api/drawings/:id/permanent", authenticate, (req, res) => {
-    db.prepare("DELETE FROM drawings WHERE id = ?").run(req.params.id);
+  app.delete("/api/drawings/:id/permanent", authenticate, async (req, res) => {
+    const { error } = await supabase
+      .from("drawings")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   });
 
@@ -472,38 +481,72 @@ async function startServer() {
     res.json({ url: imageUrl });
   });
 
-  app.post("/api/save/:id", authenticate, (req, res) => {
+  app.post("/api/save/:id", authenticate, async (req, res) => {
     const fileId = req.params.id;
     const { entities, relationships } = req.body;
 
-    const transaction = db.transaction(() => {
+    try {
       // Clear existing data for this file
-      db.prepare("DELETE FROM relationships WHERE file_id = ?").run(fileId);
-      db.prepare("DELETE FROM columns WHERE entity_id IN (SELECT id FROM entities WHERE file_id = ?)").run(fileId);
-      db.prepare("DELETE FROM entities WHERE file_id = ?").run(fileId);
+      await supabase.from("relationships").delete().eq("file_id", fileId);
+      
+      const { data: existingEntities } = await supabase.from("entities").select("id").eq("file_id", fileId);
+      const existingEntityIds = existingEntities?.map(e => e.id) || [];
+      if (existingEntityIds.length > 0) {
+        await supabase.from("columns").delete().in("entity_id", existingEntityIds);
+      }
+      await supabase.from("entities").delete().eq("file_id", fileId);
 
-      // Insert entities and columns
-      for (const entity of entities) {
-        db.prepare("INSERT INTO entities (id, file_id, name, x, y, color) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(entity.id, fileId, entity.name, entity.x, entity.y, entity.color);
-        
-        for (const col of entity.columns) {
-          db.prepare("INSERT INTO columns (id, entity_id, name, type, is_pk, is_nullable, enum_values) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .run(col.id, entity.id, col.name, col.type, col.is_pk ? 1 : 0, col.is_nullable ? 1 : 0, col.enum_values || null);
+      // Insert entities
+      if (entities.length > 0) {
+        const entitiesToInsert = entities.map((e: any) => ({
+          id: e.id,
+          file_id: fileId,
+          name: e.name,
+          x: e.x,
+          y: e.y,
+          color: e.color || '#6366f1'
+        }));
+        await supabase.from("entities").insert(entitiesToInsert);
+
+        // Insert columns
+        const allColumns: any[] = [];
+        for (const entity of entities) {
+          for (const col of entity.columns) {
+            allColumns.push({
+              id: col.id,
+              entity_id: entity.id,
+              name: col.name,
+              type: col.type,
+              is_pk: col.is_pk || false,
+              is_nullable: col.is_nullable !== undefined ? col.is_nullable : true,
+              enum_values: col.enum_values || null
+            });
+          }
+        }
+        if (allColumns.length > 0) {
+          await supabase.from("columns").insert(allColumns);
         }
       }
 
       // Insert relationships
-      for (const rel of relationships) {
-        db.prepare("INSERT INTO relationships (id, file_id, source_entity_id, target_entity_id, type, label) VALUES (?, ?, ?, ?, ?, ?)")
-          .run(rel.id, fileId, rel.source_entity_id, rel.target_entity_id, rel.type, rel.label);
+      if (relationships.length > 0) {
+        const relsToInsert = relationships.map((r: any) => ({
+          id: r.id,
+          file_id: fileId,
+          source_entity_id: r.source_entity_id,
+          target_entity_id: r.target_entity_id,
+          type: r.type || 'one-to-many',
+          label: r.label || null
+        }));
+        await supabase.from("relationships").insert(relsToInsert);
       }
 
-      db.prepare("UPDATE files SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(fileId);
-    });
+      await supabase.from("files").update({ updated_at: new Date().toISOString() }).eq("id", fileId);
 
-    transaction();
-    res.json({ success: true });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Vite middleware for development
