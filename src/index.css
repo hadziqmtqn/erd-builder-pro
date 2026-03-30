@@ -51,3 +51,15 @@
 .react-flow__attribution {
   @apply !bg-transparent !text-text-secondary/30 !text-[10px];
 }
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full hover:bg-text-secondary/20 transition-colors;
+}

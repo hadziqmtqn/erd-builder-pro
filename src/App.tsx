@@ -15,8 +15,6 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Plus, MousePointer2, Share2, Download, Database, Lock, User, Mail, Trash } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
-
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
@@ -55,14 +53,11 @@ function Login({ onLogin }: { onLogin: () => void }) {
       });
       if (res.ok) {
         onLogin();
-        toast.success('Logged in successfully');
       } else {
         const data = await res.json();
-        toast.error(data.error || 'Invalid credentials');
       }
     } catch (err) {
       console.error('Login error:', err);
-      toast.error('Network error - check server connection');
     } finally {
       setLoading(false);
     }
@@ -138,8 +133,9 @@ export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -178,7 +174,6 @@ export default function App() {
       const data = await res.json();
       setFiles(data);
     } catch (err) {
-      toast.error('Failed to load files');
     }
   };
 
@@ -189,7 +184,6 @@ export default function App() {
       const data = await res.json();
       setNotesList(data);
     } catch (err) {
-      toast.error('Failed to load notes');
     }
   };
 
@@ -200,7 +194,6 @@ export default function App() {
       const data = await res.json();
       setProjects(data);
     } catch (err) {
-      toast.error('Failed to load projects');
     }
   };
 
@@ -215,12 +208,6 @@ export default function App() {
       const data: FileData = await res.json();
       
       if (data.is_deleted) {
-        toast.info('This file is in trash. Restore it to edit.', {
-          action: {
-            label: 'Restore',
-            onClick: () => restoreFile(id)
-          }
-        });
         return;
       }
 
@@ -248,7 +235,6 @@ export default function App() {
       setEdges(flowEdges);
       setSelectedNodeId(null);
     } catch (err) {
-      toast.error('Failed to load diagram');
     }
   };
 
@@ -256,12 +242,6 @@ export default function App() {
   const handleNoteSelect = async (id: number) => {
     const note = notes.find(n => n.id === id) || await (await fetch(`/api/notes/${id}`)).json();
     if (note.is_deleted) {
-      toast.info('This note is in trash. Restore it to edit.', {
-        action: {
-          label: 'Restore',
-          onClick: () => restoreNote(id)
-        }
-      });
       return;
     }
     setActiveNoteId(id);
@@ -272,7 +252,7 @@ export default function App() {
   // Auto-save logic for ERD
   const saveDiagram = useCallback(async () => {
     if (!activeFileId || !isAuthenticated || view !== 'erd') return;
-    setIsSaving(true);
+    setSaveStatus('saving');
 
     const entities: Entity[] = nodes.map(n => ({
       ...n.data,
@@ -296,11 +276,12 @@ export default function App() {
       });
       if (res.status === 401) {
         setIsAuthenticated(false);
+      } else if (res.ok) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch (err) {
-      toast.error('Failed to save changes');
-    } finally {
-      setIsSaving(false);
+      setSaveStatus('error');
     }
   }, [activeFileId, nodes, edges, isAuthenticated, view]);
 
@@ -373,9 +354,10 @@ export default function App() {
       const newFile = await res.json();
       setFiles([newFile, ...files]);
       handleFileSelect(newFile.id);
-      toast.success('File created');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to create file');
+      setSaveStatus('error');
     }
   };
 
@@ -389,9 +371,10 @@ export default function App() {
       const newNote = await res.json();
       setNotesList([newNote, ...notes]);
       handleNoteSelect(newNote.id);
-      toast.success('Note created');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to create note');
+      setSaveStatus('error');
     }
   };
 
@@ -405,9 +388,10 @@ export default function App() {
       const newProject = await res.json();
       setProjects([...projects, newProject]);
       setActiveProjectId(newProject.id);
-      toast.success('Project created');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to create project');
+      setSaveStatus('error');
     }
   };
 
@@ -424,9 +408,10 @@ export default function App() {
         setNodes([]);
         setEdges([]);
       }
-      toast.success('File moved to trash');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to delete file');
+      setSaveStatus('error');
     }
   };
 
@@ -437,9 +422,10 @@ export default function App() {
       if (activeNoteId === id) {
         setActiveNoteId(null);
       }
-      toast.success('Note moved to trash');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to delete note');
+      setSaveStatus('error');
     }
   };
 
@@ -448,9 +434,10 @@ export default function App() {
       await fetch(`/api/files/${id}/restore`, { method: 'POST' });
       setFiles(files.map(f => f.id === id ? { ...f, is_deleted: false } : f));
       handleFileSelect(id);
-      toast.success('File restored');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to restore file');
+      setSaveStatus('error');
     }
   };
 
@@ -459,26 +446,26 @@ export default function App() {
       await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
       setNotesList(notes.map(n => n.id === id ? { ...n, is_deleted: false } : n));
       handleNoteSelect(id);
-      toast.success('Note restored');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to restore note');
+      setSaveStatus('error');
     }
   };
 
   const saveNote = async (updatedNote: Note) => {
-    setIsSaving(true);
+    setSaveStatus('saving');
     try {
       await fetch(`/api/notes/${updatedNote.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedNote),
       });
-      setNotesList(notes.map(n => n.id === updatedNote.id ? updatedNote : n));
-      toast.success('Note saved');
+      setNotesList(prev => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      toast.error('Failed to save note');
-    } finally {
-      setIsSaving(false);
+      setSaveStatus('error');
     }
   };
 
@@ -491,11 +478,12 @@ export default function App() {
       });
       if (response.ok) {
         setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
-        toast.success('File moved successfully');
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch (error) {
       console.error('Error moving file:', error);
-      toast.error('Failed to move file');
+      setSaveStatus('error');
     }
   };
 
@@ -508,16 +496,16 @@ export default function App() {
       });
       if (response.ok) {
         setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, project_id: projectId } : n));
-        toast.success('Note moved successfully');
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
       }
     } catch (error) {
       console.error('Error moving note:', error);
-      toast.error('Failed to move note');
+      setSaveStatus('error');
     }
   };
 
   // Auto-save logic for notes
-  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const handleNoteChange = (content: string) => {
     if (!activeNoteId) return;
     
@@ -545,9 +533,7 @@ export default function App() {
       setActiveNoteId(null);
       setNodes([]);
       setEdges([]);
-      toast.success('Logged out');
     } catch (err) {
-      toast.error('Logout failed');
     }
   };
 
@@ -568,8 +554,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
-      <Toaster position="top-right" theme="dark" />
-      
       <Sidebar 
         files={files} 
         notes={notes}
@@ -588,7 +572,7 @@ export default function App() {
         onFileDelete={deleteFile}
         onNoteDelete={deleteNote}
         onLogout={handleLogout}
-        isSaving={isSaving}
+        saveStatus={saveStatus}
         onMoveFileToProject={moveFileToProject}
         onMoveNoteToProject={moveNoteToProject}
       />

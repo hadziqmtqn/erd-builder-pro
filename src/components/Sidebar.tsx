@@ -26,7 +26,7 @@ interface SidebarProps {
   onFileDelete: (id: number) => void;
   onNoteDelete: (id: number) => void;
   onLogout: () => void;
-  isSaving: boolean;
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onMoveFileToProject: (fileId: number, projectId: number | null) => void;
   onMoveNoteToProject: (noteId: number, projectId: number | null) => void;
 }
@@ -49,7 +49,7 @@ export default function Sidebar({
   onFileDelete,
   onNoteDelete,
   onLogout,
-  isSaving,
+  saveStatus,
   onMoveFileToProject,
   onMoveNoteToProject
 }: SidebarProps) {
@@ -347,8 +347,19 @@ export default function Sidebar({
         {/* Footer Status */}
         <div className="p-4 border-t border-border flex items-center justify-between text-[10px] text-text-secondary font-medium">
           <div className="flex items-center gap-2">
-            <div className={cn("w-1.5 h-1.5 rounded-full", isSaving ? "bg-yellow-500 animate-pulse" : "bg-green-500")} />
-            {isSaving ? "Saving..." : "All changes saved"}
+            <div className={cn(
+              "w-1.5 h-1.5 rounded-full transition-all duration-300",
+              saveStatus === 'saving' && "bg-yellow-500 animate-pulse",
+              saveStatus === 'saved' && "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]",
+              saveStatus === 'error' && "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]",
+              saveStatus === 'idle' && "bg-text-secondary/30"
+            )} />
+            <span>
+              {saveStatus === 'saving' && 'Saving...'}
+              {saveStatus === 'saved' && 'Changes saved'}
+              {saveStatus === 'error' && 'Save failed'}
+              {saveStatus === 'idle' && 'All changes synced'}
+            </span>
           </div>
           <Save className="w-3 h-3" />
         </div>
