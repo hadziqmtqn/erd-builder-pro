@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
-import "@excalidraw/excalidraw/index.css";
 import { Save, Trash2 } from 'lucide-react';
 import { Drawing } from '../types';
 import ConfirmModal from './ConfirmModal';
