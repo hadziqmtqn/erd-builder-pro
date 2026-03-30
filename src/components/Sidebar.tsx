@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, Trash2, FileText, ChevronLeft, ChevronRight, Save, 
   Database, LogOut, Folder, StickyNote, Trash, ChevronDown, 
   ChevronRight as ChevronRightIcon, FolderPlus, MoreVertical,
-  RotateCcw, PenTool, Edit2, FolderInput
+  RotateCcw, PenTool, Edit2
 } from 'lucide-react';
 import { FileData, Project, Note, Drawing } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
 
@@ -47,14 +49,14 @@ interface SidebarProps {
   onNotePermanentDelete: (id: number) => void;
   onDrawingPermanentDelete: (id: number) => void;
   onProjectPermanentDelete: (id: number) => void;
+  onFileUpdate: (id: number, name: string) => void;
+  onNoteUpdate: (id: number, title: string) => void;
+  onDrawingUpdate: (id: number, title: string) => void;
   onLogout: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onMoveFileToProject: (fileId: number, projectId: number | null) => void;
   onMoveNoteToProject: (noteId: number, projectId: number | null) => void;
   onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void;
-  onFileUpdate: (id: number, name: string) => void;
-  onNoteUpdate: (id: number, title: string) => void;
-  onDrawingUpdate: (id: number, title: string) => void;
 }
 
 export default function Sidebar({ 
@@ -90,14 +92,14 @@ export default function Sidebar({
   onNotePermanentDelete,
   onDrawingPermanentDelete,
   onProjectPermanentDelete,
+  onFileUpdate,
+  onNoteUpdate,
+  onDrawingUpdate,
   onLogout,
   saveStatus,
   onMoveFileToProject,
   onMoveNoteToProject,
-  onMoveDrawingToProject,
-  onFileUpdate,
-  onNoteUpdate,
-  onDrawingUpdate
+  onMoveDrawingToProject
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [newFileName, setNewFileName] = useState('');
@@ -105,9 +107,14 @@ export default function Sidebar({
   const [showNewProject, setShowNewProject] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
   const [editingProjectName, setEditingProjectName] = useState('');
-  const [editingItemId, setEditingItemId] = useState<{id: number, type: 'file' | 'note' | 'drawing'} | null>(null);
-  const [editingItemName, setEditingItemName] = useState('');
-  const [expandedItemId, setExpandedItemId] = useState<{id: number, type: 'file' | 'note' | 'drawing'} | null>(null);
+  const [editingFileId, setEditingFileId] = useState<number | null>(null);
+  const [editingFileName, setEditingFileName] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteTitle, setEditingNoteTitle] = useState('');
+  const [editingDrawingId, setEditingDrawingId] = useState<number | null>(null);
+  const [editingDrawingTitle, setEditingDrawingTitle] = useState('');
+  const [activeMenu, setActiveMenu] = useState<{ type: 'file' | 'note' | 'drawing' | 'project', id: number } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -155,35 +162,34 @@ export default function Sidebar({
     ? drawings.filter(d => d.project_id === activeProjectId)
     : drawings).filter(d => !d.is_deleted);
 
-  const activeProjects = projects.filter(p => !p.is_deleted);
-
-  const popupRef = useRef<HTMLDivElement>(null);
-
-  const isItemExpanded = (id: number, type: 'file' | 'note' | 'drawing') =>
-    expandedItemId?.id === id && expandedItemId?.type === type;
-
-  const toggleExpanded = (id: number, type: 'file' | 'note' | 'drawing', e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isItemExpanded(id, type)) {
-      setExpandedItemId(null);
-    } else {
-      setExpandedItemId({ id, type });
-      setEditingItemId(null);
-    }
-  };
-
-  // Close popup on click outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setExpandedItemId(null);
-      }
+    if (!activeMenu) return;
+
+    const handleScroll = () => {
+      setActiveMenu(null);
     };
-    if (expandedItemId) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [expandedItemId]);
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking the trigger button or the menu itself
+      if (target.closest('#action-menu-portal') || target.closest('.menu-trigger')) return;
+      
+      setActiveMenu(null);
+    };
+
+    // Use a small timeout to avoid catching the current click event that opened the menu
+    const timeoutId = setTimeout(() => {
+      window.addEventListener('click', handleClickOutside);
+      window.addEventListener('scroll', handleScroll, true);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [activeMenu]);
+
+  const activeProjects = projects.filter(p => !p.is_deleted);
 
   return (
     <div className={cn(
@@ -325,44 +331,27 @@ export default function Sidebar({
                       <button
                         onClick={() => onProjectSelect(project.id)}
                         className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all pr-16",
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all pr-10",
                           activeProjectId === project.id 
                             ? "bg-bg-tertiary text-accent-primary border border-accent-primary/20" 
                             : "text-text-secondary hover:bg-bg-tertiary"
                         )}
                       >
                         <Folder size={16} className={activeProjectId === project.id ? "text-accent-primary" : "text-text-secondary"} />
-                        <span className="truncate">{project.name}</span>
+                        <span className="truncate flex-1 text-left">{project.name}</span>
                       </button>
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         <button
                           onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
-                            setEditingProjectId(project.id);
-                            setEditingProjectName(project.name);
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setMenuPosition({ top: rect.bottom + 5, left: rect.right - 192 });
+                            setActiveMenu(activeMenu?.id === project.id && activeMenu?.type === 'project' ? null : { type: 'project', id: project.id });
                           }}
-                          className="p-1 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all"
-                          title="Edit Name"
+                          className="p-1.5 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all"
                         >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmModal({
-                              isOpen: true,
-                              title: 'Delete Project',
-                              message: `Are you sure you want to move "${project.name}" to the trash? All files within this project will be hidden.`,
-                              onConfirm: () => {
-                                onProjectDelete(project.id);
-                                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                              }
-                            });
-                          }}
-                          className="p-1 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-red-400 transition-all"
-                          title="Move to Trash"
-                        >
-                          <Trash2 size={12} />
+                          <MoreVertical size={14} />
                         </button>
                       </div>
                     </>
@@ -406,124 +395,68 @@ export default function Sidebar({
             <div
               key={file.id}
               className={cn(
-                "group relative flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-all border border-transparent",
-                activeFileId === file.id 
+                "group flex flex-col px-1 py-1 rounded-xl transition-all border border-transparent relative",
+                view === 'erd' && activeFileId === file.id && !editingFileId
                   ? "bg-bg-tertiary text-accent-primary border-accent-primary/20" 
                   : "hover:bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
               )}
-              onClick={() => onFileSelect(file.id)}
             >
-              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
-                <FileText className={cn("w-4 h-4 flex-shrink-0", activeFileId === file.id ? "text-accent-primary" : "text-text-secondary")} />
-                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                  {editingItemId?.id === file.id && editingItemId?.type === 'file' ? (
-                    <form 
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (editingItemName.trim()) {
-                          onFileUpdate(file.id, editingItemName.trim());
-                        }
-                        setEditingItemId(null);
-                      }}
-                      className="w-full"
-                    >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingItemName}
-                        onChange={(e) => setEditingItemName(e.target.value)}
-                        onBlur={() => {
-                          if (editingItemName.trim() && editingItemName !== file.name) {
-                            onFileUpdate(file.id, editingItemName.trim());
-                          }
-                          setEditingItemId(null);
-                        }}
-                        className="w-full bg-bg-tertiary border border-accent-primary rounded-lg px-2 py-1 text-xs focus:outline-none transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </form>
-                  ) : (
-                    <span className="text-sm font-medium truncate">{file.name}</span>
-                  )}
-                  {file.project_id && editingItemId?.id !== file.id && (
-                    <span className="text-[9px] text-text-secondary truncate flex items-center gap-1 mt-0.5">
-                      <Folder size={8} /> {projects.find(p => p.id === file.project_id)?.name}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={(e) => toggleExpanded(file.id, 'file', e)}
-                className={cn(
-                  "p-1.5 rounded-lg transition-all flex-shrink-0 ml-2",
-                  isItemExpanded(file.id, 'file')
-                    ? "bg-accent-primary/10 text-accent-primary"
-                    : "opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-                )}
-                title="More options"
-              >
-                <MoreVertical size={14} />
-              </button>
-
-              {/* Floating Popup Menu */}
-              {isItemExpanded(file.id, 'file') && (
-                <div
-                  ref={popupRef}
-                  className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-bg-secondary border border-border rounded-xl shadow-2xl shadow-black/30 py-1.5 animate-in fade-in zoom-in-95 duration-150"
-                  onClick={(e) => e.stopPropagation()}
+              {editingFileId === file.id ? (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingFileName.trim()) {
+                      onFileUpdate(file.id, editingFileName.trim());
+                      setEditingFileId(null);
+                    }
+                  }}
+                  className="w-full"
                 >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingItemId({ id: file.id, type: 'file' });
-                      setEditingItemName(file.name);
-                      setExpandedItemId(null);
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingFileName}
+                    onChange={(e) => setEditingFileName(e.target.value)}
+                    onBlur={() => {
+                      if (editingFileName.trim() && editingFileName !== file.name) {
+                        onFileUpdate(file.id, editingFileName.trim());
+                      }
+                      setEditingFileId(null);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-tertiary hover:text-accent-primary transition-all"
-                  >
-                    <Edit2 size={13} />
-                    Rename
-                  </button>
-                  <div className="px-4 py-2.5">
-                    <label className="flex items-center gap-3 text-xs font-medium text-text-secondary mb-1.5">
-                      <FolderInput size={13} />
-                      Move to Project
-                    </label>
-                    <select
-                      className="w-full bg-bg-tertiary border border-border rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 text-text-primary"
-                      value={file.project_id || ''}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onMoveFileToProject(file.id, e.target.value ? parseInt(e.target.value) : null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <option value="">No Project</option>
-                      {activeProjects.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    className="w-full bg-bg-primary border border-accent-primary rounded-lg px-3 py-2 text-xs focus:outline-none transition-all"
+                  />
+                </form>
+              ) : (
+                <div 
+                  className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
+                  onClick={() => onFileSelect(file.id)}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <FileText className={cn("w-4 h-4 flex-shrink-0", view === 'erd' && activeFileId === file.id ? "text-accent-primary" : "text-text-secondary")} />
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-sm font-medium truncate">{file.name}</span>
+                      {file.project_id && (
+                        <span className="text-[9px] text-text-secondary truncate flex items-center gap-1">
+                          <Folder size={8} /> {projects.find(p => p.id === file.project_id)?.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="h-px bg-border mx-2 my-1" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedItemId(null);
-                      setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Diagram',
-                        message: `Are you sure you want to move "${file.name}" to the trash?`,
-                        onConfirm: () => {
-                          onFileDelete(file.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        }
-                      });
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-all"
-                  >
-                    <Trash2 size={13} />
-                    Move to Trash
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        // Position to the right of the button
+                        setMenuPosition({ top: rect.top, left: rect.right + 8 });
+                        setActiveMenu(activeMenu?.id === file.id && activeMenu?.type === 'file' ? null : { type: 'file', id: file.id });
+                      }}
+                      className="p-1.5 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all menu-trigger"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -533,124 +466,67 @@ export default function Sidebar({
             <div
               key={note.id}
               className={cn(
-                "group relative flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-all border border-transparent",
-                activeNoteId === note.id 
+                "group flex flex-col px-1 py-1 rounded-xl transition-all border border-transparent relative",
+                view === 'notes' && activeNoteId === note.id && !editingNoteId
                   ? "bg-bg-tertiary text-accent-primary border-accent-primary/20" 
                   : "hover:bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
               )}
-              onClick={() => onNoteSelect(note.id)}
             >
-              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
-                <StickyNote className={cn("w-4 h-4 flex-shrink-0", activeNoteId === note.id ? "text-accent-primary" : "text-text-secondary")} />
-                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                  {editingItemId?.id === note.id && editingItemId?.type === 'note' ? (
-                    <form 
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (editingItemName.trim()) {
-                          onNoteUpdate(note.id, editingItemName.trim());
-                        }
-                        setEditingItemId(null);
-                      }}
-                      className="w-full"
-                    >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingItemName}
-                        onChange={(e) => setEditingItemName(e.target.value)}
-                        onBlur={() => {
-                          if (editingItemName.trim() && editingItemName !== note.title) {
-                            onNoteUpdate(note.id, editingItemName.trim());
-                          }
-                          setEditingItemId(null);
-                        }}
-                        className="w-full bg-bg-tertiary border border-accent-primary rounded-lg px-2 py-1 text-xs focus:outline-none transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </form>
-                  ) : (
-                    <span className="text-sm font-medium truncate">{note.title}</span>
-                  )}
-                  {note.project_id && editingItemId?.id !== note.id && (
-                    <span className="text-[9px] text-text-secondary truncate flex items-center gap-1 mt-0.5">
-                      <Folder size={8} /> {projects.find(p => p.id === note.project_id)?.name}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={(e) => toggleExpanded(note.id, 'note', e)}
-                className={cn(
-                  "p-1.5 rounded-lg transition-all flex-shrink-0 ml-2",
-                  isItemExpanded(note.id, 'note')
-                    ? "bg-accent-primary/10 text-accent-primary"
-                    : "opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-                )}
-                title="More options"
-              >
-                <MoreVertical size={14} />
-              </button>
-
-              {/* Floating Popup Menu */}
-              {isItemExpanded(note.id, 'note') && (
-                <div
-                  ref={popupRef}
-                  className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-bg-secondary border border-border rounded-xl shadow-2xl shadow-black/30 py-1.5 animate-in fade-in zoom-in-95 duration-150"
-                  onClick={(e) => e.stopPropagation()}
+              {editingNoteId === note.id ? (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingNoteTitle.trim()) {
+                      onNoteUpdate(note.id, editingNoteTitle.trim());
+                      setEditingNoteId(null);
+                    }
+                  }}
+                  className="w-full"
                 >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingItemId({ id: note.id, type: 'note' });
-                      setEditingItemName(note.title);
-                      setExpandedItemId(null);
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingNoteTitle}
+                    onChange={(e) => setEditingNoteTitle(e.target.value)}
+                    onBlur={() => {
+                      if (editingNoteTitle.trim() && editingNoteTitle !== note.title) {
+                        onNoteUpdate(note.id, editingNoteTitle.trim());
+                      }
+                      setEditingNoteId(null);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-tertiary hover:text-accent-primary transition-all"
-                  >
-                    <Edit2 size={13} />
-                    Rename
-                  </button>
-                  <div className="px-4 py-2.5">
-                    <label className="flex items-center gap-3 text-xs font-medium text-text-secondary mb-1.5">
-                      <FolderInput size={13} />
-                      Move to Project
-                    </label>
-                    <select
-                      className="w-full bg-bg-tertiary border border-border rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 text-text-primary"
-                      value={note.project_id || ''}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onMoveNoteToProject(note.id, e.target.value ? parseInt(e.target.value) : null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <option value="">No Project</option>
-                      {activeProjects.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    className="w-full bg-bg-primary border border-accent-primary rounded-lg px-3 py-2 text-xs focus:outline-none transition-all"
+                  />
+                </form>
+              ) : (
+                <div 
+                  className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
+                  onClick={() => onNoteSelect(note.id)}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <StickyNote className={cn("w-4 h-4 flex-shrink-0", view === 'notes' && activeNoteId === note.id ? "text-accent-primary" : "text-text-secondary")} />
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-sm font-medium truncate">{note.title}</span>
+                      {note.project_id && (
+                        <span className="text-[9px] text-text-secondary truncate flex items-center gap-1">
+                          <Folder size={8} /> {projects.find(p => p.id === note.project_id)?.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="h-px bg-border mx-2 my-1" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedItemId(null);
-                      setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Note',
-                        message: `Are you sure you want to move "${note.title}" to the trash?`,
-                        onConfirm: () => {
-                          onNoteDelete(note.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        }
-                      });
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-all"
-                  >
-                    <Trash2 size={13} />
-                    Move to Trash
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPosition({ top: rect.bottom + 5, left: rect.right - 192 });
+                        setActiveMenu(activeMenu?.id === note.id && activeMenu?.type === 'note' ? null : { type: 'note', id: note.id });
+                      }}
+                      className="p-1.5 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -660,124 +536,67 @@ export default function Sidebar({
             <div
               key={drawing.id}
               className={cn(
-                "group relative flex items-center justify-between px-3 py-3 rounded-xl cursor-pointer transition-all border border-transparent",
-                activeDrawingId === drawing.id 
+                "group flex flex-col px-1 py-1 rounded-xl transition-all border border-transparent relative",
+                view === 'drawings' && activeDrawingId === drawing.id && !editingDrawingId
                   ? "bg-bg-tertiary text-accent-primary border-accent-primary/20" 
                   : "hover:bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
               )}
-              onClick={() => onDrawingSelect(drawing.id)}
             >
-              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
-                <PenTool className={cn("w-4 h-4 flex-shrink-0", activeDrawingId === drawing.id ? "text-accent-primary" : "text-text-secondary")} />
-                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
-                  {editingItemId?.id === drawing.id && editingItemId?.type === 'drawing' ? (
-                    <form 
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (editingItemName.trim()) {
-                          onDrawingUpdate(drawing.id, editingItemName.trim());
-                        }
-                        setEditingItemId(null);
-                      }}
-                      className="w-full"
-                    >
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingItemName}
-                        onChange={(e) => setEditingItemName(e.target.value)}
-                        onBlur={() => {
-                          if (editingItemName.trim() && editingItemName !== drawing.title) {
-                            onDrawingUpdate(drawing.id, editingItemName.trim());
-                          }
-                          setEditingItemId(null);
-                        }}
-                        className="w-full bg-bg-tertiary border border-accent-primary rounded-lg px-2 py-1 text-xs focus:outline-none transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </form>
-                  ) : (
-                    <span className="text-sm font-medium truncate">{drawing.title}</span>
-                  )}
-                  {drawing.project_id && editingItemId?.id !== drawing.id && (
-                    <span className="text-[9px] text-text-secondary truncate flex items-center gap-1 mt-0.5">
-                      <Folder size={8} /> {projects.find(p => p.id === drawing.project_id)?.name}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={(e) => toggleExpanded(drawing.id, 'drawing', e)}
-                className={cn(
-                  "p-1.5 rounded-lg transition-all flex-shrink-0 ml-2",
-                  isItemExpanded(drawing.id, 'drawing')
-                    ? "bg-accent-primary/10 text-accent-primary"
-                    : "opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-                )}
-                title="More options"
-              >
-                <MoreVertical size={14} />
-              </button>
-
-              {/* Floating Popup Menu */}
-              {isItemExpanded(drawing.id, 'drawing') && (
-                <div
-                  ref={popupRef}
-                  className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-bg-secondary border border-border rounded-xl shadow-2xl shadow-black/30 py-1.5 animate-in fade-in zoom-in-95 duration-150"
-                  onClick={(e) => e.stopPropagation()}
+              {editingDrawingId === drawing.id ? (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingDrawingTitle.trim()) {
+                      onDrawingUpdate(drawing.id, editingDrawingTitle.trim());
+                      setEditingDrawingId(null);
+                    }
+                  }}
+                  className="w-full"
                 >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingItemId({ id: drawing.id, type: 'drawing' });
-                      setEditingItemName(drawing.title);
-                      setExpandedItemId(null);
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingDrawingTitle}
+                    onChange={(e) => setEditingDrawingTitle(e.target.value)}
+                    onBlur={() => {
+                      if (editingDrawingTitle.trim() && editingDrawingTitle !== drawing.title) {
+                        onDrawingUpdate(drawing.id, editingDrawingTitle.trim());
+                      }
+                      setEditingDrawingId(null);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-tertiary hover:text-accent-primary transition-all"
-                  >
-                    <Edit2 size={13} />
-                    Rename
-                  </button>
-                  <div className="px-4 py-2.5">
-                    <label className="flex items-center gap-3 text-xs font-medium text-text-secondary mb-1.5">
-                      <FolderInput size={13} />
-                      Move to Project
-                    </label>
-                    <select
-                      className="w-full bg-bg-tertiary border border-border rounded-lg text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 text-text-primary"
-                      value={drawing.project_id || ''}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onMoveDrawingToProject(drawing.id, e.target.value ? parseInt(e.target.value) : null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <option value="">No Project</option>
-                      {activeProjects.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                    className="w-full bg-bg-primary border border-accent-primary rounded-lg px-3 py-2 text-xs focus:outline-none transition-all"
+                  />
+                </form>
+              ) : (
+                <div 
+                  className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
+                  onClick={() => onDrawingSelect(drawing.id)}
+                >
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <PenTool className={cn("w-4 h-4 flex-shrink-0", view === 'drawings' && activeDrawingId === drawing.id ? "text-accent-primary" : "text-text-secondary")} />
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-sm font-medium truncate">{drawing.title}</span>
+                      {drawing.project_id && (
+                        <span className="text-[9px] text-text-secondary truncate flex items-center gap-1">
+                          <Folder size={8} /> {projects.find(p => p.id === drawing.project_id)?.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="h-px bg-border mx-2 my-1" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedItemId(null);
-                      setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Drawing',
-                        message: `Are you sure you want to move "${drawing.title}" to the trash?`,
-                        onConfirm: () => {
-                          onDrawingDelete(drawing.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        }
-                      });
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-all"
-                  >
-                    <Trash2 size={13} />
-                    Move to Trash
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPosition({ top: rect.bottom + 5, left: rect.right - 192 });
+                        setActiveMenu(activeMenu?.id === drawing.id && activeMenu?.type === 'drawing' ? null : { type: 'drawing', id: drawing.id });
+                      }}
+                      className="p-1.5 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1010,6 +829,242 @@ export default function Sidebar({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
+
+      {/* Global Action Menu Portal */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {activeMenu && menuPosition && (
+            <motion.div 
+              id="action-menu-portal"
+              key={`${activeMenu.type}-${activeMenu.id}`}
+              initial={{ opacity: 0, scale: 0.95, x: -10 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95, x: -10 }}
+              style={{ 
+                position: 'fixed', 
+                top: Math.min(menuPosition.top, window.innerHeight - 250), 
+                left: menuPosition.left,
+                zIndex: 99999 
+              }}
+              className="w-56 bg-bg-secondary border border-border rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-2 backdrop-blur-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-4 py-2 border-b border-border mb-1">
+                <p className="text-[10px] font-bold text-accent-primary uppercase tracking-widest">
+                  {activeMenu.type} Options
+                </p>
+              </div>
+
+              {activeMenu.type === 'project' && (
+                <>
+                  <button
+                    onClick={() => {
+                      const project = projects.find(p => p.id === activeMenu.id);
+                      if (project) {
+                        setEditingProjectId(project.id);
+                        setEditingProjectName(project.name);
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-text-primary hover:bg-bg-tertiary transition-all"
+                  >
+                    <Edit2 size={14} className="text-text-secondary" /> Rename Project
+                  </button>
+                  <button
+                    onClick={() => {
+                      const project = projects.find(p => p.id === activeMenu.id);
+                      if (project) {
+                        setConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Project',
+                          message: `Are you sure you want to move "${project.name}" to the trash? All files within this project will be hidden.`,
+                          onConfirm: () => {
+                            onProjectDelete(project.id);
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          }
+                        });
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-red-400 hover:bg-red-400/10 transition-all border-t border-border mt-1"
+                  >
+                    <Trash2 size={14} /> Delete Project
+                  </button>
+                </>
+              )}
+
+              {activeMenu.type === 'file' && (
+                <>
+                  <button
+                    onClick={() => {
+                      const file = files.find(f => f.id === activeMenu.id);
+                      if (file) {
+                        setEditingFileId(file.id);
+                        setEditingFileName(file.name);
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-text-primary hover:bg-bg-tertiary transition-all"
+                  >
+                    <Edit2 size={14} className="text-text-secondary" /> Rename Diagram
+                  </button>
+                  <div className="px-4 py-3 border-t border-border mt-1 bg-bg-primary/30">
+                    <p className="text-[9px] font-bold text-text-secondary uppercase mb-2 flex items-center gap-1">
+                      <Folder size={10} /> Move to Project
+                    </p>
+                    <select
+                      className="w-full bg-bg-secondary border border-border rounded-lg text-[11px] px-2 py-2 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 cursor-pointer"
+                      value={files.find(f => f.id === activeMenu.id)?.project_id || ''}
+                      onChange={(e) => {
+                        onMoveFileToProject(activeMenu.id, e.target.value ? parseInt(e.target.value) : null);
+                        setActiveMenu(null);
+                      }}
+                    >
+                      <option value="">No Project (Root)</option>
+                      {activeProjects.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const file = files.find(f => f.id === activeMenu.id);
+                      if (file) {
+                        setConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Diagram',
+                          message: `Are you sure you want to move "${file.name}" to the trash?`,
+                          onConfirm: () => {
+                            onFileDelete(file.id);
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          }
+                        });
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-red-400 hover:bg-red-400/10 transition-all border-t border-border mt-1"
+                  >
+                    <Trash2 size={14} /> Delete Diagram
+                  </button>
+                </>
+              )}
+
+              {activeMenu.type === 'note' && (
+                <>
+                  <button
+                    onClick={() => {
+                      const note = notes.find(n => n.id === activeMenu.id);
+                      if (note) {
+                        setEditingNoteId(note.id);
+                        setEditingNoteTitle(note.title);
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-text-primary hover:bg-bg-tertiary transition-all"
+                  >
+                    <Edit2 size={14} className="text-text-secondary" /> Rename Note
+                  </button>
+                  <div className="px-4 py-3 border-t border-border mt-1 bg-bg-primary/30">
+                    <p className="text-[9px] font-bold text-text-secondary uppercase mb-2 flex items-center gap-1">
+                      <Folder size={10} /> Move to Project
+                    </p>
+                    <select
+                      className="w-full bg-bg-secondary border border-border rounded-lg text-[11px] px-2 py-2 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 cursor-pointer"
+                      value={notes.find(n => n.id === activeMenu.id)?.project_id || ''}
+                      onChange={(e) => {
+                        onMoveNoteToProject(activeMenu.id, e.target.value ? parseInt(e.target.value) : null);
+                        setActiveMenu(null);
+                      }}
+                    >
+                      <option value="">No Project (Root)</option>
+                      {activeProjects.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const note = notes.find(n => n.id === activeMenu.id);
+                      if (note) {
+                        setConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Note',
+                          message: `Are you sure you want to move "${note.title}" to the trash?`,
+                          onConfirm: () => {
+                            onNoteDelete(note.id);
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          }
+                        });
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-red-400 hover:bg-red-400/10 transition-all border-t border-border mt-1"
+                  >
+                    <Trash2 size={14} /> Delete Note
+                  </button>
+                </>
+              )}
+
+              {activeMenu.type === 'drawing' && (
+                <>
+                  <button
+                    onClick={() => {
+                      const drawing = drawings.find(d => d.id === activeMenu.id);
+                      if (drawing) {
+                        setEditingDrawingId(drawing.id);
+                        setEditingDrawingTitle(drawing.title);
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-text-primary hover:bg-bg-tertiary transition-all"
+                  >
+                    <Edit2 size={14} className="text-text-secondary" /> Rename Drawing
+                  </button>
+                  <div className="px-4 py-3 border-t border-border mt-1 bg-bg-primary/30">
+                    <p className="text-[9px] font-bold text-text-secondary uppercase mb-2 flex items-center gap-1">
+                      <Folder size={10} /> Move to Project
+                    </p>
+                    <select
+                      className="w-full bg-bg-secondary border border-border rounded-lg text-[11px] px-2 py-2 focus:outline-none focus:ring-1 focus:ring-accent-primary/50 cursor-pointer"
+                      value={drawings.find(d => d.id === activeMenu.id)?.project_id || ''}
+                      onChange={(e) => {
+                        onMoveDrawingToProject(activeMenu.id, e.target.value ? parseInt(e.target.value) : null);
+                        setActiveMenu(null);
+                      }}
+                    >
+                      <option value="">No Project (Root)</option>
+                      {activeProjects.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const drawing = drawings.find(d => d.id === activeMenu.id);
+                      if (drawing) {
+                        setConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Drawing',
+                          message: `Are you sure you want to move "${drawing.title}" to the trash?`,
+                          onConfirm: () => {
+                            onDrawingDelete(drawing.id);
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          }
+                        });
+                      }
+                      setActiveMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs text-red-400 hover:bg-red-400/10 transition-all border-t border-border mt-1"
+                  >
+                    <Trash2 size={14} /> Delete Drawing
+                  </button>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

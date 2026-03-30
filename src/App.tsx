@@ -235,7 +235,6 @@ export default function App() {
 
   // Load File Data
   const handleFileSelect = async (id: number) => {
-    flushPendingDrawingSave();
     try {
       const res = await fetch(`/api/files/${id}`);
       if (res.status === 401) {
@@ -249,7 +248,6 @@ export default function App() {
       }
 
       setActiveFileId(id);
-      setActiveNoteId(null);
       setView('erd');
 
       const flowNodes: Node<Entity>[] = data.entities.map(e => ({
@@ -277,28 +275,45 @@ export default function App() {
 
   // Load Note Data
   const handleNoteSelect = async (id: number) => {
-    flushPendingDrawingSave();
     const note = notes.find(n => n.id === id) || await (await fetch(`/api/notes/${id}`)).json();
     if (note.is_deleted) {
       return;
     }
     setActiveNoteId(id);
-    setActiveFileId(null);
-    setActiveDrawingId(null);
     setView('notes');
   };
 
   // Load Drawing Data
   const handleDrawingSelect = async (id: number) => {
-    flushPendingDrawingSave();
-    const drawing = drawings.find(d => d.id === id) || await (await fetch(`/api/drawings/${id}`)).json();
-    if (drawing.is_deleted) {
-      return;
+    try {
+      const res = await fetch(`/api/drawings/${id}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
+      const drawing: Drawing = await res.json();
+      if (drawing.is_deleted) {
+        return;
+      }
+      // Update local state with the latest data from server
+      setDrawings(prev => {
+        const exists = prev.find(d => d.id === id);
+        if (exists) {
+          return prev.map(d => d.id === id ? drawing : d);
+        }
+        return [...prev, drawing];
+      });
+      setActiveDrawingId(id);
+      setView('drawings');
+    } catch (err) {
+      console.error("Failed to load drawing", err);
     }
-    setActiveDrawingId(id);
-    setActiveFileId(null);
-    setActiveNoteId(null);
-    setView('drawings');
   };
 
   // Auto-save logic for ERD
@@ -464,61 +479,6 @@ export default function App() {
     }
   };
 
-  const updateFile = async (id: number, name: string) => {
-    try {
-      const res = await fetch(`/api/files/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      if (res.ok) {
-        setFiles(files.map(f => f.id === id ? { ...f, name } : f));
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      }
-    } catch (err) {
-      setSaveStatus('error');
-    }
-  };
-
-  const updateNoteTitle = async (id: number, title: string) => {
-    const note = notes.find(n => n.id === id);
-    if (!note) return;
-    try {
-      const res = await fetch(`/api/notes/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...note, title }),
-      });
-      if (res.ok) {
-        setNotesList(notes.map(n => n.id === id ? { ...n, title } : n));
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      }
-    } catch (err) {
-      setSaveStatus('error');
-    }
-  };
-
-  const updateDrawingTitle = async (id: number, title: string) => {
-    const drawing = drawings.find(d => d.id === id);
-    if (!drawing) return;
-    try {
-      const res = await fetch(`/api/drawings/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...drawing, title }),
-      });
-      if (res.ok) {
-        setDrawings(drawings.map(d => d.id === id ? { ...d, title } : d));
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      }
-    } catch (err) {
-      setSaveStatus('error');
-    }
-  };
-
   const updateProject = async (id: number, name: string) => {
     try {
       const res = await fetch(`/api/projects/${id}`, {
@@ -560,6 +520,57 @@ export default function App() {
       if (res.ok) {
         setProjects(projects.map(p => p.id === id ? { ...p, is_deleted: false } : p));
         fetchInitialData();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const updateFile = async (id: number, name: string) => {
+    try {
+      const res = await fetch(`/api/files/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        setFiles(files.map(f => f.id === id ? { ...f, name } : f));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const updateNote = async (id: number, title: string) => {
+    try {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        setNotesList(notes.map(n => n.id === id ? { ...n, title } : n));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const updateDrawing = async (id: number, title: string) => {
+    try {
+      const res = await fetch(`/api/drawings/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        setDrawings(drawings.map(d => d.id === id ? { ...d, title } : d));
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
       }
@@ -713,25 +724,11 @@ export default function App() {
       });
       setDrawings(prev => prev.map(d => d.id === updatedDrawing.id ? updatedDrawing : d));
       setSaveStatus('saved');
-      console.log(`App: Successfully saved drawing ${updatedDrawing.id}`);
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
       setSaveStatus('error');
     }
   }, []);
-  
-  const flushPendingDrawingSave = useCallback(() => {
-    if (drawingSaveTimeoutRef.current && activeDrawingId) {
-      console.log(`App: Flushing pending save for drawing ${activeDrawingId} before view change`);
-      clearTimeout(drawingSaveTimeoutRef.current);
-      drawingSaveTimeoutRef.current = null;
-      
-      const drawing = drawings.find(d => d.id === activeDrawingId);
-      if (drawing) {
-        saveDrawing(drawing);
-      }
-    }
-  }, [activeDrawingId, drawings, saveDrawing]);
 
   const moveFileToProject = async (fileId: number, projectId: number | null) => {
     try {
@@ -808,11 +805,19 @@ export default function App() {
   }, [activeNoteId, saveNote]);
 
   // Auto-save logic for drawings
+  // Cleanup timeouts on unmount or id change
+  useEffect(() => {
+    return () => {
+      if (drawingSaveTimeoutRef.current) {
+        clearTimeout(drawingSaveTimeoutRef.current);
+      }
+    };
+  }, [activeDrawingId]);
+
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
 
     // Update local state immediately
-    console.log(`App: Drawing ${activeDrawingId} change detected, queueing save`);
     setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
 
     // Debounce save
@@ -830,7 +835,6 @@ export default function App() {
   }, [activeDrawingId, saveDrawing]);
 
   const handleLogout = async () => {
-    flushPendingDrawingSave();
     try {
       await fetch('/api/logout', { method: 'POST' });
       setIsAuthenticated(false);
@@ -864,7 +868,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
       <Sidebar 
-        files={files} 
+        files={files}
         notes={notes}
         drawings={drawings}
         projects={projects}
@@ -886,6 +890,9 @@ export default function App() {
         onProjectUpdate={updateProject}
         onProjectDelete={deleteProject}
         onProjectRestore={restoreProject}
+        onFileUpdate={updateFile}
+        onNoteUpdate={updateNote}
+        onDrawingUpdate={updateDrawing}
         onFileDelete={deleteFile}
         onNoteDelete={deleteNote}
         onDrawingDelete={deleteDrawing}
@@ -901,9 +908,6 @@ export default function App() {
         onMoveFileToProject={moveFileToProject}
         onMoveNoteToProject={moveNoteToProject}
         onMoveDrawingToProject={moveDrawingToProject}
-        onFileUpdate={updateFile}
-        onNoteUpdate={updateNoteTitle}
-        onDrawingUpdate={updateDrawingTitle}
       />
 
       <main className="flex-1 relative flex flex-col overflow-hidden">
@@ -962,6 +966,7 @@ export default function App() {
 
         {view === 'drawings' && activeDrawing && (
           <ExcalidrawEditor
+            key={activeDrawingId}
             drawing={activeDrawing}
             onSave={saveDrawing}
             onChange={handleDrawingChange}

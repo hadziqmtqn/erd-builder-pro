@@ -16,70 +16,104 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
   const [title, setTitle] = useState(drawing.title);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [lastId, setLastId] = useState(drawing.id);
   const lastDataRef = useRef(drawing.data);
-  const sceneInitialized = useRef(false); // Track if the scene has been initialized with stored data
+  const isReady = useRef(false);
+  const drawingRef = useRef(drawing);
+
+  // Keep drawingRef up to date
+  useEffect(() => {
+    drawingRef.current = drawing;
+  }, [drawing]);
+
+  // Prepare initial data for the component mount
+  const initialData = useMemo(() => {
+    if (!drawing.data || drawing.data === '[]' || drawing.data === '') return null;
+    try {
+      const parsed = JSON.parse(drawing.data);
+      const { collaborators, ...safeAppState } = parsed.appState || {};
+      return {
+        elements: parsed.elements || [],
+        appState: { ...safeAppState, theme: 'dark' },
+        files: parsed.files || {},
+      };
+    } catch (e) {
+      console.error("Failed to parse initial drawing data", e);
+      return null;
+    }
+  }, [drawing.id]);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
     setTitle(drawing.title);
     
-    // When ID changes, reset initial load counter and update data ref immediately
-    if (drawing.id !== lastId) {
-      setLastId(drawing.id);
-      lastDataRef.current = drawing.data;
-      sceneInitialized.current = false;
-    }
+    // Reset ready state on mount
+    isReady.current = false;
+    lastDataRef.current = drawing.data;
+    console.log(`ExcalidrawEditor mounted for drawing: ${drawing.id}. Ready in 1500ms...`);
 
-    if (excalidrawAPI && drawing.data) {
-      try {
-        const parsed = JSON.parse(drawing.data);
-        console.log("ExcalidrawEditor: Loading drawing data for ID:", drawing.id);
+    // Mark as ready after a delay to allow Excalidraw to settle with initialData
+    timeoutId = setTimeout(() => {
+      isReady.current = true;
+      console.log(`ExcalidrawEditor for drawing ${drawing.id} is now READY.`);
+    }, 1500); // Increased delay for safety
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [drawing.id]);
+
+  // Save on unmount if there are changes
+  useEffect(() => {
+    return () => {
+      // Use refs to avoid dependencies that cause this to run on every prop change
+      if (excalidrawAPI && isReady.current) {
+        const elements = excalidrawAPI.getSceneElements();
+        if (!elements || elements.length === 0) return; // Don't save empty on unmount if it was ready
+
+        const appState = excalidrawAPI.getAppState();
+        const files = excalidrawAPI.getFiles();
+        const { collaborators, ...safeAppState } = appState;
+        const data = JSON.stringify({ elements, appState: safeAppState, files });
         
-        // Mark as NOT initialized yet before updating the scene
-        sceneInitialized.current = false;
-        
-        // Clean up appState to prevent crashes (e.g. collaborators must be a Map)
-        const { collaborators, ...safeAppState } = parsed.appState || {};
-        
-        excalidrawAPI.updateScene({
-          elements: parsed.elements || [],
-          appState: { ...safeAppState, theme: 'dark' },
-          files: parsed.files || {},
-        });
-        
-        // Now it's safe to mark as initialized
-        sceneInitialized.current = true;
-        lastDataRef.current = drawing.data;
-      } catch (e) {
-        console.error("Failed to parse drawing data", e);
+        if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}') {
+          console.log("Saving drawing on unmount...");
+          onSave({ ...drawingRef.current, data });
+        }
       }
-    }
-  }, [drawing.id, excalidrawAPI]);
+    };
+  }, [excalidrawAPI, onSave]); // Only depend on API and onSave
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    // If scene is not initialized with prop data, ignore any early onChange events
-    // This prevents "empty" states from overwriting real data on mount/tab switch
-    if (!sceneInitialized.current) {
+    // Only report changes if the scene is ready
+    if (!isReady.current) {
       return;
     }
 
-    // Only save if there are elements OR if it's not the initial empty state
-    // We want to avoid saving an empty state immediately after loading a non-empty one
-    if (elements.length > 0 || (lastDataRef.current && lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' && lastDataRef.current !== '[]')) {
-      // Clean up appState before stringifying (collaborators is a Map and doesn't serialize well)
-      const { collaborators, ...safeAppState } = appState;
-      const data = JSON.stringify({ elements, appState: safeAppState, files });
-      
-      // Only trigger parent update if data actually changed to avoid loops
-      if (data !== lastDataRef.current) {
-        lastDataRef.current = data;
-        if (onChange) {
-          console.log("ExcalidrawEditor: Triggering onChange with updated data");
-          onChange(data);
-        }
+    // Clean up appState before stringifying
+    const { collaborators, ...safeAppState } = appState;
+    const data = JSON.stringify({ elements, appState: safeAppState, files });
+    
+    // Safety check: If we're getting an empty state but we had data before, 
+    // it's likely a race condition during unmount or tab switch.
+    const isEmpty = !elements || elements.length === 0;
+    const hadData = lastDataRef.current && 
+                    lastDataRef.current !== '[]' && 
+                    lastDataRef.current !== '' &&
+                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}';
+    
+    if (isEmpty && hadData) {
+      console.warn("Excalidraw reported empty state while we had data. Ignoring to prevent reset.");
+      return;
+    }
+
+    // Only trigger parent update if data actually changed to avoid loops
+    if (data !== lastDataRef.current) {
+      lastDataRef.current = data;
+      if (onChange) {
+        onChange(data);
       }
     }
-  }, [onChange]); // Only depend on onChange
+  }, [onChange]);
 
   const uiOptions = useMemo(() => ({
     canvasActions: {
@@ -141,6 +175,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
       <div className="flex-1 relative">
         <Excalidraw
           excalidrawAPI={setExcalidrawAPI}
+          initialData={initialData}
           onChange={handleChange}
           theme="dark"
           UIOptions={uiOptions}
