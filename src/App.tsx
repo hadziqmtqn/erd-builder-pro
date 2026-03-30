@@ -19,8 +19,10 @@ import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
 import NotesEditor from './components/NotesEditor';
-import { FileData, Entity, Relationship, Project, Note } from './types';
+import ExcalidrawEditor from './components/ExcalidrawEditor';
+import { FileData, Entity, Relationship, Project, Note, Drawing } from './types';
 import { cn } from './lib/utils';
+import { PenTool } from 'lucide-react';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -123,12 +125,20 @@ function Login({ onLogin }: { onLogin: () => void }) {
 // Main App Component
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [view, setView] = useState<'erd' | 'notes' | 'trash'>('erd');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('erd');
   const [files, setFiles] = useState<FileData[]>([]);
   const [notes, setNotesList] = useState<Note[]>([]);
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [trashData, setTrashData] = useState<{
+    files: FileData[];
+    notes: Note[];
+    drawings: Drawing[];
+    projects: Project[];
+  }>({ files: [], notes: [], drawings: [], projects: [] });
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const [activeNoteId, setActiveNoteId] = useState<number | null>(null);
+  const [activeDrawingId, setActiveDrawingId] = useState<number | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -136,6 +146,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -159,8 +170,23 @@ export default function App() {
     await Promise.all([
       fetchFiles(),
       fetchNotes(),
-      fetchProjects()
+      fetchDrawings(),
+      fetchProjects(),
+      fetchTrash()
     ]);
+  };
+
+  // Fetch Trash
+  const fetchTrash = async () => {
+    try {
+      const res = await fetch('/api/trash');
+      if (res.ok) {
+        const data = await res.json();
+        setTrashData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching trash:', err);
+    }
   };
 
   // Fetch Files
@@ -183,6 +209,16 @@ export default function App() {
       const res = await fetch('/api/notes');
       const data = await res.json();
       setNotesList(data);
+    } catch (err) {
+    }
+  };
+
+  // Fetch Drawings
+  const fetchDrawings = async () => {
+    try {
+      const res = await fetch('/api/drawings');
+      const data = await res.json();
+      setDrawings(data);
     } catch (err) {
     }
   };
@@ -246,7 +282,20 @@ export default function App() {
     }
     setActiveNoteId(id);
     setActiveFileId(null);
+    setActiveDrawingId(null);
     setView('notes');
+  };
+
+  // Load Drawing Data
+  const handleDrawingSelect = async (id: number) => {
+    const drawing = drawings.find(d => d.id === id) || await (await fetch(`/api/drawings/${id}`)).json();
+    if (drawing.is_deleted) {
+      return;
+    }
+    setActiveDrawingId(id);
+    setActiveFileId(null);
+    setActiveNoteId(null);
+    setView('drawings');
   };
 
   // Auto-save logic for ERD
@@ -378,6 +427,23 @@ export default function App() {
     }
   };
 
+  const createDrawing = async (title: string, projectId?: number | null) => {
+    try {
+      const res = await fetch('/api/drawings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, project_id: projectId }),
+      });
+      const newDrawing = await res.json();
+      setDrawings([newDrawing, ...drawings]);
+      handleDrawingSelect(newDrawing.id);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
   const createProject = async (name: string) => {
     try {
       const res = await fetch('/api/projects', {
@@ -390,6 +456,38 @@ export default function App() {
       setActiveProjectId(newProject.id);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const deleteProject = async (id: number) => {
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setProjects(projects.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        if (activeProjectId === id) {
+          setActiveProjectId(null);
+        }
+        // Refresh data to hide files belonging to deleted project
+        fetchInitialData();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const restoreProject = async (id: number) => {
+    try {
+      const res = await fetch(`/api/projects/${id}/restore`, { method: 'POST' });
+      if (res.ok) {
+        setProjects(projects.map(p => p.id === id ? { ...p, is_deleted: false } : p));
+        fetchInitialData();
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
     } catch (err) {
       setSaveStatus('error');
     }
@@ -408,6 +506,7 @@ export default function App() {
         setNodes([]);
         setEdges([]);
       }
+      fetchTrash();
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
@@ -422,6 +521,7 @@ export default function App() {
       if (activeNoteId === id) {
         setActiveNoteId(null);
       }
+      fetchTrash();
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
@@ -429,10 +529,55 @@ export default function App() {
     }
   };
 
+  const deleteDrawing = async (id: number) => {
+    try {
+      await fetch(`/api/drawings/${id}`, { method: 'DELETE' });
+      setDrawings(drawings.map(d => d.id === id ? { ...d, is_deleted: true } : d));
+      if (activeDrawingId === id) {
+        setActiveDrawingId(null);
+      }
+      fetchTrash();
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const deleteFilePermanent = async (id: number) => {
+    try {
+      await fetch(`/api/files/${id}/permanent`, { method: 'DELETE' });
+      fetchTrash();
+    } catch (err) {}
+  };
+
+  const deleteNotePermanent = async (id: number) => {
+    try {
+      await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
+      fetchTrash();
+    } catch (err) {}
+  };
+
+  const deleteDrawingPermanent = async (id: number) => {
+    try {
+      await fetch(`/api/drawings/${id}/permanent`, { method: 'DELETE' });
+      fetchTrash();
+    } catch (err) {}
+  };
+
+  const deleteProjectPermanent = async (id: number) => {
+    try {
+      // Assuming there's an endpoint for permanent project delete, if not I'll add it to server.ts
+      await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
+      fetchTrash();
+    } catch (err) {}
+  };
+
   const restoreFile = async (id: number) => {
     try {
       await fetch(`/api/files/${id}/restore`, { method: 'POST' });
       setFiles(files.map(f => f.id === id ? { ...f, is_deleted: false } : f));
+      fetchTrash();
       handleFileSelect(id);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -445,6 +590,7 @@ export default function App() {
     try {
       await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
       setNotesList(notes.map(n => n.id === id ? { ...n, is_deleted: false } : n));
+      fetchTrash();
       handleNoteSelect(id);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -453,7 +599,20 @@ export default function App() {
     }
   };
 
-  const saveNote = async (updatedNote: Note) => {
+  const restoreDrawing = async (id: number) => {
+    try {
+      await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
+      setDrawings(drawings.map(d => d.id === id ? { ...d, is_deleted: false } : d));
+      fetchTrash();
+      handleDrawingSelect(id);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const saveNote = useCallback(async (updatedNote: Note) => {
     setSaveStatus('saving');
     try {
       await fetch(`/api/notes/${updatedNote.id}`, {
@@ -467,7 +626,23 @@ export default function App() {
     } catch (err) {
       setSaveStatus('error');
     }
-  };
+  }, []);
+
+  const saveDrawing = useCallback(async (updatedDrawing: Drawing) => {
+    setSaveStatus('saving');
+    try {
+      await fetch(`/api/drawings/${updatedDrawing.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedDrawing),
+      });
+      setDrawings(prev => prev.map(d => d.id === updatedDrawing.id ? updatedDrawing : d));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  }, []);
 
   const moveFileToProject = async (fileId: number, projectId: number | null) => {
     try {
@@ -505,8 +680,26 @@ export default function App() {
     }
   };
 
+  const moveDrawingToProject = async (drawingId: number, projectId: number | null) => {
+    try {
+      const response = await fetch(`/api/drawings/${drawingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...drawings.find(d => d.id === drawingId), project_id: projectId }),
+      });
+      if (response.ok) {
+        setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (error) {
+      console.error('Error moving drawing:', error);
+      setSaveStatus('error');
+    }
+  };
+
   // Auto-save logic for notes
-  const handleNoteChange = (content: string) => {
+  const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
     
     // Update local state immediately
@@ -515,12 +708,36 @@ export default function App() {
     // Debounce save
     if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
     noteSaveTimeoutRef.current = setTimeout(() => {
-      const note = notes.find(n => n.id === activeNoteId);
-      if (note) {
-        saveNote({ ...note, content });
-      }
+      setNotesList(currentNotes => {
+        const note = currentNotes.find(n => n.id === activeNoteId);
+        if (note) {
+          saveNote({ ...note, content });
+        }
+        return currentNotes;
+      });
     }, 1000);
-  };
+  }, [activeNoteId, saveNote]);
+
+  // Auto-save logic for drawings
+  const handleDrawingChange = useCallback((data: string) => {
+    if (!activeDrawingId) return;
+
+    // Update local state immediately
+    setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
+
+    // Debounce save
+    if (drawingSaveTimeoutRef.current) clearTimeout(drawingSaveTimeoutRef.current);
+    drawingSaveTimeoutRef.current = setTimeout(() => {
+      // Use functional update or ref to get latest drawings to avoid dependency on drawings array
+      setDrawings(currentDrawings => {
+        const drawing = currentDrawings.find(d => d.id === activeDrawingId);
+        if (drawing) {
+          saveDrawing({ ...drawing, data });
+        }
+        return currentDrawings;
+      });
+    }, 1000);
+  }, [activeDrawingId, saveDrawing]);
 
   const handleLogout = async () => {
     try {
@@ -551,30 +768,47 @@ export default function App() {
 
   const selectedEntity = nodes.find(n => n.id === selectedNodeId)?.data as Entity || null;
   const activeNote = notes.find(n => n.id === activeNoteId);
+  const activeDrawing = drawings.find(d => d.id === activeDrawingId);
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
       <Sidebar 
         files={files} 
         notes={notes}
+        drawings={drawings}
         projects={projects}
+        trashData={trashData}
         activeFileId={activeFileId}
         activeNoteId={activeNoteId}
+        activeDrawingId={activeDrawingId}
         activeProjectId={activeProjectId}
         view={view}
         onViewChange={setView}
         onFileSelect={handleFileSelect}
         onNoteSelect={handleNoteSelect}
+        onDrawingSelect={handleDrawingSelect}
         onProjectSelect={setActiveProjectId}
         onFileCreate={createFile}
         onNoteCreate={createNote}
+        onDrawingCreate={createDrawing}
         onProjectCreate={createProject}
+        onProjectDelete={deleteProject}
+        onProjectRestore={restoreProject}
         onFileDelete={deleteFile}
         onNoteDelete={deleteNote}
+        onDrawingDelete={deleteDrawing}
+        onFileRestore={restoreFile}
+        onNoteRestore={restoreNote}
+        onDrawingRestore={restoreDrawing}
+        onFilePermanentDelete={deleteFilePermanent}
+        onNotePermanentDelete={deleteNotePermanent}
+        onDrawingPermanentDelete={deleteDrawingPermanent}
+        onProjectPermanentDelete={deleteProjectPermanent}
         onLogout={handleLogout}
         saveStatus={saveStatus}
         onMoveFileToProject={moveFileToProject}
         onMoveNoteToProject={moveNoteToProject}
+        onMoveDrawingToProject={moveDrawingToProject}
       />
 
       <main className="flex-1 relative flex flex-col overflow-hidden">
@@ -631,6 +865,15 @@ export default function App() {
           />
         )}
 
+        {view === 'drawings' && activeDrawing && (
+          <ExcalidrawEditor
+            drawing={activeDrawing}
+            onSave={saveDrawing}
+            onChange={handleDrawingChange}
+            onDelete={deleteDrawing}
+          />
+        )}
+
         {view === 'trash' && (
           <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
             <Trash size={48} className="mb-4 opacity-20" />
@@ -639,10 +882,10 @@ export default function App() {
           </div>
         )}
 
-        {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId)) && (
+        {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId) || (view === 'drawings' && !activeDrawingId)) && (
           <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
             <Database size={48} className="mb-4 opacity-20" />
-            <h2 className="text-xl font-bold mb-2">Select or Create a {view === 'erd' ? 'Diagram' : 'Note'}</h2>
+            <h2 className="text-xl font-bold mb-2">Select or Create a {view === 'erd' ? 'Diagram' : view === 'notes' ? 'Note' : 'Drawing'}</h2>
             <p className="text-sm">Use the sidebar to manage your projects and files.</p>
           </div>
         )}

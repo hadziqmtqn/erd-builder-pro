@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { Note } from '../types';
 import BlockEditor from './BlockEditor';
+import ConfirmModal from './ConfirmModal';
 
 interface NotesEditorProps {
   note: Note;
@@ -13,6 +14,7 @@ interface NotesEditorProps {
 export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   useEffect(() => {
     setTitle(note.title);
@@ -47,13 +49,24 @@ export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesE
             Save
           </button>
           <button
-            onClick={() => onDelete(note.id)}
+            onClick={() => setIsConfirmOpen(true)}
             className="p-2 text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
           >
             <Trash2 size={16} />
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        title="Delete Note"
+        message={`Are you sure you want to move "${note.title}" to the trash?`}
+        onConfirm={() => {
+          onDelete(note.id);
+          setIsConfirmOpen(false);
+        }}
+        onCancel={() => setIsConfirmOpen(false)}
+      />
 
       {/* Block Editor Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">

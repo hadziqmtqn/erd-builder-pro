@@ -1,7 +1,8 @@
-import React from 'react';
-import { Plus, Trash2, Key, Check, X, Palette, Type } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, Key, Check, X, Palette, Type, Settings2 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { COLUMN_TYPES, cn } from '../lib/utils';
+import ConfirmModal from './ConfirmModal';
 
 interface PropertiesPanelProps {
   selectedEntity: Entity | null;
@@ -14,6 +15,18 @@ export default function PropertiesPanel({
   onUpdateEntity, 
   onDeleteEntity 
 }: PropertiesPanelProps) {
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   // Trigger rebuild
   if (!selectedEntity) {
     return (
@@ -68,7 +81,15 @@ export default function PropertiesPanel({
       <div className="p-6 border-b border-border flex items-center justify-between">
         <h2 className="font-bold text-sm uppercase tracking-wider text-text-secondary">Properties</h2>
         <button 
-          onClick={() => onDeleteEntity(selectedEntity.id)}
+          onClick={() => setConfirmModal({
+            isOpen: true,
+            title: 'Delete Table',
+            message: `Are you sure you want to delete the table "${selectedEntity.name}"?`,
+            onConfirm: () => {
+              onDeleteEntity(selectedEntity.id);
+              setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+          })}
           className="p-2 hover:bg-red-500/10 text-text-secondary hover:text-red-400 rounded-lg transition-all"
         >
           <Trash2 className="w-4 h-4" />
@@ -132,7 +153,15 @@ export default function PropertiesPanel({
                     className="flex-1 bg-transparent text-xs font-semibold focus:outline-none"
                   />
                   <button 
-                    onClick={() => deleteColumn(col.id)}
+                    onClick={() => setConfirmModal({
+                      isOpen: true,
+                      title: 'Delete Column',
+                      message: `Are you sure you want to delete the column "${col.name}"?`,
+                      onConfirm: () => {
+                        deleteColumn(col.id);
+                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                      }
+                    })}
                     className="opacity-0 group-hover:opacity-100 p-1 text-text-secondary hover:text-red-400 transition-all"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -190,8 +219,14 @@ export default function PropertiesPanel({
           </div>
         </section>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
-
-import { Settings2 } from 'lucide-react';

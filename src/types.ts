@@ -28,6 +28,7 @@ export interface Relationship {
 export interface Project {
   id: number;
   name: string;
+  is_deleted: boolean;
   created_at: string;
 }
 
@@ -46,6 +47,16 @@ export interface Note {
   id: number;
   title: string;
   content: string;
+  project_id: number | null;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Drawing {
+  id: number;
+  title: string;
+  data: string;
   project_id: number | null;
   is_deleted: boolean;
   created_at: string;

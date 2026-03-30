@@ -1,5 +1,5 @@
 {
   "name": "ERD Builder Pro",
-  "description": "A modern, minimalist ERD diagramming tool inspired by Eraser.io with SQLite persistence.",
+  "description": "A modern, minimalist ERD diagramming tool with Note-taking and Excalidraw integration, inspired by Eraser.io and Capacities.",
   "requestFramePermissions": []
 }

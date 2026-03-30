@@ -38,6 +38,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    is_deleted BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -92,6 +93,17 @@ db.exec(`
     label TEXT,
     FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS drawings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    data TEXT,
+    project_id INTEGER,
+    is_deleted BOOLEAN DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+  );
 `);
 
 // Migration for existing databases
@@ -117,6 +129,18 @@ const migrate = () => {
     }
   }
 
+  // Check projects table
+  const projectsInfo = db.prepare("PRAGMA table_info(projects)").all();
+  const projectsColumns = projectsInfo.map((c: any) => c.name);
+  if (!projectsColumns.includes("is_deleted")) {
+    try {
+      db.exec("ALTER TABLE projects ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
+      console.log("Added is_deleted column to projects table");
+    } catch (e) {
+      console.error("Error adding is_deleted to projects:", e);
+    }
+  }
+
   // Check notes table as well
   const notesInfo = db.prepare("PRAGMA table_info(notes)").all();
   if (notesInfo.length > 0) {
@@ -129,6 +153,22 @@ const migrate = () => {
     if (!notesColumns.includes("is_deleted")) {
       try {
         db.exec("ALTER TABLE notes ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
+      } catch (e) {}
+    }
+  }
+
+  // Check drawings table
+  const drawingsInfo = db.prepare("PRAGMA table_info(drawings)").all();
+  if (drawingsInfo.length > 0) {
+    const drawingsColumns = drawingsInfo.map((c: any) => c.name);
+    if (!drawingsColumns.includes("project_id")) {
+      try {
+        db.exec("ALTER TABLE drawings ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
+      } catch (e) {}
+    }
+    if (!drawingsColumns.includes("is_deleted")) {
+      try {
+        db.exec("ALTER TABLE drawings ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
       } catch (e) {}
     }
   }
@@ -219,7 +259,12 @@ async function startServer() {
   });
 
   app.get("/api/files", authenticate, (req, res) => {
-    const files = db.prepare("SELECT * FROM files WHERE is_deleted = 0 ORDER BY updated_at DESC").all();
+    const files = db.prepare(`
+      SELECT f.* FROM files f 
+      LEFT JOIN projects p ON f.project_id = p.id 
+      WHERE f.is_deleted = 0 AND (f.project_id IS NULL OR p.is_deleted = 0)
+      ORDER BY f.updated_at DESC
+    `).all();
     res.json(files);
   });
 
@@ -269,7 +314,7 @@ async function startServer() {
 
   // Projects API
   app.get("/api/projects", authenticate, (req, res) => {
-    const projects = db.prepare("SELECT * FROM projects ORDER BY name ASC").all();
+    const projects = db.prepare("SELECT * FROM projects WHERE is_deleted = 0 ORDER BY name ASC").all();
     res.json(projects);
   });
 
@@ -280,13 +325,28 @@ async function startServer() {
   });
 
   app.delete("/api/projects/:id", authenticate, (req, res) => {
+    db.prepare("UPDATE projects SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/projects/:id/restore", authenticate, (req, res) => {
+    db.prepare("UPDATE projects SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/projects/:id/permanent", authenticate, (req, res) => {
     db.prepare("DELETE FROM projects WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 
   // Notes API
   app.get("/api/notes", authenticate, (req, res) => {
-    const notes = db.prepare("SELECT * FROM notes WHERE is_deleted = 0 ORDER BY updated_at DESC").all();
+    const notes = db.prepare(`
+      SELECT n.* FROM notes n
+      LEFT JOIN projects p ON n.project_id = p.id
+      WHERE n.is_deleted = 0 AND (n.project_id IS NULL OR p.is_deleted = 0)
+      ORDER BY n.updated_at DESC
+    `).all();
     res.json(notes);
   });
 
@@ -329,7 +389,55 @@ async function startServer() {
   app.get("/api/trash", authenticate, (req, res) => {
     const files = db.prepare("SELECT * FROM files WHERE is_deleted = 1").all();
     const notes = db.prepare("SELECT * FROM notes WHERE is_deleted = 1").all();
-    res.json({ files, notes });
+    const drawings = db.prepare("SELECT * FROM drawings WHERE is_deleted = 1").all();
+    const projects = db.prepare("SELECT * FROM projects WHERE is_deleted = 1").all();
+    res.json({ files, notes, drawings, projects });
+  });
+
+  // Drawings API
+  app.get("/api/drawings", authenticate, (req, res) => {
+    const drawings = db.prepare(`
+      SELECT d.* FROM drawings d
+      LEFT JOIN projects p ON d.project_id = p.id
+      WHERE d.is_deleted = 0 AND (d.project_id IS NULL OR p.is_deleted = 0)
+      ORDER BY d.updated_at DESC
+    `).all();
+    res.json(drawings);
+  });
+
+  app.post("/api/drawings", authenticate, (req, res) => {
+    const { title, data, project_id } = req.body;
+    const result = db.prepare("INSERT INTO drawings (title, data, project_id) VALUES (?, ?, ?)")
+      .run(title, data || "[]", project_id || null);
+    res.json({ id: result.lastInsertRowid, title, data, project_id });
+  });
+
+  app.get("/api/drawings/:id", authenticate, (req, res) => {
+    const drawing = db.prepare("SELECT * FROM drawings WHERE id = ?").get(req.params.id);
+    if (!drawing) return res.status(404).json({ error: "Drawing not found" });
+    res.json(drawing);
+  });
+
+  app.put("/api/drawings/:id", authenticate, (req, res) => {
+    const { title, data, project_id } = req.body;
+    db.prepare("UPDATE drawings SET title = ?, data = ?, project_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(title, data, project_id || null, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/drawings/:id", authenticate, (req, res) => {
+    db.prepare("UPDATE drawings SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/drawings/:id/restore", authenticate, (req, res) => {
+    db.prepare("UPDATE drawings SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/drawings/:id/permanent", authenticate, (req, res) => {
+    db.prepare("DELETE FROM drawings WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
   });
 
   // Image Upload API
