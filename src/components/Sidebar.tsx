@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Settings2, FileText, ChevronLeft, ChevronRight, Save, Database } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, FileText, ChevronLeft, ChevronRight, Save, Database, LogOut } from 'lucide-react';
 import { FileData } from '../types';
 import { cn } from '../lib/utils';
-import { toast } from 'sonner';
 
 interface SidebarProps {
   files: FileData[];
@@ -10,6 +9,7 @@ interface SidebarProps {
   onFileSelect: (id: number) => void;
   onFileCreate: (name: string) => void;
   onFileDelete: (id: number) => void;
+  onLogout: () => void;
   isSaving: boolean;
 }
 
@@ -19,6 +19,7 @@ export default function Sidebar({
   onFileSelect, 
   onFileCreate, 
   onFileDelete,
+  onLogout,
   isSaving
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
@@ -46,14 +47,23 @@ export default function Sidebar({
 
       <div className={cn("flex-1 flex flex-col overflow-hidden", !isOpen && "opacity-0 invisible")}>
         {/* Header */}
-        <div className="p-6 border-b border-border flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-accent-primary flex items-center justify-center">
-            <Database className="w-5 h-5 text-white" />
+        <div className="p-6 border-b border-border flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-primary flex items-center justify-center">
+              <Database className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg tracking-tight">ERD Builder</h1>
+              <p className="text-[10px] text-text-secondary uppercase tracking-widest font-semibold">Eraser Style</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-bold text-lg tracking-tight">ERD Builder</h1>
-            <p className="text-[10px] text-text-secondary uppercase tracking-widest font-semibold">Eraser Style</p>
-          </div>
+          <button 
+            onClick={onLogout}
+            className="p-2 text-text-secondary hover:text-red-400 transition-colors"
+            title="Logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
 
         {/* New File Form */}

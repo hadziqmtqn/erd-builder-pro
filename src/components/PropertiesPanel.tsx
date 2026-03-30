@@ -14,6 +14,7 @@ export default function PropertiesPanel({
   onUpdateEntity, 
   onDeleteEntity 
 }: PropertiesPanelProps) {
+  // Trigger rebuild
   if (!selectedEntity) {
     return (
       <div className="w-80 glass-panel h-full p-6 flex flex-col items-center justify-center text-center">

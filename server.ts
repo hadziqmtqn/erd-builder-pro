@@ -1,10 +1,18 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import Database from "better-sqlite3";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const db = new Database("erd.db");
+const JWT_SECRET = process.env.JWT_SECRET || "erd-builder-secret-key";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
 
 // Initialize Database
 db.exec(`
@@ -51,22 +59,95 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
   app.use(express.json());
+  app.use(cookieParser());
+
+  // Auth Middleware
+  const authenticate = (req: Request, res: Response, next: NextFunction) => {
+    const token = req.cookies.token;
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      jwt.verify(token, JWT_SECRET);
+      next();
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  };
+
+  // Auth Config (Public)
+  app.get("/api/auth-config", (req, res) => {
+    res.json({ adminEmail: ADMIN_EMAIL });
+  });
 
   // API Routes
-  app.get("/api/files", (req, res) => {
+  app.post("/api/login", (req, res) => {
+    const email = req.body.email?.trim();
+    const password = req.body.password;
+    
+    console.log(`Login attempt for: "${email}"`);
+    console.log(`Expected email: "${ADMIN_EMAIL}"`);
+    
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "24h" });
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: true, // Required for SameSite=None
+        sameSite: "none", // Required for cross-origin iframe
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+      console.log("Login successful");
+      return res.json({ success: true });
+    }
+    
+    console.log("Login failed: Invalid credentials");
+    console.log(`Password match: ${password === ADMIN_PASSWORD}`);
+    
+    res.status(401).json({ error: "Invalid credentials" });
+  });
+
+  app.post("/api/logout", (req, res) => {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none"
+    });
+    res.json({ success: true });
+  });
+
+  app.get("/api/me", (req, res) => {
+    const token = req.cookies.token;
+    if (!token) {
+      console.log("Check auth: No token found");
+      return res.status(401).json({ error: "Not logged in" });
+    }
+    try {
+      jwt.verify(token, JWT_SECRET);
+      console.log("Check auth: Valid token");
+      res.json({ authenticated: true });
+    } catch (err) {
+      console.log("Check auth: Invalid token");
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  app.get("/api/files", authenticate, (req, res) => {
     const files = db.prepare("SELECT * FROM files ORDER BY updated_at DESC").all();
     res.json(files);
   });
 
-  app.post("/api/files", (req, res) => {
+  app.post("/api/files", authenticate, (req, res) => {
     const { name } = req.body;
     const result = db.prepare("INSERT INTO files (name) VALUES (?)").run(name);
     res.json({ id: result.lastInsertRowid, name });
   });
 
-  app.get("/api/files/:id", (req, res) => {
+  app.get("/api/files/:id", authenticate, (req, res) => {
     const fileId = req.params.id;
     const file = db.prepare("SELECT * FROM files WHERE id = ?").get(fileId);
     if (!file) return res.status(404).json({ error: "File not found" });
@@ -82,12 +163,12 @@ async function startServer() {
     res.json({ ...file, entities: entitiesWithColumns, relationships });
   });
 
-  app.delete("/api/files/:id", (req, res) => {
+  app.delete("/api/files/:id", authenticate, (req, res) => {
     db.prepare("DELETE FROM files WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   });
 
-  app.post("/api/save/:id", (req, res) => {
+  app.post("/api/save/:id", authenticate, (req, res) => {
     const fileId = req.params.id;
     const { entities, relationships } = req.body;
 
