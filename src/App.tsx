@@ -14,13 +14,14 @@ import {
   OnConnect
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, MousePointer2, Share2, Download, Database, Lock, User, Mail } from 'lucide-react';
+import { Plus, MousePointer2, Share2, Download, Database, Lock, User, Mail, Trash } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
-import { FileData, Entity, Relationship } from './types';
+import NotesEditor from './components/NotesEditor';
+import { FileData, Entity, Relationship, Project, Note } from './types';
 import { cn } from './lib/utils';
 
 const nodeTypes = {
@@ -127,8 +128,13 @@ function Login({ onLogin }: { onLogin: () => void }) {
 // Main App Component
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [view, setView] = useState<'erd' | 'notes' | 'trash'>('erd');
   const [files, setFiles] = useState<FileData[]>([]);
+  const [notes, setNotesList] = useState<Note[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
+  const [activeNoteId, setActiveNoteId] = useState<number | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -140,7 +146,7 @@ export default function App() {
       const res = await fetch('/api/me');
       if (res.ok) {
         setIsAuthenticated(true);
-        fetchFiles();
+        fetchInitialData();
       } else {
         setIsAuthenticated(false);
       }
@@ -153,6 +159,14 @@ export default function App() {
     checkAuth();
   }, [checkAuth]);
 
+  const fetchInitialData = async () => {
+    await Promise.all([
+      fetchFiles(),
+      fetchNotes(),
+      fetchProjects()
+    ]);
+  };
+
   // Fetch Files
   const fetchFiles = async () => {
     try {
@@ -163,11 +177,30 @@ export default function App() {
       }
       const data = await res.json();
       setFiles(data);
-      if (data.length > 0 && !activeFileId) {
-        handleFileSelect(data[0].id);
-      }
     } catch (err) {
       toast.error('Failed to load files');
+    }
+  };
+
+  // Fetch Notes
+  const fetchNotes = async () => {
+    try {
+      const res = await fetch('/api/notes');
+      const data = await res.json();
+      setNotesList(data);
+    } catch (err) {
+      toast.error('Failed to load notes');
+    }
+  };
+
+  // Fetch Projects
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      setProjects(data);
+    } catch (err) {
+      toast.error('Failed to load projects');
     }
   };
 
@@ -180,7 +213,20 @@ export default function App() {
         return;
       }
       const data: FileData = await res.json();
+      
+      if (data.is_deleted) {
+        toast.info('This file is in trash. Restore it to edit.', {
+          action: {
+            label: 'Restore',
+            onClick: () => restoreFile(id)
+          }
+        });
+        return;
+      }
+
       setActiveFileId(id);
+      setActiveNoteId(null);
+      setView('erd');
 
       const flowNodes: Node<Entity>[] = data.entities.map(e => ({
         id: e.id,
@@ -206,9 +252,26 @@ export default function App() {
     }
   };
 
-  // Auto-save logic
+  // Load Note Data
+  const handleNoteSelect = async (id: number) => {
+    const note = notes.find(n => n.id === id) || await (await fetch(`/api/notes/${id}`)).json();
+    if (note.is_deleted) {
+      toast.info('This note is in trash. Restore it to edit.', {
+        action: {
+          label: 'Restore',
+          onClick: () => restoreNote(id)
+        }
+      });
+      return;
+    }
+    setActiveNoteId(id);
+    setActiveFileId(null);
+    setView('notes');
+  };
+
+  // Auto-save logic for ERD
   const saveDiagram = useCallback(async () => {
-    if (!activeFileId || !isAuthenticated) return;
+    if (!activeFileId || !isAuthenticated || view !== 'erd') return;
     setIsSaving(true);
 
     const entities: Entity[] = nodes.map(n => ({
@@ -239,17 +302,17 @@ export default function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [activeFileId, nodes, edges, isAuthenticated]);
+  }, [activeFileId, nodes, edges, isAuthenticated, view]);
 
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    if (activeFileId && isAuthenticated) {
+    if (activeFileId && isAuthenticated && view === 'erd') {
       saveTimeoutRef.current = setTimeout(saveDiagram, 1000);
     }
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [nodes, edges, saveDiagram, activeFileId, isAuthenticated]);
+  }, [nodes, edges, saveDiagram, activeFileId, isAuthenticated, view]);
 
   // Actions
   const onConnect: OnConnect = useCallback((params) => {
@@ -296,12 +359,12 @@ export default function App() {
     setSelectedNodeId(null);
   };
 
-  const createFile = async (name: string) => {
+  const createFile = async (name: string, projectId?: number | null) => {
     try {
       const res = await fetch('/api/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, project_id: projectId }),
       });
       if (res.status === 401) {
         setIsAuthenticated(false);
@@ -316,24 +379,159 @@ export default function App() {
     }
   };
 
+  const createNote = async (title: string, projectId?: number | null) => {
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, project_id: projectId }),
+      });
+      const newNote = await res.json();
+      setNotesList([newNote, ...notes]);
+      handleNoteSelect(newNote.id);
+      toast.success('Note created');
+    } catch (err) {
+      toast.error('Failed to create note');
+    }
+  };
+
+  const createProject = async (name: string) => {
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const newProject = await res.json();
+      setProjects([...projects, newProject]);
+      setActiveProjectId(newProject.id);
+      toast.success('Project created');
+    } catch (err) {
+      toast.error('Failed to create project');
+    }
+  };
+
   const deleteFile = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this diagram?')) return;
     try {
       const res = await fetch(`/api/files/${id}`, { method: 'DELETE' });
       if (res.status === 401) {
         setIsAuthenticated(false);
         return;
       }
-      setFiles(files.filter(f => f.id !== id));
+      setFiles(files.map(f => f.id === id ? { ...f, is_deleted: true } : f));
       if (activeFileId === id) {
         setActiveFileId(null);
         setNodes([]);
         setEdges([]);
       }
-      toast.success('File deleted');
+      toast.success('File moved to trash');
     } catch (err) {
       toast.error('Failed to delete file');
     }
+  };
+
+  const deleteNote = async (id: number) => {
+    try {
+      await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      setNotesList(notes.map(n => n.id === id ? { ...n, is_deleted: true } : n));
+      if (activeNoteId === id) {
+        setActiveNoteId(null);
+      }
+      toast.success('Note moved to trash');
+    } catch (err) {
+      toast.error('Failed to delete note');
+    }
+  };
+
+  const restoreFile = async (id: number) => {
+    try {
+      await fetch(`/api/files/${id}/restore`, { method: 'POST' });
+      setFiles(files.map(f => f.id === id ? { ...f, is_deleted: false } : f));
+      handleFileSelect(id);
+      toast.success('File restored');
+    } catch (err) {
+      toast.error('Failed to restore file');
+    }
+  };
+
+  const restoreNote = async (id: number) => {
+    try {
+      await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
+      setNotesList(notes.map(n => n.id === id ? { ...n, is_deleted: false } : n));
+      handleNoteSelect(id);
+      toast.success('Note restored');
+    } catch (err) {
+      toast.error('Failed to restore note');
+    }
+  };
+
+  const saveNote = async (updatedNote: Note) => {
+    setIsSaving(true);
+    try {
+      await fetch(`/api/notes/${updatedNote.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedNote),
+      });
+      setNotesList(notes.map(n => n.id === updatedNote.id ? updatedNote : n));
+      toast.success('Note saved');
+    } catch (err) {
+      toast.error('Failed to save note');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const moveFileToProject = async (fileId: number, projectId: number | null) => {
+    try {
+      const response = await fetch(`/api/files/${fileId}/project`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (response.ok) {
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
+        toast.success('File moved successfully');
+      }
+    } catch (error) {
+      console.error('Error moving file:', error);
+      toast.error('Failed to move file');
+    }
+  };
+
+  const moveNoteToProject = async (noteId: number, projectId: number | null) => {
+    try {
+      const response = await fetch(`/api/notes/${noteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...notes.find(n => n.id === noteId), project_id: projectId }),
+      });
+      if (response.ok) {
+        setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, project_id: projectId } : n));
+        toast.success('Note moved successfully');
+      }
+    } catch (error) {
+      console.error('Error moving note:', error);
+      toast.error('Failed to move note');
+    }
+  };
+
+  // Auto-save logic for notes
+  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const handleNoteChange = (content: string) => {
+    if (!activeNoteId) return;
+    
+    // Update local state immediately
+    setNotesList(prev => prev.map(n => n.id === activeNoteId ? { ...n, content } : n));
+    
+    // Debounce save
+    if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
+    noteSaveTimeoutRef.current = setTimeout(() => {
+      const note = notes.find(n => n.id === activeNoteId);
+      if (note) {
+        saveNote({ ...note, content });
+      }
+    }, 1000);
   };
 
   const handleLogout = async () => {
@@ -341,7 +539,10 @@ export default function App() {
       await fetch('/api/logout', { method: 'POST' });
       setIsAuthenticated(false);
       setFiles([]);
+      setNotesList([]);
+      setProjects([]);
       setActiveFileId(null);
+      setActiveNoteId(null);
       setNodes([]);
       setEdges([]);
       toast.success('Logged out');
@@ -363,6 +564,7 @@ export default function App() {
   }
 
   const selectedEntity = nodes.find(n => n.id === selectedNodeId)?.data as Entity || null;
+  const activeNote = notes.find(n => n.id === activeNoteId);
 
   return (
     <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
@@ -370,61 +572,105 @@ export default function App() {
       
       <Sidebar 
         files={files} 
+        notes={notes}
+        projects={projects}
         activeFileId={activeFileId}
+        activeNoteId={activeNoteId}
+        activeProjectId={activeProjectId}
+        view={view}
+        onViewChange={setView}
         onFileSelect={handleFileSelect}
+        onNoteSelect={handleNoteSelect}
+        onProjectSelect={setActiveProjectId}
         onFileCreate={createFile}
+        onNoteCreate={createNote}
+        onProjectCreate={createProject}
         onFileDelete={deleteFile}
+        onNoteDelete={deleteNote}
         onLogout={handleLogout}
         isSaving={isSaving}
+        onMoveFileToProject={moveFileToProject}
+        onMoveNoteToProject={moveNoteToProject}
       />
 
-      <main className="flex-1 relative flex flex-col">
-        {/* Toolbar */}
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 p-1.5 glass-panel rounded-2xl shadow-2xl">
-          <button 
-            onClick={addEntity}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-primary hover:bg-accent-secondary text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-accent-primary/20"
-          >
-            <Plus className="w-4 h-4" />
-            Add Table
-          </button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-            <MousePointer2 className="w-4 h-4" />
-          </button>
-          <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-            <Share2 className="w-4 h-4" />
-          </button>
-          <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
+      <main className="flex-1 relative flex flex-col overflow-hidden">
+        {view === 'erd' && activeFileId && (
+          <>
+            {/* Toolbar */}
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 p-1.5 glass-panel rounded-2xl shadow-2xl">
+              <button 
+                onClick={addEntity}
+                className="flex items-center gap-2 px-4 py-2 bg-accent-primary hover:bg-accent-secondary text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-accent-primary/20"
+              >
+                <Plus className="w-4 h-4" />
+                Add Table
+              </button>
+              <div className="w-px h-6 bg-border mx-1" />
+              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
+                <MousePointer2 className="w-4 h-4" />
+              </button>
+              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
+                <Share2 className="w-4 h-4" />
+              </button>
+              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
 
-        {/* Canvas */}
-        <div className="flex-1">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={nodeTypes}
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-            onPaneClick={() => setSelectedNodeId(null)}
-            fitView
-            colorMode="dark"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2d2d3d" />
-            <Controls position="bottom-right" showInteractive={false} />
-          </ReactFlow>
-        </div>
+            {/* Canvas */}
+            <div className="flex-1">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                nodeTypes={nodeTypes}
+                onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+                onPaneClick={() => setSelectedNodeId(null)}
+                fitView
+                colorMode="dark"
+              >
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2d2d3d" />
+                <Controls position="bottom-right" showInteractive={false} />
+              </ReactFlow>
+            </div>
+          </>
+        )}
+
+        {view === 'notes' && activeNote && (
+          <NotesEditor 
+            note={activeNote} 
+            onSave={saveNote} 
+            onChange={handleNoteChange}
+            onDelete={deleteNote} 
+          />
+        )}
+
+        {view === 'trash' && (
+          <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
+            <Trash size={48} className="mb-4 opacity-20" />
+            <h2 className="text-xl font-bold mb-2">Trash Bin</h2>
+            <p className="text-sm">Select an item from the sidebar to restore it.</p>
+          </div>
+        )}
+
+        {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId)) && (
+          <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
+            <Database size={48} className="mb-4 opacity-20" />
+            <h2 className="text-xl font-bold mb-2">Select or Create a {view === 'erd' ? 'Diagram' : 'Note'}</h2>
+            <p className="text-sm">Use the sidebar to manage your projects and files.</p>
+          </div>
+        )}
       </main>
 
-      <PropertiesPanel 
-        selectedEntity={selectedEntity}
-        onUpdateEntity={updateEntity}
-        onDeleteEntity={deleteEntity}
-      />
+      {view === 'erd' && (
+        <PropertiesPanel 
+          selectedEntity={selectedEntity}
+          onUpdateEntity={updateEntity}
+          onDeleteEntity={deleteEntity}
+        />
+      )}
     </div>
   );
 }

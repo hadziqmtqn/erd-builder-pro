@@ -6,21 +6,60 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import multer from "multer";
+import fs from "fs";
 
 dotenv.config();
 
 const db = new Database("erd.db");
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
 const JWT_SECRET = process.env.JWT_SECRET || "erd-builder-secret-key";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
 
 // Initialize Database
 db.exec(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    project_id INTEGER,
+    is_deleted BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT,
+    project_id INTEGER,
+    is_deleted BOOLEAN DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS entities (
@@ -55,6 +94,48 @@ db.exec(`
   );
 `);
 
+// Migration for existing databases
+const migrate = () => {
+  const filesInfo = db.prepare("PRAGMA table_info(files)").all();
+  const filesColumns = filesInfo.map((c: any) => c.name);
+
+  if (!filesColumns.includes("project_id")) {
+    try {
+      db.exec("ALTER TABLE files ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
+      console.log("Added project_id column to files table");
+    } catch (e) {
+      console.error("Error adding project_id to files:", e);
+    }
+  }
+
+  if (!filesColumns.includes("is_deleted")) {
+    try {
+      db.exec("ALTER TABLE files ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
+      console.log("Added is_deleted column to files table");
+    } catch (e) {
+      console.error("Error adding is_deleted to files:", e);
+    }
+  }
+
+  // Check notes table as well
+  const notesInfo = db.prepare("PRAGMA table_info(notes)").all();
+  if (notesInfo.length > 0) {
+    const notesColumns = notesInfo.map((c: any) => c.name);
+    if (!notesColumns.includes("project_id")) {
+      try {
+        db.exec("ALTER TABLE notes ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL");
+      } catch (e) {}
+    }
+    if (!notesColumns.includes("is_deleted")) {
+      try {
+        db.exec("ALTER TABLE notes ADD COLUMN is_deleted BOOLEAN DEFAULT 0");
+      } catch (e) {}
+    }
+  }
+};
+
+migrate();
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -65,6 +146,7 @@ async function startServer() {
   }));
   app.use(express.json());
   app.use(cookieParser());
+  app.use("/uploads", express.static(UPLOADS_DIR));
 
   // Auth Middleware
   const authenticate = (req: Request, res: Response, next: NextFunction) => {
@@ -137,14 +219,14 @@ async function startServer() {
   });
 
   app.get("/api/files", authenticate, (req, res) => {
-    const files = db.prepare("SELECT * FROM files ORDER BY updated_at DESC").all();
+    const files = db.prepare("SELECT * FROM files WHERE is_deleted = 0 ORDER BY updated_at DESC").all();
     res.json(files);
   });
 
   app.post("/api/files", authenticate, (req, res) => {
-    const { name } = req.body;
-    const result = db.prepare("INSERT INTO files (name) VALUES (?)").run(name);
-    res.json({ id: result.lastInsertRowid, name });
+    const { name, project_id } = req.body;
+    const result = db.prepare("INSERT INTO files (name, project_id) VALUES (?, ?)").run(name, project_id || null);
+    res.json({ id: result.lastInsertRowid, name, project_id });
   });
 
   app.get("/api/files/:id", authenticate, (req, res) => {
@@ -164,8 +246,99 @@ async function startServer() {
   });
 
   app.delete("/api/files/:id", authenticate, (req, res) => {
+    // Soft delete
+    db.prepare("UPDATE files SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/files/:id/restore", authenticate, (req, res) => {
+    db.prepare("UPDATE files SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/files/:id/permanent", authenticate, (req, res) => {
     db.prepare("DELETE FROM files WHERE id = ?").run(req.params.id);
     res.json({ success: true });
+  });
+
+  app.put("/api/files/:id/project", authenticate, (req, res) => {
+    const { project_id } = req.body;
+    db.prepare("UPDATE files SET project_id = ? WHERE id = ?").run(project_id || null, req.params.id);
+    res.json({ success: true });
+  });
+
+  // Projects API
+  app.get("/api/projects", authenticate, (req, res) => {
+    const projects = db.prepare("SELECT * FROM projects ORDER BY name ASC").all();
+    res.json(projects);
+  });
+
+  app.post("/api/projects", authenticate, (req, res) => {
+    const { name } = req.body;
+    const result = db.prepare("INSERT INTO projects (name) VALUES (?)").run(name);
+    res.json({ id: result.lastInsertRowid, name });
+  });
+
+  app.delete("/api/projects/:id", authenticate, (req, res) => {
+    db.prepare("DELETE FROM projects WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Notes API
+  app.get("/api/notes", authenticate, (req, res) => {
+    const notes = db.prepare("SELECT * FROM notes WHERE is_deleted = 0 ORDER BY updated_at DESC").all();
+    res.json(notes);
+  });
+
+  app.post("/api/notes", authenticate, (req, res) => {
+    const { title, content, project_id } = req.body;
+    const result = db.prepare("INSERT INTO notes (title, content, project_id) VALUES (?, ?, ?)")
+      .run(title, content || "", project_id || null);
+    res.json({ id: result.lastInsertRowid, title, content, project_id });
+  });
+
+  app.get("/api/notes/:id", authenticate, (req, res) => {
+    const note = db.prepare("SELECT * FROM notes WHERE id = ?").get(req.params.id);
+    if (!note) return res.status(404).json({ error: "Note not found" });
+    res.json(note);
+  });
+
+  app.put("/api/notes/:id", authenticate, (req, res) => {
+    const { title, content, project_id } = req.body;
+    db.prepare("UPDATE notes SET title = ?, content = ?, project_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(title, content, project_id || null, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/notes/:id", authenticate, (req, res) => {
+    db.prepare("UPDATE notes SET is_deleted = 1 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/notes/:id/restore", authenticate, (req, res) => {
+    db.prepare("UPDATE notes SET is_deleted = 0 WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/notes/:id/permanent", authenticate, (req, res) => {
+    db.prepare("DELETE FROM notes WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Trash API
+  app.get("/api/trash", authenticate, (req, res) => {
+    const files = db.prepare("SELECT * FROM files WHERE is_deleted = 1").all();
+    const notes = db.prepare("SELECT * FROM notes WHERE is_deleted = 1").all();
+    res.json({ files, notes });
+  });
+
+  // Image Upload API
+  app.post("/api/upload", authenticate, upload.single("image"), (req: any, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: imageUrl });
   });
 
   app.post("/api/save/:id", authenticate, (req, res) => {

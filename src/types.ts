@@ -25,11 +25,29 @@ export interface Relationship {
   label?: string;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
 export interface FileData {
   id: number;
   name: string;
+  project_id: number | null;
+  is_deleted: boolean;
   created_at: string;
   updated_at: string;
   entities: Entity[];
   relationships: Relationship[];
+}
+
+export interface Note {
+  id: number;
+  title: string;
+  content: string;
+  project_id: number | null;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
 }
