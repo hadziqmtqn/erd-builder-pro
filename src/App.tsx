@@ -461,6 +461,23 @@ export default function App() {
     }
   };
 
+  const updateProject = async (id: number, name: string) => {
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        setProjects(projects.map(p => p.id === id ? { ...p, name } : p));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
   const deleteProject = async (id: number) => {
     try {
       const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
@@ -792,6 +809,7 @@ export default function App() {
         onNoteCreate={createNote}
         onDrawingCreate={createDrawing}
         onProjectCreate={createProject}
+        onProjectUpdate={updateProject}
         onProjectDelete={deleteProject}
         onProjectRestore={restoreProject}
         onFileDelete={deleteFile}

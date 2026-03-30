@@ -324,6 +324,12 @@ async function startServer() {
     res.json({ id: result.lastInsertRowid, name });
   });
 
+  app.put("/api/projects/:id", authenticate, (req, res) => {
+    const { name } = req.body;
+    db.prepare("UPDATE projects SET name = ? WHERE id = ?").run(name, req.params.id);
+    res.json({ success: true });
+  });
+
   app.delete("/api/projects/:id", authenticate, (req, res) => {
     db.prepare("UPDATE projects SET is_deleted = 1 WHERE id = ?").run(req.params.id);
     res.json({ success: true });

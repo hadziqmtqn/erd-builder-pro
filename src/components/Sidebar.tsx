@@ -3,7 +3,7 @@ import {
   Plus, Trash2, FileText, ChevronLeft, ChevronRight, Save, 
   Database, LogOut, Folder, StickyNote, Trash, ChevronDown, 
   ChevronRight as ChevronRightIcon, FolderPlus, MoreVertical,
-  RotateCcw, PenTool
+  RotateCcw, PenTool, Edit2
 } from 'lucide-react';
 import { FileData, Project, Note, Drawing } from '../types';
 import { cn } from '../lib/utils';
@@ -34,6 +34,7 @@ interface SidebarProps {
   onNoteCreate: (title: string, projectId?: number | null) => void;
   onDrawingCreate: (title: string, projectId?: number | null) => void;
   onProjectCreate: (name: string) => void;
+  onProjectUpdate: (id: number, name: string) => void;
   onProjectDelete: (id: number) => void;
   onProjectRestore: (id: number) => void;
   onFileDelete: (id: number) => void;
@@ -73,6 +74,7 @@ export default function Sidebar({
   onNoteCreate,
   onDrawingCreate,
   onProjectCreate,
+  onProjectUpdate,
   onProjectDelete,
   onProjectRestore,
   onFileDelete,
@@ -95,6 +97,8 @@ export default function Sidebar({
   const [newFileName, setNewFileName] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProject, setShowNewProject] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -254,35 +258,78 @@ export default function Sidebar({
               </button>
               {activeProjects.map(project => (
                 <div key={project.id} className="group relative">
-                  <button
-                    onClick={() => onProjectSelect(project.id)}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all pr-10",
-                      activeProjectId === project.id 
-                        ? "bg-bg-tertiary text-accent-primary border border-accent-primary/20" 
-                        : "text-text-secondary hover:bg-bg-tertiary"
-                    )}
-                  >
-                    <Folder size={16} className={activeProjectId === project.id ? "text-accent-primary" : "text-text-secondary"} />
-                    <span className="truncate">{project.name}</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Project',
-                        message: `Are you sure you want to move "${project.name}" to the trash? All files within this project will be hidden.`,
-                        onConfirm: () => {
-                          onProjectDelete(project.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                  {editingProjectId === project.id ? (
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (editingProjectName.trim()) {
+                          onProjectUpdate(project.id, editingProjectName.trim());
+                          setEditingProjectId(null);
                         }
-                      });
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-text-secondary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-400/10"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                      }}
+                      className="px-1 py-1"
+                    >
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingProjectName}
+                        onChange={(e) => setEditingProjectName(e.target.value)}
+                        onBlur={() => {
+                          if (editingProjectName.trim() && editingProjectName !== project.name) {
+                            onProjectUpdate(project.id, editingProjectName.trim());
+                          }
+                          setEditingProjectId(null);
+                        }}
+                        className="w-full bg-bg-tertiary border border-accent-primary rounded-lg px-3 py-2 text-xs focus:outline-none transition-all"
+                      />
+                    </form>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => onProjectSelect(project.id)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all pr-16",
+                          activeProjectId === project.id 
+                            ? "bg-bg-tertiary text-accent-primary border border-accent-primary/20" 
+                            : "text-text-secondary hover:bg-bg-tertiary"
+                        )}
+                      >
+                        <Folder size={16} className={activeProjectId === project.id ? "text-accent-primary" : "text-text-secondary"} />
+                        <span className="truncate">{project.name}</span>
+                      </button>
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingProjectId(project.id);
+                            setEditingProjectName(project.name);
+                          }}
+                          className="p-1 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-accent-primary transition-all"
+                          title="Edit Name"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmModal({
+                              isOpen: true,
+                              title: 'Delete Project',
+                              message: `Are you sure you want to move "${project.name}" to the trash? All files within this project will be hidden.`,
+                              onConfirm: () => {
+                                onProjectDelete(project.id);
+                                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                              }
+                            });
+                          }}
+                          className="p-1 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-red-400 transition-all"
+                          title="Move to Trash"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
