@@ -171,6 +171,19 @@ export default function PropertiesPanel({
                     {col.is_nullable ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
                   </button>
                 </div>
+
+                {col.type === 'ENUM' && (
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">Enum Values (comma separated)</label>
+                    <input
+                      type="text"
+                      value={col.enum_values || ''}
+                      onChange={(e) => updateColumn(col.id, { enum_values: e.target.value })}
+                      placeholder="e.g. active, inactive, pending"
+                      className="w-full bg-bg-primary border border-border rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-accent-primary/50"
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>

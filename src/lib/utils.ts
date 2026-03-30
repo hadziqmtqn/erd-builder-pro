@@ -16,6 +16,7 @@ export const COLUMN_TYPES = [
   "DECIMAL",
   "UUID",
   "JSON",
+  "ENUM",
 ];
 
 export const RELATIONSHIP_TYPES = [

@@ -4,6 +4,7 @@ export interface Column {
   type: string;
   is_pk: boolean;
   is_nullable: boolean;
+  enum_values?: string;
 }
 
 export interface Entity {

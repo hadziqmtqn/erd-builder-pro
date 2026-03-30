@@ -32,6 +32,7 @@ db.exec(`
     type TEXT NOT NULL,
     is_pk BOOLEAN DEFAULT 0,
     is_nullable BOOLEAN DEFAULT 1,
+    enum_values TEXT,
     FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
   );
 
@@ -102,8 +103,8 @@ async function startServer() {
           .run(entity.id, fileId, entity.name, entity.x, entity.y, entity.color);
         
         for (const col of entity.columns) {
-          db.prepare("INSERT INTO columns (id, entity_id, name, type, is_pk, is_nullable) VALUES (?, ?, ?, ?, ?, ?)")
-            .run(col.id, entity.id, col.name, col.type, col.is_pk ? 1 : 0, col.is_nullable ? 1 : 0);
+          db.prepare("INSERT INTO columns (id, entity_id, name, type, is_pk, is_nullable, enum_values) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .run(col.id, entity.id, col.name, col.type, col.is_pk ? 1 : 0, col.is_nullable ? 1 : 0, col.enum_values || null);
         }
       }
 

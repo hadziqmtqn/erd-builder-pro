@@ -42,9 +42,16 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
               )}
               <span className="text-xs font-medium">{col.name}</span>
             </div>
-            <span className="text-[10px] font-mono text-text-secondary bg-bg-primary px-1.5 py-0.5 rounded border border-border">
-              {col.type}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[10px] font-mono text-text-secondary bg-bg-primary px-1.5 py-0.5 rounded border border-border">
+                {col.type}
+              </span>
+              {col.type === 'ENUM' && col.enum_values && (
+                <span className="text-[8px] text-text-secondary italic max-w-[100px] truncate" title={col.enum_values}>
+                  ({col.enum_values})
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
