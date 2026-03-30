@@ -1,0 +1,5 @@
+{
+  "name": "ERD Builder Pro",
+  "description": "A modern, minimalist ERD diagramming tool inspired by Eraser.io with SQLite persistence.",
+  "requestFramePermissions": []
+}
