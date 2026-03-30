@@ -559,9 +559,13 @@ async function startServer() {
   return app;
 }
 
-const appPromise = startServer();
+const serverPromise = startServer();
 
-export default async (req: Request, res: Response) => {
-  const app = await appPromise;
-  return app(req, res);
-};
+// Add local execution support
+if (import.meta.url === `file://${process.argv[1]}` || process.env.NODE_ENV === 'development') {
+  serverPromise.then(() => {
+    console.log("Local development server ready.");
+  });
+}
+
+export default serverPromise;
