@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
@@ -550,7 +549,9 @@ app.post("/api/save/:id", authenticate, async (req, res) => {
   }
 });
 
-async function startDevelopmentServer() {
+// Vite middleware for development
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true },
     appType: "spa",
@@ -559,11 +560,7 @@ async function startDevelopmentServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Development server running on http://localhost:${PORT}`);
   });
-}
-
-if (process.env.NODE_ENV !== "production") {
-  startDevelopmentServer();
-} else {
+} else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
   app.get("*", (req, res) => {
