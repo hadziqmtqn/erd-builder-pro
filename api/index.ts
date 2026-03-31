@@ -126,10 +126,13 @@ app.get("/api/files", authenticate, async (req, res) => {
     .from("files")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .or(`project_id.is.null,projects.is_deleted.eq.false`)
+    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error("Supabase error fetching files:", error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data);
 });
 
@@ -322,10 +325,13 @@ app.get("/api/notes", authenticate, async (req, res) => {
     .from("notes")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .or(`project_id.is.null,projects.is_deleted.eq.false`)
+    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error("Supabase error fetching notes:", error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data);
 });
 
@@ -408,10 +414,13 @@ app.get("/api/drawings", authenticate, async (req, res) => {
     .from("drawings")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .or(`project_id.is.null,projects.is_deleted.eq.false`)
+    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error("Supabase error fetching drawings:", error);
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data);
 });
 
