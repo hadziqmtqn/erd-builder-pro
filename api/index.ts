@@ -21,7 +21,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
@@ -550,11 +550,16 @@ app.post("/api/save/:id", authenticate, async (req, res) => {
 });
 
 // Vite middleware for development - Only runs locally
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  // Use a dynamic function to avoid build-time dependency tracing
+// We use a more robust check to ensure this doesn't run on Vercel or in production
+const isVercel = !!process.env.VERCEL;
+const isProd = process.env.NODE_ENV === "production";
+
+if (!isProd && !isVercel) {
   const setupDev = async () => {
     try {
-      const { createServer } = await import("vite");
+      // Use a variable for the module name to further obscure it from build-time tracers
+      const viteModule = "vite";
+      const { createServer } = await import(viteModule);
       const vite = await createServer({
         server: { middlewareMode: true },
         appType: "spa",
@@ -568,6 +573,18 @@ if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     }
   };
   setupDev();
+} else if (!isVercel) {
+  // Production fallback for non-Vercel environments (like local production test)
+  const distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Production server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 export default app;
