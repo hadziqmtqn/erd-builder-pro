@@ -20,12 +20,160 @@ export interface Block {
   level?: number;
   url?: string;
   caption?: string;
+  language?: string;
   width?: '25%' | '50%' | '75%' | '100%';
   tableData?: {
     headers: string[];
     rows: string[][];
   };
 }
+
+const highlightCode = (code: string, lang: string = 'sql') => {
+  if (!code) return '';
+  
+  let escaped = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const rules: Record<string, { regex: RegExp, cls: string }[]> = {
+    sql: [
+      { regex: /\b(SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|TABLE|DROP|ALTER|INDEX|AND|OR|NOT|NULL|IS|IN|EXISTS|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|AS|VALUES|INTO|SET|GRANT|REVOKE|COMMIT|ROLLBACK|SAVEPOINT|TRANSACTION|DATABASE|SCHEMA|CONSTRAINT|PRIMARY|KEY|FOREIGN|REFERENCES|UNIQUE|CHECK|DEFAULT|AUTO_INCREMENT|SERIAL|INTEGER|INT|VARCHAR|CHAR|TEXT|DATE|TIMESTAMP|BOOLEAN|DOUBLE|DECIMAL|NUMERIC|FLOAT)\b/gi, cls: 'text-accent-primary font-bold' },
+      { regex: /'[^']*'/g, cls: 'text-green-400' },
+      { regex: /--.*/g, cls: 'text-text-secondary/50 italic' },
+      { regex: /\b\d+\b/g, cls: 'text-orange-400' }
+    ],
+    javascript: [
+      { regex: /\/\/.*|\/\*[\s\S]*?\*\//g, cls: 'text-text-secondary/50 italic' },
+      { regex: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|default|try|catch|finally|throw|new|this|super|extends|class|implements|interface|package|private|protected|public|static|final|abstract|native|synchronized|transient|volatile|strictfp|export|import|from|as|default|async|await|yield|enum|typeof|instanceof|in|of|delete|void|true|false|null|undefined|NaN|Infinity)\b/g, cls: 'text-accent-primary font-bold' },
+      { regex: /(['"`])(?:\\.|(?!\1)[^\\\n])*\1/g, cls: 'text-green-400' },
+      { regex: /\b\d+\b/g, cls: 'text-orange-400' }
+    ],
+    typescript: [
+      { regex: /\/\/.*|\/\*[\s\S]*?\*\//g, cls: 'text-text-secondary/50 italic' },
+      { regex: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|default|try|catch|finally|throw|new|this|super|extends|class|implements|interface|package|private|protected|public|static|final|abstract|native|synchronized|transient|volatile|strictfp|export|import|from|as|default|async|await|yield|enum|typeof|instanceof|in|of|delete|void|true|false|null|undefined|NaN|Infinity|any|number|string|boolean|symbol|unknown|never|void|type|interface|enum|implements|extends|declare|namespace|module|using|public|private|protected|readonly|static|get|set|async|await|is|keyof|typeof|infer|readonly|satisfies)\b/g, cls: 'text-accent-primary font-bold' },
+      { regex: /(['"`])(?:\\.|(?!\1)[^\\\n])*\1/g, cls: 'text-green-400' },
+      { regex: /\b\d+\b/g, cls: 'text-orange-400' }
+    ],
+    html: [
+      { regex: /&lt;!--[\s\S]*?--&gt;/g, cls: 'text-text-secondary/50 italic' },
+      { regex: /&lt;\/?[a-z0-9!]+|&gt;|\/&gt;/gi, cls: 'text-accent-primary font-bold' },
+      { regex: /"[^"]*"|'[^']*'/g, cls: 'text-green-400' },
+      { regex: /[a-z0-9-]+(?==)/gi, cls: 'text-orange-300' }
+    ],
+    css: [
+      { regex: /\/\*[\s\S]*?\*\//g, cls: 'text-text-secondary/50 italic' },
+      { regex: /[a-z0-9-]+\s*(?=:)/gi, cls: 'text-accent-primary' },
+      { regex: /:[^;]+;/g, cls: 'text-green-400' },
+      { regex: /\.[a-z0-9_-]+/gi, cls: 'text-orange-400' },
+      { regex: /#[a-z0-9_-]+/gi, cls: 'text-orange-400' }
+    ],
+    json: [
+      { regex: /"[^"]*"\s*(?=:)/g, cls: 'text-accent-primary' },
+      { regex: /"[^"]*"(?!\s*:)/g, cls: 'text-green-400' },
+      { regex: /\b(true|false|null)\b/g, cls: 'text-orange-400' },
+      { regex: /\b\d+\b/g, cls: 'text-orange-400' }
+    ],
+    python: [
+      { regex: /#.*/g, cls: 'text-text-secondary/50 italic' },
+      { regex: /\b(def|class|return|if|else|elif|for|while|try|except|finally|with|as|import|from|global|nonlocal|pass|break|continue|lambda|and|or|not|is|in|None|True|False|async|await)\b/g, cls: 'text-accent-primary font-bold' },
+      { regex: /(['"])(?:\\.|(?!\1)[^\\\n])*\1/g, cls: 'text-green-400' },
+      { regex: /\b\d+\b/g, cls: 'text-orange-400' }
+    ]
+  };
+
+  const langPatterns = rules[lang.toLowerCase()] || rules.javascript;
+  
+  // Collect all matches
+  let allMatches: { start: number, end: number, cls: string, text: string }[] = [];
+  
+  langPatterns.forEach(({ regex, cls }) => {
+    let match;
+    const r = new RegExp(regex.source, regex.flags + (regex.flags.includes('g') ? '' : 'g'));
+    while ((match = r.exec(escaped)) !== null) {
+      allMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        cls,
+        text: match[0]
+      });
+    }
+  });
+
+  // Sort by start position, then by length desc
+  allMatches.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+  // Filter overlapping matches
+  const filteredMatches: typeof allMatches = [];
+  let lastEnd = 0;
+  for (const m of allMatches) {
+    if (m.start >= lastEnd) {
+      filteredMatches.push(m);
+      lastEnd = m.end;
+    }
+  }
+
+  // Build the final string
+  let result = '';
+  let lastPos = 0;
+  for (const m of filteredMatches) {
+    result += escaped.substring(lastPos, m.start);
+    result += `<span class="${m.cls}">${m.text}</span>`;
+    lastPos = m.end;
+  }
+  result += escaped.substring(lastPos);
+  
+  return result;
+};
+
+const CodeEditor = ({ value, language, onChange, onKeyDown, isFocused }: { 
+  value: string, 
+  language: string, 
+  onChange: (val: string) => void,
+  onKeyDown: (e: React.KeyboardEvent) => void,
+  isFocused: boolean
+}) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  const syncScroll = () => {
+    if (textareaRef.current && preRef.current) {
+      preRef.current.scrollTop = textareaRef.current.scrollTop;
+      preRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    }
+  };
+
+  const lines = value.split('\n');
+
+  return (
+    <div className="relative font-mono text-[14px] leading-relaxed flex border border-border/50 rounded-xl overflow-hidden bg-bg-tertiary/20 group/editor shadow-inner min-h-[150px]">
+      <div className="bg-bg-tertiary/40 border-r border-border/30 px-3 py-6 text-right select-none text-text-secondary/30 min-w-[48px] text-[12px]">
+        {lines.map((_, i) => (
+          <div key={i} className="h-[1.5em] leading-[1.5em]">{i + 1}</div>
+        ))}
+      </div>
+
+      <div className="relative flex-1">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onScroll={syncScroll}
+          onKeyDown={onKeyDown}
+          autoFocus={isFocused}
+          className="absolute inset-0 w-full h-full p-6 bg-transparent text-transparent caret-white outline-none resize-none z-10 whitespace-pre overflow-auto font-mono scrollbar-hide leading-[1.5em]"
+          spellCheck={false}
+        />
+        <pre
+          ref={preRef}
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full p-6 m-0 pointer-events-none whitespace-pre overflow-hidden font-mono leading-[1.5em]"
+          dangerouslySetInnerHTML={{ __html: highlightCode(value, language) + '\n' }}
+        />
+      </div>
+    </div>
+  );
+};
 
 interface BlockEditorProps {
   noteId: number;
@@ -126,19 +274,32 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
     const newBlocks = blocks.map(b => {
       if (b.id === blockId && b.tableData) {
         const newRow = new Array(b.tableData.headers.length).fill('');
-        return { ...b, tableData: { ...b.tableData, rows: [...b.tableData.rows, newRow] } };
+        const updatedRows = [...b.tableData.rows, newRow];
+        return { ...b, tableData: { ...b.tableData, rows: updatedRows } };
       }
       return b;
     });
     updateBlocks(newBlocks);
+    
+    // Focus the first cell of the new row after a short delay to allow re-render
+    const block = blocks.find(b => b.id === blockId);
+    if (block && block.tableData) {
+      const nextRowIdx = block.tableData.rows.length;
+      setTimeout(() => {
+        const nextCell = document.getElementById(`cell-${blockId}-${nextRowIdx}-0`);
+        nextCell?.focus();
+      }, 50);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     const target = e.target as HTMLElement;
     const currentContent = target.innerText;
     const currentBlock = { ...blocks[index], content: currentContent };
+    const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
     
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (isInput && target.getAttribute('data-is-table-cell') === 'true') return; // Let table cells handle their own
       e.preventDefault();
       
       // If current block is an empty list item, convert to text
@@ -575,9 +736,9 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                     <div className="overflow-hidden border border-border/50 rounded-xl bg-bg-tertiary/20">
                       <table className="min-w-full divide-y divide-border/50">
                         <thead className="bg-bg-tertiary/50">
-                          <tr>
+                          <tr className="divide-x divide-border/50">
                             {block.tableData?.headers.map((header, hIdx) => (
-                              <th key={hIdx} className="px-4 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-wider relative group/header border-r border-border/30 last:border-r-0">
+                              <th key={hIdx} className="px-4 py-3 text-left text-xs font-bold text-text-secondary uppercase tracking-wider relative group/header">
                                 <input
                                   type="text"
                                   value={header}
@@ -617,9 +778,9 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border/30">
+                        <tbody className="divide-y divide-border/50">
                           {block.tableData?.rows.map((row, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-bg-tertiary/30 transition-colors group/row divide-x divide-border/30">
+                            <tr key={rIdx} className="hover:bg-bg-tertiary/30 transition-colors group/row divide-x divide-border/50">
                               {row.map((cell, cIdx) => (
                                 <td key={cIdx} className="px-4 py-3 text-sm text-text-primary">
                                   <textarea
@@ -640,23 +801,9 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                                       const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { ...b.tableData!, rows: newRows } } : b);
                                       updateBlocks(newBlocks);
                                     }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        addTableRow(block.id);
-                                      } else if (e.key === 'ArrowDown' && rIdx === (block.tableData?.rows.length || 0) - 1) {
-                                        // If at last row and press down, focus next block if exists
-                                        if (index < blocks.length - 1) {
-                                          setFocusedBlockId(blocks[index + 1].id);
-                                        } else {
-                                          // Create new block if it's the last block
-                                          const newBlock: Block = { id: generateId(), type: 'text', content: '' };
-                                          updateBlocks([...blocks, newBlock]);
-                                          setFocusedBlockId(newBlock.id);
-                                        }
-                                      }
-                                    }}
+                                    id={`cell-${block.id}-${rIdx}-${cIdx}`}
                                     rows={cell.split('\n').length || 1}
+                                    data-is-table-cell="true"
                                     className="bg-transparent outline-none w-full resize-none overflow-hidden py-0 block"
                                   />
                                 </td>
@@ -690,6 +837,40 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                     </div>
                   </div>
                 </div>
+              ) : block.type === 'code' ? (
+                <div className="flex-1 space-y-2 mt-2">
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-3">
+                      <select
+                        value={block.language || 'sql'}
+                        onChange={(e) => {
+                          const newBlocks = blocks.map(b => b.id === block.id ? { ...b, language: e.target.value } : b);
+                          updateBlocks(newBlocks);
+                        }}
+                        className="bg-bg-tertiary border border-border/50 text-[10px] font-bold uppercase tracking-widest text-text-secondary rounded-lg px-3 py-1 outline-none hover:border-accent-primary/50 transition-colors cursor-pointer"
+                      >
+                        <option value="sql">SQL</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                        <option value="json">JSON</option>
+                        <option value="python">Python</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-text-secondary/40">
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500/50 animate-pulse" />
+                      <span>Code Studio</span>
+                    </div>
+                  </div>
+                  <CodeEditor 
+                    value={block.content}
+                    language={block.language || 'sql'}
+                    onChange={(val) => handleBlockChange(block.id, val)}
+                    onKeyDown={(e) => handleKeyDown(e, index)}
+                    isFocused={focusedBlockId === block.id}
+                  />
+                </div>
               ) : (
                 <div 
                   contentEditable
@@ -720,7 +901,6 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                     block.type === 'h2' && "text-3xl font-bold tracking-tight text-text-primary/90",
                     block.type === 'h3' && "text-2xl font-bold tracking-tight text-text-primary/80",
                     block.type === 'quote' && "border-l-2 border-text-primary/20 pl-6 py-1 italic text-text-secondary/80",
-                    block.type === 'code' && "font-mono bg-bg-tertiary/50 p-6 rounded-xl text-[14px] border border-border/50 shadow-sm",
                     block.type === 'todo' && block.checked && "line-through text-text-secondary/40"
                   )}
                 />
