@@ -1,6 +1,6 @@
 name = "erd-builder-pro"
 main = "api/worker.ts"
-compatibility_date = "2024-03-31"
+compatibility_date = "2024-11-20"
 compatibility_flags = ["nodejs_compat"]
 
 [assets]

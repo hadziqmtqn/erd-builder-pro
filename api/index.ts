@@ -1,12 +1,12 @@
 import express, { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import path from "path";
+import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import multer from "multer";
-import fs from "fs";
+import fs from "node:fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 dotenv.config();
