@@ -1,0 +1,12 @@
+name = "erd-builder-pro"
+main = "api/index.ts"
+compatibility_date = "2024-03-31"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Optional: Add environment variables for Cloudflare
+[vars]
+# SUPABASE_URL = "..." (These should be set in the Cloudflare Dashboard)

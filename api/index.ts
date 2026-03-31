@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
@@ -53,7 +53,7 @@ const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Helper to check Supabase health
-const checkSupabase = (req: Request, res: Response, next: NextFunction) => {
+const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   if (!supabase) {
     return res.status(500).json({ 
       error: "Supabase configuration is missing or invalid. Please check your environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).",
@@ -75,7 +75,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Auth Middleware
-const authenticate = (req: Request, res: Response, next: NextFunction) => {
+const authenticate = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   const token = req.cookies.token;
   if (!token) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -89,12 +89,12 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // Auth Config (Public)
-app.get("/api/auth-config", (req, res) => {
+app.get("/api/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
   res.json({ adminEmail: ADMIN_EMAIL });
 });
 
 // API Routes
-app.post("/api/login", (req, res) => {
+app.post("/api/login", (req: ExpressRequest, res: ExpressResponse) => {
   const email = req.body.email?.trim();
   const password = req.body.password;
   
@@ -111,7 +111,7 @@ app.post("/api/login", (req, res) => {
   res.status(401).json({ error: "Invalid credentials" });
 });
 
-app.post("/api/logout", (req, res) => {
+app.post("/api/logout", (req: ExpressRequest, res: ExpressResponse) => {
   res.clearCookie("token", {
     httpOnly: true,
     secure: true,
@@ -120,7 +120,7 @@ app.post("/api/logout", (req, res) => {
   res.json({ success: true });
 });
 
-app.get("/api/me", (req, res) => {
+app.get("/api/me", (req: ExpressRequest, res: ExpressResponse) => {
   const token = req.cookies.token;
   if (!token) {
     return res.status(401).json({ error: "Not logged in" });
@@ -134,7 +134,7 @@ app.get("/api/me", (req, res) => {
 });
 
 // Apply Supabase health check to all data routes
-app.use("/api/*", (req, res, next) => {
+app.use("/api/*", (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   // Skip auth-config and auth routes
   if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(req.baseUrl + req.path)) {
     return next();
@@ -142,7 +142,7 @@ app.use("/api/*", (req, res, next) => {
   checkSupabase(req, res, next);
 });
 
-app.get("/api/files", authenticate, async (req, res) => {
+app.get("/api/files", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("files")
     .select("*, projects!left(*)")
@@ -157,7 +157,7 @@ app.get("/api/files", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/files", authenticate, async (req, res) => {
+app.post("/api/files", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name, project_id } = req.body;
   const { data, error } = await supabase
     .from("files")
@@ -169,7 +169,7 @@ app.post("/api/files", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/files/:id", authenticate, async (req, res) => {
+app.get("/api/files/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const fileId = req.params.id;
   const { data: file, error: fileError } = await supabase
     .from("files")
@@ -204,7 +204,7 @@ app.get("/api/files/:id", authenticate, async (req, res) => {
   res.json({ ...file, entities: entitiesWithColumns, relationships });
 });
 
-app.delete("/api/files/:id", authenticate, async (req, res) => {
+app.delete("/api/files/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("files")
     .update({ is_deleted: true })
@@ -214,7 +214,7 @@ app.delete("/api/files/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/files/:id/restore", authenticate, async (req, res) => {
+app.post("/api/files/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("files")
     .update({ is_deleted: false })
@@ -224,7 +224,7 @@ app.post("/api/files/:id/restore", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/files/:id/permanent", authenticate, async (req, res) => {
+app.delete("/api/files/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("files")
     .delete()
@@ -234,7 +234,7 @@ app.delete("/api/files/:id/permanent", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.put("/api/files/:id", authenticate, async (req, res) => {
+app.put("/api/files/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name } = req.body;
   const { error } = await supabase
     .from("files")
@@ -245,7 +245,7 @@ app.put("/api/files/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.put("/api/files/:id/project", authenticate, async (req, res) => {
+app.put("/api/files/:id/project", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { project_id } = req.body;
   const { error } = await supabase
     .from("files")
@@ -257,7 +257,7 @@ app.put("/api/files/:id/project", authenticate, async (req, res) => {
 });
 
 // Projects API
-app.get("/api/projects", authenticate, async (req, res) => {
+app.get("/api/projects", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("projects")
     .select("*")
@@ -268,7 +268,7 @@ app.get("/api/projects", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/projects", authenticate, async (req, res) => {
+app.post("/api/projects", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name } = req.body;
   const { data, error } = await supabase
     .from("projects")
@@ -280,7 +280,7 @@ app.post("/api/projects", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.put("/api/projects/:id", authenticate, async (req, res) => {
+app.put("/api/projects/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name } = req.body;
   const { error } = await supabase
     .from("projects")
@@ -291,7 +291,7 @@ app.put("/api/projects/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/projects/:id", authenticate, async (req, res) => {
+app.delete("/api/projects/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
     .update({ is_deleted: true })
@@ -301,7 +301,7 @@ app.delete("/api/projects/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/projects/:id/restore", authenticate, async (req, res) => {
+app.post("/api/projects/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
     .update({ is_deleted: false })
@@ -311,7 +311,7 @@ app.post("/api/projects/:id/restore", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/projects/:id/permanent", authenticate, async (req, res) => {
+app.delete("/api/projects/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const projectId = req.params.id;
   
   try {
@@ -341,7 +341,7 @@ app.delete("/api/projects/:id/permanent", authenticate, async (req, res) => {
 });
 
 // Notes API
-app.get("/api/notes", authenticate, async (req, res) => {
+app.get("/api/notes", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("notes")
     .select("*, projects!left(*)")
@@ -356,7 +356,7 @@ app.get("/api/notes", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/notes", authenticate, async (req, res) => {
+app.post("/api/notes", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, content, project_id } = req.body;
   const { data, error } = await supabase
     .from("notes")
@@ -368,7 +368,7 @@ app.post("/api/notes", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/notes/:id", authenticate, async (req, res) => {
+app.get("/api/notes/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("notes")
     .select("*")
@@ -379,7 +379,7 @@ app.get("/api/notes/:id", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.put("/api/notes/:id", authenticate, async (req, res) => {
+app.put("/api/notes/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, content, project_id } = req.body;
   const { error } = await supabase
     .from("notes")
@@ -390,7 +390,7 @@ app.put("/api/notes/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/notes/:id", authenticate, async (req, res) => {
+app.delete("/api/notes/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
     .update({ is_deleted: true })
@@ -400,7 +400,7 @@ app.delete("/api/notes/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/notes/:id/restore", authenticate, async (req, res) => {
+app.post("/api/notes/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
     .update({ is_deleted: false })
@@ -410,7 +410,7 @@ app.post("/api/notes/:id/restore", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/notes/:id/permanent", authenticate, async (req, res) => {
+app.delete("/api/notes/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
     .delete()
@@ -421,7 +421,7 @@ app.delete("/api/notes/:id/permanent", authenticate, async (req, res) => {
 });
 
 // Trash API
-app.get("/api/trash", authenticate, async (req, res) => {
+app.get("/api/trash", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data: files } = await supabase.from("files").select("*").eq("is_deleted", true);
   const { data: notes } = await supabase.from("notes").select("*").eq("is_deleted", true);
   const { data: drawings } = await supabase.from("drawings").select("*").eq("is_deleted", true);
@@ -430,7 +430,7 @@ app.get("/api/trash", authenticate, async (req, res) => {
 });
 
 // Drawings API
-app.get("/api/drawings", authenticate, async (req, res) => {
+app.get("/api/drawings", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("drawings")
     .select("*, projects!left(*)")
@@ -445,7 +445,7 @@ app.get("/api/drawings", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/drawings", authenticate, async (req, res) => {
+app.post("/api/drawings", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, data, project_id } = req.body;
   const { data: inserted, error } = await supabase
     .from("drawings")
@@ -457,7 +457,7 @@ app.post("/api/drawings", authenticate, async (req, res) => {
   res.json(inserted);
 });
 
-app.get("/api/drawings/:id", authenticate, async (req, res) => {
+app.get("/api/drawings/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("drawings")
     .select("*")
@@ -468,7 +468,7 @@ app.get("/api/drawings/:id", authenticate, async (req, res) => {
   res.json(data);
 });
 
-app.put("/api/drawings/:id", authenticate, async (req, res) => {
+app.put("/api/drawings/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, data, project_id } = req.body;
   const { error } = await supabase
     .from("drawings")
@@ -479,7 +479,7 @@ app.put("/api/drawings/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/drawings/:id", authenticate, async (req, res) => {
+app.delete("/api/drawings/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("drawings")
     .update({ is_deleted: true })
@@ -489,7 +489,7 @@ app.delete("/api/drawings/:id", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/drawings/:id/restore", authenticate, async (req, res) => {
+app.post("/api/drawings/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("drawings")
     .update({ is_deleted: false })
@@ -499,7 +499,7 @@ app.post("/api/drawings/:id/restore", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/drawings/:id/permanent", authenticate, async (req, res) => {
+app.delete("/api/drawings/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("drawings")
     .delete()
@@ -510,7 +510,7 @@ app.delete("/api/drawings/:id/permanent", authenticate, async (req, res) => {
 });
 
 // Image Upload API (Cloudflare R2)
-app.post("/api/upload", authenticate, upload.single("image"), async (req: any, res: Response) => {
+app.post("/api/upload", authenticate, upload.single("image"), async (req: any, res: ExpressResponse) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
@@ -548,7 +548,7 @@ app.post("/api/upload", authenticate, upload.single("image"), async (req: any, r
   }
 });
 
-app.post("/api/save/:id", authenticate, async (req, res) => {
+app.post("/api/save/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const fileId = req.params.id;
   const { entities, relationships } = req.body;
 
@@ -620,9 +620,10 @@ app.post("/api/save/:id", authenticate, async (req, res) => {
 // We use a more robust check to ensure this doesn't run on Vercel or in production
 const isVercel = !!process.env.VERCEL;
 const isProd = process.env.NODE_ENV === "production";
+const isCloudflare = !!process.env.CF_PAGES || !!process.env.CF_WORKER; // Use standard Cloudflare env vars
 
-// Serve static assets in production (non-Vercel environments like local start or VPS)
-if (!isVercel && isProd) {
+// Serve static assets in production (non-Vercel, non-Cloudflare environments like local start or VPS)
+if (!isVercel && !isCloudflare && isProd) {
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     console.log(`Serving static files from: ${distPath}`);
@@ -636,10 +637,9 @@ if (!isVercel && isProd) {
 }
 
 // Development server (Local dev only)
-if (!isProd && !isVercel) {
+if (!isProd && !isVercel && !isCloudflare) {
   const setupDev = async () => {
     try {
-      // Use a variable for the module name to further obscure it from build-time tracers
       const viteModule = "vite";
       const { createServer } = await import(viteModule);
       const vite = await createServer({
@@ -655,8 +655,8 @@ if (!isProd && !isVercel) {
     }
   };
   setupDev();
-} else if (!isVercel) {
-  // Production fallback for non-Vercel environments (like local production test)
+} else if (!isVercel && !isCloudflare) {
+  // Production fallback for non-Vercel, non-Cloudflare environments (like local production test)
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
@@ -669,4 +669,20 @@ if (!isProd && !isVercel) {
   }
 }
 
-export default app;
+// Cloudflare Worker Handler
+// This allows the Express app to run on Cloudflare Workers with nodejs_compat
+export default {
+  async fetch(request: Request, env: any, ctx: any) {
+    try {
+      // Lazy load the adapter to avoid issues with standard Node.js environments
+      const { createServerAdapter } = await import("@whatwg-node/server");
+      // @ts-ignore - Explicitly cast Express app to handle type compatibility with ServerAdapter
+      const adapter = createServerAdapter(app as any);
+      return adapter.handle(request, env, ctx);
+    } catch (err) {
+      // Fallback bridge for simple Express apps if adapter is not available
+      // In a real project, we would advise installing @whatwg-node/server
+      return new Response("Cloudflare Worker Adapter Error: Please ensure '@whatwg-node/server' is installed for Express support.", { status: 500 });
+    }
+  }
+};
