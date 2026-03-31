@@ -549,23 +549,25 @@ app.post("/api/save/:id", authenticate, async (req, res) => {
   }
 });
 
-// Vite middleware for development
+// Vite middleware for development - Only runs locally
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const { createServer: createViteServer } = await import("vite");
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Development server running on http://localhost:${PORT}`);
-  });
-} else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
-  const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
+  // Use a dynamic function to avoid build-time dependency tracing
+  const setupDev = async () => {
+    try {
+      const { createServer } = await import("vite");
+      const vite = await createServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Development server running on http://localhost:${PORT}`);
+      });
+    } catch (e) {
+      console.warn("Vite dev server failed to start:", e);
+    }
+  };
+  setupDev();
 }
 
 export default app;
