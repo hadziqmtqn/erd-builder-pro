@@ -13,7 +13,15 @@ dotenv.config();
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// Initialize Supabase only if credentials are provided
+let supabase: any = null;
+try {
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  }
+} catch (err) {
+  console.error("Failed to initialize Supabase client:", err);
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 const JWT_SECRET = process.env.JWT_SECRET || "erd-builder-secret-key";
@@ -21,7 +29,21 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
+
+// Helper to check Supabase health
+const checkSupabase = (req: Request, res: Response, next: NextFunction) => {
+  if (!supabase) {
+    return res.status(500).json({ 
+      error: "Supabase configuration is missing or invalid. Please check your environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).",
+      configStatus: {
+        url: !!SUPABASE_URL,
+        key: !!SUPABASE_SERVICE_ROLE_KEY
+      }
+    });
+  }
+  next();
+};
 
 // Middleware
 app.use(cors({
@@ -88,6 +110,15 @@ app.get("/api/me", (req, res) => {
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });
   }
+});
+
+// Apply Supabase health check to all data routes
+app.use("/api/*", (req, res, next) => {
+  // Skip auth-config and auth routes
+  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(req.baseUrl + req.path)) {
+    return next();
+  }
+  checkSupabase(req, res, next);
 });
 
 app.get("/api/files", authenticate, async (req, res) => {
