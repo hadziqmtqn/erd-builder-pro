@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx api/index.ts",
+    "dev": "cross-env NODE_ENV=development tsx api/index.ts",
     "build": "vite build",
+    "start": "cross-env NODE_ENV=production tsx api/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

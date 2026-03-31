@@ -585,6 +585,21 @@ app.post("/api/save/:id", authenticate, async (req, res) => {
 const isVercel = !!process.env.VERCEL;
 const isProd = process.env.NODE_ENV === "production";
 
+// Serve static assets in production (non-Vercel environments like local start or VPS)
+if (!isVercel && isProd) {
+  const distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    console.log(`Serving static files from: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
+    console.warn(`Production build not found at ${distPath}. Did you run 'npm run build'?`);
+  }
+}
+
+// Development server (Local dev only)
 if (!isProd && !isVercel) {
   const setupDev = async () => {
     try {
