@@ -63,3 +63,74 @@
 .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-border rounded-full hover:bg-text-secondary/20 transition-colors;
 }
+
+@media print {
+  body {
+    background: white !important;
+    overflow: visible !important;
+  }
+  
+  /* Hide all UI elements including sidebars and property panels */
+  .sidebar, 
+  nav,
+  aside,
+  header,
+  .glass-panel,
+  .absolute.top-6.left-1\/2, /* Toolbar */
+  .react-flow__controls,
+  .react-flow__attribution,
+  .properties-panel,
+  [role="complementary"],
+  .menu-trigger,
+  button:not(.react-flow__node) {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  /* Force main content to fill the whole page */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    z-index: 9999 !important;
+  }
+
+  /* Fix for React Flow container */
+  .flex-1 {
+    width: 100% !important;
+    height: 100% !important;
+    position: static !important;
+  }
+
+  /* Clear backgrounds and dots */
+  .react-flow__background {
+    display: none !important;
+  }
+
+  .react-flow {
+    background: white !important;
+  }
+
+  /* Clean up nodes and text for high-contrast B&W print */
+  .custom-node {
+    box-shadow: none !important;
+    border: 2px solid #000 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .text-text-primary, 
+  .text-text-secondary {
+    color: #000 !important;
+  }
+  
+  .bg-bg-tertiary {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+  }
+}

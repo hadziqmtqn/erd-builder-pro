@@ -14,10 +14,12 @@ import {
   OnConnect,
   Viewport,
   useReactFlow,
-  ReactFlowProvider
+  ReactFlowProvider,
+  getNodesBounds,
+  getViewportForBounds
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, MousePointer2, Share2, Download, Database, Lock, User, Mail, Trash } from 'lucide-react';
+import { Plus, Download, ChevronDown, Database, Lock, User, Mail, Trash } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
@@ -151,7 +153,20 @@ export default function App() {
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const { setViewport } = useReactFlow();
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const { setViewport, fitView, getNodes } = useReactFlow();
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as globalThis.Node)) {
+        setShowExportDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -825,6 +840,87 @@ export default function App() {
     }
   };
 
+  const handleExportSQL = (dialect: 'mysql' | 'postgresql') => {
+    if (!activeFileId) return;
+    const currentFile = files.find(f => f.id === activeFileId);
+    if (!currentFile) return;
+
+    let sql = `-- ERD Builder Pro Export\n-- Database: ${dialect === 'mysql' ? 'MySQL' : 'PostgreSQL'}\n-- Generated: ${new Date().toLocaleString()}\n\n`;
+
+    // 1. Create Tables
+    nodes.forEach(node => {
+      const entity = node.data as Entity;
+      sql += `CREATE TABLE ${entity.name} (\n`;
+      
+      let hasAutoIncrement = false;
+      const columnDefs = entity.columns.map(col => {
+        let def = `  ${col.name} `;
+        
+        // Type mapping
+        let type = col.type.toUpperCase();
+        if (dialect === 'postgresql') {
+          if (col.is_pk && type === 'INT' && !hasAutoIncrement) {
+             type = 'SERIAL';
+             hasAutoIncrement = true;
+          } else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+        } else {
+          if (type === 'VARCHAR') type = 'VARCHAR(255)';
+        }
+        
+        def += type;
+        
+        if (!col.is_nullable) def += ' NOT NULL';
+        if (col.is_pk && dialect === 'mysql') def += ' PRIMARY KEY';
+        if (col.is_pk && dialect === 'mysql' && type === 'INT' && !hasAutoIncrement) {
+          def += ' AUTO_INCREMENT';
+          hasAutoIncrement = true;
+        }
+        
+        return def;
+      });
+
+      if (dialect === 'postgresql') {
+        const pks = entity.columns.filter(c => c.is_pk).map(c => c.name);
+        if (pks.length > 0) {
+          columnDefs.push(`  PRIMARY KEY (${pks.join(', ')})`);
+        }
+      }
+
+      sql += columnDefs.join(',\n');
+      sql += `\n);\n\n`;
+    });
+
+    // 2. Add Foreign Keys
+    edges.forEach(edge => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      const targetNode = nodes.find(n => n.id === edge.target);
+      if (!sourceNode || !targetNode) return;
+
+      const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source', '').replace('-target', '');
+      const targetColId = edge.targetHandle?.replace('col-', '').replace('-source', '').replace('-target', '');
+
+      const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId)?.name;
+      const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId)?.name;
+
+      if (sourceCol && targetCol) {
+        sql += `ALTER TABLE ${sourceNode.data.name} ADD CONSTRAINT fk_${sourceNode.data.name}_${edge.id.substring(0,4)} \n`;
+        sql += `  FOREIGN KEY (${sourceCol}) REFERENCES ${targetNode.data.name}(${targetCol});\n\n`;
+      }
+    });
+
+    const blob = new Blob([sql], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentFile.name.replace(/\s+/g, '_')}_${dialect}.sql`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+    setShowExportDropdown(false);
+  };
+
   // Auto-save logic for notes
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
@@ -964,15 +1060,41 @@ export default function App() {
                 Add Table
               </button>
               <div className="w-px h-6 bg-border mx-1" />
-              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-                <MousePointer2 className="w-4 h-4" />
-              </button>
-              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-                <Share2 className="w-4 h-4" />
-              </button>
-              <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-all">
-                <Download className="w-4 h-4" />
-              </button>
+              <div className="relative" ref={exportDropdownRef}>
+                <button 
+                  onClick={() => setShowExportDropdown(!showExportDropdown)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                    showExportDropdown 
+                      ? "bg-bg-tertiary text-accent-primary" 
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
+                  )}
+                  title="Export Options"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                  <ChevronDown className={cn("w-3 h-3 transition-transform", showExportDropdown && "rotate-180")} />
+                </button>
+                
+                {showExportDropdown && (
+                  <div className="absolute top-full mt-2 right-0 w-48 py-2 glass-panel rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right overflow-hidden">
+                    <button 
+                      onClick={() => handleExportSQL('postgresql')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary transition-all"
+                    >
+                      <Database size={14} className="text-blue-400" />
+                      To PostgreSQL
+                    </button>
+                    <button 
+                      onClick={() => handleExportSQL('mysql')}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary transition-all"
+                    >
+                      <Database size={14} className="text-orange-400" />
+                      To MySQL
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Canvas */}
