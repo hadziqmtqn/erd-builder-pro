@@ -38,13 +38,13 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
             <Handle
               type="target"
               position={Position.Left}
-              id={`${col.id}-target`}
+              id={`col-${col.id}-target`}
               className="!w-2.5 !h-2.5 !-left-1.5 !bg-accent-primary !border-2 !border-bg-primary hover:!scale-125 transition-transform"
             />
             <Handle
               type="source"
               position={Position.Right}
-              id={`${col.id}-source`}
+              id={`col-${col.id}-source`}
               className="!w-2.5 !h-2.5 !-right-1.5 !bg-accent-primary !border-2 !border-bg-primary hover:!scale-125 transition-transform"
             />
 

@@ -269,16 +269,23 @@ export default function App() {
         data: e,
       }));
 
-      const flowEdges: Edge[] = data.relationships.map(r => ({
-        id: r.id,
-        source: r.source_entity_id,
-        target: r.target_entity_id,
-        sourceHandle: r.source_column_id ? `${r.source_column_id}-source` : undefined,
-        targetHandle: r.target_column_id ? `${r.target_column_id}-target` : undefined,
-        label: r.label,
-        type: 'smoothstep',
-        animated: true,
-      }));
+      const flowEdges: Edge[] = data.relationships.map(r => {
+        const edge: Edge = {
+          id: r.id,
+          source: r.source_entity_id,
+          target: r.target_entity_id,
+          sourceHandle: r.source_column_id ? `col-${r.source_column_id}-source` : undefined,
+          targetHandle: r.target_column_id ? `col-${r.target_column_id}-target` : undefined,
+          label: r.label,
+          type: 'smoothstep',
+          animated: true,
+        };
+        return edge;
+      });
+
+      if (process.env.NODE_ENV !== 'production' || window.location.hostname !== 'localhost') {
+        console.log('Restored ERD Edges:', flowEdges.map(e => ({ id: e.id, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle })));
+      }
 
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -345,11 +352,15 @@ export default function App() {
       id: e.id,
       source_entity_id: e.source,
       target_entity_id: e.target,
-      source_column_id: e.sourceHandle ? e.sourceHandle.replace('-source', '').replace('-target', '') : undefined,
-      target_column_id: e.targetHandle ? e.targetHandle.replace('-source', '').replace('-target', '') : undefined,
+      source_column_id: e.sourceHandle ? e.sourceHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
+      target_column_id: e.targetHandle ? e.targetHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
       type: 'one-to-many',
       label: e.label as string,
     }));
+
+    if (process.env.NODE_ENV !== 'production' || window.location.hostname !== 'localhost') {
+      console.log('Saving Relationships:', relationships);
+    }
 
     try {
       const res = await fetch(`/api/save/${activeFileId}`, {
