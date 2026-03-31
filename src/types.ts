@@ -21,6 +21,8 @@ export interface Relationship {
   id: string;
   source_entity_id: string;
   target_entity_id: string;
+  source_column_id?: string;
+  target_column_id?: string;
   type: string;
   label?: string;
 }

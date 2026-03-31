@@ -273,6 +273,8 @@ export default function App() {
         id: r.id,
         source: r.source_entity_id,
         target: r.target_entity_id,
+        sourceHandle: r.source_column_id ? `${r.source_column_id}-source` : undefined,
+        targetHandle: r.target_column_id ? `${r.target_column_id}-target` : undefined,
         label: r.label,
         type: 'smoothstep',
         animated: true,
@@ -343,6 +345,8 @@ export default function App() {
       id: e.id,
       source_entity_id: e.source,
       target_entity_id: e.target,
+      source_column_id: e.sourceHandle ? e.sourceHandle.replace('-source', '').replace('-target', '') : undefined,
+      target_column_id: e.targetHandle ? e.targetHandle.replace('-source', '').replace('-target', '') : undefined,
       type: 'one-to-many',
       label: e.label as string,
     }));

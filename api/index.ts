@@ -603,6 +603,8 @@ app.post("/api/save/:id", authenticate, async (req: ExpressRequest, res: Express
         file_id: fileId,
         source_entity_id: r.source_entity_id,
         target_entity_id: r.target_entity_id,
+        source_column_id: r.source_column_id || null,
+        target_column_id: r.target_column_id || null,
         type: r.type || 'one-to-many',
         label: r.label || null
       }));

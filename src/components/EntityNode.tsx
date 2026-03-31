@@ -32,8 +32,22 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
         {data.columns.map((col) => (
           <div 
             key={col.id} 
-            className="group px-3 py-1.5 flex items-center justify-between hover:bg-bg-secondary rounded-md transition-colors"
+            className="group relative px-3 py-1.5 flex items-center justify-between hover:bg-bg-secondary rounded-md transition-colors"
           >
+            {/* Column Handles */}
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`${col.id}-target`}
+              className="!w-2.5 !h-2.5 !-left-1.5 !bg-accent-primary !border-2 !border-bg-primary hover:!scale-125 transition-transform"
+            />
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`${col.id}-source`}
+              className="!w-2.5 !h-2.5 !-right-1.5 !bg-accent-primary !border-2 !border-bg-primary hover:!scale-125 transition-transform"
+            />
+
             <div className="flex items-center gap-2">
               {col.is_pk ? (
                 <Key className="w-3 h-3 text-yellow-500" />
@@ -56,11 +70,9 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
         ))}
       </div>
 
-      {/* Handles */}
-      <Handle type="target" position={Position.Left} className="!bg-accent-primary" />
-      <Handle type="source" position={Position.Right} className="!bg-accent-primary" />
-      <Handle type="target" position={Position.Top} className="!bg-accent-primary" />
-      <Handle type="source" position={Position.Bottom} className="!bg-accent-primary" />
+      {/* General Node Handles */}
+      <Handle type="target" position={Position.Top} className="!w-3 !h-1 !rounded-none !bg-border" />
+      <Handle type="source" position={Position.Bottom} className="!w-3 !h-1 !rounded-none !bg-border" />
     </div>
   );
 };
