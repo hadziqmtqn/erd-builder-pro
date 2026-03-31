@@ -11,7 +11,10 @@ import {
   Edge, 
   Node,
   BackgroundVariant,
-  OnConnect
+  OnConnect,
+  Viewport,
+  useReactFlow,
+  ReactFlowProvider
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Plus, MousePointer2, Share2, Download, Database, Lock, User, Mail, Trash } from 'lucide-react';
@@ -147,6 +150,8 @@ export default function App() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const { setViewport } = useReactFlow();
 
   const checkAuth = useCallback(async () => {
     try {
@@ -290,6 +295,15 @@ export default function App() {
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedNodeId(null);
+
+      // Restore viewport
+      if (data.viewport_x !== undefined && data.viewport_y !== undefined && data.viewport_zoom) {
+        setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom }, { duration: 800 });
+        viewportRef.current = { x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom };
+      } else {
+        // Default view if no saved viewport
+        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 800 }), 100);
+      }
     } catch (err) {
     }
   };
@@ -366,7 +380,7 @@ export default function App() {
       const res = await fetch(`/api/save/${activeFileId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entities, relationships }),
+        body: JSON.stringify({ entities, relationships, viewport: viewportRef.current }),
       });
       if (res.status === 401) {
         setIsAuthenticated(false);
@@ -972,7 +986,16 @@ export default function App() {
                 nodeTypes={nodeTypes}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
                 onPaneClick={() => setSelectedNodeId(null)}
-                fitView
+                onMove={(_, viewport) => {
+                  viewportRef.current = viewport;
+                }}
+                onMoveEnd={(_, viewport) => {
+                  viewportRef.current = viewport;
+                  if (activeFileId && isAuthenticated && view === 'erd') {
+                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                    saveTimeoutRef.current = setTimeout(saveDiagram, 1000);
+                  }
+                }}
                 colorMode="dark"
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2d2d3d" />

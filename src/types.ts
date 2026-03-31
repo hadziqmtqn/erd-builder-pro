@@ -43,6 +43,9 @@ export interface FileData {
   updated_at: string;
   entities: Entity[];
   relationships: Relationship[];
+  viewport_x?: number;
+  viewport_y?: number;
+  viewport_zoom?: number;
 }
 
 export interface Note {

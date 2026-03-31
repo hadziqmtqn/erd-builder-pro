@@ -551,7 +551,7 @@ app.post("/api/upload", authenticate, upload.single("image"), async (req: any, r
 
 app.post("/api/save/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const fileId = req.params.id;
-  const { entities, relationships } = req.body;
+  const { entities, relationships, viewport } = req.body;
 
   try {
     // Clear existing data for this file
@@ -611,7 +611,12 @@ app.post("/api/save/:id", authenticate, async (req: ExpressRequest, res: Express
       await supabase.from("relationships").insert(relsToInsert);
     }
 
-    await supabase.from("files").update({ updated_at: new Date().toISOString() }).eq("id", fileId);
+    await supabase.from("files").update({ 
+      updated_at: new Date().toISOString(),
+      viewport_x: viewport?.x || 0,
+      viewport_y: viewport?.y || 0,
+      viewport_zoom: viewport?.zoom || 1.0
+    }).eq("id", fileId);
 
     res.json({ success: true });
   } catch (err: any) {
