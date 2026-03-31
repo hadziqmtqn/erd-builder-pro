@@ -7,11 +7,32 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import multer from "multer";
 import fs from "fs";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+// Cloudflare R2 Configuration
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "";
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
+
+// Initialize S3 client for Cloudflare R2
+let s3Client: S3Client | null = null;
+if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
+  s3Client = new S3Client({
+    region: "auto",
+    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: R2_ACCESS_KEY_ID,
+      secretAccessKey: R2_SECRET_ACCESS_KEY,
+    },
+  });
+}
 
 // Initialize Supabase only if credentials are provided
 let supabase: any = null;
@@ -488,36 +509,42 @@ app.delete("/api/drawings/:id/permanent", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-// Image Upload API
+// Image Upload API (Cloudflare R2)
 app.post("/api/upload", authenticate, upload.single("image"), async (req: any, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  if (!s3Client || !R2_BUCKET_NAME) {
+    return res.status(500).json({ 
+      error: "Cloudflare R2 is not configured. Please check your environment variables (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME)." 
+    });
   }
 
   try {
     const file = req.file;
     const fileExt = path.extname(file.originalname);
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "uploads";
 
-    const { data, error } = await supabase.storage
-      .from(bucketName)
-      .upload(fileName, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false
-      });
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: fileName,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    });
 
-    if (error) {
-      return res.status(500).json({ error: `Supabase storage error: ${error.message}` });
-    }
+    await s3Client.send(command);
 
-    const { data: { publicUrl } } = supabase.storage
-      .from(bucketName)
-      .getPublicUrl(fileName);
+    // Construct the public URL
+    // If R2_PUBLIC_URL is provided, use it. Otherwise, use the R2 endpoint (which might not be public)
+    const publicUrl = R2_PUBLIC_URL 
+      ? `${R2_PUBLIC_URL.replace(/\/$/, "")}/${fileName}`
+      : `https://${R2_BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${fileName}`;
 
     res.json({ url: publicUrl });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("Cloudflare R2 upload error:", err);
+    res.status(500).json({ error: `Cloudflare R2 storage error: ${err.message}` });
   }
 });
 
