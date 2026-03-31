@@ -1,5 +1,5 @@
 name = "erd-builder-pro"
-main = "api/index.ts"
+main = "api/worker.ts"
 compatibility_date = "2024-03-31"
 compatibility_flags = ["nodejs_compat"]
 

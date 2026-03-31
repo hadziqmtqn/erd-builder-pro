@@ -620,10 +620,9 @@ app.post("/api/save/:id", authenticate, async (req: ExpressRequest, res: Express
 // We use a more robust check to ensure this doesn't run on Vercel or in production
 const isVercel = !!process.env.VERCEL;
 const isProd = process.env.NODE_ENV === "production";
-const isCloudflare = !!process.env.CF_PAGES || !!process.env.CF_WORKER; // Use standard Cloudflare env vars
 
-// Serve static assets in production (non-Vercel, non-Cloudflare environments like local start or VPS)
-if (!isVercel && !isCloudflare && isProd) {
+// Serve static assets in production (non-Vercel environments like local start or VPS)
+if (!isVercel && isProd) {
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     console.log(`Serving static files from: ${distPath}`);
@@ -637,7 +636,7 @@ if (!isVercel && !isCloudflare && isProd) {
 }
 
 // Development server (Local dev only)
-if (!isProd && !isVercel && !isCloudflare) {
+if (!isProd && !isVercel) {
   const setupDev = async () => {
     try {
       const viteModule = "vite";
@@ -655,8 +654,8 @@ if (!isProd && !isVercel && !isCloudflare) {
     }
   };
   setupDev();
-} else if (!isVercel && !isCloudflare) {
-  // Production fallback for non-Vercel, non-Cloudflare environments (like local production test)
+} else if (!isVercel) {
+  // Production fallback for non-Vercel environments (like local production test)
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
@@ -669,20 +668,4 @@ if (!isProd && !isVercel && !isCloudflare) {
   }
 }
 
-// Cloudflare Worker Handler
-// This allows the Express app to run on Cloudflare Workers with nodejs_compat
-export default {
-  async fetch(request: Request, env: any, ctx: any) {
-    try {
-      // Lazy load the adapter to avoid issues with standard Node.js environments
-      const { createServerAdapter } = await import("@whatwg-node/server");
-      // @ts-ignore - Explicitly cast Express app to handle type compatibility with ServerAdapter
-      const adapter = createServerAdapter(app as any);
-      return adapter.handle(request, env, ctx);
-    } catch (err) {
-      // Fallback bridge for simple Express apps if adapter is not available
-      // In a real project, we would advise installing @whatwg-node/server
-      return new Response("Cloudflare Worker Adapter Error: Please ensure '@whatwg-node/server' is installed for Express support.", { status: 500 });
-    }
-  }
-};
+export default app;
