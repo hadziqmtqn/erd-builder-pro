@@ -1,20 +1,112 @@
+# 💎 ERD Builder Pro
+
+**ERD Builder Pro** is a modern, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures with ease.
+
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczMjWcORXpfpArtdJ8anFJAJirJuS80Y2NMQc8by44043eXIozfiK198SpFuxK9p_oKjwLvT5M8q-OifvIMqBBVuKOOMIW_fwb8fugWt1SWNvy0kIJxdDyWe2rpqXIaLlzctCdEvvuhV0mUX3-dNjWmm=w2966-h1882-s-no-gm?authuser=1" />
 </div>
 
-# Run and deploy your AI Studio app
+## 🚀 Key Features
 
-This contains everything you need to run your app locally.
+- **🎨 Multi-Mode Visual Editor**: 
+  - **ERD Builder**: Drag-and-drop entity relationship diagramming using a high-performance node system.
+  - **Excalidraw Integration**: Seamlessly switch to free-hand drawing for whiteboarding and brainstorming.
+  - **Markdown Notes**: Built-in editor to document requirements, constraints, and business logic alongside your diagrams.
+- **📁 Advanced Organization**:
+  - **Project Management**: Group related files, notes, and drawings into distinct projects.
+  - **Soft-Delete System**: Avoid data loss with a comprehensive "Trash" feature for all assets.
+- **🔐 Enterprise-Ready**:
+  - **Secure Authentication**: Built-in auth system with JWT and admin-only controls.
+  - **Real-Time Persistence**: Every change is automatically saved to the cloud, ensuring your work is never lost.
+- **🧠 AI Powered**: Leverages Google Gemini AI to assist in structural design and documentation.
 
-View your app in AI Studio: https://ai.studio/apps/33740ec4-defd-4f59-b3cd-7ecc707ac869
+## 🛠️ Tech Stack
 
-## Run Locally
+- **Frontend**: [React](https://reactjs.org/) + [Vite](https://vitejs.dev/) + [Tailwind CSS](https://tailwindcss.com/)
+- **Visuals**: [React Flow](https://reactflow.dev/) + [Excalidraw](https://excalidraw.com/)
+- **Backend**: [Express.js](https://expressjs.com/) with TypeScript (tsx)
+- **Database / Auth**: [Supabase](https://supabase.com/)
+- **Storage**: Cloudflare R2 (S3 Compatible)
+- **AI**: [Google Generative AI (Gemini)](https://ai.google.dev/)
 
-**Prerequisites:**  Node.js
+---
 
+## 🏗️ Getting Started
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Follow these steps to set up the project locally.
+
+### 📋 Prerequisites
+
+- **Node.js**: v18 or higher
+- **npm**: v9 or higher
+- **Supabase Account**: For database and authentication
+- **Cloudflare R2 (Optional)**: For drawings and file attachments
+
+### ⚙️ Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone <your-repository-url>
+   cd erd-builder-pro
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables**:
+   Create a `.env` file in the root directory (you can copy from `.env.example`):
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Update `.env` values**:
+   Fill in your specific keys:
+
+   | Variable | Description |
+   | :--- | :--- |
+   | `SUPABASE_URL` | Your Supabase project URL |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin tasks |
+   | `SUPABASE_STORAGE_BUCKET` | The bucket name for persistent data |
+   | `R2_ACCOUNT_ID` | Cloudflare account ID |
+   | `R2_ACCESS_KEY_ID` | R2 access key |
+   | `R2_SECRET_ACCESS_KEY` | R2 secret key |
+   | `R2_BUCKET_NAME` | S3-compatible bucket name |
+   | `R2_PUBLIC_URL` | Public URL for serving R2 assets |
+   | `JWT_SECRET` | Secret key for JWT token generation |
+   | `ADMIN_EMAIL` | Initial admin email for login |
+   | `ADMIN_PASSWORD` | Initial admin password |
+   | `PORT` | Backend server port (default: 3000) |
+
+5. **Run the Development Server**:
+   ```bash
+   npm run dev
+   ```
+
+   The application will be accessible at `http://localhost:3000`.
+
+### 📦 Build & Production
+
+To build the project for production:
+```bash
+npm run build
+```
+To start the production server:
+```bash
+npm run start
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">Made with ❤️ for Developers</p>
