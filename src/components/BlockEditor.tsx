@@ -89,6 +89,7 @@ const serializeBlocksToMarkdown = (blocks: Block[]): string => {
 export default function BlockEditor({ noteId, initialContent, onChange }: BlockEditorProps) {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [showMenu, setShowMenu] = useState<{ id: string, x: number, y: number } | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -102,6 +103,19 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
     setBlocks(newBlocks);
     onChange(serializeBlocksToMarkdown(newBlocks));
   };
+
+  const deleteSelectedBlocks = useCallback(() => {
+    if (selectedBlockIds.length === 0) return;
+    
+    // Don't delete if it would leave 0 blocks
+    if (selectedBlockIds.length === blocks.length) {
+      updateBlocks([{ id: generateId(), type: 'text', content: '' }]);
+    } else {
+      const newBlocks = blocks.filter(b => !selectedBlockIds.includes(b.id));
+      updateBlocks(newBlocks);
+    }
+    setSelectedBlockIds([]);
+  }, [blocks, selectedBlockIds]);
 
   const handleBlockChange = (id: string, content: string) => {
     const newBlocks = blocks.map(b => b.id === id ? { ...b, content } : b);
@@ -180,16 +194,49 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
           setFocusedBlockId(blocks[index - 1].id);
         }
       }
-    } else if (e.key === 'ArrowUp' && index > 0) {
-      const selection = window.getSelection();
-      if (selection && selection.anchorOffset === 0) {
-        setFocusedBlockId(blocks[index - 1].id);
-      }
     } else if (e.key === 'ArrowDown' && index < blocks.length - 1) {
       const selection = window.getSelection();
       const target = e.target as HTMLElement;
       if (selection && selection.anchorOffset === target.innerText.length) {
         setFocusedBlockId(blocks[index + 1].id);
+      }
+    } else if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      // Smart merging: if cursor is at the beginning of a block
+      if (selection && selection.anchorOffset === 0 && index > 0) {
+        const prevBlock = blocks[index - 1];
+        if (['text', 'h1', 'h2', 'h3', 'bullet', 'number', 'quote'].includes(prevBlock.type) && 
+            ['text', 'h1', 'h2', 'h3', 'bullet', 'number', 'quote'].includes(currentBlock.type)) {
+          e.preventDefault();
+          const newBlocks = [...blocks];
+          const combinedContent = prevBlock.content + currentBlock.content;
+          newBlocks[index - 1] = { ...prevBlock, content: combinedContent };
+          newBlocks.splice(index, 1);
+          updateBlocks(newBlocks);
+          setFocusedBlockId(prevBlock.id);
+          
+          // Use timeout to set cursor position after focus
+          setTimeout(() => {
+            const el = document.getElementById(`block-${prevBlock.id}`);
+            if (el) {
+              const range = document.createRange();
+              const sel = window.getSelection();
+              // Try to find the text node. If content was empty, it might be the element itself.
+              const targetNode = el.firstChild || el;
+              const offset = Math.min(prevBlock.content.length, targetNode.textContent?.length || 0);
+              range.setStart(targetNode, offset);
+              range.collapse(true);
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          }, 0);
+        } else if (currentBlock.content === '') {
+          // Fallback to simple delete if cannot merge
+          e.preventDefault();
+          const newBlocks = blocks.filter((_, i) => i !== index);
+          updateBlocks(newBlocks.length > 0 ? newBlocks : [{ id: generateId(), type: 'text', content: '' }]);
+          setFocusedBlockId(blocks[index - 1].id);
+        }
       }
     }
   };
@@ -205,6 +252,20 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
       });
     } else {
       setSelectionMenu(null);
+    }
+  };
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    // If the click is on the direct container (empty space at the bottom)
+    if (e.target === e.currentTarget) {
+      const lastBlock = blocks[blocks.length - 1];
+      if (!lastBlock || lastBlock.type !== 'text' || lastBlock.content.trim() !== '') {
+        const newBlock: Block = { id: generateId(), type: 'text', content: '' };
+        updateBlocks([...blocks, newBlock]);
+        setFocusedBlockId(newBlock.id);
+      } else {
+        setFocusedBlockId(lastBlock.id);
+      }
     }
   };
 
@@ -279,6 +340,35 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
   };
 
   useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Clear selection on Escape
+      if (e.key === 'Escape') {
+        setSelectedBlockIds([]);
+        return;
+      }
+
+      // Handle Cmd+A (Select All)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        // If an input or textarea is focused (like in a table), let default happen
+        const activeEl = document.activeElement;
+        if (activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA') {
+          return;
+        }
+
+        e.preventDefault();
+        setSelectedBlockIds(blocks.map(b => b.id));
+        setFocusedBlockId(null);
+        // Remove focus from any contentEditable to show global selection
+        if (activeEl instanceof HTMLElement) activeEl.blur();
+      }
+
+      // Handle Backspace/Delete for global selection
+      if (selectedBlockIds.length > 0 && (e.key === 'Backspace' || e.key === 'Delete')) {
+        e.preventDefault();
+        deleteSelectedBlocks();
+      }
+    };
+
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(null);
@@ -286,20 +376,37 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
       if (selectionMenuRef.current && !selectionMenuRef.current.contains(e.target as Node)) {
         setSelectionMenu(null);
       }
+      
+      // Clear selection if clicking outside blocks
+      const editorEl = document.getElementById('block-editor-content');
+      if (editorEl && !editorEl.contains(e.target as Node) && selectedBlockIds.length > 0) {
+        setSelectedBlockIds([]);
+      }
     };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [blocks, selectedBlockIds, deleteSelectedBlocks]);
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4 pb-[50vh] min-h-full" onMouseUp={handleMouseUp}>
+    <div 
+      id="block-editor-content"
+      className="max-w-4xl mx-auto py-12 px-4 pb-[50vh] min-h-full cursor-text" 
+      onMouseUp={handleMouseUp}
+      onClick={handleContainerClick}
+    >
       <Reorder.Group axis="y" values={blocks} onReorder={updateBlocks} className="space-y-1">
         {blocks.map((block, index) => (
           <Reorder.Item 
             key={block.id} 
             value={block}
             className={cn(
-              "group relative flex items-start gap-2 transition-all duration-200",
+              "group relative flex items-start gap-2 transition-all duration-200 rounded-lg pr-2",
+              selectedBlockIds.includes(block.id) && "bg-accent-primary/10 ring-1 ring-accent-primary/30",
               block.type === 'h1' && "mt-10 mb-4",
               block.type === 'h2' && "mt-8 mb-3",
               block.type === 'h3' && "mt-6 mb-2",
@@ -310,6 +417,14 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
               block.type === 'code' && "my-6",
               block.type === 'quote' && "my-6"
             )}
+            onClick={(e) => {
+              if (e.shiftKey) {
+                e.preventDefault();
+                setSelectedBlockIds(prev => prev.includes(block.id) ? prev.filter(id => id !== block.id) : [...prev, block.id]);
+              } else if (selectedBlockIds.length > 0) {
+                setSelectedBlockIds([]);
+              }
+            }}
             style={{ 
               paddingLeft: `${(block.level || 0) * 28 + (['bullet', 'number', 'todo'].includes(block.type) ? 24 : 0)}px` 
             }}
@@ -529,6 +644,16 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                                       if (e.key === 'Enter' && !e.shiftKey) {
                                         e.preventDefault();
                                         addTableRow(block.id);
+                                      } else if (e.key === 'ArrowDown' && rIdx === (block.tableData?.rows.length || 0) - 1) {
+                                        // If at last row and press down, focus next block if exists
+                                        if (index < blocks.length - 1) {
+                                          setFocusedBlockId(blocks[index + 1].id);
+                                        } else {
+                                          // Create new block if it's the last block
+                                          const newBlock: Block = { id: generateId(), type: 'text', content: '' };
+                                          updateBlocks([...blocks, newBlock]);
+                                          setFocusedBlockId(newBlock.id);
+                                        }
                                       }
                                     }}
                                     rows={cell.split('\n').length || 1}
@@ -572,6 +697,7 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                   onFocus={() => setFocusedBlockId(block.id)}
                   onInput={(e) => handleBlockChange(block.id, e.currentTarget.innerText)}
                   onKeyDown={(e) => handleKeyDown(e, index)}
+                  id={`block-${block.id}`}
                   ref={(el) => {
                     if (el && focusedBlockId === block.id && document.activeElement !== el) {
                       el.focus();
@@ -586,8 +712,10 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
                       el.innerText = block.content;
                     }
                   }}
+                  data-placeholder={block.content === '' ? (block.type === 'text' ? "Type '/' for commands..." : `Empty ${block.type} block`) : undefined}
                   className={cn(
-                    "flex-1 outline-none py-1.5 break-words min-h-[1.5rem] transition-all duration-200 text-[16px] leading-relaxed",
+                    "flex-1 outline-none py-1.5 break-words min-h-[1.5rem] transition-all duration-200 text-[16px] leading-relaxed relative",
+                    block.content === '' && "before:content-[attr(data-placeholder)] before:text-text-secondary/30 before:pointer-events-none before:absolute",
                     block.type === 'h1' && "text-4xl font-extrabold tracking-tight text-text-primary",
                     block.type === 'h2' && "text-3xl font-bold tracking-tight text-text-primary/90",
                     block.type === 'h3' && "text-2xl font-bold tracking-tight text-text-primary/80",
@@ -601,6 +729,26 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
           </Reorder.Item>
         ))}
       </Reorder.Group>
+
+      {/* Bottom helper */}
+      <div 
+        className="group/bottom mt-8 py-4 px-8 cursor-text flex items-center gap-3 opacity-0 hover:opacity-60 transition-all duration-300 rounded-xl hover:bg-bg-tertiary/20"
+        onClick={() => {
+          const lastBlock = blocks[blocks.length - 1];
+          if (!lastBlock || lastBlock.type !== 'text' || lastBlock.content.trim() !== '') {
+            const newBlock: Block = { id: generateId(), type: 'text', content: '' };
+            updateBlocks([...blocks, newBlock]);
+            setFocusedBlockId(newBlock.id);
+          } else {
+            setFocusedBlockId(lastBlock.id);
+          }
+        }}
+      >
+        <div className="p-1 rounded-md bg-accent-primary/10 text-accent-primary opacity-0 group-hover/bottom:opacity-100 transition-opacity">
+          <Plus size={14} />
+        </div>
+        <span className="text-sm text-text-secondary italic">Type '/' for commands or click to add a block...</span>
+      </div>
 
       {/* Floating Menu (Turn into...) */}
       <AnimatePresence>
