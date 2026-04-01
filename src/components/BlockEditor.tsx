@@ -126,11 +126,12 @@ const highlightCode = (code: string, lang: string = 'sql') => {
   return result;
 };
 
-const CodeEditor = ({ value, language, onChange, onKeyDown, isFocused }: { 
+const CodeEditor = ({ value, language, onChange, onKeyDown, onFocus, isFocused }: { 
   value: string, 
   language: string, 
   onChange: (val: string) => void,
   onKeyDown: (e: React.KeyboardEvent) => void,
+  onFocus: () => void,
   isFocused: boolean
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,6 +161,7 @@ const CodeEditor = ({ value, language, onChange, onKeyDown, isFocused }: {
           onChange={(e) => onChange(e.target.value)}
           onScroll={syncScroll}
           onKeyDown={onKeyDown}
+          onFocus={onFocus}
           autoFocus={isFocused}
           className="absolute inset-0 w-full h-full p-6 bg-transparent text-transparent caret-white outline-none resize-none z-10 whitespace-pre overflow-auto font-mono scrollbar-hide leading-[1.5em]"
           spellCheck={false}
@@ -405,6 +407,14 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
 
   const handleMouseUp = () => {
     const selection = window.getSelection();
+    const activeEl = document.activeElement;
+    
+    // Suppress floating toolbar for input/textarea selections
+    if (activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA') {
+      setSelectionMenu(null);
+      return;
+    }
+
     if (selection && selection.toString().length > 0) {
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
@@ -803,6 +813,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
                                       const newBlocks = blocks.map(b => b.id === block.id ? { ...b, tableData: { ...b.tableData!, rows: newRows } } : b);
                                       updateBlocks(newBlocks);
                                     }}
+                                    onFocus={() => setFocusedBlockId(block.id)}
                                     id={`cell-${block.id}-${rIdx}-${cIdx}`}
                                     rows={cell.split('\n').length || 1}
                                     data-is-table-cell="true"
@@ -870,6 +881,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
                     language={block.language || 'sql'}
                     onChange={(val) => handleBlockChange(block.id, val)}
                     onKeyDown={(e) => handleKeyDown(e, index)}
+                    onFocus={() => setFocusedBlockId(block.id)}
                     isFocused={focusedBlockId === block.id}
                   />
                 </div>
