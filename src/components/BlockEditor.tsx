@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, Reorder, AnimatePresence } from 'motion/react';
+import { motion, Reorder, AnimatePresence } from 'framer-motion';
 import { 
   GripVertical, Plus, Trash2, CheckSquare, Square, 
   Type, Heading1, Heading2, Heading3, List, ListOrdered, 
@@ -965,6 +965,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
       <AnimatePresence>
         {showMenu && (
           <motion.div
+            key="floating-menu"
             ref={menuRef}
             initial={{ opacity: 0, scale: 0.95, y: -10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1006,7 +1007,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
       {/* Selection Floating Toolbar */}
       <AnimatePresence>
         {selectionMenu && (
-          <div className="relative">
+          <motion.div key="selection-menu-container" className="relative">
             <motion.div
               ref={selectionMenuRef}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -1143,7 +1144,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
                 </div>
               </motion.div>
             )}
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

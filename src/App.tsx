@@ -19,7 +19,7 @@ import {
   getViewportForBounds
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown, Database, Lock, User, Mail, Trash } from 'lucide-react';
+import { Plus, Download, ChevronDown, Database, Lock, User, Mail, Trash, StickyNote } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
@@ -27,7 +27,24 @@ import NotesEditor from './components/NotesEditor';
 import ExcalidrawEditor from './components/ExcalidrawEditor';
 import { FileData, Entity, Relationship, Project, Note, Drawing } from './types';
 import { cn } from './lib/utils';
-import { PenTool } from 'lucide-react';
+import { PenTool, LogOut, Settings, Menu, X } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+  DropdownMenuGroup
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nodeTypes = {
   entity: EntityNode,
@@ -60,69 +77,75 @@ function Login({ onLogin }: { onLogin: () => void }) {
       });
       if (res.ok) {
         onLogin();
+        toast.success("Welcome back!");
       } else {
         const data = await res.json();
+        toast.error(data.error || "Login failed");
       }
     } catch (err) {
       console.error('Login error:', err);
+      toast.error("An unexpected error occurred");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-bg-primary flex items-center justify-center p-4">
-      <div className="w-full max-w-md glass-panel rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-accent-primary flex items-center justify-center mb-4 shadow-xl shadow-accent-primary/20">
-            <Database className="w-10 h-10 text-white" />
+    <div className="min-h-screen w-full bg-background flex items-center justify-center p-4">
+      <Card className="w-full max-w-md border-border/50 shadow-2xl animate-in fade-in zoom-in duration-300">
+        <CardHeader className="flex flex-col items-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-xl shadow-primary/20">
+            <Database className="w-10 h-10 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">ERD Builder Pro</h1>
-          <p className="text-text-secondary text-sm">Please sign in to continue</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary ml-1">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={adminEmail}
-                className="w-full bg-bg-tertiary border border-border rounded-2xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/50 transition-all"
-              />
+          <div className="text-center">
+            <CardTitle className="text-2xl font-bold tracking-tight">ERD Builder Pro</CardTitle>
+            <CardDescription>Please sign in to continue</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={adminEmail}
+                  className="pl-10"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-text-secondary ml-1">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-bg-tertiary border border-border rounded-2xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary/50 transition-all"
-              />
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="pl-10"
+                />
+              </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white font-bold py-4 rounded-2xl shadow-lg shadow-accent-primary/20 transition-all active:scale-[0.98]"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        {/* Removed hints for production feel */}
-      </div>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full font-bold h-12"
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -155,7 +178,15 @@ export default function App() {
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
   const { setViewport, fitView, getNodes } = useReactFlow();
+
+  useEffect(() => {
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -988,8 +1019,8 @@ export default function App() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="h-screen w-screen bg-bg-primary flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen w-screen bg-background flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -1002,174 +1033,223 @@ export default function App() {
   const activeNote = notes.find(n => n.id === activeNoteId);
   const activeDrawing = drawings.find(d => d.id === activeDrawingId);
 
-  return (
-    <div className="flex h-screen w-screen bg-bg-primary overflow-hidden">
-      <Sidebar 
-        files={files}
-        notes={notes}
-        drawings={drawings}
-        projects={projects}
-        trashData={trashData}
-        activeFileId={activeFileId}
-        activeNoteId={activeNoteId}
-        activeDrawingId={activeDrawingId}
-        activeProjectId={activeProjectId}
-        view={view}
-        onViewChange={setView}
-        onFileSelect={handleFileSelect}
-        onNoteSelect={handleNoteSelect}
-        onDrawingSelect={handleDrawingSelect}
-        onProjectSelect={setActiveProjectId}
-        onFileCreate={createFile}
-        onNoteCreate={createNote}
-        onDrawingCreate={createDrawing}
-        onProjectCreate={createProject}
-        onProjectUpdate={updateProject}
-        onProjectDelete={deleteProject}
-        onProjectRestore={restoreProject}
-        onFileUpdate={updateFile}
-        onNoteUpdate={updateNote}
-        onDrawingUpdate={updateDrawing}
-        onFileDelete={deleteFile}
-        onNoteDelete={deleteNote}
-        onDrawingDelete={deleteDrawing}
-        onFileRestore={restoreFile}
-        onNoteRestore={restoreNote}
-        onDrawingRestore={restoreDrawing}
-        onFilePermanentDelete={deleteFilePermanent}
-        onNotePermanentDelete={deleteNotePermanent}
-        onDrawingPermanentDelete={deleteDrawingPermanent}
-        onProjectPermanentDelete={deleteProjectPermanent}
-        onLogout={handleLogout}
-        saveStatus={saveStatus}
-        onMoveFileToProject={moveFileToProject}
-        onMoveNoteToProject={moveNoteToProject}
-        onMoveDrawingToProject={moveDrawingToProject}
-      />
+  const sidebarProps = {
+    files,
+    notes,
+    drawings,
+    projects,
+    trashData,
+    activeFileId,
+    activeNoteId,
+    activeDrawingId,
+    activeProjectId,
+    view,
+    onViewChange: setView,
+    onFileSelect: handleFileSelect,
+    onNoteSelect: handleNoteSelect,
+    onDrawingSelect: handleDrawingSelect,
+    onProjectSelect: setActiveProjectId,
+    onFileCreate: createFile,
+    onNoteCreate: createNote,
+    onDrawingCreate: createDrawing,
+    onProjectCreate: createProject,
+    onProjectUpdate: updateProject,
+    onProjectDelete: deleteProject,
+    onProjectRestore: restoreProject,
+    onFileUpdate: updateFile,
+    onNoteUpdate: updateNote,
+    onDrawingUpdate: updateDrawing,
+    onFileDelete: deleteFile,
+    onNoteDelete: deleteNote,
+    onDrawingDelete: deleteDrawing,
+    onFileRestore: restoreFile,
+    onNoteRestore: restoreNote,
+    onDrawingRestore: restoreDrawing,
+    onFilePermanentDelete: deleteFilePermanent,
+    onNotePermanentDelete: deleteNotePermanent,
+    onDrawingPermanentDelete: deleteDrawingPermanent,
+    onProjectPermanentDelete: deleteProjectPermanent,
+    onLogout: handleLogout,
+    saveStatus,
+    onMoveFileToProject: moveFileToProject,
+    onMoveNoteToProject: moveNoteToProject,
+    onMoveDrawingToProject: moveDrawingToProject,
+  };
 
-      <main className="flex-1 relative flex flex-col overflow-hidden">
-        {view === 'erd' && activeFileId && (
-          <>
-            {/* Toolbar */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 p-1.5 glass-panel rounded-2xl shadow-2xl">
-              <button 
-                onClick={addEntity}
-                className="flex items-center gap-2 px-4 py-2 bg-accent-primary hover:bg-accent-secondary text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-accent-primary/20"
-              >
-                <Plus className="w-4 h-4" />
-                Add Table
-              </button>
-              <div className="w-px h-6 bg-border mx-1" />
-              <div className="relative" ref={exportDropdownRef}>
-                <button 
-                  onClick={() => setShowExportDropdown(!showExportDropdown)}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
-                    showExportDropdown 
-                      ? "bg-bg-tertiary text-accent-primary" 
-                      : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
-                  )}
-                  title="Export Options"
-                >
-                  <Download className="w-4 h-4" />
-                  Export
-                  <ChevronDown className={cn("w-3 h-3 transition-transform", showExportDropdown && "rotate-180")} />
-                </button>
-                
-                {showExportDropdown && (
-                  <div className="absolute top-full mt-2 right-0 w-48 py-2 glass-panel rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right overflow-hidden">
-                    <button 
-                      onClick={() => handleExportSQL('postgresql')}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary transition-all"
-                    >
-                      <Database size={14} className="text-blue-400" />
-                      To PostgreSQL
-                    </button>
-                    <button 
-                      onClick={() => handleExportSQL('mysql')}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary transition-all"
-                    >
-                      <Database size={14} className="text-orange-400" />
-                      To MySQL
-                    </button>
-                  </div>
-                )}
+  return (
+    <div className="flex h-screen w-screen bg-background overflow-hidden">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block">
+        <Sidebar {...sidebarProps} />
+      </div>
+
+      <div className="flex-1 relative flex overflow-hidden">
+        <main className="flex-1 relative flex flex-col overflow-hidden">
+          {/* Header */}
+          <header className="flex items-center justify-between px-4 lg:pl-16 h-14 border-b border-border bg-background/80 backdrop-blur-md z-20">
+            <div className="flex items-center gap-2">
+              <Sheet>
+                <SheetTrigger
+                  render={
+                    <Button variant="ghost" size="icon" className="md:hidden">
+                      <Menu className="w-5 h-5" />
+                    </Button>
+                  }
+                />
+                <SheetContent side="left" className="p-0 w-80 border-r-border/50">
+                  <Sidebar {...sidebarProps} />
+                </SheetContent>
+              </Sheet>
+              <div className="flex items-center gap-2">
+                {view === 'erd' && <Database className="w-5 h-5 text-primary" />}
+                {view === 'notes' && <StickyNote className="w-5 h-5 text-primary" />}
+                {view === 'drawings' && <PenTool className="w-5 h-5 text-primary" />}
+                <span className="font-bold text-sm tracking-tight">
+                  {view === 'erd' ? (files.find(f => f.id === activeFileId)?.name || 'ERD Pro') : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : 'ERD Pro'}
+                </span>
               </div>
             </div>
-
-            {/* Canvas */}
-            <div className="flex-1">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                nodeTypes={nodeTypes}
-                onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                onPaneClick={() => setSelectedNodeId(null)}
-                onMove={(_, viewport) => {
-                  viewportRef.current = viewport;
-                }}
-                onMoveEnd={(_, viewport) => {
-                  viewportRef.current = viewport;
-                  if (activeFileId && isAuthenticated && view === 'erd') {
-                    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                    saveTimeoutRef.current = setTimeout(saveDiagram, 1000);
-                  }
-                }}
-                colorMode="dark"
-              >
-                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2d2d3d" />
-                <Controls position="bottom-right" showInteractive={false} />
-              </ReactFlow>
+            <div className="flex items-center gap-2">
+              {saveStatus === 'saving' && <span className="text-[10px] text-muted-foreground animate-pulse">Saving...</span>}
+              {saveStatus === 'saved' && <span className="text-[10px] text-primary">Saved</span>}
             </div>
-          </>
-        )}
+          </header>
 
-        {view === 'notes' && activeNote && (
-          <NotesEditor 
-            note={activeNote} 
-            onSave={saveNote} 
-            onChange={handleNoteChange}
-            onDelete={deleteNote} 
-          />
-        )}
+          {view === 'erd' && activeFileId && (
+            <div className="flex-1 relative flex flex-col overflow-hidden">
+              {/* Toolbar - Positioned relative to the ERD workspace container */}
+              <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
+                <div className="flex items-center gap-2 p-1.5 bg-background/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
+                  <Button 
+                    onClick={addEntity}
+                    size="sm"
+                    className="h-9 px-4 font-bold shadow-lg shadow-primary/20"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Add Table</span>
+                    <span className="sm:hidden">Table</span>
+                  </Button>
+                
+                  <div className="w-px h-6 bg-border mx-1" />
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="ghost" size="sm" className="h-9 px-4 font-bold text-muted-foreground hover:text-foreground">
+                          <Download className="w-4 h-4 mr-2" />
+                          Export
+                          <ChevronDown className="w-3 h-3 ml-1 transition-transform" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end" className="w-48 p-1">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => handleExportSQL('postgresql')}
+                          className="flex items-center gap-3 px-3 py-2 text-xs font-semibold"
+                        >
+                          <Database size={14} className="text-blue-400" />
+                          To PostgreSQL
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleExportSQL('mysql')}
+                          className="flex items-center gap-3 px-3 py-2 text-xs font-semibold"
+                        >
+                          <Database size={14} className="text-orange-400" />
+                          To MySQL
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
 
-        {view === 'drawings' && activeDrawing && (
-          <ExcalidrawEditor
-            key={activeDrawingId}
-            drawing={activeDrawing}
-            onSave={saveDrawing}
-            onChange={handleDrawingChange}
-            onDelete={deleteDrawing}
-          />
-        )}
+              {/* Canvas */}
+              <div className="flex-1">
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  nodeTypes={nodeTypes}
+                  onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+                  onPaneClick={() => setSelectedNodeId(null)}
+                  onMove={(_, viewport) => {
+                    viewportRef.current = viewport;
+                  }}
+                  onMoveEnd={(_, viewport) => {
+                    viewportRef.current = viewport;
+                    if (activeFileId && isAuthenticated && view === 'erd') {
+                      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                      saveTimeoutRef.current = setTimeout(saveDiagram, 1000);
+                    }
+                  }}
+                  colorMode="dark"
+                >
+                  <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+                  <Controls position="bottom-right" showInteractive={false} />
+                </ReactFlow>
+              </div>
+            </div>
+          )}
 
-        {view === 'trash' && (
-          <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
-            <Trash size={48} className="mb-4 opacity-20" />
-            <h2 className="text-xl font-bold mb-2">Trash Bin</h2>
-            <p className="text-sm">Select an item from the sidebar to restore it.</p>
-          </div>
-        )}
+          {view === 'notes' && activeNote && (
+            <NotesEditor 
+              note={activeNote} 
+              onSave={saveNote} 
+              onChange={handleNoteChange}
+              onDelete={deleteNote} 
+            />
+          )}
 
-        {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId) || (view === 'drawings' && !activeDrawingId)) && (
-          <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
-            <Database size={48} className="mb-4 opacity-20" />
-            <h2 className="text-xl font-bold mb-2">Select or Create a {view === 'erd' ? 'Diagram' : view === 'notes' ? 'Note' : 'Drawing'}</h2>
-            <p className="text-sm">Use the sidebar to manage your projects and files.</p>
-          </div>
-        )}
-      </main>
+          {view === 'drawings' && activeDrawing && (
+            <ExcalidrawEditor
+              key={activeDrawingId}
+              drawing={activeDrawing}
+              onSave={saveDrawing}
+              onChange={handleDrawingChange}
+              onDelete={deleteDrawing}
+            />
+          )}
 
-      {view === 'erd' && (
-        <PropertiesPanel 
-          selectedEntity={selectedEntity}
-          onUpdateEntity={updateEntity}
-          onDeleteEntity={deleteEntity}
-        />
-      )}
+          {view === 'trash' && (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+              <Trash size={48} className="mb-4 opacity-20" />
+              <h2 className="text-xl font-bold mb-2">Trash Bin</h2>
+              <p className="text-sm">Select an item from the sidebar to restore it.</p>
+            </div>
+          )}
+
+          {!activeFileId && !activeNoteId && !activeDrawingId && view !== 'trash' && (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+              <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-6">
+                <Database size={40} className="opacity-20" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Welcome to ERD Builder Pro</h2>
+              <p className="max-w-md text-sm leading-relaxed">
+                Select a project or file from the sidebar to start designing your database schema, taking notes, or sketching ideas.
+              </p>
+            </div>
+          )}
+
+          {/* The toolbar has been moved inside the ERD view container */}
+        </main>
+
+        {/* Properties Panel - Modal */}
+        <Dialog open={!!selectedNodeId} onOpenChange={(open) => !open && setSelectedNodeId(null)}>
+          <DialogContent showCloseButton={false} className="p-0 sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl">
+            <PropertiesPanel 
+              selectedEntity={selectedEntity} 
+              onUpdateEntity={updateEntity}
+              onDeleteEntity={deleteEntity}
+              onClose={() => setSelectedNodeId(null)}
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

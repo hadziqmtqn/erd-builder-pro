@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
-import { Save, Trash2 } from 'lucide-react';
 import { Drawing } from '../types';
-import ConfirmModal from './ConfirmModal';
 
 interface ExcalidrawEditorProps {
   drawing: Drawing;
@@ -12,9 +10,7 @@ interface ExcalidrawEditorProps {
 }
 
 export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }: ExcalidrawEditorProps) {
-  const [title, setTitle] = useState(drawing.title);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const lastDataRef = useRef(drawing.data);
   const isReady = useRef(false);
   const drawingRef = useRef(drawing);
@@ -43,7 +39,6 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
-    setTitle(drawing.title);
     
     // Reset ready state on mount
     isReady.current = false;
@@ -124,52 +119,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
   }), []);
 
   return (
-    <div className="flex flex-col h-full bg-bg-primary text-text-primary overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-bg-secondary/50 backdrop-blur-sm z-20">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => onSave({ ...drawing, title })}
-          className="text-xl font-bold bg-transparent border-none focus:outline-none w-full text-text-primary placeholder-text-secondary"
-          placeholder="Drawing Title"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (excalidrawAPI) {
-                const elements = excalidrawAPI.getSceneElements();
-                const appState = excalidrawAPI.getAppState();
-                const files = excalidrawAPI.getFiles();
-                onSave({ ...drawing, title, data: JSON.stringify({ elements, appState, files }) });
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold bg-accent-primary hover:bg-accent-secondary text-white rounded-xl transition-all shadow-lg shadow-accent-primary/20"
-          >
-            <Save size={14} />
-            Save
-          </button>
-          <button
-            onClick={() => setIsConfirmOpen(true)}
-            className="p-2 text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
-
-      <ConfirmModal
-        isOpen={isConfirmOpen}
-        title="Delete Drawing"
-        message={`Are you sure you want to move "${drawing.title}" to the trash?`}
-        onConfirm={() => {
-          onDelete(drawing.id);
-          setIsConfirmOpen(false);
-        }}
-        onCancel={() => setIsConfirmOpen(false)}
-      />
-
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* Excalidraw Area */}
       <div className="flex-1 relative">
         <Excalidraw

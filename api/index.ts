@@ -24,14 +24,24 @@ const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 // Initialize S3 client for Cloudflare R2
 let s3Client: S3Client | null = null;
 if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
+  // Clean up R2_ACCOUNT_ID in case it's a full URL
+  const accountId = R2_ACCOUNT_ID.includes(".r2.cloudflarestorage.com") 
+    ? R2_ACCOUNT_ID.split(".")[0].replace("https://", "")
+    : R2_ACCOUNT_ID;
+
   s3Client = new S3Client({
     region: "auto",
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: R2_SECRET_ACCESS_KEY,
     },
+    // R2 works with both, but virtual-hosted style is often preferred for SSL
+    forcePathStyle: false, 
   });
+  console.log(`Cloudflare R2 client initialized for account: ${accountId}`);
+} else {
+  console.warn("Cloudflare R2 configuration is incomplete. Uploads will fail.");
 }
 
 // Initialize Supabase only if credentials are provided
@@ -148,14 +158,16 @@ app.get("/api/files", authenticate, async (req: ExpressRequest, res: ExpressResp
     .from("files")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
   if (error) {
     console.error("Supabase error fetching files:", error);
     return res.status(500).json({ error: error.message });
   }
-  res.json(data);
+  
+  // Filter out files from deleted projects in JS to avoid PostgREST join filter issues
+  const filteredData = (data || []).filter((file: any) => !file.projects || !file.projects.is_deleted);
+  res.json(filteredData);
 });
 
 app.post("/api/files", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
@@ -347,14 +359,15 @@ app.get("/api/notes", authenticate, async (req: ExpressRequest, res: ExpressResp
     .from("notes")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
   if (error) {
     console.error("Supabase error fetching notes:", error);
     return res.status(500).json({ error: error.message });
   }
-  res.json(data);
+  
+  const filteredData = (data || []).filter((note: any) => !note.projects || !note.projects.is_deleted);
+  res.json(filteredData);
 });
 
 app.post("/api/notes", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
@@ -436,14 +449,15 @@ app.get("/api/drawings", authenticate, async (req: ExpressRequest, res: ExpressR
     .from("drawings")
     .select("*, projects!left(*)")
     .eq("is_deleted", false)
-    .not("projects.is_deleted", "is", true)
     .order("updated_at", { ascending: false });
 
   if (error) {
     console.error("Supabase error fetching drawings:", error);
     return res.status(500).json({ error: error.message });
   }
-  res.json(data);
+  
+  const filteredData = (data || []).filter((drawing: any) => !drawing.projects || !drawing.projects.is_deleted);
+  res.json(filteredData);
 });
 
 app.post("/api/drawings", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
@@ -508,6 +522,51 @@ app.delete("/api/drawings/:id/permanent", authenticate, async (req: ExpressReque
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+// Test R2 Configuration
+app.get("/api/test-r2", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!s3Client || !R2_BUCKET_NAME) {
+    return res.status(500).json({ 
+      error: "Cloudflare R2 is not configured correctly.",
+      config: {
+        accountId: !!R2_ACCOUNT_ID,
+        accessKeyId: !!R2_ACCESS_KEY_ID,
+        secretAccessKey: !!R2_SECRET_ACCESS_KEY,
+        bucketName: !!R2_BUCKET_NAME
+      }
+    });
+  }
+  
+  try {
+    // Try to perform a very small operation to verify connection
+    // We'll try to put a tiny test file
+    const testKey = `test-connection-${Date.now()}.txt`;
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: testKey,
+      Body: "Connection test",
+      ContentType: "text/plain",
+    });
+
+    await s3Client.send(command);
+    
+    res.json({ 
+      success: true, 
+      message: "Successfully connected to Cloudflare R2 and performed a test upload.",
+      bucket: R2_BUCKET_NAME,
+      testFile: testKey,
+      publicUrl: R2_PUBLIC_URL || "Not configured"
+    });
+  } catch (err: any) {
+    console.error("R2 Test Error:", err);
+    res.status(500).json({ 
+      error: `R2 Connection Error: ${err.message}`,
+      code: err.code,
+      name: err.name,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
 });
 
 // Image Upload API (Cloudflare R2)
