@@ -134,3 +134,9 @@
     border-color: #cbd5e1 !important;
   }
 }
+
+/* Inline Code Badge Styling */
+code:not(pre code) {
+  @apply bg-bg-tertiary text-accent-secondary px-1.5 py-0.5 rounded-md font-mono text-[0.85em] border border-border/50;
+  vertical-align: baseline;
+}

@@ -4,9 +4,9 @@ import {
   GripVertical, Plus, Trash2, CheckSquare, Square, 
   Type, Heading1, Heading2, Heading3, List, ListOrdered, 
   Quote, Code, MoreVertical, ChevronUp, ChevronDown,
-  Sparkles, Bold, Italic, Link as LinkIcon, Underline,
-  Image as ImageIcon, Upload, X, Table as TableIcon,
-  PlusCircle, MinusCircle
+  Sparkles, Bold, Italic, Link as LinkIcon, Underline, Strikethrough,
+  Image as ImageIcon, Upload, X, Table as TableIcon, Palette,
+  PlusCircle, MinusCircle, Sigma
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -242,9 +242,12 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [showMenu, setShowMenu] = useState<{ id: string, x: number, y: number } | null>(null);
-  const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number } | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, isCode: boolean } | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [lastUsedColor, setLastUsedColor] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const selectionMenuRef = useRef<HTMLDivElement>(null);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setBlocks(parseMarkdownToBlocks(initialContent));
@@ -418,9 +421,14 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
     if (selection && selection.toString().length > 0) {
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
+      const codeElement = range.commonAncestorContainer.nodeType === 3 
+        ? range.commonAncestorContainer.parentElement?.closest('code') 
+        : (range.commonAncestorContainer as HTMLElement).closest('code');
+
       setSelectionMenu({
         x: rect.left + rect.width / 2,
-        y: rect.top < 60 ? rect.bottom + 10 : rect.top - 40
+        y: rect.top < 60 ? rect.bottom + 10 : rect.top - 40,
+        isCode: !!codeElement
       });
     } else {
       setSelectionMenu(null);
@@ -441,9 +449,14 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
     }
   };
 
-  const formatText = (command: string) => {
-    document.execCommand(command, false);
-    setSelectionMenu(null);
+  const formatText = (command: string, value?: any) => {
+    // Ensure we keep the selection active
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    
+    document.execCommand(command, false, value);
+    // After applying format, we might want to keep the toolbar open for more changes,
+    // but typically formatting should be immediate.
   };
 
   const changeBlockType = (id: string, type: BlockType) => {
@@ -546,8 +559,12 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(null);
       }
-      if (selectionMenuRef.current && !selectionMenuRef.current.contains(e.target as Node)) {
+      if (selectionMenuRef.current && !selectionMenuRef.current.contains(e.target as Node) && !colorPickerRef.current?.contains(e.target as Node)) {
         setSelectionMenu(null);
+        setShowColorPicker(false);
+      }
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node) && !(e.target as HTMLElement).closest('#palette-button')) {
+        setShowColorPicker(false);
       }
       
       // Clear selection if clicking outside blocks
@@ -890,7 +907,7 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
                   contentEditable
                   suppressContentEditableWarning
                   onFocus={() => setFocusedBlockId(block.id)}
-                  onInput={(e) => handleBlockChange(block.id, e.currentTarget.innerText)}
+                  onInput={(e) => handleBlockChange(block.id, e.currentTarget.innerHTML)}
                   onKeyDown={(e) => handleKeyDown(e, index)}
                   id={`block-${block.id}`}
                   ref={(el) => {
@@ -904,13 +921,13 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
                       sel?.addRange(range);
                     }
                     if (el && document.activeElement !== el) {
-                      el.innerText = block.content;
+                      el.innerHTML = block.content;
                     }
                   }}
                   data-placeholder={block.content === '' ? (block.type === 'text' ? "Type '/' for commands..." : `Empty ${block.type} block`) : undefined}
                   className={cn(
                     "flex-1 outline-none py-1.5 break-words min-h-[1.5rem] transition-all duration-200 text-[16px] leading-relaxed relative",
-                    block.content === '' && "before:content-[attr(data-placeholder)] before:text-text-secondary/30 before:pointer-events-none before:absolute",
+                    (block.content === '' || block.content === '<br>') && "before:content-[attr(data-placeholder)] before:text-text-secondary/30 before:pointer-events-none before:absolute",
                     block.type === 'h1' && "text-4xl font-extrabold tracking-tight text-text-primary",
                     block.type === 'h2' && "text-3xl font-bold tracking-tight text-text-primary/90",
                     block.type === 'h3' && "text-2xl font-bold tracking-tight text-text-primary/80",
@@ -989,26 +1006,144 @@ export default function BlockEditor({ noteId, initialContent, onChange, feature 
       {/* Selection Floating Toolbar */}
       <AnimatePresence>
         {selectionMenu && (
-          <motion.div
-            ref={selectionMenuRef}
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            style={{ 
-              position: 'fixed', 
-              left: selectionMenu.x, 
-              top: selectionMenu.y, 
-              transform: 'translateX(-50%)',
-              zIndex: 100 
-            }}
-            className="flex items-center gap-1 bg-bg-secondary border border-border rounded-lg p-1 shadow-2xl backdrop-blur-md"
-          >
-            <ToolbarButton icon={Bold} label="Bold" onClick={() => formatText('bold')} />
-            <ToolbarButton icon={Italic} label="Italic" onClick={() => formatText('italic')} />
-            <ToolbarButton icon={Underline} label="Underline" onClick={() => formatText('underline')} />
-            <div className="w-px h-4 bg-border mx-1" />
-            <ToolbarButton icon={LinkIcon} label="Link" onClick={() => formatText('createLink')} />
-          </motion.div>
+          <div className="relative">
+            <motion.div
+              ref={selectionMenuRef}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              style={{ 
+                position: 'fixed', 
+                left: selectionMenu.x, 
+                top: selectionMenu.y, 
+                transform: 'translateX(-50%)',
+                zIndex: 100 
+              }}
+              className="flex items-center gap-0.5 bg-bg-secondary border border-border rounded-xl p-1 shadow-2xl backdrop-blur-md"
+            >
+              <ToolbarButton icon={Bold} label="Bold" onClick={() => formatText('bold')} />
+              <ToolbarButton icon={Italic} label="Italic" onClick={() => formatText('italic')} />
+              <ToolbarButton icon={Underline} label="Underline" onClick={() => formatText('underline')} />
+              <ToolbarButton icon={Strikethrough} label="Strikethrough" onClick={() => formatText('strikeThrough')} />
+              
+              <div className="w-px h-4 bg-border mx-1" />
+              
+              <ToolbarButton icon={LinkIcon} label="Link" onClick={() => formatText('createLink')} />
+              <ToolbarButton 
+                icon={Code} 
+                label="Inline Code" 
+                active={selectionMenu.isCode}
+                onClick={() => {
+                  const selection = window.getSelection();
+                  if (!selection || selection.rangeCount === 0) return;
+                  const range = selection.getRangeAt(0);
+                  const container = range.commonAncestorContainer;
+                  const codeElement = container.nodeType === 3 ? container.parentElement?.closest('code') : (container as HTMLElement).closest('code');
+
+                  if (codeElement) {
+                    // Unwrap: replace code element with its text content
+                    const text = codeElement.innerHTML;
+                    codeElement.outerHTML = text;
+                    setSelectionMenu({ ...selectionMenu, isCode: false });
+                  } else {
+                    // Wrap: surround selection with code tag
+                    const text = selection.toString();
+                    if (text.length > 0) {
+                      formatText('insertHTML', `<code>${text}</code>`);
+                      setSelectionMenu({ ...selectionMenu, isCode: true });
+                    }
+                  }
+                }} 
+              />
+              <ToolbarButton icon={Sigma} label="Equation" onClick={() => {}} />
+              
+              <div className="w-px h-4 bg-border mx-1" />
+              
+              <ToolbarButton 
+                id="palette-button"
+                icon={Palette} 
+                label="Color" 
+                onClick={() => setShowColorPicker(!showColorPicker)} 
+                active={showColorPicker}
+              />
+            </motion.div>
+
+            {showColorPicker && (
+              <motion.div
+                ref={colorPickerRef}
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                style={{ 
+                  position: 'fixed', 
+                  left: selectionMenu.x, 
+                  top: selectionMenu.y - 120, // Offset above the toolbar
+                  transform: 'translateX(-50%)',
+                  zIndex: 101 
+                }}
+                className="w-72 bg-bg-secondary border border-border rounded-xl shadow-2xl p-4 backdrop-blur-xl"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md border border-border flex items-center justify-center bg-bg-tertiary">
+                      <span className="text-[10px] font-bold" style={{ color: lastUsedColor || 'inherit' }}>A</span>
+                    </div>
+                    <span className="text-xs font-bold text-text-primary">Last used</span>
+                  </div>
+                  <span className="text-[10px] text-text-secondary opacity-50 font-mono">⇧ ⌘ H</span>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-widest block mb-2">Text Color</label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {[
+                        'inherit', '#71717a', '#ef4444', '#f97316', '#f59e0b', '#10b981', '#3b82f6',
+                        '#6366f1', '#8b5cf6', '#d946ef', '#f43f5e', '#ffffff', '#000000', '#94a3b8'
+                      ].map((color) => (
+                        <button
+                          key={`text-${color}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            document.execCommand('foreColor', false, color);
+                            setLastUsedColor(color);
+                            setShowColorPicker(false);
+                          }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-bg-tertiary transition-all border border-border/50 group"
+                        >
+                          <span className="text-sm font-bold group-hover:scale-125 transition-transform" style={{ color }}>A</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-widest block mb-2">Highlight</label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {[
+                        'transparent', '#27272a', '#ef444444', '#f9731644', '#f59e0b44', '#10b98144', '#3b82f644',
+                        '#6366f144', '#8b5cf644', '#d946ef44', '#f43f5e44', '#ffffff44', '#00000044', '#94a3b844'
+                      ].map((color) => (
+                        <button
+                          key={`bg-${color}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            document.execCommand('hiliteColor', false, color);
+                            setShowColorPicker(false);
+                          }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-bg-tertiary transition-all border border-border/50 group"
+                        >
+                          <div className="w-5 h-5 rounded flex items-center justify-center" style={{ backgroundColor: color }}>
+                            <span className="text-xs text-text-primary/40">A</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
         )}
       </AnimatePresence>
 
@@ -1037,14 +1172,25 @@ function MenuButton({ icon: Icon, label, onClick, className }: { icon: any, labe
   );
 }
 
-function ToolbarButton({ icon: Icon, label, onClick }: { icon: any, label: string, onClick: () => void }) {
+function ToolbarButton({ icon: Icon, label, onClick, id, active }: { 
+  icon: any, 
+  label: string, 
+  onClick: () => void,
+  id?: string,
+  active?: boolean
+}) {
   return (
     <button
+      id={id}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="p-1.5 hover:bg-bg-tertiary rounded transition-colors"
+      className={cn(
+        "p-1.5 hover:bg-bg-tertiary rounded-lg transition-all duration-200 group relative",
+        active && "bg-accent-primary/20 text-accent-primary"
+      )}
       title={label}
     >
-      <Icon size={14} />
+      <Icon size={14} className={cn("transition-transform group-hover:scale-110", active && "scale-110")} />
     </button>
   );
 }
