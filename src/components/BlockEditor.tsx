@@ -179,6 +179,7 @@ interface BlockEditorProps {
   noteId: number;
   initialContent: string;
   onChange: (content: string) => void;
+  feature?: string;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -234,7 +235,7 @@ const serializeBlocksToMarkdown = (blocks: Block[]): string => {
   return JSON.stringify(blocks);
 };
 
-export default function BlockEditor({ noteId, initialContent, onChange }: BlockEditorProps) {
+export default function BlockEditor({ noteId, initialContent, onChange, feature = 'notes' }: BlockEditorProps) {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
@@ -464,6 +465,7 @@ export default function BlockEditor({ noteId, initialContent, onChange }: BlockE
 
     const formData = new FormData();
     formData.append('image', file);
+    formData.append('feature', feature);
 
     try {
       const response = await fetch('/api/upload', {

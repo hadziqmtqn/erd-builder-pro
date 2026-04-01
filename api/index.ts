@@ -523,13 +523,15 @@ app.post("/api/upload", authenticate, upload.single("image"), async (req: any, r
   }
 
   try {
+    const feature = req.body.feature || 'general';
     const file = req.file;
     const fileExt = path.extname(file.originalname);
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExt}`;
+    const r2Key = `erd-builder-pro/${feature}/${fileName}`;
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
-      Key: fileName,
+      Key: r2Key,
       Body: file.buffer,
       ContentType: file.mimetype,
     });
@@ -539,8 +541,8 @@ app.post("/api/upload", authenticate, upload.single("image"), async (req: any, r
     // Construct the public URL
     // If R2_PUBLIC_URL is provided, use it. Otherwise, use the R2 endpoint (which might not be public)
     const publicUrl = R2_PUBLIC_URL 
-      ? `${R2_PUBLIC_URL.replace(/\/$/, "")}/${fileName}`
-      : `https://${R2_BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${fileName}`;
+      ? `${R2_PUBLIC_URL.replace(/\/$/, "")}/${r2Key}`
+      : `https://${R2_BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${r2Key}`;
 
     res.json({ url: publicUrl });
   } catch (err: any) {

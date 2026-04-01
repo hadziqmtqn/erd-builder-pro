@@ -74,6 +74,7 @@ export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesE
           noteId={note.id}
           initialContent={content} 
           onChange={handleContentChange} 
+          feature="notes"
         />
       </div>
     </div>
