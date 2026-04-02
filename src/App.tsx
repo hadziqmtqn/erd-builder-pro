@@ -71,7 +71,7 @@ function AppContent() {
   } = useFiles(isAuthenticated, view);
   
   const { 
-    notes, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent 
+    notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent 
   } = useNotes();
   
   const { 
@@ -79,7 +79,7 @@ function AppContent() {
   } = useProjects();
   
   const { 
-    drawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent 
+    drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent 
   } = useDrawings();
   
   const { trashData, fetchTrash } = useTrash();
@@ -214,22 +214,56 @@ function AppContent() {
   // Note Change
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
-    const currentNote = notes.find(n => n.id === activeNoteId);
-    if (!currentNote) return;
+    
+    // Update local state immediately to avoid desync
+    setNotesList(prev => prev.map(n => n.id === activeNoteId ? { ...n, content } : n));
     
     if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
-    noteSaveTimeoutRef.current = setTimeout(() => saveNote({ ...currentNote, content }), 1000);
-  }, [activeNoteId, notes, saveNote]);
+    noteSaveTimeoutRef.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      // Use functional update to get latest notes from the hook's state
+      const success = await saveNote({
+        id: activeNoteId,
+        content,
+        title: notes.find(n => n.id === activeNoteId)?.title || '',
+        project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
+      } as any);
+      
+      if (success) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+      }
+    }, 1000);
+  }, [activeNoteId, notes, saveNote, setNotesList, setSaveStatus]);
 
   // Drawing Change
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
-    const currentDrawing = drawings.find(d => d.id === activeDrawingId);
-    if (!currentDrawing) return;
+    
+    // Update local state immediately to avoid desync
+    setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
 
     if (drawingSaveTimeoutRef.current) clearTimeout(drawingSaveTimeoutRef.current);
-    drawingSaveTimeoutRef.current = setTimeout(() => saveDrawing({ ...currentDrawing, data }), 1000);
-  }, [activeDrawingId, drawings, saveDrawing]);
+    drawingSaveTimeoutRef.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      // Use functional update or pass arguments directly since data is already fresh
+      const success = await saveDrawing({
+        id: activeDrawingId,
+        data,
+        title: drawings.find(d => d.id === activeDrawingId)?.title || '',
+        project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
+      } as any);
+
+      if (success) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+      }
+    }, 1000);
+  }, [activeDrawingId, drawings, saveDrawing, setDrawings, setSaveStatus]);
 
   // SQL Export
   const handleExportSQL = (dialect: 'postgresql' | 'mysql') => {

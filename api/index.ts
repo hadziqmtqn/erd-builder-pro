@@ -27,9 +27,8 @@ app.use(cookieParser());
 
 // Apply Supabase health check to all /api pathways
 app.use("/api/*", (req, res, next) => {
-  // Skip auth-config and basic auth routes for health check if needed, 
-  // but here we apply it generally for all data routes.
-  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(req.baseUrl + req.path)) {
+  const path = req.originalUrl.split("?")[0];
+  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(path)) {
     return next();
   }
   checkSupabase(req, res, next);
