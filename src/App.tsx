@@ -1219,9 +1219,13 @@ export default function App() {
                   nodeTypes={nodeTypes}
                   onNodeClick={(event, node) => {
                     if ((event.target as HTMLElement).closest('.nodrag')) return;
+                    if (document.querySelector('[data-slot="alert-dialog-content"]')) return;
                     setSelectedNodeId(node.id);
                   }}
-                  onPaneClick={() => setSelectedNodeId(null)}
+                  onPaneClick={() => {
+                    if (document.querySelector('[data-slot="alert-dialog-content"]')) return;
+                    setSelectedNodeId(null);
+                  }}
                   onMove={(_, viewport) => {
                     viewportRef.current = viewport;
                   }}
