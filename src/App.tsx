@@ -264,6 +264,72 @@ function AppContent() {
       }
     }, 1000);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings, setSaveStatus]);
+    
+  // --- Sync Handlers (Trash & domain sync) ---
+  const handleFileDelete = async (id: number) => {
+    await deleteFile(id);
+    fetchTrash();
+  };
+
+  const handleNoteDelete = async (id: number) => {
+    await deleteNote(id);
+    fetchTrash();
+  };
+
+  const handleDrawingDelete = async (id: number) => {
+    await deleteDrawing(id);
+    fetchTrash();
+  };
+
+  const handleProjectDelete = async (id: number) => {
+    const success = await deleteProject(id);
+    if (success) fetchTrash();
+  };
+
+  const handleFileRestore = async (id: number) => {
+    await restoreFile(id);
+    fetchTrash();
+    fetchFiles();
+  };
+
+  const handleNoteRestore = async (id: number) => {
+    await restoreNote(id);
+    fetchTrash();
+    fetchNotes();
+  };
+
+  const handleDrawingRestore = async (id: number) => {
+    await restoreDrawing(id);
+    fetchTrash();
+    fetchDrawings();
+  };
+
+  const handleProjectRestore = async (id: number) => {
+    await restoreProject(id);
+    fetchTrash();
+    fetchProjects();
+  };
+
+  const handleFilePermanentDelete = async (id: number) => {
+    await deleteFilePermanent(id);
+    fetchTrash();
+  };
+
+  const handleNotePermanentDelete = async (id: number) => {
+    await deleteNotePermanent(id);
+    fetchTrash();
+  };
+
+  const handleDrawingPermanentDelete = async (id: number) => {
+    await deleteDrawingPermanent(id);
+    fetchTrash();
+  };
+
+  const handleProjectPermanentDelete = async (id: number) => {
+    await deleteProjectPermanent(id);
+    fetchTrash();
+  };
+  // --- End Sync Handlers ---
 
   // SQL Export
   const handleExportSQL = (dialect: 'postgresql' | 'mysql') => {
@@ -315,11 +381,11 @@ function AppContent() {
     view, onViewChange: setView,
     onFileSelect: handleFileSelect, onNoteSelect: handleNoteSelect, onDrawingSelect: handleDrawingSelect, onProjectSelect: setActiveProjectId,
     onFileCreate: createFile, onNoteCreate: createNote, onDrawingCreate: createDrawing, onProjectCreate: createProject,
-    onProjectUpdate: updateProject, onProjectDelete: deleteProject, onProjectRestore: restoreProject,
+    onProjectUpdate: updateProject, onProjectDelete: handleProjectDelete, onProjectRestore: handleProjectRestore,
     onFileUpdate: updateFile, onNoteUpdate: updateNote, onDrawingUpdate: updateDrawing,
-    onFileDelete: deleteFile, onNoteDelete: deleteNote, onDrawingDelete: deleteDrawing,
-    onFileRestore: restoreFile, onNoteRestore: restoreNote, onDrawingRestore: restoreDrawing,
-    onFilePermanentDelete: deleteFilePermanent, onNotePermanentDelete: deleteNotePermanent, onDrawingPermanentDelete: deleteDrawingPermanent, onProjectPermanentDelete: deleteProjectPermanent,
+    onFileDelete: handleFileDelete, onNoteDelete: handleNoteDelete, onDrawingDelete: handleDrawingDelete,
+    onFileRestore: handleFileRestore, onNoteRestore: handleNoteRestore, onDrawingRestore: handleDrawingRestore,
+    onFilePermanentDelete: handleFilePermanentDelete, onNotePermanentDelete: handleNotePermanentDelete, onDrawingPermanentDelete: handleDrawingPermanentDelete, onProjectPermanentDelete: handleProjectPermanentDelete,
     onLogout: handleLogout, saveStatus,
     onMoveFileToProject: moveFileToProject, onMoveNoteToProject: moveNoteToProject, onMoveDrawingToProject: moveDrawingToProject
   };
