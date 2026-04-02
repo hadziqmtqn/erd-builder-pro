@@ -9,25 +9,29 @@
 ## 🚀 Key Features
 
 - **🎨 Multi-Mode Visual Editor**: 
-  - **ERD Builder**: Drag-and-drop entity relationship diagramming using a high-performance node system.
+  - **ERD Builder**: Drag-and-drop entity relationship diagramming using **XYFlow** (React Flow v12) for high-performance node management.
   - **Excalidraw Integration**: Seamlessly switch to free-hand drawing for whiteboarding and brainstorming.
-  - **Markdown Notes**: Built-in editor to document requirements, constraints, and business logic alongside your diagrams.
+  - **Rich Text Notes**: Powered by **TipTap**, supporting tables, task lists, image uploads, and markdown-like shortcuts.
+- **📤 Advanced Export Options**:
+  - **SQL Schema**: Export your diagrams directly to **PostgreSQL** or **MySQL** DDL scripts.
+  - **Image/PDF**: High-quality exports for documentation and presentations.
 - **📁 Advanced Organization**:
   - **Project Management**: Group related files, notes, and drawings into distinct projects.
   - **Soft-Delete System**: Avoid data loss with a comprehensive "Trash" feature for all assets.
 - **🔐 Enterprise-Ready**:
-  - **Secure Authentication**: Built-in auth system with JWT and admin-only controls.
-  - **Real-Time Persistence**: Every change is automatically saved to the cloud, ensuring your work is never lost.
-- **🧠 AI Powered**: Leverages Google Gemini AI to assist in structural design and documentation.
+  - **Secure Authentication**: Built-in auth system with JWT and admin-only controls via **Supabase Auth**.
+  - **Real-Time Persistence**: Every change is automatically saved to **Supabase Database** and **Cloudflare R2**.
+- **🧠 AI Powered**: Leverages **Google Gemini AI** to assist in structural design and documentation generation.
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: [React](https://reactjs.org/) + [Vite](https://vitejs.dev/) + [Tailwind CSS](https://tailwindcss.com/)
-- **Visuals**: [React Flow](https://reactflow.dev/) + [Excalidraw](https://excalidraw.com/)
-- **Backend**: [Express.js](https://expressjs.com/) with TypeScript (tsx)
+- **Frontend**: [React 18](https://reactjs.org/) + [Vite 6](https://vite.dev/) + [Tailwind CSS v4](https://tailwindcss.com/)
+- **Visuals**: [XYFlow](https://xyflow.com/) + [Excalidraw](https://excalidraw.com/)
+- **Editor**: [TipTap](https://tiptap.dev/) (Block-based Rich Text)
+- **Backend**: [Express.js](https://expressjs.com/) + [TypeScript (tsx)](https://github.com/privatenumber/tsx)
 - **Database / Auth**: [Supabase](https://supabase.com/)
-- **Storage**: Cloudflare R2 (S3 Compatible)
-- **AI**: [Google Generative AI (Gemini)](https://ai.google.dev/)
+- **Storage**: [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) (S3 Compatible)
+- **UI Components**: [Radix UI](https://www.radix-ui.com/) + [Lucide Icons](https://lucide.dev/)
 
 ---
 
@@ -37,10 +41,10 @@ Follow these steps to set up the project locally.
 
 ### 📋 Prerequisites
 
-- **Node.js**: v18 or higher
-- **npm**: v9 or higher
+- **Node.js**: v20 or higher (recommended)
+- **npm**: v10 or higher
 - **Supabase Account**: For database and authentication
-- **Cloudflare R2 (Optional)**: For drawings and file attachments
+- **Cloudflare R2**: For drawings and file attachments
 
 ### ⚙️ Installation
 
@@ -78,6 +82,7 @@ Follow these steps to set up the project locally.
    | `ADMIN_EMAIL` | Initial admin email for login |
    | `ADMIN_PASSWORD` | Initial admin password |
    | `PORT` | Backend server port (default: 3000) |
+   | `GOOGLE_GEMINI_API_KEY` | Your Google AI SDK key |
 
 5. **Run the Development Server**:
    ```bash
