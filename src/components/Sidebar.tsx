@@ -4,7 +4,7 @@ import {
   Plus, Trash2, FileText, ChevronLeft, ChevronRight, Save, 
   Database, LogOut, Folder, StickyNote, Trash, ChevronDown, 
   FolderPlus, MoreVertical, RotateCcw, PenTool, Edit2,
-  PanelLeftClose, PanelLeftOpen, MoreHorizontal
+  PanelLeftClose, PanelLeftOpen, MoreHorizontal, Search, X
 } from 'lucide-react';
 import { FileData, Project, Note, Drawing } from '../types';
 import { cn } from '../lib/utils';
@@ -28,6 +28,22 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface SidebarProps {
   files: FileData[];
@@ -120,7 +136,7 @@ export default function Sidebar({
   onMoveDrawingToProject
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [newFileName, setNewFileName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProject, setShowNewProject] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
@@ -131,6 +147,12 @@ export default function Sidebar({
   const [editingNoteTitle, setEditingNoteTitle] = useState('');
   const [editingDrawingId, setEditingDrawingId] = useState<number | null>(null);
   const [editingDrawingTitle, setEditingDrawingTitle] = useState('');
+  
+  // Create Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [modalItemName, setModalItemName] = useState('');
+  const [modalProjectId, setModalProjectId] = useState<string | null>("none");
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -143,17 +165,24 @@ export default function Sidebar({
     onConfirm: () => {}
   });
 
-  const handleCreateFile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFileName.trim()) return;
+  const handleSubmitCreate = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!modalItemName.trim()) return;
+    
+    const projectId = modalProjectId === "none" ? null : (modalProjectId ? parseInt(modalProjectId) : activeProjectId);
+
     if (view === 'erd') {
-      onFileCreate(newFileName.trim(), activeProjectId);
+      onFileCreate(modalItemName.trim(), projectId);
     } else if (view === 'notes') {
-      onNoteCreate(newFileName.trim(), activeProjectId);
+      onNoteCreate(modalItemName.trim(), projectId);
     } else if (view === 'drawings') {
-      onDrawingCreate(newFileName.trim(), activeProjectId);
+      onDrawingCreate(modalItemName.trim(), projectId);
     }
-    setNewFileName('');
+    
+    // Reset and close
+    setModalItemName('');
+    setModalProjectId(null);
+    setIsCreateModalOpen(false);
   };
 
   const handleCreateProject = (e: React.FormEvent) => {
@@ -173,15 +202,21 @@ export default function Sidebar({
 
   const filteredFiles = (activeProjectId 
     ? safeFiles.filter(f => f.project_id === activeProjectId)
-    : safeFiles).filter(f => !f.is_deleted);
+    : safeFiles)
+    .filter(f => !f.is_deleted)
+    .filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const filteredNotes = (activeProjectId
     ? safeNotes.filter(n => n.project_id === activeProjectId)
-    : safeNotes).filter(n => !n.is_deleted);
+    : safeNotes)
+    .filter(n => !n.is_deleted)
+    .filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const filteredDrawings = (activeProjectId
     ? safeDrawings.filter(d => d.project_id === activeProjectId)
-    : safeDrawings).filter(d => !d.is_deleted);
+    : safeDrawings)
+    .filter(d => !d.is_deleted)
+    .filter(d => d.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const activeProjects = safeProjects.filter(p => !p.is_deleted);
 
@@ -396,31 +431,34 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* New Item Form - Redesigned */}
+        {/* Search & Add Section - Redesigned */}
         {view !== 'trash' && (
-          <div className="p-4">
-            <form onSubmit={handleCreateFile}>
-              <div className="relative group">
-                <Input
-                  type="text"
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder={
-                    view === 'erd' ? "New diagram..." : 
-                    view === 'notes' ? "New note..." : 
-                    "New drawing..."
-                  }
-                  className="w-full bg-muted border-border rounded-xl px-4 py-6 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all pr-12"
-                />
-                <Button 
-                  type="submit"
-                  size="icon"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          <div className="p-4 flex items-center gap-2">
+            <div className="relative group flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search ${view}...`}
+                className="w-full pl-10 pr-10 bg-muted/30"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            </form>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <Button 
+              onClick={() => setIsCreateModalOpen(true)}
+              size="icon"
+              className="h-9 w-9 bg-primary text-primary-foreground flex-shrink-0"
+            >
+              <Plus className="w-5 h-5" />
+            </Button>
           </div>
         )}
 
@@ -1078,6 +1116,73 @@ export default function Sidebar({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
+      {/* Create New Item Modal */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="max-w-sm glass-panel shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Create New {view === 'erd' ? 'Diagram' : view === 'notes' ? 'Note' : 'Drawing'}
+            </DialogTitle>
+            <DialogDescription>
+              Enter a name and select a workspace to organize your new {view === 'erd' ? 'diagram' : view === 'notes' ? 'note' : 'drawing'}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitCreate} className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="name"
+                autoFocus
+                placeholder={`Name your ${view === 'erd' ? 'diagram' : view === 'notes' ? 'note' : 'drawing'}...`}
+                value={modalItemName}
+                onChange={(e) => setModalItemName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="workspace">
+                Workspace
+              </Label>
+              <Select 
+                value={modalProjectId || "none"} 
+                onValueChange={(val) => setModalProjectId(val)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Workspace (Root)</SelectItem>
+                  {activeProjects.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="flex-row justify-end gap-2 pt-2 bg-transparent border-none">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!modalItemName.trim()}
+              >
+                Create {view === 'erd' ? 'Diagram' : view === 'notes' ? 'Note' : 'Drawing'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
