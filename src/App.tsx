@@ -610,7 +610,13 @@ export default function App() {
     try {
       const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setProjects(projects.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        
+        // Update local state for files, notes, and drawings to hide them immediately
+        setFiles(prev => prev.map(f => f.project_id === id ? { ...f, is_deleted: true } : f));
+        setNotesList(prev => prev.map(n => n.project_id === id ? { ...n, is_deleted: true } : n));
+        setDrawings(prev => prev.map(d => d.project_id === id ? { ...d, is_deleted: true } : d));
+
         if (activeProjectId === id) {
           setActiveProjectId(null);
         }
@@ -621,6 +627,7 @@ export default function App() {
           setActiveFileId(null);
           setNodes([]);
           setEdges([]);
+          setSelectedNodeId(null);
         }
         
         const activeNote = notes.find(n => n.id === activeNoteId);
@@ -715,11 +722,12 @@ export default function App() {
         setIsAuthenticated(false);
         return;
       }
-      setFiles(files.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+      setFiles(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
       if (activeFileId === id) {
         setActiveFileId(null);
         setNodes([]);
         setEdges([]);
+        setSelectedNodeId(null);
       }
       fetchTrash();
       setSaveStatus('saved');
@@ -732,7 +740,7 @@ export default function App() {
   const deleteNote = async (id: number) => {
     try {
       await fetch(`/api/notes/${id}`, { method: 'DELETE' });
-      setNotesList(notes.map(n => n.id === id ? { ...n, is_deleted: true } : n));
+      setNotesList(prev => prev.map(n => n.id === id ? { ...n, is_deleted: true } : n));
       if (activeNoteId === id) {
         setActiveNoteId(null);
       }
@@ -747,7 +755,7 @@ export default function App() {
   const deleteDrawing = async (id: number) => {
     try {
       await fetch(`/api/drawings/${id}`, { method: 'DELETE' });
-      setDrawings(drawings.map(d => d.id === id ? { ...d, is_deleted: true } : d));
+      setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
       if (activeDrawingId === id) {
         setActiveDrawingId(null);
       }

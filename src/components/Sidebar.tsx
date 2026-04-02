@@ -346,16 +346,20 @@ export default function Sidebar({
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-all"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onPointerUp={(e) => e.stopPropagation()}
+                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreVertical size={14} />
                                 </Button>
                               }
                             />
-                            <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
                               <DropdownMenuGroup>
                                 <DropdownMenuLabel className="text-[10px] font-bold text-primary uppercase tracking-widest">Project Options</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => {
+                                <DropdownMenuItem onClick={(e) => {
+                                  e.stopPropagation();
                                   setEditingProjectId(project.id);
                                   setEditingProjectName(project.name);
                                 }}>
@@ -364,7 +368,8 @@ export default function Sidebar({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
                                   className="text-destructive focus:text-destructive"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setConfirmModal({
                                       isOpen: true,
                                       title: 'Delete Project',
@@ -458,11 +463,11 @@ export default function Sidebar({
                     />
                   </form>
                 ) : (
-                  <div 
-                    className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
-                    onClick={() => onFileSelect(file.id)}
-                  >
-                    <div className="flex items-center gap-3 overflow-hidden flex-1">
+                  <div className="flex items-center justify-between w-full">
+                    <div 
+                      className="flex items-center gap-3 overflow-hidden flex-1 px-2 py-2 cursor-pointer"
+                      onClick={() => onFileSelect(file.id)}
+                    >
                       <FileText className={cn("w-4 h-4 flex-shrink-0", view === 'erd' && activeFileId === file.id ? "text-primary" : "text-muted-foreground")} />
                       <div className="flex flex-col overflow-hidden">
                         <span className="text-sm font-medium truncate">{file.name}</span>
@@ -473,7 +478,7 @@ export default function Sidebar({
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 pr-1">
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
@@ -481,24 +486,27 @@ export default function Sidebar({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-all"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onPointerUp={(e) => e.stopPropagation()}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <MoreVertical size={14} />
                             </Button>
                           }
                         />
-                        <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenuGroup>
                             <DropdownMenuLabel className="text-[10px] font-bold text-primary uppercase tracking-widest">Diagram Options</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => {
+                            <DropdownMenuItem onClick={(e) => {
+                              e.stopPropagation();
                               setEditingFileId(file.id);
                               setEditingFileName(file.name);
                             }}>
                               <Edit2 size={14} className="mr-2" /> Rename Diagram
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <div className="px-2 py-1.5">
+                            <div className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                               <p className="text-[9px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1">
                                 <Folder size={10} /> Move to Project
                               </p>
@@ -519,7 +527,8 @@ export default function Sidebar({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               className="text-destructive focus:text-destructive"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setConfirmModal({
                                   isOpen: true,
                                   title: 'Delete Diagram',
@@ -578,11 +587,11 @@ export default function Sidebar({
                   />
                 </form>
               ) : (
-                <div 
-                  className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
-                  onClick={() => onNoteSelect(note.id)}
-                >
-                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                <div className="flex items-center justify-between w-full">
+                  <div 
+                    className="flex items-center gap-3 overflow-hidden flex-1 px-2 py-2 cursor-pointer"
+                    onClick={() => onNoteSelect(note.id)}
+                  >
                     <StickyNote className={cn("w-4 h-4 flex-shrink-0", view === 'notes' && activeNoteId === note.id ? "text-primary" : "text-muted-foreground")} />
                     <div className="flex flex-col overflow-hidden">
                       <span className="text-sm font-medium truncate">{note.title}</span>
@@ -593,7 +602,7 @@ export default function Sidebar({
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 pr-1">
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -601,24 +610,27 @@ export default function Sidebar({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-all"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onPointerUp={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical size={14} />
                           </Button>
                         }
                       />
-                      <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenuGroup>
                           <DropdownMenuLabel className="text-[10px] font-bold text-primary uppercase tracking-widest">Note Options</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => {
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
                             setEditingNoteId(note.id);
                             setEditingNoteTitle(note.title);
                           }}>
                             <Edit2 size={14} className="mr-2" /> Rename Note
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <div className="px-2 py-1.5">
+                          <div className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                             <p className="text-[9px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1">
                               <Folder size={10} /> Move to Project
                             </p>
@@ -639,7 +651,8 @@ export default function Sidebar({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             className="text-destructive focus:text-destructive"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setConfirmModal({
                                 isOpen: true,
                                 title: 'Delete Note',
@@ -698,11 +711,11 @@ export default function Sidebar({
                   />
                 </form>
               ) : (
-                <div 
-                  className="flex items-center justify-between w-full px-2 py-2 cursor-pointer"
-                  onClick={() => onDrawingSelect(drawing.id)}
-                >
-                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                <div className="flex items-center justify-between w-full">
+                  <div 
+                    className="flex items-center gap-3 overflow-hidden flex-1 px-2 py-2 cursor-pointer"
+                    onClick={() => onDrawingSelect(drawing.id)}
+                  >
                     <PenTool className={cn("w-4 h-4 flex-shrink-0", view === 'drawings' && activeDrawingId === drawing.id ? "text-primary" : "text-muted-foreground")} />
                     <div className="flex flex-col overflow-hidden">
                       <span className="text-sm font-medium truncate">{drawing.title}</span>
@@ -713,7 +726,7 @@ export default function Sidebar({
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 pr-1">
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -721,24 +734,27 @@ export default function Sidebar({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 hover:bg-background rounded-lg text-muted-foreground hover:text-primary transition-all"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onPointerUp={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical size={14} />
                           </Button>
                         }
                       />
-                      <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenuGroup>
                           <DropdownMenuLabel className="text-[10px] font-bold text-primary uppercase tracking-widest">Drawing Options</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => {
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
                             setEditingDrawingId(drawing.id);
                             setEditingDrawingTitle(drawing.title);
                           }}>
                             <Edit2 size={14} className="mr-2" /> Rename Drawing
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <div className="px-2 py-1.5">
+                          <div className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                             <p className="text-[9px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1">
                               <Folder size={10} /> Move to Project
                             </p>
@@ -759,7 +775,8 @@ export default function Sidebar({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             className="text-destructive focus:text-destructive"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setConfirmModal({
                                 isOpen: true,
                                 title: 'Delete Drawing',
