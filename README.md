@@ -3,7 +3,7 @@
 **ERD Builder Pro** is a modern, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures with ease.
 
 <div align="center">
-  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczMjWcORXpfpArtdJ8anFJAJirJuS80Y2NMQc8by44043eXIozfiK198SpFuxK9p_oKjwLvT5M8q-OifvIMqBBVuKOOMIW_fwb8fugWt1SWNvy0kIJxdDyWe2rpqXIaLlzctCdEvvuhV0mUX3-dNjWmm=w2966-h1882-s-no-gm?authuser=1" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczNpj0CJlqi-q6y6k3oSiQgyxcWDvniogCPptvpRX7jhLke6ZjCk89Z3od-62RJjDZ_q4A1sdBFIT9cxX-ft5yUswoNeBCdu3XqpMbpoRpXG5wN5SRwC5tP4ctPoH26BvGSi_RLilFsH8rW4tys3Uo7_=w2966-h1882-s-no-gm?authuser=1" />
 </div>
 
 ## 🚀 Key Features
