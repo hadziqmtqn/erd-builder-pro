@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Note } from '../types';
-import BlockEditor from './BlockEditor';
+import TiptapEditor from './TiptapEditor';
 
 interface NotesEditorProps {
   note: Note;
@@ -27,11 +27,9 @@ export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesE
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* Block Editor Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <BlockEditor 
-          noteId={note.id}
+        <TiptapEditor 
           initialContent={content} 
           onChange={handleContentChange} 
-          feature="notes"
         />
       </div>
     </div>

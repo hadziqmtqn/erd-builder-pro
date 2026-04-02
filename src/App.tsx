@@ -153,7 +153,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 // Main App Component
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('erd');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
   const [files, setFiles] = useState<FileData[]>([]);
   const [notes, setNotesList] = useState<Note[]>([]);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -182,6 +182,10 @@ export default function App() {
   const { setViewport, fitView, getNodes } = useReactFlow();
 
   useEffect(() => {
+    // Force dark mode on the root element
+    document.documentElement.classList.add('dark');
+    document.body.classList.add('dark');
+
     const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
     checkDesktop();
     window.addEventListener('resize', checkDesktop);

@@ -225,8 +225,8 @@ export default function Sidebar({
             {/* View Switcher - Modern Segmented Control */}
             <div className="p-1 bg-muted/40 rounded-xl border border-border/50 flex items-center gap-1">
               {[
-                { id: 'erd', icon: Database, label: 'ERD', color: 'text-blue-400' },
                 { id: 'notes', icon: StickyNote, label: 'Notes', color: 'text-amber-400' },
+                { id: 'erd', icon: Database, label: 'ERD', color: 'text-blue-400' },
                 { id: 'drawings', icon: PenTool, label: 'Draw', color: 'text-purple-400' },
               ].map((tab) => (
                 <Button

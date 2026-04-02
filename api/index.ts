@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import multer from "multer";
 import fs from "node:fs";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 dotenv.config();
 
@@ -343,6 +343,31 @@ app.delete("/api/projects/:id/permanent", authenticate, async (req: ExpressReque
       await supabase.from("files").delete().in("id", fileIds);
     }
     
+    // Delete images from notes before deleting notes
+    const { data: notes } = await supabase.from("notes").select("content").eq("project_id", projectId);
+    if (notes && notes.length > 0 && s3Client && R2_BUCKET_NAME) {
+      for (const note of notes) {
+        if (note.content) {
+          const regex = /<img[^>]+src="([^">]+)"/g;
+          let match;
+          while ((match = regex.exec(note.content)) !== null) {
+            const url = match[1];
+            if (url.includes('erd-builder-pro/')) {
+              const key = url.substring(url.indexOf('erd-builder-pro/'));
+              try {
+                await s3Client.send(new DeleteObjectCommand({
+                  Bucket: R2_BUCKET_NAME,
+                  Key: key,
+                }));
+              } catch (err) {
+                console.error("Failed to delete image from R2 during project deletion:", err);
+              }
+            }
+          }
+        }
+      }
+    }
+
     await supabase.from("notes").delete().eq("project_id", projectId);
     await supabase.from("drawings").delete().eq("project_id", projectId);
     await supabase.from("projects").delete().eq("id", projectId);
@@ -425,13 +450,43 @@ app.post("/api/notes/:id/restore", authenticate, async (req: ExpressRequest, res
 });
 
 app.delete("/api/notes/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("notes")
-    .delete()
-    .eq("id", req.params.id);
+  try {
+    // Get the note content to extract and delete images
+    const { data: note } = await supabase
+      .from("notes")
+      .select("content")
+      .eq("id", req.params.id)
+      .single();
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    if (note && note.content && s3Client && R2_BUCKET_NAME) {
+      const regex = /<img[^>]+src="([^">]+)"/g;
+      let match;
+      while ((match = regex.exec(note.content)) !== null) {
+        const url = match[1];
+        if (url.includes('erd-builder-pro/')) {
+          const key = url.substring(url.indexOf('erd-builder-pro/'));
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: R2_BUCKET_NAME,
+              Key: key,
+            }));
+          } catch (err) {
+            console.error("Failed to delete image from R2 during note deletion:", err);
+          }
+        }
+      }
+    }
+
+    const { error } = await supabase
+      .from("notes")
+      .delete()
+      .eq("id", req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Trash API
@@ -603,10 +658,36 @@ app.post("/api/upload", authenticate, upload.single("image"), async (req: any, r
       ? `${R2_PUBLIC_URL.replace(/\/$/, "")}/${r2Key}`
       : `https://${R2_BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${r2Key}`;
 
-    res.json({ url: publicUrl });
+    res.json({ url: publicUrl, key: r2Key });
   } catch (err: any) {
     console.error("Cloudflare R2 upload error:", err);
     res.status(500).json({ error: `Cloudflare R2 storage error: ${err.message}` });
+  }
+});
+
+app.delete("/api/upload", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { key } = req.body;
+  if (!key) {
+    return res.status(400).json({ error: "No key provided" });
+  }
+
+  if (!s3Client || !R2_BUCKET_NAME) {
+    return res.status(500).json({ 
+      error: "Cloudflare R2 is not configured." 
+    });
+  }
+
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(command);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Cloudflare R2 delete error:", err);
+    res.status(500).json({ error: `Cloudflare R2 delete error: ${err.message}` });
   }
 });
 
