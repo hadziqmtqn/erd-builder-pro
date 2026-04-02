@@ -167,8 +167,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       StarterKit,
       ImageResize.configure({
         inline: true,
-        allowBase64: true,
-      }),
+      } as any),
       TaskList,
       TaskItem.configure({
         nested: true,
@@ -217,7 +216,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         <div className="max-w-4xl mx-auto p-6 sm:p-12">
           
           {editor && (
-            <BubbleMenu editor={editor} tippyOptions={{ duration: 100, zIndex: 50 }} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+            <BubbleMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 50 } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
@@ -246,7 +245,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
           )}
 
           {editor && (
-            <FloatingMenu editor={editor} tippyOptions={{ duration: 100, zIndex: 50 }} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+            <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 50 } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}

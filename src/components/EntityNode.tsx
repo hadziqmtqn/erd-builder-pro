@@ -1,80 +1,185 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { Key, Hash, MoreHorizontal } from 'lucide-react';
+import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type EntityNodeProps = NodeProps<Node<Entity>>;
 
 const EntityNode = ({ data, selected }: EntityNodeProps) => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('editEntity', { detail: data.id }));
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    window.dispatchEvent(new CustomEvent('deleteEntity', { detail: data.id }));
+    setShowDeleteConfirm(false);
+  };
+
+  // Eraser.io style colors based on data.color
+  const borderColor = data.color;
+  const headerBg = `${data.color}20`; // 12% opacity
+  const rowHoverBg = `${data.color}10`; // 6% opacity
+  const typeColor = data.color;
+
   return (
-    <div className={cn(
-      "bg-card text-card-foreground rounded-xl border shadow-sm min-w-[220px] overflow-hidden transition-all",
-      selected && "ring-2 ring-primary border-primary"
-    )}>
-      {/* Header */}
+    <>
       <div 
-        className="px-4 py-2.5 flex items-center justify-between border-b"
-        style={{ backgroundColor: `${data.color}15` }}
+        className={cn(
+          "bg-[#0f0f14] text-white rounded-lg border-2 transition-all duration-200 min-w-[220px]",
+          selected ? "shadow-[0_0_15px_rgba(255,255,255,0.1)]" : "shadow-xl"
+        )}
+        style={{ borderColor: borderColor }}
       >
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-2.5 h-2.5 rounded-full shadow-sm" 
-            style={{ backgroundColor: data.color }}
-          />
-          <span className="font-bold text-sm tracking-tight">{data.name}</span>
-        </div>
-        <MoreHorizontal className="w-4 h-4 text-muted-foreground cursor-pointer hover:text-foreground transition-colors" />
-      </div>
-
-      {/* Columns */}
-      <div className="p-1.5 space-y-0.5">
-        {data.columns.map((col) => (
-          <div 
-            key={col.id} 
-            className="group relative px-3 py-2 flex items-center justify-between hover:bg-muted/50 rounded-lg transition-colors"
-          >
-            {/* Column Handles */}
-            <Handle
-              type="target"
-              position={Position.Left}
-              id={`col-${col.id}-target`}
-              className="!w-2.5 !h-2.5 !-left-1.5 !bg-primary !border-2 !border-background hover:!scale-125 transition-transform"
-            />
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={`col-${col.id}-source`}
-              className="!w-2.5 !h-2.5 !-right-1.5 !bg-primary !border-2 !border-background hover:!scale-125 transition-transform"
-            />
-
-            <div className="flex items-center gap-2">
-              {col.is_pk ? (
-                <Key className="w-3.5 h-3.5 text-yellow-500" />
-              ) : (
-                <Hash className="w-3.5 h-3.5 text-muted-foreground" />
-              )}
-              <span className="text-xs font-medium">{col.name}</span>
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <Badge variant="secondary" className="text-[9px] font-mono px-1.5 py-0 h-4 leading-none bg-muted/50 text-muted-foreground border-none">
-                {col.type}
-              </Badge>
-              {col.type === 'ENUM' && col.enum_values && (
-                <span className="text-[8px] text-muted-foreground italic max-w-[80px] truncate" title={col.enum_values}>
-                  ({col.enum_values})
-                </span>
-              )}
-            </div>
+        {/* Header */}
+        <div 
+          className="px-3 py-2 flex items-center justify-between border-b-2"
+          style={{ backgroundColor: headerBg, borderColor: borderColor }}
+        >
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4" style={{ color: borderColor }} />
+            <span className="font-bold text-sm tracking-wide uppercase">{data.name}</span>
           </div>
-        ))}
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger 
+              className="nodrag nopan p-1 rounded-md hover:bg-white/10 text-white/50 hover:text-white transition-colors focus:outline-none"
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+              align="end" 
+              className="w-40 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                <Edit2 className="w-4 h-4 mr-2" />
+                Edit Table
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-white/10" />
+              <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Table
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Columns */}
+        <div className="flex flex-col">
+          {data.columns.map((col, index) => (
+            <div 
+              key={col.id} 
+              className={cn(
+                "group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0 border-white/5",
+                "hover:bg-white/5"
+              )}
+              style={{ '--hover-bg': rowHoverBg } as React.CSSProperties}
+            >
+              {/* Column Handles - Smaller and hover only */}
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={`col-${col.id}-target`}
+                className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ top: '50%', transform: 'translateY(-50%)' }}
+              />
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`col-${col.id}-source`}
+                className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ top: '50%', transform: 'translateY(-50%)' }}
+              />
+
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-sm font-medium",
+                  col.is_pk ? "text-white" : "text-white/80"
+                )}>
+                  {col.name}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-1.5">
+                <span 
+                  className="text-[11px] font-mono font-semibold"
+                  style={{ color: typeColor }}
+                >
+                  {col.type.toLowerCase()}
+                </span>
+                {col.is_pk && (
+                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* General Node Handles - Hidden/Removed as per column-based focus */}
+        <Handle type="target" position={Position.Top} className="!opacity-0" />
+        <Handle type="source" position={Position.Bottom} className="!opacity-0" />
       </div>
 
-      {/* General Node Handles */}
-      <Handle type="target" position={Position.Top} className="!w-3 !h-1 !rounded-none !bg-border !border-none" />
-      <Handle type="source" position={Position.Bottom} className="!w-3 !h-1 !rounded-none !bg-border !border-none" />
-    </div>
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <AlertCircle className="text-destructive" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete Table</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the table <strong>{data.name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={(e) => {
+                e.stopPropagation();
+                confirmDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 
