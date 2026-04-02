@@ -284,17 +284,17 @@ export default function Sidebar({
             <ScrollArea className="max-h-48 pr-1">
               <div className="space-y-1">
                 <Button
-                  variant={activeProjectId === null ? "secondary" : "ghost"}
+                  variant="ghost"
                   onClick={() => onProjectSelect(null)}
                   className={cn(
-                    "w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-xs font-semibold transition-all",
+                    "w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-xs font-semibold transition-all border",
                     activeProjectId === null 
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" 
-                      : "text-muted-foreground hover:bg-muted"
+                      ? "bg-primary/10 text-primary border-primary/20 shadow-sm shadow-primary/5 hover:bg-primary/20" 
+                      : "text-muted-foreground border-transparent hover:bg-muted hover:border-border/30 hover:text-foreground"
                   )}
                 >
-                  <Folder size={16} />
-                  All Workspace
+                  <Folder size={16} className={cn("transition-colors", activeProjectId === null ? "text-primary" : "text-muted-foreground")} />
+                  <span>All Workspace</span>
                 </Button>
                 {activeProjects.map(project => (
                   <div key={project.id} className="group relative">
@@ -326,13 +326,13 @@ export default function Sidebar({
                     ) : (
                       <div className="flex items-center gap-1">
                         <Button
-                          variant={activeProjectId === project.id ? "secondary" : "ghost"}
+                          variant="ghost"
                           onClick={() => onProjectSelect(project.id)}
                           className={cn(
-                            "w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-xs font-semibold transition-all pr-10",
+                            "w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-xs font-semibold transition-all pr-10 border",
                             activeProjectId === project.id 
-                              ? "bg-muted text-primary border border-primary/20" 
-                              : "text-muted-foreground hover:bg-muted"
+                              ? "bg-primary/10 text-primary border-primary/20 shadow-sm" 
+                              : "text-muted-foreground border-transparent hover:bg-muted hover:border-border/30 hover:text-foreground"
                           )}
                         >
                           <Folder size={16} className={activeProjectId === project.id ? "text-primary" : "text-muted-foreground"} />

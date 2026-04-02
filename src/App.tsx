@@ -265,6 +265,28 @@ function AppContent() {
     }, 1000);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings, setSaveStatus]);
     
+  // --- Creation Handlers (with auto-select) ---
+  const handleFileCreate = async (name: string, projectId?: number | null) => {
+    const newFile = await createFile(name, projectId);
+    if (newFile) {
+      handleFileSelect(newFile.id);
+    }
+  };
+
+  const handleNoteCreate = async (title: string, projectId?: number | null) => {
+    const newNote = await createNote(title, projectId);
+    if (newNote) {
+      handleNoteSelect(newNote.id);
+    }
+  };
+
+  const handleDrawingCreate = async (title: string, projectId?: number | null) => {
+    const newDrawing = await createDrawing(title, projectId);
+    if (newDrawing) {
+      handleDrawingSelect(newDrawing.id);
+    }
+  };
+
   // --- Sync Handlers (Trash & domain sync) ---
   const handleFileDelete = async (id: number) => {
     await deleteFile(id);
@@ -380,7 +402,7 @@ function AppContent() {
     activeFileId, activeNoteId, activeDrawingId, activeProjectId,
     view, onViewChange: setView,
     onFileSelect: handleFileSelect, onNoteSelect: handleNoteSelect, onDrawingSelect: handleDrawingSelect, onProjectSelect: setActiveProjectId,
-    onFileCreate: createFile, onNoteCreate: createNote, onDrawingCreate: createDrawing, onProjectCreate: createProject,
+    onFileCreate: handleFileCreate, onNoteCreate: handleNoteCreate, onDrawingCreate: handleDrawingCreate, onProjectCreate: createProject,
     onProjectUpdate: updateProject, onProjectDelete: handleProjectDelete, onProjectRestore: handleProjectRestore,
     onFileUpdate: updateFile, onNoteUpdate: updateNote, onDrawingUpdate: updateDrawing,
     onFileDelete: handleFileDelete, onNoteDelete: handleNoteDelete, onDrawingDelete: handleDrawingDelete,
@@ -467,7 +489,7 @@ function AppContent() {
           )}
 
           {view === 'notes' && activeNote && (
-            <NotesEditor note={activeNote} onSave={saveNote} onChange={handleNoteChange} onDelete={deleteNote} />
+            <NotesEditor key={activeNoteId} note={activeNote} onSave={saveNote} onChange={handleNoteChange} onDelete={deleteNote} />
           )}
 
           {view === 'drawings' && activeDrawing && (

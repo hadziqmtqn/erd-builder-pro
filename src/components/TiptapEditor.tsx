@@ -202,7 +202,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
   });
 
   useEffect(() => {
-    if (editor && initialContent && editor.getHTML() !== initialContent) {
+    if (editor && typeof initialContent === 'string' && editor.getHTML() !== initialContent) {
       editor.commands.setContent(initialContent);
     }
   }, [initialContent, editor]);
