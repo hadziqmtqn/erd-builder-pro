@@ -48,7 +48,15 @@
 }
 
 .react-flow__edge-path {
-  @apply !stroke-accent-primary !stroke-[2];
+  @apply !stroke-accent-primary !stroke-[2] transition-all duration-300;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  @apply !stroke-white !stroke-[3] drop-shadow-[0_0_8px_rgba(255,255,255,0.5)];
+}
+
+.react-flow__edge.selected .react-flow__edge-interaction {
+  @apply !stroke-white/20 !stroke-[10];
 }
 
 .react-flow__controls {

@@ -189,7 +189,26 @@ export default function App() {
     const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
     checkDesktop();
     window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
+    
+    // Custom events for EntityNode actions
+    const handleEditEntity = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setSelectedNodeId(customEvent.detail);
+    };
+    
+    const handleDeleteEntity = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      deleteEntity(customEvent.detail);
+    };
+    
+    window.addEventListener('editEntity', handleEditEntity);
+    window.addEventListener('deleteEntity', handleDeleteEntity);
+    
+    return () => {
+      window.removeEventListener('resize', checkDesktop);
+      window.removeEventListener('editEntity', handleEditEntity);
+      window.removeEventListener('deleteEntity', handleDeleteEntity);
+    };
   }, []);
 
   // Close dropdown on click outside
@@ -595,6 +614,25 @@ export default function App() {
         if (activeProjectId === id) {
           setActiveProjectId(null);
         }
+        
+        // Clear active files if they belong to the deleted project
+        const activeFile = files.find(f => f.id === activeFileId);
+        if (activeFile && activeFile.project_id === id) {
+          setActiveFileId(null);
+          setNodes([]);
+          setEdges([]);
+        }
+        
+        const activeNote = notes.find(n => n.id === activeNoteId);
+        if (activeNote && activeNote.project_id === id) {
+          setActiveNoteId(null);
+        }
+        
+        const activeDrawing = drawings.find(d => d.id === activeDrawingId);
+        if (activeDrawing && activeDrawing.project_id === id) {
+          setActiveDrawingId(null);
+        }
+
         // Refresh data to hide files belonging to deleted project
         fetchInitialData();
         setSaveStatus('saved');
@@ -1179,8 +1217,15 @@ export default function App() {
                   onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
                   nodeTypes={nodeTypes}
-                  onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                  onPaneClick={() => setSelectedNodeId(null)}
+                  onNodeClick={(event, node) => {
+                    if ((event.target as HTMLElement).closest('.nodrag')) return;
+                    if (document.querySelector('[data-slot="alert-dialog-content"]')) return;
+                    setSelectedNodeId(node.id);
+                  }}
+                  onPaneClick={() => {
+                    if (document.querySelector('[data-slot="alert-dialog-content"]')) return;
+                    setSelectedNodeId(null);
+                  }}
                   onMove={(_, viewport) => {
                     viewportRef.current = viewport;
                   }}
@@ -1227,7 +1272,9 @@ export default function App() {
             </div>
           )}
 
-          {!activeFileId && !activeNoteId && !activeDrawingId && view !== 'trash' && (
+          {((view === 'erd' && !activeFileId) || 
+            (view === 'notes' && !activeNoteId) || 
+            (view === 'drawings' && !activeDrawingId)) && (
             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
               <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-6">
                 <Database size={40} className="opacity-20" />
