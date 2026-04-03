@@ -93,31 +93,15 @@ export function NavUser({
                 <Github className="mr-2 size-4" />
                 Github
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onViewChange('trash')}>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem 
+                onClick={() => onViewChange('trash')}
+                className="text-destructive focus:bg-accent focus:text-destructive cursor-pointer"
+              >
                 <Trash2 className="mr-2 size-4" />
                 Trash
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Sparkles className="mr-2 size-4" />
-                Upgrade to Pro
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <BadgeCheck className="mr-2 size-4" />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard className="mr-2 size-4" />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Bell className="mr-2 size-4" />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

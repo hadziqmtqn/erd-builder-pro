@@ -17,7 +17,7 @@ import {
   getViewportForBounds
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown, Database, Trash, StickyNote, PenTool, Menu, Folder } from 'lucide-react';
+import { Plus, Download, ChevronDown, Menu } from 'lucide-react';
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
@@ -58,9 +58,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RefreshCcw, Trash2 as TrashIcon } from 'lucide-react';
+import { RefreshCcw, Trash2 as TrashIcon, Database, StickyNote, PenTool, Folder, Trash } from 'lucide-react';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
   DropdownMenu, 
@@ -462,7 +470,7 @@ function AppContent() {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar {...sidebarProps} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
@@ -491,7 +499,7 @@ function AppContent() {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
           {view === 'erd' && activeFileId && (
             <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
               <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
@@ -545,17 +553,17 @@ function AppContent() {
           )}
 
           {view === 'trash' && (
-            <div className="flex-1 flex flex-col overflow-hidden border rounded-xl bg-background">
-              <div className="p-6 border-b">
+            <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
+              <div className="p-6 border-b shrink-0">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                   <Trash size={24} className="text-muted-foreground" />
                   Trash Bin
                 </h2>
                 <p className="text-sm text-muted-foreground">Manage your deleted files and projects. Items can be restored or permanently deleted.</p>
               </div>
-              <ScrollArea className="flex-1 p-6">
-                <div className="space-y-12">
-                  {/* Diagrams Table */}
+              <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
+                <div className="p-6 space-y-12">
+                  {/* Diagrams Cards */}
                   <section>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -564,44 +572,31 @@ function AppContent() {
                       </h3>
                       <Badge variant="outline">{trashData.files.length} Items</Badge>
                     </div>
-                    <div className="border rounded-lg">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Deleted At</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {trashData.files.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted diagrams</TableCell>
-                            </TableRow>
-                          ) : (
-                            trashData.files.map((file) => (
-                              <TableRow key={file.id}>
-                                <TableCell className="font-medium">{file.name}</TableCell>
-                                <TableCell className="text-muted-foreground text-xs">{new Date(file.updated_at).toLocaleString()}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreFile(file.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleFilePermanentDelete(file.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    {trashData.files.length === 0 ? (
+                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted diagrams</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {trashData.files.map((file) => (
+                          <Card key={file.id} className="mb-4">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-base truncate">{file.name}</CardTitle>
+                              <CardDescription className="text-xs">Deleted: {new Date(file.updated_at).toLocaleString()}</CardDescription>
+                            </CardHeader>
+                            <CardFooter className="pt-2 flex gap-2">
+                              <Button variant="outline" size="sm" className="flex-1" onClick={() => { restoreFile(file.id); fetchTrash(); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleFilePermanentDelete(file.id)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </CardFooter>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
-                  {/* Notes Table */}
+                  {/* Notes Cards */}
                   <section>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -610,44 +605,31 @@ function AppContent() {
                       </h3>
                       <Badge variant="outline">{trashData.notes.length} Items</Badge>
                     </div>
-                    <div className="border rounded-lg">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Deleted At</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {trashData.notes.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted notes</TableCell>
-                            </TableRow>
-                          ) : (
-                            trashData.notes.map((note) => (
-                              <TableRow key={note.id}>
-                                <TableCell className="font-medium">{note.title}</TableCell>
-                                <TableCell className="text-muted-foreground text-xs">{new Date(note.updated_at).toLocaleString()}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreNote(note.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    {trashData.notes.length === 0 ? (
+                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted notes</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {trashData.notes.map((note) => (
+                          <Card key={note.id} className="mb-4">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-base truncate">{note.title}</CardTitle>
+                              <CardDescription className="text-xs">Deleted: {new Date(note.updated_at).toLocaleString()}</CardDescription>
+                            </CardHeader>
+                            <CardFooter className="pt-2 flex gap-2">
+                              <Button variant="outline" size="sm" className="flex-1" onClick={() => { restoreNote(note.id); fetchTrash(); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleNotePermanentDelete(note.id)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </CardFooter>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
-                  {/* Drawings Table */}
+                  {/* Drawings Cards */}
                   <section>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -656,44 +638,31 @@ function AppContent() {
                       </h3>
                       <Badge variant="outline">{trashData.drawings.length} Items</Badge>
                     </div>
-                    <div className="border rounded-lg">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Deleted At</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {trashData.drawings.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted drawings</TableCell>
-                            </TableRow>
-                          ) : (
-                            trashData.drawings.map((drawing) => (
-                              <TableRow key={drawing.id}>
-                                <TableCell className="font-medium">{drawing.title}</TableCell>
-                                <TableCell className="text-muted-foreground text-xs">{new Date(drawing.updated_at).toLocaleString()}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreDrawing(drawing.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    {trashData.drawings.length === 0 ? (
+                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted drawings</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {trashData.drawings.map((drawing) => (
+                          <Card key={drawing.id} className="mb-4">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-base truncate">{drawing.title}</CardTitle>
+                              <CardDescription className="text-xs">Deleted: {new Date(drawing.updated_at).toLocaleString()}</CardDescription>
+                            </CardHeader>
+                            <CardFooter className="pt-2 flex gap-2">
+                              <Button variant="outline" size="sm" className="flex-1" onClick={() => { restoreDrawing(drawing.id); fetchTrash(); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </CardFooter>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
-                  {/* Projects Table */}
+                  {/* Projects Cards */}
                   <section>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -702,44 +671,31 @@ function AppContent() {
                       </h3>
                       <Badge variant="outline">{trashData.projects.length} Items</Badge>
                     </div>
-                    <div className="border rounded-lg">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Deleted At</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {trashData.projects.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted projects</TableCell>
-                            </TableRow>
-                          ) : (
-                            trashData.projects.map((project) => (
-                              <TableRow key={project.id}>
-                                <TableCell className="font-medium">{project.name}</TableCell>
-                                <TableCell className="text-muted-foreground text-xs">{new Date(project.created_at).toLocaleString()}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreProject(project.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    {trashData.projects.length === 0 ? (
+                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted projects</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {trashData.projects.map((project) => (
+                          <Card key={project.id} className="mb-4">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-base truncate">{project.name}</CardTitle>
+                              <CardDescription className="text-xs">Deleted: {new Date(project.created_at).toLocaleString()}</CardDescription>
+                            </CardHeader>
+                            <CardFooter className="pt-2 flex gap-2">
+                              <Button variant="outline" size="sm" className="flex-1" onClick={() => { restoreProject(project.id); fetchTrash(); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleProjectPermanentDelete(project.id)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </CardFooter>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 </div>
-              </ScrollArea>
+              </div>
             </div>
           )}
 
