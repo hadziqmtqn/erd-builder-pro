@@ -216,8 +216,8 @@ export function NavProjects({
           </SidebarMenuButton>
         </SidebarMenuItem>
         {projects.map((item) => (
-          <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<button onClick={() => onProjectSelect(item.id)} />} isActive={item.isActive}>
+          <SidebarMenuItem key={item.id}>
+            <SidebarMenuButton onClick={() => onProjectSelect(item.id)} isActive={item.isActive}>
               <item.icon />
               <span>{item.name}</span>
             </SidebarMenuButton>
@@ -369,9 +369,9 @@ export function NavProjects({
       <Dialog open={isProjectDialogOpen} onOpenChange={setIsProjectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingProjectId ? 'Rename Project' : 'Create New Project'}</DialogTitle>
+            <DialogTitle>{editingProjectId !== null ? 'Rename Project' : 'Create New Project'}</DialogTitle>
             <DialogDescription>
-              {editingProjectId ? 'Enter a new name for your project.' : 'Enter a name for your new project to organize your files.'}
+              {editingProjectId !== null ? 'Enter a new name for your project.' : 'Enter a name for your new project to organize your files.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -381,8 +381,8 @@ export function NavProjects({
               </Label>
               <Input
                 id="name"
-                value={editingProjectId ? editingProjectName : projectName}
-                onChange={(e) => editingProjectId ? setEditingProjectName(e.target.value) : setProjectName(e.target.value)}
+                value={editingProjectId !== null ? editingProjectName : projectName}
+                onChange={(e) => editingProjectId !== null ? setEditingProjectName(e.target.value) : setProjectName(e.target.value)}
                 placeholder="Project name"
               />
             </div>
@@ -393,7 +393,7 @@ export function NavProjects({
               setEditingProjectId(null)
             }}>Cancel</Button>
             <Button onClick={() => {
-              if (editingProjectId) {
+              if (editingProjectId !== null) {
                 if (editingProjectName.trim()) {
                   onProjectUpdate(editingProjectId, editingProjectName.trim())
                   setEditingProjectId(null)
@@ -402,7 +402,7 @@ export function NavProjects({
               } else {
                 handleCreateProject()
               }
-            }}>{editingProjectId ? 'Save Changes' : 'Create Project'}</Button>
+            }}>{editingProjectId !== null ? 'Save Changes' : 'Create Project'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

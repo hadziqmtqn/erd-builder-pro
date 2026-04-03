@@ -27,7 +27,6 @@ export function useProjects() {
       if (res.ok) {
         const newProject = await res.json();
         setProjects(prev => [...prev, newProject]);
-        setActiveProjectId(newProject.id);
         return newProject;
       }
     } catch (err) {
