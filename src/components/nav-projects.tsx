@@ -194,8 +194,9 @@ export function NavProjects({
   }
 
   return (
-    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Projects</SidebarGroupLabel>
+    <>
+      <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+        <SidebarGroupLabel>Projects</SidebarGroupLabel>
       <SidebarGroupAction title="Add Project" onClick={() => {
         setEditingProjectId(null)
         setProjectName("")
@@ -246,12 +247,15 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-      </SidebarMenu>
+        </SidebarMenu>
+      </SidebarGroup>
 
       {/* Files Section based on active project and view */}
-      <SidebarGroupLabel className="mt-4">
-        {view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : 'Drawings'}
-      </SidebarGroupLabel>
+      {view !== 'trash' && (
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupLabel>
+            {view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : 'Drawings'}
+          </SidebarGroupLabel>
       <SidebarGroupAction title={`Add ${view}`} onClick={() => {
         setSelectedProjectId(activeProjectId?.toString() || "none")
         setFileName("")
@@ -507,5 +511,7 @@ export function NavProjects({
         </DialogContent>
       </Dialog>
     </SidebarGroup>
+    )}
+    </>
   )
 }
