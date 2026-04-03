@@ -17,10 +17,10 @@ import {
   getViewportForBounds
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown, Database, Trash, StickyNote, PenTool, Menu } from 'lucide-react';
+import { Plus, Download, ChevronDown, Database, Trash, StickyNote, PenTool, Menu, Folder } from 'lucide-react';
 
 // Components
-import Sidebar from './components/Sidebar';
+import { AppSidebar } from './components/app-sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import EntityNode from './components/EntityNode';
 import NotesEditor from './components/NotesEditor';
@@ -40,7 +40,27 @@ import { Entity, FileData } from './types';
 
 // UI
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { RefreshCcw, Trash2 as TrashIcon } from 'lucide-react';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
   DropdownMenu, 
@@ -51,6 +71,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuGroup
 } from "@/components/ui/dropdown-menu";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { Separator } from "@/components/ui/separator"
 
 const nodeTypes = {
   entity: EntityNode,
@@ -62,6 +96,8 @@ const initialEdges: Edge[] = [];
 function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
   
   // Hooks
   const { isAuthenticated, checkAuth, handleLogout } = useAuth();
@@ -332,24 +368,37 @@ function AppContent() {
     fetchProjects();
   };
 
-  const handleFilePermanentDelete = async (id: number) => {
-    await deleteFilePermanent(id);
-    fetchTrash();
+  const handleFilePermanentDelete = (id: number) => {
+    setItemToDelete({ id, type: 'erd' });
+    setIsPermanentDeleteConfirmOpen(true);
   };
 
-  const handleNotePermanentDelete = async (id: number) => {
-    await deleteNotePermanent(id);
-    fetchTrash();
+  const handleNotePermanentDelete = (id: number) => {
+    setItemToDelete({ id, type: 'notes' });
+    setIsPermanentDeleteConfirmOpen(true);
   };
 
-  const handleDrawingPermanentDelete = async (id: number) => {
-    await deleteDrawingPermanent(id);
-    fetchTrash();
+  const handleDrawingPermanentDelete = (id: number) => {
+    setItemToDelete({ id, type: 'drawings' });
+    setIsPermanentDeleteConfirmOpen(true);
   };
 
-  const handleProjectPermanentDelete = async (id: number) => {
-    await deleteProjectPermanent(id);
-    fetchTrash();
+  const handleProjectPermanentDelete = (id: number) => {
+    setItemToDelete({ id, type: 'project' });
+    setIsPermanentDeleteConfirmOpen(true);
+  };
+
+  const confirmPermanentDelete = async () => {
+    if (itemToDelete) {
+      if (itemToDelete.type === 'project') await deleteProjectPermanent(itemToDelete.id);
+      else if (itemToDelete.type === 'erd') await deleteFilePermanent(itemToDelete.id);
+      else if (itemToDelete.type === 'notes') await deleteNotePermanent(itemToDelete.id);
+      else if (itemToDelete.type === 'drawings') await deleteDrawingPermanent(itemToDelete.id);
+      
+      setIsPermanentDeleteConfirmOpen(false);
+      setItemToDelete(null);
+      fetchTrash();
+    }
   };
   // --- End Sync Handlers ---
 
@@ -413,55 +462,50 @@ function AppContent() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-background overflow-hidden">
-      <div className="hidden md:block"><Sidebar {...sidebarProps} /></div>
-      <div className="flex-1 relative flex overflow-hidden">
-        <main className="flex-1 relative flex flex-col overflow-hidden">
-          <header className="flex items-center justify-between px-4 lg:pl-16 h-14 border-b border-border bg-background/80 backdrop-blur-md z-20">
-            <div className="flex items-center gap-2">
-              <Sheet>
-                <SheetTrigger
-                  render={
-                    <Button variant="ghost" size="icon" className="md:hidden">
-                      <Menu className="w-5 h-5" />
-                    </Button>
-                  }
-                />
-                <SheetContent side="left" className="p-0 w-80 border-r-border/50">
-                  <Sidebar {...sidebarProps} />
-                </SheetContent>
-              </Sheet>
-              <div className="flex items-center gap-2">
-                {view === 'erd' && <Database className="w-5 h-5 text-primary" />}
-                {view === 'notes' && <StickyNote className="w-5 h-5 text-primary" />}
-                {view === 'drawings' && <PenTool className="w-5 h-5 text-primary" />}
-                <span className="font-bold text-sm tracking-tight">
-                  {view === 'erd' ? (files.find(f => f.id === activeFileId)?.name || 'ERD Pro') : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : 'ERD Pro'}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {saveStatus === 'saving' && <span className="text-[10px] text-muted-foreground animate-pulse">Saving...</span>}
-              {saveStatus === 'saved' && <span className="text-[10px] text-primary">Saved</span>}
-            </div>
-          </header>
+    <SidebarProvider>
+      <AppSidebar {...sidebarProps} />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#">
+                    {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Workspace"}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>
+                    {view === 'erd' ? (files.find(f => f.id === activeFileId)?.name || 'ERD Pro') : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : 'ERD Pro'}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+          <div className="ml-auto px-4 flex items-center gap-2">
+            {saveStatus === 'saving' && <span className="text-[10px] text-muted-foreground animate-pulse">Saving...</span>}
+            {saveStatus === 'saved' && <span className="text-[10px] text-primary">Saved</span>}
+          </div>
+        </header>
 
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
           {view === 'erd' && activeFileId && (
-            <div className="flex-1 relative flex flex-col overflow-hidden">
+            <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
               <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
                 <div className="flex items-center gap-2 p-1.5 bg-background/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
                   <Button onClick={addEntity} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20"><Plus className="w-4 h-4 mr-2" />Add Table</Button>
                   <div className="w-px h-6 bg-border mx-1" />
                   <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="ghost" size="sm" className="h-9 px-4 font-bold text-muted-foreground hover:text-foreground">
-                          <Download className="w-4 h-4 mr-2" />
-                          Export
-                          <ChevronDown className="w-3 h-3 ml-1" />
-                        </Button>
-                      }
-                    />
+                    <DropdownMenuTrigger render={
+                      <Button variant="ghost" size="sm" className="h-9 px-4 font-bold text-muted-foreground hover:text-foreground">
+                        <Download className="w-4 h-4 mr-2" />
+                        Export
+                        <ChevronDown className="w-3 h-3 ml-1" />
+                      </Button>
+                    } />
                     <DropdownMenuContent align="end" className="w-48 p-1">
                       <DropdownMenuGroup>
                         <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
@@ -489,36 +533,248 @@ function AppContent() {
           )}
 
           {view === 'notes' && activeNote && (
-            <NotesEditor key={activeNoteId} note={activeNote} onSave={saveNote} onChange={handleNoteChange} onDelete={deleteNote} />
+            <div className="flex-1 border rounded-xl overflow-hidden bg-background">
+              <NotesEditor key={activeNoteId} note={activeNote} onSave={saveNote} onChange={handleNoteChange} onDelete={deleteNote} />
+            </div>
           )}
 
           {view === 'drawings' && activeDrawing && (
-            <ExcalidrawEditor key={activeDrawingId} drawing={activeDrawing} onSave={saveDrawing} onChange={handleDrawingChange} onDelete={deleteDrawing} />
+            <div className="flex-1 border rounded-xl overflow-hidden bg-background">
+              <ExcalidrawEditor key={activeDrawingId} drawing={activeDrawing} onSave={saveDrawing} onChange={handleDrawingChange} onDelete={deleteDrawing} />
+            </div>
           )}
 
           {view === 'trash' && (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-              <Trash size={48} className="mb-4 opacity-20" />
-              <h2 className="text-xl font-bold mb-2">Trash Bin</h2>
-              <p className="text-sm">Select an item from the sidebar to restore it.</p>
+            <div className="flex-1 flex flex-col overflow-hidden border rounded-xl bg-background">
+              <div className="p-6 border-b">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Trash size={24} className="text-muted-foreground" />
+                  Trash Bin
+                </h2>
+                <p className="text-sm text-muted-foreground">Manage your deleted files and projects. Items can be restored or permanently deleted.</p>
+              </div>
+              <ScrollArea className="flex-1 p-6">
+                <div className="space-y-12">
+                  {/* Diagrams Table */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Database size={18} className="text-blue-400" />
+                        Diagrams
+                      </h3>
+                      <Badge variant="outline">{trashData.files.length} Items</Badge>
+                    </div>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Deleted At</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {trashData.files.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted diagrams</TableCell>
+                            </TableRow>
+                          ) : (
+                            trashData.files.map((file) => (
+                              <TableRow key={file.id}>
+                                <TableCell className="font-medium">{file.name}</TableCell>
+                                <TableCell className="text-muted-foreground text-xs">{new Date(file.updated_at).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => { restoreFile(file.id); fetchTrash(); }}>
+                                      <RefreshCcw size={14} className="mr-1" /> Restore
+                                    </Button>
+                                    <Button variant="destructive" size="sm" onClick={() => handleFilePermanentDelete(file.id)}>
+                                      <TrashIcon size={14} className="mr-1" /> Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </section>
+
+                  {/* Notes Table */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <StickyNote size={18} className="text-yellow-400" />
+                        Notes
+                      </h3>
+                      <Badge variant="outline">{trashData.notes.length} Items</Badge>
+                    </div>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Deleted At</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {trashData.notes.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted notes</TableCell>
+                            </TableRow>
+                          ) : (
+                            trashData.notes.map((note) => (
+                              <TableRow key={note.id}>
+                                <TableCell className="font-medium">{note.title}</TableCell>
+                                <TableCell className="text-muted-foreground text-xs">{new Date(note.updated_at).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => { restoreNote(note.id); fetchTrash(); }}>
+                                      <RefreshCcw size={14} className="mr-1" /> Restore
+                                    </Button>
+                                    <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note.id)}>
+                                      <TrashIcon size={14} className="mr-1" /> Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </section>
+
+                  {/* Drawings Table */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <PenTool size={18} className="text-purple-400" />
+                        Drawings
+                      </h3>
+                      <Badge variant="outline">{trashData.drawings.length} Items</Badge>
+                    </div>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Deleted At</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {trashData.drawings.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted drawings</TableCell>
+                            </TableRow>
+                          ) : (
+                            trashData.drawings.map((drawing) => (
+                              <TableRow key={drawing.id}>
+                                <TableCell className="font-medium">{drawing.title}</TableCell>
+                                <TableCell className="text-muted-foreground text-xs">{new Date(drawing.updated_at).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => { restoreDrawing(drawing.id); fetchTrash(); }}>
+                                      <RefreshCcw size={14} className="mr-1" /> Restore
+                                    </Button>
+                                    <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
+                                      <TrashIcon size={14} className="mr-1" /> Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </section>
+
+                  {/* Projects Table */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Folder size={18} className="text-orange-400" />
+                        Projects
+                      </h3>
+                      <Badge variant="outline">{trashData.projects.length} Items</Badge>
+                    </div>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Deleted At</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {trashData.projects.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No deleted projects</TableCell>
+                            </TableRow>
+                          ) : (
+                            trashData.projects.map((project) => (
+                              <TableRow key={project.id}>
+                                <TableCell className="font-medium">{project.name}</TableCell>
+                                <TableCell className="text-muted-foreground text-xs">{new Date(project.created_at).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => { restoreProject(project.id); fetchTrash(); }}>
+                                      <RefreshCcw size={14} className="mr-1" /> Restore
+                                    </Button>
+                                    <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project.id)}>
+                                      <TrashIcon size={14} className="mr-1" /> Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </section>
+                </div>
+              </ScrollArea>
             </div>
           )}
 
           {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId) || (view === 'drawings' && !activeDrawingId)) && (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center border rounded-xl bg-muted/10">
               <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-6"><Database size={40} className="opacity-20" /></div>
               <h2 className="text-2xl font-bold text-foreground mb-2">Welcome to ERD Builder Pro</h2>
               <p className="max-w-md text-sm leading-relaxed">Select a project or file from the sidebar to start designing your database schema, taking notes, or sketching ideas.</p>
             </div>
           )}
-        </main>
+        </div>
         <Dialog open={!!selectedNodeId} onOpenChange={(open) => !open && setSelectedNodeId(null)}>
           <DialogContent className="p-0 sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl">
             <PropertiesPanel selectedEntity={selectedEntity} onUpdateEntity={updateEntity} onDeleteEntity={deleteEntity} onClose={() => setSelectedNodeId(null)} />
           </DialogContent>
         </Dialog>
-      </div>
-    </div>
+
+        <AlertDialog open={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the item from our servers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmPermanentDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Permanently Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 

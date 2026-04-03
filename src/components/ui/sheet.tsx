@@ -11,33 +11,13 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
 
-const SheetTrigger = React.forwardRef<
-  HTMLButtonElement,
-  SheetPrimitive.Trigger.Props
->((props, ref) => {
-  return (
-    <SheetPrimitive.Trigger
-      ref={ref}
-      data-slot="sheet-trigger"
-      {...props}
-    />
-  )
-})
-SheetTrigger.displayName = "SheetTrigger"
+function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
+}
 
-const SheetClose = React.forwardRef<
-  HTMLButtonElement,
-  SheetPrimitive.Close.Props
->((props, ref) => {
-  return (
-    <SheetPrimitive.Close
-      ref={ref}
-      data-slot="sheet-close"
-      {...props}
-    />
-  )
-})
-SheetClose.displayName = "SheetClose"
+function SheetClose({ ...props }: SheetPrimitive.Close.Props) {
+  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
+}
 
 function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
@@ -48,7 +28,7 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/10 backdrop-blur-none transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
+        "fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
         className
       )}
       {...props}
