@@ -75,6 +75,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeDrawingId: number | null;
   activeProjectId: number | null;
   view: 'erd' | 'notes' | 'drawings' | 'trash';
+  sidebarView: 'erd' | 'notes' | 'drawings';
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash') => void;
   onFileSelect: (id: number) => void;
   onNoteSelect: (id: number) => void;
@@ -118,6 +119,7 @@ export function AppSidebar({
   activeDrawingId,
   activeProjectId,
   view,
+  sidebarView,
   onViewChange,
   onFileSelect,
   onNoteSelect,
@@ -222,6 +224,7 @@ export function AppSidebar({
           activeNoteId={activeNoteId}
           activeDrawingId={activeDrawingId}
           view={view}
+          sidebarView={sidebarView}
           onFileDelete={onFileDelete}
           onNoteDelete={onNoteDelete}
           onDrawingDelete={onDrawingDelete}

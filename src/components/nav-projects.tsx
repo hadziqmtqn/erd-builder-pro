@@ -84,6 +84,7 @@ export function NavProjects({
   onMoveNoteToProject,
   onMoveDrawingToProject,
   allProjects,
+  sidebarView,
 }: {
   projects: {
     id: number
@@ -110,6 +111,7 @@ export function NavProjects({
   activeNoteId: number | null
   activeDrawingId: number | null
   view: 'erd' | 'notes' | 'drawings' | 'trash'
+  sidebarView: 'erd' | 'notes' | 'drawings'
   onFileDelete: (id: number) => void
   onNoteDelete: (id: number) => void
   onDrawingDelete: (id: number) => void
@@ -150,11 +152,11 @@ export function NavProjects({
   const handleCreateFile = () => {
     if (fileName.trim()) {
       const projectId = selectedProjectId === "none" ? null : parseInt(selectedProjectId)
-      if (view === 'erd') {
+      if (sidebarView === 'erd') {
         onFileCreate(fileName.trim(), projectId)
-      } else if (view === 'notes') {
+      } else if (sidebarView === 'notes') {
         onNoteCreate(fileName.trim(), projectId)
-      } else if (view === 'drawings') {
+      } else if (sidebarView === 'drawings') {
         onDrawingCreate(fileName.trim(), projectId)
       }
       setFileName("")
@@ -250,13 +252,12 @@ export function NavProjects({
         </SidebarMenu>
       </SidebarGroup>
 
-      {/* Files Section based on active project and view */}
-      {view !== 'trash' && (
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>
-            {view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : 'Drawings'}
-          </SidebarGroupLabel>
-      <SidebarGroupAction title={`Add ${view}`} onClick={() => {
+      {/* Files Section based on active project and sidebarView */}
+      <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+        <SidebarGroupLabel>
+          {sidebarView === 'erd' ? 'Diagrams' : sidebarView === 'notes' ? 'Notes' : 'Drawings'}
+        </SidebarGroupLabel>
+      <SidebarGroupAction title={`Add ${sidebarView}`} onClick={() => {
         setSelectedProjectId(activeProjectId?.toString() || "none")
         setFileName("")
         setIsFileDialogOpen(true)
@@ -264,10 +265,10 @@ export function NavProjects({
         <Plus />
       </SidebarGroupAction>
       <SidebarMenu>
-        {view === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
+        {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
           <SidebarMenuItem key={file.id}>
             <SidebarMenuButton 
-              isActive={activeFileId === file.id}
+              isActive={activeFileId === file.id && view === 'erd'}
               onClick={() => onFileSelect(file.id)}
             >
               <Database className="size-4" />
@@ -297,10 +298,10 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {view === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
+        {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
           <SidebarMenuItem key={note.id}>
             <SidebarMenuButton 
-              isActive={activeNoteId === note.id}
+              isActive={activeNoteId === note.id && view === 'notes'}
               onClick={() => onNoteSelect(note.id)}
             >
               <StickyNote className="size-4" />
@@ -330,10 +331,10 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {view === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
+        {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
           <SidebarMenuItem key={drawing.id}>
             <SidebarMenuButton 
-              isActive={activeDrawingId === drawing.id}
+              isActive={activeDrawingId === drawing.id && view === 'drawings'}
               onClick={() => onDrawingSelect(drawing.id)}
             >
               <PenTool className="size-4" />
@@ -411,7 +412,7 @@ export function NavProjects({
       <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New {view === 'erd' ? 'Diagram' : view === 'notes' ? 'Note' : 'Drawing'}</DialogTitle>
+            <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : 'Drawing'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -511,7 +512,6 @@ export function NavProjects({
         </DialogContent>
       </Dialog>
     </SidebarGroup>
-    )}
     </>
   )
 }

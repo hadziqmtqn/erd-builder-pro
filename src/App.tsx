@@ -103,6 +103,7 @@ const initialEdges: Edge[] = [];
 
 function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
@@ -457,7 +458,7 @@ function AppContent() {
   const sidebarProps = {
     files, notes, drawings, projects, trashData,
     activeFileId, activeNoteId, activeDrawingId, activeProjectId,
-    view, onViewChange: setView,
+    view,
     onFileSelect: handleFileSelect, onNoteSelect: handleNoteSelect, onDrawingSelect: handleDrawingSelect, onProjectSelect: setActiveProjectId,
     onFileCreate: handleFileCreate, onNoteCreate: handleNoteCreate, onDrawingCreate: handleDrawingCreate, onProjectCreate: createProject,
     onProjectUpdate: updateProject, onProjectDelete: handleProjectDelete, onProjectRestore: handleProjectRestore,
@@ -466,7 +467,14 @@ function AppContent() {
     onFileRestore: handleFileRestore, onNoteRestore: handleNoteRestore, onDrawingRestore: handleDrawingRestore,
     onFilePermanentDelete: handleFilePermanentDelete, onNotePermanentDelete: handleNotePermanentDelete, onDrawingPermanentDelete: handleDrawingPermanentDelete, onProjectPermanentDelete: handleProjectPermanentDelete,
     onLogout: handleLogout, saveStatus,
-    onMoveFileToProject: moveFileToProject, onMoveNoteToProject: moveNoteToProject, onMoveDrawingToProject: moveDrawingToProject
+    onMoveFileToProject: moveFileToProject, onMoveNoteToProject: moveNoteToProject, onMoveDrawingToProject: moveDrawingToProject,
+    sidebarView,
+    onViewChange: (newView: 'erd' | 'notes' | 'drawings' | 'trash') => {
+      setView(newView);
+      if (newView !== 'trash') {
+        setSidebarView(newView);
+      }
+    },
   };
 
   return (
