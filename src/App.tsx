@@ -13,11 +13,9 @@ import {
   Viewport,
   useReactFlow,
   ReactFlowProvider,
-  getNodesBounds,
-  getViewportForBounds
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown, Menu } from 'lucide-react';
+import { Plus, Download, ChevronDown } from 'lucide-react';
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
@@ -58,16 +56,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { RefreshCcw, Trash2 as TrashIcon, Database, StickyNote, PenTool, Folder, Trash } from 'lucide-react';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
