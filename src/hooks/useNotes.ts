@@ -10,7 +10,10 @@ export function useNotes() {
       const res = await fetch('/api/notes');
       if (res.ok) {
         const data = await res.json();
-        setNotesList(Array.isArray(data) ? data : []);
+        const sortedData = Array.isArray(data) 
+          ? data.sort((a, b) => b.id - a.id) 
+          : [];
+        setNotesList(sortedData);
       }
     } catch (err) {
       console.error('Error fetching notes:', err);

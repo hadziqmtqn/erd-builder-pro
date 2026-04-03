@@ -10,7 +10,10 @@ export function useProjects() {
       const res = await fetch('/api/projects');
       if (res.ok) {
         const data = await res.json();
-        setProjects(Array.isArray(data) ? data : []);
+        const sortedData = Array.isArray(data) 
+          ? data.sort((a, b) => b.id - a.id) 
+          : [];
+        setProjects(sortedData);
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
@@ -26,7 +29,7 @@ export function useProjects() {
       });
       if (res.ok) {
         const newProject = await res.json();
-        setProjects(prev => [...prev, newProject]);
+        setProjects(prev => [newProject, ...prev]);
         return newProject;
       }
     } catch (err) {

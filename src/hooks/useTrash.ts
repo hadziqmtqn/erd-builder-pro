@@ -14,7 +14,13 @@ export function useTrash() {
       const res = await fetch('/api/trash');
       if (res.ok) {
         const data = await res.json();
-        setTrashData(data);
+        const sortedData = {
+          files: Array.isArray(data.files) ? data.files.sort((a: any, b: any) => b.id - a.id) : [],
+          notes: Array.isArray(data.notes) ? data.notes.sort((a: any, b: any) => b.id - a.id) : [],
+          drawings: Array.isArray(data.drawings) ? data.drawings.sort((a: any, b: any) => b.id - a.id) : [],
+          projects: Array.isArray(data.projects) ? data.projects.sort((a: any, b: any) => b.id - a.id) : [],
+        };
+        setTrashData(sortedData);
       }
     } catch (err) {
       console.error('Error fetching trash:', err);

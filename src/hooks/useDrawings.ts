@@ -10,7 +10,10 @@ export function useDrawings() {
       const res = await fetch('/api/drawings');
       if (res.ok) {
         const data = await res.json();
-        setDrawings(Array.isArray(data) ? data : []);
+        const sortedData = Array.isArray(data) 
+          ? data.sort((a, b) => b.id - a.id) 
+          : [];
+        setDrawings(sortedData);
       }
     } catch (err) {
       console.error('Error fetching drawings:', err);

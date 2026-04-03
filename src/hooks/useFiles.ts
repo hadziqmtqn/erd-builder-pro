@@ -13,7 +13,10 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       const res = await fetch('/api/files');
       if (res.ok) {
         const data = await res.json();
-        setFiles(Array.isArray(data) ? data : []);
+        const sortedData = Array.isArray(data) 
+          ? data.sort((a: FileData, b: FileData) => b.id - a.id) 
+          : [];
+        setFiles(sortedData);
       }
     } catch (err) {
       console.error('Error fetching files:', err);
