@@ -466,6 +466,9 @@ function AppContent() {
     },
   };
 
+  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
+  const activeFileName = view === 'erd' ? files.find(f => f.id === activeFileId)?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
+
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar {...sidebarProps} />
@@ -476,17 +479,19 @@ function AppContent() {
             <Separator orientation="vertical" className="mr-2 h-4" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">
-                    {activeProjectId ? projects.find(p => p.id === activeProjectId)?.name : "Workspace"}
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
                 <BreadcrumbItem>
-                  <BreadcrumbPage>
-                    {view === 'erd' ? (files.find(f => f.id === activeFileId)?.name || 'ERD Pro') : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : 'ERD Pro'}
+                  <BreadcrumbPage className="font-medium text-foreground">
+                    {featureLabel}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
+                {activeFileName && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>{activeFileName}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
