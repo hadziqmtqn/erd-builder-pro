@@ -34,8 +34,10 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
+  SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarRail,
 } from "@/components/ui/sidebar"
 import {
@@ -152,6 +154,7 @@ export function AppSidebar({
   onMoveDrawingToProject,
   ...props
 }: AppSidebarProps) {
+  const [searchQuery, setSearchQuery] = React.useState("")
   // Navigation items for the main section
   const navMain = [
     {
@@ -201,6 +204,17 @@ export function AppSidebar({
             }
           ]} 
         />
+        <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
+          <SidebarGroupContent className="relative">
+            <SidebarInput 
+              placeholder={`Search ${sidebarView === 'erd' ? 'diagrams' : sidebarView === 'notes' ? 'notes' : 'drawings'}...`}
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground" />
+          </SidebarGroupContent>
+        </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
           <SidebarGroupLabel>Features</SidebarGroupLabel>
           <NavMain items={navMain} />
@@ -238,6 +252,7 @@ export function AppSidebar({
           onMoveNoteToProject={onMoveNoteToProject}
           onMoveDrawingToProject={onMoveDrawingToProject}
           allProjects={projects.filter(p => !p.is_deleted)}
+          searchQuery={searchQuery}
         />
       </SidebarContent>
       <SidebarFooter>
