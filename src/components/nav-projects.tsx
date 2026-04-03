@@ -412,13 +412,13 @@ export function NavProjects({
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="filename">
-                Title
+                Name
               </Label>
               <Input
                 id="filename"
                 value={fileName}
                 onChange={(e) => setFileName(e.target.value)}
-                placeholder="Enter title"
+                placeholder="Enter name"
               />
             </div>
             <div className="grid gap-2">
@@ -427,7 +427,9 @@ export function NavProjects({
               </Label>
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a project" />
+                  <SelectValue placeholder="Select a project">
+                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || selectedProjectId}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No Project (Root)</SelectItem>
@@ -454,12 +456,13 @@ export function NavProjects({
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="edit-filename">
-                Title
+                Name
               </Label>
               <Input
                 id="edit-filename"
                 value={editingFile?.name || ""}
                 onChange={(e) => setEditingFile(prev => prev ? { ...prev, name: e.target.value } : null)}
+                placeholder="Enter name"
               />
             </div>
             <div className="grid gap-2">
@@ -468,7 +471,9 @@ export function NavProjects({
               </Label>
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a project" />
+                  <SelectValue placeholder="Select a project">
+                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || selectedProjectId}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No Project (Root)</SelectItem>

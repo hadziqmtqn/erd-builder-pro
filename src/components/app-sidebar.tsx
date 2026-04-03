@@ -150,28 +150,6 @@ export function AppSidebar({
   onMoveDrawingToProject,
   ...props
 }: AppSidebarProps) {
-  const [isGlobalFileDialogOpen, setIsGlobalFileDialogOpen] = React.useState(false)
-  const [newFileName, setNewFileName] = React.useState("")
-  const [newFileType, setNewFileType] = React.useState<'erd' | 'notes' | 'drawings'>('erd')
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string>("none")
-
-  const handleGlobalFileCreate = () => {
-    if (newFileName.trim()) {
-      const projectId = selectedProjectId === "none" ? null : parseInt(selectedProjectId)
-      if (newFileType === 'erd') {
-        onFileCreate(newFileName.trim(), projectId)
-        onViewChange('erd')
-      } else if (newFileType === 'notes') {
-        onNoteCreate(newFileName.trim(), projectId)
-        onViewChange('notes')
-      } else if (newFileType === 'drawings') {
-        onDrawingCreate(newFileName.trim(), projectId)
-        onViewChange('drawings')
-      }
-      setNewFileName("")
-      setIsGlobalFileDialogOpen(false)
-    }
-  }
   // Navigation items for the main section
   const navMain = [
     {
@@ -222,14 +200,6 @@ export function AppSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Feature</SidebarGroupLabel>
-          <SidebarGroupAction title="Create New File" onClick={() => {
-            // We can trigger the file dialog in NavProjects or have a separate one here
-            // For now, let's just make sure NavProjects can handle it or add a global one.
-            // Actually, let's just add a global one in AppSidebar for "Create New File"
-            setIsGlobalFileDialogOpen(true)
-          }}>
-            <Plus />
-          </SidebarGroupAction>
           <NavMain items={navMain} />
         </SidebarGroup>
         <NavProjects 
@@ -276,59 +246,6 @@ export function AppSidebar({
         />
       </SidebarFooter>
       <SidebarRail />
-      
-      <Dialog open={isGlobalFileDialogOpen} onOpenChange={setIsGlobalFileDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New File</DialogTitle>
-            <DialogDescription>
-              Create a new diagram, note, or drawing in your workspace.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="type">Type</Label>
-              <Select value={newFileType} onValueChange={(v: any) => setNewFileType(v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="erd">ERD Builder</SelectItem>
-                  <SelectItem value="notes">Notes</SelectItem>
-                  <SelectItem value="drawings">Drawings</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="global-filename">Name</Label>
-              <Input
-                id="global-filename"
-                value={newFileName}
-                onChange={(e) => setNewFileName(e.target.value)}
-                placeholder="Enter name"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="global-project">Project</Label>
-              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Project (Root)</SelectItem>
-                  {projects.filter(p => !p.is_deleted).map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsGlobalFileDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleGlobalFileCreate}>Create</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Sidebar>
   )
 }
