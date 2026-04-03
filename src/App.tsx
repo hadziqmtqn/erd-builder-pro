@@ -210,11 +210,29 @@ function AppContent() {
     setNodes((nds) => nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node));
   };
 
-  const deleteEntity = (id: string) => {
+  const deleteEntity = useCallback((id: string) => {
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
     setSelectedNodeId(null);
-  };
+  }, [setNodes, setEdges, setSelectedNodeId]);
+
+  // Handle custom events from EntityNode
+  useEffect(() => {
+    const handleEditEntity = (e: any) => {
+      setSelectedNodeId(e.detail);
+    };
+    const handleDeleteEntity = (e: any) => {
+      deleteEntity(e.detail);
+    };
+
+    window.addEventListener('editEntity', handleEditEntity);
+    window.addEventListener('deleteEntity', handleDeleteEntity);
+
+    return () => {
+      window.removeEventListener('editEntity', handleEditEntity);
+      window.removeEventListener('deleteEntity', handleDeleteEntity);
+    };
+  }, [deleteEntity]);
 
   // Auto-save ERD
   useEffect(() => {
