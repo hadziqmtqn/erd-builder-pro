@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Key, Check, X, Palette, Type, Settings2, ChevronRight } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { COLUMN_TYPES, cn } from '../lib/utils';
@@ -29,6 +29,8 @@ export default function PropertiesPanel({
   onDeleteEntity,
   onClose
 }: PropertiesPanelProps & { onClose?: () => void }) {
+  const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
+  
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -41,14 +43,27 @@ export default function PropertiesPanel({
     onConfirm: () => {}
   });
 
-  if (!selectedEntity) return null;
+  // Sync internal state when selected entity changes (different ID)
+  useEffect(() => {
+    if (selectedEntity?.id !== editingEntity?.id) {
+      setEditingEntity(selectedEntity);
+    }
+  }, [selectedEntity?.id]);
+
+  if (!selectedEntity || !editingEntity) return null;
+
+  const syncWithParent = (updated: Entity) => {
+    onUpdateEntity(updated);
+  };
 
   const handleEntityNameChange = (name: string) => {
-    onUpdateEntity({ ...selectedEntity, name });
+    setEditingEntity({ ...editingEntity, name });
   };
 
   const handleColorChange = (color: string) => {
-    onUpdateEntity({ ...selectedEntity, color });
+    const updated = { ...editingEntity, color };
+    setEditingEntity(updated);
+    syncWithParent(updated);
   };
 
   const addColumn = () => {
@@ -59,30 +74,46 @@ export default function PropertiesPanel({
       is_pk: false,
       is_nullable: true,
     };
-    onUpdateEntity({
-      ...selectedEntity,
-      columns: [...selectedEntity.columns, newColumn],
+    const updated = {
+      ...editingEntity,
+      columns: [...editingEntity.columns, newColumn],
+    };
+    setEditingEntity(updated);
+    syncWithParent(updated);
+  };
+
+  const updateColumnLocal = (colId: string, updates: Partial<Column>) => {
+    setEditingEntity({
+      ...editingEntity,
+      columns: editingEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
     });
   };
 
-  const updateColumn = (colId: string, updates: Partial<Column>) => {
-    onUpdateEntity({
-      ...selectedEntity,
-      columns: selectedEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
-    });
+  const updateColumnSync = (colId: string, updates: Partial<Column>) => {
+    const updated = {
+      ...editingEntity,
+      columns: editingEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
+    };
+    setEditingEntity(updated);
+    syncWithParent(updated);
   };
 
   const deleteColumn = (colId: string) => {
-    onUpdateEntity({
-      ...selectedEntity,
-      columns: selectedEntity.columns.filter(c => c.id !== colId),
-    });
+    const updated = {
+      ...editingEntity,
+      columns: editingEntity.columns.filter(c => c.id !== colId),
+    };
+    setEditingEntity(updated);
+    syncWithParent(updated);
   };
 
   return (
     <div className="w-full bg-background h-full flex flex-col overflow-hidden z-20">
       <div className="p-6 border-b flex items-center justify-between">
-        <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Properties</h2>
+        <div className="space-y-1">
+          <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Properties</h2>
+          <p className="text-[10px] text-muted-foreground/60 italic">Changes sync on field blur</p>
+        </div>
         <div className="flex items-center gap-2">
           <Button 
             variant="ghost"
@@ -90,9 +121,9 @@ export default function PropertiesPanel({
             onClick={() => setConfirmModal({
               isOpen: true,
               title: 'Delete Table',
-              message: `Are you sure you want to delete the table "${selectedEntity.name}"?`,
+              message: `Are you sure you want to delete the table "${editingEntity.name}"?`,
               onConfirm: () => {
-                onDeleteEntity(selectedEntity.id);
+                onDeleteEntity(editingEntity.id);
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
                 if (onClose) onClose();
               }
@@ -119,23 +150,24 @@ export default function PropertiesPanel({
                 <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
                 <Input
                   type="text"
-                  value={selectedEntity.name}
+                  value={editingEntity.name}
                   onChange={(e) => handleEntityNameChange(e.target.value)}
-                  className="pl-10"
+                  onBlur={() => syncWithParent(editingEntity)}
+                  className="pl-10 h-10 transition-all focus:ring-1"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Color</Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pt-1">
                 {['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
                   <button
                     key={color}
                     onClick={() => handleColorChange(color)}
                     className={cn(
-                      "w-6 h-6 rounded-full border-2 transition-all",
-                      selectedEntity.color === color ? "border-foreground scale-110" : "border-transparent hover:scale-105"
+                      "w-7 h-7 rounded-full border-2 transition-all shadow-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      editingEntity.color === color ? "border-foreground scale-110 shadow-md" : "border-transparent hover:scale-105"
                     )}
                     style={{ backgroundColor: color }}
                   />
@@ -149,26 +181,27 @@ export default function PropertiesPanel({
           {/* Columns Settings */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Columns</Label>
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Columns ({editingEntity.columns.length})</Label>
               <Button 
                 variant="secondary"
                 size="icon"
                 onClick={addColumn}
-                className="h-7 w-7"
+                className="h-8 w-8 rounded-full shadow-sm hover:shadow-md transition-all"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-4 h-4" />
               </Button>
             </div>
 
             <div className="space-y-3">
-              {selectedEntity.columns.map((col) => (
-                <Card key={col.id} className="p-3 bg-muted/30 space-y-3 group border-none shadow-none">
-                  <div className="flex items-center gap-2">
+              {editingEntity.columns.map((col) => (
+                <Card key={col.id} className="p-4 bg-muted/20 space-y-4 group border border-border/40 shadow-none hover:border-border/80 transition-colors">
+                  <div className="flex items-center gap-3">
                     <Input
                       type="text"
                       value={col.name}
-                      onChange={(e) => updateColumn(col.id, { name: e.target.value })}
-                      className="h-7 text-xs font-semibold bg-transparent border-none shadow-none focus-visible:ring-0 p-0"
+                      onChange={(e) => updateColumnLocal(col.id, { name: e.target.value })}
+                      onBlur={() => syncWithParent(editingEntity)}
+                      className="h-8 text-xs font-bold bg-transparent border-none shadow-none focus-visible:ring-0 p-0 text-foreground"
                     />
                     <Button 
                       variant="ghost"
@@ -182,23 +215,23 @@ export default function PropertiesPanel({
                           setConfirmModal(prev => ({ ...prev, isOpen: false }));
                         }
                       })}
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Select
                       value={col.type}
-                      onValueChange={(value) => updateColumn(col.id, { type: value })}
+                      onValueChange={(value) => updateColumnSync(col.id, { type: value })}
                     >
-                      <SelectTrigger className="h-7 text-[10px] flex-1 bg-background">
+                      <SelectTrigger className="h-8 text-[11px] font-medium flex-1 bg-background border-border/50">
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
                       <SelectContent>
                         {COLUMN_TYPES.map(type => (
-                          <SelectItem key={type} value={type} className="text-[10px]">
+                          <SelectItem key={type} value={type} className="text-[11px]">
                             {type}
                           </SelectItem>
                         ))}
@@ -208,39 +241,40 @@ export default function PropertiesPanel({
                     <Button
                       variant={col.is_pk ? "default" : "outline"}
                       size="icon"
-                      onClick={() => updateColumn(col.id, { is_pk: !col.is_pk })}
+                      onClick={() => updateColumnSync(col.id, { is_pk: !col.is_pk })}
                       className={cn(
-                        "h-7 w-7 transition-all",
-                        col.is_pk ? "bg-yellow-500 hover:bg-yellow-600 text-white" : "text-muted-foreground"
+                        "h-8 w-8 transition-all shadow-sm",
+                        col.is_pk ? "bg-yellow-500 hover:bg-yellow-600 text-white" : "text-muted-foreground hover:text-foreground"
                       )}
                       title="Primary Key"
                     >
-                      <Key className="w-3 h-3" />
+                      <Key className="w-3.5 h-3.5" />
                     </Button>
 
                     <Button
                       variant={!col.is_nullable ? "default" : "outline"}
                       size="icon"
-                      onClick={() => updateColumn(col.id, { is_nullable: !col.is_nullable })}
+                      onClick={() => updateColumnSync(col.id, { is_nullable: !col.is_nullable })}
                       className={cn(
-                        "h-7 w-7 transition-all",
-                        !col.is_nullable ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "text-muted-foreground"
+                        "h-8 w-8 transition-all shadow-sm",
+                        !col.is_nullable ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                       )}
                       title="Not Null"
                     >
-                      {col.is_nullable ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                      {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                     </Button>
                   </div>
 
                   {col.type === 'ENUM' && (
-                    <div className="space-y-1">
+                    <div className="space-y-2 pt-1 animate-in slide-in-from-top-1 duration-200">
                       <Label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Enum Values (comma separated)</Label>
                       <Input
                         type="text"
                         value={col.enum_values || ''}
-                        onChange={(e) => updateColumn(col.id, { enum_values: e.target.value })}
+                        onChange={(e) => updateColumnLocal(col.id, { enum_values: e.target.value })}
+                        onBlur={() => syncWithParent(editingEntity)}
                         placeholder="e.g. active, inactive, pending"
-                        className="h-7 text-[10px] bg-background"
+                        className="h-8 text-[11px] bg-background border-border/50"
                       />
                     </div>
                   )}
