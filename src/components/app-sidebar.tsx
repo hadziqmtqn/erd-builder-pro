@@ -158,6 +158,7 @@ export function AppSidebar({
       title: "Notes",
       url: "#",
       icon: StickyNote,
+      iconClassName: "text-yellow-400",
       isActive: view === 'notes',
       onClick: () => onViewChange('notes'),
     },
@@ -165,6 +166,7 @@ export function AppSidebar({
       title: "ERD Builder",
       url: "#",
       icon: Database,
+      iconClassName: "text-blue-400",
       isActive: view === 'erd',
       onClick: () => onViewChange('erd'),
     },
@@ -172,6 +174,7 @@ export function AppSidebar({
       title: "Drawings",
       url: "#",
       icon: PenTool,
+      iconClassName: "text-purple-400",
       isActive: view === 'drawings',
       onClick: () => onViewChange('drawings'),
     },
@@ -198,12 +201,12 @@ export function AppSidebar({
             }
           ]} 
         />
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Feature</SidebarGroupLabel>
+        <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+          <SidebarGroupLabel>Features</SidebarGroupLabel>
           <NavMain items={navMain} />
         </SidebarGroup>
+      </SidebarHeader>
+      <SidebarContent>
         <NavProjects 
           projects={navProjects} 
           activeProjectId={activeProjectId}

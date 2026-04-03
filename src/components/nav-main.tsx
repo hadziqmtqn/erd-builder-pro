@@ -6,8 +6,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -24,6 +22,7 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    iconClassName?: string
     items?: {
       title: string
       url: string
@@ -43,7 +42,7 @@ export function NavMain({
               <CollapsibleTrigger
                 render={
                   <SidebarMenuButton tooltip={item.title}>
-                    {item.icon && <item.icon />}
+                    {item.icon && <item.icon className={item.iconClassName} />}
                     <span>{item.title}</span>
                     <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                   </SidebarMenuButton>
@@ -67,7 +66,7 @@ export function NavMain({
               isActive={item.isActive}
               onClick={item.onClick}
             >
-              {item.icon && <item.icon />}
+              {item.icon && <item.icon className={item.iconClassName} />}
               <span>{item.title}</span>
             </SidebarMenuButton>
           )}
