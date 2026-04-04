@@ -33,3 +33,4 @@ jobs:
         source: "dist/*" # Ganti jadi "build/*" jika folder hasil build kamu bernama build
         target: "/www/wwwroot/erd-builder-pro" # Sesuaikan dengan path folder web di aaPanel kamu
         strip_components: 1 # Menghilangkan folder 'dist' atau 'build' saat di-copy ke target
+        rm_landmine: true # <--- TAMBAHKAN BARIS INI!
