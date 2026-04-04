@@ -16,10 +16,11 @@ router.post("/login", (req: ExpressRequest, res: ExpressResponse) => {
   
   if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
     const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "24h" });
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000
     });
     return res.json({ success: true });
@@ -29,10 +30,11 @@ router.post("/login", (req: ExpressRequest, res: ExpressResponse) => {
 
 // Logout
 router.post("/logout", (req: ExpressRequest, res: ExpressResponse) => {
+  const isProd = process.env.NODE_ENV === "production";
   res.clearCookie("token", {
     httpOnly: true,
-    secure: true,
-    sameSite: "none"
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax"
   });
   res.json({ success: true });
 });
