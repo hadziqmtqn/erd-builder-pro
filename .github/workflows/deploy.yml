@@ -1,36 +1,24 @@
-name: Deploy to aaPanel (VPS)
+name: Deploy Full-Stack to aaPanel
 
 on:
   push:
-    branches: [ optimize-code ] # Skrip ini jalan setiap kamu push ke branch optimize-code
+    branches: [ optimize-code ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24' # Menggunakan Node.js versi 24 sesuai request kamu
-
-    - name: Install dependencies
-      run: npm install
-
-    - name: Build React App
-      run: npm run build
-
-    - name: Deploy to VPS via SSH
-      uses: appleboy/scp-action@v0.1.7
+    - name: Executing remote ssh commands
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VPS_HOST }}
         username: ${{ secrets.VPS_USERNAME }}
         key: ${{ secrets.VPS_SSH_KEY }}
-        port: ${{ secrets.VPS_PORT }} # Sekarang menggunakan environment variable!
-        source: "dist/*" # Ganti jadi "build/*" jika folder hasil build kamu bernama build
-        target: "/www/wwwroot/erd-builder-pro" # Sesuaikan dengan path folder web di aaPanel kamu
-        strip_components: 1 # Menghilangkan folder 'dist' atau 'build' saat di-copy ke target
-        rm_landmine: true # <--- TAMBAHKAN BARIS INI!
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          cd /www/wwwroot/erd-builder-pro
+          git pull origin optimize-code
+          npm install
+          npm run build
+          # Baris di bawah ini menyuruh aaPanel (PM2) untuk restart server Express agar membaca kode baru
+          pm2 restart erd-builder-pro || npx pm2 restart all
