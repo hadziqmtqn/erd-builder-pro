@@ -8,20 +8,35 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchFiles = useCallback(async () => {
+  const [filesTotal, setFilesTotal] = useState(0);
+  const [hasMoreFiles, setHasMoreFiles] = useState(false);
+  const filesRef = useRef<FileData[]>(files);
+
+  // Keep ref in sync
+  filesRef.current = files;
+
+  const fetchFiles = useCallback(async (isLoadMore = false) => {
     try {
-      const res = await fetch('/api/files');
+      const offset = isLoadMore ? filesRef.current.length : 0;
+      const res = await fetch(`/api/files?limit=10&offset=${offset}`);
       if (res.ok) {
-        const data = await res.json();
-        const sortedData = Array.isArray(data) 
-          ? data.sort((a: FileData, b: FileData) => b.id - a.id) 
-          : [];
-        setFiles(sortedData);
+        const json = await res.json();
+        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
+        
+        const filesList = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setFiles(prev => [...prev, ...filesList]);
+        } else {
+          setFiles(filesList);
+        }
+        setFilesTotal(total);
+        setHasMoreFiles((filesList.length + offset) < total);
       }
     } catch (err) {
       console.error('Error fetching files:', err);
     }
-  }, []);
+  }, []); // Stable dependency array
 
   const createFile = async (name: string, projectId?: number | null) => {
     try {
@@ -149,6 +164,8 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     restoreFile,
     deleteFilePermanent,
     moveFileToProject,
-    saveDiagram
+    saveDiagram,
+    hasMoreFiles,
+    filesTotal
   };
 }

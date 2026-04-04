@@ -5,19 +5,32 @@ import { authenticate } from "../lib/middleware";
 const router = Router();
 
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data, error } = await supabase
+  const limit = parseInt(req.query.limit as string) || 10;
+  const offset = parseInt(req.query.offset as string) || 0;
+
+
+  const { data, error, count } = await supabase
     .from("files")
-    .select("*, projects!left(*)")
+    .select("*, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) {
     console.error("Supabase error fetching files:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ data: [], total: 0, error: error.message });
   }
   
-  const filteredData = (data || []).filter((file: any) => !file.projects || !file.projects.is_deleted);
-  res.json(filteredData);
+  const filesData = data || [];
+  const filteredData = filesData.filter((file: any) => !file.projects || !file.projects.is_deleted);
+  
+  // Safety slice to ensure we don't exceed the limit after potential JS filtering
+  const slicedData = filteredData.slice(0, limit);
+  
+  res.json({ 
+    data: slicedData, 
+    total: count || 0
+  });
 });
 
 router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {

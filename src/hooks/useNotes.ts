@@ -1,24 +1,39 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Note } from '../types';
 
 export function useNotes() {
   const [notes, setNotesList] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<number | null>(null);
 
-  const fetchNotes = useCallback(async () => {
+  const [notesTotal, setNotesTotal] = useState(0);
+  const [hasMoreNotes, setHasMoreNotes] = useState(false);
+  const notesRef = useRef<Note[]>(notes);
+
+  // Keep ref in sync
+  notesRef.current = notes;
+
+  const fetchNotes = useCallback(async (isLoadMore = false) => {
     try {
-      const res = await fetch('/api/notes');
+      const offset = isLoadMore ? notesRef.current.length : 0;
+      const res = await fetch(`/api/notes?limit=10&offset=${offset}`);
       if (res.ok) {
-        const data = await res.json();
-        const sortedData = Array.isArray(data) 
-          ? data.sort((a, b) => b.id - a.id) 
-          : [];
-        setNotesList(sortedData);
+        const json = await res.json();
+        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
+
+        const notesListData = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setNotesList(prev => [...prev, ...notesListData]);
+        } else {
+          setNotesList(notesListData);
+        }
+        setNotesTotal(total);
+        setHasMoreNotes((notesListData.length + offset) < total);
       }
     } catch (err) {
       console.error('Error fetching notes:', err);
     }
-  }, []);
+  }, []); // Stable dependency array
 
   const createNote = async (title: string, projectId?: number | null) => {
     try {
@@ -125,6 +140,8 @@ export function useNotes() {
     moveNoteToProject,
     saveNote,
     restoreNote,
-    deleteNotePermanent
+    deleteNotePermanent,
+    hasMoreNotes,
+    notesTotal
   };
 }

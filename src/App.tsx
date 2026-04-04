@@ -101,19 +101,23 @@ function AppContent() {
   const { isAuthenticated, checkAuth, handleLogout } = useAuth();
   const { 
     files, activeFileId, setActiveFileId, saveStatus, setSaveStatus,
-    fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram 
+    fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
+    hasMoreFiles
   } = useFiles(isAuthenticated, view);
   
   const { 
-    notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent 
+    notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
+    hasMoreNotes
   } = useNotes();
   
   const { 
-    projects, activeProjectId, setActiveProjectId, fetchProjects, createProject, updateProject, deleteProject, restoreProject, deleteProjectPermanent 
+    projects, activeProjectId, setActiveProjectId, fetchProjects, createProject, updateProject, deleteProject, restoreProject, deleteProjectPermanent,
+    hasMoreProjects
   } = useProjects();
   
   const { 
-    drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent 
+    drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
+    hasMoreDrawings
   } = useDrawings();
   
   const { trashData, fetchTrash } = useTrash();
@@ -482,6 +486,14 @@ function AppContent() {
         setSidebarView(newView);
       }
     },
+    hasMoreProjects,
+    hasMoreFiles,
+    hasMoreNotes,
+    hasMoreDrawings,
+    onLoadMoreProjects: () => fetchProjects(true),
+    onLoadMoreFiles: () => fetchFiles(true),
+    onLoadMoreNotes: () => fetchNotes(true),
+    onLoadMoreDrawings: () => fetchDrawings(true),
   };
 
   const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';

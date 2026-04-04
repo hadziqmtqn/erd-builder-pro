@@ -108,6 +108,14 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onMoveFileToProject: (fileId: number, projectId: number | null) => void;
   onMoveNoteToProject: (noteId: number, projectId: number | null) => void;
   onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void;
+  hasMoreProjects?: boolean;
+  hasMoreFiles?: boolean;
+  hasMoreNotes?: boolean;
+  hasMoreDrawings?: boolean;
+  onLoadMoreProjects?: () => void;
+  onLoadMoreFiles?: () => void;
+  onLoadMoreNotes?: () => void;
+  onLoadMoreDrawings?: () => void;
 }
 
 export function AppSidebar({
@@ -152,6 +160,14 @@ export function AppSidebar({
   onMoveFileToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
+  hasMoreProjects,
+  hasMoreFiles,
+  hasMoreNotes,
+  hasMoreDrawings,
+  onLoadMoreProjects,
+  onLoadMoreFiles,
+  onLoadMoreNotes,
+  onLoadMoreDrawings,
   ...props
 }: AppSidebarProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
@@ -253,6 +269,14 @@ export function AppSidebar({
           onMoveDrawingToProject={onMoveDrawingToProject}
           allProjects={projects.filter(p => !p.is_deleted)}
           searchQuery={searchQuery}
+          hasMoreProjects={hasMoreProjects}
+          hasMoreFiles={hasMoreFiles}
+          hasMoreNotes={hasMoreNotes}
+          hasMoreDrawings={hasMoreDrawings}
+          onLoadMoreProjects={onLoadMoreProjects}
+          onLoadMoreFiles={onLoadMoreFiles}
+          onLoadMoreNotes={onLoadMoreNotes}
+          onLoadMoreDrawings={onLoadMoreDrawings}
         />
       </SidebarContent>
       <SidebarFooter>

@@ -86,6 +86,14 @@ export function NavProjects({
   onMoveDrawingToProject,
   allProjects,
   searchQuery,
+  hasMoreProjects,
+  hasMoreFiles,
+  hasMoreNotes,
+  hasMoreDrawings,
+  onLoadMoreProjects,
+  onLoadMoreFiles,
+  onLoadMoreNotes,
+  onLoadMoreDrawings,
 }: {
   projects: {
     id: number
@@ -124,6 +132,14 @@ export function NavProjects({
   onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void
   allProjects: Project[]
   searchQuery: string
+  hasMoreProjects?: boolean
+  hasMoreFiles?: boolean
+  hasMoreNotes?: boolean
+  hasMoreDrawings?: boolean
+  onLoadMoreProjects?: () => void
+  onLoadMoreFiles?: () => void
+  onLoadMoreNotes?: () => void
+  onLoadMoreDrawings?: () => void
 }) {
   const { isMobile } = useSidebar()
   
@@ -251,6 +267,17 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
+        {hasMoreProjects && (
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onLoadMoreProjects}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
         </SidebarMenu>
       </SidebarGroup>
 
@@ -366,6 +393,42 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
+
+        {sidebarView === 'erd' && hasMoreFiles && (
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onLoadMoreFiles}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+
+        {sidebarView === 'notes' && hasMoreNotes && (
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onLoadMoreNotes}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+
+        {sidebarView === 'drawings' && hasMoreDrawings && (
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              className="text-muted-foreground hover:text-foreground"
+              onClick={onLoadMoreDrawings}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
 
         {searchQuery && (
           ((sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId) && f.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0) ||

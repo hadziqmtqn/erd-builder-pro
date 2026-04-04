@@ -1,24 +1,39 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Drawing } from '../types';
 
 export function useDrawings() {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingId, setActiveDrawingId] = useState<number | null>(null);
 
-  const fetchDrawings = useCallback(async () => {
+  const [drawingsTotal, setDrawingsTotal] = useState(0);
+  const [hasMoreDrawings, setHasMoreDrawings] = useState(false);
+  const drawingsRef = useRef<Drawing[]>(drawings);
+
+  // Keep ref in sync
+  drawingsRef.current = drawings;
+
+  const fetchDrawings = useCallback(async (isLoadMore = false) => {
     try {
-      const res = await fetch('/api/drawings');
+      const offset = isLoadMore ? drawingsRef.current.length : 0;
+      const res = await fetch(`/api/drawings?limit=10&offset=${offset}`);
       if (res.ok) {
-        const data = await res.json();
-        const sortedData = Array.isArray(data) 
-          ? data.sort((a, b) => b.id - a.id) 
-          : [];
-        setDrawings(sortedData);
+        const json = await res.json();
+        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
+
+        const drawingsListData = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setDrawings(prev => [...prev, ...drawingsListData]);
+        } else {
+          setDrawings(drawingsListData);
+        }
+        setDrawingsTotal(total);
+        setHasMoreDrawings((drawingsListData.length + offset) < total);
       }
     } catch (err) {
       console.error('Error fetching drawings:', err);
     }
-  }, []);
+  }, []); // Stable dependency array
 
   const createDrawing = async (title: string, projectId?: number | null) => {
     try {
@@ -125,6 +140,8 @@ export function useDrawings() {
     moveDrawingToProject,
     saveDrawing,
     restoreDrawing,
-    deleteDrawingPermanent
+    deleteDrawingPermanent,
+    hasMoreDrawings,
+    drawingsTotal
   };
 }

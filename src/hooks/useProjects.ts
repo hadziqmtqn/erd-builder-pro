@@ -1,24 +1,39 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Project } from '../types';
 
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
 
-  const fetchProjects = useCallback(async () => {
+  const [projectsTotal, setProjectsTotal] = useState(0);
+  const [hasMoreProjects, setHasMoreProjects] = useState(false);
+  const projectsRef = useRef<Project[]>(projects);
+
+  // Keep ref in sync
+  projectsRef.current = projects;
+
+  const fetchProjects = useCallback(async (isLoadMore = false) => {
     try {
-      const res = await fetch('/api/projects');
+      const offset = isLoadMore ? projectsRef.current.length : 0;
+      const res = await fetch(`/api/projects?limit=10&offset=${offset}`);
       if (res.ok) {
-        const data = await res.json();
-        const sortedData = Array.isArray(data) 
-          ? data.sort((a, b) => b.id - a.id) 
-          : [];
-        setProjects(sortedData);
+        const json = await res.json();
+        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
+
+        const projectsList = Array.isArray(data) ? data : [];
+        if (isLoadMore) {
+          setProjects(prev => [...prev, ...projectsList]);
+        } else {
+          setProjects(projectsList);
+        }
+        setProjectsTotal(total);
+        setHasMoreProjects((projectsList.length + offset) < total);
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
     }
-  }, []);
+  }, []); // Stable dependency array
 
   const createProject = async (name: string) => {
     try {
@@ -94,6 +109,8 @@ export function useProjects() {
     updateProject,
     deleteProject,
     restoreProject,
-    deleteProjectPermanent
+    deleteProjectPermanent,
+    hasMoreProjects,
+    projectsTotal
   };
 }
