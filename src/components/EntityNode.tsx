@@ -55,18 +55,19 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
     <>
       <div 
         className={cn(
-          "bg-[#0f0f14] text-white rounded-lg border-2 transition-all duration-200 min-w-[220px]",
-          selected ? "shadow-[0_0_15px_rgba(255,255,255,0.1)]" : "shadow-xl"
+          "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform",
+          selected ? "shadow-[0_0_10px_rgba(255,255,255,0.05)]" : "shadow-md"
         )}
         style={{ borderColor: borderColor }}
       >
         {/* Header */}
         <div 
-          className="px-3 py-2 flex items-center justify-between border-b-2"
+          className="px-3 py-2 flex items-center justify-between border-b-2 cursor-pointer group/header"
           style={{ backgroundColor: headerBg, borderColor: borderColor }}
+          onClick={handleEdit}
         >
           <div className="flex items-center gap-2">
-            <Database className="w-4 h-4" style={{ color: borderColor }} />
+            <Database className="w-4 h-4 transition-transform group-hover/header:rotate-12" style={{ color: borderColor }} />
             <span className="font-bold text-sm tracking-wide uppercase">{data.name}</span>
           </div>
           

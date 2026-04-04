@@ -35,15 +35,18 @@ export function NavUser({
   onLogout,
   onViewChange,
 }: {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
+  user: any
   onLogout: () => void
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash') => void
 }) {
   const { isMobile } = useSidebar()
+
+  if (!user) return null;
+
+  const email = user.email || "";
+  const name = user.user_metadata?.full_name || email.split('@')[0] || "User";
+  const avatar = user.user_metadata?.avatar_url || "";
+  const initials = name.substring(0, 2).toUpperCase();
 
   return (
     <SidebarMenu>
@@ -55,12 +58,12 @@ export function NavUser({
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarImage src={avatar} alt={name} />
+                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs">{user.email}</span>
+                <span className="truncate font-semibold">{name}</span>
+                <span className="truncate text-xs">{email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -76,12 +79,12 @@ export function NavUser({
                 <DropdownMenuGroup>
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                      <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                      <AvatarImage src={avatar} alt={name} />
+                      <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{user.name}</span>
-                      <span className="truncate text-xs">{user.email}</span>
+                      <span className="truncate font-semibold">{name}</span>
+                      <span className="truncate text-xs">{email}</span>
                     </div>
                   </div>
                 </DropdownMenuGroup>
@@ -89,7 +92,7 @@ export function NavUser({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />}>
+              <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
                 <Github className="mr-2 size-4" />
                 Github
               </DropdownMenuItem>
@@ -105,7 +108,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout}>
+            <DropdownMenuItem onClick={onLogout} className="cursor-pointer">
               <LogOut className="mr-2 size-4" />
               Log out
             </DropdownMenuItem>

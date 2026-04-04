@@ -118,6 +118,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreDrawings?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  user: any;
 }
 
 export function AppSidebar({
@@ -172,6 +173,7 @@ export function AppSidebar({
   onLoadMoreDrawings,
   searchQuery,
   onSearchChange,
+  user,
   ...props
 }: AppSidebarProps) {
   // Navigation items for the main section
@@ -284,11 +286,7 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <NavUser 
-          user={{
-            name: "Admin",
-            email: import.meta.env.VITE_ADMIN_EMAIL || "admin@example.com",
-            avatar: "",
-          }} 
+          user={user} 
           onLogout={onLogout}
           onViewChange={onViewChange}
         />

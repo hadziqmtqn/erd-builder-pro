@@ -10,8 +10,6 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const projectId = req.query.project_id as string;
   const q = req.query.q as string;
 
-  console.log(`[Files] Fetching files with limit=${limit}, offset=${offset}, project_id=${projectId}, q=${q}`);
-
   let query = supabase
     .from("files")
     .select("*, projects!left(*)", { count: 'exact' })

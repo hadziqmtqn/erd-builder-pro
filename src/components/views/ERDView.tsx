@@ -56,7 +56,7 @@ export function ERDView({
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
       <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-        <div className="flex items-center gap-2 p-1.5 bg-background/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
+        <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
           <Button onClick={addEntity} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20">
             <Plus className="w-4 h-4 mr-2" />
             Add Table
@@ -99,8 +99,9 @@ export function ERDView({
           onPaneClick={onPaneClick}
           onMove={onMove}
           colorMode="dark"
+          onlyRenderVisibleElements={true}
         >
-          <Background variant={BackgroundVariant.Dots} gap={30} size={1.5} color="#444" />
+          <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
           <Controls position="bottom-right" showInteractive={false} />
         </ReactFlow>
       </div>

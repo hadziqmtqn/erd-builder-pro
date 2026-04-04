@@ -12,13 +12,15 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from "framer-motion";
-import { Database } from 'lucide-react';
+import { Database, Trash2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
+import PropertiesPanel from './components/PropertiesPanel';
 
 // Views
 import { ERDView } from './components/views/ERDView';
@@ -43,6 +45,24 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const initialNodes: Node<Entity>[] = [];
 const initialEdges: Edge[] = [];
@@ -51,6 +71,7 @@ function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
   
@@ -106,6 +127,13 @@ function AppContent() {
     if (view === 'drawings') return !!activeDrawingId;
     return false;
   }, [view, activeFileId, activeNoteId, activeDrawingId]);
+
+  // Memoize selected entity for properties panel
+  const selectedEntity = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return node ? (node.data as Entity) : null;
+  }, [nodes, selectedNodeId]);
 
   // Initialization
   useEffect(() => {
@@ -433,6 +461,7 @@ function AppContent() {
         onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        user={user}
       />
       <SidebarInset>
         <MainHeader 
@@ -479,6 +508,69 @@ function AppContent() {
           onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)}
           itemType={itemToDelete?.type || ''}
         />
+
+        {/* Entity Properties Modal */}
+        <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) setSelectedNodeId(null); }}>
+          <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
+            <DialogHeader className="shrink-0 mb-4">
+              <div className="flex items-center justify-between pr-8">
+                <div className="space-y-1 text-left">
+                  <DialogTitle className="text-xl font-bold tracking-tight">Table Properties</DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Customize your table name, theme, and column definitions.
+                  </DialogDescription>
+                </div>
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsDeleteAlertOpen(true)}
+                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
+                  title="Delete Table"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            
+            <div className="-mx-4 px-4 max-h-[65vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent space-y-8">
+              <PropertiesPanel 
+                selectedEntity={selectedEntity} 
+                onUpdateEntity={updateEntity} 
+                onDeleteEntity={(id) => {
+                  deleteEntity(id);
+                  setSelectedNodeId(null);
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Alert */}
+        <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Table</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the table "{selectedEntity?.name}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  if (selectedEntity) {
+                    deleteEntity(selectedEntity.id);
+                    setSelectedNodeId(null);
+                    setIsDeleteAlertOpen(false);
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SidebarInset>
     </SidebarProvider>
   );

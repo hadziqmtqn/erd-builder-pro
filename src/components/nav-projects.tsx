@@ -221,7 +221,7 @@ export function NavProjects({
         setEditingProjectId(null)
         setProjectName("")
         setIsProjectDialogOpen(true)
-      }}>
+      }} className="cursor-pointer">
         <Plus />
         <span className="sr-only">Add Project</span>
       </SidebarGroupAction>
@@ -230,6 +230,7 @@ export function NavProjects({
           <SidebarMenuButton 
             isActive={activeProjectId === null}
             onClick={() => onProjectSelect(null)}
+            className="cursor-pointer"
           >
             <Folder />
             <span>All Workspace</span>
@@ -237,12 +238,12 @@ export function NavProjects({
         </SidebarMenuItem>
         {projects.map((item) => (
           <SidebarMenuItem key={item.id}>
-            <SidebarMenuButton onClick={() => onProjectSelect(item.id)} isActive={item.isActive}>
+            <SidebarMenuButton onClick={() => onProjectSelect(item.id)} isActive={item.isActive} className="cursor-pointer">
               <item.icon />
               <span>{item.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -290,7 +291,7 @@ export function NavProjects({
         setSelectedProjectId(activeProjectId?.toString() || "none")
         setFileName("")
         setIsFileDialogOpen(true)
-      }}>
+      }} className="cursor-pointer">
         <Plus />
       </SidebarGroupAction>
       <SidebarMenu>
@@ -299,12 +300,13 @@ export function NavProjects({
             <SidebarMenuButton 
               isActive={activeFileId === file.id && view === 'erd'}
               onClick={() => onFileSelect(file.id)}
+              className="cursor-pointer"
             >
               <Database className="size-4" />
               <span>{file.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
@@ -332,12 +334,13 @@ export function NavProjects({
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
               onClick={() => onNoteSelect(note.id)}
+              className="cursor-pointer"
             >
               <StickyNote className="size-4" />
               <span>{note.title}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
@@ -365,6 +368,7 @@ export function NavProjects({
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
               onClick={() => onDrawingSelect(drawing.id)}
+              className="cursor-pointer"
             >
               <PenTool className="size-4" />
               <span>{drawing.title}</span>
@@ -397,7 +401,7 @@ export function NavProjects({
         {sidebarView === 'erd' && hasMoreFiles && (
           <SidebarMenuItem>
             <SidebarMenuButton 
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
               onClick={onLoadMoreFiles}
             >
               <MoreHorizontal className="size-4" />
@@ -409,7 +413,7 @@ export function NavProjects({
         {sidebarView === 'notes' && hasMoreNotes && (
           <SidebarMenuItem>
             <SidebarMenuButton 
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
               onClick={onLoadMoreNotes}
             >
               <MoreHorizontal className="size-4" />
@@ -421,7 +425,7 @@ export function NavProjects({
         {sidebarView === 'drawings' && hasMoreDrawings && (
           <SidebarMenuItem>
             <SidebarMenuButton 
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
               onClick={onLoadMoreDrawings}
             >
               <MoreHorizontal className="size-4" />
