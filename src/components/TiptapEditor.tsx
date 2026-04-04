@@ -75,7 +75,13 @@ const MenuBar = ({ editor }: { editor: any }) => {
       </button>
       
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
-      
+
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setParagraph().run()} className={toggleClass(editor.isActive('paragraph'))}>
+        Paragraph
+      </button>
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
@@ -167,6 +173,7 @@ interface TiptapEditorProps {
 }
 
 const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
+  const [, setUpdateTrigger] = React.useState(0);
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -193,6 +200,14 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       if (onChange) {
         onChange(html);
       }
+    },
+    onSelectionUpdate: ({ editor }) => {
+      // This forces a re-render on selection change to update toolbar active states
+      setUpdateTrigger(prev => prev + 1);
+    },
+    onTransaction: () => {
+      // This ensures re-render even for transactions without selection changes
+      setUpdateTrigger(prev => prev + 1);
     },
     editorProps: {
       attributes: {
@@ -225,6 +240,14 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().setParagraph().run()}
+                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+              >
+                Paragraph
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
               >
@@ -251,6 +274,14 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
 
           {editor && (
             <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 50 } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().setParagraph().run()}
+                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+              >
+                Paragraph
+              </button>
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
