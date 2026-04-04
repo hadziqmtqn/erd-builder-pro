@@ -14,10 +14,11 @@ export function useDrawings() {
   // Keep ref in sync
   drawingsRef.current = drawings;
 
-  const fetchDrawings = useCallback(async (isLoadMore = false) => {
+  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all') => {
     try {
       const offset = isLoadMore ? drawingsRef.current.length : 0;
-      const res = await fetch(`/api/drawings?limit=10&offset=${offset}`);
+      const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
+      const res = await fetch(`/api/drawings?limit=10&offset=${offset}&project_id=${projIdParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json; // Fallback to raw array

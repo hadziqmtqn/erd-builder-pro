@@ -1,6 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, s3Client, R2_BUCKET_NAME, R2_PUBLIC_URL, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY } from "../lib/config";
-import { authenticate } from "../lib/middleware";
+import { supabase, s3Client, R2_BUCKET_NAME, R2_PUBLIC_URL, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY } from "../lib/config.js";
+import { authenticate } from "../lib/middleware.js";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import multer from "multer";
 import path from "node:path";
@@ -10,9 +10,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Trash API
 router.get("/trash", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data: files } = await supabase.from("files").select("*").eq("is_deleted", true);
-  const { data: notes } = await supabase.from("notes").select("*").eq("is_deleted", true);
-  const { data: drawings } = await supabase.from("drawings").select("*").eq("is_deleted", true);
+  const { data: files } = await supabase.from("files").select("*, projects!left(name)").eq("is_deleted", true);
+  const { data: notes } = await supabase.from("notes").select("*, projects!left(name)").eq("is_deleted", true);
+  const { data: drawings } = await supabase.from("drawings").select("*, projects!left(name)").eq("is_deleted", true);
   const { data: projects } = await supabase.from("projects").select("*").eq("is_deleted", true);
   res.json({ files: files || [], notes: notes || [], drawings: drawings || [], projects: projects || [] });
 });

@@ -1,6 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config";
-import { authenticate } from "../lib/middleware";
+import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { authenticate } from "../lib/middleware.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const router = Router();
@@ -8,12 +8,23 @@ const router = Router();
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const limit = parseInt(req.query.limit as string) || 10;
   const offset = parseInt(req.query.offset as string) || 0;
+  const projectId = req.query.project_id as string;
 
+  console.log(`[Drawings] Fetching drawings with limit=${limit}, offset=${offset}, project_id=${projectId}`);
 
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("drawings")
     .select("*, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false)
+    .eq("is_deleted", false);
+
+  if (projectId === "null") {
+    query = query.is("project_id", null);
+  } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
+    query = query.eq("project_id", parseInt(projectId));
+  }
+  // Otherwise (projectId === "all"), no project_id filter is applied for global view
+
+  const { data, error, count } = await query
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
 

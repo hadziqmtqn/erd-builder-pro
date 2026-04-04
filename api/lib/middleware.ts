@@ -1,6 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET, supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config";
+import { JWT_SECRET, supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config.js";
 
 // Auth Middleware
 export const authenticate = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
@@ -20,11 +20,7 @@ export const authenticate = (req: ExpressRequest, res: ExpressResponse, next: Ne
 export const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   if (!supabase) {
     return res.status(500).json({ 
-      error: "Supabase configuration is missing or invalid. Please check your environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).",
-      configStatus: {
-        url: !!SUPABASE_URL,
-        key: !!SUPABASE_SERVICE_ROLE_KEY
-      }
+      error: "Supabase configuration is missing or invalid. Please check your environment variables."
     });
   }
   next();
