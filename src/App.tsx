@@ -442,15 +442,11 @@ function AppContent() {
     if (!activeFile) return;
     
     const entities: Entity[] = nodes.map(n => n.data as Entity);
-    const relationships = edges.map(e => ({
-      source: e.source,
-      target: e.target,
-      sourceCol: e.sourceHandle?.replace('col-', '').replace('-source', ''),
-      targetCol: e.targetHandle?.replace('col-', '').replace('-target', '')
-    }));
+    const entityMap = new Map(entities.map(e => [e.id, e]));
 
     let sql = `-- ERD Export: ${activeFile.name}\n-- Dialect: ${dialect}\n\n`;
     
+    // Create Tables
     entities.forEach(entity => {
       sql += `CREATE TABLE ${entity.name} (\n`;
       entity.columns.forEach((col, i) => {
@@ -458,6 +454,38 @@ function AppContent() {
       });
       sql += `);\n\n`;
     });
+
+    // Add Relationships (Foreign Keys)
+    const relationshipsGenerated = new Set<string>(); // Prevent duplicates
+
+    edges.forEach(edge => {
+      const sourceEntity = entityMap.get(edge.source);
+      const targetEntity = entityMap.get(edge.target);
+      
+      if (sourceEntity && targetEntity) {
+        // Handle format is col-{colId}-source/target
+        const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source', '');
+        const targetColId = edge.targetHandle?.replace('col-', '').replace('-target', '');
+        
+        const sourceColumn = sourceEntity.columns.find(c => c.id === sourceColId);
+        const targetColumn = targetEntity.columns.find(c => c.id === targetColId);
+
+        if (sourceColumn && targetColumn) {
+          const constraintName = `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
+          
+          // Basic duplicate check for the same relationship
+          const relKey = `${sourceEntity.name}.${sourceColumn.name}->${targetEntity.name}.${targetColumn.name}`;
+          if (!relationshipsGenerated.has(relKey)) {
+            sql += `ALTER TABLE ${sourceEntity.name} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${sourceColumn.name}) REFERENCES ${targetEntity.name}(${targetColumn.name});\n`;
+            relationshipsGenerated.add(relKey);
+          }
+        }
+      }
+    });
+
+    if (relationshipsGenerated.size > 0) {
+      sql += `\n`;
+    }
 
     const blob = new Blob([sql], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
