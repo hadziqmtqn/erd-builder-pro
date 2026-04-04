@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -57,7 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCcw, Trash2 as TrashIcon, Database, StickyNote, PenTool, Folder, Trash } from 'lucide-react';
+import { RefreshCcw, Trash2 as TrashIcon, Database, StickyNote, PenTool, Folder, Trash, LogOut, User as UserIcon } from 'lucide-react';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
   DropdownMenu, 
@@ -98,7 +98,7 @@ function AppContent() {
   const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
   
   // Hooks
-  const { isAuthenticated, checkAuth, handleLogout } = useAuth();
+  const { isAuthenticated, user, checkAuth, handleLogout } = useAuth();
   const { 
     files, activeFileId, setActiveFileId, saveStatus, setSaveStatus,
     fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
@@ -107,7 +107,7 @@ function AppContent() {
   
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes
+    hasMoreNotes, saveStatus: notesSaveStatus
   } = useNotes();
   
   const { 
@@ -117,7 +117,7 @@ function AppContent() {
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings
+    hasMoreDrawings, saveStatus: drawingsSaveStatus
   } = useDrawings();
   
   const { trashData, fetchTrash } = useTrash();
@@ -130,6 +130,20 @@ function AppContent() {
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { setViewport } = useReactFlow();
+
+  const currentSaveStatus = useMemo(() => {
+    if (view === 'erd') return saveStatus;
+    if (view === 'notes') return notesSaveStatus;
+    if (view === 'drawings') return drawingsSaveStatus;
+    return 'idle';
+  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus]);
+
+  const hasActiveItem = useMemo(() => {
+    if (view === 'erd') return !!activeFileId;
+    if (view === 'notes') return !!activeNoteId;
+    if (view === 'drawings') return !!activeDrawingId;
+    return false;
+  }, [view, activeFileId, activeNoteId, activeDrawingId]);
 
   // Initialization
   useEffect(() => {
@@ -428,15 +442,11 @@ function AppContent() {
     if (!activeFile) return;
     
     const entities: Entity[] = nodes.map(n => n.data as Entity);
-    const relationships = edges.map(e => ({
-      source: e.source,
-      target: e.target,
-      sourceCol: e.sourceHandle?.replace('col-', '').replace('-source', ''),
-      targetCol: e.targetHandle?.replace('col-', '').replace('-target', '')
-    }));
+    const entityMap = new Map(entities.map(e => [e.id, e]));
 
     let sql = `-- ERD Export: ${activeFile.name}\n-- Dialect: ${dialect}\n\n`;
     
+    // Create Tables
     entities.forEach(entity => {
       sql += `CREATE TABLE ${entity.name} (\n`;
       entity.columns.forEach((col, i) => {
@@ -444,6 +454,38 @@ function AppContent() {
       });
       sql += `);\n\n`;
     });
+
+    // Add Relationships (Foreign Keys)
+    const relationshipsGenerated = new Set<string>(); // Prevent duplicates
+
+    edges.forEach(edge => {
+      const sourceEntity = entityMap.get(edge.source);
+      const targetEntity = entityMap.get(edge.target);
+      
+      if (sourceEntity && targetEntity) {
+        // Handle format is col-{colId}-source/target
+        const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source', '');
+        const targetColId = edge.targetHandle?.replace('col-', '').replace('-target', '');
+        
+        const sourceColumn = sourceEntity.columns.find(c => c.id === sourceColId);
+        const targetColumn = targetEntity.columns.find(c => c.id === targetColId);
+
+        if (sourceColumn && targetColumn) {
+          const constraintName = `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
+          
+          // Basic duplicate check for the same relationship
+          const relKey = `${sourceEntity.name}.${sourceColumn.name}->${targetEntity.name}.${targetColumn.name}`;
+          if (!relationshipsGenerated.has(relKey)) {
+            sql += `ALTER TABLE ${sourceEntity.name} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${sourceColumn.name}) REFERENCES ${targetEntity.name}(${targetColumn.name});\n`;
+            relationshipsGenerated.add(relKey);
+          }
+        }
+      }
+    });
+
+    if (relationshipsGenerated.size > 0) {
+      sql += `\n`;
+    }
 
     const blob = new Blob([sql], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -497,7 +539,16 @@ function AppContent() {
   };
 
   const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
-  const activeFileName = view === 'erd' ? files.find(f => f.id === activeFileId)?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
+  
+  const activeFile = files.find(f => f.id === activeFileId);
+  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
+  
+  const activeProjectName = (() => {
+    if (view === 'erd') return activeFile?.projects?.name;
+    if (view === 'notes') return activeNote?.projects?.name;
+    if (view === 'drawings') return activeDrawing?.projects?.name;
+    return null;
+  })();
 
   return (
     <SidebarProvider className="h-svh overflow-hidden">
@@ -514,20 +565,38 @@ function AppContent() {
                     {featureLabel}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
+                
+                {activeProjectName && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="max-w-[150px] truncate">{activeProjectName}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
+
                 {activeFileName && (
                   <>
                     <BreadcrumbSeparator />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>{activeFileName}</BreadcrumbPage>
+                      <BreadcrumbPage className="max-w-[200px] truncate">{activeFileName}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </>
                 )}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="ml-auto px-4 flex items-center gap-2">
-            {saveStatus === 'saving' && <span className="text-[10px] text-muted-foreground animate-pulse">Saving...</span>}
-            {saveStatus === 'saved' && <span className="text-[10px] text-primary">Saved</span>}
+          <div className="ml-auto px-4 flex items-center gap-4">
+            {['erd', 'notes', 'drawings'].includes(view) && hasActiveItem && (
+              <div className="flex items-center gap-2 mr-4">
+                <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                <span className="text-xs text-muted-foreground font-medium">
+                  {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                </span>
+              </div>
+            )}
+            
+            {/* User Profile has been moved to the Sidebar Footer */}
           </div>
         </header>
 
@@ -565,7 +634,7 @@ function AppContent() {
                   onMove={(_, viewport) => { viewportRef.current = viewport; }}
                   colorMode="dark"
                 >
-                  <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+                  <Background variant={BackgroundVariant.Dots} gap={30} size={1.5} color="#444" />
                   <Controls position="bottom-right" showInteractive={false} />
                 </ReactFlow>
               </div>

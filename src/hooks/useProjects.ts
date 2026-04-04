@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { Project } from '../types';
 
 export function useProjects() {
@@ -45,10 +46,14 @@ export function useProjects() {
       if (res.ok) {
         const newProject = await res.json();
         setProjects(prev => [newProject, ...prev]);
+        toast.success('Project created successfully');
         return newProject;
+      } else {
+        toast.error('Failed to create project');
       }
     } catch (err) {
       console.error('Error creating project:', err);
+      toast.error('Error creating project');
     }
     return null;
   };
@@ -62,9 +67,13 @@ export function useProjects() {
       });
       if (res.ok) {
         setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p));
+        toast.success('Project renamed successfully');
+      } else {
+        toast.error('Failed to rename project');
       }
     } catch (err) {
       console.error('Error updating project:', err);
+      toast.error('Error renaming project');
     }
   };
 
@@ -74,10 +83,14 @@ export function useProjects() {
       if (res.ok) {
         setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
         if (activeProjectId === id) setActiveProjectId(null);
+        toast.success('Project moved to trash');
         return true;
+      } else {
+        toast.error('Failed to delete project');
       }
     } catch (err) {
       console.error('Error deleting project:', err);
+      toast.error('Error deleting project');
     }
     return false;
   };
@@ -87,16 +100,27 @@ export function useProjects() {
       const res = await fetch(`/api/projects/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: false } : p));
+        toast.success('Project restored successfully');
+      } else {
+        toast.error('Failed to restore project');
       }
     } catch (err) {
       console.error('Error restoring project:', err);
+      toast.error('Error restoring project');
     }
   };
 
   const deleteProjectPermanent = async (id: number) => {
     try {
-      await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
-    } catch (err) {}
+      const res = await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Project permanently deleted');
+      } else {
+        toast.error('Failed to permanently delete project');
+      }
+    } catch (err) {
+      toast.error('Error permanently deleting project');
+    }
   };
 
   return {

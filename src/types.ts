@@ -38,6 +38,7 @@ export interface FileData {
   id: number;
   name: string;
   project_id: number | null;
+  projects?: Project;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -53,6 +54,7 @@ export interface Note {
   title: string;
   content: string;
   project_id: number | null;
+  projects?: Project;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -63,6 +65,7 @@ export interface Drawing {
   title: string;
   data: string;
   project_id: number | null;
+  projects?: Project;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;

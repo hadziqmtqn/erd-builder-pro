@@ -2,17 +2,22 @@ import { useState, useCallback, useEffect } from 'react';
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   const checkAuth = useCallback(async () => {
     try {
       const res = await fetch('/api/me');
       if (res.ok) {
+        const data = await res.json();
         setIsAuthenticated(true);
+        setUser(data.user);
       } else {
         setIsAuthenticated(false);
+        setUser(null);
       }
     } catch (err) {
       setIsAuthenticated(false);
+      setUser(null);
     }
   }, []);
 
@@ -20,8 +25,9 @@ export function useAuth() {
     checkAuth();
   }, [checkAuth]);
 
-  const handleLogin = useCallback(() => {
+  const handleLogin = useCallback((userData?: any) => {
     setIsAuthenticated(true);
+    if (userData) setUser(userData);
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -29,6 +35,7 @@ export function useAuth() {
       const res = await fetch('/api/logout', { method: 'POST' });
       if (res.ok) {
         setIsAuthenticated(false);
+        setUser(null);
       }
     } catch (err) {
       console.error('Logout error:', err);
@@ -37,6 +44,7 @@ export function useAuth() {
 
   return {
     isAuthenticated,
+    user,
     setIsAuthenticated,
     checkAuth,
     handleLogin,
