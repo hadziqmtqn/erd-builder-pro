@@ -634,7 +634,7 @@ function AppContent() {
                   onMove={(_, viewport) => { viewportRef.current = viewport; }}
                   colorMode="dark"
                 >
-                  <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+                  <Background variant={BackgroundVariant.Dots} gap={30} size={1.5} color="#444" />
                   <Controls position="bottom-right" showInteractive={false} />
                 </ReactFlow>
               </div>
