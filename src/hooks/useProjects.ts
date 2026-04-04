@@ -13,10 +13,11 @@ export function useProjects() {
   // Keep ref in sync
   projectsRef.current = projects;
 
-  const fetchProjects = useCallback(async (isLoadMore = false) => {
+  const fetchProjects = useCallback(async (isLoadMore = false, searchQuery = '') => {
     try {
       const offset = isLoadMore ? projectsRef.current.length : 0;
-      const res = await fetch(`/api/projects?limit=10&offset=${offset}`);
+      const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
+      const res = await fetch(`/api/projects?limit=10&offset=${offset}${qParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json; // Fallback to raw array

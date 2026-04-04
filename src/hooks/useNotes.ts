@@ -14,11 +14,12 @@ export function useNotes() {
   // Keep ref in sync
   notesRef.current = notes;
 
-  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all') => {
+  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
     try {
       const offset = isLoadMore ? notesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
-      const res = await fetch(`/api/notes?limit=10&offset=${offset}&project_id=${projIdParam}`);
+      const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
+      const res = await fetch(`/api/notes?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json; // Fallback to raw array

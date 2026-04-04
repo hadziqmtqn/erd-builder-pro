@@ -1,5 +1,4 @@
-import { signEdgeToken } from "./lib/edge-auth.js";
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./lib/edge-config.js";
+import { getEdgeSupabase } from "./lib/edge-config.js";
 
 export const config = {
   runtime: "edge",
@@ -17,9 +16,23 @@ export default async function handler(req: Request) {
     const body = await req.json();
     const email = body.email?.trim();
     const password = body.password;
+    const supabase = getEdgeSupabase();
 
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      const token = await signEdgeToken({ email });
+    // Standard flow: Password login
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      return new Response(JSON.stringify({ error: authError.message }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (authData && authData.session) {
+      const token = authData.session.access_token;
       const isProd = process.env.NODE_ENV === "production" || req.headers.get("x-v-proto") === "https" || req.url.startsWith("https://");
       
       const cookieOptions = [
@@ -28,10 +41,10 @@ export default async function handler(req: Request) {
         isProd ? "Secure" : "",
         "Path=/",
         "SameSite=Lax",
-        `Max-Age=${24 * 60 * 60}`, // 24 hours
+        `Max-Age=${authData.session.expires_in}`, // Use Supabase expiration
       ].filter(Boolean);
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, user: authData.user }), {
         status: 200,
         headers: {
           "content-type": "application/json",
@@ -39,11 +52,6 @@ export default async function handler(req: Request) {
         },
       });
     }
-
-    return new Response(JSON.stringify({ error: "Invalid credentials" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: "Invalid request" }), {
       status: 400,

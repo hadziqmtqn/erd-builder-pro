@@ -16,11 +16,12 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
   // Keep ref in sync
   filesRef.current = files;
 
-  const fetchFiles = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all') => {
+  const fetchFiles = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
     try {
       const offset = isLoadMore ? filesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
-      const res = await fetch(`/api/files?limit=10&offset=${offset}&project_id=${projIdParam}`);
+      const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
+      const res = await fetch(`/api/files?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json; // Fallback to raw array

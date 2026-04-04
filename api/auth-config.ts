@@ -1,11 +1,5 @@
-import { ADMIN_EMAIL } from "./lib/edge-config.js";
-
-export const config = {
-  runtime: "edge",
-};
-
 export default async function handler() {
-  return new Response(JSON.stringify({ adminEmail: ADMIN_EMAIL }), {
+  return new Response(JSON.stringify({ supabaseAuth: true }), {
     status: 200,
     headers: {
       "content-type": "application/json",

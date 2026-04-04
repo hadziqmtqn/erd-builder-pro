@@ -294,7 +294,7 @@ export function NavProjects({
         <Plus />
       </SidebarGroupAction>
       <SidebarMenu>
-        {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId) && f.name.toLowerCase().includes(searchQuery.toLowerCase())).map(file => (
+        {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
           <SidebarMenuItem key={file.id}>
             <SidebarMenuButton 
               isActive={activeFileId === file.id && view === 'erd'}
@@ -327,7 +327,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId) && n.title.toLowerCase().includes(searchQuery.toLowerCase())).map(note => (
+        {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
           <SidebarMenuItem key={note.id}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
@@ -360,7 +360,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId) && d.title.toLowerCase().includes(searchQuery.toLowerCase())).map(drawing => (
+        {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
           <SidebarMenuItem key={drawing.id}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
@@ -431,9 +431,9 @@ export function NavProjects({
         )}
 
         {searchQuery && (
-          ((sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId) && f.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0) ||
-           (sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId) && n.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0) ||
-           (sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId) && d.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0)) && (
+          ((sidebarView === 'erd' && files.length === 0) ||
+           (sidebarView === 'notes' && notes.length === 0) ||
+           (sidebarView === 'drawings' && drawings.length === 0)) && (
             <div className="px-4 py-2 text-xs text-muted-foreground italic">No results match "{searchQuery}"</div>
           )
         )}

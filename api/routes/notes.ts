@@ -9,13 +9,18 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const limit = parseInt(req.query.limit as string) || 10;
   const offset = parseInt(req.query.offset as string) || 0;
   const projectId = req.query.project_id as string;
+  const q = req.query.q as string;
 
-  console.log(`[Notes] Fetching notes with limit=${limit}, offset=${offset}, project_id=${projectId}`);
+  console.log(`[Notes] Fetching notes with limit=${limit}, offset=${offset}, project_id=${projectId}, q=${q}`);
 
   let query = supabase
     .from("notes")
     .select("*, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false);
+
+  if (q && q.trim()) {
+    query = query.ilike("title", `%${q.trim()}%`);
+  }
 
   if (projectId === "null") {
     query = query.is("project_id", null);

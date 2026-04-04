@@ -116,6 +116,8 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreFiles?: () => void;
   onLoadMoreNotes?: () => void;
   onLoadMoreDrawings?: () => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
 }
 
 export function AppSidebar({
@@ -168,9 +170,10 @@ export function AppSidebar({
   onLoadMoreFiles,
   onLoadMoreNotes,
   onLoadMoreDrawings,
+  searchQuery,
+  onSearchChange,
   ...props
 }: AppSidebarProps) {
-  const [searchQuery, setSearchQuery] = React.useState("")
   // Navigation items for the main section
   const navMain = [
     {
@@ -226,7 +229,7 @@ export function AppSidebar({
               placeholder={`Search ${sidebarView === 'erd' ? 'diagrams' : sidebarView === 'notes' ? 'notes' : 'drawings'}...`}
               className="pl-8"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)}
             />
             <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground" />
           </SidebarGroupContent>
