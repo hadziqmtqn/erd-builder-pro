@@ -12,6 +12,8 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { TableRow } from '@tiptap/extension-table-row';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 
+import { compressImage } from '../lib/image-compression';
+
 const MenuBar = ({ editor }: { editor: any }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -22,11 +24,14 @@ const MenuBar = ({ editor }: { editor: any }) => {
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('feature', 'notes');
-
       try {
+        // Compress image before upload (max 1280px width, 80% quality)
+        const compressedFile = await compressImage(file, { maxWidth: 1280, quality: 0.8 });
+
+        const formData = new FormData();
+        formData.append('image', compressedFile);
+        formData.append('feature', 'notes');
+
         const response = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
@@ -197,7 +202,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
   });
 
   useEffect(() => {
-    if (editor && initialContent && editor.getHTML() !== initialContent) {
+    if (editor && typeof initialContent === 'string' && editor.getHTML() !== initialContent) {
       editor.commands.setContent(initialContent);
     }
   }, [initialContent, editor]);
