@@ -44,8 +44,8 @@ router.get("/me", (req: ExpressRequest, res: ExpressResponse) => {
     return res.status(401).json({ error: "Not logged in" });
   }
   try {
-    jwt.verify(token, JWT_SECRET);
-    res.json({ authenticated: true });
+    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
+    res.json({ authenticated: true, user: { email: decoded.email } });
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });
   }

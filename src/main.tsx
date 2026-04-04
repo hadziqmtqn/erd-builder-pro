@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')!).render(
     <ReactFlowProvider>
       <TooltipProvider>
         <App />
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-center" />
       </TooltipProvider>
     </ReactFlowProvider>
   </StrictMode>,

@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { Drawing } from '../types';
 
 export function useDrawings() {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingId, setActiveDrawingId] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);
   const [hasMoreDrawings, setHasMoreDrawings] = useState(false);
@@ -45,10 +47,14 @@ export function useDrawings() {
       if (res.ok) {
         const newDrawing = await res.json();
         setDrawings(prev => [newDrawing, ...prev]);
+        toast.success('Drawing created successfully');
         return newDrawing;
+      } else {
+        toast.error('Failed to create drawing');
       }
     } catch (err) {
       console.error('Error creating drawing:', err);
+      toast.error('Error creating drawing');
     }
     return null;
   };
@@ -62,9 +68,13 @@ export function useDrawings() {
       });
       if (res.ok) {
         setDrawings(prev => prev.map(d => d.id === id ? { ...d, title } : d));
+        toast.success('Drawing renamed successfully');
+      } else {
+        toast.error('Failed to rename drawing');
       }
     } catch (err) {
       console.error('Error updating drawing:', err);
+      toast.error('Error renaming drawing');
     }
   };
 
@@ -74,9 +84,13 @@ export function useDrawings() {
       if (res.ok) {
         setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
         if (activeDrawingId === id) setActiveDrawingId(null);
+        toast.success('Drawing moved to trash');
+      } else {
+        toast.error('Failed to delete drawing');
       }
     } catch (err) {
       console.error('Error deleting drawing:', err);
+      toast.error('Error deleting drawing');
     }
   };
 
@@ -89,15 +103,20 @@ export function useDrawings() {
       });
       if (res.ok) {
         setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
+        toast.success('Drawing moved to project');
         return true;
+      } else {
+        toast.error('Failed to move drawing');
       }
     } catch (err) {
       console.error('Error moving drawing:', err);
+      toast.error('Error moving drawing');
     }
     return false;
   };
 
   const saveDrawing = async (drawing: Drawing) => {
+    setSaveStatus('saving');
     try {
       const res = await fetch(`/api/drawings/${drawing.id}`, {
         method: 'PUT',
@@ -105,10 +124,17 @@ export function useDrawings() {
         body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
       });
       if (res.ok) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
         return true;
+      } else {
+        setSaveStatus('error');
+        toast.error('Failed to save drawing');
       }
     } catch (err) {
       console.error('Error saving drawing:', err);
+      setSaveStatus('error');
+      toast.error('Error saving drawing');
     }
     return false;
   };
@@ -118,14 +144,26 @@ export function useDrawings() {
       const res = await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchDrawings();
+        toast.success('Drawing restored successfully');
+      } else {
+        toast.error('Failed to restore drawing');
       }
-    } catch (err) {}
+    } catch (err) {
+      toast.error('Error restoring drawing');
+    }
   };
 
   const deleteDrawingPermanent = async (id: number) => {
     try {
-      await fetch(`/api/drawings/${id}/permanent`, { method: 'DELETE' });
-    } catch (err) {}
+      const res = await fetch(`/api/drawings/${id}/permanent`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Drawing permanently deleted');
+      } else {
+        toast.error('Failed to permanently delete drawing');
+      }
+    } catch (err) {
+      toast.error('Error permanently deleting drawing');
+    }
   };
 
   return {
@@ -142,6 +180,7 @@ export function useDrawings() {
     restoreDrawing,
     deleteDrawingPermanent,
     hasMoreDrawings,
-    drawingsTotal
+    drawingsTotal,
+    saveStatus
   };
 }

@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { Note } from '../types';
 
 export function useNotes() {
   const [notes, setNotesList] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [notesTotal, setNotesTotal] = useState(0);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
@@ -45,10 +47,14 @@ export function useNotes() {
       if (res.ok) {
         const newNote = await res.json();
         setNotesList(prev => [newNote, ...prev]);
+        toast.success('Note created successfully');
         return newNote;
+      } else {
+        toast.error('Failed to create note');
       }
     } catch (err) {
       console.error('Error creating note:', err);
+      toast.error('Error creating note');
     }
     return null;
   };
@@ -62,9 +68,13 @@ export function useNotes() {
       });
       if (res.ok) {
         setNotesList(prev => prev.map(n => n.id === id ? { ...n, title } : n));
+        toast.success('Note renamed successfully');
+      } else {
+        toast.error('Failed to rename note');
       }
     } catch (err) {
       console.error('Error updating note:', err);
+      toast.error('Error renaming note');
     }
   };
 
@@ -74,9 +84,13 @@ export function useNotes() {
       if (res.ok) {
         setNotesList(prev => prev.map(n => n.id === id ? { ...n, is_deleted: true } : n));
         if (activeNoteId === id) setActiveNoteId(null);
+        toast.success('Note moved to trash');
+      } else {
+        toast.error('Failed to delete note');
       }
     } catch (err) {
       console.error('Error deleting note:', err);
+      toast.error('Error deleting note');
     }
   };
 
@@ -89,15 +103,20 @@ export function useNotes() {
       });
       if (res.ok) {
         setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, project_id: projectId } : n));
+        toast.success('Note moved to project');
         return true;
+      } else {
+        toast.error('Failed to move note');
       }
     } catch (err) {
       console.error('Error moving note:', err);
+      toast.error('Error moving note');
     }
     return false;
   };
 
   const saveNote = async (note: Note) => {
+    setSaveStatus('saving');
     try {
       const res = await fetch(`/api/notes/${note.id}`, {
         method: 'PUT',
@@ -105,10 +124,17 @@ export function useNotes() {
         body: JSON.stringify({ title: note.title, content: note.content, project_id: note.project_id }),
       });
       if (res.ok) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
         return true;
+      } else {
+        setSaveStatus('error');
+        toast.error('Failed to save note');
       }
     } catch (err) {
       console.error('Error saving note:', err);
+      setSaveStatus('error');
+      toast.error('Error saving note');
     }
     return false;
   };
@@ -118,14 +144,26 @@ export function useNotes() {
       const res = await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchNotes();
+        toast.success('Note restored successfully');
+      } else {
+        toast.error('Failed to restore note');
       }
-    } catch (err) {}
+    } catch (err) {
+      toast.error('Error restoring note');
+    }
   };
 
   const deleteNotePermanent = async (id: number) => {
     try {
-      await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
-    } catch (err) {}
+      const res = await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Note permanently deleted');
+      } else {
+        toast.error('Failed to permanently delete note');
+      }
+    } catch (err) {
+      toast.error('Error permanently deleting note');
+    }
   };
 
   return {
@@ -142,6 +180,7 @@ export function useNotes() {
     restoreNote,
     deleteNotePermanent,
     hasMoreNotes,
-    notesTotal
+    notesTotal,
+    saveStatus
   };
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { FileData, Note, Drawing, Project } from '../types';
 
 export function useTrash() {
@@ -32,8 +33,13 @@ export function useTrash() {
       const res = await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchTrash();
+        toast.success('Note restored successfully');
+      } else {
+        toast.error('Failed to restore note');
       }
-    } catch (err) {}
+    } catch (err) {
+      toast.error('Error restoring note');
+    }
   };
 
   const restoreDrawing = async (id: number) => {
@@ -41,8 +47,13 @@ export function useTrash() {
       const res = await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchTrash();
+        toast.success('Drawing restored successfully');
+      } else {
+        toast.error('Failed to restore drawing');
       }
-    } catch (err) {}
+    } catch (err) {
+      toast.error('Error restoring drawing');
+    }
   };
 
   return {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
 import { FileData, Entity, Relationship } from '../types';
 
@@ -48,10 +49,14 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       if (res.ok) {
         const newFile = await res.json();
         setFiles(prev => [newFile, ...prev]);
+        toast.success('Diagram created successfully');
         return newFile;
+      } else {
+        toast.error('Failed to create diagram');
       }
     } catch (err) {
       console.error('Error creating file:', err);
+      toast.error('Error creating diagram');
     }
     return null;
   };
@@ -65,9 +70,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       });
       if (res.ok) {
         setFiles(prev => prev.map(f => f.id === id ? { ...f, name } : f));
+        toast.success('Diagram renamed successfully');
+      } else {
+        toast.error('Failed to rename diagram');
       }
     } catch (err) {
       console.error('Error updating file:', err);
+      toast.error('Error renaming diagram');
     }
   };
 
@@ -77,9 +86,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       if (res.ok) {
         setFiles(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
         if (activeFileId === id) setActiveFileId(null);
+        toast.success('Diagram moved to trash');
+      } else {
+        toast.error('Failed to delete diagram');
       }
     } catch (err) {
       console.error('Error deleting file:', err);
+      toast.error('Error deleting diagram');
     }
   };
 
@@ -88,14 +101,26 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       const res = await fetch(`/api/files/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchFiles();
+        toast.success('Diagram restored successfully');
+      } else {
+        toast.error('Failed to restore diagram');
       }
-    } catch (err) {}
+    } catch (err) {
+      toast.error('Error restoring diagram');
+    }
   };
 
   const deleteFilePermanent = async (id: number) => {
     try {
-      await fetch(`/api/files/${id}/permanent`, { method: 'DELETE' });
-    } catch (err) {}
+      const res = await fetch(`/api/files/${id}/permanent`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Diagram permanently deleted');
+      } else {
+        toast.error('Failed to permanently delete diagram');
+      }
+    } catch (err) {
+      toast.error('Error permanently deleting diagram');
+    }
   };
 
   const moveFileToProject = async (fileId: number, projectId: number | null) => {
@@ -107,12 +132,15 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       });
       if (res.ok) {
         setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
+        toast.success('Diagram moved to project');
         return true;
+      } else {
+        toast.error('Failed to move diagram');
       }
     } catch (err) {
       console.error('Error moving file:', err);
+      toast.error('Error moving diagram');
     }
-    return false;
   };
 
   const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport) => {
@@ -144,9 +172,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       if (res.ok) {
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+        toast.error('Failed to save diagram');
       }
     } catch (err) {
       setSaveStatus('error');
+      toast.error('Error saving diagram');
     }
   }, [activeFileId, isAuthenticated, view]);
 
