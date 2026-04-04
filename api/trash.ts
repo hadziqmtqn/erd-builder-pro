@@ -21,9 +21,9 @@ export default async function handler(req: Request) {
     
     // Perform parallel fetches using Promise.all
     const [filesRes, notesRes, drawingsRes, projectsRes] = await Promise.all([
-      supabase.from("files").select("*").eq("is_deleted", true),
-      supabase.from("notes").select("*").eq("is_deleted", true),
-      supabase.from("drawings").select("*").eq("is_deleted", true),
+      supabase.from("files").select("*, projects!left(name)").eq("is_deleted", true),
+      supabase.from("notes").select("*, projects!left(name)").eq("is_deleted", true),
+      supabase.from("drawings").select("*, projects!left(name)").eq("is_deleted", true),
       supabase.from("projects").select("*").eq("is_deleted", true),
     ]);
 

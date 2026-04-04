@@ -151,13 +151,22 @@ function AppContent() {
     document.body.classList.add('dark');
 
     if (isAuthenticated) {
-      fetchFiles();
-      fetchNotes();
-      fetchDrawings();
       fetchProjects();
       fetchTrash();
     }
-  }, [isAuthenticated, fetchFiles, fetchNotes, fetchDrawings, fetchProjects, fetchTrash]);
+  }, [isAuthenticated, fetchProjects, fetchTrash]);
+
+  // Refetch items when project changes
+  useEffect(() => {
+    if (isAuthenticated) {
+      // @ts-ignore
+      fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId);
+      // @ts-ignore
+      fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId);
+      // @ts-ignore
+      fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId);
+    }
+  }, [isAuthenticated, activeProjectId, fetchFiles, fetchNotes, fetchDrawings]);
 
   // ERD Selection Logic
   const handleFileSelect = async (id: number) => {
@@ -533,9 +542,12 @@ function AppContent() {
     hasMoreNotes,
     hasMoreDrawings,
     onLoadMoreProjects: () => fetchProjects(true),
-    onLoadMoreFiles: () => fetchFiles(true),
-    onLoadMoreNotes: () => fetchNotes(true),
-    onLoadMoreDrawings: () => fetchDrawings(true),
+    // @ts-ignore
+    onLoadMoreFiles: () => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId),
+    // @ts-ignore
+    onLoadMoreNotes: () => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId),
+    // @ts-ignore
+    onLoadMoreDrawings: () => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId),
   };
 
   const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
@@ -730,6 +742,7 @@ function AppContent() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Diagram Name</TableHead>
+                              <TableHead>Project</TableHead>
                               <TableHead>Deleted At</TableHead>
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -740,6 +753,9 @@ function AppContent() {
                                 <TableCell className="font-medium flex items-center gap-2">
                                   <Database size={14} className="text-muted-foreground" />
                                   {file.name}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-xs font-semibold">
+                                  {file.projects?.name || '-'}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-xs">
                                   {new Date(file.updated_at).toLocaleString()}
@@ -779,6 +795,7 @@ function AppContent() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Note Title</TableHead>
+                              <TableHead>Project</TableHead>
                               <TableHead>Deleted At</TableHead>
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -789,6 +806,9 @@ function AppContent() {
                                 <TableCell className="font-medium flex items-center gap-2">
                                   <StickyNote size={14} className="text-muted-foreground" />
                                   {note.title}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-xs font-semibold">
+                                  {note.projects?.name || '-'}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-xs">
                                   {new Date(note.updated_at).toLocaleString()}
@@ -828,6 +848,7 @@ function AppContent() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Drawing Title</TableHead>
+                              <TableHead>Project</TableHead>
                               <TableHead>Deleted At</TableHead>
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -838,6 +859,9 @@ function AppContent() {
                                 <TableCell className="font-medium flex items-center gap-2">
                                   <PenTool size={14} className="text-muted-foreground" />
                                   {drawing.title}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-xs font-semibold">
+                                  {drawing.projects?.name || '-'}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-xs">
                                   {new Date(drawing.updated_at).toLocaleString()}
