@@ -17,8 +17,16 @@ jobs:
         port: ${{ secrets.VPS_PORT }}
         script: |
           cd /www/wwwroot/erd-builder-pro
+          
+          # 1. Pastikan menarik branch yang benar
           git pull origin optimize-code
+          
+          # 2. Perbaiki typo npn menjadi npm
           npm install
+          
+          # 3. Tambahkan limitasi memori agar VPS RAM kecil tidak crash saat build
+          export NODE_OPTIONS="--max-old-space-size=1024"
           npm run build
-          # Baris di bawah ini menyuruh aaPanel (PM2) untuk restart server Express agar membaca kode baru
-          pm2 restart erd-builder-pro || npx pm2 restart all
+          
+          # 4. Gunakan npx untuk memanggil PM2 agar pasti terbaca jalurnya
+          npx pm2 restart erd-builder-pro || npx pm2 restart all
