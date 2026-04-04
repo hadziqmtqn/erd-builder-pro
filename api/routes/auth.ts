@@ -1,6 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import jwt from "jsonwebtoken";
-import { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } from "../lib/config";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, JWT_SECRET } from "../lib/config.js";
 
 const router = Router();
 

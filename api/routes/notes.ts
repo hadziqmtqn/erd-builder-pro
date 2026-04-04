@@ -1,6 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config";
-import { authenticate } from "../lib/middleware";
+import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { authenticate } from "../lib/middleware.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const router = Router();

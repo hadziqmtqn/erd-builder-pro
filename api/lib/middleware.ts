@@ -1,6 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET, supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config";
+import { JWT_SECRET, supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./config.js";
 
 // Auth Middleware
 export const authenticate = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {

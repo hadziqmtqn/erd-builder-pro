@@ -1,4 +1,4 @@
-import app from "./index";
+import app from "./index.js";
 import { createServerAdapter } from "@whatwg-node/server";
 
 export default {

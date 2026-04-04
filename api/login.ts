@@ -1,5 +1,5 @@
-import { signEdgeToken } from "./lib/edge-auth";
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./lib/edge-config";
+import { signEdgeToken } from "./lib/edge-auth.js";
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./lib/edge-config.js";
 
 export const config = {
   runtime: "edge",

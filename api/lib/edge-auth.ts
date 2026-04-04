@@ -1,5 +1,5 @@
 import * as jose from "jose";
-import { JWT_SECRET } from "./edge-config";
+import { JWT_SECRET } from "./edge-config.js";
 
 // Convert secret string to Uint8Array for jose
 const secret = new TextEncoder().encode(JWT_SECRET);

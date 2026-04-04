@@ -1,4 +1,4 @@
-import { ADMIN_EMAIL } from "./lib/edge-config";
+import { ADMIN_EMAIL } from "./lib/edge-config.js";
 
 export const config = {
   runtime: "edge",

@@ -1,5 +1,5 @@
-import { getEdgeSupabase } from "./lib/edge-config";
-import { parseCookies, verifyEdgeToken } from "./lib/edge-auth";
+import { getEdgeSupabase } from "./lib/edge-config.js";
+import { parseCookies, verifyEdgeToken } from "./lib/edge-auth.js";
 
 export const config = {
   runtime: "edge",

@@ -1,4 +1,4 @@
-import { parseCookies, verifyEdgeToken } from "./lib/edge-auth";
+import { parseCookies, verifyEdgeToken } from "./lib/edge-auth.js";
 
 export const config = {
   runtime: "edge",

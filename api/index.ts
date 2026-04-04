@@ -5,13 +5,13 @@ import cookieParser from "cookie-parser";
 import fs from "node:fs";
 
 // Import modular routers and libs
-import { checkSupabase } from "./lib/middleware";
-import authRouter from "./routes/auth";
-import filesRouter from "./routes/files";
-import projectsRouter from "./routes/projects";
-import notesRouter from "./routes/notes";
-import drawingsRouter from "./routes/drawings";
-import commonRouter from "./routes/common";
+import { checkSupabase } from "./lib/middleware.js";
+import authRouter from "./routes/auth.js";
+import filesRouter from "./routes/files.js";
+import projectsRouter from "./routes/projects.js";
+import notesRouter from "./routes/notes.js";
+import drawingsRouter from "./routes/drawings.js";
+import commonRouter from "./routes/common.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
