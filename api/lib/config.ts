@@ -19,9 +19,22 @@ export const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 
 // Initialize Supabase
 export let supabase: any = null;
+
+// Diagnostics for Vercel deployment
+console.log("Supabase initialization check:");
+console.log("- SUPABASE_URL:", SUPABASE_URL ? "SET (starts with " + SUPABASE_URL.substring(0, 8) + "...)" : "MISSING");
+console.log("- SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY ? "SET (length: " + SUPABASE_SERVICE_ROLE_KEY.length + ")" : "MISSING");
+console.log("- NODE_ENV:", process.env.NODE_ENV);
+
 try {
   if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL.startsWith("http")) {
+      console.error("CRITICAL: SUPABASE_URL is not a valid URL (doesn't start with http/https)");
+    }
     supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    console.log("Supabase client created successfully");
+  } else {
+    console.warn("Supabase client NOT created due to missing environment variables");
   }
 } catch (err) {
   console.error("Failed to initialize Supabase client:", err);
