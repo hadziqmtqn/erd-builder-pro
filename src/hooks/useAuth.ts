@@ -25,6 +25,18 @@ export function useAuth() {
     checkAuth();
   }, [checkAuth]);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false);
+      setUser(null);
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, []);
+
   const handleLogin = useCallback((userData?: any) => {
     setIsAuthenticated(true);
     if (userData) setUser(userData);
