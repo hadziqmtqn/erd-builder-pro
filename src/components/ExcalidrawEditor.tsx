@@ -17,6 +17,15 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
   const drawingRef = useRef(drawing);
   const processedFileIds = useRef<Set<string>>(new Set());
 
+  // Store callbacks in refs to prevent dependency cycles
+  const onSaveRef = useRef(onSave);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+    onChangeRef.current = onChange;
+  }, [onSave, onChange]);
+
   // Keep drawingRef up to date
   useEffect(() => {
     drawingRef.current = drawing;
@@ -148,11 +157,11 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
         
         if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}') {
           console.log("Saving drawing on unmount...");
-          onSave({ ...drawingRef.current, data });
+          onSaveRef.current({ ...drawingRef.current, data });
         }
       }
     };
-  }, [excalidrawAPI, onSave]); // Only depend on API and onSave
+  }, [excalidrawAPI]); // Only depend on API
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
     // Only report changes if the scene is ready
@@ -183,11 +192,11 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
     // Only trigger parent update if data actually changed to avoid loops
     if (data !== lastDataRef.current) {
       lastDataRef.current = data;
-      if (onChange) {
-        onChange(data);
+      if (onChangeRef.current) {
+        onChangeRef.current(data);
       }
     }
-  }, [onChange, processNewFiles]);
+  }, [processNewFiles]);
 
   const uiOptions = useMemo(() => ({
     canvasActions: {
