@@ -8,12 +8,18 @@ const router = Router();
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const limit = parseInt(req.query.limit as string) || 10;
   const offset = parseInt(req.query.offset as string) || 0;
+  const q = req.query.q as string;
 
-
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("projects")
     .select("*", { count: 'exact' })
-    .eq("is_deleted", false)
+    .eq("is_deleted", false);
+
+  if (q && q.trim()) {
+    query = query.ilike("name", `%${q.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
 

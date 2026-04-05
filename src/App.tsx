@@ -1,29 +1,33 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
-  ReactFlow, 
-  Background, 
-  Controls, 
   useNodesState, 
   useEdgesState, 
   addEdge, 
   Edge, 
   Node,
-  BackgroundVariant,
   OnConnect,
   Viewport,
   useReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Database, Trash2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
-import PropertiesPanel from './components/PropertiesPanel';
-import EntityNode from './components/EntityNode';
-import NotesEditor from './components/NotesEditor';
-import ExcalidrawEditor from './components/ExcalidrawEditor';
 import { Login } from './components/Login';
+import { MainHeader } from './components/MainHeader';
+import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
+import PropertiesPanel from './components/PropertiesPanel';
+
+// Views
+import { ERDView } from './components/views/ERDView';
+import { NotesView } from './components/views/NotesView';
+import { DrawingsView } from './components/views/DrawingsView';
+import { TrashView } from './components/views/TrashView';
+import { WelcomeView } from './components/views/WelcomeView';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -37,15 +41,18 @@ import { useTrash } from './hooks/useTrash';
 import { Entity, FileData } from './types';
 
 // UI
-import { Button } from "@/components/ui/button";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,37 +62,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { RefreshCcw, Trash2 as TrashIcon, Database, StickyNote, PenTool, Folder, Trash, LogOut, User as UserIcon } from 'lucide-react';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-  DropdownMenuGroup
-} from "@/components/ui/dropdown-menu";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
-
-const nodeTypes = {
-  entity: EntityNode,
-};
+} from "@/components/ui/alert-dialog"
 
 const initialNodes: Node<Entity>[] = [];
 const initialEdges: Edge[] = [];
@@ -94,11 +71,17 @@ function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
   
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  
   // Hooks
   const { isAuthenticated, user, checkAuth, handleLogout } = useAuth();
+  
   const { 
     files, activeFileId, setActiveFileId, saveStatus, setSaveStatus,
     fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
@@ -145,28 +128,43 @@ function AppContent() {
     return false;
   }, [view, activeFileId, activeNoteId, activeDrawingId]);
 
+  // Memoize selected entity for properties panel
+  const selectedEntity = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return node ? (node.data as Entity) : null;
+  }, [nodes, selectedNodeId]);
+
   // Initialization
   useEffect(() => {
     document.documentElement.classList.add('dark');
     document.body.classList.add('dark');
 
     if (isAuthenticated) {
-      fetchProjects();
+      fetchProjects(false, debouncedSearchQuery);
       fetchTrash();
     }
-  }, [isAuthenticated, fetchProjects, fetchTrash]);
+  }, [isAuthenticated, fetchProjects, fetchTrash, debouncedSearchQuery]);
 
-  // Refetch items when project changes
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Refetch items when project or search query changes
   useEffect(() => {
     if (isAuthenticated) {
       // @ts-ignore
-      fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId);
+      fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
       // @ts-ignore
-      fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId);
+      fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
       // @ts-ignore
-      fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId);
+      fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
     }
-  }, [isAuthenticated, activeProjectId, fetchFiles, fetchNotes, fetchDrawings]);
+  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings]);
 
   // ERD Selection Logic
   const handleFileSelect = async (id: number) => {
@@ -270,7 +268,7 @@ function AppContent() {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram]);
 
-  // Note Selection
+  // Selection Handlers
   const handleNoteSelect = async (id: number) => {
     const note = notes.find(n => n.id === id);
     if (note?.is_deleted) return;
@@ -278,7 +276,6 @@ function AppContent() {
     setView('notes');
   };
 
-  // Drawing Selection
   const handleDrawingSelect = async (id: number) => {
     try {
       const res = await fetch(`/api/drawings/${id}`);
@@ -290,146 +287,66 @@ function AppContent() {
     } catch (err) {}
   };
 
-  // Note Change
+  // Change Handlers
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
-    
-    // Update local state immediately to avoid desync
     setNotesList(prev => prev.map(n => n.id === activeNoteId ? { ...n, content } : n));
-    
     if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
     noteSaveTimeoutRef.current = setTimeout(async () => {
-      setSaveStatus('saving');
-      // Use functional update to get latest notes from the hook's state
-      const success = await saveNote({
+      await saveNote({
         id: activeNoteId,
         content,
         title: notes.find(n => n.id === activeNoteId)?.title || '',
         project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
       } as any);
-      
-      if (success) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } else {
-        setSaveStatus('error');
-      }
     }, 1000);
-  }, [activeNoteId, notes, saveNote, setNotesList, setSaveStatus]);
+  }, [activeNoteId, notes, saveNote, setNotesList]);
 
-  // Drawing Change
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
-    
-    // Update local state immediately to avoid desync
     setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
-
     if (drawingSaveTimeoutRef.current) clearTimeout(drawingSaveTimeoutRef.current);
     drawingSaveTimeoutRef.current = setTimeout(async () => {
-      setSaveStatus('saving');
-      // Use functional update or pass arguments directly since data is already fresh
-      const success = await saveDrawing({
+      await saveDrawing({
         id: activeDrawingId,
         data,
         title: drawings.find(d => d.id === activeDrawingId)?.title || '',
         project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
       } as any);
-
-      if (success) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } else {
-        setSaveStatus('error');
-      }
     }, 1000);
-  }, [activeDrawingId, drawings, saveDrawing, setDrawings, setSaveStatus]);
+  }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
     
-  // --- Creation Handlers (with auto-select) ---
+  // Creation Handlers
   const handleFileCreate = async (name: string, projectId?: number | null) => {
     const newFile = await createFile(name, projectId);
-    if (newFile) {
-      handleFileSelect(newFile.id);
-    }
+    if (newFile) handleFileSelect(newFile.id);
   };
 
   const handleNoteCreate = async (title: string, projectId?: number | null) => {
     const newNote = await createNote(title, projectId);
-    if (newNote) {
-      handleNoteSelect(newNote.id);
-    }
+    if (newNote) handleNoteSelect(newNote.id);
   };
 
   const handleDrawingCreate = async (title: string, projectId?: number | null) => {
     const newDrawing = await createDrawing(title, projectId);
-    if (newDrawing) {
-      handleDrawingSelect(newDrawing.id);
-    }
+    if (newDrawing) handleDrawingSelect(newDrawing.id);
   };
 
-  // --- Sync Handlers (Trash & domain sync) ---
-  const handleFileDelete = async (id: number) => {
-    await deleteFile(id);
-    fetchTrash();
-  };
+  // Sync Handlers
+  const handleFileDelete = async (id: number) => { await deleteFile(id); fetchTrash(); };
+  const handleNoteDelete = async (id: number) => { await deleteNote(id); fetchTrash(); };
+  const handleDrawingDelete = async (id: number) => { await deleteDrawing(id); fetchTrash(); };
+  const handleProjectDelete = async (id: number) => { if (await deleteProject(id)) fetchTrash(); };
 
-  const handleNoteDelete = async (id: number) => {
-    await deleteNote(id);
-    fetchTrash();
-  };
+  const handleFileRestore = async (id: number) => { await restoreFile(id); fetchTrash(); fetchFiles(); };
+  const handleNoteRestore = async (id: number) => { await restoreNote(id); fetchTrash(); fetchNotes(); };
+  const handleDrawingRestore = async (id: number) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(); };
+  const handleProjectRestore = async (id: number) => { await restoreProject(id); fetchTrash(); fetchProjects(); };
 
-  const handleDrawingDelete = async (id: number) => {
-    await deleteDrawing(id);
-    fetchTrash();
-  };
-
-  const handleProjectDelete = async (id: number) => {
-    const success = await deleteProject(id);
-    if (success) fetchTrash();
-  };
-
-  const handleFileRestore = async (id: number) => {
-    await restoreFile(id);
-    fetchTrash();
-    fetchFiles();
-  };
-
-  const handleNoteRestore = async (id: number) => {
-    await restoreNote(id);
-    fetchTrash();
-    fetchNotes();
-  };
-
-  const handleDrawingRestore = async (id: number) => {
-    await restoreDrawing(id);
-    fetchTrash();
-    fetchDrawings();
-  };
-
-  const handleProjectRestore = async (id: number) => {
-    await restoreProject(id);
-    fetchTrash();
-    fetchProjects();
-  };
-
-  const handleFilePermanentDelete = (id: number) => {
-    setItemToDelete({ id, type: 'erd' });
-    setIsPermanentDeleteConfirmOpen(true);
-  };
-
-  const handleNotePermanentDelete = (id: number) => {
-    setItemToDelete({ id, type: 'notes' });
-    setIsPermanentDeleteConfirmOpen(true);
-  };
-
-  const handleDrawingPermanentDelete = (id: number) => {
-    setItemToDelete({ id, type: 'drawings' });
-    setIsPermanentDeleteConfirmOpen(true);
-  };
-
-  const handleProjectPermanentDelete = (id: number) => {
-    setItemToDelete({ id, type: 'project' });
-    setIsPermanentDeleteConfirmOpen(true);
-  };
+  const handleFilePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleNotePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleDrawingPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleProjectPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); };
 
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
@@ -437,25 +354,19 @@ function AppContent() {
       else if (itemToDelete.type === 'erd') await deleteFilePermanent(itemToDelete.id);
       else if (itemToDelete.type === 'notes') await deleteNotePermanent(itemToDelete.id);
       else if (itemToDelete.type === 'drawings') await deleteDrawingPermanent(itemToDelete.id);
-      
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
       fetchTrash();
     }
   };
-  // --- End Sync Handlers ---
 
   // SQL Export
   const handleExportSQL = (dialect: 'postgresql' | 'mysql') => {
     const activeFile = files.find(f => f.id === activeFileId);
     if (!activeFile) return;
-    
     const entities: Entity[] = nodes.map(n => n.data as Entity);
     const entityMap = new Map(entities.map(e => [e.id, e]));
-
     let sql = `-- ERD Export: ${activeFile.name}\n-- Dialect: ${dialect}\n\n`;
-    
-    // Create Tables
     entities.forEach(entity => {
       sql += `CREATE TABLE ${entity.name} (\n`;
       entity.columns.forEach((col, i) => {
@@ -463,26 +374,17 @@ function AppContent() {
       });
       sql += `);\n\n`;
     });
-
-    // Add Relationships (Foreign Keys)
-    const relationshipsGenerated = new Set<string>(); // Prevent duplicates
-
+    const relationshipsGenerated = new Set<string>();
     edges.forEach(edge => {
       const sourceEntity = entityMap.get(edge.source);
       const targetEntity = entityMap.get(edge.target);
-      
       if (sourceEntity && targetEntity) {
-        // Handle format is col-{colId}-source/target
         const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source', '');
         const targetColId = edge.targetHandle?.replace('col-', '').replace('-target', '');
-        
         const sourceColumn = sourceEntity.columns.find(c => c.id === sourceColId);
         const targetColumn = targetEntity.columns.find(c => c.id === targetColId);
-
         if (sourceColumn && targetColumn) {
           const constraintName = `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
-          
-          // Basic duplicate check for the same relationship
           const relKey = `${sourceEntity.name}.${sourceColumn.name}->${targetEntity.name}.${targetColumn.name}`;
           if (!relationshipsGenerated.has(relKey)) {
             sql += `ALTER TABLE ${sourceEntity.name} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${sourceColumn.name}) REFERENCES ${targetEntity.name}(${targetColumn.name});\n`;
@@ -491,10 +393,6 @@ function AppContent() {
         }
       }
     });
-
-    if (relationshipsGenerated.size > 0) {
-      sql += `\n`;
-    }
 
     const blob = new Blob([sql], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -505,415 +403,170 @@ function AppContent() {
     URL.revokeObjectURL(url);
   };
 
+  // Render initialization or login states
   if (isAuthenticated === null) {
-    return <div className="h-screen w-screen bg-background flex items-center justify-center"><div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+    return (
+      <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center gap-6 overflow-hidden">
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
+          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center shadow-2xl shadow-primary/40">
+            <Database className="w-10 h-10 text-primary-foreground animate-bounce" />
+          </div>
+          <div className="absolute -inset-4 border-2 border-primary/20 rounded-3xl animate-[spin_3s_linear_infinite]" />
+        </motion.div>
+        <div className="text-center z-10">
+          <h2 className="text-xl font-bold text-white mb-2">Preparing your workspace...</h2>
+          <div className="flex items-center justify-center gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }} className="w-1.5 h-1.5 rounded-full bg-primary" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
     return <Login onLogin={() => checkAuth()} />;
   }
 
+  // Derive component-level props
   const activeNote = notes.find(n => n.id === activeNoteId);
   const activeDrawing = drawings.find(d => d.id === activeDrawingId);
-  const selectedEntity = nodes.find(n => n.id === selectedNodeId)?.data as Entity || null;
-
-  const sidebarProps = {
-    files, notes, drawings, projects, trashData,
-    activeFileId, activeNoteId, activeDrawingId, activeProjectId,
-    view,
-    onFileSelect: handleFileSelect, onNoteSelect: handleNoteSelect, onDrawingSelect: handleDrawingSelect, onProjectSelect: setActiveProjectId,
-    onFileCreate: handleFileCreate, onNoteCreate: handleNoteCreate, onDrawingCreate: handleDrawingCreate, onProjectCreate: createProject,
-    onProjectUpdate: updateProject, onProjectDelete: handleProjectDelete, onProjectRestore: handleProjectRestore,
-    onFileUpdate: updateFile, onNoteUpdate: updateNote, onDrawingUpdate: updateDrawing,
-    onFileDelete: handleFileDelete, onNoteDelete: handleNoteDelete, onDrawingDelete: handleDrawingDelete,
-    onFileRestore: handleFileRestore, onNoteRestore: handleNoteRestore, onDrawingRestore: handleDrawingRestore,
-    onFilePermanentDelete: handleFilePermanentDelete, onNotePermanentDelete: handleNotePermanentDelete, onDrawingPermanentDelete: handleDrawingPermanentDelete, onProjectPermanentDelete: handleProjectPermanentDelete,
-    onLogout: handleLogout, saveStatus,
-    onMoveFileToProject: moveFileToProject, onMoveNoteToProject: moveNoteToProject, onMoveDrawingToProject: moveDrawingToProject,
-    sidebarView,
-    onViewChange: (newView: 'erd' | 'notes' | 'drawings' | 'trash') => {
-      setView(newView);
-      if (newView !== 'trash') {
-        setSidebarView(newView);
-      }
-    },
-    hasMoreProjects,
-    hasMoreFiles,
-    hasMoreNotes,
-    hasMoreDrawings,
-    onLoadMoreProjects: () => fetchProjects(true),
-    // @ts-ignore
-    onLoadMoreFiles: () => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId),
-    // @ts-ignore
-    onLoadMoreNotes: () => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId),
-    // @ts-ignore
-    onLoadMoreDrawings: () => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId),
-  };
-
-  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
-  
   const activeFile = files.find(f => f.id === activeFileId);
-  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
   
-  const activeProjectName = (() => {
-    if (view === 'erd') return activeFile?.projects?.name;
-    if (view === 'notes') return activeNote?.projects?.name;
-    if (view === 'drawings') return activeDrawing?.projects?.name;
-    return null;
-  })();
+  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
+  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
+  const activeProjectName = view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : null;
 
   return (
     <SidebarProvider className="h-svh overflow-hidden">
-      <AppSidebar {...sidebarProps} />
+      <AppSidebar 
+        files={files} notes={notes} drawings={drawings} projects={projects} trashData={trashData}
+        activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeProjectId={activeProjectId} view={view}
+        onFileSelect={handleFileSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onProjectSelect={setActiveProjectId}
+        onFileCreate={handleFileCreate} onNoteCreate={handleNoteCreate} onDrawingCreate={handleDrawingCreate} onProjectCreate={createProject}
+        onProjectUpdate={updateProject} onProjectDelete={handleProjectDelete} onProjectRestore={handleProjectRestore}
+        onFileUpdate={updateFile} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing}
+        onFileDelete={handleFileDelete} onNoteDelete={handleNoteDelete} onDrawingDelete={handleDrawingDelete}
+        onFileRestore={handleFileRestore} onNoteRestore={handleNoteRestore} onDrawingRestore={handleDrawingRestore}
+        onFilePermanentDelete={handleFilePermanentDelete} onNotePermanentDelete={handleNotePermanentDelete} onDrawingPermanentDelete={handleDrawingPermanentDelete} onProjectPermanentDelete={handleProjectPermanentDelete}
+        onLogout={handleLogout} saveStatus={saveStatus}
+        onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject}
+        sidebarView={sidebarView}
+        onViewChange={(newView) => { setView(newView); if (newView !== 'trash') setSidebarView(newView); }}
+        hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings}
+        onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)}
+        onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+        onLoadMoreNotes={() => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+        onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        user={user}
+      />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="font-medium text-foreground">
-                    {featureLabel}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-                
-                {activeProjectName && (
-                  <>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage className="max-w-[150px] truncate">{activeProjectName}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </>
-                )}
-
-                {activeFileName && (
-                  <>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage className="max-w-[200px] truncate">{activeFileName}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </>
-                )}
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-          <div className="ml-auto px-4 flex items-center gap-4">
-            {['erd', 'notes', 'drawings'].includes(view) && hasActiveItem && (
-              <div className="flex items-center gap-2 mr-4">
-                <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                <span className="text-xs text-muted-foreground font-medium">
-                  {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-                </span>
-              </div>
-            )}
-            
-            {/* User Profile has been moved to the Sidebar Footer */}
-          </div>
-        </header>
+        <MainHeader 
+          featureLabel={featureLabel} activeProjectName={activeProjectName} activeFileName={activeFileName} 
+          view={view} hasActiveItem={hasActiveItem} currentSaveStatus={currentSaveStatus}
+        />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
-          {view === 'erd' && activeFileId && (
-            <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
-              <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-                <div className="flex items-center gap-2 p-1.5 bg-background/80 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-                  <Button onClick={addEntity} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20"><Plus className="w-4 h-4 mr-2" />Add Table</Button>
-                  <div className="w-px h-6 bg-border mx-1" />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={
-                      <Button variant="ghost" size="sm" className="h-9 px-4 font-bold text-muted-foreground hover:text-foreground">
-                        <Download className="w-4 h-4 mr-2" />
-                        Export
-                        <ChevronDown className="w-3 h-3 ml-1" />
-                      </Button>
-                    } />
-                    <DropdownMenuContent align="end" className="w-48 p-1">
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleExportSQL('postgresql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold"><Database size={14} className="text-blue-400" />To PostgreSQL</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExportSQL('mysql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold"><Database size={14} className="text-orange-400" />To MySQL</DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              <div className="flex-1">
-                <ReactFlow
-                  nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes}
+          {!hasActiveItem && view !== 'trash' ? (
+            <WelcomeView />
+          ) : (
+            <>
+              {view === 'erd' && activeFileId && (
+                <ERDView 
+                  nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
                   onNodeClick={(event, node) => { if (!(event.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(node.id); }}
                   onPaneClick={() => setSelectedNodeId(null)}
                   onMove={(_, viewport) => { viewportRef.current = viewport; }}
-                  colorMode="dark"
-                >
-                  <Background variant={BackgroundVariant.Dots} gap={30} size={1.5} color="#444" />
-                  <Controls position="bottom-right" showInteractive={false} />
-                </ReactFlow>
-              </div>
-            </div>
-          )}
+                  addEntity={addEntity} handleExportSQL={handleExportSQL}
+                />
+              )}
 
-          {view === 'notes' && activeNote && (
-            <div className="flex-1 border rounded-xl overflow-hidden bg-background">
-              <NotesEditor key={activeNoteId} note={activeNote} onSave={saveNote} onChange={handleNoteChange} onDelete={deleteNote} />
-            </div>
-          )}
+              {view === 'notes' && activeNote && (
+                <NotesView activeNoteId={activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} />
+              )}
 
-          {view === 'drawings' && activeDrawing && (
-            <div className="flex-1 border rounded-xl overflow-hidden bg-background">
-              <ExcalidrawEditor key={activeDrawingId} drawing={activeDrawing} onSave={saveDrawing} onChange={handleDrawingChange} onDelete={deleteDrawing} />
-            </div>
+              {view === 'drawings' && activeDrawing && (
+                <DrawingsView activeDrawingId={activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} />
+              )}
+            </>
           )}
 
           {view === 'trash' && (
-            <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
-              <div className="p-6 border-b shrink-0">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <Trash size={24} className="text-muted-foreground" />
-                  Trash Bin
-                </h2>
-                <p className="text-sm text-muted-foreground">Manage your deleted files and projects. Items can be restored or permanently deleted.</p>
-              </div>
-              <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
-                <div className="p-6 space-y-12">
-                  {/* Projects Table */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <Folder size={18} className="text-orange-400" />
-                        Projects
-                      </h3>
-                      <Badge variant="outline">{trashData.projects.length} Items</Badge>
-                    </div>
-                    {trashData.projects.length === 0 ? (
-                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted projects</div>
-                    ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Project Name</TableHead>
-                              <TableHead>Deleted At</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {trashData.projects.map((project) => (
-                              <TableRow key={project.id}>
-                                <TableCell className="font-medium flex items-center gap-2">
-                                  <Folder size={14} className="text-muted-foreground" />
-                                  {project.name}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs">
-                                  {new Date(project.created_at).toLocaleString()}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreProject(project.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Diagrams Table */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <Database size={18} className="text-blue-400" />
-                        Diagrams
-                      </h3>
-                      <Badge variant="outline">{trashData.files.length} Items</Badge>
-                    </div>
-                    {trashData.files.length === 0 ? (
-                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted diagrams</div>
-                    ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Diagram Name</TableHead>
-                              <TableHead>Project</TableHead>
-                              <TableHead>Deleted At</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {trashData.files.map((file) => (
-                              <TableRow key={file.id}>
-                                <TableCell className="font-medium flex items-center gap-2">
-                                  <Database size={14} className="text-muted-foreground" />
-                                  {file.name}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs font-semibold">
-                                  {file.projects?.name || '-'}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs">
-                                  {new Date(file.updated_at).toLocaleString()}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreFile(file.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleFilePermanentDelete(file.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Notes Table */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <StickyNote size={18} className="text-yellow-400" />
-                        Notes
-                      </h3>
-                      <Badge variant="outline">{trashData.notes.length} Items</Badge>
-                    </div>
-                    {trashData.notes.length === 0 ? (
-                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted notes</div>
-                    ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Note Title</TableHead>
-                              <TableHead>Project</TableHead>
-                              <TableHead>Deleted At</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {trashData.notes.map((note) => (
-                              <TableRow key={note.id}>
-                                <TableCell className="font-medium flex items-center gap-2">
-                                  <StickyNote size={14} className="text-muted-foreground" />
-                                  {note.title}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs font-semibold">
-                                  {note.projects?.name || '-'}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs">
-                                  {new Date(note.updated_at).toLocaleString()}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreNote(note.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Drawings Table */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <PenTool size={18} className="text-purple-400" />
-                        Drawings
-                      </h3>
-                      <Badge variant="outline">{trashData.drawings.length} Items</Badge>
-                    </div>
-                    {trashData.drawings.length === 0 ? (
-                      <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted drawings</div>
-                    ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Drawing Title</TableHead>
-                              <TableHead>Project</TableHead>
-                              <TableHead>Deleted At</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {trashData.drawings.map((drawing) => (
-                              <TableRow key={drawing.id}>
-                                <TableCell className="font-medium flex items-center gap-2">
-                                  <PenTool size={14} className="text-muted-foreground" />
-                                  {drawing.title}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs font-semibold">
-                                  {drawing.projects?.name || '-'}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-xs">
-                                  {new Date(drawing.updated_at).toLocaleString()}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => { restoreDrawing(drawing.id); fetchTrash(); }}>
-                                      <RefreshCcw size={14} className="mr-1" /> Restore
-                                    </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
-                                      <TrashIcon size={14} className="mr-1" /> Delete
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </section>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {((view === 'erd' && !activeFileId) || (view === 'notes' && !activeNoteId) || (view === 'drawings' && !activeDrawingId)) && (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center border rounded-xl bg-muted/10">
-              <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-6"><Database size={40} className="opacity-20" /></div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">Welcome to ERD Builder Pro</h2>
-              <p className="max-w-md text-sm leading-relaxed">Select a project or file from the sidebar to start designing your database schema, taking notes, or sketching ideas.</p>
-            </div>
+            <TrashView 
+              trashData={trashData} restoreProject={restoreProject} restoreFile={handleFileRestore} restoreNote={handleNoteRestore} restoreDrawing={handleDrawingRestore}
+              fetchTrash={fetchTrash} handleProjectPermanentDelete={handleProjectPermanentDelete} handleFilePermanentDelete={handleFilePermanentDelete}
+              handleNotePermanentDelete={handleNotePermanentDelete} handleDrawingPermanentDelete={handleDrawingPermanentDelete}
+            />
           )}
         </div>
-        <Dialog open={!!selectedNodeId} onOpenChange={(open) => !open && setSelectedNodeId(null)}>
-          <DialogContent className="p-0 sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl">
-            <PropertiesPanel selectedEntity={selectedEntity} onUpdateEntity={updateEntity} onDeleteEntity={deleteEntity} onClose={() => setSelectedNodeId(null)} />
+
+        <DeleteConfirmModal 
+          isOpen={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen} 
+          onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)}
+          itemType={itemToDelete?.type || ''}
+        />
+
+        {/* Entity Properties Modal */}
+        <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) setSelectedNodeId(null); }}>
+          <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
+            <DialogHeader className="shrink-0 mb-4">
+              <div className="flex items-center justify-between pr-8">
+                <div className="space-y-1 text-left">
+                  <DialogTitle className="text-xl font-bold tracking-tight">Table Properties</DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Customize your table name, theme, and column definitions.
+                  </DialogDescription>
+                </div>
+                <Button 
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsDeleteAlertOpen(true)}
+                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
+                  title="Delete Table"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            
+            <div className="-mx-4 px-4 max-h-[65vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent space-y-8">
+              <PropertiesPanel 
+                selectedEntity={selectedEntity} 
+                onUpdateEntity={updateEntity} 
+                onDeleteEntity={(id) => {
+                  deleteEntity(id);
+                  setSelectedNodeId(null);
+                }}
+              />
+            </div>
           </DialogContent>
         </Dialog>
 
-        <AlertDialog open={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen}>
+        {/* Delete Confirmation Alert */}
+        <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>Delete Table</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the item from our servers.
+                Are you sure you want to delete the table "{selectedEntity?.name}"? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmPermanentDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Permanently Delete
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  if (selectedEntity) {
+                    deleteEntity(selectedEntity.id);
+                    setSelectedNodeId(null);
+                    setIsDeleteAlertOpen(false);
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

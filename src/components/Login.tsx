@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Lock, Mail } from 'lucide-react';
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
 interface LoginProps {
@@ -14,13 +25,14 @@ export function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('admin@example.com');
 
   useEffect(() => {
-    fetch('/api/auth-config')
-      .then(res => res.json())
-      .then(data => setAdminEmail(data.adminEmail))
-      .catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error) {
+      toast.error(error);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,61 +60,62 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen w-full bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md border-border/50 shadow-2xl animate-in fade-in zoom-in duration-300">
-        <CardHeader className="flex flex-col items-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-xl shadow-primary/20">
-            <Database className="w-10 h-10 text-primary-foreground" />
-          </div>
-          <div className="text-center">
-            <CardTitle className="text-2xl font-bold tracking-tight">ERD Builder Pro</CardTitle>
-            <CardDescription>Please sign in to continue</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={adminEmail}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full font-bold h-12"
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <div className="w-full max-w-sm">
+        <div className={cn("flex flex-col gap-6")}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Login to your account</CardTitle>
+              <CardDescription>
+                Enter your email below to login to your account
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="m@example.com"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <div className="flex items-center">
+                      <FieldLabel htmlFor="password">Password</FieldLabel>
+                      <a
+                        href="#"
+                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+                      >
+                        Forgot your password?
+                      </a>
+                    </div>
+                    <Input 
+                      id="password" 
+                      type="password" 
+                      required 
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </Field>
+                  <Field className="flex flex-col gap-3">
+                    <Button type="submit" disabled={loading} className="w-full">
+                      {loading ? "Logging in..." : "Login"}
+                    </Button>
+                    <FieldDescription className="text-center">
+                      Don&apos;t have an account? <a href="#" className="underline underline-offset-4">Sign up</a>
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,26 +2,6 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/api/auth-config",
-      "destination": "/api/auth-config.ts"
-    },
-    {
-      "source": "/api/me",
-      "destination": "/api/me.ts"
-    },
-    {
-      "source": "/api/login",
-      "destination": "/api/login.ts"
-    },
-    {
-      "source": "/api/logout",
-      "destination": "/api/logout.ts"
-    },
-    {
-      "source": "/api/trash",
-      "destination": "/api/trash.ts"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

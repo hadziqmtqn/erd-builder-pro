@@ -6,7 +6,6 @@ import ConfirmModal from './ConfirmModal';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -26,9 +25,8 @@ interface PropertiesPanelProps {
 export default function PropertiesPanel({ 
   selectedEntity, 
   onUpdateEntity, 
-  onDeleteEntity,
-  onClose
-}: PropertiesPanelProps & { onClose?: () => void }) {
+  onDeleteEntity
+}: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
   
   const [confirmModal, setConfirmModal] = useState<{
@@ -108,42 +106,9 @@ export default function PropertiesPanel({
   };
 
   return (
-    <div className="w-full bg-background h-full flex flex-col overflow-hidden z-20">
-      <div className="p-6 border-b flex items-center justify-between">
-        <div className="space-y-1">
-          <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Properties</h2>
-          <p className="text-[10px] text-muted-foreground/60 italic">Changes sync on field blur</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="ghost"
-            size="icon"
-            onClick={() => setConfirmModal({
-              isOpen: true,
-              title: 'Delete Table',
-              message: `Are you sure you want to delete the table "${editingEntity.name}"?`,
-              onConfirm: () => {
-                onDeleteEntity(editingEntity.id);
-                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                if (onClose) onClose();
-              }
-            })}
-            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-          {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <ScrollArea className="flex-1">
-        <div className="p-6 space-y-8">
-          {/* Entity Settings */}
-          <section className="space-y-4">
+    <>
+      {/* Entity Settings */}
+      <section className="space-y-4">
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Table Name</Label>
               <div className="relative">
@@ -281,9 +246,7 @@ export default function PropertiesPanel({
                 </Card>
               ))}
             </div>
-          </section>
-        </div>
-      </ScrollArea>
+        </section>
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}
@@ -292,6 +255,6 @@ export default function PropertiesPanel({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
-    </div>
+    </>
   );
 }

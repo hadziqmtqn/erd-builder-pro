@@ -1,52 +1,51 @@
 # 💎 ERD Builder Pro
 
-**ERD Builder Pro** is a modern, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures with ease.
+**ERD Builder Pro** is a professional-grade, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures. Built with a modular architecture and modern tech stack, it offers a seamless experience for database design and technical documentation.
 
 <div align="center">
-  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczNErYxNVYQJ9-zaFKFBaFYWbyXZWZYhCZjgKJHoitpmInCtj2l_PhwVGt73r_kYcVP3nksb7k0KcWId9_czsBfbsF4pkhJ1cHt0Yy7dSG-TIhlVIs-UpkFt3E5iS8eh8e4fxeaPKANOFDBMsosVaqiR=w2966-h1882-s-no-gm?authuser=1" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczNyDvSD8pEp32V1bv8HeC8VN8vuFWUmvXwuqpGxC1eYB_NKeBXUr1xdMh_eQeE2AyBBIDOQa33uwmPGI2BGhIrOnl36CYVwPlsf3Y0SmUrpAXOOt3dH2sMJkZ2ARt9syyqM1lgX7q7JOzvRj2B_X6J7=w2966-h1882-s-no-gm?authuser=1" />
 </div>
 
 ## 🚀 Key Features
 
-- **🎨 Multi-Mode Visual Editor**: 
-  - **ERD Builder**: Drag-and-drop entity relationship diagramming using **XYFlow** (React Flow v12) for high-performance node management.
-  - **Excalidraw Integration**: Seamlessly switch to free-hand drawing for whiteboarding and brainstorming.
-  - **Rich Text Notes**: Powered by **TipTap**, supporting tables, task lists, image uploads, and markdown-like shortcuts.
+- **🎨 Multi-Mode Visual Workspace**: 
+  - **ERD Builder**: Drag-and-drop entity relationship diagramming using **XYFlow** (React Flow v12).
+  - **Excalidraw Integration**: Free-hand sketching for whiteboarding and architectural brainstorming.
+  - **Rich Text Notes**: Professional documentation powered by **TipTap**, supporting tables, task lists, and markdown.
+- **🏗️ Modular Architecture**:
+  - **Component-Based Views**: Clean separation of concerns with dedicated views for ERD, Notes, Drawings, and Trash.
+  - **Scalable Design**: Easily extendable codebase with a decoupled frontend/backend structure.
 - **📤 Advanced Export Options**:
-  - **SQL Schema**: Export your diagrams directly to **PostgreSQL** or **MySQL** DDL scripts.
-  - **Image/PDF**: High-quality exports for documentation and presentations.
-- **📁 Advanced Organization**:
-  - **Project Management**: Group related files, notes, and drawings into distinct projects.
-  - **Soft-Delete System**: Avoid data loss with a comprehensive "Trash" feature for all assets.
-- **🔐 Enterprise-Ready**:
-  - **Secure Authentication**: Built-in auth system with JWT and admin-only controls via **Supabase Auth**.
-  - **Real-Time Persistence**: Every change is automatically saved to **Supabase Database** and **Cloudflare R2**.
-- **🧠 AI Powered**: Leverages **Google Gemini AI** to assist in structural design and documentation generation.
+  - **SQL Schema Generation**: Export diagrams directly to **PostgreSQL** or **MySQL** DDL scripts.
+  - **Universal Formats**: High-quality Image and PDF exports for documentation sharing.
+- **📁 Smart Organization**:
+  - **Project Management**: Group related assets into distinct projects for better workspace management.
+  - **Comprehensive Trash System**: Safety-first soft-delete system for all projects and files.
+- **🔐 Enterprise-Grade Security**:
+  - **Supabase Authentication**: Secure Email/Password login system with persistent session management.
+  - **Cloud Hybrid Storage**: Real-time persistence using **Supabase Database** and **Cloudflare R2**.
 
 ## 🛠️ Tech Stack
 
 - **Frontend**: [React 18](https://reactjs.org/) + [Vite 6](https://vite.dev/) + [Tailwind CSS v4](https://tailwindcss.com/)
-- **Visuals**: [XYFlow](https://xyflow.com/) + [Excalidraw](https://excalidraw.com/)
-- **Editor**: [TipTap](https://tiptap.dev/) (Block-based Rich Text)
-- **Backend**: [Express.js](https://expressjs.com/) + [TypeScript (tsx)](https://github.com/privatenumber/tsx)
-- **Database / Auth**: [Supabase](https://supabase.com/)
-- **Storage**: [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) (S3 Compatible)
-- **UI Components**: [Radix UI](https://www.radix-ui.com/) + [Lucide Icons](https://lucide.dev/)
+- **UI System**: [Shadcn UI](https://ui.shadcn.com/) + [Radix UI](https://www.radix-ui.com/) + [Lucide Icons](https://lucide.dev/)
+- **Canvas Engines**: [XYFlow](https://xyflow.com/) + [Excalidraw](https://excalidraw.com/)
+- **Content Editor**: [TipTap](https://tiptap.dev/) (Rich Text Engine)
+- **Backend Architecture**: [Express.js](https://expressjs.com/) + [Edge Functions Support](https://vercel.com/docs/functions/edge-functions)
+- **Infrastructure**: [Supabase](https://supabase.com/) (DB/Auth) + [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) (Storage)
 
 ---
 
 ## 🏗️ Getting Started
 
-Follow these steps to set up the project locally.
-
 ### 📋 Prerequisites
 
-- **Node.js**: v20 or higher (recommended)
-- **npm**: v10 or higher
-- **Supabase Account**: For database and authentication
-- **Cloudflare R2**: For drawings and file attachments
+- **Node.js**: v20+ 
+- **npm**: v10+
+- **Supabase Account**: For Database and Authentication management
+- **Cloudflare R2 / S3 Account**: For storing large assets (drawings/attachments)
 
-### ⚙️ Installation
+### ⚙️ Installation & Setup
 
 1. **Clone the repository**:
    ```bash
@@ -59,59 +58,49 @@ Follow these steps to set up the project locally.
    npm install
    ```
 
-3. **Configure Environment Variables**:
-   Create a `.env` file in the root directory (you can copy from `.env.example`):
+3. **Configure Environment**:
+   Create a `.env` file in the root directory:
    ```bash
-   cp .env.example .env
+   # Backend Config
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   R2_ACCOUNT_ID=your_cloudflare_id
+   R2_ACCESS_KEY_ID=your_access_key
+   R2_SECRET_ACCESS_KEY=your_secret_key
+   R2_BUCKET_NAME=your_bucket_name
+   R2_PUBLIC_URL=your_public_cdn_url
+   
+   # Frontend Config (Vite)
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_anon_key
+   
+   # Server
+   PORT=3000
    ```
 
-4. **Update `.env` values**:
-   Fill in your specific keys:
-
-   | Variable | Description |
-   | :--- | :--- |
-   | `SUPABASE_URL` | Your Supabase project URL |
-   | `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin tasks |
-   | `SUPABASE_STORAGE_BUCKET` | The bucket name for persistent data |
-   | `R2_ACCOUNT_ID` | Cloudflare account ID |
-   | `R2_ACCESS_KEY_ID` | R2 access key |
-   | `R2_SECRET_ACCESS_KEY` | R2 secret key |
-   | `R2_BUCKET_NAME` | S3-compatible bucket name |
-   | `R2_PUBLIC_URL` | Public URL for serving R2 assets |
-   | `JWT_SECRET` | Secret key for JWT token generation |
-   | `ADMIN_EMAIL` | Initial admin email for login |
-   | `ADMIN_PASSWORD` | Initial admin password |
-   | `PORT` | Backend server port (default: 3000) |
-   | `GOOGLE_GEMINI_API_KEY` | Your Google AI SDK key |
-
-5. **Run the Development Server**:
+4. **Start Development**:
    ```bash
    npm run dev
    ```
+   Access the dashboard at `http://localhost:3000`.
 
-   The application will be accessible at `http://localhost:3000`.
+### 📦 Deployment
 
-### 📦 Build & Production
-
-To build the project for production:
+Build the optimized production bundle:
 ```bash
 npm run build
 ```
-To start the production server:
+Run the production server:
 ```bash
 npm run start
 ```
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ---
 
-<p align="center">Made with ❤️ for Developers</p>
+<p align="center">Built for Architects & Developers ❤️</p>
