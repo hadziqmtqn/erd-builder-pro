@@ -162,9 +162,11 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       className={`relative group flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-[1.02] ${getContainerClasses(data.shape)}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      style={{ aspectRatio: data.shape === 'circle' ? '1 / 1' : 'auto' }}
     >
       <NodeResizer 
         isVisible={selected || isHovered} 
+        keepAspectRatio={data.shape === 'circle'}
         minWidth={getMinDimensions(data.shape).width}
         minHeight={getMinDimensions(data.shape).height}
         handleStyle={{ 
