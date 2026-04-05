@@ -56,6 +56,25 @@ const COLOR_PALETTE = [
   '#22c55e', '#a855f7', '#ec4899', '#0ea5e9'
 ];
 
+const SHAPE_LABELS: Record<string, string> = {
+  rectangle: 'Rectangle (Process)',
+  oval: 'Oval (Start/End)',
+  diamond: 'Diamond (Decision)',
+  parallelogram: 'Parallelogram (Input/Output)'
+};
+
+const LINE_STYLE_LABELS: Record<string, string> = {
+  solid: 'Solid Line',
+  dashed: 'Dashed Line'
+};
+
+const ARROW_STYLE_LABELS: Record<string, string> = {
+  end: 'Arrow at End',
+  start: 'Arrow at Start (Reverse)',
+  both: 'Arrows Both Ends',
+  none: 'No Arrows (Line only)'
+};
+
 export function FlowchartDemoView() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -156,7 +175,7 @@ export function FlowchartDemoView() {
       {/* Top Bar */}
       <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
         <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-          <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20">
+          <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
             <Plus className="w-4 h-4 mr-2" />
             Add Symbol
           </Button>
@@ -244,7 +263,9 @@ export function FlowchartDemoView() {
                 onValueChange={(val: FlowchartShape) => setNewNodeData({ ...newNodeData, shape: val })}
               >
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select a shape" />
+                  <SelectValue placeholder="Select a shape">
+                    {newNodeData.shape ? SHAPE_LABELS[newNodeData.shape] : "Select a shape"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                   <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
@@ -305,7 +326,9 @@ export function FlowchartDemoView() {
                   onValueChange={(val: FlowchartShape) => updateNodeData({ shape: val })}
                 >
                   <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select a shape" />
+                    <SelectValue placeholder="Select a shape">
+                      {selectedNode.data.shape ? SHAPE_LABELS[selectedNode.data.shape] : "Select a shape"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                     <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
@@ -363,7 +386,9 @@ export function FlowchartDemoView() {
                 <Label>Line Style</Label>
                 <Select value={isDashed ? 'dashed' : 'solid'} onValueChange={handleEdgeTypeChange}>
                   <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select line style" />
+                    <SelectValue placeholder="Select line style">
+                      {LINE_STYLE_LABELS[isDashed ? 'dashed' : 'solid']}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                     <SelectItem value="solid">Solid Line</SelectItem>
@@ -376,7 +401,9 @@ export function FlowchartDemoView() {
                 <Label>Arrow Style</Label>
                 <Select value={arrowType} onValueChange={handleArrowChange}>
                   <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select arrow style" />
+                    <SelectValue placeholder="Select arrow style">
+                      {ARROW_STYLE_LABELS[arrowType]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                     <SelectItem value="end">Arrow at End</SelectItem>

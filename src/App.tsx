@@ -381,8 +381,8 @@ function AppContent() {
       const sourceEntity = entityMap.get(edge.source);
       const targetEntity = entityMap.get(edge.target);
       if (sourceEntity && targetEntity) {
-        const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source', '');
-        const targetColId = edge.targetHandle?.replace('col-', '').replace('-target', '');
+        const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source-l', '').replace('-source', '');
+        const targetColId = edge.targetHandle?.replace('col-', '').replace('-target-r', '').replace('-target', '');
         const sourceColumn = sourceEntity.columns.find(c => c.id === sourceColId);
         const targetColumn = targetEntity.columns.find(c => c.id === targetColId);
         if (sourceColumn && targetColumn) {

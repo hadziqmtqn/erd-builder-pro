@@ -110,7 +110,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
               )}
               style={{ '--hover-bg': rowHoverBg } as React.CSSProperties}
             >
-              {/* Column Handles - Smaller and hover only */}
+              {/* Universal Column Handles (Bidirectional) */}
               <Handle
                 type="target"
                 position={Position.Left}
@@ -120,8 +120,22 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
               />
               <Handle
                 type="source"
+                position={Position.Left}
+                id={`col-${col.id}-source-l`}
+                className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ top: '50%', transform: 'translateY(-50%)' }}
+              />
+              <Handle
+                type="source"
                 position={Position.Right}
                 id={`col-${col.id}-source`}
+                className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ top: '50%', transform: 'translateY(-50%)' }}
+              />
+              <Handle
+                type="target"
+                position={Position.Right}
+                id={`col-${col.id}-target-r`}
                 className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ top: '50%', transform: 'translateY(-50%)' }}
               />
