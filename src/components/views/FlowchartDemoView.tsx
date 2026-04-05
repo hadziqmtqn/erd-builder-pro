@@ -16,63 +16,16 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import FlowchartNode, { FlowchartNodeData, FlowchartShape } from '../FlowchartNode';
+import { Plus } from 'lucide-react';
+
+import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
+import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
+import { AddSymbolModal } from '../flowchart/AddSymbolModal';
+import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
+import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 
 const nodeTypes = {
   custom: FlowchartNode,
-};
-
-const initialNodes: Node<FlowchartNodeData>[] = [
-  { id: '1', type: 'custom', data: { label: 'Start Setup', shape: 'oval', color: '#6366f1' }, position: { x: 250, y: 50 } },
-  { id: '2', type: 'custom', data: { label: 'Initialize App', shape: 'rectangle', color: '#8b5cf6' }, position: { x: 250, y: 200 } },
-  { id: '3', type: 'custom', data: { label: 'Database Connected?', shape: 'diamond', color: '#eab308' }, position: { x: 250, y: 350 } },
-  { id: '4', type: 'custom', data: { label: 'Fetch Data', shape: 'parallelogram', color: '#8b5cf6' }, position: { x: 100, y: 550 } },
-  { id: '5', type: 'custom', data: { label: 'Show Error', shape: 'rectangle', color: '#ef4444' }, position: { x: 400, y: 550 } },
-  { id: '6', type: 'custom', data: { label: 'End', shape: 'oval', color: '#6366f1' }, position: { x: 250, y: 750 } },
-];
-
-const initialEdges: Edge[] = [
-  { id: 'e1-2', source: '1', target: '2', sourceHandle: 'bottom', targetHandle: 'top', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e2-3', source: '2', target: '3', sourceHandle: 'bottom', targetHandle: 'top', markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e3-4', source: '3', target: '4', sourceHandle: 'left', targetHandle: 'top', label: 'Yes', labelBgStyle: { fill: '#1e1e24' }, labelStyle: { fill: '#fff' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e3-5', source: '3', target: '5', sourceHandle: 'right', targetHandle: 'top', label: 'No', labelBgStyle: { fill: '#1e1e24' }, labelStyle: { fill: '#fff' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e4-6', source: '4', target: '6', sourceHandle: 'bottom', targetHandle: 'left', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e5-6', source: '5', target: '6', sourceHandle: 'bottom', targetHandle: 'right', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-];
-
-const COLOR_PALETTE = [
-  '#6366f1', '#8b5cf6', '#ef4444', '#eab308', 
-  '#22c55e', '#a855f7', '#ec4899', '#0ea5e9'
-];
-
-const SHAPE_LABELS: Record<string, string> = {
-  rectangle: 'Rectangle (Process)',
-  oval: 'Oval (Start/End)',
-  diamond: 'Diamond (Decision)',
-  parallelogram: 'Parallelogram (Input/Output)'
-};
-
-const LINE_STYLE_LABELS: Record<string, string> = {
-  solid: 'Solid Line',
-  dashed: 'Dashed Line'
-};
-
-const ARROW_STYLE_LABELS: Record<string, string> = {
-  end: 'Arrow at End',
-  start: 'Arrow at Start (Reverse)',
-  both: 'Arrows Both Ends',
-  none: 'No Arrows (Line only)'
 };
 
 export function FlowchartDemoView() {
@@ -235,188 +188,31 @@ export function FlowchartDemoView() {
         </ReactFlow>
       </div>
 
-      {/* Add Symbol Modal */}
-      <Dialog open={isAddingNode} onOpenChange={setIsAddingNode}>
-        <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-          <DialogHeader className="shrink-0 mb-4">
-            <DialogTitle className="text-xl font-bold tracking-tight">Create New Symbol</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Configure the symbol before placing it on the canvas.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label>Label</Label>
-              <Input 
-                value={newNodeData.label}
-                onChange={(e) => setNewNodeData({ ...newNodeData, label: e.target.value })}
-                placeholder="Enter symbol label"
-                className="bg-black/50 border-white/10 text-white"
-              />
-            </div>
+      <AddSymbolModal 
+        isOpen={isAddingNode}
+        onOpenChange={setIsAddingNode}
+        nodeData={newNodeData}
+        onNodeDataChange={setNewNodeData}
+        onConfirm={confirmAddSymbol}
+      />
 
-            <div className="space-y-2">
-              <Label>Shape Type</Label>
-              <Select 
-                value={newNodeData.shape} 
-                onValueChange={(val: FlowchartShape) => setNewNodeData({ ...newNodeData, shape: val })}
-              >
-                <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select a shape">
-                    {newNodeData.shape ? SHAPE_LABELS[newNodeData.shape] : "Select a shape"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
-                  <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
-                  <SelectItem value="oval">Oval (Start/End)</SelectItem>
-                  <SelectItem value="diamond">Diamond (Decision)</SelectItem>
-                  <SelectItem value="parallelogram">Parallelogram (Input/Output)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <SymbolPropertiesModal
+        selectedNodeId={selectedNodeId}
+        onClose={() => setSelectedNodeId(null)}
+        selectedNode={selectedNode}
+        onUpdateNodeData={updateNodeData}
+      />
 
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <div className="flex gap-2 flex-wrap">
-                {COLOR_PALETTE.map((color) => (
-                  <button
-                    key={color}
-                    className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${newNodeData.color === color ? 'border-white scale-110' : 'border-transparent'}`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setNewNodeData({ ...newNodeData, color })}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="mt-6">
-            <Button variant="outline" className="border-white/10" onClick={() => setIsAddingNode(false)}>Cancel</Button>
-            <Button onClick={confirmAddSymbol} className="bg-primary text-primary-foreground">Add to Flowchart</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Symbol Properties ReactFlow Modal */}
-      <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) setSelectedNodeId(null); }}>
-        <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-          <DialogHeader className="shrink-0 mb-4">
-            <DialogTitle className="text-xl font-bold tracking-tight">Symbol Properties</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Customize the name, shape, and color of this symbol.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedNode && (
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label>Label</Label>
-                <Input 
-                  value={selectedNode.data.label}
-                  onChange={(e) => updateNodeData({ label: e.target.value })}
-                  placeholder="Enter symbol label"
-                  className="bg-black/50 border-white/10 text-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Shape Type</Label>
-                <Select 
-                  value={selectedNode.data.shape} 
-                  onValueChange={(val: FlowchartShape) => updateNodeData({ shape: val })}
-                >
-                  <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select a shape">
-                      {selectedNode.data.shape ? SHAPE_LABELS[selectedNode.data.shape] : "Select a shape"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
-                    <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
-                    <SelectItem value="oval">Oval (Start/End)</SelectItem>
-                    <SelectItem value="diamond">Diamond (Decision)</SelectItem>
-                    <SelectItem value="parallelogram">Parallelogram (Input/Output)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Color</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {COLOR_PALETTE.map((color) => (
-                    <button
-                      key={color}
-                      className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${selectedNode.data.color === color ? 'border-white scale-110' : 'border-transparent'}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => updateNodeData({ color })}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Edge Properties Modal */}
-      <Dialog open={!!selectedEdgeId} onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}>
-        <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-          <DialogHeader className="shrink-0 mb-4">
-            <div className="flex items-center justify-between pr-8">
-              <div className="space-y-1 text-left">
-                <DialogTitle className="text-xl font-bold tracking-tight">Connector Properties</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Format the line style and arrows.
-                </DialogDescription>
-              </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={deleteEdge}
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
-                title="Delete Connector"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          </DialogHeader>
-          
-          {selectedEdge && (
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label>Line Style</Label>
-                <Select value={isDashed ? 'dashed' : 'solid'} onValueChange={handleEdgeTypeChange}>
-                  <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select line style">
-                      {LINE_STYLE_LABELS[isDashed ? 'dashed' : 'solid']}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
-                    <SelectItem value="solid">Solid Line</SelectItem>
-                    <SelectItem value="dashed">Dashed Line</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Arrow Style</Label>
-                <Select value={arrowType} onValueChange={handleArrowChange}>
-                  <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                    <SelectValue placeholder="Select arrow style">
-                      {ARROW_STYLE_LABELS[arrowType]}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
-                    <SelectItem value="end">Arrow at End</SelectItem>
-                    <SelectItem value="start">Arrow at Start (Reverse)</SelectItem>
-                    <SelectItem value="both">Arrows Both Ends</SelectItem>
-                    <SelectItem value="none">No Arrows (Line only)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ConnectorPropertiesModal
+        selectedEdgeId={selectedEdgeId}
+        onClose={() => setSelectedEdgeId(null)}
+        selectedEdge={selectedEdge}
+        isDashed={isDashed}
+        arrowType={arrowType}
+        onEdgeTypeChange={handleEdgeTypeChange}
+        onArrowChange={handleArrowChange}
+        onDeleteEdge={deleteEdge}
+      />
     </Card>
   );
 }
