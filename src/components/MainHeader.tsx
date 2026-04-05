@@ -32,11 +32,11 @@ export function MainHeader({
     <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden">
       <div className="flex items-center gap-2 px-4 min-w-0 flex-1">
         <SidebarTrigger className="-ml-1 shrink-0" />
-        <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
-        <Breadcrumb className="min-w-0">
-          <BreadcrumbList className="flex-nowrap">
+        <Separator orientation="vertical" className="h-4 shrink-0 bg-border/50" />
+        <Breadcrumb className="min-w-0 flex items-center">
+          <BreadcrumbList className="flex-nowrap items-center">
             <BreadcrumbItem className="shrink-0 hidden sm:block">
-              <BreadcrumbPage className="font-medium text-foreground">
+              <BreadcrumbPage className="font-medium text-muted-foreground">
                 {featureLabel}
               </BreadcrumbPage>
             </BreadcrumbItem>
