@@ -10,7 +10,10 @@ import { Table } from '@tiptap/extension-table';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { TableRow } from '@tiptap/extension-table-row';
+import { Color } from '@tiptap/extension-color';
+import { TextStyle } from '@tiptap/extension-text-style';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { X, Check } from 'lucide-react';
 
 import { compressImage } from '../lib/image-compression';
 
@@ -70,6 +73,7 @@ const MenuBar = ({ editor }: { editor: any }) => {
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleStrike().run()} className={toggleClass(editor.isActive('strike'))}>
         Strike
       </button>
+
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
         Code
       </button>
@@ -176,6 +180,8 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
   const [, setUpdateTrigger] = React.useState(0);
   const editor = useEditor({
     extensions: [
+      TextStyle,
+      Color,
       StarterKit,
       ImageResize.configure({
         inline: true,
@@ -236,7 +242,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         <div className="max-w-4xl mx-auto p-6 sm:p-12">
           
           {editor && (
-            <BubbleMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 50 } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+            <BubbleMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
@@ -269,11 +275,56 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
               >
                 Strike
               </button>
+
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <button className="px-3 py-1 text-sm font-medium rounded-sm transition-colors hover:bg-accent text-popover-foreground flex items-center gap-1">
+                    Color
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
+                  <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Colors</div>
+                  {[
+                    { name: 'Default', value: '' },
+                    { name: 'Indigo', value: '#6366f1' },
+                    { name: 'Purple', value: '#8b5cf6' },
+                    { name: 'Pink', value: '#ec4899' },
+                    { name: 'Blue', value: '#3b82f6' },
+                    { name: 'Green', value: '#10b981' },
+                    { name: 'Orange', value: '#f59e0b' },
+                    { name: 'Red', value: '#ef4444' }
+                  ].map(({ name, value }) => {
+                    const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
+                    return (
+                      <DropdownMenu.Item 
+                        key={name}
+                        onSelect={() => {
+                          if (value) {
+                            editor.chain().focus().setColor(value).run();
+                          } else {
+                            editor.chain().focus().unsetColor().run();
+                          }
+                        }}
+                        className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
+                      >
+                        <div 
+                          className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
+                          style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
+                        >
+                          {!value && <span className="text-foreground">A</span>}
+                        </div>
+                        <span className="flex-1">{name}</span>
+                        {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
+                      </DropdownMenu.Item>
+                    );
+                  })}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
             </BubbleMenu>
           )}
 
           {editor && (
-            <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 50 } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+            <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
