@@ -22,6 +22,7 @@ import {
   FolderPlus,
   Search,
   ChevronRight,
+  Network,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -76,9 +77,9 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeNoteId: number | null;
   activeDrawingId: number | null;
   activeProjectId: number | null;
-  view: 'erd' | 'notes' | 'drawings' | 'trash';
-  sidebarView: 'erd' | 'notes' | 'drawings';
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash') => void;
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart';
+  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart';
+  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart') => void;
   onFileSelect: (id: number) => void;
   onNoteSelect: (id: number) => void;
   onDrawingSelect: (id: number) => void;
@@ -201,6 +202,14 @@ export function AppSidebar({
       iconClassName: "text-purple-400",
       isActive: view === 'drawings',
       onClick: () => onViewChange('drawings'),
+    },
+    {
+      title: "Flowchart",
+      url: "#",
+      icon: Network,
+      iconClassName: "text-green-400",
+      isActive: view === 'flowchart',
+      onClick: () => onViewChange('flowchart'),
     },
   ]
 

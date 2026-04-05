@@ -28,6 +28,7 @@ import { NotesView } from './components/views/NotesView';
 import { DrawingsView } from './components/views/DrawingsView';
 import { TrashView } from './components/views/TrashView';
 import { WelcomeView } from './components/views/WelcomeView';
+import { FlowchartDemoView } from './components/views/FlowchartDemoView';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -68,8 +69,8 @@ const initialNodes: Node<Entity>[] = [];
 const initialEdges: Edge[] = [];
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash'>('notes');
-  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings'>('notes');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'>('notes');
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
@@ -122,6 +123,7 @@ function AppContent() {
   }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus]);
 
   const hasActiveItem = useMemo(() => {
+    if (view === 'flowchart') return true;
     if (view === 'erd') return !!activeFileId;
     if (view === 'notes') return !!activeNoteId;
     if (view === 'drawings') return !!activeDrawingId;
@@ -434,8 +436,8 @@ function AppContent() {
   const activeDrawing = drawings.find(d => d.id === activeDrawingId);
   const activeFile = files.find(f => f.id === activeFileId);
   
-  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : 'Trash Bin';
-  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : null;
+  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowchart Demo' : 'Trash Bin';
+  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? 'Untitled Flowchart' : null;
   const activeProjectName = view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : null;
 
   return (
@@ -490,6 +492,10 @@ function AppContent() {
 
               {view === 'drawings' && activeDrawing && (
                 <DrawingsView activeDrawingId={activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} />
+              )}
+
+              {view === 'flowchart' && (
+                <FlowchartDemoView />
               )}
             </>
           )}

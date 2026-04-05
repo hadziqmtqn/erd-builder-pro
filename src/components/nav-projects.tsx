@@ -119,8 +119,8 @@ export function NavProjects({
   activeFileId: number | null
   activeNoteId: number | null
   activeDrawingId: number | null
-  view: 'erd' | 'notes' | 'drawings' | 'trash'
-  sidebarView: 'erd' | 'notes' | 'drawings'
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'
+  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart'
   onFileDelete: (id: number) => void
   onNoteDelete: (id: number) => void
   onDrawingDelete: (id: number) => void
