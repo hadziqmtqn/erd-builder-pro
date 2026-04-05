@@ -3,13 +3,14 @@
 **ERD Builder Pro** is a professional-grade, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures. Built with a modular architecture and modern tech stack, it offers a seamless experience for database design and technical documentation.
 
 <div align="center">
-  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczNyDvSD8pEp32V1bv8HeC8VN8vuFWUmvXwuqpGxC1eYB_NKeBXUr1xdMh_eQeE2AyBBIDOQa33uwmPGI2BGhIrOnl36CYVwPlsf3Y0SmUrpAXOOt3dH2sMJkZ2ARt9syyqM1lgX7q7JOzvRj2B_X6J7=w2966-h1882-s-no-gm?authuser=1" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczO1oWbiiyyEfI2MLyuHwWW-TVK1q5AihOBdqFZ61hh1xYhqJyO_vDf2p_5XAHKzwT4AuO1vw52gGfT0bjrEe5gvZ6-4tZglIZ-AbsH5cX-_wu2Z15SgiFphRnP7euMdtTgEycPrYpvjeX0V-P-E3NmC=w2966-h1882-s-no-gm?authuser=1" />
 </div>
 
 ## 🚀 Key Features
 
 - **🎨 Multi-Mode Visual Workspace**: 
   - **ERD Builder**: Drag-and-drop entity relationship diagramming using **XYFlow** (React Flow v12).
+  - **Interactive Flowcharts**: Visualize processes and architectures with customizable nodes, decision points, and smart connectors.
   - **Excalidraw Integration**: Free-hand sketching for whiteboarding and architectural brainstorming.
   - **Rich Text Notes**: Professional documentation powered by **TipTap**, supporting tables, task lists, and markdown.
 - **🏗️ Modular Architecture**:
