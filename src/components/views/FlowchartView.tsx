@@ -224,14 +224,6 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
           onlyRenderVisibleElements={true}
         >
           <Controls className="bg-background/95 border-border shadow-md" />
-          <MiniMap 
-            nodeColor={(n) => {
-              if (n.data?.color) return n.data.color as string;
-              return '#8b5cf6';
-            }}
-            maskColor="rgba(0, 0, 0, 0.7)"
-            className="bg-background border-border"
-          />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
         </ReactFlow>
       </div>
