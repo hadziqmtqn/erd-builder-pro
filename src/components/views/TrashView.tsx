@@ -5,6 +5,7 @@ import {
   Database, 
   StickyNote, 
   PenTool, 
+  Network,
   RefreshCcw, 
   Trash2 as TrashIcon 
 } from 'lucide-react';
@@ -25,16 +26,19 @@ interface TrashViewProps {
     files: any[];
     notes: any[];
     drawings: any[];
+    flowcharts: any[];
   };
   restoreProject: (id: number) => Promise<void>;
   restoreFile: (id: number) => Promise<void>;
   restoreNote: (id: number) => Promise<void>;
   restoreDrawing: (id: number) => Promise<void>;
+  restoreFlowchart: (id: number) => Promise<void>;
   fetchTrash: () => void;
   handleProjectPermanentDelete: (id: number) => void;
   handleFilePermanentDelete: (id: number) => void;
   handleNotePermanentDelete: (id: number) => void;
   handleDrawingPermanentDelete: (id: number) => void;
+  handleFlowchartPermanentDelete: (id: number) => void;
 }
 
 export function TrashView({
@@ -43,11 +47,13 @@ export function TrashView({
   restoreFile,
   restoreNote,
   restoreDrawing,
+  restoreFlowchart,
   fetchTrash,
   handleProjectPermanentDelete,
   handleFilePermanentDelete,
   handleNotePermanentDelete,
-  handleDrawingPermanentDelete
+  handleDrawingPermanentDelete,
+  handleFlowchartPermanentDelete
 }: TrashViewProps) {
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
@@ -256,6 +262,58 @@ export function TrashView({
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
+                              <TrashIcon size={14} className="mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </section>
+          {/* Flowcharts Table */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Network size={18} className="text-green-400" />
+                Flowcharts
+              </h3>
+              <Badge variant="outline">{trashData.flowcharts?.length || 0} Items</Badge>
+            </div>
+            {!trashData.flowcharts || trashData.flowcharts.length === 0 ? (
+              <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted flowcharts</div>
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Flowchart Title</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Deleted At</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {trashData.flowcharts.map((flowchart) => (
+                      <TableRow key={flowchart.id}>
+                        <TableCell className="font-medium flex items-center gap-2">
+                          <Network size={14} className="text-muted-foreground" />
+                          {flowchart.title}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs font-semibold">
+                          {flowchart.projects?.name || '-'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {new Date(flowchart.updated_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => { restoreFlowchart(flowchart.id); fetchTrash(); }}>
+                              <RefreshCcw size={14} className="mr-1" /> Restore
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart.id)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>

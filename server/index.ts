@@ -11,6 +11,7 @@ import filesRouter from "./routes/files.js";
 import projectsRouter from "./routes/projects.js";
 import notesRouter from "./routes/notes.js";
 import drawingsRouter from "./routes/drawings.js";
+import flowchartsRouter from "./routes/flowcharts.js";
 import commonRouter from "./routes/common.js";
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/api/files", filesRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/notes", notesRouter);
 app.use("/api/drawings", drawingsRouter);
+app.use("/api/flowcharts", flowchartsRouter);
 app.use("/api", commonRouter); // trash, upload, test-r2
 
 // Environment checks
