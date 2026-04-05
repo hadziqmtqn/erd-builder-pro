@@ -13,8 +13,9 @@ router.get("/trash", authenticate, async (req: ExpressRequest, res: ExpressRespo
   const { data: files } = await supabase.from("files").select("*, projects!left(name)").eq("is_deleted", true);
   const { data: notes } = await supabase.from("notes").select("*, projects!left(name)").eq("is_deleted", true);
   const { data: drawings } = await supabase.from("drawings").select("*, projects!left(name)").eq("is_deleted", true);
+  const { data: flowcharts } = await supabase.from("flowcharts").select("*, projects!left(name)").eq("is_deleted", true);
   const { data: projects } = await supabase.from("projects").select("*").eq("is_deleted", true);
-  res.json({ files: files || [], notes: notes || [], drawings: drawings || [], projects: projects || [] });
+  res.json({ files: files || [], notes: notes || [], drawings: drawings || [], flowcharts: flowcharts || [], projects: projects || [] });
 });
 
 // Test R2 Configuration

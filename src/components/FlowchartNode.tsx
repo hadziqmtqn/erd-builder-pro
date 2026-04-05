@@ -184,17 +184,17 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       {getShapeBackground()}
 
       {/* Universal Handles: All 4 directions support both incoming and outgoing connections */}
-      <Handle id="top-t" type="target" position={Position.Top} className={handleClasses} />
-      <Handle id="top-s" type="source" position={Position.Top} className={handleClasses} />
+      <Handle id="top" type="target" position={Position.Top} className={handleClasses} />
+      <Handle id="top" type="source" position={Position.Top} className={handleClasses} />
       
-      <Handle id="bottom-t" type="target" position={Position.Bottom} className={handleClasses} />
-      <Handle id="bottom-s" type="source" position={Position.Bottom} className={handleClasses} />
+      <Handle id="bottom" type="target" position={Position.Bottom} className={handleClasses} />
+      <Handle id="bottom" type="source" position={Position.Bottom} className={handleClasses} />
       
-      <Handle id="right-t" type="target" position={Position.Right} className={handleClasses} />
-      <Handle id="right-s" type="source" position={Position.Right} className={handleClasses} />
+      <Handle id="right" type="target" position={Position.Right} className={handleClasses} />
+      <Handle id="right" type="source" position={Position.Right} className={handleClasses} />
       
-      <Handle id="left-t" type="target" position={Position.Left} className={handleClasses} />
-      <Handle id="left-s" type="source" position={Position.Left} className={handleClasses} />
+      <Handle id="left" type="target" position={Position.Left} className={handleClasses} />
+      <Handle id="left" type="source" position={Position.Left} className={handleClasses} />
       
       {/* Label Container: breaks long text and restricts it from touching edges */}
       <div className="relative z-10 text-center text-sm font-semibold text-white break-words whitespace-pre-wrap max-w-full flex-1">

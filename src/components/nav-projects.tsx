@@ -9,6 +9,7 @@ import {
   Database,
   StickyNote,
   PenTool,
+  Network,
   FolderPlus,
 } from "lucide-react"
 
@@ -51,7 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-import { FileData, Project, Note, Drawing } from "../types"
+import { FileData, Project, Note, Drawing, Flowchart } from "../types"
 import { cn } from "@/lib/utils"
 
 export function NavProjects({
@@ -64,36 +65,45 @@ export function NavProjects({
   onFileCreate,
   onNoteCreate,
   onDrawingCreate,
+  onFlowchartCreate,
   files,
   notes,
   drawings,
+  flowcharts,
   onFileSelect,
   onNoteSelect,
   onDrawingSelect,
+  onFlowchartSelect,
   activeFileId,
   activeNoteId,
   activeDrawingId,
+  activeFlowchartId,
   view,
   sidebarView,
   onFileDelete,
   onNoteDelete,
   onDrawingDelete,
+  onFlowchartDelete,
   onFileUpdate,
   onNoteUpdate,
   onDrawingUpdate,
+  onFlowchartUpdate,
   onMoveFileToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
+  onMoveFlowchartToProject,
   allProjects,
   searchQuery,
   hasMoreProjects,
   hasMoreFiles,
   hasMoreNotes,
   hasMoreDrawings,
+  hasMoreFlowcharts,
   onLoadMoreProjects,
   onLoadMoreFiles,
   onLoadMoreNotes,
   onLoadMoreDrawings,
+  onLoadMoreFlowcharts,
 }: {
   projects: {
     id: number
@@ -110,36 +120,45 @@ export function NavProjects({
   onFileCreate: (name: string, projectId: number | null) => void
   onNoteCreate: (title: string, projectId: number | null) => void
   onDrawingCreate: (title: string, projectId: number | null) => void
+  onFlowchartCreate: (title: string, projectId: number | null) => void
   files: FileData[]
   notes: Note[]
   drawings: Drawing[]
+  flowcharts: Flowchart[]
   onFileSelect: (id: number) => void
   onNoteSelect: (id: number) => void
   onDrawingSelect: (id: number) => void
+  onFlowchartSelect: (id: number) => void
   activeFileId: number | null
   activeNoteId: number | null
   activeDrawingId: number | null
+  activeFlowchartId: number | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart'
   onFileDelete: (id: number) => void
   onNoteDelete: (id: number) => void
   onDrawingDelete: (id: number) => void
+  onFlowchartDelete: (id: number) => void
   onFileUpdate: (id: number, name: string) => void
   onNoteUpdate: (id: number, title: string) => void
   onDrawingUpdate: (id: number, title: string) => void
+  onFlowchartUpdate: (id: number, title: string) => void
   onMoveFileToProject: (fileId: number, projectId: number | null) => void
   onMoveNoteToProject: (noteId: number, projectId: number | null) => void
   onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void
+  onMoveFlowchartToProject: (flowchartId: number, projectId: number | null) => void
   allProjects: Project[]
   searchQuery: string
   hasMoreProjects?: boolean
   hasMoreFiles?: boolean
   hasMoreNotes?: boolean
   hasMoreDrawings?: boolean
+  hasMoreFlowcharts?: boolean
   onLoadMoreProjects?: () => void
   onLoadMoreFiles?: () => void
   onLoadMoreNotes?: () => void
   onLoadMoreDrawings?: () => void
+  onLoadMoreFlowcharts?: () => void
 }) {
   const { isMobile } = useSidebar()
   
@@ -156,8 +175,8 @@ export function NavProjects({
   const [editingProjectId, setEditingProjectId] = React.useState<number | null>(null)
   const [editingProjectName, setEditingProjectName] = React.useState("")
   
-  const [editingFile, setEditingFile] = React.useState<{ id: number, name: string, projectId: number | null, type: 'erd' | 'notes' | 'drawings' } | null>(null)
-  const [deletingFile, setDeletingFile] = React.useState<{ id: number, type: 'erd' | 'notes' | 'drawings' } | null>(null)
+  const [editingFile, setEditingFile] = React.useState<{ id: number, name: string, projectId: number | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [deletingFile, setDeletingFile] = React.useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
@@ -176,6 +195,8 @@ export function NavProjects({
         onNoteCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'drawings') {
         onDrawingCreate(fileName.trim(), projectId)
+      } else if (sidebarView === 'flowchart') {
+        onFlowchartCreate(fileName.trim(), projectId)
       }
       setFileName("")
       setIsFileDialogOpen(false)
@@ -195,6 +216,9 @@ export function NavProjects({
       } else if (editingFile.type === 'drawings') {
         onDrawingUpdate(editingFile.id, editingFile.name.trim())
         if (projectId !== editingFile.projectId) onMoveDrawingToProject(editingFile.id, projectId)
+      } else if (editingFile.type === 'flowchart') {
+        onFlowchartUpdate(editingFile.id, editingFile.name.trim())
+        if (projectId !== editingFile.projectId) onMoveFlowchartToProject(editingFile.id, projectId)
       }
       
       setIsEditFileDialogOpen(false)
@@ -207,6 +231,7 @@ export function NavProjects({
       if (deletingFile.type === 'erd') onFileDelete(deletingFile.id)
       else if (deletingFile.type === 'notes') onNoteDelete(deletingFile.id)
       else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.id)
+      else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.id)
       
       setIsDeleteConfirmOpen(false)
       setDeletingFile(null)
@@ -285,7 +310,7 @@ export function NavProjects({
       {/* Files Section based on active project and sidebarView */}
       <SidebarGroup className="group-data-[collapsible=icon]:hidden pt-0">
         <SidebarGroupLabel>
-          {sidebarView === 'erd' ? 'Diagrams' : sidebarView === 'notes' ? 'Notes' : 'Drawings'}
+          {sidebarView === 'erd' ? 'Diagrams' : sidebarView === 'notes' ? 'Notes' : sidebarView === 'flowchart' ? 'Flowcharts' : 'Drawings'}
         </SidebarGroupLabel>
       <SidebarGroupAction title={`Add ${sidebarView}`} onClick={() => {
         setSelectedProjectId(activeProjectId?.toString() || "none")
@@ -398,6 +423,41 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
 
+        {sidebarView === 'flowchart' && flowcharts.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(flowchart => (
+          <SidebarMenuItem key={flowchart.id}>
+            <SidebarMenuButton 
+              isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
+              onClick={() => onFlowchartSelect(flowchart.id)}
+              className="cursor-pointer"
+            >
+              <Network className="size-4" />
+              <span>{flowchart.title}</span>
+            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+                <span className="sr-only">More</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start" className="w-40">
+                <DropdownMenuItem onClick={() => {
+                  setEditingFile({ id: flowchart.id, name: flowchart.title, projectId: flowchart.project_id, type: 'flowchart' })
+                  setSelectedProjectId(flowchart.project_id?.toString() || "none")
+                  setIsEditFileDialogOpen(true)
+                }}>
+                  <Edit2 className="mr-2 size-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                  setDeletingFile({ id: flowchart.id, type: 'flowchart' })
+                  setIsDeleteConfirmOpen(true)
+                }}>
+                  <Trash2 className="mr-2 size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        ))}
+
         {sidebarView === 'erd' && hasMoreFiles && (
           <SidebarMenuItem>
             <SidebarMenuButton 
@@ -434,10 +494,23 @@ export function NavProjects({
           </SidebarMenuItem>
         )}
 
+        {sidebarView === 'flowchart' && hasMoreFlowcharts && (
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              className="text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={onLoadMoreFlowcharts}
+            >
+              <MoreHorizontal className="size-4" />
+              <span>More</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+
         {searchQuery && (
           ((sidebarView === 'erd' && files.length === 0) ||
            (sidebarView === 'notes' && notes.length === 0) ||
-           (sidebarView === 'drawings' && drawings.length === 0)) && (
+           (sidebarView === 'drawings' && drawings.length === 0) ||
+           (sidebarView === 'flowchart' && flowcharts.length === 0)) && (
             <div className="px-4 py-2 text-xs text-muted-foreground italic">No results match "{searchQuery}"</div>
           )
         )}
@@ -489,7 +562,7 @@ export function NavProjects({
       <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : 'Drawing'}</DialogTitle>
+            <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : sidebarView === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -533,7 +606,7 @@ export function NavProjects({
       <Dialog open={isEditFileDialogOpen} onOpenChange={setIsEditFileDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit {editingFile?.type === 'erd' ? 'Diagram' : editingFile?.type === 'notes' ? 'Note' : 'Drawing'}</DialogTitle>
+            <DialogTitle>Edit {editingFile?.type === 'erd' ? 'Diagram' : editingFile?.type === 'notes' ? 'Note' : editingFile?.type === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">

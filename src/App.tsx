@@ -28,7 +28,7 @@ import { NotesView } from './components/views/NotesView';
 import { DrawingsView } from './components/views/DrawingsView';
 import { TrashView } from './components/views/TrashView';
 import { WelcomeView } from './components/views/WelcomeView';
-import { FlowchartDemoView } from './components/views/FlowchartDemoView';
+import { FlowchartView } from './components/views/FlowchartView';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -36,6 +36,7 @@ import { useFiles } from './hooks/useFiles';
 import { useNotes } from './hooks/useNotes';
 import { useProjects } from './hooks/useProjects';
 import { useDrawings } from './hooks/useDrawings';
+import { useFlowcharts } from './hooks/useFlowcharts';
 import { useTrash } from './hooks/useTrash';
 
 // Types
@@ -103,7 +104,12 @@ function AppContent() {
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
     hasMoreDrawings, saveStatus: drawingsSaveStatus
   } = useDrawings();
-  
+
+  const {
+    flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
+    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus
+  } = useFlowcharts();
+
   const { trashData, fetchTrash } = useTrash();
 
   // React Flow State
@@ -113,22 +119,24 @@ function AppContent() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const flowchartSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { setViewport } = useReactFlow();
 
   const currentSaveStatus = useMemo(() => {
     if (view === 'erd') return saveStatus;
     if (view === 'notes') return notesSaveStatus;
     if (view === 'drawings') return drawingsSaveStatus;
+    if (view === 'flowchart') return flowchartsSaveStatus;
     return 'idle';
-  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus]);
+  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
 
   const hasActiveItem = useMemo(() => {
-    if (view === 'flowchart') return true;
     if (view === 'erd') return !!activeFileId;
     if (view === 'notes') return !!activeNoteId;
     if (view === 'drawings') return !!activeDrawingId;
+    if (view === 'flowchart') return !!activeFlowchartId;
     return false;
-  }, [view, activeFileId, activeNoteId, activeDrawingId]);
+  }, [view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   // Memoize selected entity for properties panel
   const selectedEntity = useMemo(() => {
@@ -165,8 +173,10 @@ function AppContent() {
       fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
       // @ts-ignore
       fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
+      // @ts-ignore
+      fetchFlowcharts(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
     }
-  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings]);
+  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings, fetchFlowcharts]);
 
   // ERD Selection Logic
   const handleFileSelect = async (id: number) => {
@@ -289,6 +299,17 @@ function AppContent() {
     } catch (err) {}
   };
 
+  const handleFlowchartSelect = async (id: number) => {
+    try {
+      const res = await fetch(`/api/flowcharts/${id}`);
+      if (!res.ok) return;
+      const flowchart = await res.json();
+      if (flowchart.is_deleted) return;
+      setActiveFlowchartId(id);
+      setView('flowchart');
+    } catch (err) {}
+  };
+
   // Change Handlers
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
@@ -317,6 +338,21 @@ function AppContent() {
       } as any);
     }, 1000);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
+  
+  const handleFlowchartChange = useCallback((nodes: any[], edges: any[]) => {
+    if (!activeFlowchartId) return;
+    const data = JSON.stringify({ nodes, edges });
+    setFlowcharts(prev => prev.map(f => f.id === activeFlowchartId ? { ...f, data } : f));
+    if (flowchartSaveTimeoutRef.current) clearTimeout(flowchartSaveTimeoutRef.current);
+    flowchartSaveTimeoutRef.current = setTimeout(async () => {
+      await saveFlowchart({
+        id: activeFlowchartId,
+        data,
+        title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
+        project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
+      } as any);
+    }, 1000);
+  }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
     
   // Creation Handlers
   const handleFileCreate = async (name: string, projectId?: number | null) => {
@@ -334,20 +370,28 @@ function AppContent() {
     if (newDrawing) handleDrawingSelect(newDrawing.id);
   };
 
+  const handleFlowchartCreate = async (title: string, projectId?: number | null) => {
+    const newFlowchart = await createFlowchart(title, projectId);
+    if (newFlowchart) handleFlowchartSelect(newFlowchart.id);
+  };
+
   // Sync Handlers
   const handleFileDelete = async (id: number) => { await deleteFile(id); fetchTrash(); };
   const handleNoteDelete = async (id: number) => { await deleteNote(id); fetchTrash(); };
   const handleDrawingDelete = async (id: number) => { await deleteDrawing(id); fetchTrash(); };
+  const handleFlowchartDelete = async (id: number) => { await deleteFlowchart(id); fetchTrash(); };
   const handleProjectDelete = async (id: number) => { if (await deleteProject(id)) fetchTrash(); };
 
   const handleFileRestore = async (id: number) => { await restoreFile(id); fetchTrash(); fetchFiles(); };
   const handleNoteRestore = async (id: number) => { await restoreNote(id); fetchTrash(); fetchNotes(); };
   const handleDrawingRestore = async (id: number) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(); };
+  const handleFlowchartRestore = async (id: number) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); };
   const handleProjectRestore = async (id: number) => { await restoreProject(id); fetchTrash(); fetchProjects(); };
 
   const handleFilePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); };
   const handleNotePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); };
   const handleDrawingPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleFlowchartPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); };
   const handleProjectPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); };
 
   const confirmPermanentDelete = async () => {
@@ -356,6 +400,7 @@ function AppContent() {
       else if (itemToDelete.type === 'erd') await deleteFilePermanent(itemToDelete.id);
       else if (itemToDelete.type === 'notes') await deleteNotePermanent(itemToDelete.id);
       else if (itemToDelete.type === 'drawings') await deleteDrawingPermanent(itemToDelete.id);
+      else if (itemToDelete.type === ('flowchart' as any)) await deleteFlowchartPermanent(itemToDelete.id);
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
       fetchTrash();
@@ -434,33 +479,35 @@ function AppContent() {
   // Derive component-level props
   const activeNote = notes.find(n => n.id === activeNoteId);
   const activeDrawing = drawings.find(d => d.id === activeDrawingId);
+  const activeFlowchart = flowcharts.find(f => f.id === activeFlowchartId);
   const activeFile = files.find(f => f.id === activeFileId);
   
-  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowchart Demo' : 'Trash Bin';
-  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? 'Untitled Flowchart' : null;
-  const activeProjectName = view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : null;
+  const featureLabel = view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : 'Trash Bin';
+  const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null;
+  const activeProjectName = view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null;
 
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar 
-        files={files} notes={notes} drawings={drawings} projects={projects} trashData={trashData}
-        activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeProjectId={activeProjectId} view={view}
-        onFileSelect={handleFileSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onProjectSelect={setActiveProjectId}
-        onFileCreate={handleFileCreate} onNoteCreate={handleNoteCreate} onDrawingCreate={handleDrawingCreate} onProjectCreate={createProject}
+        files={files} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects} trashData={trashData}
+        activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
+        onFileSelect={handleFileSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onFlowchartSelect={handleFlowchartSelect} onProjectSelect={setActiveProjectId}
+        onFileCreate={handleFileCreate} onNoteCreate={handleNoteCreate} onDrawingCreate={handleDrawingCreate} onFlowchartCreate={handleFlowchartCreate} onProjectCreate={createProject}
         onProjectUpdate={updateProject} onProjectDelete={handleProjectDelete} onProjectRestore={handleProjectRestore}
-        onFileUpdate={updateFile} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing}
-        onFileDelete={handleFileDelete} onNoteDelete={handleNoteDelete} onDrawingDelete={handleDrawingDelete}
-        onFileRestore={handleFileRestore} onNoteRestore={handleNoteRestore} onDrawingRestore={handleDrawingRestore}
-        onFilePermanentDelete={handleFilePermanentDelete} onNotePermanentDelete={handleNotePermanentDelete} onDrawingPermanentDelete={handleDrawingPermanentDelete} onProjectPermanentDelete={handleProjectPermanentDelete}
+        onFileUpdate={updateFile} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
+        onFileDelete={handleFileDelete} onNoteDelete={handleNoteDelete} onDrawingDelete={handleDrawingDelete} onFlowchartDelete={handleFlowchartDelete}
+        onFileRestore={handleFileRestore} onNoteRestore={handleNoteRestore} onDrawingRestore={handleDrawingRestore} onFlowchartRestore={handleFlowchartRestore}
+        onFilePermanentDelete={handleFilePermanentDelete} onNotePermanentDelete={handleNotePermanentDelete} onDrawingPermanentDelete={handleDrawingPermanentDelete} onFlowchartPermanentDelete={handleFlowchartPermanentDelete} onProjectPermanentDelete={handleProjectPermanentDelete}
         onLogout={handleLogout} saveStatus={saveStatus}
-        onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject}
+        onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
         sidebarView={sidebarView}
         onViewChange={(newView) => { setView(newView); if (newView !== 'trash') setSidebarView(newView); }}
-        hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings}
+        hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
         onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)}
         onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
         onLoadMoreNotes={() => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
         onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+        onLoadMoreFlowcharts={() => fetchFlowcharts(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         user={user}
@@ -494,17 +541,21 @@ function AppContent() {
                 <DrawingsView activeDrawingId={activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} />
               )}
 
-              {view === 'flowchart' && (
-                <FlowchartDemoView />
+              {view === 'flowchart' && activeFlowchart && (
+                <FlowchartView 
+                  activeFlowchartId={activeFlowchartId}
+                  activeFlowchart={activeFlowchart}
+                  handleFlowchartChange={handleFlowchartChange}
+                />
               )}
             </>
           )}
 
           {view === 'trash' && (
             <TrashView 
-              trashData={trashData} restoreProject={restoreProject} restoreFile={handleFileRestore} restoreNote={handleNoteRestore} restoreDrawing={handleDrawingRestore}
+              trashData={trashData} restoreProject={restoreProject} restoreFile={handleFileRestore} restoreNote={handleNoteRestore} restoreDrawing={handleDrawingRestore} restoreFlowchart={handleFlowchartRestore}
               fetchTrash={fetchTrash} handleProjectPermanentDelete={handleProjectPermanentDelete} handleFilePermanentDelete={handleFilePermanentDelete}
-              handleNotePermanentDelete={handleNotePermanentDelete} handleDrawingPermanentDelete={handleDrawingPermanentDelete}
+              handleNotePermanentDelete={handleNotePermanentDelete} handleDrawingPermanentDelete={handleDrawingPermanentDelete} handleFlowchartPermanentDelete={handleFlowchartPermanentDelete}
             />
           )}
         </div>

@@ -3,6 +3,7 @@
 -- Projects Table
 CREATE TABLE IF NOT EXISTS projects (
   id BIGSERIAL PRIMARY KEY,
+  uid UUID DEFAULT gen_random_uuid() UNIQUE,
   name TEXT NOT NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS projects (
 -- Files Table (ERD Files)
 CREATE TABLE IF NOT EXISTS files (
   id BIGSERIAL PRIMARY KEY,
+  uid UUID DEFAULT gen_random_uuid() UNIQUE,
   name TEXT NOT NULL,
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS relationships (
 -- Notes Table
 CREATE TABLE IF NOT EXISTS notes (
   id BIGSERIAL PRIMARY KEY,
+  uid UUID DEFAULT gen_random_uuid() UNIQUE,
   title TEXT NOT NULL,
   content TEXT DEFAULT '',
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
@@ -71,8 +74,21 @@ CREATE TABLE IF NOT EXISTS notes (
 -- Drawings Table
 CREATE TABLE IF NOT EXISTS drawings (
   id BIGSERIAL PRIMARY KEY,
+  uid UUID DEFAULT gen_random_uuid() UNIQUE,
   title TEXT NOT NULL,
   data TEXT DEFAULT '[]',
+  project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+  is_deleted BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Flowcharts Table
+CREATE TABLE IF NOT EXISTS flowcharts (
+  id BIGSERIAL PRIMARY KEY,
+  uid UUID DEFAULT gen_random_uuid() UNIQUE,
+  title TEXT NOT NULL,
+  data TEXT DEFAULT '{"nodes":[], "edges":[]}',
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),

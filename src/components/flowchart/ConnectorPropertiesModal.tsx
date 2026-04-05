@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -21,6 +22,7 @@ interface ConnectorPropertiesModalProps {
   arrowType: string;
   onEdgeTypeChange: (val: string) => void;
   onArrowChange: (val: string) => void;
+  onLabelChange: (val: string) => void;
   onDeleteEdge: () => void;
 }
 
@@ -32,6 +34,7 @@ export function ConnectorPropertiesModal({
   arrowType,
   onEdgeTypeChange,
   onArrowChange,
+  onLabelChange,
   onDeleteEdge
 }: ConnectorPropertiesModalProps) {
   return (
@@ -59,6 +62,16 @@ export function ConnectorPropertiesModal({
         
         {selectedEdge && (
           <div className="space-y-6">
+            <div className="space-y-2">
+              <Label>Text Label</Label>
+              <Input 
+                value={typeof selectedEdge.label === 'string' ? selectedEdge.label : ''} 
+                onChange={(e) => onLabelChange(e.target.value)}
+                placeholder="e.g. Yes, No, 1, 2..."
+                className="bg-black/50 border-white/10 text-white"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label>Line Style</Label>
               <Select value={isDashed ? 'dashed' : 'solid'} onValueChange={onEdgeTypeChange}>

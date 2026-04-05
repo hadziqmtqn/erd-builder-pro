@@ -62,7 +62,7 @@ export function MainHeader({
         </Breadcrumb>
       </div>
       <div className="ml-auto px-4 flex items-center gap-4">
-        {['erd', 'notes', 'drawings'].includes(view) && hasActiveItem && (
+        {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
           <div className="flex items-center gap-2 mr-4">
             <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
             <span className="text-xs text-muted-foreground font-medium">

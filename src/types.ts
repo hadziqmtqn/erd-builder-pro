@@ -29,6 +29,7 @@ export interface Relationship {
 
 export interface Project {
   id: number;
+  uid?: string;
   name: string;
   is_deleted: boolean;
   created_at: string;
@@ -36,6 +37,7 @@ export interface Project {
 
 export interface FileData {
   id: number;
+  uid?: string;
   name: string;
   project_id: number | null;
   projects?: Project;
@@ -51,6 +53,7 @@ export interface FileData {
 
 export interface Note {
   id: number;
+  uid?: string;
   title: string;
   content: string;
   project_id: number | null;
@@ -62,6 +65,19 @@ export interface Note {
 
 export interface Drawing {
   id: number;
+  uid?: string;
+  title: string;
+  data: string;
+  project_id: number | null;
+  projects?: Project;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Flowchart {
+  id: number;
+  uid?: string;
   title: string;
   data: string;
   project_id: number | null;

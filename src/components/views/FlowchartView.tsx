@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -20,6 +20,7 @@ import { Plus } from 'lucide-react';
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
+import { Flowchart } from '@/types';
 import { AddSymbolModal } from '../flowchart/AddSymbolModal';
 import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
@@ -28,9 +29,44 @@ const nodeTypes = {
   custom: FlowchartNode,
 };
 
-export function FlowchartDemoView() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+interface FlowchartViewProps {
+  activeFlowchartId: number;
+  activeFlowchart: Flowchart;
+  handleFlowchartChange: (nodes: any[], edges: any[]) => void;
+}
+
+export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowchartChange }: FlowchartViewProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Initialize from db or use defaults
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(activeFlowchart.data || '{"nodes":[], "edges":[]}');
+      const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : initialNodes;
+      const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : initialEdges;
+      
+      setNodes(nodesData);
+      setEdges(edgesData);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+    } catch {
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+    }
+  }, [activeFlowchartId]); // Only trigger when switching flowcharts
+
+  const handleFlowchartChangeRef = React.useRef(handleFlowchartChange);
+  useEffect(() => {
+    handleFlowchartChangeRef.current = handleFlowchartChange;
+  }, [handleFlowchartChange]);
+
+  // Trigger autosave internally when local state changes
+  useEffect(() => {
+    if (nodes.length > 0 || edges.length > 0) {
+      handleFlowchartChangeRef.current(nodes, edges);
+    }
+  }, [nodes, edges]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -122,6 +158,18 @@ export function FlowchartDemoView() {
     else if (val === 'both') updateEdgeData({ markerStart: marker, markerEnd: marker });
   };
 
+  const handleEdgeLabelChange = (val: string) => {
+    if (val.trim() === '') {
+      updateEdgeData({ label: undefined });
+    } else {
+      updateEdgeData({ 
+        label: val, 
+        labelBgStyle: { fill: '#1e1e24' }, 
+        labelStyle: { fill: '#fff' } 
+      });
+    }
+  };
+
   return (
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
       
@@ -211,6 +259,7 @@ export function FlowchartDemoView() {
         arrowType={arrowType}
         onEdgeTypeChange={handleEdgeTypeChange}
         onArrowChange={handleArrowChange}
+        onLabelChange={handleEdgeLabelChange}
         onDeleteEdge={deleteEdge}
       />
     </Card>
