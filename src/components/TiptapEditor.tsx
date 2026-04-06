@@ -15,7 +15,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { X, Check } from 'lucide-react';
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 
 const MenuBar = ({ editor }: { editor: any }) => {
@@ -185,7 +185,7 @@ interface TiptapEditorProps {
 
 // Custom extension to ensure an empty paragraph is always at the end
 const TrailingNode = Extension.create({
-  name: 'trailingNode',
+  name: 'customTrailingNode',
   addOptions() {
     return {
       node: 'paragraph',
@@ -276,47 +276,15 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         </div>
       </div>
 
-      {/* Scrollable Editor Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="max-w-4xl mx-auto p-6 sm:p-12">
+      {/* Scrollable Editor Area - The Desk */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar bg-neutral-950/50">
+        <div className="max-w-4xl mx-auto my-8 sm:my-12 p-8 sm:p-16 min-h-[calc(100vh-200px)] bg-card border border-border/40 shadow-2xl rounded-xl relative">
           
           {editor && (
             <BubbleMenu 
               editor={editor} 
-              shouldShow={({ editor }) => editor.isActive('image')}
-              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
-              className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
-            >
-              {[25, 50, 75, 100].map((width) => (
-                <button
-                  key={width}
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().updateAttributes('image', { width: `${width}%` }).run()}
-                  className="px-3 py-1 text-xs font-semibold rounded-sm transition-colors hover:bg-accent text-popover-foreground flex items-center"
-                >
-                  {width}% Wide
-                </button>
-              ))}
-              <div className="w-px h-4 bg-border mx-1 shrink-0 my-auto" />
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().deleteSelection().run()}
-                className="px-3 py-1 text-xs font-semibold rounded-sm transition-colors hover:bg-destructive hover:text-destructive-foreground text-destructive flex items-center"
-              >
-                Delete
-              </button>
-            </BubbleMenu>
-          )}
-
-          {editor && (
-            <BubbleMenu 
-              editor={editor} 
-              shouldShow={({ editor, from, to }) => {
-                // Only show if there's a text selection and no image active
-                return from !== to && !editor.isActive('image');
-              }}
+              pluginKey="textMenu"
+              shouldShow={({ from, to }) => from !== to}
               {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
               className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
             >
