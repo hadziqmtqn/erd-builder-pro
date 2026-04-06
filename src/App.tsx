@@ -275,7 +275,7 @@ function AppContent() {
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeFileId && isAuthenticated && view === 'erd') {
-      saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 1000);
+      saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 3000);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram]);
@@ -322,7 +322,7 @@ function AppContent() {
         title: notes.find(n => n.id === activeNoteId)?.title || '',
         project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeNoteId, notes, saveNote, setNotesList]);
 
   const handleDrawingChange = useCallback((data: string) => {
@@ -336,7 +336,7 @@ function AppContent() {
         title: drawings.find(d => d.id === activeDrawingId)?.title || '',
         project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
   
   const handleFlowchartChange = useCallback((nodes: any[], edges: any[]) => {
@@ -351,7 +351,7 @@ function AppContent() {
         title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
         project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
     
   // Creation Handlers

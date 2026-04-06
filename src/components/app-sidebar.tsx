@@ -219,20 +219,20 @@ export function AppSidebar({
       onClick: () => onViewChange('erd'),
     },
     {
-      title: "Drawings",
-      url: "#",
-      icon: PenTool,
-      iconClassName: "text-purple-400",
-      isActive: view === 'drawings',
-      onClick: () => onViewChange('drawings'),
-    },
-    {
       title: "Flowchart",
       url: "#",
       icon: Network,
       iconClassName: "text-green-400",
       isActive: view === 'flowchart',
       onClick: () => onViewChange('flowchart'),
+    },
+    {
+      title: "Drawings",
+      url: "#",
+      icon: PenTool,
+      iconClassName: "text-purple-400",
+      isActive: view === 'drawings',
+      onClick: () => onViewChange('drawings'),
     },
   ]
 
