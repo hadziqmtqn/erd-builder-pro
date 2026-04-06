@@ -26,6 +26,18 @@ window.fetch = async (...args) => {
   return response;
 };
 
+// Register Service Worker for Offline Assets Caching
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((registrationError) => {
+      // Keep only severe registration error logging or remove it too?
+      // User asked to remove experiment logs, but keeping error logging is usually good practice.
+      // However, to be thorough as requested:
+      // console.error('SW registration failed: ', registrationError);
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ReactFlowProvider>

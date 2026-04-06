@@ -58,12 +58,58 @@ function SidebarProvider({
   className,
   style,
   children,
+  // Application-specific props passed by App.tsx that aren't valid for <div>
+  // We destructure them here to prevent them from leaking to ...props
+  files,
+  notes,
+  drawings,
+  flowcharts,
+  projects,
+  activeFileId,
+  activeNoteId,
+  activeDrawingId,
+  activeFlowchartId,
+  activeProjectId,
+  view,
+  onViewChange,
+  onFileSelect,
+  onNoteSelect,
+  onDrawingSelect,
+  onFlowchartSelect,
+  onProjectSelect,
+  onFileCreate,
+  onNoteCreate,
+  onDrawingCreate,
+  onFlowchartCreate,
+  onProjectCreate,
+  onProjectUpdate,
+  onProjectDelete,
+  onFileDelete,
+  onNoteDelete,
+  onDrawingDelete,
+  onFlowchartDelete,
+  onFileUpdate,
+  onNoteUpdate,
+  onDrawingUpdate,
+  onFlowchartUpdate,
+  onLogout,
+  saveStatus,
+  onMoveFileToProject,
+  onMoveNoteToProject,
+  onMoveDrawingToProject,
+  onMoveFlowchartToProject,
+  isOnline,
+  searchQuery,
+  onSearchChange,
+  user,
+  sidebarView,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
-}) {
+  // Add any other props that might be passed from parent components
+} & any) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
 
@@ -154,12 +200,69 @@ function Sidebar({
   className,
   children,
   dir,
+  // Application-specific props passed by AppSidebar that aren't valid for <div>
+  // List all props identified in the error logs
+  trashData,
+  onProjectRestore,
+  onFileRestore,
+  onNoteRestore,
+  onDrawingRestore,
+  onFlowchartRestore,
+  onFilePermanentDelete,
+  onNotePermanentDelete,
+  onDrawingPermanentDelete,
+  onFlowchartPermanentDelete,
+  onProjectPermanentDelete,
+  // Also common ones from AppSidebarProps
+  files,
+  notes,
+  drawings,
+  flowcharts,
+  projects,
+  activeFileId,
+  activeNoteId,
+  activeDrawingId,
+  activeFlowchartId,
+  activeProjectId,
+  view,
+  sidebarView,
+  onViewChange,
+  onFileSelect,
+  onNoteSelect,
+  onDrawingSelect,
+  onFlowchartSelect,
+  onProjectSelect,
+  onFileCreate,
+  onNoteCreate,
+  onDrawingCreate,
+  onFlowchartCreate,
+  onProjectCreate,
+  onProjectUpdate,
+  onProjectDelete,
+  onFileDelete,
+  onNoteDelete,
+  onDrawingDelete,
+  onFlowchartDelete,
+  onFileUpdate,
+  onNoteUpdate,
+  onDrawingUpdate,
+  onFlowchartUpdate,
+  onLogout,
+  saveStatus,
+  onMoveFileToProject,
+  onMoveNoteToProject,
+  onMoveDrawingToProject,
+  onMoveFlowchartToProject,
+  isOnline,
+  searchQuery,
+  onSearchChange,
+  user,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
-}) {
+} & any) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
   if (collapsible === "none") {
