@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
-import { localPersistence, Draft } from '../lib/localPersistence';
+import { localPersistence } from '../lib/localPersistence';
+import { DraftType } from '../types';
 import { toast } from 'sonner';
 
 export function useSyncService(isAuthenticated: boolean | null) {
@@ -20,10 +21,10 @@ export function useSyncService(isAuthenticated: boolean | null) {
           let body = {};
           const parsedData = JSON.parse(draft.data);
 
-          if (draft.type === 'notes') {
+          if (draft.type === DraftType.NOTES) {
             endpoint = `/api/notes/${draft.id}`;
             body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id };
-          } else if (draft.type === 'erd') {
+          } else if (draft.type === DraftType.ERD) {
             endpoint = `/api/files/save/${draft.id}`;
             // ERD save expects entities and relationships
             const entities = parsedData.nodes.map((n: any) => ({
@@ -35,23 +36,25 @@ export function useSyncService(isAuthenticated: boolean | null) {
               id: e.id,
               source_entity_id: e.source,
               target_entity_id: e.target,
-              source_column_id: e.sourceHandle ? e.sourceHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
-              target_column_id: e.targetHandle ? e.targetHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
+              source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+              target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+              source_handle: e.sourceHandle || undefined,
+              target_handle: e.targetHandle || undefined,
               type: 'one-to-many',
               label: e.label,
             }));
             body = { entities, relationships, viewport: parsedData.viewport };
-          } else if (draft.type === 'flowchart') {
+          } else if (draft.type === DraftType.FLOWCHART) {
             endpoint = `/api/flowcharts/${draft.id}`;
             body = { title: parsedData.title, data: parsedData.data, project_id: parsedData.project_id };
-          } else if (draft.type === 'drawings') {
+          } else if (draft.type === DraftType.DRAWINGS) {
             endpoint = `/api/drawings/${draft.id}`;
             body = { title: parsedData.title, data: parsedData.data, project_id: parsedData.project_id };
           }
 
           if (endpoint) {
             const res = await fetch(endpoint, {
-              method: draft.type === 'erd' ? 'POST' : 'PUT',
+              method: draft.type === DraftType.ERD ? 'POST' : 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(body),
             });

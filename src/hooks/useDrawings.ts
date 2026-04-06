@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Drawing } from '../types';
+import { Drawing, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
 export function useDrawings() {
@@ -123,7 +123,7 @@ export function useDrawings() {
     
     // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft('drawings', drawing.id, drawing.data || '', true);
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', true);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
@@ -138,7 +138,7 @@ export function useDrawings() {
         });
         if (res.ok) {
           // Clear sync pending
-          await localPersistence.saveDraft('drawings', drawing.id, drawing.data || '', false);
+          await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2000);
           return true;

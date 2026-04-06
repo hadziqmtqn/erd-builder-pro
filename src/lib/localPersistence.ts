@@ -7,9 +7,11 @@ const DB_NAME = 'erd-builder-pro-db';
 const STORE_NAME = 'drafts';
 const DB_VERSION = 1;
 
+import { DraftType } from '../types';
+
 export interface Draft {
   id: string | number;
-  type: 'erd' | 'notes' | 'flowchart' | 'drawings';
+  type: DraftType;
   data: string;
   updated_at: number;
   sync_pending: boolean;

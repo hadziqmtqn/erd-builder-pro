@@ -44,7 +44,7 @@ import { localPersistence } from './lib/localPersistence';
 import { toast } from 'sonner';
 
 // Types
-import { Entity, FileData } from './types';
+import { Entity, FileData, DraftType } from './types';
 
 // UI
 import {
@@ -188,7 +188,7 @@ function AppContent() {
   const handleFileSelect = async (id: number) => {
     try {
       // Check for local unsynced draft first
-      const draft = await localPersistence.getDraft('erd', id);
+      const draft = await localPersistence.getDraft(DraftType.ERD, id);
       
       const res = await fetch(`/api/files/${id}`);
       if (res.status === 401) return;
@@ -205,12 +205,14 @@ function AppContent() {
         try {
           const parsedDraft = JSON.parse(draft.data);
           // @ts-ignore
-          finalData = { ...data, entities: parsedDraft.nodes.map(n => n.data), relationships: parsedDraft.edges.map(e => ({
+          finalData = { ...data, entities: parsedDraft.nodes.map(n => ({ ...n.data, x: n.position.x, y: n.position.y })), relationships: parsedDraft.edges.map(e => ({
             id: e.id,
             source_entity_id: e.source,
             target_entity_id: e.target,
-            source_column_id: e.sourceHandle?.replace('col-', '').replace('-source', ''),
-            target_column_id: e.targetHandle?.replace('col-', '').replace('-target', ''),
+            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            source_handle: e.sourceHandle || undefined,
+            target_handle: e.targetHandle || undefined,
             label: e.label
           })), viewport_x: parsedDraft.viewport.x, viewport_y: parsedDraft.viewport.y, viewport_zoom: parsedDraft.viewport.zoom };
           toast.info("Loaded unsynced local draft");
@@ -224,16 +226,41 @@ function AppContent() {
         data: e,
       }));
 
-      const flowEdges: Edge[] = data.relationships.map(r => ({
-        id: r.id,
-        source: r.source_entity_id,
-        target: r.target_entity_id,
-        sourceHandle: r.source_column_id ? `col-${r.source_column_id}-source` : undefined,
-        targetHandle: r.target_column_id ? `col-${r.target_column_id}-target` : undefined,
-        label: r.label,
-        type: 'smoothstep',
-        animated: true,
-      }));
+      const flowEdges: Edge[] = finalData.relationships.map(r => {
+        const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
+        const targetEntity = finalData.entities.find(e => e.id === r.target_entity_id);
+        
+        let sHandle = r.source_handle;
+        let tHandle = r.target_handle;
+
+        // Smart Heuristic: If no specific handle saved, find the most logical orientation
+        if (!sHandle && sourceEntity && targetEntity) {
+          if (sourceEntity.x < targetEntity.x) {
+            sHandle = `col-${r.source_column_id}-source`; // Right side
+          } else {
+            sHandle = `col-${r.source_column_id}-source-l`; // Left side
+          }
+        }
+
+        if (!tHandle && sourceEntity && targetEntity) {
+          if (sourceEntity.x < targetEntity.x) {
+            tHandle = `col-${r.target_column_id}-target`; // Left side
+          } else {
+            tHandle = `col-${r.target_column_id}-target-r`; // Right side
+          }
+        }
+
+        return {
+          id: r.id,
+          source: r.source_entity_id,
+          target: r.target_entity_id,
+          sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
+          targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
+          label: r.label,
+          type: 'smoothstep',
+          animated: true,
+        };
+      });
 
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -310,9 +337,9 @@ function AppContent() {
   const handleNoteSelect = async (id: number) => {
     const note = notes.find(n => n.id === id);
     if (note?.is_deleted) return;
-
+    
     // Check for local draft
-    const draft = await localPersistence.getDraft('notes', id);
+    const draft = await localPersistence.getDraft(DraftType.NOTES, id);
     if (draft && draft.sync_pending) {
       try {
         const parsed = JSON.parse(draft.data);

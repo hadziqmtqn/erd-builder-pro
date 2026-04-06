@@ -1,3 +1,10 @@
+export enum DraftType {
+  ERD = 'erd',
+  NOTES = 'notes',
+  FLOWCHART = 'flowchart',
+  DRAWINGS = 'drawings',
+}
+
 export interface Column {
   id: string;
   name: string;
@@ -23,6 +30,8 @@ export interface Relationship {
   target_entity_id: string;
   source_column_id?: string;
   target_column_id?: string;
+  source_handle?: string;
+  target_handle?: string;
   type: string;
   label?: string;
 }

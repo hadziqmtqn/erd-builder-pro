@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
-import { FileData, Entity, Relationship } from '../types';
+import { FileData, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
 export function useFiles(isAuthenticated: boolean | null, view: string) {
@@ -154,7 +154,7 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     
     // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft('erd', activeFileId, data, true);
+      await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, true);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
@@ -172,8 +172,10 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
           id: e.id,
           source_entity_id: e.source,
           target_entity_id: e.target,
-          source_column_id: e.sourceHandle ? e.sourceHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
-          target_column_id: e.targetHandle ? e.targetHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
+          source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+          target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+          source_handle: e.sourceHandle || undefined,
+          target_handle: e.targetHandle || undefined,
           type: 'one-to-many',
           label: e.label as string,
         }));
@@ -185,7 +187,7 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
         });
         if (res.ok) {
           // Clear sync pending
-          await localPersistence.saveDraft('erd', activeFileId, data, false);
+          await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, false);
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2000);
         } else {

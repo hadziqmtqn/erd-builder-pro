@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Note } from '../types';
+import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
 export function useNotes() {
@@ -123,7 +123,7 @@ export function useNotes() {
     
     // Save to local IndexedDB first (Instant)
     try {
-      await localPersistence.saveDraft('notes', note.id, JSON.stringify(note), true);
+      await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify(note), true);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
@@ -138,7 +138,7 @@ export function useNotes() {
         });
         if (res.ok) {
           // Clear sync pending on success
-          await localPersistence.saveDraft('notes', note.id, JSON.stringify(note), false);
+          await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify(note), false);
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2000);
           return true;

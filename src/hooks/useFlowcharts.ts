@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Flowchart } from '../types';
+import { Flowchart, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
 export function useFlowcharts() {
@@ -123,7 +123,7 @@ export function useFlowcharts() {
     
     // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft('flowchart', flowchart.id, flowchart.data || '', true);
+      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', true);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
@@ -138,7 +138,7 @@ export function useFlowcharts() {
         });
         if (res.ok) {
           // Clear sync pending
-          await localPersistence.saveDraft('flowchart', flowchart.id, flowchart.data || '', false);
+          await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2000);
           return true;
