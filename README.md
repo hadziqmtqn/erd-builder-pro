@@ -100,7 +100,13 @@ npm run start
 
 ## 📄 License
 
-This project is licensed under the [MIT License](./LICENSE).
+This project is licensed under the **[PolyForm Noncommercial License 1.0.0](./LICENSE)**. 
+
+### 🚫 Non-Commercial Use Only
+The software is free to use, modify, and distribute for **non-commercial purposes only**. Any use for revenue-generating activities or within for-profit organizations is strictly prohibited under these terms.
+
+### 💼 Commercial Licensing
+If you wish to use ERD Builder Pro for commercial purposes, business operations, or as part of a paid service, you must obtain a separate commercial license. Please contact the author for further information.
 
 ---
 

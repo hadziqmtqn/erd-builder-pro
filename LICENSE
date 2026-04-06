@@ -1,26 +1,62 @@
-Non-Commercial License
+PolyForm Noncommercial License 1.0.0
 
-Copyright (c) 2026 ERD Builder Pro
+<https://polyformproject.org/licenses/noncommercial/1.0.0>
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Acceptance
 
-1. The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
+In order to get any license under these terms, you must agree
+to them as both strict conditions and as part of the
+transaction granting you the license.  If you do not agree to
+these terms, you have no license and your use of the software
+is copyright infringement.
 
-2. The Software MAY NOT be used for commercial purposes. "Commercial purposes" 
-   includes any use of the Software to provide services to third parties for a 
-   fee, or any integration of the Software into a product or service that is 
-   sold for a fee.
+Licensed Rights
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The licensor grants you all rights in the software that would
+otherwise be infringed by anyway of using it, such as by
+copying, modifying, or distributing it, except for
+commercial purposes.
+
+Commercial Purposes
+
+Commercial purposes is any use of this software for any
+revenue-generating purpose, including:
+
+1. Sale or license of the software for a fee.
+
+2. Using the software to provide a service to others for a fee.
+
+3. Using the software to produce a product or provide a service
+   for a fee.
+
+4. Using the software for internal business purposes,
+   including, but not limited to, using it to develop or
+   deliver another product or service, or to manage business
+   operations.
+
+Any use by a for-profit organization is a commercial purpose.
+
+Redistribution
+
+You may redistribute the software only if you include a copy
+of these terms with every copy of the software you
+redistribute.
+
+No Other Rights
+
+These terms do not imply any other licenses or rights in any
+patents, trademarks, or other intellectual property of the
+licensor.
+
+Notices
+
+You must ensure that any copy of the software you redistribute
+includes every copyright and other proprietary notice the
+licensor included in the software.
+
+Disclaimer of Warranties
+
+AS FAR AS THE LAW ALLOWS, THE SOFTWARE IS PROVIDED AS IS,
+WITHOUT ANY WARRANTY OR CONDITION, AND THE LICENSOR WILL NOT
+BE LIABLE TO YOU FOR ANY DAMAGES ARISING OUT OF THESE TERMS
+OR YOUR USE OF THE SOFTWARE, ON ANY LEGAL THEORY.
