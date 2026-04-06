@@ -14,7 +14,8 @@ import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { X, Check } from 'lucide-react';
-
+import { Extension } from '@tiptap/core';
+import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 
 const MenuBar = ({ editor }: { editor: any }) => {
@@ -47,7 +48,13 @@ const MenuBar = ({ editor }: { editor: any }) => {
 
         const data = await response.json();
         if (data.url) {
-          editor.chain().focus().setImage({ src: data.url }).run();
+          editor.chain()
+            .focus()
+            .setImage({ src: data.url })
+            .run();
+          
+          // Use a separate command to focus the end after the image and auto-paragraph are inserted
+          editor.commands.focus('end');
         }
       } catch (error) {
         console.error('Error uploading image:', error);
@@ -176,30 +183,70 @@ interface TiptapEditorProps {
   onChange?: (content: string) => void;
 }
 
+// Custom extension to ensure an empty paragraph is always at the end
+const TrailingNode = Extension.create({
+  name: 'customTrailingNode',
+  addOptions() {
+    return {
+      node: 'paragraph',
+      notAfter: ['paragraph'],
+      extraAfter: ['image', 'table', 'taskList'],
+    };
+  },
+  addProseMirrorPlugins() {
+    const pluginKey = new PluginKey(this.name);
+    return [
+      new Plugin({
+        key: pluginKey,
+        appendTransaction: (transactions, oldState, newState) => {
+          const { doc, tr, schema } = newState;
+          const { node, notAfter, extraAfter = [] } = this.options;
+          const nodeType = schema.nodes[node];
+
+          if (!nodeType) {
+            return;
+          }
+
+          const lastChild = doc.lastChild;
+
+          if (!lastChild || notAfter.includes(lastChild.type.name)) {
+            return;
+          }
+
+          // If it's an extraAfter type (like image), or any other block that's not a paragraph
+          return tr.insert(doc.content.size, nodeType.create());
+        },
+      }),
+    ];
+  },
+});
+
 const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
-  const [, setUpdateTrigger] = React.useState(0);
+  const extensions = React.useMemo(() => [
+    TextStyle,
+    Color,
+    StarterKit,
+    TrailingNode,
+    ImageResize.configure({
+      inline: false,
+    } as any),
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+    }),
+    Table.configure({
+      resizable: true,
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    Placeholder.configure({
+      placeholder: 'Write something awesome...',
+    }),
+  ], []);
+
   const editor = useEditor({
-    extensions: [
-      TextStyle,
-      Color,
-      StarterKit,
-      ImageResize.configure({
-        inline: true,
-      } as any),
-      TaskList,
-      TaskItem.configure({
-        nested: true,
-      }),
-      Table.configure({
-        resizable: true,
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Placeholder.configure({
-        placeholder: 'Write something awesome...',
-      }),
-    ],
+    extensions,
     content: initialContent,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
@@ -207,17 +254,9 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         onChange(html);
       }
     },
-    onSelectionUpdate: ({ editor }) => {
-      // This forces a re-render on selection change to update toolbar active states
-      setUpdateTrigger(prev => prev + 1);
-    },
-    onTransaction: () => {
-      // This ensures re-render even for transactions without selection changes
-      setUpdateTrigger(prev => prev + 1);
-    },
     editorProps: {
       attributes: {
-        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px]',
+        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto',
       },
     },
   });
@@ -237,12 +276,18 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         </div>
       </div>
 
-      {/* Scrollable Editor Area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="max-w-4xl mx-auto p-6 sm:p-12">
+      {/* Scrollable Editor Area - The Desk */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar bg-neutral-950/50">
+        <div className="max-w-4xl mx-auto my-8 sm:my-12 p-8 sm:p-16 min-h-[calc(100vh-200px)] bg-card border border-border/40 shadow-2xl rounded-xl relative">
           
           {editor && (
-            <BubbleMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
+            <BubbleMenu 
+              editor={editor} 
+              pluginKey="textMenu"
+              shouldShow={({ from, to }) => from !== to}
+              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
+              className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
+            >
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}

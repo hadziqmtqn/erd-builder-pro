@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const router = Router();
@@ -20,10 +21,10 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   }
 
   const { data, error, count } = await query
-    .order("name", { ascending: true })
+    .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Supabase error fetching projects");
   
   // Safety slice to ensure we don't exceed the limit
   const slicedData = (data || []).slice(0, limit);
@@ -42,7 +43,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to create project");
   res.json(data);
 });
 
@@ -53,27 +54,27 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     .update({ name })
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to update project");
   res.json({ success: true });
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
-    .update({ is_deleted: true })
+    .update(getSafeUpdate(true))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to delete project");
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
-    .update({ is_deleted: false })
+    .update(getSafeUpdate(false))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to restore project");
   res.json({ success: true });
 });
 

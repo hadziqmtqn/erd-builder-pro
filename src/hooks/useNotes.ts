@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Note } from '../types';
+import { Note, DraftType } from '../types';
+import { localPersistence } from '../lib/localPersistence';
 
 export function useNotes() {
   const [notes, setNotesList] = useState<Note[]>([]);
@@ -119,24 +120,39 @@ export function useNotes() {
 
   const saveNote = async (note: Note) => {
     setSaveStatus('saving');
+    
+    // Save to local IndexedDB first (Instant)
     try {
-      const res = await fetch(`/api/notes/${note.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: note.title, content: note.content, project_id: note.project_id }),
-      });
-      if (res.ok) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
+      await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify(note), true);
+    } catch (e) {
+      console.warn('Local draft save failed', e);
+    }
+
+    // Try to save to server only if online
+    if (navigator.onLine) {
+      try {
+        const res = await fetch(`/api/notes/${note.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: note.title, content: note.content, project_id: note.project_id }),
+        });
+        if (res.ok) {
+          // Clear sync pending on success
+          await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify(note), false);
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2000);
+          return true;
+        } else {
+          setSaveStatus('error');
+        }
+      } catch (err) {
+        console.error('Error saving note to server:', err);
         setSaveStatus('error');
-        toast.error('Failed to save note');
       }
-    } catch (err) {
-      console.error('Error saving note:', err);
-      setSaveStatus('error');
-      toast.error('Error saving note');
+    } else {
+      // Offline: just stay in saving/saved state locally
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
     return false;
   };

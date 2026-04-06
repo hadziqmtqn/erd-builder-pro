@@ -95,11 +95,11 @@ export function TrashView({
                           {project.name}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {new Date(project.updated_at).toLocaleString()}
+                          {new Date(project.deleted_at || project.updated_at || project.created_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { restoreProject(project.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreProject(project.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project.id)}>
@@ -148,11 +148,11 @@ export function TrashView({
                           {file.projects?.name || '-'}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {new Date(file.updated_at).toLocaleString()}
+                          {new Date(file.deleted_at || file.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { restoreFile(file.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreFile(file.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleFilePermanentDelete(file.id)}>
@@ -201,11 +201,11 @@ export function TrashView({
                           {note.projects?.name || '-'}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {new Date(note.updated_at).toLocaleString()}
+                          {new Date(note.deleted_at || note.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { restoreNote(note.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreNote(note.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note.id)}>
@@ -254,11 +254,11 @@ export function TrashView({
                           {drawing.projects?.name || '-'}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {new Date(drawing.updated_at).toLocaleString()}
+                          {new Date(drawing.deleted_at || drawing.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { restoreDrawing(drawing.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreDrawing(drawing.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
@@ -306,11 +306,11 @@ export function TrashView({
                           {flowchart.projects?.name || '-'}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {new Date(flowchart.updated_at).toLocaleString()}
+                          {new Date(flowchart.deleted_at || flowchart.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => { restoreFlowchart(flowchart.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreFlowchart(flowchart.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart.id)}>

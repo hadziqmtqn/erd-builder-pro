@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { handleError, getSafeUpdate } from "../lib/utils.js";
 
 const router = Router();
 
@@ -26,23 +27,22 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   }
   // Otherwise (projectId === "all"), no project_id filter is applied for global view
 
+  // Optimization: Filter out flowcharts belonging to deleted projects at the database level
+  const { data: deletedProjects } = await supabase.from("projects").select("id").eq("is_deleted", true);
+  const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
+  
+  if (deletedIds.length > 0) {
+    query = query.not("project_id", "in", `(${deletedIds.join(",")})`);
+  }
+
   const { data, error, count } = await query
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) {
-    console.error("Supabase error fetching flowcharts:", error);
-    return res.status(500).json({ data: [], total: 0, error: error.message });
-  }
+  if (error) return handleError(res, error, "Supabase error fetching flowcharts");
   
-  const flowchartsData = data || [];
-  const filteredData = flowchartsData.filter((flowchart: any) => !flowchart.projects || !flowchart.projects.is_deleted);
-  
-  // Safety slice to ensure we don't exceed the limit after potential JS filtering
-  const slicedData = filteredData.slice(0, limit);
-
   res.json({ 
-    data: slicedData, 
+    data: data || [], 
     total: count || 0
   });
 });
@@ -55,7 +55,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to create flowchart");
   res.json(inserted);
 });
 
@@ -84,20 +84,20 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("flowcharts")
-    .update({ is_deleted: true })
+    .update(getSafeUpdate(true))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to delete flowchart");
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("flowcharts")
-    .update({ is_deleted: false })
+    .update(getSafeUpdate(false))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to restore flowchart");
   res.json({ success: true });
 });
 

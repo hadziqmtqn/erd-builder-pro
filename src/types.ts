@@ -1,3 +1,10 @@
+export enum DraftType {
+  ERD = 'erd',
+  NOTES = 'notes',
+  FLOWCHART = 'flowchart',
+  DRAWINGS = 'drawings',
+}
+
 export interface Column {
   id: string;
   name: string;
@@ -23,6 +30,8 @@ export interface Relationship {
   target_entity_id: string;
   source_column_id?: string;
   target_column_id?: string;
+  source_handle?: string;
+  target_handle?: string;
   type: string;
   label?: string;
 }
@@ -32,6 +41,7 @@ export interface Project {
   uid?: string;
   name: string;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
 }
 
@@ -42,6 +52,7 @@ export interface FileData {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
   entities: Entity[];
@@ -59,6 +70,7 @@ export interface Note {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +83,7 @@ export interface Drawing {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +96,7 @@ export interface Flowchart {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS projects (
   uid UUID DEFAULT gen_random_uuid() UNIQUE,
   name TEXT NOT NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS files (
   name TEXT NOT NULL,
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   viewport_x FLOAT DEFAULT 0,
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS notes (
   content TEXT DEFAULT '',
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -79,6 +82,7 @@ CREATE TABLE IF NOT EXISTS drawings (
   data TEXT DEFAULT '[]',
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -91,6 +95,7 @@ CREATE TABLE IF NOT EXISTS flowcharts (
   data TEXT DEFAULT '{"nodes":[], "edges":[]}',
   project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

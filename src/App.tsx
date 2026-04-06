@@ -38,9 +38,14 @@ import { useProjects } from './hooks/useProjects';
 import { useDrawings } from './hooks/useDrawings';
 import { useFlowcharts } from './hooks/useFlowcharts';
 import { useTrash } from './hooks/useTrash';
+import { useConnectionStatus } from './hooks/useConnectionStatus';
+import { useSyncService } from './hooks/useSyncService';
+import { usePWAInstall } from './hooks/usePWAInstall';
+import { localPersistence } from './lib/localPersistence';
+import { toast } from 'sonner';
 
 // Types
-import { Entity, FileData } from './types';
+import { Entity, FileData, DraftType } from './types';
 
 // UI
 import {
@@ -111,6 +116,27 @@ function AppContent() {
   } = useFlowcharts();
 
   const { trashData, fetchTrash } = useTrash();
+  const isOnline = useConnectionStatus();
+  useSyncService(isAuthenticated);
+  const { isInstallable, installApp } = usePWAInstall();
+
+  // Show install notification
+  useEffect(() => {
+    if (isInstallable) {
+      const hasSeenToast = sessionStorage.getItem('pwa-install-toast-shown');
+      if (!hasSeenToast) {
+        toast("✨ Enhance your experience", {
+          description: "Install ERD Builder Pro as a desktop app for offline access and better performance.",
+          action: {
+            label: "Install",
+            onClick: () => installApp(),
+          },
+          duration: 10000,
+        });
+        sessionStorage.setItem('pwa-install-toast-shown', 'true');
+      }
+    }
+  }, [isInstallable, installApp]);
 
   // React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
@@ -181,33 +207,80 @@ function AppContent() {
   // ERD Selection Logic
   const handleFileSelect = async (id: number) => {
     try {
+      // Check for local unsynced draft first
+      const draft = await localPersistence.getDraft(DraftType.ERD, id);
+      
       const res = await fetch(`/api/files/${id}`);
-      if (res.status === 401) {
-        return;
-      }
+      if (res.status === 401) return;
       const data: FileData = await res.json();
+      
       if (data.is_deleted) return;
 
       setActiveFileId(id);
       setView('erd');
 
-      const flowNodes: Node<Entity>[] = data.entities.map(e => ({
+      // Use draft data if it exists and is unsynced
+      let finalData = data;
+      if (draft && draft.sync_pending) {
+        try {
+          const parsedDraft = JSON.parse(draft.data);
+          // @ts-ignore
+          finalData = { ...data, entities: parsedDraft.nodes.map(n => ({ ...n.data, x: n.position.x, y: n.position.y })), relationships: parsedDraft.edges.map(e => ({
+            id: e.id,
+            source_entity_id: e.source,
+            target_entity_id: e.target,
+            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            source_handle: e.sourceHandle || undefined,
+            target_handle: e.targetHandle || undefined,
+            label: e.label
+          })), viewport_x: parsedDraft.viewport.x, viewport_y: parsedDraft.viewport.y, viewport_zoom: parsedDraft.viewport.zoom };
+          toast.info("Loaded unsynced local draft");
+        } catch (e) {}
+      }
+
+      const flowNodes: Node<Entity>[] = finalData.entities.map(e => ({
         id: e.id,
         type: 'entity',
         position: { x: e.x, y: e.y },
         data: e,
       }));
 
-      const flowEdges: Edge[] = data.relationships.map(r => ({
-        id: r.id,
-        source: r.source_entity_id,
-        target: r.target_entity_id,
-        sourceHandle: r.source_column_id ? `col-${r.source_column_id}-source` : undefined,
-        targetHandle: r.target_column_id ? `col-${r.target_column_id}-target` : undefined,
-        label: r.label,
-        type: 'smoothstep',
-        animated: true,
-      }));
+      const flowEdges: Edge[] = finalData.relationships.map(r => {
+        const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
+        const targetEntity = finalData.entities.find(e => e.id === r.target_entity_id);
+        
+        let sHandle = r.source_handle;
+        let tHandle = r.target_handle;
+
+        // Smart Heuristic: If no specific handle saved, find the most logical orientation
+        if (!sHandle && sourceEntity && targetEntity) {
+          if (sourceEntity.x < targetEntity.x) {
+            sHandle = `col-${r.source_column_id}-source`; // Right side
+          } else {
+            sHandle = `col-${r.source_column_id}-source-l`; // Left side
+          }
+        }
+
+        if (!tHandle && sourceEntity && targetEntity) {
+          if (sourceEntity.x < targetEntity.x) {
+            tHandle = `col-${r.target_column_id}-target`; // Left side
+          } else {
+            tHandle = `col-${r.target_column_id}-target-r`; // Right side
+          }
+        }
+
+        return {
+          id: r.id,
+          source: r.source_entity_id,
+          target: r.target_entity_id,
+          sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
+          targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
+          label: r.label,
+          type: 'smoothstep',
+          animated: true,
+        };
+      });
 
       setNodes(flowNodes);
       setEdges(flowEdges);
@@ -275,7 +348,7 @@ function AppContent() {
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeFileId && isAuthenticated && view === 'erd') {
-      saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 1000);
+      saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 3000);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram]);
@@ -284,6 +357,17 @@ function AppContent() {
   const handleNoteSelect = async (id: number) => {
     const note = notes.find(n => n.id === id);
     if (note?.is_deleted) return;
+    
+    // Check for local draft
+    const draft = await localPersistence.getDraft(DraftType.NOTES, id);
+    if (draft && draft.sync_pending) {
+      try {
+        const parsed = JSON.parse(draft.data);
+        setNotesList(prev => prev.map(n => n.id === id ? { ...n, content: parsed.content } : n));
+        toast.info("Loaded unsynced local note draft");
+      } catch (e) {}
+    }
+
     setActiveNoteId(id);
     setView('notes');
   };
@@ -322,7 +406,7 @@ function AppContent() {
         title: notes.find(n => n.id === activeNoteId)?.title || '',
         project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeNoteId, notes, saveNote, setNotesList]);
 
   const handleDrawingChange = useCallback((data: string) => {
@@ -336,7 +420,7 @@ function AppContent() {
         title: drawings.find(d => d.id === activeDrawingId)?.title || '',
         project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
   
   const handleFlowchartChange = useCallback((nodes: any[], edges: any[]) => {
@@ -351,7 +435,7 @@ function AppContent() {
         title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
         project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
       } as any);
-    }, 1000);
+    }, 3000);
   }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
     
   // Creation Handlers
@@ -486,8 +570,52 @@ function AppContent() {
   const activeFileName = view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null;
   const activeProjectName = view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null;
 
+  const handleViewChange = (newView: typeof view) => {
+    if (!isOnline) {
+      toast.error("Offline Mode: Navigation is disabled to prevent data mismatch.", {
+        description: "Please restore your connection to switch between documents.",
+        duration: 5000,
+      });
+      return;
+    }
+    setView(newView);
+    if (newView !== 'trash') setSidebarView(newView);
+  };
+
   return (
     <SidebarProvider className="h-svh overflow-hidden">
+      {/* Offline Overlay */}
+      {!isOnline && (
+        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md w-full p-8 bg-card border border-destructive/20 rounded-3xl shadow-2xl text-center space-y-6"
+          >
+            <div className="w-16 h-16 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Database className="w-8 h-8 text-destructive" />
+              </motion.div>
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold tracking-tight">Offline Connection lost</h2>
+              <p className="text-muted-foreground text-balanced lowercase first-letter:uppercase">
+                koneksi internet terputus. jangan khawatir, fitur **autosave** lokal kami tetap aktif menyimpan perubahan di perangkat anda. namun, demi keamanan data, anda tidak dapat beralih halaman hingga koneksi kembali normal.
+              </p>
+            </div>
+            <div className="pt-4 flex flex-col gap-3">
+              <div className="flex items-center justify-center gap-2 text-xs font-medium text-destructive animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-destructive" />
+                waiting for reconnection...
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <AppSidebar 
         files={files} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects} trashData={trashData}
         activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
@@ -501,7 +629,7 @@ function AppContent() {
         onLogout={handleLogout} saveStatus={saveStatus}
         onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
         sidebarView={sidebarView}
-        onViewChange={(newView) => { setView(newView); if (newView !== 'trash') setSidebarView(newView); }}
+        onViewChange={handleViewChange}
         hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
         onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)}
         onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
@@ -511,6 +639,9 @@ function AppContent() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         user={user}
+        isOnline={isOnline}
+        isInstallable={isInstallable}
+        onInstall={installApp}
       />
       <SidebarInset>
         <MainHeader 

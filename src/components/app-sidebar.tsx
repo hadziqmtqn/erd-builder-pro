@@ -1,64 +1,38 @@
 import * as React from "react"
+import { useState, useEffect, useRef } from "react"
 import {
-  AudioWaveform,
-  BookOpen,
-  Bot,
-  Command,
-  Frame,
-  GalleryVerticalEnd,
-  Map,
-  PieChart,
-  Settings2,
-  SquareTerminal,
   Database,
   StickyNote,
   PenTool,
-  Trash2,
-  Plus,
   Folder,
-  MoreHorizontal,
-  Edit2,
-  Trash,
-  FolderPlus,
   Search,
-  ChevronRight,
   Network,
 } from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { Button } from "@/components/ui/button"
+import { motion } from "framer-motion"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInput,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 import { FileData, Project, Note, Drawing, Flowchart } from "../types"
 
@@ -68,13 +42,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   drawings: Drawing[];
   flowcharts: Flowchart[];
   projects: Project[];
-  trashData: {
-    files: FileData[];
-    notes: Note[];
-    drawings: Drawing[];
-    flowcharts: Flowchart[];
-    projects: Project[];
-  };
   activeFileId: number | null;
   activeNoteId: number | null;
   activeDrawingId: number | null;
@@ -95,20 +62,10 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onProjectCreate: (name: string) => void;
   onProjectUpdate: (id: number, name: string) => void;
   onProjectDelete: (id: number) => void;
-  onProjectRestore: (id: number) => void;
   onFileDelete: (id: number) => void;
   onNoteDelete: (id: number) => void;
   onDrawingDelete: (id: number) => void;
   onFlowchartDelete: (id: number) => void;
-  onFileRestore: (id: number) => void;
-  onNoteRestore: (id: number) => void;
-  onDrawingRestore: (id: number) => void;
-  onFlowchartRestore: (id: number) => void;
-  onFilePermanentDelete: (id: number) => void;
-  onNotePermanentDelete: (id: number) => void;
-  onDrawingPermanentDelete: (id: number) => void;
-  onFlowchartPermanentDelete: (id: number) => void;
-  onProjectPermanentDelete: (id: number) => void;
   onFileUpdate: (id: number, name: string) => void;
   onNoteUpdate: (id: number, title: string) => void;
   onDrawingUpdate: (id: number, title: string) => void;
@@ -132,6 +89,9 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   user: any;
+  isOnline: boolean;
+  isInstallable?: boolean;
+  onInstall?: () => void;
 }
 
 export function AppSidebar({
@@ -140,7 +100,6 @@ export function AppSidebar({
   drawings,
   flowcharts,
   projects,
-  trashData,
   activeFileId,
   activeNoteId,
   activeDrawingId,
@@ -161,20 +120,10 @@ export function AppSidebar({
   onProjectCreate,
   onProjectUpdate,
   onProjectDelete,
-  onProjectRestore,
   onFileDelete,
   onNoteDelete,
   onDrawingDelete,
   onFlowchartDelete,
-  onFileRestore,
-  onNoteRestore,
-  onDrawingRestore,
-  onFlowchartRestore,
-  onFilePermanentDelete,
-  onNotePermanentDelete,
-  onDrawingPermanentDelete,
-  onFlowchartPermanentDelete,
-  onProjectPermanentDelete,
   onFileUpdate,
   onNoteUpdate,
   onDrawingUpdate,
@@ -198,8 +147,41 @@ export function AppSidebar({
   searchQuery,
   onSearchChange,
   user,
+  isOnline,
+  isInstallable,
+  onInstall,
   ...props
 }: AppSidebarProps) {
+  const { state, setOpen } = useSidebar();
+  const isCollapsed = state === "collapsed";
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isMac, setIsMac] = useState(false);
+
+  useEffect(() => {
+    // Better OS detection
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsMac(userAgent.includes('mac') || userAgent.includes('iphone') || userAgent.includes('ipad'));
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        
+        // Auto-expand if collapsed
+        if (state === "collapsed") {
+          setOpen(true);
+        }
+
+        // Delay focus slightly to allow state transition if needed
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select(); // Select existing text for quick re-search
+        }, 50);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state, setOpen]);
   // Navigation items for the main section
   const navMain = [
     {
@@ -219,20 +201,20 @@ export function AppSidebar({
       onClick: () => onViewChange('erd'),
     },
     {
-      title: "Drawings",
-      url: "#",
-      icon: PenTool,
-      iconClassName: "text-purple-400",
-      isActive: view === 'drawings',
-      onClick: () => onViewChange('drawings'),
-    },
-    {
       title: "Flowchart",
       url: "#",
       icon: Network,
       iconClassName: "text-green-400",
       isActive: view === 'flowchart',
       onClick: () => onViewChange('flowchart'),
+    },
+    {
+      title: "Drawings",
+      url: "#",
+      icon: PenTool,
+      iconClassName: "text-purple-400",
+      isActive: view === 'drawings',
+      onClick: () => onViewChange('drawings'),
     },
   ]
 
@@ -251,7 +233,7 @@ export function AppSidebar({
         <TeamSwitcher 
           teams={[
             {
-              name: "ERD Pro",
+              name: "ERD Builder Pro",
               logo: Database,
               plan: "Workspace",
             }
@@ -260,16 +242,31 @@ export function AppSidebar({
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
             <SidebarInput 
+              ref={searchInputRef}
               placeholder={`Search ${sidebarView === 'erd' ? 'diagrams' : sidebarView === 'notes' ? 'notes' : 'drawings'}...`}
-              className="pl-8"
+              className="pl-8 pr-12"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
+              disabled={!isOnline}
             />
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground transition-opacity group-disabled:opacity-50" />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1 opacity-50 group-data-[collapsible=icon]:hidden">
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                <span className="text-xs">{isMac ? '⌘' : 'Ctrl'}</span>K
+              </kbd>
+            </div>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
-          <SidebarGroupLabel>Features</SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            Features
+            {!isOnline && (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-[10px] font-bold text-destructive uppercase tracking-wider">
+                <span className="w-1 h-1 rounded-full bg-destructive animate-pulse" />
+                Offline
+              </span>
+            )}
+          </SidebarGroupLabel>
           <NavMain items={navMain} />
         </SidebarGroup>
       </SidebarHeader>
@@ -326,6 +323,36 @@ export function AppSidebar({
         />
       </SidebarContent>
       <SidebarFooter>
+        {isInstallable && (
+          <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button 
+                  variant="outline" 
+                  size={isCollapsed ? "icon" : "sm"} 
+                  className={cn(
+                    "border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-300",
+                    isCollapsed ? "size-9 p-0" : "w-full justify-start gap-2 h-9"
+                  )}
+                  onClick={onInstall}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 15, -15, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Database className="w-4 h-4" />
+                  </motion.div>
+                  {!isCollapsed && <span>Install App</span>}
+                </Button>
+              } />
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  Install App
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+        )}
         <NavUser 
           user={user} 
           onLogout={onLogout}
