@@ -313,19 +313,21 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   )
 }
 
-function SidebarInput({
-  className,
-  ...props
-}: React.ComponentProps<typeof Input>) {
+const SidebarInput = React.forwardRef<
+  HTMLInputElement,
+  React.ComponentProps<typeof Input>
+>(({ className, ...props }, ref) => {
   return (
     <Input
+      ref={ref}
       data-slot="sidebar-input"
       data-sidebar="input"
       className={cn("h-8 w-full bg-background shadow-none", className)}
       {...props}
     />
   )
-}
+})
+SidebarInput.displayName = "SidebarInput"
 
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (

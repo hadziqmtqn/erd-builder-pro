@@ -1,27 +1,11 @@
 import * as React from "react"
+import { useState, useEffect, useRef } from "react"
 import {
-  AudioWaveform,
-  BookOpen,
-  Bot,
-  Command,
-  Frame,
-  GalleryVerticalEnd,
-  Map,
-  PieChart,
-  Settings2,
-  SquareTerminal,
   Database,
   StickyNote,
   PenTool,
-  Trash2,
-  Plus,
   Folder,
-  MoreHorizontal,
-  Edit2,
-  Trash,
-  FolderPlus,
   Search,
-  ChevronRight,
   Network,
 } from "lucide-react"
 
@@ -34,31 +18,13 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInput,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 import { FileData, Project, Note, Drawing, Flowchart } from "../types"
 
@@ -68,13 +34,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   drawings: Drawing[];
   flowcharts: Flowchart[];
   projects: Project[];
-  trashData: {
-    files: FileData[];
-    notes: Note[];
-    drawings: Drawing[];
-    flowcharts: Flowchart[];
-    projects: Project[];
-  };
   activeFileId: number | null;
   activeNoteId: number | null;
   activeDrawingId: number | null;
@@ -95,20 +54,10 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onProjectCreate: (name: string) => void;
   onProjectUpdate: (id: number, name: string) => void;
   onProjectDelete: (id: number) => void;
-  onProjectRestore: (id: number) => void;
   onFileDelete: (id: number) => void;
   onNoteDelete: (id: number) => void;
   onDrawingDelete: (id: number) => void;
   onFlowchartDelete: (id: number) => void;
-  onFileRestore: (id: number) => void;
-  onNoteRestore: (id: number) => void;
-  onDrawingRestore: (id: number) => void;
-  onFlowchartRestore: (id: number) => void;
-  onFilePermanentDelete: (id: number) => void;
-  onNotePermanentDelete: (id: number) => void;
-  onDrawingPermanentDelete: (id: number) => void;
-  onFlowchartPermanentDelete: (id: number) => void;
-  onProjectPermanentDelete: (id: number) => void;
   onFileUpdate: (id: number, name: string) => void;
   onNoteUpdate: (id: number, title: string) => void;
   onDrawingUpdate: (id: number, title: string) => void;
@@ -141,7 +90,6 @@ export function AppSidebar({
   drawings,
   flowcharts,
   projects,
-  trashData,
   activeFileId,
   activeNoteId,
   activeDrawingId,
@@ -162,20 +110,10 @@ export function AppSidebar({
   onProjectCreate,
   onProjectUpdate,
   onProjectDelete,
-  onProjectRestore,
   onFileDelete,
   onNoteDelete,
   onDrawingDelete,
   onFlowchartDelete,
-  onFileRestore,
-  onNoteRestore,
-  onDrawingRestore,
-  onFlowchartRestore,
-  onFilePermanentDelete,
-  onNotePermanentDelete,
-  onDrawingPermanentDelete,
-  onFlowchartPermanentDelete,
-  onProjectPermanentDelete,
   onFileUpdate,
   onNoteUpdate,
   onDrawingUpdate,
@@ -202,6 +140,35 @@ export function AppSidebar({
   isOnline,
   ...props
 }: AppSidebarProps) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isMac, setIsMac] = useState(false);
+  const { setOpen, state } = useSidebar();
+
+  useEffect(() => {
+    // Better OS detection
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsMac(userAgent.includes('mac') || userAgent.includes('iphone') || userAgent.includes('ipad'));
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        
+        // Auto-expand if collapsed
+        if (state === "collapsed") {
+          setOpen(true);
+        }
+
+        // Delay focus slightly to allow state transition if needed
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select(); // Select existing text for quick re-search
+        }, 50);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state, setOpen]);
   // Navigation items for the main section
   const navMain = [
     {
@@ -262,13 +229,19 @@ export function AppSidebar({
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
             <SidebarInput 
+              ref={searchInputRef}
               placeholder={`Search ${sidebarView === 'erd' ? 'diagrams' : sidebarView === 'notes' ? 'notes' : 'drawings'}...`}
-              className="pl-8"
+              className="pl-8 pr-12"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               disabled={!isOnline}
             />
             <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground transition-opacity group-disabled:opacity-50" />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1 opacity-50 group-data-[collapsible=icon]:hidden">
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                <span className="text-xs">{isMac ? '⌘' : 'Ctrl'}</span>K
+              </kbd>
+            </div>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
