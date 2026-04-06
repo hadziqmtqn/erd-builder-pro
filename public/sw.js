@@ -2,7 +2,10 @@ const CACHE_NAME = 'erd-builder-cache-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/favicon.png', // Corrected name
+  '/favicon.png',
+  '/manifest.webmanifest',
+  '/icons/icon-192x192-any.svg',
+  '/icons/icon-512x512-any.svg',
 ];
 
 // Install Event: Precaching core assets (resilient version)
