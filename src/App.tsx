@@ -40,6 +40,7 @@ import { useFlowcharts } from './hooks/useFlowcharts';
 import { useTrash } from './hooks/useTrash';
 import { useConnectionStatus } from './hooks/useConnectionStatus';
 import { useSyncService } from './hooks/useSyncService';
+import { usePWAInstall } from './hooks/usePWAInstall';
 import { localPersistence } from './lib/localPersistence';
 import { toast } from 'sonner';
 
@@ -117,6 +118,25 @@ function AppContent() {
   const { trashData, fetchTrash } = useTrash();
   const isOnline = useConnectionStatus();
   useSyncService(isAuthenticated);
+  const { isInstallable, installApp } = usePWAInstall();
+
+  // Show install notification
+  useEffect(() => {
+    if (isInstallable) {
+      const hasSeenToast = sessionStorage.getItem('pwa-install-toast-shown');
+      if (!hasSeenToast) {
+        toast("✨ Enhance your experience", {
+          description: "Install ERD Builder Pro as a desktop app for offline access and better performance.",
+          action: {
+            label: "Install",
+            onClick: () => installApp(),
+          },
+          duration: 10000,
+        });
+        sessionStorage.setItem('pwa-install-toast-shown', 'true');
+      }
+    }
+  }, [isInstallable, installApp]);
 
   // React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
@@ -620,6 +640,8 @@ function AppContent() {
         onSearchChange={setSearchQuery}
         user={user}
         isOnline={isOnline}
+        isInstallable={isInstallable}
+        onInstall={installApp}
       />
       <SidebarInset>
         <MainHeader 

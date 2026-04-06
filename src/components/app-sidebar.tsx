@@ -9,10 +9,13 @@ import {
   Network,
 } from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { Button } from "@/components/ui/button"
+import { motion } from "framer-motion"
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +28,11 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 import { FileData, Project, Note, Drawing, Flowchart } from "../types"
 
@@ -82,6 +90,8 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onSearchChange: (query: string) => void;
   user: any;
   isOnline: boolean;
+  isInstallable?: boolean;
+  onInstall?: () => void;
 }
 
 export function AppSidebar({
@@ -138,11 +148,14 @@ export function AppSidebar({
   onSearchChange,
   user,
   isOnline,
+  isInstallable,
+  onInstall,
   ...props
 }: AppSidebarProps) {
+  const { state, setOpen } = useSidebar();
+  const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMac, setIsMac] = useState(false);
-  const { setOpen, state } = useSidebar();
 
   useEffect(() => {
     // Better OS detection
@@ -220,7 +233,7 @@ export function AppSidebar({
         <TeamSwitcher 
           teams={[
             {
-              name: "ERD Pro",
+              name: "ERD Builder Pro",
               logo: Database,
               plan: "Workspace",
             }
@@ -310,6 +323,36 @@ export function AppSidebar({
         />
       </SidebarContent>
       <SidebarFooter>
+        {isInstallable && (
+          <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button 
+                  variant="outline" 
+                  size={isCollapsed ? "icon" : "sm"} 
+                  className={cn(
+                    "border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-300",
+                    isCollapsed ? "size-9 p-0" : "w-full justify-start gap-2 h-9"
+                  )}
+                  onClick={onInstall}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 15, -15, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Database className="w-4 h-4" />
+                  </motion.div>
+                  {!isCollapsed && <span>Install App</span>}
+                </Button>
+              } />
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  Install App
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+        )}
         <NavUser 
           user={user} 
           onLogout={onLogout}
