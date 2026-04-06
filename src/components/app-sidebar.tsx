@@ -132,6 +132,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   user: any;
+  isOnline: boolean;
 }
 
 export function AppSidebar({
@@ -198,6 +199,7 @@ export function AppSidebar({
   searchQuery,
   onSearchChange,
   user,
+  isOnline,
   ...props
 }: AppSidebarProps) {
   // Navigation items for the main section
@@ -264,12 +266,21 @@ export function AppSidebar({
               className="pl-8"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
+              disabled={!isOnline}
             />
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground transition-opacity group-disabled:opacity-50" />
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
-          <SidebarGroupLabel>Features</SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            Features
+            {!isOnline && (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-[10px] font-bold text-destructive uppercase tracking-wider">
+                <span className="w-1 h-1 rounded-full bg-destructive animate-pulse" />
+                Offline
+              </span>
+            )}
+          </SidebarGroupLabel>
           <NavMain items={navMain} />
         </SidebarGroup>
       </SidebarHeader>

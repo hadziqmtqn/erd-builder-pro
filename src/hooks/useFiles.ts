@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
 import { FileData, Entity, Relationship } from '../types';
+import { localPersistence } from '../lib/localPersistence';
 
 export function useFiles(isAuthenticated: boolean | null, view: string) {
   const [files, setFiles] = useState<FileData[]>([]);
@@ -149,38 +150,55 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     if (!activeFileId || !isAuthenticated || view !== 'erd') return;
     setSaveStatus('saving');
 
-    const entities: Entity[] = nodes.map(n => ({
-      ...n.data,
-      x: n.position.x,
-      y: n.position.y,
-    })) as Entity[];
-
-    const relationships: Relationship[] = edges.map(e => ({
-      id: e.id,
-      source_entity_id: e.source,
-      target_entity_id: e.target,
-      source_column_id: e.sourceHandle ? e.sourceHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
-      target_column_id: e.targetHandle ? e.targetHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
-      type: 'one-to-many',
-      label: e.label as string,
-    }));
-
+    const data = JSON.stringify({ nodes, edges, viewport });
+    
+    // Save to local IndexedDB first
     try {
-      const res = await fetch(`/api/files/save/${activeFileId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entities, relationships, viewport }),
-      });
-      if (res.ok) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } else {
+      await localPersistence.saveDraft('erd', activeFileId, data, true);
+    } catch (e) {
+      console.warn('Local draft save failed', e);
+    }
+
+    // Try to save to server only if online
+    if (navigator.onLine) {
+      try {
+        const entities: Entity[] = nodes.map(n => ({
+          ...n.data,
+          x: n.position.x,
+          y: n.position.y,
+        })) as Entity[];
+
+        const relationships: Relationship[] = edges.map(e => ({
+          id: e.id,
+          source_entity_id: e.source,
+          target_entity_id: e.target,
+          source_column_id: e.sourceHandle ? e.sourceHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
+          target_column_id: e.targetHandle ? e.targetHandle.replace('col-', '').replace('-source', '').replace('-target', '') : undefined,
+          type: 'one-to-many',
+          label: e.label as string,
+        }));
+
+        const res = await fetch(`/api/files/save/${activeFileId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entities, relationships, viewport }),
+        });
+        if (res.ok) {
+          // Clear sync pending
+          await localPersistence.saveDraft('erd', activeFileId, data, false);
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2000);
+        } else {
+          setSaveStatus('error');
+        }
+      } catch (err) {
         setSaveStatus('error');
-        toast.error('Failed to save diagram');
+        console.error('Error saving diagram to server:', err);
       }
-    } catch (err) {
-      setSaveStatus('error');
-      toast.error('Error saving diagram');
+    } else {
+      // Offline: just stay in saving/saved state locally
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
   }, [activeFileId, isAuthenticated, view]);
 

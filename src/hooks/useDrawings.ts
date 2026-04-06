@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Drawing } from '../types';
+import { localPersistence } from '../lib/localPersistence';
 
 export function useDrawings() {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -119,24 +120,39 @@ export function useDrawings() {
 
   const saveDrawing = async (drawing: Drawing) => {
     setSaveStatus('saving');
+    
+    // Save to local IndexedDB first
     try {
-      const res = await fetch(`/api/drawings/${drawing.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
-      });
-      if (res.ok) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
+      await localPersistence.saveDraft('drawings', drawing.id, drawing.data || '', true);
+    } catch (e) {
+      console.warn('Local draft save failed', e);
+    }
+
+    // Try to save to server only if online
+    if (navigator.onLine) {
+      try {
+        const res = await fetch(`/api/drawings/${drawing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
+        });
+        if (res.ok) {
+          // Clear sync pending
+          await localPersistence.saveDraft('drawings', drawing.id, drawing.data || '', false);
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2000);
+          return true;
+        } else {
+          setSaveStatus('error');
+        }
+      } catch (err) {
+        console.error('Error saving drawing to server:', err);
         setSaveStatus('error');
-        toast.error('Failed to save drawing');
       }
-    } catch (err) {
-      console.error('Error saving drawing:', err);
-      setSaveStatus('error');
-      toast.error('Error saving drawing');
+    } else {
+      // Offline: just stay in saving/saved state locally
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
     return false;
   };

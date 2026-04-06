@@ -19,7 +19,7 @@ window.fetch = async (...args) => {
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
   
-  if (response.status === 401 && !isAuthRoute) {
+  if (response.status === 401 && !isAuthRoute && navigator.onLine) {
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   

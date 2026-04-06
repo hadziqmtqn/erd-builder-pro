@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Flowchart } from '../types';
+import { localPersistence } from '../lib/localPersistence';
 
 export function useFlowcharts() {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
@@ -119,24 +120,39 @@ export function useFlowcharts() {
 
   const saveFlowchart = async (flowchart: Flowchart) => {
     setSaveStatus('saving');
+    
+    // Save to local IndexedDB first
     try {
-      const res = await fetch(`/api/flowcharts/${flowchart.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: flowchart.title, data: flowchart.data, project_id: flowchart.project_id }),
-      });
-      if (res.ok) {
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
+      await localPersistence.saveDraft('flowchart', flowchart.id, flowchart.data || '', true);
+    } catch (e) {
+      console.warn('Local draft save failed', e);
+    }
+
+    // Try to save to server only if online
+    if (navigator.onLine) {
+      try {
+        const res = await fetch(`/api/flowcharts/${flowchart.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: flowchart.title, data: flowchart.data, project_id: flowchart.project_id }),
+        });
+        if (res.ok) {
+          // Clear sync pending
+          await localPersistence.saveDraft('flowchart', flowchart.id, flowchart.data || '', false);
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 2000);
+          return true;
+        } else {
+          setSaveStatus('error');
+        }
+      } catch (err) {
+        console.error('Error saving flowchart to server:', err);
         setSaveStatus('error');
-        toast.error('Failed to save flowchart');
       }
-    } catch (err) {
-      console.error('Error saving flowchart:', err);
-      setSaveStatus('error');
-      toast.error('Error saving flowchart');
+    } else {
+      // Offline: just stay in saving/saved state locally
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
     return false;
   };
