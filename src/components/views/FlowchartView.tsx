@@ -84,6 +84,7 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge({
       ...params,
+      type: 'smoothstep',
       style: { stroke: '#b1b1b7' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
     } as Edge, eds)),
