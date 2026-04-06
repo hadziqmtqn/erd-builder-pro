@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const router = Router();
@@ -15,35 +16,34 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     .from("notes")
     .select("*, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false);
-
+ 
   if (q && q.trim()) {
     query = query.ilike("title", `%${q.trim()}%`);
   }
-
+ 
   if (projectId === "null") {
     query = query.is("project_id", null);
   } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
     query = query.eq("project_id", parseInt(projectId));
   }
   // Otherwise (projectId === "all"), no project_id filter is applied for global view
+ 
+  // Optimization: Filter out notes belonging to deleted projects at the database level
+  const { data: deletedProjects } = await supabase.from("projects").select("id").eq("is_deleted", true);
+  const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
+  
+  if (deletedIds.length > 0) {
+    query = query.not("project_id", "in", `(${deletedIds.join(",")})`);
+  }
 
   const { data, error, count } = await query
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) {
-    console.error("Supabase error fetching notes:", error);
-    return res.status(500).json({ data: [], total: 0, error: error.message });
-  }
+  if (error) return handleError(res, error, "Supabase error fetching notes");
   
-  const notesData = data || [];
-  const filteredData = notesData.filter((note: any) => !note.projects || !note.projects.is_deleted);
-  
-  // Safety slice to ensure we don't exceed the limit after potential JS filtering
-  const slicedData = filteredData.slice(0, limit);
-
   res.json({ 
-    data: slicedData, 
+    data: data || [], 
     total: count || 0
   });
 });
@@ -56,7 +56,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to create note");
   res.json(data);
 });
 
@@ -78,33 +78,27 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     .update({ title, content, project_id: project_id || null, updated_at: new Date().toISOString() })
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to update note");
   res.json({ success: true });
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
-    .update({ 
-      is_deleted: true,
-      deleted_at: new Date().toISOString()
-    })
+    .update(getSafeUpdate(true))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to delete note");
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
-    .update({ 
-      is_deleted: false,
-      deleted_at: null
-    })
+    .update(getSafeUpdate(false))
     .eq("id", req.params.id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return handleError(res, error, "Failed to restore note");
   res.json({ success: true });
 });
 
