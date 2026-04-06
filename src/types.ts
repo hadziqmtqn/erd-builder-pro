@@ -41,6 +41,7 @@ export interface Project {
   uid?: string;
   name: string;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
 }
 
@@ -51,6 +52,7 @@ export interface FileData {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
   entities: Entity[];
@@ -68,6 +70,7 @@ export interface Note {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -80,6 +83,7 @@ export interface Drawing {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -92,6 +96,7 @@ export interface Flowchart {
   project_id: number | null;
   projects?: Project;
   is_deleted: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }

@@ -60,7 +60,10 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
-    .update({ is_deleted: true })
+    .update({ 
+      is_deleted: true,
+      deleted_at: new Date().toISOString()
+    })
     .eq("id", req.params.id);
 
   if (error) return res.status(500).json({ error: error.message });
@@ -70,7 +73,10 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("projects")
-    .update({ is_deleted: false })
+    .update({ 
+      is_deleted: false,
+      deleted_at: null
+    })
     .eq("id", req.params.id);
 
   if (error) return res.status(500).json({ error: error.message });
