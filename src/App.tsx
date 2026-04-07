@@ -466,7 +466,23 @@ function AppContent() {
     try {
       const endpoint = type === 'erd' ? 'files' : type;
       const res = await fetch(`/api/${endpoint}/public/${uid}`);
-      if (!res.ok) throw new Error("Document not found");
+      
+      if (!res.ok) {
+        let errorMessage = "Document not found or access denied";
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // If not JSON, it might be the SPA HTML or a generic 404
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Received invalid response from server");
+      }
+
       const data = await res.json();
       
       setPublicData(data);
@@ -749,6 +765,7 @@ function AppContent() {
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
           currentSaveStatus={isPublicView ? 'saved' : currentSaveStatus}
           activeFileUid={activeFileUid}
+          isPublicView={isPublicView}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">

@@ -13,7 +13,6 @@ import {
 import { Share2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { ShareModal } from "./modals/ShareModal";
-
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
@@ -22,6 +21,7 @@ interface MainHeaderProps {
   hasActiveItem: boolean;
   currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   activeFileUid?: string;
+  isPublicView?: boolean;
 }
 
 export function MainHeader({
@@ -31,24 +31,31 @@ export function MainHeader({
   view,
   hasActiveItem,
   currentSaveStatus,
-  activeFileUid
+  activeFileUid,
+  isPublicView = false
 }: MainHeaderProps) {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden">
+    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
       <div className="flex items-center gap-2 px-4 min-w-0 flex-1">
-        <SidebarTrigger className="-ml-1 shrink-0" />
-        <Separator orientation="vertical" className="h-4 shrink-0 bg-border/50" />
+        {!isPublicView && (
+          <>
+            <SidebarTrigger className="-ml-1 shrink-0" />
+            <Separator orientation="vertical" className="h-4 shrink-0 bg-border/50" />
+          </>
+        )}
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
-            <BreadcrumbItem className="shrink-0 hidden sm:block">
-              <BreadcrumbPage className="font-medium text-muted-foreground">
-                {featureLabel}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
+            {!isPublicView && (
+              <BreadcrumbItem className="shrink-0 hidden sm:block">
+                <BreadcrumbPage className="font-medium text-muted-foreground">
+                  {featureLabel}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            )}
             
-            {activeProjectName && (
+            {!isPublicView && activeProjectName && (
               <>
                 <BreadcrumbSeparator className="shrink-0 hidden sm:block" />
                 <BreadcrumbItem className="min-w-0 shrink">
@@ -59,7 +66,7 @@ export function MainHeader({
 
             {activeFileName && (
               <>
-                <BreadcrumbSeparator className="shrink-0" />
+                {!isPublicView && <BreadcrumbSeparator className="shrink-0" />}
                 <BreadcrumbItem className="min-w-0 shrink">
                   <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
                 </BreadcrumbItem>
@@ -82,12 +89,14 @@ export function MainHeader({
                 <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Share</span>
               </Button>
               
-              <div className="flex items-center gap-2 shrink-0">
-                <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
-                  {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-                </span>
-              </div>
+              {!isPublicView && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                  <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
+                    {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {activeFileUid && (
@@ -97,6 +106,7 @@ export function MainHeader({
                 documentType={view as any}
                 documentUid={activeFileUid}
                 documentTitle={activeFileName || 'Untitled'}
+                isPublicView={isPublicView}
               />
             )}
           </>

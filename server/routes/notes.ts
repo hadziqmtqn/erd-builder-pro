@@ -60,22 +60,22 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   res.json(data);
 });
 
-router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("notes")
-    .select("*")
-    .eq("id", req.params.id)
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
     .single();
 
   if (error || !data) return res.status(404).json({ error: "Note not found" });
   res.json(data);
 });
 
-router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("notes")
-    .select("*, projects!left(name)")
-    .eq("uid", req.params.uid)
+    .select("*")
+    .eq("id", req.params.id)
     .single();
 
   if (error || !data) return res.status(404).json({ error: "Note not found" });

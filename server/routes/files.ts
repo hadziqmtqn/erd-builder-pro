@@ -60,15 +60,16 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   res.json(data);
 });
 
-router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const fileId = req.params.id;
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
   const { data: file, error: fileError } = await supabase
     .from("files")
-    .select("*")
-    .eq("id", fileId)
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
     .single();
 
   if (fileError || !file) return res.status(404).json({ error: "File not found" });
+
+  const fileId = file.id;
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")
@@ -95,16 +96,15 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   res.json({ ...file, entities: entitiesWithColumns, relationships });
 });
 
-router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const fileId = req.params.id;
   const { data: file, error: fileError } = await supabase
     .from("files")
-    .select("*, projects!left(name)")
-    .eq("uid", req.params.uid)
+    .select("*")
+    .eq("id", fileId)
     .single();
 
   if (fileError || !file) return res.status(404).json({ error: "File not found" });
-
-  const fileId = file.id;
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")

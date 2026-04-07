@@ -44,6 +44,11 @@ app.use("/api/drawings", drawingsRouter);
 app.use("/api/flowcharts", flowchartsRouter);
 app.use("/api", commonRouter); // trash, upload, test-r2
 
+// Terminal 404 for API routes to prevent falling through to SPA HTML
+app.use("/api/*", (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
+});
+
 // Environment checks
 const isVercel = !!process.env.VERCEL;
 const isProd = process.env.NODE_ENV === "production";
