@@ -277,7 +277,9 @@ function AppContent() {
 
         // Smart Heuristic: If no specific handle saved, find the most logical orientation
         if (!sHandle && sourceEntity && targetEntity) {
-          if (sourceEntity.x < targetEntity.x) {
+          const sx = Number(sourceEntity.x);
+          const tx = Number(targetEntity.x);
+          if (sx < tx) {
             sHandle = `col-${r.source_column_id}-source`; // Right side
           } else {
             sHandle = `col-${r.source_column_id}-source-l`; // Left side
@@ -285,7 +287,9 @@ function AppContent() {
         }
 
         if (!tHandle && sourceEntity && targetEntity) {
-          if (sourceEntity.x < targetEntity.x) {
+          const sx = Number(sourceEntity.x);
+          const tx = Number(targetEntity.x);
+          if (sx < tx) {
             tHandle = `col-${r.target_column_id}-target`; // Left side
           } else {
             tHandle = `col-${r.target_column_id}-target-r`; // Right side
@@ -464,7 +468,7 @@ function AppContent() {
   const fetchPublicDocument = async (type: string, uid: string) => {
     setIsPublicLoading(true);
     try {
-      const endpoint = type === 'erd' ? 'files' : type;
+      const endpoint = type === 'erd' ? 'files' : (type === 'flowchart' ? 'flowcharts' : type);
       const res = await fetch(`/api/${endpoint}/public/${uid}`);
       
       if (!res.ok) {
@@ -497,22 +501,70 @@ function AppContent() {
           data: e,
         }));
 
-        const flowEdges: Edge[] = data.relationships.map((r: any) => ({
-          id: r.id,
-          source: r.source_entity_id,
-          target: r.target_entity_id,
-          sourceHandle: r.source_handle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
-          targetHandle: r.target_handle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
-          label: r.label,
-          type: 'smoothstep',
-          animated: true,
-        }));
+        const flowEdges: Edge[] = data.relationships.map((r: any) => {
+          const sourceEntity = data.entities.find((e: any) => String(e.id) === String(r.source_entity_id));
+          const targetEntity = data.entities.find((e: any) => String(e.id) === String(r.target_entity_id));
+          
+          let sHandle = r.source_handle;
+          let tHandle = r.target_handle;
+
+          // Smart Heuristic: If no specific handle saved, find the most logical orientation
+          if (!sHandle && sourceEntity && targetEntity) {
+            const sx = Number(sourceEntity.x);
+            const tx = Number(targetEntity.x);
+            if (sx < tx) {
+              sHandle = `col-${r.source_column_id}-source`; // Right side
+            } else {
+              sHandle = `col-${r.source_column_id}-source-l`; // Left side
+            }
+          }
+
+          if (!tHandle && sourceEntity && targetEntity) {
+            const sx = Number(sourceEntity.x);
+            const tx = Number(targetEntity.x);
+            if (sx < tx) {
+              tHandle = `col-${r.target_column_id}-target`; // Left side
+            } else {
+              tHandle = `col-${r.target_column_id}-target-r`; // Right side
+            }
+          }
+
+          return {
+            id: r.id,
+            source: r.source_entity_id,
+            target: r.target_entity_id,
+            sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
+            targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
+            label: r.label,
+            type: 'smoothstep',
+            animated: true,
+          };
+        });
 
         setNodes(flowNodes);
         setEdges(flowEdges);
         if (data.viewport_x !== undefined) {
           setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
         }
+      } else if (type === 'flowchart') {
+        try {
+          const parsedData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+          setNodes(parsedData.nodes || []);
+          setEdges(parsedData.edges || []);
+          if (data.viewport_x !== undefined) {
+            setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
+          }
+        } catch (e) {
+          console.error("Failed to parse flowchart data:", e);
+        }
+      } else if (type === 'drawings') {
+        // Drawings are handled by the component using publicData
+        setNodes([]);
+        setEdges([]);
+      } else if (type === 'notes') {
+        // Notes are handled by the component using publicData
+        setNodes([]);
+        setEdges([]);
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to load shared document");
