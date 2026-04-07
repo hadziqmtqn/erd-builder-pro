@@ -74,12 +74,12 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
     return res.status(403).json({ error: "This document is private" });
   }
 
-  // Owner Bypass: If the requester is the owner, they can bypass token/expiry
+  // Owner Bypass: For single-account, any logged-in user is the owner
   let isOwner = false;
   const sessionToken = req.cookies.token;
   if (sessionToken) {
     const { data: { user } } = await supabase.auth.getUser(sessionToken);
-    if (user && user.id === file.user_id) {
+    if (user) {
       isOwner = true;
     }
   }

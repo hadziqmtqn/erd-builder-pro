@@ -549,7 +549,10 @@ function AppContent() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['x-share-token'] = token;
       
-      const res = await fetch(`/api/${endpoint}/public/${uid}`, { headers });
+      const res = await fetch(`/api/${endpoint}/public/${uid}`, { 
+        headers,
+        credentials: 'include'
+      });
       
       if (!res.ok) {
         let errorMessage = "Document not found or access denied";
