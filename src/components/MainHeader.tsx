@@ -21,7 +21,7 @@ interface MainHeaderProps {
   hasActiveItem: boolean;
   currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   activeFileUid?: string;
-  activeFileId?: number;
+  activeFileId?: number | string;
   initialShareSettings?: {
     is_public: boolean;
     share_token?: string;

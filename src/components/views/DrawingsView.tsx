@@ -2,11 +2,11 @@ import React from 'react';
 import ExcalidrawEditor from '../ExcalidrawEditor';
 
 interface DrawingsViewProps {
-  activeDrawingId: number | null;
+  activeDrawingId: number | string | null;
   activeDrawing: any;
   saveDrawing: (drawing: any) => Promise<boolean | void>;
   handleDrawingChange: (data: string) => void;
-  deleteDrawing: (id: number) => Promise<void>;
+  deleteDrawing: (id: number | string) => Promise<void>;
   isReadOnly?: boolean;
 }
 

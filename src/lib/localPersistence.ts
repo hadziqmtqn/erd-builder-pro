@@ -5,7 +5,7 @@
 
 const DB_NAME = 'erd-builder-pro-db';
 const STORE_NAME = 'drafts';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 import { DraftType } from '../types';
 
@@ -31,6 +31,11 @@ class LocalPersistence {
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME, { keyPath: ['type', 'id'] });
         }
+        // Store for full resources (not just drafts)
+        if (!db.objectStoreNames.contains('resources')) {
+          const resourceStore = db.createObjectStore('resources', { keyPath: 'id' });
+          resourceStore.createIndex('type', 'type', { unique: false });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -44,6 +49,7 @@ class LocalPersistence {
     });
   }
 
+  // --- Draft Management (Existing) ---
   async saveDraft(type: Draft['type'], id: string | number, data: string, sync_pending = true): Promise<void> {
     const db = await this.init();
     return new Promise((resolve, reject) => {
@@ -99,6 +105,56 @@ class LocalPersistence {
         const all = request.result as Draft[];
         resolve(all.filter(d => d.sync_pending));
       };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // --- Resource Management (New for Guest Mode) ---
+  async getAllResources(type: string): Promise<any[]> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('resources', 'readonly');
+      const store = transaction.objectStore('resources');
+      const index = store.index('type');
+      const request = index.getAll(type);
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getResource(id: string | number): Promise<any | null> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('resources', 'readonly');
+      const store = transaction.objectStore('resources');
+      const request = store.get(id);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async saveResource(resource: any): Promise<void> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('resources', 'readwrite');
+      const store = transaction.objectStore('resources');
+      const request = store.put(resource);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteResource(id: string | number): Promise<void> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('resources', 'readwrite');
+      const store = transaction.objectStore('resources');
+      const request = store.delete(id);
+
+      request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
   }

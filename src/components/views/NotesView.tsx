@@ -2,11 +2,11 @@ import React from 'react';
 import NotesEditor from '../NotesEditor';
 
 interface NotesViewProps {
-  activeNoteId: number | null;
+  activeNoteId: number | string | null;
   activeNote: any;
   saveNote: (note: any) => Promise<boolean | void>;
   handleNoteChange: (content: string) => void;
-  deleteNote: (id: number) => Promise<void>;
+  deleteNote: (id: number | string) => Promise<void>;
   isReadOnly?: boolean;
 }
 

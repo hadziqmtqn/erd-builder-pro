@@ -30,7 +30,7 @@ const nodeTypes = {
 };
 
 interface FlowchartViewProps {
-  activeFlowchartId: number;
+  activeFlowchartId: number | string | null;
   activeFlowchart: Flowchart;
   handleFlowchartChange: (nodes: any[], edges: any[]) => void;
   isReadOnly?: boolean;

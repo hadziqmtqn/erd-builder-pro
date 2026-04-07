@@ -3,9 +3,10 @@ import { toast } from 'sonner';
 import { Flowchart, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
-export function useFlowcharts() {
+export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
-  const [activeFlowchartId, setActiveFlowchartId] = useState<number | null>(null);
+  const [activeFlowchartId, setActiveFlowchartId] = useState<number | string | null>(null);
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);
@@ -16,6 +17,21 @@ export function useFlowcharts() {
   flowchartsRef.current = flowcharts;
 
   const fetchFlowcharts = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+    if (isGuest) {
+      const localFlowcharts = await localPersistence.getAllResources('flowchart');
+      let filtered = localFlowcharts.filter(f => !f.is_deleted);
+      if (projectId !== 'all') {
+        filtered = filtered.filter(f => f.project_id === projectId);
+      }
+      if (searchQuery) {
+        filtered = filtered.filter(f => f.title.toLowerCase().includes(searchQuery.toLowerCase()));
+      }
+      setFlowcharts(filtered);
+      setFlowchartsTotal(filtered.length);
+      setHasMoreFlowcharts(false);
+      return;
+    }
+
     try {
       const offset = isLoadMore ? flowchartsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -23,7 +39,7 @@ export function useFlowcharts() {
       const res = await fetch(`/api/flowcharts?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         const json = await res.json();
-        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const data = json.data !== undefined ? json.data : json;
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const flowchartsListData = Array.isArray(data) ? data : [];
@@ -38,9 +54,27 @@ export function useFlowcharts() {
     } catch (err) {
       console.error('Error fetching flowcharts:', err);
     }
-  }, []); // Stable dependency array
+  }, [isGuest]);
 
-  const createFlowchart = async (title: string, projectId?: number | null) => {
+  const createFlowchart = async (title: string, projectId?: number | string | null) => {
+    if (isGuest) {
+      const newFlowchart: Flowchart = {
+        id: Math.random().toString(36).substr(2, 9),
+        title,
+        data: '',
+        project_id: projectId || null,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      // @ts-ignore
+      newFlowchart.type = 'flowchart';
+      await localPersistence.saveResource(newFlowchart);
+      setFlowcharts(prev => [newFlowchart, ...prev]);
+      toast.success('Flowchart created locally');
+      return newFlowchart;
+    }
+
     try {
       const res = await fetch('/api/flowcharts', {
         method: 'POST',
@@ -52,17 +86,24 @@ export function useFlowcharts() {
         setFlowcharts(prev => [newFlowchart, ...prev]);
         toast.success('Flowchart created successfully');
         return newFlowchart;
-      } else {
-        toast.error('Failed to create flowchart');
       }
-    } catch (err) {
-      console.error('Error creating flowchart:', err);
-      toast.error('Error creating flowchart');
-    }
+    } catch (err) {}
     return null;
   };
 
-  const updateFlowchart = async (id: number, title: string) => {
+  const updateFlowchart = async (id: number | string, title: string) => {
+    if (isGuest) {
+      const flowchart = await localPersistence.getResource(id);
+      if (flowchart) {
+        flowchart.title = title;
+        flowchart.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(flowchart);
+        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, title } : f));
+        toast.success('Flowchart renamed locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/flowcharts/${id}`, {
         method: 'PUT',
@@ -72,32 +113,46 @@ export function useFlowcharts() {
       if (res.ok) {
         setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, title } : f));
         toast.success('Flowchart renamed successfully');
-      } else {
-        toast.error('Failed to rename flowchart');
       }
-    } catch (err) {
-      console.error('Error updating flowchart:', err);
-      toast.error('Error renaming flowchart');
-    }
+    } catch (err) {}
   };
 
-  const deleteFlowchart = async (id: number) => {
+  const deleteFlowchart = async (id: number | string) => {
+    if (isGuest) {
+      const flowchart = await localPersistence.getResource(id);
+      if (flowchart) {
+        flowchart.is_deleted = true;
+        flowchart.deleted_at = new Date().toISOString();
+        await localPersistence.saveResource(flowchart);
+        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        if (activeFlowchartId === id) setActiveFlowchartId(null);
+        toast.success('Flowchart moved to local trash');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/flowcharts/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
         if (activeFlowchartId === id) setActiveFlowchartId(null);
         toast.success('Flowchart moved to trash');
-      } else {
-        toast.error('Failed to delete flowchart');
       }
-    } catch (err) {
-      console.error('Error deleting flowchart:', err);
-      toast.error('Error deleting flowchart');
-    }
+    } catch (err) {}
   };
 
-  const moveFlowchartToProject = async (flowchartId: number, projectId: number | null) => {
+  const moveFlowchartToProject = async (flowchartId: number | string, projectId: number | string | null) => {
+    if (isGuest) {
+      const flowchart = await localPersistence.getResource(flowchartId);
+      if (flowchart) {
+        flowchart.project_id = projectId;
+        await localPersistence.saveResource(flowchart);
+        setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, project_id: projectId } : f));
+        toast.success('Flowchart moved to project locally');
+      }
+      return true;
+    }
+
     try {
       const res = await fetch(`/api/flowcharts/${flowchartId}`, {
         method: 'PUT',
@@ -108,80 +163,85 @@ export function useFlowcharts() {
         setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, project_id: projectId } : f));
         toast.success('Flowchart moved to project');
         return true;
-      } else {
-        toast.error('Failed to move flowchart');
       }
-    } catch (err) {
-      console.error('Error moving flowchart:', err);
-      toast.error('Error moving flowchart');
-    }
+    } catch (err) {}
     return false;
   };
 
   const saveFlowchart = async (flowchart: Flowchart) => {
+    if (!flowchart.id) return false;
     setSaveStatus('saving');
     
-    // Save to local IndexedDB first
-    try {
-      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', true);
-    } catch (e) {
-      console.warn('Local draft save failed', e);
-    }
-
-    // Try to save to server only if online
-    if (navigator.onLine) {
-      try {
-        const res = await fetch(`/api/flowcharts/${flowchart.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: flowchart.title, data: flowchart.data, project_id: flowchart.project_id }),
-        });
-        if (res.ok) {
-          // Clear sync pending
-          await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2000);
-          return true;
-        } else {
-          setSaveStatus('error');
-        }
-      } catch (err) {
-        console.error('Error saving flowchart to server:', err);
-        setSaveStatus('error');
+    if (isGuest) {
+      const localFlowchart = await localPersistence.getResource(flowchart.id);
+      if (localFlowchart) {
+        localFlowchart.data = flowchart.data;
+        localFlowchart.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(localFlowchart);
       }
-    } else {
-      // Offline: just stay in saving/saved state locally
+      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
+      return true;
+    }
+
+    try {
+      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', true);
+      const res = await fetch(`/api/flowcharts/${flowchart.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: flowchart.title, data: flowchart.data, project_id: flowchart.project_id }),
+      });
+      if (res.ok) {
+        await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+        return true;
+      } else {
+        setSaveStatus('error');
+      }
+    } catch (err) {
+      setSaveStatus('error');
     }
     return false;
   };
 
-  const restoreFlowchart = async (id: number) => {
+  const restoreFlowchart = async (id: number | string) => {
+    if (isGuest) {
+      const flowchart = await localPersistence.getResource(id);
+      if (flowchart) {
+        flowchart.is_deleted = false;
+        flowchart.deleted_at = undefined;
+        await localPersistence.saveResource(flowchart);
+        fetchFlowcharts();
+        toast.success('Flowchart restored locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/flowcharts/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchFlowcharts();
         toast.success('Flowchart restored successfully');
-      } else {
-        toast.error('Failed to restore flowchart');
       }
-    } catch (err) {
-      toast.error('Error restoring flowchart');
-    }
+    } catch (err) {}
   };
 
-  const deleteFlowchartPermanent = async (id: number) => {
+  const deleteFlowchartPermanent = async (id: number | string) => {
+    if (isGuest) {
+      await localPersistence.deleteResource(id);
+      await localPersistence.clearDraft(DraftType.FLOWCHART, id);
+      toast.success('Flowchart permanently deleted from local');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/flowcharts/${id}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Flowchart permanently deleted');
-      } else {
-        toast.error('Failed to permanently delete flowchart');
       }
-    } catch (err) {
-      toast.error('Error permanently deleting flowchart');
-    }
+    } catch (err) {}
   };
 
   return {

@@ -4,9 +4,9 @@ import { Node, Edge, Viewport } from '@xyflow/react';
 import { FileData, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
-export function useFiles(isAuthenticated: boolean | null, view: string) {
+export function useFiles(isAuthenticated: boolean | null, view: string, isGuest: boolean = false) {
   const [files, setFiles] = useState<FileData[]>([]);
-  const [activeFileId, setActiveFileId] = useState<number | null>(null);
+  const [activeFileId, setActiveFileId] = useState<number | string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -18,6 +18,21 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
   filesRef.current = files;
 
   const fetchFiles = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+    if (isGuest) {
+      const localFiles = await localPersistence.getAllResources('erd');
+      let filtered = localFiles.filter(f => !f.is_deleted);
+      if (projectId !== 'all') {
+        filtered = filtered.filter(f => f.project_id === projectId);
+      }
+      if (searchQuery) {
+        filtered = filtered.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      }
+      setFiles(filtered);
+      setFilesTotal(filtered.length);
+      setHasMoreFiles(false);
+      return;
+    }
+
     try {
       const offset = isLoadMore ? filesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -40,9 +55,28 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     } catch (err) {
       console.error('Error fetching files:', err);
     }
-  }, []); // Stable dependency array
+  }, [isGuest]); 
 
   const createFile = async (name: string, projectId?: number | null) => {
+    if (isGuest) {
+      const newFile: FileData = {
+        id: Math.random().toString(36).substr(2, 9) as any, // String ID for guest
+        name,
+        project_id: projectId || null,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        entities: [],
+        relationships: [],
+      };
+      // @ts-ignore
+      newFile.type = 'erd';
+      await localPersistence.saveResource(newFile);
+      setFiles(prev => [newFile, ...prev]);
+      toast.success('Diagram created locally');
+      return newFile;
+    }
+
     try {
       const res = await fetch('/api/files', {
         method: 'POST',
@@ -64,7 +98,19 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     return null;
   };
 
-  const updateFile = async (id: number, name: string) => {
+  const updateFile = async (id: number | string, name: string) => {
+    if (isGuest) {
+      const file = await localPersistence.getResource(id);
+      if (file) {
+        file.name = name;
+        file.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(file);
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, name } : f));
+        toast.success('Diagram renamed locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/files/${id}`, {
         method: 'PUT',
@@ -83,7 +129,20 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     }
   };
 
-  const deleteFile = async (id: number) => {
+  const deleteFile = async (id: number | string) => {
+    if (isGuest) {
+      const file = await localPersistence.getResource(id);
+      if (file) {
+        file.is_deleted = true;
+        file.deleted_at = new Date().toISOString();
+        await localPersistence.saveResource(file);
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        if (activeFileId === id) setActiveFileId(null);
+        toast.success('Diagram moved to local trash');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/files/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -99,7 +158,19 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     }
   };
 
-  const restoreFile = async (id: number) => {
+  const restoreFile = async (id: number | string) => {
+    if (isGuest) {
+      const file = await localPersistence.getResource(id);
+      if (file) {
+        file.is_deleted = false;
+        file.deleted_at = undefined;
+        await localPersistence.saveResource(file);
+        fetchFiles();
+        toast.success('Diagram restored locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/files/${id}/restore`, { method: 'POST' });
       if (res.ok) {
@@ -113,7 +184,14 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     }
   };
 
-  const deleteFilePermanent = async (id: number) => {
+  const deleteFilePermanent = async (id: number | string) => {
+    if (isGuest) {
+      await localPersistence.deleteResource(id);
+      await localPersistence.clearDraft(DraftType.ERD, id);
+      toast.success('Diagram permanently deleted from local storage');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/files/${id}/permanent`, { method: 'DELETE' });
       if (res.ok) {
@@ -126,7 +204,19 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
     }
   };
 
-  const moveFileToProject = async (fileId: number, projectId: number | null) => {
+  const moveFileToProject = async (fileId: number | string, projectId: number | null) => {
+    if (isGuest) {
+      const file = await localPersistence.getResource(fileId);
+      if (file) {
+        file.project_id = projectId;
+        await localPersistence.saveResource(file);
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
+        toast.success('Diagram moved to project locally');
+        return true;
+      }
+      return false;
+    }
+
     try {
       const res = await fetch(`/api/files/${fileId}/project`, {
         method: 'PUT',
@@ -147,20 +237,59 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
   };
 
   const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport) => {
-    if (!activeFileId || !isAuthenticated || view !== 'erd') return;
+    if (!activeFileId || view !== 'erd') return;
+    if (!isAuthenticated && !isGuest) return;
+
     setSaveStatus('saving');
 
     const data = JSON.stringify({ nodes, edges, viewport });
     
     // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, true);
+      await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, !isGuest);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
 
-    // Try to save to server only if online
-    if (navigator.onLine) {
+    if (isGuest) {
+      // For guest, also update the main resource so it persists beyond "draft"
+      try {
+        const file = await localPersistence.getResource(activeFileId);
+        if (file) {
+          const entities: Entity[] = nodes.map(n => ({
+            ...n.data,
+            x: n.position.x,
+            y: n.position.y,
+          })) as Entity[];
+
+          const relationships: Relationship[] = edges.map(e => ({
+            id: e.id,
+            source_entity_id: e.source,
+            target_entity_id: e.target,
+            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            source_handle: e.sourceHandle || undefined,
+            target_handle: e.targetHandle || undefined,
+            type: 'one-to-many',
+            label: e.label as string,
+          }));
+
+          file.entities = entities;
+          file.relationships = relationships;
+          file.viewport_x = viewport.x;
+          file.viewport_y = viewport.y;
+          file.viewport_zoom = viewport.zoom;
+          file.updated_at = new Date().toISOString();
+          await localPersistence.saveResource(file);
+        }
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (e) {}
+      return;
+    }
+
+    // Try to save to server only if online and authenticated
+    if (navigator.onLine && isAuthenticated) {
       try {
         const entities: Entity[] = nodes.map(n => ({
           ...n.data,
@@ -202,7 +331,7 @@ export function useFiles(isAuthenticated: boolean | null, view: string) {
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }
-  }, [activeFileId, isAuthenticated, view]);
+  }, [activeFileId, isAuthenticated, isGuest, view]);
 
   return {
     files,

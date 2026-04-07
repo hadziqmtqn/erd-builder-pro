@@ -3,9 +3,9 @@ import { localPersistence } from '../lib/localPersistence';
 import { DraftType } from '../types';
 import { toast } from 'sonner';
 
-export function useSyncService(isAuthenticated: boolean | null) {
+export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
   const syncDrafts = useCallback(async () => {
-    if (!isAuthenticated || !navigator.onLine) return;
+    if (!isAuthenticated || !navigator.onLine || isGuest) return;
 
     try {
       const pendingSyncs = await localPersistence.getAllPendingSyncs();
@@ -81,7 +81,7 @@ export function useSyncService(isAuthenticated: boolean | null) {
 
   useEffect(() => {
     // Initial sync check on mount if online
-    if (navigator.onLine && isAuthenticated) {
+    if (navigator.onLine && isAuthenticated && !isGuest) {
       syncDrafts();
     }
 

@@ -92,7 +92,8 @@ function AppContent() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+
   
   // Public Share State
   const [isPublicView, setIsPublicView] = useState(false);
@@ -104,37 +105,39 @@ function AppContent() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   
   // Hooks
-  const { isAuthenticated, user, checkAuth, handleLogout } = useAuth();
+  const { isAuthenticated, isGuest, user, checkAuth, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   
   const { 
     files, activeFileId, setActiveFileId, saveStatus, setSaveStatus,
     fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
     hasMoreFiles
-  } = useFiles(isAuthenticated, view);
+  } = useFiles(isAuthenticated, view, isGuest);
+
   
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
     hasMoreNotes, saveStatus: notesSaveStatus
-  } = useNotes();
+  } = useNotes(isGuest);
   
   const { 
     projects, activeProjectId, setActiveProjectId, fetchProjects, createProject, updateProject, deleteProject, restoreProject, deleteProjectPermanent,
     hasMoreProjects
-  } = useProjects();
+  } = useProjects(isGuest);
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
     hasMoreDrawings, saveStatus: drawingsSaveStatus
-  } = useDrawings();
+  } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
     hasMoreFlowcharts, saveStatus: flowchartsSaveStatus
-  } = useFlowcharts();
+  } = useFlowcharts(isGuest);
 
-  const { trashData, fetchTrash } = useTrash();
+
+  const { trashData, fetchTrash } = useTrash(isGuest);
   const isOnline = useConnectionStatus();
-  useSyncService(isAuthenticated);
+  useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
 
   const currentActiveId = useMemo(() => {
@@ -254,14 +257,22 @@ function AppContent() {
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings, fetchFlowcharts, isPublicView]);
 
   // ERD Selection Logic
-  const handleFileSelect = async (id: number) => {
+  const handleFileSelect = async (id: number | string) => {
     try {
       // Check for local unsynced draft first
       const draft = await localPersistence.getDraft(DraftType.ERD, id);
       
-      const res = await fetch(`/api/files/${id}`);
-      if (res.status === 401) return;
-      const data: FileData = await res.json();
+      let data: FileData;
+
+      if (isGuest) {
+        const localData = await localPersistence.getResource(id);
+        if (!localData) return;
+        data = localData;
+      } else {
+        const res = await fetch(`/api/files/${id}`);
+        if (res.status === 401) return;
+        data = await res.json();
+      }
       
       if (data.is_deleted) return;
 
@@ -408,7 +419,7 @@ function AppContent() {
   }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram, isPublicView]);
 
   // Selection Handlers
-  const handleNoteSelect = async (id: number) => {
+  const handleNoteSelect = async (id: number | string) => {
     const note = notes.find(n => n.id === id);
     if (note?.is_deleted) return;
     
@@ -426,8 +437,16 @@ function AppContent() {
     setView('notes');
   };
 
-  const handleDrawingSelect = async (id: number) => {
+  const handleDrawingSelect = async (id: number | string) => {
     try {
+      if (isGuest) {
+        const localData = await localPersistence.getResource(id);
+        if (!localData || localData.is_deleted) return;
+        setActiveDrawingId(id);
+        setView('drawings');
+        return;
+      }
+
       const res = await fetch(`/api/drawings/${id}`);
       if (!res.ok) return;
       const drawing = await res.json();
@@ -437,8 +456,16 @@ function AppContent() {
     } catch (err) {}
   };
 
-  const handleFlowchartSelect = async (id: number) => {
+  const handleFlowchartSelect = async (id: number | string) => {
     try {
+      if (isGuest) {
+        const localData = await localPersistence.getResource(id);
+        if (!localData || localData.is_deleted) return;
+        setActiveFlowchartId(id);
+        setView('flowchart');
+        return;
+      }
+
       const res = await fetch(`/api/flowcharts/${id}`);
       if (!res.ok) return;
       const flowchart = await res.json();
@@ -640,23 +667,24 @@ function AppContent() {
   };
 
   // Sync Handlers
-  const handleFileDelete = async (id: number) => { await deleteFile(id); fetchTrash(); };
-  const handleNoteDelete = async (id: number) => { await deleteNote(id); fetchTrash(); };
-  const handleDrawingDelete = async (id: number) => { await deleteDrawing(id); fetchTrash(); };
-  const handleFlowchartDelete = async (id: number) => { await deleteFlowchart(id); fetchTrash(); };
-  const handleProjectDelete = async (id: number) => { if (await deleteProject(id)) fetchTrash(); };
+  const handleFileDelete = async (id: number | string) => { await deleteFile(id); fetchTrash(); };
+  const handleNoteDelete = async (id: number | string) => { await deleteNote(id); fetchTrash(); };
+  const handleDrawingDelete = async (id: number | string) => { await deleteDrawing(id); fetchTrash(); };
+  const handleFlowchartDelete = async (id: number | string) => { await deleteFlowchart(id); fetchTrash(); };
+  const handleProjectDelete = async (id: number | string) => { if (await deleteProject(id)) fetchTrash(); };
 
-  const handleFileRestore = async (id: number) => { await restoreFile(id); fetchTrash(); fetchFiles(); };
-  const handleNoteRestore = async (id: number) => { await restoreNote(id); fetchTrash(); fetchNotes(); };
-  const handleDrawingRestore = async (id: number) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(); };
-  const handleFlowchartRestore = async (id: number) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); };
-  const handleProjectRestore = async (id: number) => { await restoreProject(id); fetchTrash(); fetchProjects(); };
+  const handleFileRestore = async (id: number | string) => { await restoreFile(id); fetchTrash(); fetchFiles(); };
+  const handleNoteRestore = async (id: number | string) => { await restoreNote(id); fetchTrash(); fetchNotes(); };
+  const handleDrawingRestore = async (id: number | string) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(); };
+  const handleFlowchartRestore = async (id: number | string) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); };
+  const handleProjectRestore = async (id: number | string) => { await restoreProject(id); fetchTrash(); fetchProjects(); };
 
-  const handleFilePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleNotePermanentDelete = (id: number) => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleDrawingPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleFlowchartPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleProjectPermanentDelete = (id: number) => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleFilePermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleNotePermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleDrawingPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleFlowchartPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); };
+  const handleProjectPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); };
+
 
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
@@ -789,8 +817,9 @@ function AppContent() {
   }
 
   if (!isAuthenticated && !isPublicView) {
-    return <Login onLogin={() => checkAuth()} />;
+    return <Login onLogin={() => checkAuth()} onGuestLogin={handleGuestLogin} />;
   }
+
 
   // Derive component-level props
   const activeNote = isPublicView ? publicData : notes.find(n => n.id === activeNoteId);
@@ -917,7 +946,7 @@ function AppContent() {
 
               {view === 'notes' && activeNote && (
                 <NotesView 
-                  activeNoteId={isPublicView ? 0 : activeNoteId} 
+                  activeNoteId={isPublicView ? null : activeNoteId} 
                   activeNote={activeNote} 
                   saveNote={saveNote} 
                   handleNoteChange={handleNoteChange} 
@@ -928,7 +957,7 @@ function AppContent() {
 
               {view === 'drawings' && activeDrawing && (
                 <DrawingsView 
-                  activeDrawingId={isPublicView ? 0 : activeDrawingId} 
+                  activeDrawingId={isPublicView ? null : activeDrawingId} 
                   activeDrawing={activeDrawing} 
                   saveDrawing={saveDrawing} 
                   handleDrawingChange={handleDrawingChange} 
@@ -939,7 +968,7 @@ function AppContent() {
 
               {view === 'flowchart' && activeFlowchart && (
                 <FlowchartView 
-                  activeFlowchartId={isPublicView ? 0 : activeFlowchartId}
+                  activeFlowchartId={isPublicView ? null : activeFlowchartId}
                   activeFlowchart={activeFlowchart}
                   handleFlowchartChange={handleFlowchartChange}
                   isReadOnly={isPublicView}

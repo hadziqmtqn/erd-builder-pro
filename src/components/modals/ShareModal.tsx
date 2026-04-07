@@ -18,7 +18,7 @@ interface ShareModalProps {
   onOpenChange: (open: boolean) => void;
   documentType: 'erd' | 'notes' | 'drawings' | 'flowchart';
   documentUid: string;
-  documentId: number;
+  documentId: number | string;
   documentTitle: string;
   isPublicView?: boolean;
   initialSettings?: {

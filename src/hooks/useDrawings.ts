@@ -3,19 +3,35 @@ import { toast } from 'sonner';
 import { Drawing, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
-export function useDrawings() {
+export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
-  const [activeDrawingId, setActiveDrawingId] = useState<number | null>(null);
+  const [activeDrawingId, setActiveDrawingId] = useState<number | string | null>(null);
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);
-  const [hasMoreDrawings, setHasMoreDrawings] = useState(false);
+  const [hasMoreDrawings, setHasMoreFiles] = useState(false);
   const drawingsRef = useRef<Drawing[]>(drawings);
 
   // Keep ref in sync
   drawingsRef.current = drawings;
 
   const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+    if (isGuest) {
+      const localDrawings = await localPersistence.getAllResources('drawings');
+      let filtered = localDrawings.filter(d => !d.is_deleted);
+      if (projectId !== 'all') {
+        filtered = filtered.filter(d => d.project_id === projectId);
+      }
+      if (searchQuery) {
+        filtered = filtered.filter(d => d.title.toLowerCase().includes(searchQuery.toLowerCase()));
+      }
+      setDrawings(filtered);
+      setDrawingsTotal(filtered.length);
+      setHasMoreFiles(false);
+      return;
+    }
+
     try {
       const offset = isLoadMore ? drawingsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -23,7 +39,7 @@ export function useDrawings() {
       const res = await fetch(`/api/drawings?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         const json = await res.json();
-        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const data = json.data !== undefined ? json.data : json;
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const drawingsListData = Array.isArray(data) ? data : [];
@@ -33,14 +49,32 @@ export function useDrawings() {
           setDrawings(drawingsListData);
         }
         setDrawingsTotal(total);
-        setHasMoreDrawings((drawingsListData.length + offset) < total);
+        setHasMoreFiles((drawingsListData.length + offset) < total);
       }
     } catch (err) {
       console.error('Error fetching drawings:', err);
     }
-  }, []); // Stable dependency array
+  }, [isGuest]);
 
-  const createDrawing = async (title: string, projectId?: number | null) => {
+  const createDrawing = async (title: string, projectId?: number | string | null) => {
+    if (isGuest) {
+      const newDrawing: Drawing = {
+        id: Math.random().toString(36).substr(2, 9),
+        title,
+        data: '',
+        project_id: projectId || null,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      // @ts-ignore
+      newDrawing.type = 'drawings';
+      await localPersistence.saveResource(newDrawing);
+      setDrawings(prev => [newDrawing, ...prev]);
+      toast.success('Drawing created locally');
+      return newDrawing;
+    }
+
     try {
       const res = await fetch('/api/drawings', {
         method: 'POST',
@@ -52,17 +86,24 @@ export function useDrawings() {
         setDrawings(prev => [newDrawing, ...prev]);
         toast.success('Drawing created successfully');
         return newDrawing;
-      } else {
-        toast.error('Failed to create drawing');
       }
-    } catch (err) {
-      console.error('Error creating drawing:', err);
-      toast.error('Error creating drawing');
-    }
+    } catch (err) {}
     return null;
   };
 
-  const updateDrawing = async (id: number, title: string) => {
+  const updateDrawing = async (id: number | string, title: string) => {
+    if (isGuest) {
+      const drawing = await localPersistence.getResource(id);
+      if (drawing) {
+        drawing.title = title;
+        drawing.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(drawing);
+        setDrawings(prev => prev.map(d => d.id === id ? { ...d, title } : d));
+        toast.success('Drawing renamed locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/drawings/${id}`, {
         method: 'PUT',
@@ -72,32 +113,46 @@ export function useDrawings() {
       if (res.ok) {
         setDrawings(prev => prev.map(d => d.id === id ? { ...d, title } : d));
         toast.success('Drawing renamed successfully');
-      } else {
-        toast.error('Failed to rename drawing');
       }
-    } catch (err) {
-      console.error('Error updating drawing:', err);
-      toast.error('Error renaming drawing');
-    }
+    } catch (err) {}
   };
 
-  const deleteDrawing = async (id: number) => {
+  const deleteDrawing = async (id: number | string) => {
+    if (isGuest) {
+      const drawing = await localPersistence.getResource(id);
+      if (drawing) {
+        drawing.is_deleted = true;
+        drawing.deleted_at = new Date().toISOString();
+        await localPersistence.saveResource(drawing);
+        setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
+        if (activeDrawingId === id) setActiveDrawingId(null);
+        toast.success('Drawing moved to local trash');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/drawings/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
         if (activeDrawingId === id) setActiveDrawingId(null);
         toast.success('Drawing moved to trash');
-      } else {
-        toast.error('Failed to delete drawing');
       }
-    } catch (err) {
-      console.error('Error deleting drawing:', err);
-      toast.error('Error deleting drawing');
-    }
+    } catch (err) {}
   };
 
-  const moveDrawingToProject = async (drawingId: number, projectId: number | null) => {
+  const moveDrawingToProject = async (drawingId: number | string, projectId: number | string | null) => {
+    if (isGuest) {
+      const drawing = await localPersistence.getResource(drawingId);
+      if (drawing) {
+        drawing.project_id = projectId;
+        await localPersistence.saveResource(drawing);
+        setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
+        toast.success('Drawing moved to project locally');
+      }
+      return true;
+    }
+
     try {
       const res = await fetch(`/api/drawings/${drawingId}`, {
         method: 'PUT',
@@ -108,80 +163,85 @@ export function useDrawings() {
         setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
         toast.success('Drawing moved to project');
         return true;
-      } else {
-        toast.error('Failed to move drawing');
       }
-    } catch (err) {
-      console.error('Error moving drawing:', err);
-      toast.error('Error moving drawing');
-    }
+    } catch (err) {}
     return false;
   };
 
   const saveDrawing = async (drawing: Drawing) => {
+    if (!drawing.id) return false;
     setSaveStatus('saving');
     
-    // Save to local IndexedDB first
-    try {
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', true);
-    } catch (e) {
-      console.warn('Local draft save failed', e);
-    }
-
-    // Try to save to server only if online
-    if (navigator.onLine) {
-      try {
-        const res = await fetch(`/api/drawings/${drawing.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
-        });
-        if (res.ok) {
-          // Clear sync pending
-          await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2000);
-          return true;
-        } else {
-          setSaveStatus('error');
-        }
-      } catch (err) {
-        console.error('Error saving drawing to server:', err);
-        setSaveStatus('error');
+    if (isGuest) {
+      const localDrawing = await localPersistence.getResource(drawing.id);
+      if (localDrawing) {
+        localDrawing.data = drawing.data;
+        localDrawing.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(localDrawing);
       }
-    } else {
-      // Offline: just stay in saving/saved state locally
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
+      return true;
+    }
+
+    try {
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', true);
+      const res = await fetch(`/api/drawings/${drawing.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
+      });
+      if (res.ok) {
+        await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+        return true;
+      } else {
+        setSaveStatus('error');
+      }
+    } catch (err) {
+      setSaveStatus('error');
     }
     return false;
   };
 
-  const restoreDrawing = async (id: number) => {
+  const restoreDrawing = async (id: number | string) => {
+    if (isGuest) {
+      const drawing = await localPersistence.getResource(id);
+      if (drawing) {
+        drawing.is_deleted = false;
+        drawing.deleted_at = undefined;
+        await localPersistence.saveResource(drawing);
+        fetchDrawings();
+        toast.success('Drawing restored locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchDrawings();
         toast.success('Drawing restored successfully');
-      } else {
-        toast.error('Failed to restore drawing');
       }
-    } catch (err) {
-      toast.error('Error restoring drawing');
-    }
+    } catch (err) {}
   };
 
-  const deleteDrawingPermanent = async (id: number) => {
+  const deleteDrawingPermanent = async (id: number | string) => {
+    if (isGuest) {
+      await localPersistence.deleteResource(id);
+      await localPersistence.clearDraft(DraftType.DRAWINGS, id);
+      toast.success('Drawing permanently deleted from local');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/drawings/${id}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Drawing permanently deleted');
-      } else {
-        toast.error('Failed to permanently delete drawing');
       }
-    } catch (err) {
-      toast.error('Error permanently deleting drawing');
-    }
+    } catch (err) {}
   };
 
   return {
