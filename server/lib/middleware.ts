@@ -13,6 +13,8 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
     if (error || !user) {
       return res.status(401).json({ error: "Invalid session" });
     }
+    // Attach user to req for routes to use
+    (req as any).user = user;
     next();
   } catch (err) {
     res.status(401).json({ error: "Invalid token" });

@@ -84,16 +84,16 @@ router.post("/logout", (req: ExpressRequest, res: ExpressResponse) => {
 router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
   const token = req.cookies.token;
   if (!token) {
-    return res.status(401).json({ error: "Not logged in" });
+    return res.json({ authenticated: false });
   }
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) {
-      return res.status(401).json({ error: "Invalid session" });
+      return res.json({ authenticated: false });
     }
     res.json({ authenticated: true, user });
   } catch (err) {
-    res.status(401).json({ error: "Invalid token" });
+    res.json({ authenticated: false });
   }
 });
 

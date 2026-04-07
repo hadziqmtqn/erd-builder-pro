@@ -37,7 +37,7 @@ export interface Relationship {
 }
 
 export interface Project {
-  id: number;
+  id: number | string;
   uid?: string;
   name: string;
   is_deleted: boolean;
@@ -46,10 +46,10 @@ export interface Project {
 }
 
 export interface FileData {
-  id: number;
+  id: number | string;
   uid?: string;
   name: string;
-  project_id: number | null;
+  project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
   deleted_at?: string;
@@ -63,11 +63,11 @@ export interface FileData {
 }
 
 export interface Note {
-  id: number;
+  id: number | string;
   uid?: string;
   title: string;
   content: string;
-  project_id: number | null;
+  project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
   deleted_at?: string;
@@ -76,11 +76,11 @@ export interface Note {
 }
 
 export interface Drawing {
-  id: number;
+  id: number | string;
   uid?: string;
   title: string;
   data: string;
-  project_id: number | null;
+  project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
   deleted_at?: string;
@@ -89,14 +89,15 @@ export interface Drawing {
 }
 
 export interface Flowchart {
-  id: number;
+  id: number | string;
   uid?: string;
   title: string;
   data: string;
-  project_id: number | null;
+  project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
   deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
+

@@ -74,6 +74,7 @@
    # Frontend Config (Vite)
    VITE_SUPABASE_URL=your_supabase_url
    VITE_SUPABASE_ANON_KEY=your_anon_key
+   VITE_ENABLE_GUEST_MODE=true
    
    # Server
    PORT=3000

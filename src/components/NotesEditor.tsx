@@ -7,9 +7,10 @@ interface NotesEditorProps {
   onSave: (note: Note) => void;
   onChange?: (content: string) => void;
   onDelete: (id: number) => void;
+  isReadOnly?: boolean;
 }
 
-export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesEditorProps) {
+export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOnly = false }: NotesEditorProps) {
   const [content, setContent] = useState(note.content);
 
   useEffect(() => {
@@ -28,8 +29,9 @@ export default function NotesEditor({ note, onSave, onChange, onDelete }: NotesE
       {/* Block Editor Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <TiptapEditor 
-          initialContent={content} 
+          content={content} 
           onChange={handleContentChange} 
+          isReadOnly={isReadOnly}
         />
       </div>
     </div>

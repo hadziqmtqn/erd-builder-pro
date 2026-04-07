@@ -34,10 +34,12 @@ export function NavUser({
   user,
   onLogout,
   onViewChange,
+  isOnline,
 }: {
   user: any
   onLogout: () => void
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash') => void
+  isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
 
@@ -100,15 +102,21 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem 
-                onClick={() => onViewChange('trash')}
-                className="text-destructive focus:bg-accent focus:text-destructive cursor-pointer"
+                onClick={() => isOnline && onViewChange('trash')}
+                disabled={!isOnline}
+                className={`text-destructive focus:bg-accent focus:text-destructive cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
               >
                 <Trash2 className="mr-2 size-4" />
                 Trash
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout} className="cursor-pointer">
+            <DropdownMenuItem 
+              onClick={() => isOnline && onLogout()} 
+              disabled={!isOnline}
+              className={`cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+              title={!isOnline ? "Logging out while offline may cause data loss of unsynced changes" : ""}
+            >
               <LogOut className="mr-2 size-4" />
               Log out
             </DropdownMenuItem>

@@ -19,7 +19,9 @@ window.fetch = async (...args) => {
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
   
-  if (response.status === 401 && !isAuthRoute && navigator.onLine) {
+  const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
+  
+  if (response.status === 401 && !isAuthRoute && navigator.onLine && !isGuest) {
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   

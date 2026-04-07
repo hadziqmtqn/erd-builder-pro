@@ -14,6 +14,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import {
@@ -42,40 +43,41 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   drawings: Drawing[];
   flowcharts: Flowchart[];
   projects: Project[];
-  activeFileId: number | null;
-  activeNoteId: number | null;
-  activeDrawingId: number | null;
-  activeFlowchartId: number | null;
-  activeProjectId: number | null;
+  activeFileId: number | string | null;
+  activeNoteId: number | string | null;
+  activeDrawingId: number | string | null;
+  activeFlowchartId: number | string | null;
+  activeProjectId: number | string | null;
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart';
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart';
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart') => void;
-  onFileSelect: (id: number) => void;
-  onNoteSelect: (id: number) => void;
-  onDrawingSelect: (id: number) => void;
-  onFlowchartSelect: (id: number) => void;
-  onProjectSelect: (id: number | null) => void;
-  onFileCreate: (name: string, projectId?: number | null) => void;
-  onNoteCreate: (title: string, projectId?: number | null) => void;
-  onDrawingCreate: (title: string, projectId?: number | null) => void;
-  onFlowchartCreate: (title: string, projectId?: number | null) => void;
+  onFileSelect: (id: number | string) => void;
+  onNoteSelect: (id: number | string) => void;
+  onDrawingSelect: (id: number | string) => void;
+  onFlowchartSelect: (id: number | string) => void;
+  onProjectSelect: (id: number | string | null) => void;
+  onFileCreate: (name: string, projectId?: number | string | null) => void;
+  onNoteCreate: (title: string, projectId?: number | string | null) => void;
+  onDrawingCreate: (title: string, projectId?: number | string | null) => void;
+  onFlowchartCreate: (title: string, projectId?: number | string | null) => void;
   onProjectCreate: (name: string) => void;
-  onProjectUpdate: (id: number, name: string) => void;
-  onProjectDelete: (id: number) => void;
-  onFileDelete: (id: number) => void;
-  onNoteDelete: (id: number) => void;
-  onDrawingDelete: (id: number) => void;
-  onFlowchartDelete: (id: number) => void;
-  onFileUpdate: (id: number, name: string) => void;
-  onNoteUpdate: (id: number, title: string) => void;
-  onDrawingUpdate: (id: number, title: string) => void;
-  onFlowchartUpdate: (id: number, title: string) => void;
+  onProjectUpdate: (id: number | string, name: string) => void;
+  onProjectDelete: (id: number | string) => void;
+  onFileDelete: (id: number | string) => void;
+  onNoteDelete: (id: number | string) => void;
+  onDrawingDelete: (id: number | string) => void;
+  onFlowchartDelete: (id: number | string) => void;
+  onFileUpdate: (id: number | string, name: string) => void;
+  onNoteUpdate: (id: number | string, title: string) => void;
+  onDrawingUpdate: (id: number | string, title: string) => void;
+  onFlowchartUpdate: (id: number | string, title: string) => void;
   onLogout: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
-  onMoveFileToProject: (fileId: number, projectId: number | null) => void;
-  onMoveNoteToProject: (noteId: number, projectId: number | null) => void;
-  onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void;
-  onMoveFlowchartToProject: (flowchartId: number, projectId: number | null) => void;
+  onMoveFileToProject: (fileId: number | string, projectId: number | string | null) => void;
+  onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void;
+  onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void;
+  onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null) => void;
+
   hasMoreProjects?: boolean;
   hasMoreFiles?: boolean;
   hasMoreNotes?: boolean;
@@ -320,6 +322,7 @@ export function AppSidebar({
           onLoadMoreNotes={onLoadMoreNotes}
           onLoadMoreDrawings={onLoadMoreDrawings}
           onLoadMoreFlowcharts={onLoadMoreFlowcharts}
+          isOnline={isOnline}
         />
       </SidebarContent>
       <SidebarFooter>
@@ -353,10 +356,14 @@ export function AppSidebar({
             </Tooltip>
           </div>
         )}
+        <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
+          <FeedbackDialog isCollapsed={isCollapsed} />
+        </div>
         <NavUser 
           user={user} 
           onLogout={onLogout}
           onViewChange={onViewChange}
+          isOnline={isOnline}
         />
       </SidebarFooter>
       <SidebarRail />

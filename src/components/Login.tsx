@@ -19,9 +19,11 @@ import { toast } from "sonner";
 
 interface LoginProps {
   onLogin: () => void;
+  onGuestLogin?: () => void;
 }
 
-export function Login({ onLogin }: LoginProps) {
+
+export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -106,10 +108,35 @@ export function Login({ onLogin }: LoginProps) {
                     <Button type="submit" disabled={loading} className="w-full">
                       {loading ? "Logging in..." : "Login"}
                     </Button>
+                    {import.meta.env.VITE_ENABLE_GUEST_MODE === 'true' && (
+                      <>
+                        <div className="relative my-2">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Or</span>
+                          </div>
+                        </div>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          className="w-full" 
+                          onClick={() => {
+                            // @ts-ignore
+                            onGuestLogin?.();
+                            toast.success("Welcome! You're in Guest Mode.");
+                          }}
+                        >
+                          Try as Guest (Local Mode)
+                        </Button>
+                      </>
+                    )}
                     <FieldDescription className="text-center">
                       Don&apos;t have an account? <a href="#" className="underline underline-offset-4">Sign up</a>
                     </FieldDescription>
                   </Field>
+
                 </FieldGroup>
               </form>
             </CardContent>

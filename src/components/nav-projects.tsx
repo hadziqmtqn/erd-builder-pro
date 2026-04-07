@@ -104,49 +104,50 @@ export function NavProjects({
   onLoadMoreNotes,
   onLoadMoreDrawings,
   onLoadMoreFlowcharts,
+  isOnline,
 }: {
   projects: {
-    id: number
+    id: number | string
     name: string
     url: string
     icon: any
     isActive: boolean
   }[]
-  activeProjectId: number | null
-  onProjectSelect: (id: number | null) => void
-  onProjectDelete: (id: number) => void
-  onProjectUpdate: (id: number, name: string) => void
+  activeProjectId: number | string | null
+  onProjectSelect: (id: number | string | null) => void
+  onProjectDelete: (id: number | string) => void
+  onProjectUpdate: (id: number | string, name: string) => void
   onProjectCreate: (name: string) => void
-  onFileCreate: (name: string, projectId: number | null) => void
-  onNoteCreate: (title: string, projectId: number | null) => void
-  onDrawingCreate: (title: string, projectId: number | null) => void
-  onFlowchartCreate: (title: string, projectId: number | null) => void
+  onFileCreate: (name: string, projectId: number | string | null) => void
+  onNoteCreate: (title: string, projectId: number | string | null) => void
+  onDrawingCreate: (title: string, projectId: number | string | null) => void
+  onFlowchartCreate: (title: string, projectId: number | string | null) => void
   files: FileData[]
   notes: Note[]
   drawings: Drawing[]
   flowcharts: Flowchart[]
-  onFileSelect: (id: number) => void
-  onNoteSelect: (id: number) => void
-  onDrawingSelect: (id: number) => void
-  onFlowchartSelect: (id: number) => void
-  activeFileId: number | null
-  activeNoteId: number | null
-  activeDrawingId: number | null
-  activeFlowchartId: number | null
+  onFileSelect: (id: number | string) => void
+  onNoteSelect: (id: number | string) => void
+  onDrawingSelect: (id: number | string) => void
+  onFlowchartSelect: (id: number | string) => void
+  activeFileId: number | string | null
+  activeNoteId: number | string | null
+  activeDrawingId: number | string | null
+  activeFlowchartId: number | string | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart'
-  onFileDelete: (id: number) => void
-  onNoteDelete: (id: number) => void
-  onDrawingDelete: (id: number) => void
-  onFlowchartDelete: (id: number) => void
-  onFileUpdate: (id: number, name: string) => void
-  onNoteUpdate: (id: number, title: string) => void
-  onDrawingUpdate: (id: number, title: string) => void
-  onFlowchartUpdate: (id: number, title: string) => void
-  onMoveFileToProject: (fileId: number, projectId: number | null) => void
-  onMoveNoteToProject: (noteId: number, projectId: number | null) => void
-  onMoveDrawingToProject: (drawingId: number, projectId: number | null) => void
-  onMoveFlowchartToProject: (flowchartId: number, projectId: number | null) => void
+  onFileDelete: (id: number | string) => void
+  onNoteDelete: (id: number | string) => void
+  onDrawingDelete: (id: number | string) => void
+  onFlowchartDelete: (id: number | string) => void
+  onFileUpdate: (id: number | string, name: string) => void
+  onNoteUpdate: (id: number | string, title: string) => void
+  onDrawingUpdate: (id: number | string, title: string) => void
+  onFlowchartUpdate: (id: number | string, title: string) => void
+  onMoveFileToProject: (fileId: number | string, projectId: number | string | null) => void
+  onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void
+  onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void
+  onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null) => void
   allProjects: Project[]
   searchQuery: string
   hasMoreProjects?: boolean
@@ -159,6 +160,7 @@ export function NavProjects({
   onLoadMoreNotes?: () => void
   onLoadMoreDrawings?: () => void
   onLoadMoreFlowcharts?: () => void
+  isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
   
@@ -172,11 +174,11 @@ export function NavProjects({
   const [fileName, setFileName] = React.useState("")
   const [selectedProjectId, setSelectedProjectId] = React.useState<string>("none")
   
-  const [editingProjectId, setEditingProjectId] = React.useState<number | null>(null)
+  const [editingProjectId, setEditingProjectId] = React.useState<number | string | null>(null)
   const [editingProjectName, setEditingProjectName] = React.useState("")
   
-  const [editingFile, setEditingFile] = React.useState<{ id: number, name: string, projectId: number | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
-  const [deletingFile, setDeletingFile] = React.useState<{ id: number, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [editingFile, setEditingFile] = React.useState<{ id: number | string, name: string, projectId: number | string | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [deletingFile, setDeletingFile] = React.useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
@@ -188,7 +190,7 @@ export function NavProjects({
 
   const handleCreateFile = () => {
     if (fileName.trim()) {
-      const projectId = selectedProjectId === "none" ? null : parseInt(selectedProjectId)
+      const projectId = selectedProjectId === "none" ? null : selectedProjectId
       if (sidebarView === 'erd') {
         onFileCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'notes') {
@@ -205,7 +207,7 @@ export function NavProjects({
 
   const handleUpdateFile = () => {
     if (editingFile && editingFile.name.trim()) {
-      const projectId = selectedProjectId === "none" ? null : parseInt(selectedProjectId)
+      const projectId = selectedProjectId === "none" ? null : selectedProjectId
       
       if (editingFile.type === 'erd') {
         onFileUpdate(editingFile.id, editingFile.name.trim())
@@ -220,6 +222,7 @@ export function NavProjects({
         onFlowchartUpdate(editingFile.id, editingFile.name.trim())
         if (projectId !== editingFile.projectId) onMoveFlowchartToProject(editingFile.id, projectId)
       }
+
       
       setIsEditFileDialogOpen(false)
       setEditingFile(null)
@@ -242,33 +245,39 @@ export function NavProjects({
     <>
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>Projects</SidebarGroupLabel>
-      <SidebarGroupAction title="Add Project" onClick={() => {
-        setEditingProjectId(null)
-        setProjectName("")
-        setIsProjectDialogOpen(true)
-      }} className="cursor-pointer">
-        <Plus />
-        <span className="sr-only">Add Project</span>
-      </SidebarGroupAction>
+      {!isOnline ? null : (
+        <SidebarGroupAction title="Add Project" onClick={() => {
+          setEditingProjectId(null)
+          setProjectName("")
+          setIsProjectDialogOpen(true)
+        }} className="cursor-pointer">
+          <Plus />
+          <span className="sr-only">Add Project</span>
+        </SidebarGroupAction>
+      )}
       <SidebarMenu>
-        <SidebarMenuItem>
+        <SidebarMenuItem className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
           <SidebarMenuButton 
             isActive={activeProjectId === null}
-            onClick={() => onProjectSelect(null)}
-            className="cursor-pointer"
+            onClick={() => isOnline && onProjectSelect(null)}
+            className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
           >
             <Folder />
             <span>All Workspace</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         {projects.map((item) => (
-          <SidebarMenuItem key={item.id}>
-            <SidebarMenuButton onClick={() => onProjectSelect(item.id)} isActive={item.isActive} className="cursor-pointer">
+          <SidebarMenuItem key={item.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+            <SidebarMenuButton 
+              onClick={() => isOnline && onProjectSelect(item.id)} 
+              isActive={item.isActive} 
+              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+            >
               <item.icon />
               <span>{item.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -276,7 +285,7 @@ export function NavProjects({
                 side={isMobile ? "bottom" : "right"}
                 align={isMobile ? "end" : "start"}
               >
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} onClick={() => {
                   setEditingProjectId(item.id)
                   setEditingProjectName(item.name)
                   setIsProjectDialogOpen(true)
@@ -285,7 +294,7 @@ export function NavProjects({
                   <span>Rename Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onProjectDelete(item.id)}>
+                <DropdownMenuItem disabled={!isOnline} onClick={() => onProjectDelete(item.id)}>
                   <Trash2 className="mr-2 size-4 text-muted-foreground" />
                   <span>Delete Project</span>
                 </DropdownMenuItem>
@@ -294,10 +303,10 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
         {hasMoreProjects && (
-          <SidebarMenuItem>
+          <SidebarMenuItem className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
-              className="text-muted-foreground hover:text-foreground"
-              onClick={onLoadMoreProjects}
+              className={cn("text-muted-foreground hover:text-foreground", !isOnline && "pointer-events-none")}
+              onClick={() => isOnline && onLoadMoreProjects?.()}
             >
               <MoreHorizontal className="size-4" />
               <span>More</span>
@@ -312,30 +321,32 @@ export function NavProjects({
         <SidebarGroupLabel>
           {sidebarView === 'erd' ? 'Diagrams' : sidebarView === 'notes' ? 'Notes' : sidebarView === 'flowchart' ? 'Flowcharts' : 'Drawings'}
         </SidebarGroupLabel>
-      <SidebarGroupAction title={`Add ${sidebarView}`} onClick={() => {
-        setSelectedProjectId(activeProjectId?.toString() || "none")
-        setFileName("")
-        setIsFileDialogOpen(true)
-      }} className="cursor-pointer">
-        <Plus />
-      </SidebarGroupAction>
+      {!isOnline ? null : (
+        <SidebarGroupAction title={`Add ${sidebarView}`} onClick={() => {
+          setSelectedProjectId(activeProjectId?.toString() || "none")
+          setFileName("")
+          setIsFileDialogOpen(true)
+        }} className="cursor-pointer">
+          <Plus />
+        </SidebarGroupAction>
+      )}
       <SidebarMenu>
         {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
-          <SidebarMenuItem key={file.id}>
+          <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFileId === file.id && view === 'erd'}
-              onClick={() => onFileSelect(file.id)}
-              className="cursor-pointer"
+              onClick={() => isOnline && onFileSelect(file.id)}
+              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <Database className="size-4" />
               <span>{file.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} onClick={() => {
                   setEditingFile({ id: file.id, name: file.name, projectId: file.project_id, type: 'erd' })
                   setSelectedProjectId(file.project_id?.toString() || "none")
                   setIsEditFileDialogOpen(true)
@@ -343,7 +354,7 @@ export function NavProjects({
                   <Edit2 className="mr-2 size-4" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
                   setDeletingFile({ id: file.id, type: 'erd' })
                   setIsDeleteConfirmOpen(true)
                 }}>
@@ -355,21 +366,21 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
         {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
-          <SidebarMenuItem key={note.id}>
+          <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
-              onClick={() => onNoteSelect(note.id)}
-              className="cursor-pointer"
+              onClick={() => isOnline && onNoteSelect(note.id)}
+              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <StickyNote className="size-4" />
               <span>{note.title}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="cursor-pointer"><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} onClick={() => {
                   setEditingFile({ id: note.id, name: note.title, projectId: note.project_id, type: 'notes' })
                   setSelectedProjectId(note.project_id?.toString() || "none")
                   setIsEditFileDialogOpen(true)
@@ -377,7 +388,7 @@ export function NavProjects({
                   <Edit2 className="mr-2 size-4" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
                   setDeletingFile({ id: note.id, type: 'notes' })
                   setIsDeleteConfirmOpen(true)
                 }}>
@@ -389,21 +400,21 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
         {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
-          <SidebarMenuItem key={drawing.id}>
+          <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
-              onClick={() => onDrawingSelect(drawing.id)}
-              className="cursor-pointer"
+              onClick={() => isOnline && onDrawingSelect(drawing.id)}
+              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <PenTool className="size-4" />
               <span>{drawing.title}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} onClick={() => {
                   setEditingFile({ id: drawing.id, name: drawing.title, projectId: drawing.project_id, type: 'drawings' })
                   setSelectedProjectId(drawing.project_id?.toString() || "none")
                   setIsEditFileDialogOpen(true)
@@ -411,7 +422,7 @@ export function NavProjects({
                   <Edit2 className="mr-2 size-4" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
                   setDeletingFile({ id: drawing.id, type: 'drawings' })
                   setIsDeleteConfirmOpen(true)
                 }}>
@@ -424,21 +435,21 @@ export function NavProjects({
         ))}
 
         {sidebarView === 'flowchart' && flowcharts.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(flowchart => (
-          <SidebarMenuItem key={flowchart.id}>
+          <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
-              onClick={() => onFlowchartSelect(flowchart.id)}
-              className="cursor-pointer"
+              onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
+              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <Network className="size-4" />
               <span>{flowchart.title}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover><MoreHorizontal /></SidebarMenuAction>}>
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} onClick={() => {
                   setEditingFile({ id: flowchart.id, name: flowchart.title, projectId: flowchart.project_id, type: 'flowchart' })
                   setSelectedProjectId(flowchart.project_id?.toString() || "none")
                   setIsEditFileDialogOpen(true)
@@ -446,7 +457,7 @@ export function NavProjects({
                   <Edit2 className="mr-2 size-4" />
                   Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
                   setDeletingFile({ id: flowchart.id, type: 'flowchart' })
                   setIsDeleteConfirmOpen(true)
                 }}>

@@ -60,6 +60,114 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   res.json(data);
 });
 
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+  const { data: file, error: fileError } = await supabase
+    .from("files")
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
+    .single();
+
+  if (fileError || !file) return res.status(404).json({ error: "File not found" });
+
+  // Security Check: Is it public?
+  if (!file.is_public) {
+    return res.status(403).json({ error: "This document is private" });
+  }
+
+  // Owner Bypass: For single-account, any logged-in user is the owner
+  let isOwner = false;
+  const sessionToken = req.cookies.token;
+  if (sessionToken) {
+    const { data: { user } } = await supabase.auth.getUser(sessionToken);
+    if (user) {
+      isOwner = true;
+    }
+  }
+
+  if (!isOwner) {
+    // Security Check: Is it expired?
+    if (file.expiry_date && new Date(file.expiry_date) < new Date()) {
+      return res.status(403).json({ error: "This share link has expired" });
+    }
+
+    // Security Check: Token matching (if required)
+    const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
+    if (file.share_token && file.share_token !== providedToken) {
+      return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+    }
+  }
+
+  const fileId = file.id;
+
+  const { data: entities, error: entitiesError } = await supabase
+    .from("entities")
+    .select("*")
+    .eq("file_id", fileId);
+
+  if (entitiesError) return res.status(500).json({ error: entitiesError.message });
+
+  const { data: relationships, error: relError } = await supabase
+    .from("relationships")
+    .select("*")
+    .eq("file_id", fileId);
+
+  if (relError) return res.status(500).json({ error: relError.message });
+
+  const entitiesWithColumns = await Promise.all(entities.map(async (entity) => {
+    const { data: columns } = await supabase
+      .from("columns")
+      .select("*")
+      .eq("entity_id", entity.id);
+    return { ...entity, columns: columns || [] };
+  }));
+
+  res.json({ ...file, entities: entitiesWithColumns, relationships });
+});
+
+router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { id } = req.params;
+  const { is_public, share_token, expiry_date } = req.body;
+
+  try {
+    // 1. Get current state to check published_at
+    const { data: currentFile } = await supabase
+      .from("files")
+      .select("is_public, published_at")
+      .eq("id", id)
+      .single();
+
+    if (!currentFile) return res.status(404).json({ error: "File not found" });
+
+    let updateData: any = {
+      is_public,
+      share_token: is_public ? share_token : null,
+      expiry_date: is_public ? expiry_date : null,
+    };
+
+    if (is_public) {
+      // If turning on public access for the first time
+      if (!currentFile.published_at) {
+        updateData.published_at = new Date().toISOString();
+      }
+    } else {
+      // If turning off, clear published_at
+      updateData.published_at = null;
+    }
+
+    const { data, error } = await supabase
+      .from("files")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const fileId = req.params.id;
   const { data: file, error: fileError } = await supabase

@@ -10,14 +10,26 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-
+import { Share2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { ShareModal } from "./modals/ShareModal";
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
   activeFileName: string | null | undefined;
-  view: string;
+  view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash';
   hasActiveItem: boolean;
   currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  activeFileUid?: string;
+  activeFileId?: number | string;
+  initialShareSettings?: {
+    is_public: boolean;
+    share_token?: string;
+    expiry_date?: string;
+  };
+  onSettingsSaved?: () => void;
+  isPublicView?: boolean;
+  isOnline: boolean;
 }
 
 export function MainHeader({
@@ -26,22 +38,36 @@ export function MainHeader({
   activeFileName,
   view,
   hasActiveItem,
-  currentSaveStatus
+  currentSaveStatus,
+  activeFileUid,
+  activeFileId,
+  initialShareSettings,
+  onSettingsSaved,
+  isPublicView = false,
+  isOnline
 }: MainHeaderProps) {
+  const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden">
+    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
       <div className="flex items-center gap-2 px-4 min-w-0 flex-1">
-        <SidebarTrigger className="-ml-1 shrink-0" />
-        <Separator orientation="vertical" className="h-4 shrink-0 bg-border/50" />
+        {!isPublicView && (
+          <>
+            <SidebarTrigger className="-ml-1 shrink-0" />
+            <Separator orientation="vertical" className="h-4 shrink-0 bg-border/50" />
+          </>
+        )}
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
-            <BreadcrumbItem className="shrink-0 hidden sm:block">
-              <BreadcrumbPage className="font-medium text-muted-foreground">
-                {featureLabel}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
+            {!isPublicView && (
+              <BreadcrumbItem className="shrink-0 hidden sm:block">
+                <BreadcrumbPage className="font-medium text-muted-foreground">
+                  {featureLabel}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            )}
             
-            {activeProjectName && (
+            {!isPublicView && activeProjectName && (
               <>
                 <BreadcrumbSeparator className="shrink-0 hidden sm:block" />
                 <BreadcrumbItem className="min-w-0 shrink">
@@ -52,7 +78,7 @@ export function MainHeader({
 
             {activeFileName && (
               <>
-                <BreadcrumbSeparator className="shrink-0" />
+                {!isPublicView && <BreadcrumbSeparator className="shrink-0" />}
                 <BreadcrumbItem className="min-w-0 shrink">
                   <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
                 </BreadcrumbItem>
@@ -61,14 +87,53 @@ export function MainHeader({
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      <div className="ml-auto px-4 flex items-center gap-4">
+
+      {!isOnline && !isPublicView && (
+        <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in slide-in-from-top-1 duration-500">
+          <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+          <span className="text-[10px] font-bold uppercase tracking-wider">Offline Mode: Navigation Disabled</span>
+        </div>
+      )}
+
+      <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
-          <div className="flex items-center gap-2 mr-4">
-            <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-            <span className="text-xs text-muted-foreground font-medium">
-              {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-            </span>
-          </div>
+          <>
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => isOnline && setIsShareModalOpen(true)}
+                disabled={!isOnline}
+                className={`h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2 transition-colors ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Share</span>
+              </Button>
+              
+              {!isPublicView && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className={`w-2 h-2 rounded-full ${!isOnline ? 'bg-destructive animate-pulse' : currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                  <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
+                    {!isOnline ? 'Saving Locally' : currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {activeFileUid && activeFileId && isOnline && (
+              <ShareModal 
+                isOpen={isShareModalOpen} 
+                onOpenChange={setIsShareModalOpen}
+                documentType={view as any}
+                documentUid={activeFileUid}
+                documentId={activeFileId}
+                documentTitle={activeFileName || 'Untitled'}
+                isPublicView={isPublicView}
+                initialSettings={initialShareSettings}
+                onSettingsSaved={onSettingsSaved}
+              />
+            )}
+          </>
         )}
       </div>
     </header>

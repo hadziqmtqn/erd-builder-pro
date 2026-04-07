@@ -30,12 +30,13 @@ const nodeTypes = {
 };
 
 interface FlowchartViewProps {
-  activeFlowchartId: number;
+  activeFlowchartId: number | string | null;
   activeFlowchart: Flowchart;
   handleFlowchartChange: (nodes: any[], edges: any[]) => void;
+  isReadOnly?: boolean;
 }
 
-export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowchartChange }: FlowchartViewProps) {
+export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowchartChange, isReadOnly = false }: FlowchartViewProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -175,14 +176,16 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
       
       {/* Top Bar */}
-      <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-        <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-          <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Symbol
-          </Button>
+      {!isReadOnly && (
+        <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
+            <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Symbol
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 w-full h-full relative">
         <ReactFlow
@@ -223,38 +226,45 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
           fitView
           colorMode="dark"
           onlyRenderVisibleElements={true}
+          nodesDraggable={!isReadOnly}
+          nodesConnectable={!isReadOnly}
+          elementsSelectable={!isReadOnly}
         >
-          <Controls className="bg-background/95 border-border shadow-md" />
+          <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
         </ReactFlow>
       </div>
 
-      <AddSymbolModal 
-        isOpen={isAddingNode}
-        onOpenChange={setIsAddingNode}
-        nodeData={newNodeData}
-        onNodeDataChange={setNewNodeData}
-        onConfirm={confirmAddSymbol}
-      />
+      {!isReadOnly && (
+        <>
+          <AddSymbolModal 
+            isOpen={isAddingNode}
+            onOpenChange={setIsAddingNode}
+            nodeData={newNodeData}
+            onNodeDataChange={setNewNodeData}
+            onConfirm={confirmAddSymbol}
+          />
 
-      <SymbolPropertiesModal
-        selectedNodeId={selectedNodeId}
-        onClose={() => setSelectedNodeId(null)}
-        selectedNode={selectedNode}
-        onUpdateNodeData={updateNodeData}
-      />
+          <SymbolPropertiesModal
+            selectedNodeId={selectedNodeId}
+            onClose={() => setSelectedNodeId(null)}
+            selectedNode={selectedNode}
+            onUpdateNodeData={updateNodeData}
+          />
 
-      <ConnectorPropertiesModal
-        selectedEdgeId={selectedEdgeId}
-        onClose={() => setSelectedEdgeId(null)}
-        selectedEdge={selectedEdge}
-        isDashed={isDashed}
-        arrowType={arrowType}
-        onEdgeTypeChange={handleEdgeTypeChange}
-        onArrowChange={handleArrowChange}
-        onLabelChange={handleEdgeLabelChange}
-        onDeleteEdge={deleteEdge}
-      />
+          <ConnectorPropertiesModal
+            selectedEdgeId={selectedEdgeId}
+            onClose={() => setSelectedEdgeId(null)}
+            selectedEdge={selectedEdge}
+            isDashed={isDashed}
+            arrowType={arrowType}
+            onEdgeTypeChange={handleEdgeTypeChange}
+            onArrowChange={handleArrowChange}
+            onLabelChange={handleEdgeLabelChange}
+            onDeleteEdge={deleteEdge}
+          />
+        </>
+      )}
     </Card>
   );
 }

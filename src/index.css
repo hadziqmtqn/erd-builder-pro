@@ -420,12 +420,14 @@ ul[data-type="taskList"] input[type="checkbox"]:checked::after {
 .tiptap-editor table,
 .prose.tiptap-editor table,
 .tiptap-editor-content table {
-  border-collapse: collapse !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
   table-layout: fixed !important;
   width: 100% !important;
   margin: 1.5rem 0 !important;
   overflow: hidden !important;
-  border: 1px solid var(--muted-foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.75rem !important;
 }
 
 .tiptap-editor table tr,
@@ -445,11 +447,28 @@ ul[data-type="taskList"] input[type="checkbox"]:checked::after {
 .tiptap-editor-content table td,
 .tiptap-editor-content table th {
   min-width: 1em !important;
-  border: 1px solid var(--muted-foreground) !important;
+  border-bottom: 1px solid var(--border) !important;
+  border-right: 1px solid var(--border) !important;
   padding: 0.5rem !important;
   vertical-align: top !important;
   box-sizing: border-box !important;
   position: relative !important;
+}
+
+/* Remove bottom border for last row to avoid doubling with table border */
+.tiptap-editor table tr:last-child td,
+.tiptap-editor table tr:last-child th,
+.prose.tiptap-editor table tr:last-child td,
+.prose.tiptap-editor table tr:last-child th {
+  border-bottom: none !important;
+}
+
+/* Remove right border for last column to avoid doubling with table border */
+.tiptap-editor table td:last-child,
+.tiptap-editor table th:last-child,
+.prose.tiptap-editor table th:last-child,
+.prose.tiptap-editor table td:last-child {
+  border-right: none !important;
 }
 
 .tiptap-editor table th,

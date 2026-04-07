@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Project } from '../types';
+import { localPersistence } from '../lib/localPersistence';
 
-export function useProjects() {
+export function useProjects(isGuest: boolean = false) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<number | string | null>(null);
 
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(false);
@@ -14,13 +15,23 @@ export function useProjects() {
   projectsRef.current = projects;
 
   const fetchProjects = useCallback(async (isLoadMore = false, searchQuery = '') => {
+    if (isGuest) {
+      const localProjects = await localPersistence.getAllResources('project');
+      let filtered = localProjects.filter(p => !p.is_deleted);
+      if (searchQuery) filtered = filtered.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      setProjects(filtered);
+      setProjectsTotal(filtered.length);
+      setHasMoreProjects(false);
+      return;
+    }
+
     try {
       const offset = isLoadMore ? projectsRef.current.length : 0;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const res = await fetch(`/api/projects?limit=10&offset=${offset}${qParam}`);
       if (res.ok) {
         const json = await res.json();
-        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        const data = json.data !== undefined ? json.data : json;
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const projectsList = Array.isArray(data) ? data : [];
@@ -32,12 +43,25 @@ export function useProjects() {
         setProjectsTotal(total);
         setHasMoreProjects((projectsList.length + offset) < total);
       }
-    } catch (err) {
-      console.error('Error fetching projects:', err);
-    }
-  }, []); // Stable dependency array
+    } catch (err) {}
+  }, [isGuest]);
 
   const createProject = async (name: string) => {
+    if (isGuest) {
+      const newProject: Project = {
+        id: Math.random().toString(36).substr(2, 9),
+        name,
+        is_deleted: false,
+        created_at: new Date().toISOString(),
+      };
+      // @ts-ignore
+      newProject.type = 'project';
+      await localPersistence.saveResource(newProject);
+      setProjects(prev => [newProject, ...prev]);
+      toast.success('Project created locally');
+      return newProject;
+    }
+
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -49,17 +73,23 @@ export function useProjects() {
         setProjects(prev => [newProject, ...prev]);
         toast.success('Project created successfully');
         return newProject;
-      } else {
-        toast.error('Failed to create project');
       }
-    } catch (err) {
-      console.error('Error creating project:', err);
-      toast.error('Error creating project');
-    }
+    } catch (err) {}
     return null;
   };
 
-  const updateProject = async (id: number, name: string) => {
+  const updateProject = async (id: number | string, name: string) => {
+    if (isGuest) {
+      const project = await localPersistence.getResource(id);
+      if (project) {
+        project.name = name;
+        await localPersistence.saveResource(project);
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p));
+        toast.success('Project renamed locally');
+      }
+      return;
+    }
+
     try {
       const res = await fetch(`/api/projects/${id}`, {
         method: 'PUT',
@@ -69,16 +99,24 @@ export function useProjects() {
       if (res.ok) {
         setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p));
         toast.success('Project renamed successfully');
-      } else {
-        toast.error('Failed to rename project');
       }
-    } catch (err) {
-      console.error('Error updating project:', err);
-      toast.error('Error renaming project');
-    }
+    } catch (err) {}
   };
 
-  const deleteProject = async (id: number) => {
+  const deleteProject = async (id: number | string) => {
+    if (isGuest) {
+      const project = await localPersistence.getResource(id);
+      if (project) {
+        project.is_deleted = true;
+        project.deleted_at = new Date().toISOString();
+        await localPersistence.saveResource(project);
+        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        if (activeProjectId === id) setActiveProjectId(null);
+        toast.success('Project moved to local trash');
+      }
+      return true;
+    }
+
     try {
       const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -86,42 +124,34 @@ export function useProjects() {
         if (activeProjectId === id) setActiveProjectId(null);
         toast.success('Project moved to trash');
         return true;
-      } else {
-        toast.error('Failed to delete project');
       }
-    } catch (err) {
-      console.error('Error deleting project:', err);
-      toast.error('Error deleting project');
-    }
+    } catch (err) {}
     return false;
   };
 
-  const restoreProject = async (id: number) => {
-    try {
-      const res = await fetch(`/api/projects/${id}/restore`, { method: 'POST' });
-      if (res.ok) {
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: false } : p));
-        toast.success('Project restored successfully');
-      } else {
-        toast.error('Failed to restore project');
+  const restoreProject = async (id: number | string) => {
+    if (isGuest) {
+      const project = await localPersistence.getResource(id);
+      if (project) {
+        project.is_deleted = false;
+        project.deleted_at = undefined;
+        await localPersistence.saveResource(project);
+        fetchProjects();
+        toast.success('Project restored locally');
       }
-    } catch (err) {
-      console.error('Error restoring project:', err);
-      toast.error('Error restoring project');
+      return;
     }
+    await fetch(`/api/projects/${id}/restore`, { method: 'POST' });
+    fetchProjects();
   };
 
-  const deleteProjectPermanent = async (id: number) => {
-    try {
-      const res = await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success('Project permanently deleted');
-      } else {
-        toast.error('Failed to permanently delete project');
-      }
-    } catch (err) {
-      toast.error('Error permanently deleting project');
+  const deleteProjectPermanent = async (id: number | string) => {
+    if (isGuest) {
+      await localPersistence.deleteResource(id);
+      toast.success('Project permanently deleted from local');
+      return;
     }
+    await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
   };
 
   return {
@@ -139,3 +169,4 @@ export function useProjects() {
     projectsTotal
   };
 }
+

@@ -59,6 +59,87 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   res.json(inserted);
 });
 
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+  const { data: flowchart, error } = await supabase
+    .from("flowcharts")
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
+    .single();
+
+  if (error || !flowchart) return res.status(404).json({ error: "Flowchart not found" });
+
+  // Security Check: Is it public?
+  if (!flowchart.is_public) {
+    return res.status(403).json({ error: "This document is private" });
+  }
+
+  // Owner Bypass: For single-account, any logged-in user is the owner
+  let isOwner = false;
+  const sessionToken = req.cookies.token;
+  if (sessionToken) {
+    const { data: { user } } = await supabase.auth.getUser(sessionToken);
+    if (user) {
+      isOwner = true;
+    }
+  }
+
+  if (!isOwner) {
+    // Security Check: Is it expired?
+    if (flowchart.expiry_date && new Date(flowchart.expiry_date) < new Date()) {
+      return res.status(403).json({ error: "This share link has expired" });
+    }
+
+    // Security Check: Token matching (if required)
+    const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
+    if (flowchart.share_token && flowchart.share_token !== providedToken) {
+      return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+    }
+  }
+
+  res.json(flowchart);
+});
+
+router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { id } = req.params;
+  const { is_public, share_token, expiry_date } = req.body;
+
+  try {
+    const { data: currentFlowchart } = await supabase
+      .from("flowcharts")
+      .select("is_public, published_at")
+      .eq("id", id)
+      .single();
+
+    if (!currentFlowchart) return res.status(404).json({ error: "Flowchart not found" });
+
+    let updateData: any = {
+      is_public,
+      share_token: is_public ? share_token : null,
+      expiry_date: is_public ? expiry_date : null,
+    };
+
+    if (is_public) {
+      if (!currentFlowchart.published_at) {
+        updateData.published_at = new Date().toISOString();
+      }
+    } else {
+      updateData.published_at = null;
+    }
+
+    const { data, error } = await supabase
+      .from("flowcharts")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("flowcharts")
