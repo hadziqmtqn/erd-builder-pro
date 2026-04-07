@@ -21,6 +21,13 @@ interface MainHeaderProps {
   hasActiveItem: boolean;
   currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   activeFileUid?: string;
+  activeFileId?: number;
+  initialShareSettings?: {
+    is_public: boolean;
+    share_token?: string;
+    expiry_date?: string;
+  };
+  onSettingsSaved?: () => void;
   isPublicView?: boolean;
 }
 
@@ -32,6 +39,9 @@ export function MainHeader({
   hasActiveItem,
   currentSaveStatus,
   activeFileUid,
+  activeFileId,
+  initialShareSettings,
+  onSettingsSaved,
   isPublicView = false
 }: MainHeaderProps) {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
@@ -99,14 +109,17 @@ export function MainHeader({
               )}
             </div>
 
-            {activeFileUid && (
+            {activeFileUid && activeFileId && (
               <ShareModal 
                 isOpen={isShareModalOpen} 
                 onOpenChange={setIsShareModalOpen}
                 documentType={view as any}
                 documentUid={activeFileUid}
+                documentId={activeFileId}
                 documentTitle={activeFileName || 'Untitled'}
                 isPublicView={isPublicView}
+                initialSettings={initialShareSettings}
+                onSettingsSaved={onSettingsSaved}
               />
             )}
           </>

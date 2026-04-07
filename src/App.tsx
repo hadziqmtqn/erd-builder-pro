@@ -70,6 +70,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { ForbiddenView } from "./components/views/ForbiddenView";
 
 const initialNodes: Node<Entity>[] = [];
 const initialEdges: Edge[] = [];
@@ -135,6 +136,31 @@ function AppContent() {
   const isOnline = useConnectionStatus();
   useSyncService(isAuthenticated);
   const { isInstallable, installApp } = usePWAInstall();
+
+  const currentActiveId = useMemo(() => {
+    if (isPublicView) return undefined;
+    if (view === 'erd') return activeFileId;
+    if (view === 'notes') return activeNoteId;
+    if (view === 'drawings') return activeDrawingId;
+    if (view === 'flowchart') return activeFlowchartId;
+    return undefined;
+  }, [view, isPublicView, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
+
+  const initialShareSettings = useMemo(() => {
+    const doc = isPublicView ? publicData : (
+      view === 'erd' ? files.find(f => f.id === activeFileId) :
+      view === 'notes' ? notes.find(n => n.id === activeNoteId) :
+      view === 'drawings' ? drawings.find(d => d.id === activeDrawingId) :
+      view === 'flowchart' ? flowcharts.find(f => f.id === activeFlowchartId) :
+      null
+    );
+    if (!doc) return undefined;
+    return {
+      is_public: !!doc.is_public,
+      share_token: doc.share_token,
+      expiry_date: doc.expiry_date
+    };
+  }, [view, isPublicView, publicData, files, notes, drawings, flowcharts, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   // Show install notification
   useEffect(() => {
@@ -465,19 +491,30 @@ function AppContent() {
     }, 3000);
   }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
 
+  // Forbidden / Error state for public view
+  const [forbiddenDoc, setForbiddenDoc] = useState<{ title: string, message: string, status: number } | null>(null);
+
   const fetchPublicDocument = async (type: string, uid: string) => {
     setIsPublicLoading(true);
+    setForbiddenDoc(null); // Reset on new attempt
     try {
       const endpoint = type === 'erd' ? 'files' : (type === 'flowchart' ? 'flowcharts' : type);
       const res = await fetch(`/api/${endpoint}/public/${uid}`);
       
       if (!res.ok) {
         let errorMessage = "Document not found or access denied";
+        let errorTitle = "Access Denied";
+        
         try {
           const errorData = await res.json();
           errorMessage = errorData.error || errorMessage;
-        } catch (e) {
-          // If not JSON, it might be the SPA HTML or a generic 404
+          if (res.status === 404) errorTitle = "Not Found";
+          else if (res.status === 401 || res.status === 403) errorTitle = "Access Denied";
+        } catch (e) {}
+
+        if (res.status === 401 || res.status === 403 || res.status === 404) {
+          setForbiddenDoc({ title: errorTitle, message: errorMessage, status: res.status });
+          return;
         }
         throw new Error(errorMessage);
       }
@@ -568,6 +605,7 @@ function AppContent() {
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to load shared document");
+      // Only generic error redirects home, specific statuses stay on Forgeview via state
       setTimeout(() => window.location.href = '/', 3000);
     } finally {
       setIsPublicLoading(false);
@@ -721,6 +759,17 @@ function AppContent() {
     );
   }
 
+  if (forbiddenDoc) {
+    return (
+      <ForbiddenView 
+        title={forbiddenDoc.title} 
+        message={forbiddenDoc.message} 
+        statusCode={forbiddenDoc.status}
+        onReturn={() => window.location.href = '/'}
+      />
+    );
+  }
+
   if (!isAuthenticated && !isPublicView) {
     return <Login onLogin={() => checkAuth()} />;
   }
@@ -817,7 +866,16 @@ function AppContent() {
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
           currentSaveStatus={isPublicView ? 'saved' : currentSaveStatus}
           activeFileUid={activeFileUid}
+          activeFileId={currentActiveId}
+          initialShareSettings={initialShareSettings}
           isPublicView={isPublicView}
+          onSettingsSaved={() => {
+            const pid = activeProjectId === null ? 'all' : activeProjectId;
+            if (view === 'erd') fetchFiles(false, pid, debouncedSearchQuery);
+            else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery);
+            else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
+            else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
+          }}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
