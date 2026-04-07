@@ -1,4 +1,4 @@
-const CACHE_NAME = 'erd-builder-cache-v1';
+const CACHE_NAME = 'erd-builder-cache-v1.1'; // Update version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -8,11 +8,10 @@ const ASSETS_TO_CACHE = [
   '/icons/icon-512x512-any.svg',
 ];
 
-// Install Event: Precaching core assets (resilient version)
+// Install Event: Precaching core assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use map to attempt each cache add separately if one fails
       return Promise.allSettled(
         ASSETS_TO_CACHE.map(asset => cache.add(asset))
       );
@@ -37,32 +36,41 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch Event: Stale-While-Revalidate Strategy
+// Fetch Event
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
-
-  // Skip API calls - we want fresh data, and we already handle offline data in IndexedDB
   if (event.request.url.includes('/api/')) return;
-
-  // Skip Chrome extensions and other non-app origins
   if (!event.request.url.startsWith(self.location.origin)) return;
 
+  // STRATEGY: Network-First for Navigation (HTML)
+  // This ensures index.html is always fresh if online, picking up new hashed JS/CSS
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        })
+        .catch(() => {
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
+  // STRATEGY: Stale-While-Revalidate for other assets (images, fonts, etc)
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(event.request).then((cachedResponse) => {
         const fetchedResponse = fetch(event.request).then((networkResponse) => {
-          // Check if we received a valid response
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
-        }).catch(() => {
-          // If network fails and no cache, return nothing (or a fallback offline page)
-          return cachedResponse;
-        });
+        }).catch(() => cachedResponse);
 
-        // Return cached response immediately if available, otherwise wait for network
         return cachedResponse || fetchedResponse;
       });
     })
