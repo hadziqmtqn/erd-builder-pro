@@ -335,49 +335,51 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       >
         <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative group/outline-ctx">
           
-          {/* Floating Outline Panel - Hidden on Mobile, Tablet+ Trigger Fix */}
-          <div className="absolute -right-12 top-1/2 -translate-y-1/2 z-50 hidden md:block">
-            <div className="group relative">
-              {/* The "Handle" - THE ONLY TRIGGER AREA (Narrow) */}
-              <div className="h-40 w-8 flex flex-col gap-2 justify-center items-center cursor-pointer pointer-events-auto bg-transparent border-r border-transparent hover:border-yellow-500/20">
-                <div className="w-1 h-12 rounded-full bg-yellow-500/20 group-hover:bg-yellow-500/60 transition-all duration-300" />
-                <div className="w-1 h-3 rounded-full bg-yellow-500/10 group-hover:bg-yellow-500/30 transition-all duration-300" />
-              </div>
+          {/* Floating Outline Panel - Sticky centered in viewport */}
+          <div className="absolute -right-12 top-0 h-full hidden md:block pointer-events-none z-40">
+            <div className="sticky top-1/2 -translate-y-1/2 pointer-events-auto">
+              <div className="group relative">
+                {/* The "Handle" - THE ONLY TRIGGER AREA (Narrow) */}
+                <div className="h-40 w-8 flex flex-col gap-2 justify-center items-center cursor-pointer bg-transparent border-r border-transparent hover:border-yellow-500/20">
+                  <div className="w-1 h-12 rounded-full bg-yellow-500/20 group-hover:bg-yellow-500/60 transition-all duration-300" />
+                  <div className="w-1 h-3 rounded-full bg-yellow-500/10 group-hover:bg-yellow-500/30 transition-all duration-300" />
+                </div>
 
-              {/* The Panel - Absolute positioned to the LEFT of handle with a hover bridge */}
-              <div className="absolute right-full top-1/2 -translate-y-1/2 pr-3 opacity-0 translate-x-8 scale-95 group-hover:opacity-100 group-hover:translate-x-0 group-hover:scale-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto origin-right">
-                <div className="bg-neutral-950/90 backdrop-blur-xl border border-yellow-500/20 rounded-2xl p-5 min-w-[260px] max-w-[340px] max-h-[80vh] overflow-y-auto custom-scrollbar shadow-[0_0_40px_-10px_rgba(234,179,8,0.15)] ring-1 ring-white/5">
-                  {headings.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {headings.map((heading, i) => (
-                        <button
-                          key={`${heading.pos}-${i}`}
-                          onClick={() => scrollToHeading(heading.pos)}
-                          className={cn(
-                            "text-left transition-all duration-200 group/item relative py-1 pr-4 rounded-sm hover:bg-yellow-500/10 uppercase tracking-wide text-[11px] font-bold text-yellow-500",
-                            heading.level === 1 ? "mt-1" : 
-                            heading.level === 2 ? "pl-2 opacity-90" : 
-                            heading.level === 3 ? "pl-4 opacity-80" :
-                            heading.level === 4 ? "pl-6 opacity-70" :
-                            "pl-8 opacity-60"
-                          )}
-                        >
-                          {/* Vertical indicator for H1 */}
-                          {heading.level === 1 && (
-                            <div className="absolute left-[-0.75rem] top-1/2 -translate-y-1/2 w-[2px] h-3 bg-yellow-500 group-hover/item:bg-yellow-400 transition-colors" />
-                          )}
-                          
-                          <span className="block truncate transition-all duration-200 group-hover/item:translate-x-0.5">
-                            {heading.text}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center opacity-40">
-                      <p className="text-[10px] font-medium uppercase tracking-widest text-yellow-500/50">Outline Empty</p>
-                    </div>
-                  )}
+                {/* The Panel - Absolute positioned to the LEFT of handle with a hover bridge */}
+                <div className="absolute right-full top-1/2 -translate-y-1/2 pr-3 opacity-0 translate-x-8 scale-95 group-hover:opacity-100 group-hover:translate-x-0 group-hover:scale-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto origin-right">
+                  <div className="bg-neutral-950/90 backdrop-blur-xl border border-yellow-500/20 rounded-2xl p-5 min-w-[200px] max-w-[280px] max-h-[80vh] overflow-y-auto custom-scrollbar shadow-[0_0_40px_-10px_rgba(234,179,8,0.15)] ring-1 ring-white/5">
+                    {headings.length > 0 ? (
+                      <div className="flex flex-col gap-0.5">
+                        {headings.map((heading, i) => (
+                          <button
+                            key={`${heading.pos}-${i}`}
+                            onClick={() => scrollToHeading(heading.pos)}
+                            className={cn(
+                              "text-left transition-all duration-200 group/item relative py-0.5 pr-4 rounded-sm hover:bg-yellow-500/10 uppercase tracking-wide text-[11px] font-bold text-yellow-500 cursor-pointer",
+                              heading.level === 1 ? "mt-1" : 
+                              heading.level === 2 ? "pl-1 opacity-90" : 
+                              heading.level === 3 ? "pl-2 opacity-80" :
+                              heading.level === 4 ? "pl-3 opacity-70" :
+                              "pl-4 opacity-60"
+                            )}
+                          >
+                            {/* Vertical indicator for H1 */}
+                            {heading.level === 1 && (
+                              <div className="absolute left-[-0.6rem] top-1/2 -translate-y-1/2 w-[2px] h-3 bg-yellow-500 group-hover/item:bg-yellow-400 transition-colors" />
+                            )}
+                            
+                            <span className="block truncate transition-all duration-200 group-hover/item:translate-x-0.5">
+                              {heading.text}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 text-center opacity-40">
+                        <p className="text-[10px] font-medium uppercase tracking-widest text-yellow-500/50">Outline Empty</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
