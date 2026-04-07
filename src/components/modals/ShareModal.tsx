@@ -122,8 +122,20 @@ export function ShareModal({
                 disabled={!isPublic}
                 className="font-mono"
               />
-              <p className="text-[11px] text-muted-foreground italic">Note: In this demo, tokens are not yet enforced by the server.</p>
             </div>
+
+            <div className="space-y-2 pt-2">
+              <Label htmlFor="valid-until">Duration (Days)</Label>
+              <Input 
+                id="valid-until"
+                type="number"
+                placeholder="Forever"
+                disabled={!isPublic}
+                className="text-xs"
+              />
+            </div>
+            
+            <p className="text-[11px] text-muted-foreground italic">Note: In this demo, tokens and expiry dates are not yet enforced by the server.</p>
           </div>
         </div>
 
