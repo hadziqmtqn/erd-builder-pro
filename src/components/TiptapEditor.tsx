@@ -13,10 +13,11 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { X, Check } from 'lucide-react';
+import { X, Check, PanelRight, ChevronFirst } from 'lucide-react';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
+import { cn } from '@/lib/utils';
 
 const MenuBar = ({ editor }: { editor: any }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -183,6 +184,12 @@ interface TiptapEditorProps {
   onChange?: (content: string) => void;
 }
 
+interface HeadingInfo {
+  text: string;
+  level: number;
+  pos: number;
+}
+
 // Custom extension to ensure an empty paragraph is always at the end
 const TrailingNode = Extension.create({
   name: 'customTrailingNode',
@@ -222,6 +229,9 @@ const TrailingNode = Extension.create({
 });
 
 const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
+  const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   const extensions = React.useMemo(() => [
     TextStyle,
     Color,
@@ -253,6 +263,19 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       if (onChange) {
         onChange(html);
       }
+
+      // Extract headings for the outline
+      const extracted: HeadingInfo[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading' && node.attrs.level <= 5) {
+          extracted.push({
+            text: node.textContent,
+            level: node.attrs.level,
+            pos: pos + 1 // Add 1 to pos to focus correctly
+          });
+        }
+      });
+      setHeadings(extracted);
     },
     editorProps: {
       attributes: {
@@ -265,7 +288,37 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
     if (editor && typeof initialContent === 'string' && editor.getHTML() !== initialContent) {
       editor.commands.setContent(initialContent);
     }
+    
+    // Extract headings whenever editor is ready or content changes
+    if (editor) {
+      const extracted: HeadingInfo[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading' && node.attrs.level <= 5) {
+          extracted.push({
+            text: node.textContent,
+            level: node.attrs.level,
+            pos: pos + 1
+          });
+        }
+      });
+      setHeadings(extracted);
+    }
   }, [initialContent, editor]);
+
+  const scrollToHeading = (pos: number) => {
+    if (editor) {
+      editor.commands.focus(pos);
+      // Wait a bit for focus to happen, then scroll if needed
+      setTimeout(() => {
+        const domAtPos = editor.view.domAtPos(pos);
+        if (domAtPos.node instanceof HTMLElement) {
+          domAtPos.node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (domAtPos.node.parentElement) {
+          domAtPos.node.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -276,10 +329,60 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
         </div>
       </div>
 
-      {/* Scrollable Editor Area - The Desk */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar bg-neutral-950/50">
-        <div className="max-w-4xl mx-auto my-8 sm:my-12 p-8 sm:p-16 min-h-[calc(100vh-200px)] bg-card border border-border/40 shadow-2xl rounded-xl relative">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-0 sm:px-6 md:px-24"
+      >
+        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative group/outline-ctx">
           
+          {/* Floating Outline Panel - Hidden on Mobile, Tablet+ Trigger Fix */}
+          <div className="absolute -right-12 top-1/2 -translate-y-1/2 z-50 hidden md:block">
+            <div className="group relative">
+              {/* The "Handle" - THE ONLY TRIGGER AREA (Narrow) */}
+              <div className="h-40 w-8 flex flex-col gap-2 justify-center items-center cursor-pointer pointer-events-auto bg-transparent border-r border-transparent hover:border-yellow-500/20">
+                <div className="w-1 h-12 rounded-full bg-yellow-500/20 group-hover:bg-yellow-500/60 transition-all duration-300" />
+                <div className="w-1 h-3 rounded-full bg-yellow-500/10 group-hover:bg-yellow-500/30 transition-all duration-300" />
+              </div>
+
+              {/* The Panel - Absolute positioned to the LEFT of handle with a hover bridge */}
+              <div className="absolute right-full top-1/2 -translate-y-1/2 pr-3 opacity-0 translate-x-8 scale-95 group-hover:opacity-100 group-hover:translate-x-0 group-hover:scale-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto origin-right">
+                <div className="bg-neutral-950/90 backdrop-blur-xl border border-yellow-500/20 rounded-2xl p-5 min-w-[260px] max-w-[340px] max-h-[80vh] overflow-y-auto custom-scrollbar shadow-[0_0_40px_-10px_rgba(234,179,8,0.15)] ring-1 ring-white/5">
+                  {headings.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {headings.map((heading, i) => (
+                        <button
+                          key={`${heading.pos}-${i}`}
+                          onClick={() => scrollToHeading(heading.pos)}
+                          className={cn(
+                            "text-left transition-all duration-200 group/item relative py-1 pr-4 rounded-sm hover:bg-yellow-500/10 uppercase tracking-wide text-[11px] font-bold text-yellow-500",
+                            heading.level === 1 ? "mt-1" : 
+                            heading.level === 2 ? "pl-2 opacity-90" : 
+                            heading.level === 3 ? "pl-4 opacity-80" :
+                            heading.level === 4 ? "pl-6 opacity-70" :
+                            "pl-8 opacity-60"
+                          )}
+                        >
+                          {/* Vertical indicator for H1 */}
+                          {heading.level === 1 && (
+                            <div className="absolute left-[-0.75rem] top-1/2 -translate-y-1/2 w-[2px] h-3 bg-yellow-500 group-hover/item:bg-yellow-400 transition-colors" />
+                          )}
+                          
+                          <span className="block truncate transition-all duration-200 group-hover/item:translate-x-0.5">
+                            {heading.text}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center opacity-40">
+                      <p className="text-[10px] font-medium uppercase tracking-widest text-yellow-500/50">Outline Empty</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {editor && (
             <BubbleMenu 
               editor={editor} 
@@ -412,6 +515,6 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       </div>
     </div>
   );
-};
+}
 
 export default TiptapEditor;
