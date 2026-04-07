@@ -322,6 +322,7 @@ export function AppSidebar({
           onLoadMoreNotes={onLoadMoreNotes}
           onLoadMoreDrawings={onLoadMoreDrawings}
           onLoadMoreFlowcharts={onLoadMoreFlowcharts}
+          isOnline={isOnline}
         />
       </SidebarContent>
       <SidebarFooter>
@@ -362,6 +363,7 @@ export function AppSidebar({
           user={user} 
           onLogout={onLogout}
           onViewChange={onViewChange}
+          isOnline={isOnline}
         />
       </SidebarFooter>
       <SidebarRail />

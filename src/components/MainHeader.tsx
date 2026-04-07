@@ -29,6 +29,7 @@ interface MainHeaderProps {
   };
   onSettingsSaved?: () => void;
   isPublicView?: boolean;
+  isOnline: boolean;
 }
 
 export function MainHeader({
@@ -42,7 +43,8 @@ export function MainHeader({
   activeFileId,
   initialShareSettings,
   onSettingsSaved,
-  isPublicView = false
+  isPublicView = false,
+  isOnline
 }: MainHeaderProps) {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
 
@@ -85,6 +87,14 @@ export function MainHeader({
           </BreadcrumbList>
         </Breadcrumb>
       </div>
+
+      {!isOnline && !isPublicView && (
+        <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in slide-in-from-top-1 duration-500">
+          <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+          <span className="text-[10px] font-bold uppercase tracking-wider">Offline Mode: Navigation Disabled</span>
+        </div>
+      )}
+
       <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
           <>
@@ -92,8 +102,9 @@ export function MainHeader({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsShareModalOpen(true)}
-                className="h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2 transition-colors"
+                onClick={() => isOnline && setIsShareModalOpen(true)}
+                disabled={!isOnline}
+                className={`h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2 transition-colors ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Share</span>
@@ -101,15 +112,15 @@ export function MainHeader({
               
               {!isPublicView && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                  <div className={`w-2 h-2 rounded-full ${!isOnline ? 'bg-destructive animate-pulse' : currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
                   <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
-                    {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                    {!isOnline ? 'Saving Locally' : currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
                   </span>
                 </div>
               )}
             </div>
 
-            {activeFileUid && activeFileId && (
+            {activeFileUid && activeFileId && isOnline && (
               <ShareModal 
                 isOpen={isShareModalOpen} 
                 onOpenChange={setIsShareModalOpen}

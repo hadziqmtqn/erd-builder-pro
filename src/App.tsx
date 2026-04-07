@@ -29,6 +29,7 @@ import { DrawingsView } from './components/views/DrawingsView';
 import { TrashView } from './components/views/TrashView';
 import { WelcomeView } from './components/views/WelcomeView';
 import { FlowchartView } from './components/views/FlowchartView';
+import { ConnectionLostOverlay } from './components/ConnectionLostOverlay';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -197,6 +198,24 @@ function AppContent() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Immediate Save on Connection Drop
+  useEffect(() => {
+    if (!isOnline && !isPublicView) {
+      if (view === 'erd' && activeFileId) {
+        saveDiagram(nodes, edges, viewportRef.current);
+      } else if (view === 'notes' && activeNoteId && notes.find(n => n.id === activeNoteId)) {
+        const activeNote = notes.find(n => n.id === activeNoteId);
+        if (activeNote) saveNote(activeNote);
+      } else if (view === 'drawings' && activeDrawingId && drawings.find(d => d.id === activeDrawingId)) {
+        const activeDrawing = drawings.find(d => d.id === activeDrawingId);
+        if (activeDrawing) saveDrawing(activeDrawing);
+      } else if (view === 'flowchart' && activeFlowchartId && flowcharts.find(f => f.id === activeFlowchartId)) {
+        const activeFlowchart = flowcharts.find(f => f.id === activeFlowchartId);
+        if (activeFlowchart) saveFlowchart(activeFlowchart);
+      }
+    }
+  }, [isOnline, view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
   const flowchartSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { setViewport } = useReactFlow();
 
@@ -923,6 +942,7 @@ function AppContent() {
             else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
             else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
           }}
+          isOnline={isOnline}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
@@ -1056,6 +1076,7 @@ function AppContent() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <ConnectionLostOverlay isOnline={isOnline} />
       </SidebarInset>
     </SidebarProvider>
   );
