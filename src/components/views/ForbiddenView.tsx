@@ -1,6 +1,7 @@
 import React from 'react';
-import { ShieldAlert, Home, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, Home, ArrowLeft, RefreshCw } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   Card, 
   CardHeader, 
@@ -10,20 +11,50 @@ import {
   CardFooter 
 } from "@/components/ui/card";
 import { motion } from 'framer-motion';
+import { cn } from "@/lib/utils";
 
 interface ForbiddenViewProps {
   title?: string;
   message?: string;
   statusCode?: number;
+  documentUid?: string;
+  onSubmitToken?: (token: string) => void;
   onReturn?: () => void;
 }
 
 export function ForbiddenView({ 
-  title = "Access Denied", 
-  message = "This document is private or the share link has expired. Please contact the owner for access.",
+  title, 
+  message,
   statusCode = 403,
+  documentUid,
+  onSubmitToken,
   onReturn
 }: ForbiddenViewProps) {
+  const [tokenInput, setTokenInput] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
+  const displayTitle = title || (statusCode === 401 ? "Document Locked" : "Access Denied");
+  const displayMessage = message || (statusCode === 401 
+    ? "This document is protected. Please enter the access token provided by the owner." 
+    : "This document is private or the share link has expired.");
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tokenInput.trim() || !onSubmitToken) return;
+    
+    setLocalError(null);
+    setIsSubmitting(true);
+    try {
+      await onSubmitToken(tokenInput);
+      // Note: Success will trigger a parent state change and unmount this view
+    } catch (err: any) {
+      setLocalError(err.message || "Incorrect token. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleReturn = () => {
     if (onReturn) {
       onReturn();
@@ -57,18 +88,64 @@ export function ForbiddenView({
               </motion.div>
               <div className="absolute inset-0 bg-destructive/20 filter blur-xl rounded-full -z-10 animate-pulse" />
             </div>
-            <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
-              {title}
+            <CardTitle className="text-2xl font-bold tracking-tight text-foreground uppercase italic leading-[1.1]">
+              {displayTitle}
             </CardTitle>
-            <CardDescription className="text-sm">
-              ERROR {statusCode} • {title.toUpperCase()}
+            <CardDescription className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+              ERROR {statusCode} • PAGE {statusCode === 404 ? 'NOT FOUND' : 'LOCKED'}
             </CardDescription>
           </CardHeader>
           
-          <CardContent className="text-center">
-            <p className="text-muted-foreground leading-relaxed">
-              {message}
+          <CardContent className="text-center space-y-6">
+            <p className="text-muted-foreground text-sm leading-relaxed px-2">
+              {displayMessage}
             </p>
+
+            {statusCode === 401 && (
+              <form onSubmit={handleUnlock} className="space-y-4 pt-2">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Input 
+                      type="text"
+                      placeholder="Enter access token..."
+                      value={tokenInput}
+                      onChange={(e) => {
+                        setTokenInput(e.target.value);
+                        if (localError) setLocalError(null);
+                      }}
+                      className={cn(
+                        "h-10 text-center font-medium",
+                        localError && "border-destructive focus-visible:ring-destructive/20"
+                      )}
+                      autoFocus
+                    />
+                    {localError && (
+                      <motion.p 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-[11px] font-bold text-destructive uppercase tracking-wider italic"
+                      >
+                        {localError}
+                      </motion.p>
+                    )}
+                  </div>
+                  <Button 
+                    type="submit"
+                    disabled={isSubmitting || !tokenInput.trim()}
+                    className="w-full h-10 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold cursor-pointer shadow-md"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Unlocking...
+                      </>
+                    ) : (
+                      "Unlock Document"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
           </CardContent>
 
           <CardFooter className="flex flex-col sm:flex-row gap-3 pt-6 border-t bg-muted/30">

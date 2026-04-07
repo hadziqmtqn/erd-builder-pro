@@ -9,8 +9,13 @@ export function useAuth() {
       const res = await fetch('/api/me');
       if (res.ok) {
         const data = await res.json();
-        setIsAuthenticated(true);
-        setUser(data.user);
+        if (data.authenticated) {
+          setIsAuthenticated(true);
+          setUser(data.user);
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
+        }
       } else {
         setIsAuthenticated(false);
         setUser(null);

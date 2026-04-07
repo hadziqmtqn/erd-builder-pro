@@ -74,15 +74,27 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
     return res.status(403).json({ error: "This document is private" });
   }
 
-  // Security Check: Is it expired?
-  if (drawing.expiry_date && new Date(drawing.expiry_date) < new Date()) {
-    return res.status(403).json({ error: "This share link has expired" });
+  // Owner Bypass: If the requester is the owner, they can bypass token/expiry
+  let isOwner = false;
+  const sessionToken = req.cookies.token;
+  if (sessionToken) {
+    const { data: { user } } = await supabase.auth.getUser(sessionToken);
+    if (user && user.id === drawing.user_id) {
+      isOwner = true;
+    }
   }
 
-  // Security Check: Token matching (if required)
-  const providedToken = req.headers['x-share-token'] || req.query.token;
-  if (drawing.share_token && drawing.share_token !== providedToken) {
-    return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+  if (!isOwner) {
+    // Security Check: Is it expired?
+    if (drawing.expiry_date && new Date(drawing.expiry_date) < new Date()) {
+      return res.status(403).json({ error: "This share link has expired" });
+    }
+
+    // Security Check: Token matching (if required)
+    const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
+    if (drawing.share_token && drawing.share_token !== providedToken) {
+      return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+    }
   }
 
   res.json(drawing);

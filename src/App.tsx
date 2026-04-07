@@ -167,7 +167,8 @@ function AppContent() {
     const shareInfo = getSharePathInfo();
     if (shareInfo) {
       setIsPublicView(true);
-      fetchPublicDocument(shareInfo.type, shareInfo.uid);
+      const savedToken = sessionStorage.getItem(`share_token_${shareInfo.uid}`);
+      fetchPublicDocument(shareInfo.type, shareInfo.uid, savedToken || undefined);
     }
 
     if (isInstallable) {
@@ -494,12 +495,15 @@ function AppContent() {
   // Forbidden / Error state for public view
   const [forbiddenDoc, setForbiddenDoc] = useState<{ title: string, message: string, status: number } | null>(null);
 
-  const fetchPublicDocument = async (type: string, uid: string) => {
+  const fetchPublicDocument = async (type: string, uid: string, token?: string): Promise<boolean> => {
     setIsPublicLoading(true);
     setForbiddenDoc(null); // Reset on new attempt
     try {
       const endpoint = type === 'erd' ? 'files' : (type === 'flowchart' ? 'flowcharts' : type);
-      const res = await fetch(`/api/${endpoint}/public/${uid}`);
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['x-share-token'] = token;
+      
+      const res = await fetch(`/api/${endpoint}/public/${uid}`, { headers });
       
       if (!res.ok) {
         let errorMessage = "Document not found or access denied";
@@ -514,7 +518,7 @@ function AppContent() {
 
         if (res.status === 401 || res.status === 403 || res.status === 404) {
           setForbiddenDoc({ title: errorTitle, message: errorMessage, status: res.status });
-          return;
+          return false;
         }
         throw new Error(errorMessage);
       }
@@ -603,10 +607,12 @@ function AppContent() {
         setNodes([]);
         setEdges([]);
       }
+      return true;
     } catch (err: any) {
       toast.error(err.message || "Failed to load shared document");
       // Only generic error redirects home, specific statuses stay on Forgeview via state
       setTimeout(() => window.location.href = '/', 3000);
+      return false;
     } finally {
       setIsPublicLoading(false);
     }
@@ -760,11 +766,23 @@ function AppContent() {
   }
 
   if (forbiddenDoc) {
+    const shareInfo = getSharePathInfo();
     return (
       <ForbiddenView 
         title={forbiddenDoc.title} 
         message={forbiddenDoc.message} 
         statusCode={forbiddenDoc.status}
+        documentUid={shareInfo?.uid}
+        onSubmitToken={async (token) => {
+          if (shareInfo) {
+            const success = await fetchPublicDocument(shareInfo.type, shareInfo.uid, token);
+            if (success) {
+              sessionStorage.setItem(`share_token_${shareInfo.uid}`, token);
+            } else {
+              throw new Error("Invalid access token");
+            }
+          }
+        }}
         onReturn={() => window.location.href = '/'}
       />
     );
