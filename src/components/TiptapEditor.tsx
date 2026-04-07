@@ -12,8 +12,24 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { TableRow } from '@tiptap/extension-table-row';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
+import { 
+  Heading1, 
+  Heading2, 
+  List, 
+  Check, 
+  ChevronRight, 
+  ChevronDown, 
+  Search,
+  BookOpen,
+  Database, 
+  Trash2, 
+  Share2,
+  X, 
+  PanelRight, 
+  ChevronFirst 
+} from 'lucide-react';
+import { Button } from "@/components/ui/button";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { X, Check, PanelRight, ChevronFirst } from 'lucide-react';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
@@ -177,11 +193,11 @@ const MenuBar = ({ editor }: { editor: any }) => {
     </div>
   );
 };
-// ... rest of file
 
 interface TiptapEditorProps {
-  initialContent?: string;
+  content: string;
   onChange?: (content: string) => void;
+  isReadOnly?: boolean;
 }
 
 interface HeadingInfo {
@@ -228,7 +244,7 @@ const TrailingNode = Extension.create({
   },
 });
 
-const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
+export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -257,11 +273,11 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
 
   const editor = useEditor({
     extensions,
-    content: initialContent,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
+    content,
+    editable: !isReadOnly,
+    onUpdate({ editor }) {
       if (onChange) {
-        onChange(html);
+        onChange(editor.getHTML());
       }
 
       // Extract headings for the outline
@@ -285,8 +301,8 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
   });
 
   useEffect(() => {
-    if (editor && typeof initialContent === 'string' && editor.getHTML() !== initialContent) {
-      editor.commands.setContent(initialContent);
+    if (editor && typeof content === 'string' && editor.getHTML() !== content) {
+      editor.commands.setContent(content);
     }
     
     // Extract headings whenever editor is ready or content changes
@@ -303,7 +319,7 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
       });
       setHeadings(extracted);
     }
-  }, [initialContent, editor]);
+  }, [content, editor]);
 
   const scrollToHeading = (pos: number) => {
     if (editor) {
@@ -323,11 +339,13 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
       {/* Toolbar - Always visible at the top */}
-      <div className="flex-none bg-card border-b border-border p-2 z-10 shadow-sm">
-        <div className="max-w-4xl mx-auto">
-          <MenuBar editor={editor} />
+      {!isReadOnly && (
+        <div className="flex-none bg-card border-b border-border p-2 z-10 shadow-sm">
+          <div className="max-w-4xl mx-auto">
+            <MenuBar editor={editor} />
+          </div>
         </div>
-      </div>
+      )}
 
       <div 
         ref={scrollContainerRef}
@@ -385,129 +403,123 @@ const TiptapEditor = ({ initialContent = '', onChange }: TiptapEditorProps) => {
             </div>
           </div>
 
-          {editor && (
-            <BubbleMenu 
-              editor={editor} 
-              pluginKey="textMenu"
-              shouldShow={({ from, to }) => from !== to}
-              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
-              className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
-            >
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().setParagraph().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+          {editor && !isReadOnly && (
+            <>
+              <BubbleMenu 
+                editor={editor} 
+                pluginKey="textMenu"
+                shouldShow={({ from, to }) => from !== to}
+                {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
+                className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
               >
-                Paragraph
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleBold().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                Bold
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleItalic().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                Italic
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleStrike().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                Strike
-              </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => editor.chain().focus().setParagraph().run()}
+                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                >
+                  Paragraph
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                >
+                  Bold
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                >
+                  Italic
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => editor.chain().focus().toggleStrike().run()}
+                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                >
+                  Strike
+                </button>
 
-              <DropdownMenu.Root modal={false}>
-                <DropdownMenu.Trigger asChild>
-                  <button className="px-3 py-1 text-sm font-medium rounded-sm transition-colors hover:bg-accent text-popover-foreground flex items-center gap-1">
-                    Color
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
-                  <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Colors</div>
-                  {[
-                    { name: 'Default', value: '' },
-                    { name: 'Indigo', value: '#6366f1' },
-                    { name: 'Purple', value: '#8b5cf6' },
-                    { name: 'Pink', value: '#ec4899' },
-                    { name: 'Blue', value: '#3b82f6' },
-                    { name: 'Green', value: '#10b981' },
-                    { name: 'Orange', value: '#f59e0b' },
-                    { name: 'Red', value: '#ef4444' }
-                  ].map(({ name, value }) => {
-                    const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
-                    return (
-                      <DropdownMenu.Item 
-                        key={name}
-                        onSelect={() => {
-                          if (value) {
-                            editor.chain().focus().setColor(value).run();
-                          } else {
-                            editor.chain().focus().unsetColor().run();
-                          }
-                        }}
-                        className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
-                      >
-                        <div 
-                          className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
-                          style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
+                <DropdownMenu.Root modal={false}>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="px-3 py-1 text-sm font-medium rounded-sm transition-colors hover:bg-accent text-popover-foreground flex items-center gap-1">
+                      Color
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
+                    <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Colors</div>
+                    {[
+                      { name: 'Default', value: '' },
+                      { name: 'Indigo', value: '#6366f1' },
+                      { name: 'Purple', value: '#8b5cf6' },
+                      { name: 'Pink', value: '#ec4899' },
+                      { name: 'Blue', value: '#3b82f6' },
+                      { name: 'Green', value: '#10b981' },
+                      { name: 'Orange', value: '#f59e0b' },
+                      { name: 'Red', value: '#ef4444' }
+                    ].map(({ name, value }) => {
+                      const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
+                      return (
+                        <DropdownMenu.Item 
+                          key={name}
+                          onSelect={() => {
+                            if (value) {
+                              editor.chain().focus().setColor(value).run();
+                            } else {
+                              editor.chain().focus().unsetColor().run();
+                            }
+                          }}
+                          className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
                         >
-                          {!value && <span className="text-foreground">A</span>}
-                        </div>
-                        <span className="flex-1">{name}</span>
-                        {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
-                      </DropdownMenu.Item>
-                    );
-                  })}
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
-            </BubbleMenu>
-          )}
+                          <div 
+                            className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
+                            style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
+                          >
+                            {!value && <span className="text-foreground">A</span>}
+                          </div>
+                          <span className="flex-1">{name}</span>
+                          {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
+                        </DropdownMenu.Item>
+                      );
+                    })}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </BubbleMenu>
 
-          {editor && (
-            <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden">
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().setParagraph().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                Paragraph
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                H1
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                H2
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleBulletList().run()}
-                className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('bulletList') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                Bullet List
-              </button>
-            </FloatingMenu>
+              <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)}>
+                <div className="flex gap-1 p-1 bg-[#1a1a24] border border-white/10 rounded-xl shadow-2xl backdrop-blur-xl">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('heading', { level: 1 }) ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
+                  >
+                    <Heading1 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('heading', { level: 2 }) ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
+                  >
+                    <Heading2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().focus().toggleBulletList().run()}
+                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('bulletList') ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
+              </FloatingMenu>
+            </>
           )}
 
           <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor">

@@ -10,14 +10,18 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { Share2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { ShareModal } from "./modals/ShareModal";
 
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
   activeFileName: string | null | undefined;
-  view: string;
+  view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash';
   hasActiveItem: boolean;
   currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  activeFileUid?: string;
 }
 
 export function MainHeader({
@@ -26,8 +30,11 @@ export function MainHeader({
   activeFileName,
   view,
   hasActiveItem,
-  currentSaveStatus
+  currentSaveStatus,
+  activeFileUid
 }: MainHeaderProps) {
+  const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden">
       <div className="flex items-center gap-2 px-4 min-w-0 flex-1">
@@ -61,14 +68,38 @@ export function MainHeader({
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      <div className="ml-auto px-4 flex items-center gap-4">
+      <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
-          <div className="flex items-center gap-2 mr-4">
-            <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-            <span className="text-xs text-muted-foreground font-medium">
-              {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-            </span>
-          </div>
+          <>
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsShareModalOpen(true)}
+                className="h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2 transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Share</span>
+              </Button>
+              
+              <div className="flex items-center gap-2 shrink-0">
+                <div className={`w-2 h-2 rounded-full ${currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
+                  {currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                </span>
+              </div>
+            </div>
+
+            {activeFileUid && (
+              <ShareModal 
+                isOpen={isShareModalOpen} 
+                onOpenChange={setIsShareModalOpen}
+                documentType={view as any}
+                documentUid={activeFileUid}
+                documentTitle={activeFileName || 'Untitled'}
+              />
+            )}
+          </>
         )}
       </div>
     </header>

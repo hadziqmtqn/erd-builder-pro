@@ -7,6 +7,7 @@ interface DrawingsViewProps {
   saveDrawing: (drawing: any) => Promise<boolean | void>;
   handleDrawingChange: (data: string) => void;
   deleteDrawing: (id: number) => Promise<void>;
+  isReadOnly?: boolean;
 }
 
 export function DrawingsView({
@@ -14,7 +15,8 @@ export function DrawingsView({
   activeDrawing,
   saveDrawing,
   handleDrawingChange,
-  deleteDrawing
+  deleteDrawing,
+  isReadOnly = false
 }: DrawingsViewProps) {
   if (!activeDrawing) return null;
 
@@ -26,6 +28,7 @@ export function DrawingsView({
         onSave={saveDrawing} 
         onChange={handleDrawingChange} 
         onDelete={deleteDrawing} 
+        isReadOnly={isReadOnly}
       />
     </div>
   );

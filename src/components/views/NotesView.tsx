@@ -7,6 +7,7 @@ interface NotesViewProps {
   saveNote: (note: any) => Promise<boolean | void>;
   handleNoteChange: (content: string) => void;
   deleteNote: (id: number) => Promise<void>;
+  isReadOnly?: boolean;
 }
 
 export function NotesView({
@@ -14,7 +15,8 @@ export function NotesView({
   activeNote,
   saveNote,
   handleNoteChange,
-  deleteNote
+  deleteNote,
+  isReadOnly = false
 }: NotesViewProps) {
   if (!activeNote) return null;
   
@@ -26,6 +28,7 @@ export function NotesView({
         onSave={saveNote} 
         onChange={handleNoteChange} 
         onDelete={deleteNote} 
+        isReadOnly={isReadOnly}
       />
     </div>
   );

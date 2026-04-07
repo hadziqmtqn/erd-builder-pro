@@ -95,6 +95,42 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   res.json({ ...file, entities: entitiesWithColumns, relationships });
 });
 
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+  const { data: file, error: fileError } = await supabase
+    .from("files")
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
+    .single();
+
+  if (fileError || !file) return res.status(404).json({ error: "File not found" });
+
+  const fileId = file.id;
+
+  const { data: entities, error: entitiesError } = await supabase
+    .from("entities")
+    .select("*")
+    .eq("file_id", fileId);
+
+  if (entitiesError) return res.status(500).json({ error: entitiesError.message });
+
+  const { data: relationships, error: relError } = await supabase
+    .from("relationships")
+    .select("*")
+    .eq("file_id", fileId);
+
+  if (relError) return res.status(500).json({ error: relError.message });
+
+  const entitiesWithColumns = await Promise.all(entities.map(async (entity) => {
+    const { data: columns } = await supabase
+      .from("columns")
+      .select("*")
+      .eq("entity_id", entity.id);
+    return { ...entity, columns: columns || [] };
+  }));
+
+  res.json({ ...file, entities: entitiesWithColumns, relationships });
+});
+
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("files")

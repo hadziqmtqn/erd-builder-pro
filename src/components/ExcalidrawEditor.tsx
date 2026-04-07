@@ -8,9 +8,10 @@ interface ExcalidrawEditorProps {
   onSave: (drawing: Drawing) => void;
   onChange?: (data: string) => void;
   onDelete: (id: number) => void;
+  isReadOnly?: boolean;
 }
 
-export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }: ExcalidrawEditorProps) {
+export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false }: ExcalidrawEditorProps) {
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const lastDataRef = useRef(drawing.data);
   const isReady = useRef(false);
@@ -217,6 +218,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete }
           onChange={handleChange}
           theme="dark"
           UIOptions={uiOptions}
+          viewModeEnabled={isReadOnly}
         >
           <WelcomeScreen />
           <MainMenu>

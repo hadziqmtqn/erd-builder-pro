@@ -70,6 +70,17 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   res.json(data);
 });
 
+router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
+  const { data, error } = await supabase
+    .from("flowcharts")
+    .select("*, projects!left(name)")
+    .eq("uid", req.params.uid)
+    .single();
+
+  if (error || !data) return res.status(404).json({ error: "Flowchart not found" });
+  res.json(data);
+});
+
 router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, data, project_id } = req.body;
   const { error } = await supabase
