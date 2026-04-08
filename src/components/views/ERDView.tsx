@@ -35,6 +35,7 @@ interface ERDViewProps {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
+  onEdgeClick?: (event: React.MouseEvent, edge: Edge) => void;
   onPaneClick: () => void;
   onMove: (event: any, viewport: any) => void;
   addEntity: () => void;
@@ -49,6 +50,7 @@ export function ERDView({
   onEdgesChange,
   onConnect,
   onNodeClick,
+  onEdgeClick,
   onPaneClick,
   onMove,
   addEntity,
@@ -100,6 +102,7 @@ export function ERDView({
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onMove={onMove}
           colorMode="dark"
@@ -109,7 +112,7 @@ export function ERDView({
           elementsSelectable={!isReadOnly}
         >
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
-          <Controls position="bottom-right" showInteractive={false} />
+          <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
       </div>
     </div>

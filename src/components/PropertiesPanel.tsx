@@ -168,22 +168,22 @@ export default function PropertiesPanel({
                       onBlur={() => syncWithParent(editingEntity)}
                       className="h-8 text-xs font-bold bg-transparent border-none shadow-none focus-visible:ring-0 p-0 text-foreground"
                     />
-                    <Button 
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Column',
-                        message: `Are you sure you want to delete the column "${col.name}"?`,
-                        onConfirm: () => {
-                          deleteColumn(col.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        }
-                      })}
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                      <Button 
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Column',
+                          message: `Are you sure you want to delete the column "${col.name}"?`,
+                          onConfirm: () => {
+                            deleteColumn(col.id);
+                            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          }
+                        })}
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10 transition-all shadow-none"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export default function PropertiesPanel({
                       value={col.type}
                       onValueChange={(value) => updateColumnSync(col.id, { type: value })}
                     >
-                      <SelectTrigger className="h-8 text-[11px] font-medium flex-1 bg-background border-border/50">
+                      <SelectTrigger className="w-full h-8 text-[11px] font-medium bg-background border-border/50">
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
                       <SelectContent>

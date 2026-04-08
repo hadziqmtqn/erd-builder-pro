@@ -31,9 +31,9 @@ export function useProjects(isGuest: boolean = false) {
       const res = await fetch(`/api/projects?limit=10&offset=${offset}${qParam}`);
       if (res.ok) {
         const json = await res.json();
-        const data = json.data !== undefined ? json.data : json;
+        const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
-
+        
         const projectsList = Array.isArray(data) ? data : [];
         if (isLoadMore) {
           setProjects(prev => [...prev, ...projectsList]);
@@ -42,8 +42,13 @@ export function useProjects(isGuest: boolean = false) {
         }
         setProjectsTotal(total);
         setHasMoreProjects((projectsList.length + offset) < total);
+      } else {
+        const errText = await res.text();
+        console.error(`Failed to fetch projects: ${res.status} ${res.statusText}`, errText);
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('Error in fetchProjects:', err);
+    }
   }, [isGuest]);
 
   const createProject = async (name: string) => {

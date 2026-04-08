@@ -33,13 +33,15 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
+import { cn } from "@/lib/utils"
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
   DialogTitle,
+  DialogBody
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,7 +55,6 @@ import {
 } from "@/components/ui/select"
 
 import { FileData, Project, Note, Drawing, Flowchart } from "../types"
-import { cn } from "@/lib/utils"
 
 export function NavProjects({
   projects,
@@ -134,8 +135,8 @@ export function NavProjects({
   activeNoteId: number | string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
-  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'
-  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart'
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'
+  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
   onFileDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
   onDrawingDelete: (id: number | string) => void
@@ -263,7 +264,7 @@ export function NavProjects({
             className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
           >
             <Folder />
-            <span>All Workspace</span>
+            <span>All Project</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         {projects.map((item) => (
@@ -294,8 +295,8 @@ export function NavProjects({
                   <span>Rename Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={!isOnline} onClick={() => onProjectDelete(item.id)}>
-                  <Trash2 className="mr-2 size-4 text-muted-foreground" />
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => onProjectDelete(item.id)}>
+                  <Trash2 className="mr-2 size-4" />
                   <span>Delete Project</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -331,7 +332,7 @@ export function NavProjects({
         </SidebarGroupAction>
       )}
       <SidebarMenu>
-        {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
+        {sidebarView === 'erd' && (files || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFileId === file.id && view === 'erd'}
@@ -365,7 +366,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
+        {sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
           <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
@@ -399,7 +400,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
+        {sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
           <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
@@ -434,7 +435,7 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
 
-        {sidebarView === 'flowchart' && flowcharts.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(flowchart => (
+        {sidebarView === 'flowchart' && (flowcharts || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(flowchart => (
           <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
@@ -536,7 +537,7 @@ export function NavProjects({
               {editingProjectId !== null ? 'Enter a new name for your project.' : 'Enter a name for your new project to organize your files.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody>
             <div className="grid gap-2">
               <Label htmlFor="name">
                 Name
@@ -548,7 +549,7 @@ export function NavProjects({
                 placeholder="Project name"
               />
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setIsProjectDialogOpen(false)
@@ -575,7 +576,7 @@ export function NavProjects({
           <DialogHeader>
             <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : sidebarView === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="filename">
                 Name
@@ -594,7 +595,7 @@ export function NavProjects({
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a project">
-                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || selectedProjectId}
+                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || "Select a project"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -605,7 +606,7 @@ export function NavProjects({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFileDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateFile}>Create</Button>
@@ -619,7 +620,7 @@ export function NavProjects({
           <DialogHeader>
             <DialogTitle>Edit {editingFile?.type === 'erd' ? 'Diagram' : editingFile?.type === 'notes' ? 'Note' : editingFile?.type === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="edit-filename">
                 Name
@@ -649,7 +650,7 @@ export function NavProjects({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditFileDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleUpdateFile}>Save Changes</Button>
@@ -666,6 +667,11 @@ export function NavProjects({
               This will move the item to the trash. You can restore it later.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              If you delete this item, it will be moved to the Trash Bin where you can restore it within 30 days.
+            </p>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>Delete</Button>

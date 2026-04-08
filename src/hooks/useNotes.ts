@@ -38,7 +38,7 @@ export function useNotes(isGuest: boolean = false) {
       const res = await fetch(`/api/notes?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         const json = await res.json();
-        const data = json.data !== undefined ? json.data : json;
+        const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
         
         const notesListData = Array.isArray(data) ? data : [];
@@ -49,9 +49,12 @@ export function useNotes(isGuest: boolean = false) {
         }
         setNotesTotal(total);
         setHasMoreNotes((notesListData.length + offset) < total);
+      } else {
+        const errText = await res.text();
+        console.error(`Failed to fetch notes: ${res.status} ${res.statusText}`, errText);
       }
     } catch (err) {
-      console.error('Error fetching notes:', err);
+      console.error('Error in fetchNotes:', err);
     }
   }, [isGuest]); 
 
@@ -189,8 +192,8 @@ export function useNotes(isGuest: boolean = false) {
     try {
       await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify({ content: note.content }), true);
       
-      const res = await fetch(`/api/notes/save/${note.id}`, {
-        method: 'POST',
+      const res = await fetch(`/api/notes/${note.id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id }),
       });

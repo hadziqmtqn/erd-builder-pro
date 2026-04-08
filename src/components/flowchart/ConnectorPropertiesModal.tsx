@@ -1,7 +1,13 @@
-import React from 'react';
 import { Edge } from '@xyflow/react';
 import { Trash2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogBody
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -39,12 +45,12 @@ export function ConnectorPropertiesModal({
 }: ConnectorPropertiesModalProps) {
   return (
     <Dialog open={!!selectedEdgeId} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-        <DialogHeader className="shrink-0 mb-4">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
           <div className="flex items-center justify-between pr-8">
             <div className="space-y-1 text-left">
-              <DialogTitle className="text-xl font-bold tracking-tight">Connector Properties</DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
+              <DialogTitle>Connector Properties</DialogTitle>
+              <DialogDescription>
                 Format the line style and arrows.
               </DialogDescription>
             </div>
@@ -52,7 +58,7 @@ export function ConnectorPropertiesModal({
               variant="ghost" 
               size="icon" 
               onClick={onDeleteEdge}
-              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
+              className="text-destructive hover:bg-destructive/10 -mr-2 shadow-none"
               title="Delete Connector"
             >
               <Trash2 className="w-4 h-4" />
@@ -61,7 +67,7 @@ export function ConnectorPropertiesModal({
         </DialogHeader>
         
         {selectedEdge && (
-          <div className="space-y-6">
+          <DialogBody className="space-y-6">
             <div className="space-y-2">
               <Label>Text Label</Label>
               <Input 
@@ -103,7 +109,7 @@ export function ConnectorPropertiesModal({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
         )}
       </DialogContent>
     </Dialog>

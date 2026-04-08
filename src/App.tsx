@@ -1,26 +1,19 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
-  useNodesState, 
-  useEdgesState, 
-  addEdge, 
   Edge, 
   Node,
-  OnConnect,
-  Viewport,
-  useReactFlow,
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { motion } from "framer-motion";
-import { Database, Trash2, Share2 } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
+import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import PropertiesPanel from './components/PropertiesPanel';
+import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
 
 // Views
 import { ERDView } from './components/views/ERDView';
@@ -29,7 +22,11 @@ import { DrawingsView } from './components/views/DrawingsView';
 import { TrashView } from './components/views/TrashView';
 import { WelcomeView } from './components/views/WelcomeView';
 import { FlowchartView } from './components/views/FlowchartView';
-import { ConnectionLostOverlay } from './components/ConnectionLostOverlay';
+import { ForbiddenView } from "./components/views/ForbiddenView";
+
+// Layout Components
+import { OfflineOverlay } from './components/layout/OfflineOverlay';
+import { AppInitialization } from './components/layout/AppInitialization';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -42,25 +39,24 @@ import { useTrash } from './hooks/useTrash';
 import { useConnectionStatus } from './hooks/useConnectionStatus';
 import { useSyncService } from './hooks/useSyncService';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { usePublicDocument } from './hooks/usePublicDocument';
+import { useERDSession } from './hooks/useERDSession';
+import { useSQLGenerator } from './hooks/useSQLGenerator';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
+
+// Views
+import { ChangelogView } from './components/views/ChangelogView';
+
+// Lib & Types
 import { localPersistence } from './lib/localPersistence';
 import { toast } from 'sonner';
-
-// Types
-import { Entity, FileData, DraftType } from './types';
+import { Entity, DraftType } from './types';
 
 // UI
 import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,11 +66,19 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogBody,
 } from "@/components/ui/alert-dialog"
-import { ForbiddenView } from "./components/views/ForbiddenView";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+} from "@/components/ui/dialog"
+import { Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-const initialNodes: Node<Entity>[] = [];
-const initialEdges: Edge[] = [];
 
 // Helper to check for share routes
 const getSharePathInfo = () => {
@@ -88,33 +92,46 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'>('notes');
-  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart'>('notes');
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>('notes');
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>('notes');
+
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
-
-  
-  // Public Share State
-  const [isPublicView, setIsPublicView] = useState(false);
-  const [publicData, setPublicData] = useState<any>(null);
-  const [isPublicLoading, setIsPublicLoading] = useState(false);
 
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   
-  // Hooks
-  const { isAuthenticated, isGuest, user, checkAuth, handleLogin, handleGuestLogin, handleLogout } = useAuth();
-  
+  // Custom Hooks
+  const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin, handleLogout } = useAuth();
+  const isOnline = useConnectionStatus();
+  useSyncService(isAuthenticated, isGuest);
+  const { isInstallable, installApp } = usePWAInstall();
+  const { handleExportSQL } = useSQLGenerator();
+
+  // ERD Session Hook
   const { 
-    files, activeFileId, setActiveFileId, saveStatus, setSaveStatus,
+    nodes, setNodes, onNodesChange,
+    edges, setEdges, onEdgesChange,
+    selectedNodeId, setSelectedNodeId,
+    selectedEdgeId, setSelectedEdgeId,
+    onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
+    handleFileSelect: selectFile, viewportRef
+  } = useERDSession(false, isGuest, isAuthenticated, setView);
+
+  // Public Document Hook
+  const {
+    isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument
+  } = usePublicDocument(setView, setNodes, setEdges);
+
+  // Domain Hooks
+  const { 
+    files, activeFileId, setActiveFileId, saveStatus,
     fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
     hasMoreFiles
   } = useFiles(isAuthenticated, view, isGuest);
 
-  
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
     hasMoreNotes, saveStatus: notesSaveStatus
@@ -135,38 +152,42 @@ function AppContent() {
     hasMoreFlowcharts, saveStatus: flowchartsSaveStatus
   } = useFlowcharts(isGuest);
 
-
   const { trashData, fetchTrash } = useTrash(isGuest);
-  const isOnline = useConnectionStatus();
-  useSyncService(isAuthenticated, isGuest);
-  const { isInstallable, installApp } = usePWAInstall();
 
+  // Computed Values
   const currentActiveId = useMemo(() => {
     if (isPublicView) return undefined;
-    if (view === 'erd') return activeFileId;
-    if (view === 'notes') return activeNoteId;
-    if (view === 'drawings') return activeDrawingId;
-    if (view === 'flowchart') return activeFlowchartId;
-    return undefined;
+    const viewMap = { erd: activeFileId, notes: activeNoteId, drawings: activeDrawingId, flowchart: activeFlowchartId };
+    return viewMap[view as keyof typeof viewMap];
   }, [view, isPublicView, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   const initialShareSettings = useMemo(() => {
-    const doc = isPublicView ? publicData : (
-      view === 'erd' ? files.find(f => f.id === activeFileId) :
-      view === 'notes' ? notes.find(n => n.id === activeNoteId) :
-      view === 'drawings' ? drawings.find(d => d.id === activeDrawingId) :
-      view === 'flowchart' ? flowcharts.find(f => f.id === activeFlowchartId) :
-      null
-    );
+    if (isPublicView) return publicData ? { is_public: !!publicData.is_public, share_token: publicData.share_token, expiry_date: publicData.expiry_date } : undefined;
+    const docArr = view === 'erd' ? files : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
+    const id = view === 'erd' ? activeFileId : view === 'notes' ? activeNoteId : view === 'drawings' ? activeDrawingId : activeFlowchartId;
+    // @ts-ignore
+    const doc = docArr.find(d => d.id === id);
     if (!doc) return undefined;
-    return {
-      is_public: !!doc.is_public,
-      share_token: doc.share_token,
-      expiry_date: doc.expiry_date
-    };
+    return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
   }, [view, isPublicView, publicData, files, notes, drawings, flowcharts, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
-  // Show install notification
+  const currentSaveStatus = useMemo(() => {
+    const statusMap = { erd: saveStatus, notes: notesSaveStatus, drawings: drawingsSaveStatus, flowchart: flowchartsSaveStatus };
+    return statusMap[view as keyof typeof statusMap] || 'idle';
+  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
+
+  const hasActiveItem = useMemo(() => {
+    const activeMap = { erd: !!activeFileId, notes: !!activeNoteId, drawings: !!activeDrawingId, flowchart: !!activeFlowchartId };
+    return activeMap[view as keyof typeof activeMap] || false;
+  }, [view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
+
+  const selectedEntity = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return node ? (node.data as Entity) : null;
+  }, [nodes, selectedNodeId]);
+
+  // Effects
   useEffect(() => {
     const shareInfo = getSharePathInfo();
     if (shareInfo) {
@@ -180,10 +201,7 @@ function AppContent() {
       if (!hasSeenToast) {
         toast("✨ Enhance your experience", {
           description: "Install ERD Builder Pro as a desktop app for offline access and better performance.",
-          action: {
-            label: "Install",
-            onClick: () => installApp(),
-          },
+          action: { label: "Install", onClick: () => installApp() },
           duration: 10000,
         });
         sessionStorage.setItem('pwa-install-toast-shown', 'true');
@@ -191,244 +209,45 @@ function AppContent() {
     }
   }, [isInstallable, installApp]);
 
-  // React Flow State
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const noteSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const drawingSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Immediate Save on Connection Drop
   useEffect(() => {
     if (!isOnline && !isPublicView) {
-      if (view === 'erd' && activeFileId) {
-        saveDiagram(nodes, edges, viewportRef.current);
-      } else if (view === 'notes' && activeNoteId && notes.find(n => n.id === activeNoteId)) {
-        const activeNote = notes.find(n => n.id === activeNoteId);
-        if (activeNote) saveNote(activeNote);
-      } else if (view === 'drawings' && activeDrawingId && drawings.find(d => d.id === activeDrawingId)) {
-        const activeDrawing = drawings.find(d => d.id === activeDrawingId);
-        if (activeDrawing) saveDrawing(activeDrawing);
-      } else if (view === 'flowchart' && activeFlowchartId && flowcharts.find(f => f.id === activeFlowchartId)) {
-        const activeFlowchart = flowcharts.find(f => f.id === activeFlowchartId);
-        if (activeFlowchart) saveFlowchart(activeFlowchart);
-      }
+      if (view === 'erd' && activeFileId) saveDiagram(nodes, edges, viewportRef.current);
+      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => n.id === activeNoteId); if (n) saveNote(n); }
+      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => d.id === activeDrawingId); if (d) saveDrawing(d); }
+      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => f.id === activeFlowchartId); if (f) saveFlowchart(f); }
     }
   }, [isOnline, view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
-  const flowchartSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { setViewport } = useReactFlow();
 
-  const currentSaveStatus = useMemo(() => {
-    if (view === 'erd') return saveStatus;
-    if (view === 'notes') return notesSaveStatus;
-    if (view === 'drawings') return drawingsSaveStatus;
-    if (view === 'flowchart') return flowchartsSaveStatus;
-    return 'idle';
-  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
-
-  const hasActiveItem = useMemo(() => {
-    if (view === 'erd') return !!activeFileId;
-    if (view === 'notes') return !!activeNoteId;
-    if (view === 'drawings') return !!activeDrawingId;
-    if (view === 'flowchart') return !!activeFlowchartId;
-    return false;
-  }, [view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
-
-  // Memoize selected entity for properties panel
-  const selectedEntity = useMemo(() => {
-    if (!selectedNodeId) return null;
-    const node = nodes.find((n) => n.id === selectedNodeId);
-    return node ? (node.data as Entity) : null;
-  }, [nodes, selectedNodeId]);
-
-  // Initialization
   useEffect(() => {
     document.documentElement.classList.add('dark');
     document.body.classList.add('dark');
-
     if (isAuthenticated && !isPublicView) {
       fetchProjects(false, debouncedSearchQuery);
       fetchTrash();
     }
   }, [isAuthenticated, fetchProjects, fetchTrash, debouncedSearchQuery, isPublicView]);
 
-  // Debounce search query
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300);
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Refetch items when project or search query changes
   useEffect(() => {
     if (isAuthenticated && !isPublicView) {
+      const pid = activeProjectId === null ? 'all' : activeProjectId;
       // @ts-ignore
-      fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
+      fetchFiles(false, pid, debouncedSearchQuery);
       // @ts-ignore
-      fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
+      fetchNotes(false, pid, debouncedSearchQuery);
       // @ts-ignore
-      fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
+      fetchDrawings(false, pid, debouncedSearchQuery);
       // @ts-ignore
-      fetchFlowcharts(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery);
+      fetchFlowcharts(false, pid, debouncedSearchQuery);
     }
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings, fetchFlowcharts, isPublicView]);
 
-  // ERD Selection Logic
-  const handleFileSelect = async (id: number | string) => {
-    try {
-      // Check for local unsynced draft first
-      const draft = await localPersistence.getDraft(DraftType.ERD, id);
-      
-      let data: FileData;
-
-      if (isGuest) {
-        const localData = await localPersistence.getResource(id);
-        if (!localData) return;
-        data = localData;
-      } else {
-        const res = await fetch(`/api/files/${id}`);
-        if (res.status === 401) return;
-        data = await res.json();
-      }
-      
-      if (data.is_deleted) return;
-
-      setActiveFileId(id);
-      setView('erd');
-
-      // Use draft data if it exists and is unsynced
-      let finalData = data;
-      if (draft && draft.sync_pending) {
-        try {
-          const parsedDraft = JSON.parse(draft.data);
-          // @ts-ignore
-          finalData = { ...data, entities: parsedDraft.nodes.map(n => ({ ...n.data, x: n.position.x, y: n.position.y })), relationships: parsedDraft.edges.map(e => ({
-            id: e.id,
-            source_entity_id: e.source,
-            target_entity_id: e.target,
-            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            source_handle: e.sourceHandle || undefined,
-            target_handle: e.targetHandle || undefined,
-            label: e.label
-          })), viewport_x: parsedDraft.viewport.x, viewport_y: parsedDraft.viewport.y, viewport_zoom: parsedDraft.viewport.zoom };
-          toast.info("Loaded unsynced local draft");
-        } catch (e) {}
-      }
-
-      const flowNodes: Node<Entity>[] = finalData.entities.map(e => ({
-        id: e.id,
-        type: 'entity',
-        position: { x: e.x, y: e.y },
-        data: e,
-      }));
-
-      const flowEdges: Edge[] = finalData.relationships.map(r => {
-        const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
-        const targetEntity = finalData.entities.find(e => e.id === r.target_entity_id);
-        
-        let sHandle = r.source_handle;
-        let tHandle = r.target_handle;
-
-        // Smart Heuristic: If no specific handle saved, find the most logical orientation
-        if (!sHandle && sourceEntity && targetEntity) {
-          const sx = Number(sourceEntity.x);
-          const tx = Number(targetEntity.x);
-          if (sx < tx) {
-            sHandle = `col-${r.source_column_id}-source`; // Right side
-          } else {
-            sHandle = `col-${r.source_column_id}-source-l`; // Left side
-          }
-        }
-
-        if (!tHandle && sourceEntity && targetEntity) {
-          const sx = Number(sourceEntity.x);
-          const tx = Number(targetEntity.x);
-          if (sx < tx) {
-            tHandle = `col-${r.target_column_id}-target`; // Left side
-          } else {
-            tHandle = `col-${r.target_column_id}-target-r`; // Right side
-          }
-        }
-
-        return {
-          id: r.id,
-          source: r.source_entity_id,
-          target: r.target_entity_id,
-          sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
-          targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
-          label: r.label,
-          type: 'smoothstep',
-          animated: true,
-        };
-      });
-
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-      setSelectedNodeId(null);
-
-      if (data.viewport_x !== undefined && data.viewport_y !== undefined && data.viewport_zoom) {
-        setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom }, { duration: 800 });
-        viewportRef.current = { x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom };
-      } else {
-        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 800 }), 100);
-      }
-    } catch (err) {}
-  };
-
-  // ERD Actions
-  const onConnect: OnConnect = useCallback((params) => {
-    if (isPublicView) return;
-    setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep' }, eds));
-  }, [setEdges, isPublicView]);
-
-  const addEntity = () => {
-    const id = Math.random().toString(36).substr(2, 9);
-    const newEntity: Entity = {
-      id,
-      name: 'NewTable',
-      x: Math.random() * 400,
-      y: Math.random() * 400,
-      color: '#6366f1',
-      columns: [
-        { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false }
-      ],
-    };
-    const newNode: Node<Entity> = { id, type: 'entity', position: { x: newEntity.x, y: newEntity.y }, data: newEntity };
-    setNodes((nds) => nds.concat(newNode));
-  };
-
-  const updateEntity = (updatedEntity: Entity) => {
-    setNodes((nds) => nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node));
-  };
-
-  const deleteEntity = useCallback((id: string) => {
-    setNodes((nds) => nds.filter((node) => node.id !== id));
-    setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
-    setSelectedNodeId(null);
-  }, [setNodes, setEdges, setSelectedNodeId]);
-
-  // Handle custom events from EntityNode
-  useEffect(() => {
-    const handleEditEntity = (e: any) => {
-      setSelectedNodeId(e.detail);
-    };
-    const handleDeleteEntity = (e: any) => {
-      deleteEntity(e.detail);
-    };
-
-    window.addEventListener('editEntity', handleEditEntity);
-    window.addEventListener('deleteEntity', handleDeleteEntity);
-
-    return () => {
-      window.removeEventListener('editEntity', handleEditEntity);
-      window.removeEventListener('deleteEntity', handleDeleteEntity);
-    };
-  }, [deleteEntity]);
-
-  // Auto-save ERD
+  // ERD Auto-save
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeFileId && isAuthenticated && view === 'erd' && !isPublicView) {
@@ -437,495 +256,163 @@ function AppContent() {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram, isPublicView]);
 
-  // Selection Handlers
-  const handleNoteSelect = async (id: number | string) => {
-    const note = notes.find(n => n.id === id);
-    if (note?.is_deleted) return;
-    
-    // Check for local draft
-    const draft = await localPersistence.getDraft(DraftType.NOTES, id);
-    if (draft && draft.sync_pending) {
-      try {
-        const parsed = JSON.parse(draft.data);
-        setNotesList(prev => prev.map(n => n.id === id ? { ...n, content: parsed.content } : n));
-        toast.info("Loaded unsynced local note draft");
-      } catch (e) {}
-    }
+  // Handlers
+  const handleFileSelect = (id: number | string) => selectFile(id, setActiveFileId);
+  const handleEditEntity = useCallback((e: any) => setSelectedNodeId(e.detail), [setSelectedNodeId]);
+  const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
 
-    setActiveNoteId(id);
-    setView('notes');
-  };
+  useEffect(() => {
+    window.addEventListener('editEntity', handleEditEntity);
+    window.addEventListener('deleteEntity', handleDeleteEntity);
+    return () => {
+      window.removeEventListener('editEntity', handleEditEntity);
+      window.removeEventListener('deleteEntity', handleDeleteEntity);
+    };
+  }, [handleEditEntity, handleDeleteEntity]);
 
-  const handleDrawingSelect = async (id: number | string) => {
-    try {
+  const handleSelectionSelect = async (id: number | string) => {
+    if (view === 'notes') {
+      const note = notes.find(n => n.id === id);
+      if (note?.is_deleted) return;
+      const draft = await localPersistence.getDraft(DraftType.NOTES, id);
+      if (draft && draft.sync_pending) {
+        try {
+          const parsed = JSON.parse(draft.data);
+          setNotesList(prev => prev.map(n => n.id === id ? { ...n, content: parsed.content } : n));
+          toast.info("Loaded unsynced local note draft");
+        } catch (e) {}
+      }
+      setActiveNoteId(id);
+    } else if (view === 'drawings') {
       if (isGuest) {
         const localData = await localPersistence.getResource(id);
         if (!localData || localData.is_deleted) return;
         setActiveDrawingId(id);
-        setView('drawings');
-        return;
+      } else {
+        fetch(`/api/drawings/${id}`).then(res => { if (res.ok) res.json().then(d => { if (!d.is_deleted) setActiveDrawingId(id); }); });
       }
-
-      const res = await fetch(`/api/drawings/${id}`);
-      if (!res.ok) return;
-      const drawing = await res.json();
-      if (drawing.is_deleted) return;
-      setActiveDrawingId(id);
-      setView('drawings');
-    } catch (err) {}
-  };
-
-  const handleFlowchartSelect = async (id: number | string) => {
-    try {
+    } else if (view === 'flowchart') {
       if (isGuest) {
         const localData = await localPersistence.getResource(id);
         if (!localData || localData.is_deleted) return;
         setActiveFlowchartId(id);
-        setView('flowchart');
-        return;
+      } else {
+        fetch(`/api/flowcharts/${id}`).then(res => { if (res.ok) res.json().then(f => { if (!f.is_deleted) setActiveFlowchartId(id); }); });
       }
-
-      const res = await fetch(`/api/flowcharts/${id}`);
-      if (!res.ok) return;
-      const flowchart = await res.json();
-      if (flowchart.is_deleted) return;
-      setActiveFlowchartId(id);
-      setView('flowchart');
-    } catch (err) {}
+    }
   };
 
-  // Change Handlers
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
     setNotesList(prev => prev.map(n => n.id === activeNoteId ? { ...n, content } : n));
-    if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
-    noteSaveTimeoutRef.current = setTimeout(async () => {
-      await saveNote({
-        id: activeNoteId,
-        content,
-        title: notes.find(n => n.id === activeNoteId)?.title || '',
-        project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
-      } as any);
-    }, 3000);
+    saveNote({
+      id: activeNoteId, content, title: notes.find(n => n.id === activeNoteId)?.title || '',
+      project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
+    } as any);
   }, [activeNoteId, notes, saveNote, setNotesList]);
 
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
     setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
-    if (drawingSaveTimeoutRef.current) clearTimeout(drawingSaveTimeoutRef.current);
-    drawingSaveTimeoutRef.current = setTimeout(async () => {
-      await saveDrawing({
-        id: activeDrawingId,
-        data,
-        title: drawings.find(d => d.id === activeDrawingId)?.title || '',
-        project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
-      } as any);
-    }, 3000);
+    saveDrawing({
+      id: activeDrawingId, data, title: drawings.find(d => d.id === activeDrawingId)?.title || '',
+      project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
+    } as any);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
   
-  const handleFlowchartChange = useCallback((nodes: any[], edges: any[]) => {
+  const handleFlowchartChange = useCallback((nodesData: any[], edgesData: any[]) => {
     if (!activeFlowchartId) return;
-    const data = JSON.stringify({ nodes, edges });
-    setFlowcharts(prev => prev.map(f => f.id === activeFlowchartId ? { ...f, data } : f));
-    if (flowchartSaveTimeoutRef.current) clearTimeout(flowchartSaveTimeoutRef.current);
-    flowchartSaveTimeoutRef.current = setTimeout(async () => {
-      await saveFlowchart({
-        id: activeFlowchartId,
-        data,
-        title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
-        project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
-      } as any);
-    }, 3000);
+    const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
+    setFlowcharts(prev => prev.map(f => f.id === activeFlowchartId ? { ...f, data: dataString } : f));
+    saveFlowchart({
+      id: activeFlowchartId, data: dataString, title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
+      project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
+    } as any);
   }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
 
-  // Forbidden / Error state for public view
-  const [forbiddenDoc, setForbiddenDoc] = useState<{ title: string, message: string, status: number } | null>(null);
-
-  const fetchPublicDocument = async (type: string, uid: string, token?: string): Promise<boolean> => {
-    setIsPublicLoading(true);
-    setForbiddenDoc(null); // Reset on new attempt
-    try {
-      const endpoint = type === 'erd' ? 'files' : (type === 'flowchart' ? 'flowcharts' : type);
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['x-share-token'] = token;
-      
-      const res = await fetch(`/api/${endpoint}/public/${uid}`, { 
-        headers,
-        credentials: 'include'
-      });
-      
-      if (!res.ok) {
-        let errorMessage = "Document not found or access denied";
-        let errorTitle = "Access Denied";
-        
-        try {
-          const errorData = await res.json();
-          errorMessage = errorData.error || errorMessage;
-          if (res.status === 404) errorTitle = "Not Found";
-          else if (res.status === 401 || res.status === 403) errorTitle = "Access Denied";
-        } catch (e) {}
-
-        if (res.status === 401 || res.status === 403 || res.status === 404) {
-          setForbiddenDoc({ title: errorTitle, message: errorMessage, status: res.status });
-          return false;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Received invalid response from server");
-      }
-
-      const data = await res.json();
-      
-      setPublicData(data);
-      setView(type as any);
-      
-      // Load data based on type
-      if (type === 'erd') {
-        const flowNodes: Node<Entity>[] = data.entities.map((e: any) => ({
-          id: e.id,
-          type: 'entity',
-          position: { x: e.x, y: e.y },
-          data: e,
-        }));
-
-        const flowEdges: Edge[] = data.relationships.map((r: any) => {
-          const sourceEntity = data.entities.find((e: any) => String(e.id) === String(r.source_entity_id));
-          const targetEntity = data.entities.find((e: any) => String(e.id) === String(r.target_entity_id));
-          
-          let sHandle = r.source_handle;
-          let tHandle = r.target_handle;
-
-          // Smart Heuristic: If no specific handle saved, find the most logical orientation
-          if (!sHandle && sourceEntity && targetEntity) {
-            const sx = Number(sourceEntity.x);
-            const tx = Number(targetEntity.x);
-            if (sx < tx) {
-              sHandle = `col-${r.source_column_id}-source`; // Right side
-            } else {
-              sHandle = `col-${r.source_column_id}-source-l`; // Left side
-            }
-          }
-
-          if (!tHandle && sourceEntity && targetEntity) {
-            const sx = Number(sourceEntity.x);
-            const tx = Number(targetEntity.x);
-            if (sx < tx) {
-              tHandle = `col-${r.target_column_id}-target`; // Left side
-            } else {
-              tHandle = `col-${r.target_column_id}-target-r`; // Right side
-            }
-          }
-
-          return {
-            id: r.id,
-            source: r.source_entity_id,
-            target: r.target_entity_id,
-            sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
-            targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
-            label: r.label,
-            type: 'smoothstep',
-            animated: true,
-          };
-        });
-
-        setNodes(flowNodes);
-        setEdges(flowEdges);
-        if (data.viewport_x !== undefined) {
-          setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
-        }
-      } else if (type === 'flowchart') {
-        try {
-          const parsedData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-          setNodes(parsedData.nodes || []);
-          setEdges(parsedData.edges || []);
-          if (data.viewport_x !== undefined) {
-            setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
-          }
-        } catch (e) {
-          console.error("Failed to parse flowchart data:", e);
-        }
-      } else if (type === 'drawings') {
-        // Drawings are handled by the component using publicData
-        setNodes([]);
-        setEdges([]);
-      } else if (type === 'notes') {
-        // Notes are handled by the component using publicData
-        setNodes([]);
-        setEdges([]);
-      }
-      return true;
-    } catch (err: any) {
-      toast.error(err.message || "Failed to load shared document");
-      // Only generic error redirects home, specific statuses stay on Forgeview via state
-      setTimeout(() => window.location.href = '/', 3000);
-      return false;
-    } finally {
-      setIsPublicLoading(false);
+  const handleViewChange = (newView: typeof view) => {
+    if (!isOnline && !isPublicView) {
+      toast.error("Offline Mode: Navigation is disabled.", { duration: 5000 });
+      return;
+    }
+    setView(newView);
+    if (newView !== 'trash' && newView !== 'changelog') {
+      setSidebarView(newView);
     }
   };
-    
-  // Creation Handlers
-  const handleFileCreate = async (name: string, projectId?: number | null) => {
-    const newFile = await createFile(name, projectId);
-    if (newFile) handleFileSelect(newFile.id);
-  };
 
-  const handleNoteCreate = async (title: string, projectId?: number | null) => {
-    const newNote = await createNote(title, projectId);
-    if (newNote) handleNoteSelect(newNote.id);
-  };
-
-  const handleDrawingCreate = async (title: string, projectId?: number | null) => {
-    const newDrawing = await createDrawing(title, projectId);
-    if (newDrawing) handleDrawingSelect(newDrawing.id);
-  };
-
-  const handleFlowchartCreate = async (title: string, projectId?: number | null) => {
-    const newFlowchart = await createFlowchart(title, projectId);
-    if (newFlowchart) handleFlowchartSelect(newFlowchart.id);
-  };
-
-  // Sync Handlers
-  const handleFileDelete = async (id: number | string) => { await deleteFile(id); fetchTrash(); };
-  const handleNoteDelete = async (id: number | string) => { await deleteNote(id); fetchTrash(); };
-  const handleDrawingDelete = async (id: number | string) => { await deleteDrawing(id); fetchTrash(); };
-  const handleFlowchartDelete = async (id: number | string) => { await deleteFlowchart(id); fetchTrash(); };
-  const handleProjectDelete = async (id: number | string) => { if (await deleteProject(id)) fetchTrash(); };
-
-  const handleFileRestore = async (id: number | string) => { await restoreFile(id); fetchTrash(); fetchFiles(); };
-  const handleNoteRestore = async (id: number | string) => { await restoreNote(id); fetchTrash(); fetchNotes(); };
-  const handleDrawingRestore = async (id: number | string) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(); };
-  const handleFlowchartRestore = async (id: number | string) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); };
-  const handleProjectRestore = async (id: number | string) => { await restoreProject(id); fetchTrash(); fetchProjects(); };
-
-  const handleFilePermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleNotePermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleDrawingPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleFlowchartPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); };
-  const handleProjectPermanentDelete = (id: number | string) => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); };
-
+  useUpdateCheck(() => handleViewChange('changelog'));
 
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
-      if (itemToDelete.type === 'project') await deleteProjectPermanent(itemToDelete.id);
-      else if (itemToDelete.type === 'erd') await deleteFilePermanent(itemToDelete.id);
-      else if (itemToDelete.type === 'notes') await deleteNotePermanent(itemToDelete.id);
-      else if (itemToDelete.type === 'drawings') await deleteDrawingPermanent(itemToDelete.id);
-      else if (itemToDelete.type === ('flowchart' as any)) await deleteFlowchartPermanent(itemToDelete.id);
+      const { id, type } = itemToDelete;
+      if (type === 'project') await deleteProjectPermanent(id);
+      else if (type === 'erd') await deleteFilePermanent(id);
+      else if (type === 'notes') await deleteNotePermanent(id);
+      else if (type === 'drawings') await deleteDrawingPermanent(id);
+      else if (type === 'project' as any) await deleteFlowchartPermanent(id);
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
       fetchTrash();
     }
   };
 
-  // SQL Export
-  const handleExportSQL = (dialect: 'postgresql' | 'mysql') => {
-    const targetFile = isPublicView ? publicData : files.find(f => f.id === activeFileId);
-    if (!targetFile) return;
-    const entities: Entity[] = nodes.map(n => n.data as Entity);
-    const entityMap = new Map(entities.map(e => [e.id, e]));
-    let sql = `-- ERD Export: ${targetFile.name}\n-- Dialect: ${dialect}\n\n`;
-    entities.forEach(entity => {
-      sql += `CREATE TABLE ${entity.name} (\n`;
-      entity.columns.forEach((col, i) => {
-        sql += `  ${col.name} ${col.type}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${i === entity.columns.length - 1 ? '' : ','}\n`;
-      });
-      sql += `);\n\n`;
-    });
-    const relationshipsGenerated = new Set<string>();
-    edges.forEach(edge => {
-      const sourceEntity = entityMap.get(edge.source);
-      const targetEntity = entityMap.get(edge.target);
-      if (sourceEntity && targetEntity) {
-        const sourceColId = edge.sourceHandle?.replace('col-', '').replace('-source-l', '').replace('-source', '');
-        const targetColId = edge.targetHandle?.replace('col-', '').replace('-target-r', '').replace('-target', '');
-        const sourceColumn = sourceEntity.columns.find(c => c.id === sourceColId);
-        const targetColumn = targetEntity.columns.find(c => c.id === targetColId);
-        if (sourceColumn && targetColumn) {
-          const constraintName = `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
-          const relKey = `${sourceEntity.name}.${sourceColumn.name}->${targetEntity.name}.${targetColumn.name}`;
-          if (!relationshipsGenerated.has(relKey)) {
-            sql += `ALTER TABLE ${sourceEntity.name} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${sourceColumn.name}) REFERENCES ${targetEntity.name}(${targetColumn.name});\n`;
-            relationshipsGenerated.add(relKey);
-          }
-        }
-      }
-    });
-
-    const blob = new Blob([sql], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${targetFile.name.toLowerCase().replace(/\s+/g, '_')}_schema.sql`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleViewChange = (newView: typeof view) => {
-    if (!isOnline && !isPublicView) {
-      toast.error("Offline Mode: Navigation is disabled to prevent data mismatch.", {
-        description: "Please restore your connection to switch between documents.",
-        duration: 5000,
-      });
-      return;
-    }
-    setView(newView);
-    if (newView !== 'trash') setSidebarView(newView);
-  };
-
-  // Render initialization or loading public doc
-  if (isAuthenticated === null && !isPublicView) {
-    return (
-      <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center gap-6 overflow-hidden">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
-          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center shadow-2xl shadow-primary/40">
-            <Database className="w-10 h-10 text-primary-foreground animate-bounce" />
-          </div>
-          <div className="absolute -inset-4 border-2 border-primary/20 rounded-3xl animate-[spin_3s_linear_infinite]" />
-        </motion.div>
-        <div className="text-center z-10">
-          <h2 className="text-xl font-bold text-white mb-2">Preparing your workspace...</h2>
-          <div className="flex items-center justify-center gap-1.5">
-            {[0, 1, 2].map((i) => (
-              <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }} className="w-1.5 h-1.5 rounded-full bg-primary" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isPublicLoading) {
-    return (
-      <div className="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center gap-6 overflow-hidden">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
-          <div className="w-20 h-20 rounded-2xl bg-yellow-500/10 flex items-center justify-center shadow-2xl shadow-yellow-500/10">
-            <Share2 className="w-10 h-10 text-yellow-500 animate-pulse" />
-          </div>
-          <div className="absolute -inset-4 border-2 border-yellow-500/20 rounded-3xl animate-[spin_3s_linear_infinite]" />
-        </motion.div>
-        <div className="text-center z-10">
-          <h2 className="text-xl font-bold text-white mb-1">Loading shared {view}...</h2>
-          <p className="text-xs text-muted-foreground">Preparing read-only view</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (forbiddenDoc) {
-    const shareInfo = getSharePathInfo();
-    return (
-      <ForbiddenView 
-        title={forbiddenDoc.title} 
-        message={forbiddenDoc.message} 
-        statusCode={forbiddenDoc.status}
-        documentUid={shareInfo?.uid}
-        onSubmitToken={async (token) => {
-          if (shareInfo) {
-            const success = await fetchPublicDocument(shareInfo.type, shareInfo.uid, token);
-            if (success) {
-              sessionStorage.setItem(`share_token_${shareInfo.uid}`, token);
-            } else {
-              throw new Error("Invalid access token");
-            }
-          }
-        }}
-        onReturn={() => window.location.href = '/'}
-      />
-    );
-  }
-
-  if (!isAuthenticated && !isPublicView) {
-    return <Login onLogin={() => checkAuth()} onGuestLogin={handleGuestLogin} />;
-  }
-
-
-  // Derive component-level props
   const activeNote = isPublicView ? publicData : notes.find(n => n.id === activeNoteId);
   const activeDrawing = isPublicView ? publicData : drawings.find(d => d.id === activeDrawingId);
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => f.id === activeFlowchartId);
   const activeFile = isPublicView ? publicData : files.find(f => f.id === activeFileId);
   
-  const featureLabel = isPublicView 
-    ? `Public Shared ${view === 'erd' ? 'Diagram' : view.charAt(0).toUpperCase() + view.slice(1)}` 
-    : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : 'Trash Bin');
-    
-  const activeFileName = isPublicView 
-    ? (publicData?.name || publicData?.title || 'Shared Document') 
-    : (view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
-    
-  const activeProjectName = isPublicView 
-    ? publicData?.projects?.name 
-    : (view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
+  const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : 'Trash Bin');
+  const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
+  const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
+  const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeFile?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
 
-  const activeFileUid = isPublicView 
-    ? publicData?.uid 
-    : (view === 'erd' ? activeFile?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
+  if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
+  if (isPublicLoading) return <AppInitialization type="public" view={view} />;
+
+  if (forbiddenDoc) {
+    const shareInfo = getSharePathInfo();
+    return (
+      <ForbiddenView 
+        title={forbiddenDoc.title} message={forbiddenDoc.message} statusCode={forbiddenDoc.status} documentUid={shareInfo?.uid}
+        onSubmitToken={async t => { if (shareInfo) { const s = await fetchPublicDocument(shareInfo.type, shareInfo.uid, t); if (s) sessionStorage.setItem(`share_token_${shareInfo.uid}`, t); else throw new Error("Invalid token"); } }}
+        onReturn={() => window.location.href = '/'}
+      />
+    );
+  }
+
+  if (!isAuthenticated && !isPublicView) return <Login onLogin={() => checkAuth()} onGuestLogin={handleGuestLogin} />;
 
   return (
     <SidebarProvider className="h-svh overflow-hidden">
-      {/* Offline Overlay */}
-      {!isOnline && !isPublicView && (
-        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-auto">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md w-full p-8 bg-card border border-destructive/20 rounded-3xl shadow-2xl text-center space-y-6"
-          >
-            <div className="w-16 h-16 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              >
-                <Database className="w-8 h-8 text-destructive" />
-              </motion.div>
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold tracking-tight">Offline Connection lost</h2>
-              <p className="text-muted-foreground text-balanced lowercase first-letter:uppercase">
-                koneksi internet terputus. jangan khawatir, fitur **autosave** lokal kami tetap aktif menyimpan perubahan di perangkat anda. namun, demi keamanan data, anda tidak dapat beralih halaman hingga koneksi kembali normal.
-              </p>
-            </div>
-            <div className="pt-4 flex flex-col gap-3">
-              <div className="flex items-center justify-center gap-2 text-xs font-medium text-destructive animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-destructive" />
-                waiting for reconnection...
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      {!isOnline && !isPublicView && <OfflineOverlay />}
 
       {!isPublicView && (
         <AppSidebar 
           files={files} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects} trashData={trashData}
           activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
-          onFileSelect={handleFileSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onFlowchartSelect={handleFlowchartSelect} onProjectSelect={setActiveProjectId}
-          onFileCreate={handleFileCreate} onNoteCreate={handleNoteCreate} onDrawingCreate={handleDrawingCreate} onFlowchartCreate={handleFlowchartCreate} onProjectCreate={createProject}
-          onProjectUpdate={updateProject} onProjectDelete={handleProjectDelete} onProjectRestore={handleProjectRestore}
+          onFileSelect={handleFileSelect} onNoteSelect={handleSelectionSelect} onDrawingSelect={handleSelectionSelect} onFlowchartSelect={handleSelectionSelect} onProjectSelect={setActiveProjectId}
+          onFileCreate={async (n, pid) => { const f = await createFile(n, pid ? Number(pid) : null); if (f) handleFileSelect(f.id); }}
+          onNoteCreate={async (t, pid) => { const n = await createNote(t, pid ? Number(pid) : null); if (n) handleSelectionSelect(n.id); }}
+          onDrawingCreate={async (t, pid) => { const d = await createDrawing(t, pid ? Number(pid) : null); if (d) handleSelectionSelect(d.id); }}
+          onFlowchartCreate={async (t, pid) => { const f = await createFlowchart(t, pid ? Number(pid) : null); if (f) handleSelectionSelect(f.id); }}
+          onProjectCreate={createProject} onProjectUpdate={updateProject} onProjectDelete={id => { deleteProject(id); fetchTrash(); }} onProjectRestore={id => { restoreProject(id); fetchTrash(); fetchProjects(); }}
           onFileUpdate={updateFile} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
-          onFileDelete={handleFileDelete} onNoteDelete={handleNoteDelete} onDrawingDelete={handleDrawingDelete} onFlowchartDelete={handleFlowchartDelete}
-          onFileRestore={handleFileRestore} onNoteRestore={handleNoteRestore} onDrawingRestore={handleDrawingRestore} onFlowchartRestore={handleFlowchartRestore}
-          onFilePermanentDelete={handleFilePermanentDelete} onNotePermanentDelete={handleNotePermanentDelete} onDrawingPermanentDelete={handleDrawingPermanentDelete} onFlowchartPermanentDelete={handleFlowchartPermanentDelete} onProjectPermanentDelete={handleProjectPermanentDelete}
+          onFileDelete={id => { deleteFile(id); fetchTrash(); }} onNoteDelete={id => { deleteNote(id); fetchTrash(); }} onDrawingDelete={id => { deleteDrawing(id); fetchTrash(); }} onFlowchartDelete={id => { deleteFlowchart(id); fetchTrash(); }}
+          onFileRestore={id => { restoreFile(id); fetchTrash(); fetchFiles(); }} onNoteRestore={id => { restoreNote(id); fetchTrash(); fetchNotes(); }} onDrawingRestore={id => { restoreDrawing(id); fetchTrash(); fetchDrawings(); }} onFlowchartRestore={id => { restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); }}
+          onFilePermanentDelete={id => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); }}
+          onNotePermanentDelete={id => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); }}
+          onDrawingPermanentDelete={id => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); }}
+          onFlowchartPermanentDelete={id => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); }}
+          onProjectPermanentDelete={id => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); }}
           onLogout={handleLogout} saveStatus={saveStatus}
           onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
-          sidebarView={sidebarView}
-          onViewChange={handleViewChange}
+          sidebarView={sidebarView} onViewChange={handleViewChange}
           hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
-          onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)}
-          onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
-          onLoadMoreNotes={() => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
-          onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+          onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)} onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+          onLoadMoreNotes={() => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)} onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
           onLoadMoreFlowcharts={() => fetchFlowcharts(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          user={user}
-          isOnline={isOnline}
-          isInstallable={isInstallable}
-          onInstall={installApp}
+          searchQuery={searchQuery} onSearchChange={setSearchQuery} user={user} isOnline={isOnline} isInstallable={isInstallable} onInstall={installApp}
         />
       )}
 
@@ -934,96 +421,65 @@ function AppContent() {
           featureLabel={featureLabel} activeProjectName={activeProjectName} activeFileName={activeFileName} 
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
           currentSaveStatus={isPublicView ? 'saved' : currentSaveStatus}
-          activeFileUid={activeFileUid}
-          activeFileId={currentActiveId}
-          initialShareSettings={initialShareSettings}
-          isPublicView={isPublicView}
-          onSettingsSaved={() => {
-            const pid = activeProjectId === null ? 'all' : activeProjectId;
-            if (view === 'erd') fetchFiles(false, pid, debouncedSearchQuery);
-            else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery);
-            else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
-            else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
-          }}
+          activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
+          onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchFiles(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
-          {!hasActiveItem && view !== 'trash' && !isPublicView ? (
-            <WelcomeView />
-          ) : (
+          {!hasActiveItem && view !== 'trash' && view !== 'changelog' && !isPublicView ? <WelcomeView /> : (
             <>
               {view === 'erd' && (isPublicView ? publicData : activeFileId) && (
                 <ERDView 
                   nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-                  onNodeClick={(event, node) => { 
-                    if (isPublicView) return;
-                    if (!(event.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(node.id); 
+                  onNodeClick={(e, n) => { if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id); }}
+                  onEdgeClick={(_, e) => { if (!isPublicView) setSelectedEdgeId(e.id); }}
+                  onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                  onMove={(_, v) => { viewportRef.current = v; }}
+                  addEntity={addEntity} handleExportSQL={dialect => {
+                    const target = isPublicView ? publicData : files.find(f => f.id === activeFileId);
+                    if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
-                  onPaneClick={() => setSelectedNodeId(null)}
-                  onMove={(_, viewport) => { viewportRef.current = viewport; }}
-                  addEntity={addEntity} handleExportSQL={handleExportSQL}
                   isReadOnly={isPublicView}
                 />
               )}
-
-              {view === 'notes' && activeNote && (
-                <NotesView 
-                  activeNoteId={isPublicView ? null : activeNoteId} 
-                  activeNote={activeNote} 
-                  saveNote={saveNote} 
-                  handleNoteChange={handleNoteChange} 
-                  deleteNote={deleteNote} 
-                  isReadOnly={isPublicView}
-                />
-              )}
-
-              {view === 'drawings' && activeDrawing && (
-                <DrawingsView 
-                  activeDrawingId={isPublicView ? null : activeDrawingId} 
-                  activeDrawing={activeDrawing} 
-                  saveDrawing={saveDrawing} 
-                  handleDrawingChange={handleDrawingChange} 
-                  deleteDrawing={deleteDrawing} 
-                  isReadOnly={isPublicView}
-                />
-              )}
-
-              {view === 'flowchart' && activeFlowchart && (
-                <FlowchartView 
-                  activeFlowchartId={isPublicView ? null : activeFlowchartId}
-                  activeFlowchart={activeFlowchart}
-                  handleFlowchartChange={handleFlowchartChange}
-                  isReadOnly={isPublicView}
-                />
-              )}
+              {view === 'notes' && activeNote && <NotesView activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
+              {view === 'drawings' && activeDrawing && <DrawingsView activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
+              {view === 'flowchart' && activeFlowchart && <FlowchartView activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'changelog' && <ChangelogView />}
             </>
           )}
-
           {view === 'trash' && (
             <TrashView 
-              trashData={trashData} restoreProject={restoreProject} restoreFile={handleFileRestore} restoreNote={handleNoteRestore} restoreDrawing={handleDrawingRestore} restoreFlowchart={handleFlowchartRestore}
-              fetchTrash={fetchTrash} handleProjectPermanentDelete={handleProjectPermanentDelete} handleFilePermanentDelete={handleFilePermanentDelete}
-              handleNotePermanentDelete={handleNotePermanentDelete} handleDrawingPermanentDelete={handleDrawingPermanentDelete} handleFlowchartPermanentDelete={handleFlowchartPermanentDelete}
+              trashData={trashData} 
+              restoreProject={async (id) => { await restoreProject(id); fetchTrash(); fetchProjects(); }} 
+              restoreFile={async (id) => { await restoreFile(id); fetchTrash(); fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
+              restoreNote={async (id) => { await restoreNote(id); fetchTrash(); fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
+              restoreDrawing={async (id) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
+              restoreFlowchart={async (id) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
+              fetchTrash={fetchTrash} 
+              handleProjectPermanentDelete={id => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); }} 
+              handleFilePermanentDelete={id => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); }} 
+              handleNotePermanentDelete={id => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); }} 
+              handleDrawingPermanentDelete={id => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); }} 
+              handleFlowchartPermanentDelete={id => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); }} 
             />
           )}
         </div>
 
-        <DeleteConfirmModal 
-          isOpen={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen} 
-          onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)}
-          itemType={itemToDelete?.type || ''}
-        />
+        <FeedbackDialog />
+
+        <DeleteConfirmModal isOpen={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen} onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)} itemType={itemToDelete?.type || ''} />
 
         {/* Entity Properties Modal */}
         {!isPublicView && (
           <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) setSelectedNodeId(null); }}>
-            <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-              <DialogHeader className="shrink-0 mb-4">
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
                 <div className="flex items-center justify-between pr-8">
                   <div className="space-y-1 text-left">
-                    <DialogTitle className="text-xl font-bold tracking-tight">Table Properties</DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground">
+                    <DialogTitle>Table Properties</DialogTitle>
+                    <DialogDescription>
                       Customize your table name, theme, and column definitions.
                     </DialogDescription>
                   </div>
@@ -1031,7 +487,7 @@ function AppContent() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsDeleteAlertOpen(true)}
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
+                    className="text-destructive hover:bg-destructive/10 -mr-2 shadow-none"
                     title="Delete Table"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1039,16 +495,38 @@ function AppContent() {
                 </div>
               </DialogHeader>
               
-              <div className="-mx-4 px-4 max-h-[65vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent space-y-8">
+              <DialogBody>
                 <PropertiesPanel 
                   selectedEntity={selectedEntity} 
                   onUpdateEntity={updateEntity} 
                   onDeleteEntity={(id) => {
                     deleteEntity(id);
                     setSelectedNodeId(null);
-                  }}
+                  }} 
                 />
-              </div>
+              </DialogBody>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Relationship Properties Modal */}
+        {!isPublicView && (
+          <Dialog open={!!selectedEdgeId} onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Relationship Properties</DialogTitle>
+                <DialogDescription>
+                  Set the cardinality between these two tables.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody>
+                <RelationshipPropertiesPanel 
+                  selectedEdge={edges.find(e => e.id === selectedEdgeId) || null} 
+                  nodes={nodes} 
+                  onUpdateEdge={handleEdgeUpdate} 
+                  onDeleteEdge={deleteEdge}
+                />
+              </DialogBody>
             </DialogContent>
           </Dialog>
         )}
@@ -1058,10 +536,12 @@ function AppContent() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Table</AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogBody>
               <AlertDialogDescription>
                 Are you sure you want to delete the table "{selectedEntity?.name}"? This action cannot be undone.
               </AlertDialogDescription>
-            </AlertDialogHeader>
+            </AlertDialogBody>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction 
@@ -1079,7 +559,6 @@ function AppContent() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <ConnectionLostOverlay isOnline={isOnline} />
       </SidebarInset>
     </SidebarProvider>
   );
