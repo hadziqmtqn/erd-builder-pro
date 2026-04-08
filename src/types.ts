@@ -60,6 +60,9 @@ export interface FileData {
   viewport_x?: number;
   viewport_y?: number;
   viewport_zoom?: number;
+  is_public?: boolean;
+  share_token?: string;
+  expiry_date?: string;
 }
 
 export interface Note {
@@ -73,6 +76,9 @@ export interface Note {
   deleted_at?: string;
   created_at: string;
   updated_at: string;
+  is_public?: boolean;
+  share_token?: string;
+  expiry_date?: string;
 }
 
 export interface Drawing {
@@ -86,6 +92,9 @@ export interface Drawing {
   deleted_at?: string;
   created_at: string;
   updated_at: string;
+  is_public?: boolean;
+  share_token?: string;
+  expiry_date?: string;
 }
 
 export interface Flowchart {
@@ -99,5 +108,7 @@ export interface Flowchart {
   deleted_at?: string;
   created_at: string;
   updated_at: string;
+  is_public?: boolean;
+  share_token?: string;
+  expiry_date?: string;
 }
-

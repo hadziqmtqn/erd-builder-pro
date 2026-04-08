@@ -164,9 +164,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
           ))}
         </div>
 
-        {/* General Node Handles - Hidden/Removed as per column-based focus */}
-        <Handle type="target" position={Position.Top} className="!opacity-0" />
-        <Handle type="source" position={Position.Bottom} className="!opacity-0" />
+        {/* General Node Handles explicitly removed to enforce column-to-column relations */}
       </div>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
