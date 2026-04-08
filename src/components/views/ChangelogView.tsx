@@ -18,8 +18,9 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
+  DialogBody,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -103,7 +104,7 @@ export function ChangelogView() {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 px-6 py-8">
+      <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="max-w-3xl mx-auto relative pl-8 space-y-12">
           {/* Vertical Timeline Line */}
           <div className="absolute left-[15px] top-2 bottom-0 w-px bg-border" />
@@ -162,41 +163,41 @@ export function ChangelogView() {
             ))}
           </AnimatePresence>
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Release Detail Dialog */}
       <Dialog open={!!selectedRelease} onOpenChange={(open) => !open && setSelectedRelease(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden border-white/10 bg-[#0f0f14]">
+        <DialogContent className="sm:max-w-2xl">
           {selectedRelease && (
             <>
-              <DialogHeader className="p-6 border-b bg-muted/20">
+              <DialogHeader>
                 <div className="flex items-center gap-3 mb-2">
-                  <Badge className="font-mono">v{selectedRelease.tag_name.replace('v', '')}</Badge>
+                  <Badge className="font-mono text-xs">v{selectedRelease.tag_name.replace('v', '')}</Badge>
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Calendar className="w-3 h-3" />
                     {format(new Date(selectedRelease.published_at), 'MMMM d, yyyy')}
                   </span>
                 </div>
-                <DialogTitle className="text-2xl font-bold">{selectedRelease.name || `Release ${selectedRelease.tag_name}`}</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+                <DialogTitle className="text-2xl">{selectedRelease.name || `Release ${selectedRelease.tag_name}`}</DialogTitle>
+                <DialogDescription className="text-xs">
                   Status: {selectedRelease.prerelease ? 'Pre-release' : 'Stable Release'}
                 </DialogDescription>
               </DialogHeader>
 
-              <ScrollArea className="flex-1 p-6">
+              <DialogBody className="bg-[#0f0f14]/50">
                 <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {selectedRelease.body}
                   </ReactMarkdown>
                 </div>
-              </ScrollArea>
+              </DialogBody>
 
-              <div className="p-4 border-t bg-muted/5 flex justify-end">
+              <DialogFooter>
                 <Button variant="secondary" size="sm" render={<a href={selectedRelease.html_url} target="_blank" rel="noreferrer" />}>
                   <ExternalLink className="w-4 h-4 mr-2" />
                   View on GitHub
                 </Button>
-              </div>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

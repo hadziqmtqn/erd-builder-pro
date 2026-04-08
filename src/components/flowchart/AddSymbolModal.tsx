@@ -1,5 +1,12 @@
-import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter,
+  DialogBody
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -30,15 +37,15 @@ export function AddSymbolModal({
 }: AddSymbolModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-        <DialogHeader className="shrink-0 mb-4">
-          <DialogTitle className="text-xl font-bold tracking-tight">Create New Symbol</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Create New Symbol</DialogTitle>
+          <DialogDescription>
             Configure the symbol before placing it on the canvas.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <DialogBody className="space-y-6">
           <div className="space-y-2">
             <Label>Label</Label>
             <Input 
@@ -56,7 +63,9 @@ export function AddSymbolModal({
               onValueChange={(val: FlowchartShape) => onNodeDataChange({ ...nodeData, shape: val })}
             >
               <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                <SelectValue placeholder="Select a shape" />
+                <SelectValue placeholder="Select a shape">
+                  {nodeData.shape ? SHAPE_LABELS[nodeData.shape] : "Select a shape"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                 <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
@@ -84,8 +93,8 @@ export function AddSymbolModal({
               ))}
             </div>
           </div>
-        </div>
-        <DialogFooter className="mt-6">
+        </DialogBody>
+        <DialogFooter>
           <Button variant="outline" className="border-white/10" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={onConfirm} className="bg-primary text-primary-foreground">Add to Flowchart</Button>
         </DialogFooter>

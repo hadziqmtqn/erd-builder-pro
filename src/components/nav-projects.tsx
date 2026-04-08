@@ -33,13 +33,15 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
+import { cn } from "@/lib/utils"
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
   DialogTitle,
+  DialogBody
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,7 +55,6 @@ import {
 } from "@/components/ui/select"
 
 import { FileData, Project, Note, Drawing, Flowchart } from "../types"
-import { cn } from "@/lib/utils"
 
 export function NavProjects({
   projects,
@@ -294,8 +295,8 @@ export function NavProjects({
                   <span>Rename Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={!isOnline} onClick={() => onProjectDelete(item.id)}>
-                  <Trash2 className="mr-2 size-4 text-muted-foreground" />
+                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => onProjectDelete(item.id)}>
+                  <Trash2 className="mr-2 size-4" />
                   <span>Delete Project</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -536,7 +537,7 @@ export function NavProjects({
               {editingProjectId !== null ? 'Enter a new name for your project.' : 'Enter a name for your new project to organize your files.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody>
             <div className="grid gap-2">
               <Label htmlFor="name">
                 Name
@@ -548,7 +549,7 @@ export function NavProjects({
                 placeholder="Project name"
               />
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setIsProjectDialogOpen(false)
@@ -575,7 +576,7 @@ export function NavProjects({
           <DialogHeader>
             <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : sidebarView === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="filename">
                 Name
@@ -605,7 +606,7 @@ export function NavProjects({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFileDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateFile}>Create</Button>
@@ -619,7 +620,7 @@ export function NavProjects({
           <DialogHeader>
             <DialogTitle>Edit {editingFile?.type === 'erd' ? 'Diagram' : editingFile?.type === 'notes' ? 'Note' : editingFile?.type === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <DialogBody className="space-y-4">
             <div className="grid gap-2">
               <Label htmlFor="edit-filename">
                 Name
@@ -649,7 +650,7 @@ export function NavProjects({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditFileDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleUpdateFile}>Save Changes</Button>
@@ -666,6 +667,9 @@ export function NavProjects({
               This will move the item to the trash. You can restore it later.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody className="py-2">
+            <p className="text-sm text-muted-foreground">This will move the item to the trash. You can restore it later.</p>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>Delete</Button>

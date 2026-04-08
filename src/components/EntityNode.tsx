@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
+  AlertDialogBody,
 } from "@/components/ui/alert-dialog";
 
 type EntityNodeProps = NodeProps<Node<Entity>>;
@@ -182,10 +183,12 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
               <AlertCircle className="text-destructive" />
             </AlertDialogMedia>
             <AlertDialogTitle>Delete Table</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody>
             <AlertDialogDescription>
               Are you sure you want to delete the table <strong>{data.name}</strong>? This action cannot be undone.
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
             <AlertDialogAction 

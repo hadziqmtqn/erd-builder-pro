@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogDescription,
-  DialogFooter
+  DialogFooter,
+  DialogBody
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,7 +126,7 @@ export function ShareModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <DialogBody className="space-y-4">
           {!isPublicView && (
             <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 transition-colors hover:bg-muted/50">
               <div className="space-y-0.5">
@@ -208,7 +209,7 @@ export function ShareModal({
               </>
             )}
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-end">
           {isPublicView ? (

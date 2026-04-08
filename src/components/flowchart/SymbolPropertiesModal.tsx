@@ -1,6 +1,12 @@
-import React from 'react';
 import { Node } from '@xyflow/react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogBody
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -28,16 +34,16 @@ export function SymbolPropertiesModal({
 }: SymbolPropertiesModalProps) {
   return (
     <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-        <DialogHeader className="shrink-0 mb-4">
-          <DialogTitle className="text-xl font-bold tracking-tight">Symbol Properties</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Symbol Properties</DialogTitle>
+          <DialogDescription>
             Customize the name, shape, and color of this symbol.
           </DialogDescription>
         </DialogHeader>
         
         {selectedNode && (
-          <div className="space-y-6">
+          <DialogBody className="space-y-6">
             <div className="space-y-2">
               <Label>Label</Label>
               <Input 
@@ -55,7 +61,9 @@ export function SymbolPropertiesModal({
                 onValueChange={(val: FlowchartShape) => onUpdateNodeData({ shape: val })}
               >
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select a shape" />
+                  <SelectValue placeholder="Select a shape">
+                    {selectedNode.data.shape ? SHAPE_LABELS[selectedNode.data.shape] : "Select a shape"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                   <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
@@ -83,7 +91,7 @@ export function SymbolPropertiesModal({
                 ))}
               </div>
             </div>
-          </div>
+          </DialogBody>
         )}
       </DialogContent>
     </Dialog>

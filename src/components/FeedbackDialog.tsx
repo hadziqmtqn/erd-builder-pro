@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogBody } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,14 +78,14 @@ export function FeedbackDialog() {
         </Tooltip>
         
         <DialogContent className="sm:max-w-[425px] border-white/10 bg-[#0f0f14]/95 backdrop-blur-xl shadow-2xl">
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="flex flex-col max-h-[inherit]">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold">Kirim Masukan</DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground">
                 Bantu kami membuat ERD Builder Pro jadi lebih baik. Saran Anda sangat berharga!
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-5 py-6">
+            <DialogBody className="space-y-5">
               <div className="grid gap-2">
                 <Label htmlFor="category" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipe Masukan</Label>
                 <Select value={category} onValueChange={setCategory}>
@@ -127,7 +127,7 @@ export function FeedbackDialog() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-            </div>
+            </DialogBody>
             <DialogFooter className="gap-3">
               <Button 
                 variant="ghost" 

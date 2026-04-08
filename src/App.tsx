@@ -66,6 +66,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogBody,
 } from "@/components/ui/alert-dialog"
 import {
   Dialog,
@@ -73,6 +74,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogBody,
 } from "@/components/ui/dialog"
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -472,12 +474,12 @@ function AppContent() {
         {/* Entity Properties Modal */}
         {!isPublicView && (
           <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) setSelectedNodeId(null); }}>
-            <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-              <DialogHeader className="shrink-0 mb-4">
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
                 <div className="flex items-center justify-between pr-8">
                   <div className="space-y-1 text-left">
-                    <DialogTitle className="text-xl font-bold tracking-tight">Table Properties</DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground">
+                    <DialogTitle>Table Properties</DialogTitle>
+                    <DialogDescription>
                       Customize your table name, theme, and column definitions.
                     </DialogDescription>
                   </div>
@@ -485,7 +487,7 @@ function AppContent() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsDeleteAlertOpen(true)}
-                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 -mr-2"
+                    className="text-destructive hover:bg-destructive/10 -mr-2 shadow-none"
                     title="Delete Table"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -493,7 +495,7 @@ function AppContent() {
                 </div>
               </DialogHeader>
               
-              <div className="-mx-4 px-4 max-h-[65vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent space-y-8">
+              <DialogBody>
                 <PropertiesPanel 
                   selectedEntity={selectedEntity} 
                   onUpdateEntity={updateEntity} 
@@ -502,7 +504,7 @@ function AppContent() {
                     setSelectedNodeId(null);
                   }} 
                 />
-              </div>
+              </DialogBody>
             </DialogContent>
           </Dialog>
         )}
@@ -510,19 +512,21 @@ function AppContent() {
         {/* Relationship Properties Modal */}
         {!isPublicView && (
           <Dialog open={!!selectedEdgeId} onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}>
-            <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
-              <DialogHeader className="shrink-0 mb-2">
-                <DialogTitle className="text-xl font-bold tracking-tight">Relationship Properties</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Relationship Properties</DialogTitle>
+                <DialogDescription>
                   Set the cardinality between these two tables.
                 </DialogDescription>
               </DialogHeader>
-              <RelationshipPropertiesPanel 
-                selectedEdge={edges.find(e => e.id === selectedEdgeId) || null} 
-                nodes={nodes} 
-                onUpdateEdge={handleEdgeUpdate} 
-                onDeleteEdge={deleteEdge}
-              />
+              <DialogBody>
+                <RelationshipPropertiesPanel 
+                  selectedEdge={edges.find(e => e.id === selectedEdgeId) || null} 
+                  nodes={nodes} 
+                  onUpdateEdge={handleEdgeUpdate} 
+                  onDeleteEdge={deleteEdge}
+                />
+              </DialogBody>
             </DialogContent>
           </Dialog>
         )}
@@ -532,10 +536,12 @@ function AppContent() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Table</AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogBody>
               <AlertDialogDescription>
                 Are you sure you want to delete the table "{selectedEntity?.name}"? This action cannot be undone.
               </AlertDialogDescription>
-            </AlertDialogHeader>
+            </AlertDialogBody>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction 
