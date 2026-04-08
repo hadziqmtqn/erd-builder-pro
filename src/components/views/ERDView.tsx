@@ -112,7 +112,7 @@ export function ERDView({
           elementsSelectable={!isReadOnly}
         >
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
-          <Controls position="bottom-right" showInteractive={false} />
+          <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
       </div>
     </div>

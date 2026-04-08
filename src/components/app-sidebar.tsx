@@ -356,9 +356,6 @@ export function AppSidebar({
             </Tooltip>
           </div>
         )}
-        <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
-          <FeedbackDialog isCollapsed={isCollapsed} />
-        </div>
         <NavUser 
           user={user} 
           onLogout={onLogout}

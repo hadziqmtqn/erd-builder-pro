@@ -8,6 +8,7 @@ import '@xyflow/react/dist/style.css';
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
+import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
@@ -453,6 +454,8 @@ function AppContent() {
             />
           )}
         </div>
+
+        <FeedbackDialog />
 
         <DeleteConfirmModal isOpen={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen} onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)} itemType={itemToDelete?.type || ''} />
 
