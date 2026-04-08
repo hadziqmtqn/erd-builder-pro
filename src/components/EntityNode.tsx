@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, useEdges } from '@xyflow/react';
 import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
@@ -44,6 +44,8 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
     window.dispatchEvent(new CustomEvent('deleteEntity', { detail: data.id }));
     setShowDeleteConfirm(false);
   };
+
+  const edges = useEdges();
 
   // Eraser.io style colors based on data.color
   const borderColor = data.color;
@@ -101,67 +103,73 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
 
         {/* Columns */}
         <div className="flex flex-col">
-          {data.columns.map((col, index) => (
-            <div 
-              key={col.id} 
-              className={cn(
-                "group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0 border-white/5",
-                "hover:bg-white/5"
-              )}
-              style={{ '--hover-bg': rowHoverBg } as React.CSSProperties}
-            >
-              {/* Universal Column Handles (Bidirectional) */}
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={`col-${col.id}-target`}
-                className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ top: '50%', transform: 'translateY(-50%)' }}
-              />
-              <Handle
-                type="source"
-                position={Position.Left}
-                id={`col-${col.id}-source-l`}
-                className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ top: '50%', transform: 'translateY(-50%)' }}
-              />
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={`col-${col.id}-source`}
-                className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ top: '50%', transform: 'translateY(-50%)' }}
-              />
-              <Handle
-                type="target"
-                position={Position.Right}
-                id={`col-${col.id}-target-r`}
-                className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ top: '50%', transform: 'translateY(-50%)' }}
-              />
-
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  "text-sm font-medium",
-                  col.is_pk ? "text-white" : "text-white/80"
-                )}>
-                  {col.name}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-1.5">
-                <span 
-                  className="text-[11px] font-mono font-semibold"
-                  style={{ color: typeColor }}
-                >
-                  {col.type.toLowerCase()}
-                </span>
-                {col.is_pk && (
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>
+          {data.columns.map((col, index) => {
+            const isFk = edges.some(e => e.source === data.id && e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') === col.id);
+            return (
+              <div 
+                key={col.id} 
+                className={cn(
+                  "group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0 border-white/5",
+                  "hover:bg-white/5"
                 )}
+                style={{ '--hover-bg': rowHoverBg } as React.CSSProperties}
+              >
+                {/* Universal Column Handles (Bidirectional) */}
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`col-${col.id}-target`}
+                  className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                />
+                <Handle
+                  type="source"
+                  position={Position.Left}
+                  id={`col-${col.id}-source-l`}
+                  className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                />
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={`col-${col.id}-source`}
+                  className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                />
+                <Handle
+                  type="target"
+                  position={Position.Right}
+                  id={`col-${col.id}-target-r`}
+                  className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                />
+
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-sm font-medium",
+                    col.is_pk ? "text-white" : "text-white/80"
+                  )}>
+                    {col.name}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-1.5">
+                  <span 
+                    className="text-[11px] font-mono font-semibold"
+                    style={{ color: typeColor }}
+                  >
+                    {col.type.toLowerCase()}
+                  </span>
+                  {(col.is_pk || isFk) && (
+                    <div className="flex items-center gap-1">
+                      {col.is_pk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>}
+                      {isFk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* General Node Handles explicitly removed to enforce column-to-column relations */}

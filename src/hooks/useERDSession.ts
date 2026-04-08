@@ -163,9 +163,47 @@ export function useERDSession(
     setNodes((nds) => nds.concat(newNode));
   };
 
-  const updateEntity = (updatedEntity: Entity) => {
-    setNodes((nds) => nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node));
-  };
+  const updateEntity = useCallback((updatedEntity: Entity) => {
+    setNodes((nds) => {
+      const newNodes = nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node);
+      
+      setEdges((eds) => {
+        const invalidEdgeIds: string[] = [];
+        
+        eds.forEach(edge => {
+          if (edge.source === updatedEntity.id || edge.target === updatedEntity.id) {
+            const sourceNode = newNodes.find(n => n.id === edge.source);
+            const targetNode = newNodes.find(n => n.id === edge.target);
+            
+            if (sourceNode && targetNode && edge.sourceHandle && edge.targetHandle) {
+               const sourceColId = edge.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+               const targetColId = edge.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+               
+               const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
+               const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
+               
+               if (sourceCol && targetCol && sourceCol.type !== targetCol.type) {
+                 invalidEdgeIds.push(edge.id);
+               }
+            }
+          }
+        });
+        
+        if (invalidEdgeIds.length > 0) {
+          setTimeout(() => {
+            toast.warning("Relations Removed", {
+              description: "Some relations were automatically deleted because the column types no longer matched.",
+              duration: 5000
+            });
+          }, 0);
+          return eds.filter(e => !invalidEdgeIds.includes(e.id));
+        }
+        return eds;
+      });
+      
+      return newNodes;
+    });
+  }, [setNodes, setEdges]);
 
   const deleteEntity = useCallback((id: string) => {
     setNodes((nds) => nds.filter((node) => node.id !== id));
