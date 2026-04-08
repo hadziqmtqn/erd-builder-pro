@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { 
   useNodesState, 
   useEdgesState, 
@@ -219,6 +219,36 @@ export function useERDSession(
     setEdges((eds) => eds.filter((edge) => edge.id !== id));
     setSelectedEdgeId(null);
   };
+
+  useEffect(() => {
+    setEdges(eds => {
+      let isChanged = false;
+      const newEds = eds.map(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        if (!sourceNode || !targetNode) return edge;
+        
+        const sourceColId = edge.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+        const targetColId = edge.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+        
+        if (!sourceColId || !targetColId) return edge;
+
+        const sx = sourceNode.position.x;
+        const tx = targetNode.position.x;
+        
+        const newSourceHandle = sx < tx ? `col-${sourceColId}-source` : `col-${sourceColId}-source-l`;
+        const newTargetHandle = sx < tx ? `col-${targetColId}-target` : `col-${targetColId}-target-r`;
+        
+        if (edge.sourceHandle !== newSourceHandle || edge.targetHandle !== newTargetHandle) {
+          isChanged = true;
+          return { ...edge, sourceHandle: newSourceHandle, targetHandle: newTargetHandle };
+        }
+        return edge;
+      });
+      
+      return isChanged ? newEds : eds;
+    });
+  }, [nodes, setEdges]);
 
   return {
     nodes, setNodes, onNodesChange,
