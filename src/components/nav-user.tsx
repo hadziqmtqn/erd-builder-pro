@@ -38,7 +38,7 @@ export function NavUser({
 }: {
   user: any
   onLogout: () => void
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash') => void
+  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog') => void
   isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
@@ -97,6 +97,13 @@ export function NavUser({
               <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
                 <Github className="mr-2 size-4" />
                 Github
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => isOnline && onViewChange('changelog')}
+                className="cursor-pointer"
+              >
+                <Sparkles className="mr-2 size-4" />
+                What's New
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

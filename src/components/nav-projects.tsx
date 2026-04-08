@@ -134,8 +134,8 @@ export function NavProjects({
   activeNoteId: number | string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
-  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'
-  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart'
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'
+  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
   onFileDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
   onDrawingDelete: (id: number | string) => void

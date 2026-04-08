@@ -44,6 +44,9 @@ import { useERDSession } from './hooks/useERDSession';
 import { useSQLGenerator } from './hooks/useSQLGenerator';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 
+// Views
+import { ChangelogView } from './components/views/ChangelogView';
+
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
 import { toast } from 'sonner';
@@ -87,9 +90,9 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
-  useUpdateCheck();
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'>('notes');
-  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart'>('notes');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>('notes');
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>('notes');
+
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
@@ -331,8 +334,12 @@ function AppContent() {
       return;
     }
     setView(newView);
-    if (newView !== 'trash') setSidebarView(newView);
+    if (newView !== 'trash' && newView !== 'changelog') {
+      setSidebarView(newView);
+    }
   };
+
+  useUpdateCheck(() => handleViewChange('changelog'));
 
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
@@ -353,7 +360,7 @@ function AppContent() {
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => f.id === activeFlowchartId);
   const activeFile = isPublicView ? publicData : files.find(f => f.id === activeFileId);
   
-  const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : 'Trash Bin');
+  const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : 'Trash Bin');
   const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
   const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
   const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeFile?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
@@ -418,7 +425,7 @@ function AppContent() {
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
-          {!hasActiveItem && view !== 'trash' && !isPublicView ? <WelcomeView /> : (
+          {!hasActiveItem && view !== 'trash' && view !== 'changelog' && !isPublicView ? <WelcomeView /> : (
             <>
               {view === 'erd' && (isPublicView ? publicData : activeFileId) && (
                 <ERDView 
@@ -436,7 +443,8 @@ function AppContent() {
               )}
               {view === 'notes' && activeNote && <NotesView activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
               {view === 'drawings' && activeDrawing && <DrawingsView activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
-              {view === 'flowchart' && activeFlowchart && <FlowchartView activeFlowchartId={isPublicView ? null : activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'flowchart' && activeFlowchart && <FlowchartView activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'changelog' && <ChangelogView />}
             </>
           )}
           {view === 'trash' && (

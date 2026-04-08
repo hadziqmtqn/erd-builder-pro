@@ -5,7 +5,7 @@ import pkg from '../../package.json';
 const GITHUB_REPO = 'hadziqmtqn/erd-builder-pro';
 const CURRENT_VERSION = pkg.version;
 
-export function useUpdateCheck() {
+export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
@@ -25,12 +25,18 @@ export function useUpdateCheck() {
           setHasUpdate(true);
           setLatestVersion(newestVersion);
 
-          toast.info('Update Available', {
-            description: `A new version (v${newestVersion}) of ERD Builder Pro is available. Please update your deployment for the latest features.`,
-            duration: 10000,
+          toast.info('Pembaruan Tersedia', {
+            description: `Versi baru (v${newestVersion}) sudah tersedia dengan fitur terbaru. Klik di bawah untuk melihat rinciannya.`,
+            duration: 15000,
             action: {
-              label: 'View Release',
-              onClick: () => window.open(data.html_url, '_blank')
+              label: 'Lihat Perubahan',
+              onClick: () => {
+                if (onUpdateAvailable) {
+                  onUpdateAvailable(newestVersion);
+                } else {
+                  window.open(data.html_url, '_blank');
+                }
+              }
             },
           });
         }
