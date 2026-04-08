@@ -82,7 +82,9 @@ export function ConnectorPropertiesModal({
               <Label>Line Style</Label>
               <Select value={isDashed ? 'dashed' : 'solid'} onValueChange={onEdgeTypeChange}>
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select line style" />
+                  <SelectValue placeholder="Select line style">
+                    {LINE_STYLE_LABELS[isDashed ? 'dashed' : 'solid']}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                   <SelectItem value="solid">Solid Line</SelectItem>
@@ -95,7 +97,9 @@ export function ConnectorPropertiesModal({
               <Label>Arrow Style</Label>
               <Select value={arrowType} onValueChange={onArrowChange}>
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select arrow style" />
+                  <SelectValue placeholder="Select arrow style">
+                    {ARROW_STYLE_LABELS[arrowType]}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                   <SelectItem value="end">Arrow at End</SelectItem>
