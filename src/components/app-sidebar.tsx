@@ -1,5 +1,6 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
+import pkg from "../../package.json"
 import {
   Database,
   StickyNote,
@@ -362,6 +363,11 @@ export function AppSidebar({
           onViewChange={onViewChange}
           isOnline={isOnline}
         />
+        <div className="px-4 py-2 mt-auto border-t border-white/5">
+          <p className="text-[10px] font-medium text-muted-foreground/50 tracking-widest uppercase">
+            Version {pkg.version}
+          </p>
+        </div>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

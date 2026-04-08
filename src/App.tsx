@@ -42,6 +42,7 @@ import { usePWAInstall } from './hooks/usePWAInstall';
 import { usePublicDocument } from './hooks/usePublicDocument';
 import { useERDSession } from './hooks/useERDSession';
 import { useSQLGenerator } from './hooks/useSQLGenerator';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
@@ -86,6 +87,7 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
+  useUpdateCheck();
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'>('notes');
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart'>('notes');
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
