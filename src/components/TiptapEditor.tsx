@@ -496,7 +496,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
             <BubbleMenu 
               editor={editor} 
               pluginKey="textMenu"
-              shouldShow={({ editor }) => editor.isFocused && editor.isEditable}
+              shouldShow={({ editor, view, state, from, to }) => {
+                return editor.isFocused && editor.isEditable && !state.selection.empty;
+              }}
               {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
               className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
             >
