@@ -317,12 +317,22 @@ code:not(pre code) {
   color: var(--muted-foreground) !important;
 }
 
+.tiptap-editor blockquote p::before,
+.tiptap-editor blockquote p::after {
+  content: none !important;
+}
+
 .tiptap-editor code {
   background-color: var(--muted) !important;
   padding: 0.2rem 0.4rem !important;
   border-radius: 0.25rem !important;
   font-size: 0.875em !important;
   @apply !font-mono;
+}
+
+.tiptap-editor code::before,
+.tiptap-editor code::after {
+  content: none !important;
 }
 
 .tiptap-editor pre {

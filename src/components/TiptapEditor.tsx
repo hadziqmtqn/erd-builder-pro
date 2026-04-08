@@ -31,7 +31,8 @@ import {
   Strikethrough,
   Pilcrow,
   Link,
-  Palette
+  Palette,
+  Code2
 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
@@ -115,6 +116,9 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
 
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
         Code
+      </button>
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
+        Code Block
       </button>
       
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
@@ -365,7 +369,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     },
     editorProps: {
       attributes: {
-        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto',
+        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
       },
     },
   });
@@ -532,6 +536,15 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
               >
                 <Strikethrough className="w-4 h-4" />
               </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('codeBlock') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Code Block"
+              >
+                <Code2 className="w-4 h-4" />
+              </button>
 
               <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
 
@@ -592,7 +605,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
             </BubbleMenu>
           )}
 
-          <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor">
+          <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor prose-code:before:content-none prose-code:after:content-none prose-blockquote:before:content-none prose-blockquote:after:content-none">
             <EditorContent editor={editor} />
           </div>
         </div>
