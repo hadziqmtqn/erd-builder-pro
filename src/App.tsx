@@ -21,6 +21,7 @@ import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import PropertiesPanel from './components/PropertiesPanel';
+import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
 
 // Views
 import { ERDView } from './components/views/ERDView';
@@ -91,6 +92,7 @@ function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart'>('notes');
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart'>('notes');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
@@ -381,8 +383,29 @@ function AppContent() {
   // ERD Actions
   const onConnect: OnConnect = useCallback((params) => {
     if (isPublicView) return;
-    setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep' }, eds));
-  }, [setEdges, isPublicView]);
+
+    // Validate type matching
+    const sourceNode = nodes.find(n => n.id === params.source);
+    const targetNode = nodes.find(n => n.id === params.target);
+    
+    if (sourceNode && targetNode && params.sourceHandle && params.targetHandle) {
+      const sourceColId = params.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+      const targetColId = params.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+      
+      const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
+      const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
+      
+      if (sourceCol && targetCol && sourceCol.type !== targetCol.type) {
+        toast.error(`Type Mismatch`, {
+          description: `Cannot connect ${sourceCol.type} to ${targetCol.type}. Relationships must have matching data types.`,
+          duration: 4000
+        });
+        return;
+      }
+    }
+
+    setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', label: '1:N' }, eds));
+  }, [setEdges, isPublicView, nodes]);
 
   const addEntity = () => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -409,6 +432,15 @@ function AppContent() {
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
     setSelectedNodeId(null);
   }, [setNodes, setEdges, setSelectedNodeId]);
+
+  const handleEdgeUpdate = (edgeId: string, label: string) => {
+    setEdges((eds) => eds.map((edge) => edge.id === edgeId ? { ...edge, label } : edge));
+  };
+
+  const deleteEdge = (id: string) => {
+    setEdges((eds) => eds.filter((edge) => edge.id !== id));
+    setSelectedEdgeId(null);
+  };
 
   // Handle custom events from EntityNode
   useEffect(() => {
@@ -731,7 +763,14 @@ function AppContent() {
     entities.forEach(entity => {
       sql += `CREATE TABLE ${entity.name} (\n`;
       entity.columns.forEach((col, i) => {
-        sql += `  ${col.name} ${col.type}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${i === entity.columns.length - 1 ? '' : ','}\n`;
+        const typeLower = col.type.toLowerCase();
+        let resolvedType = col.type;
+
+        // MySQL and PostgreSQL usually require/expect lengths for VARCHAR/CHAR
+        if (typeLower === 'varchar') resolvedType = 'VARCHAR(255)';
+        else if (typeLower === 'char') resolvedType = 'CHAR(255)';
+
+        sql += `  ${col.name} ${resolvedType}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${i === entity.columns.length - 1 ? '' : ','}\n`;
       });
       sql += `);\n\n`;
     });
@@ -960,7 +999,14 @@ function AppContent() {
                     if (isPublicView) return;
                     if (!(event.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(node.id); 
                   }}
-                  onPaneClick={() => setSelectedNodeId(null)}
+                  onEdgeClick={(_, edge) => {
+                    if (isPublicView) return;
+                    setSelectedEdgeId(edge.id);
+                  }}
+                  onPaneClick={() => {
+                    setSelectedNodeId(null);
+                    setSelectedEdgeId(null);
+                  }}
                   onMove={(_, viewport) => { viewportRef.current = viewport; }}
                   addEntity={addEntity} handleExportSQL={handleExportSQL}
                   isReadOnly={isPublicView}
@@ -1049,6 +1095,26 @@ function AppContent() {
                   }}
                 />
               </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Relationship Properties Modal */}
+        {!isPublicView && (
+          <Dialog open={!!selectedEdgeId} onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}>
+            <DialogContent className="sm:max-w-sm w-full border-white/10 bg-[#0f0f14] shadow-2xl">
+              <DialogHeader className="shrink-0 mb-2">
+                <DialogTitle className="text-xl font-bold tracking-tight">Relationship Properties</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Set the cardinality between these two tables.
+                </DialogDescription>
+              </DialogHeader>
+              <RelationshipPropertiesPanel 
+                selectedEdge={edges.find(e => e.id === selectedEdgeId) || null}
+                nodes={nodes}
+                onUpdateEdge={handleEdgeUpdate}
+                onDeleteEdge={deleteEdge}
+              />
             </DialogContent>
           </Dialog>
         )}

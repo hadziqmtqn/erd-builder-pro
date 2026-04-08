@@ -191,7 +191,7 @@ export default function PropertiesPanel({
                       value={col.type}
                       onValueChange={(value) => updateColumnSync(col.id, { type: value })}
                     >
-                      <SelectTrigger className="h-8 text-[11px] font-medium flex-1 bg-background border-border/50">
+                      <SelectTrigger className="w-full h-8 text-[11px] font-medium bg-background border-border/50">
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
                       <SelectContent>

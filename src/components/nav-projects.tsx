@@ -594,7 +594,7 @@ export function NavProjects({
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a project">
-                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || selectedProjectId}
+                    {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || "Select a project"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>

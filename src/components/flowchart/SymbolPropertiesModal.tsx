@@ -55,9 +55,7 @@ export function SymbolPropertiesModal({
                 onValueChange={(val: FlowchartShape) => onUpdateNodeData({ shape: val })}
               >
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
-                  <SelectValue placeholder="Select a shape">
-                    {selectedNode.data.shape ? SHAPE_LABELS[selectedNode.data.shape] : "Select a shape"}
-                  </SelectValue>
+                  <SelectValue placeholder="Select a shape" />
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
                   <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
