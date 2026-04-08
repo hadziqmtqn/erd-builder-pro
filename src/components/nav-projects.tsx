@@ -264,7 +264,7 @@ export function NavProjects({
             className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
           >
             <Folder />
-            <span>All Workspace</span>
+            <span>All Project</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         {projects.map((item) => (
@@ -332,7 +332,7 @@ export function NavProjects({
         </SidebarGroupAction>
       )}
       <SidebarMenu>
-        {sidebarView === 'erd' && files.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(file => (
+        {sidebarView === 'erd' && (files || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFileId === file.id && view === 'erd'}
@@ -366,7 +366,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'notes' && notes.filter(n => !n.is_deleted && (activeProjectId === null || n.project_id === activeProjectId)).map(note => (
+        {sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
           <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
@@ -400,7 +400,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'drawings' && drawings.filter(d => !d.is_deleted && (activeProjectId === null || d.project_id === activeProjectId)).map(drawing => (
+        {sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
           <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
@@ -435,7 +435,7 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
 
-        {sidebarView === 'flowchart' && flowcharts.filter(f => !f.is_deleted && (activeProjectId === null || f.project_id === activeProjectId)).map(flowchart => (
+        {sidebarView === 'flowchart' && (flowcharts || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(flowchart => (
           <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
@@ -667,8 +667,10 @@ export function NavProjects({
               This will move the item to the trash. You can restore it later.
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="py-2">
-            <p className="text-sm text-muted-foreground">This will move the item to the trash. You can restore it later.</p>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              If you delete this item, it will be moved to the Trash Bin where you can restore it within 30 days.
+            </p>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>

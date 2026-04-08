@@ -228,7 +228,7 @@ export function AppSidebar({
     name: project.name,
     url: "#",
     icon: Folder,
-    isActive: activeProjectId === project.id,
+    isActive: activeProjectId !== null && String(activeProjectId) === String(project.id),
   }))
 
   return (

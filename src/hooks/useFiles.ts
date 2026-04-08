@@ -40,8 +40,14 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const res = await fetch(`/api/files?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
-        const json = await res.json();
-        const data = json.data !== undefined ? json.data : json; // Fallback to raw array
+        let json;
+        try {
+          json = await res.json();
+        } catch (e) {
+          console.error('Failed to parse JSON response in fetchFiles', e);
+          return;
+        }
+        const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
         
         const filesList = Array.isArray(data) ? data : [];
@@ -52,9 +58,12 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
         }
         setFilesTotal(total);
         setHasMoreFiles((filesList.length + offset) < total);
+      } else {
+        const errText = await res.text();
+        console.error(`Failed to fetch files: ${res.status} ${res.statusText}`, errText);
       }
     } catch (err) {
-      console.error('Error fetching files:', err);
+      console.error('Error in fetchFiles:', err);
     }
   }, [isGuest]); 
 
