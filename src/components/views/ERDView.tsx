@@ -46,6 +46,7 @@ interface ERDViewProps {
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
 
   handleExportPDF: (theme?: 'light' | 'dark') => void;
+  handleExportImage: (theme?: 'light' | 'dark') => void;
   isReadOnly?: boolean;
 
   undo?: () => void;
@@ -74,6 +75,7 @@ export const ERDView = React.memo(({
   handleExportSQL,
 
   handleExportPDF,
+  handleExportImage,
   isReadOnly = false,
 
   undo,
@@ -143,6 +145,15 @@ export const ERDView = React.memo(({
                   <DropdownMenuItem onClick={() => handleExportPDF('light')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
                     <FileText size={14} className="text-orange-400" />
                     As PDF (Light)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleExportImage('dark')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <ImageIcon size={14} className="text-purple-400" />
+                    As Image (Dark)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportImage('light')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <ImageIcon size={14} className="text-pink-400" />
+                    As Image (Light)
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
