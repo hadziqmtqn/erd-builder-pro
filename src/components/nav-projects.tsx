@@ -23,6 +23,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupLabel,
@@ -30,9 +35,6 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
@@ -316,26 +318,33 @@ export function NavProjects({
 
         {!isProjectsLoading && projects.map((item) => (
           <SidebarMenuItem key={item.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              onClick={() => isOnline && onProjectSelect(item.id)} 
-              isActive={item.isActive} 
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <item.icon />
-              <span>{item.name}</span>
-              <Badge className="ml-auto bg-green-50 text-green-700 hover:bg-green-50 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-950 border-none px-1.5 h-4.5 text-[10px] font-bold">
-                {(() => {
-                  if (item.diagrams_count !== undefined) {
-                    if (sidebarView === 'erd') return item.diagrams_count;
-                    if (sidebarView === 'notes') return item.notes_count || 0;
-                    if (sidebarView === 'drawings') return item.drawings_count || 0;
-                    if (sidebarView === 'flowchart') return item.flowcharts_count || 0;
-                    return item.files_count || 0;
-                  }
-                  return getFileCount(item.id);
-                })()}
-              </Badge>
-            </SidebarMenuButton>
+            <Tooltip>
+              <TooltipTrigger render={
+                <SidebarMenuButton 
+                  onClick={() => isOnline && onProjectSelect(item.id)} 
+                  isActive={item.isActive} 
+                  className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                >
+                  <item.icon />
+                  <span className="flex-1 min-w-0 truncate">{item.name}</span>
+                  <Badge className="ml-auto bg-green-50 text-green-700 hover:bg-green-50 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-950 border-none px-1.5 h-4.5 text-[10px] font-bold">
+                    {(() => {
+                      if (item.diagrams_count !== undefined) {
+                        if (sidebarView === 'erd') return item.diagrams_count;
+                        if (sidebarView === 'notes') return item.notes_count || 0;
+                        if (sidebarView === 'drawings') return item.drawings_count || 0;
+                        if (sidebarView === 'flowchart') return item.flowcharts_count || 0;
+                        return item.files_count || 0;
+                      }
+                      return getFileCount(item.id);
+                    })()}
+                  </Badge>
+                </SidebarMenuButton>
+              } />
+              <TooltipContent side="right" sideOffset={10}>
+                {item.name}
+              </TooltipContent>
+            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
@@ -414,14 +423,21 @@ export function NavProjects({
 
         {!isDiagramsLoading && sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeDiagramId === file.id && view === 'erd'}
-              onClick={() => isOnline && onDiagramSelect(file.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Database className="size-4" />
-              <span>{file.name}</span>
-            </SidebarMenuButton>
+          <Tooltip>
+            <TooltipTrigger render={
+              <SidebarMenuButton 
+                isActive={activeDiagramId === file.id && view === 'erd'}
+                onClick={() => isOnline && onDiagramSelect(file.id)}
+                className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+              >
+                <Database className="size-4" />
+                <span className="flex-1 min-w-0 truncate">{file.name}</span>
+              </SidebarMenuButton>
+            } />
+            <TooltipContent side="right" sideOffset={10}>
+              {file.name}
+            </TooltipContent>
+          </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
@@ -448,14 +464,21 @@ export function NavProjects({
         ))}
         {!isNotesLoading && sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
           <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeNoteId === note.id && view === 'notes'}
-              onClick={() => isOnline && onNoteSelect(note.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <StickyNote className="size-4" />
-              <span>{note.title}</span>
-            </SidebarMenuButton>
+          <Tooltip>
+            <TooltipTrigger render={
+              <SidebarMenuButton 
+                isActive={activeNoteId === note.id && view === 'notes'}
+                onClick={() => isOnline && onNoteSelect(note.id)}
+                className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+              >
+                <StickyNote className="size-4" />
+                <span className="flex-1 min-w-0 truncate">{note.title}</span>
+              </SidebarMenuButton>
+            } />
+            <TooltipContent side="right" sideOffset={10}>
+              {note.title}
+            </TooltipContent>
+          </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
@@ -482,14 +505,21 @@ export function NavProjects({
         ))}
         {!isDrawingsLoading && sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
           <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeDrawingId === drawing.id && view === 'drawings'}
-              onClick={() => isOnline && onDrawingSelect(drawing.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <PenTool className="size-4" />
-              <span>{drawing.title}</span>
-            </SidebarMenuButton>
+          <Tooltip>
+            <TooltipTrigger render={
+              <SidebarMenuButton 
+                isActive={activeDrawingId === drawing.id && view === 'drawings'}
+                onClick={() => isOnline && onDrawingSelect(drawing.id)}
+                className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+              >
+                <PenTool className="size-4" />
+                <span className="flex-1 min-w-0 truncate">{drawing.title}</span>
+              </SidebarMenuButton>
+            } />
+            <TooltipContent side="right" sideOffset={10}>
+              {drawing.title}
+            </TooltipContent>
+          </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>
@@ -517,14 +547,21 @@ export function NavProjects({
 
         {sidebarView === 'flowchart' && (flowcharts || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(flowchart => (
           <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
-              onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Network className="size-4" />
-              <span>{flowchart.title}</span>
-            </SidebarMenuButton>
+          <Tooltip>
+            <TooltipTrigger render={
+              <SidebarMenuButton 
+                isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
+                onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
+                className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+              >
+                <Network className="size-4" />
+                <span className="flex-1 min-w-0 truncate">{flowchart.title}</span>
+              </SidebarMenuButton>
+            } />
+            <TooltipContent side="right" sideOffset={10}>
+              {flowchart.title}
+            </TooltipContent>
+          </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
                 <span className="sr-only">More</span>

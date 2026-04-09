@@ -22,6 +22,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  button {
+    @apply cursor-pointer;
+  }
   html {
     @apply font-sans;
   }

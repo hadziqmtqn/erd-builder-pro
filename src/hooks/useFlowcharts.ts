@@ -7,6 +7,7 @@ export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
   const [activeFlowchartId, setActiveFlowchartId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isItemLoading, setIsItemLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);
@@ -247,6 +248,25 @@ export function useFlowcharts(isGuest: boolean = false) {
     } catch (err) {}
   };
 
+  const selectFlowchart = async (id: number | string) => {
+    setIsItemLoading(true);
+    try {
+      if (isGuest) {
+        const localData = await localPersistence.getResource(id);
+        if (!localData || localData.is_deleted) return;
+        setActiveFlowchartId(id);
+      } else {
+        const res = await fetch(`/api/flowcharts/${id}`);
+        if (res.ok) {
+          const f = await res.json();
+          if (!f.is_deleted) setActiveFlowchartId(id);
+        }
+      }
+    } finally {
+      setIsItemLoading(false);
+    }
+  };
+
   return {
     flowcharts,
     setFlowcharts,
@@ -263,6 +283,8 @@ export function useFlowcharts(isGuest: boolean = false) {
     hasMoreFlowcharts,
     flowchartsTotal,
     saveStatus,
-    isLoading
+    isLoading,
+    isItemLoading,
+    selectFlowchart
   };
 }

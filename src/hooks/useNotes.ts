@@ -7,6 +7,7 @@ export function useNotes(isGuest: boolean = false) {
   const [notes, setNotesList] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isItemLoading, setIsItemLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [notesTotal, setNotesTotal] = useState(0);
@@ -254,6 +255,26 @@ export function useNotes(isGuest: boolean = false) {
     } catch (err) {}
   };
 
+  const selectNote = async (id: number | string) => {
+    const note = notes.find(n => n.id === id);
+    if (note?.is_deleted) return;
+    
+    setIsItemLoading(true);
+    try {
+      const draft = await localPersistence.getDraft(DraftType.NOTES, id);
+      if (draft && draft.sync_pending) {
+        try {
+          const parsed = JSON.parse(draft.data);
+          setNotesList(prev => prev.map(n => n.id === id ? { ...n, content: parsed.content } : n));
+          toast.info("Loaded unsynced local note draft");
+        } catch (e) {}
+      }
+      setActiveNoteId(id);
+    } finally {
+      setIsItemLoading(false);
+    }
+  };
+
   return {
     notes,
     setNotesList,
@@ -270,6 +291,8 @@ export function useNotes(isGuest: boolean = false) {
     hasMoreNotes,
     notesTotal,
     saveStatus,
-    isLoading
+    isLoading,
+    isItemLoading,
+    selectNote
   };
 }
