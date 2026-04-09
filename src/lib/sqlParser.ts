@@ -5,13 +5,23 @@ import { COLUMN_TYPES } from './utils';
 /**
  * Normalizes SQL data types to match the ERD tool's internal types.
  * Strips length information like VARCHAR(255) -> VARCHAR.
+ * Handles multi-word types like BIGINT UNSIGNED.
  */
 function normalizeType(typeStr: string): string {
     if (!typeStr) return 'VARCHAR';
     
-    // Remove length/parentheses: VARCHAR(255) -> VARCHAR
+    // Convert to upper case and remove length/parentheses: VARCHAR(255) -> VARCHAR
     let normalized = typeStr.split('(')[0].trim().toUpperCase();
     
+    // Handle multi-word types (common in MySQL)
+    // We only take the first word as the primary type but map accordingly
+    if (normalized.startsWith('BIGINT')) return 'BIGINT';
+    if (normalized.startsWith('TINYINT')) return 'BOOLEAN'; // Common convention
+    if (normalized.startsWith('INT')) return 'INT';
+    if (normalized.startsWith('CHAR')) return 'CHAR';
+    if (normalized.startsWith('VARBINARY')) return 'VARBINARY';
+    if (normalized.startsWith('VARCHAR')) return 'VARCHAR';
+
     // Alias handling
     if (normalized === 'SERIAL' || normalized === 'BIGSERIAL') return 'INT';
     if (normalized === 'INTEGER') return 'INT';
@@ -20,6 +30,7 @@ function normalizeType(typeStr: string): string {
     if (normalized === 'CHARACTER') return 'CHAR';
     if (normalized === 'BOOLEAN') return 'BOOLEAN';
     if (normalized === 'DATETIME') return 'TIMESTAMP';
+    if (normalized === 'YEAR') return 'INT';
 
     // Verify against COLUMN_TYPES, default to VARCHAR if unknown
     return COLUMN_TYPES.includes(normalized) ? normalized : 'VARCHAR';
@@ -31,7 +42,7 @@ function cleanIdentifier(id: string): string {
 }
 
 /**
- * Splits a table body by commas, but ignores commas inside parentheses.
+ * Splits a code block by commas, but ignores commas inside parentheses.
  * e.g. "id INT, price DECIMAL(10,2)" -> ["id INT", "price DECIMAL(10,2)"]
  */
 function splitByTopLevelCommas(str: string): string[] {
@@ -60,7 +71,6 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
   const edges: Edge[] = [];
   
   // Normalize SQL: remove comments and handle line breaks
-  // Also strip common data records and noise statements found in dumps
   const cleanSql = sql
     .replace(/--.*$/gm, '') // Remove single line comments
     .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
@@ -70,42 +80,81 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     .replace(/UNLOCK\s+TABLES\s*;/gi, '') // Remove Unlocks
     .replace(/DROP\s+TABLE[\s\S]*?;/gi, ''); // Remove Drops
 
-  // Match CREATE TABLE statements (PostgreSQL/MySQL/General)
-  // Support: CREATE TABLE [IF NOT EXISTS] [schema.]table ( ... ) [METADATA];
-  // The ([^;]*) handles metadata like ENGINE=InnoDB after the body
-  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(([\s\S]*?)\)([^;]*);/gi;
-  const tableMatches = Array.from(cleanSql.matchAll(tableRegex));
+  // Find all CREATE TABLE start positions
+  const tableStarts: number[] = [];
+  const createTableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/gi;
+  let match;
+  while ((match = createTableRegex.exec(cleanSql)) !== null) {
+    tableStarts.push(match.index);
+  }
+
+  const tableDefinitions: { name: string; body: string; tail: string }[] = [];
+
+  for (let i = 0; i < tableStarts.length; i++) {
+    const start = tableStarts[i];
+    const nextStart = tableStarts[i + 1] || cleanSql.length;
+    const segment = cleanSql.substring(start, nextStart);
+
+    // Extract table name (handle schemas and backticks)
+    const nameMatch = segment.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(/i);
+    if (!nameMatch) continue;
+
+    const tableName = cleanIdentifier(nameMatch[2]);
+    const bodyStart = segment.indexOf('(');
+    if (bodyStart === -1) continue;
+
+    // Find the matching closing parenthesis for the table body
+    let depth = 0;
+    let bodyEnd = -1;
+    for (let j = bodyStart; j < segment.length; j++) {
+      if (segment[j] === '(') depth++;
+      else if (segment[j] === ')') depth--;
+
+      if (depth === 0) {
+        bodyEnd = j;
+        break;
+      }
+    }
+
+    if (bodyEnd === -1) continue;
+
+    const body = segment.substring(bodyStart + 1, bodyEnd);
+    const tailStart = bodyEnd + 1;
+    const tailEnd = segment.indexOf(';', tailStart);
+    const tail = tailEnd !== -1 ? segment.substring(tailStart, tailEnd) : segment.substring(tailStart);
+
+    tableDefinitions.push({ name: tableName, body, tail });
+  }
 
   let xPos = 50;
   let yPos = 50;
 
-  for (const match of tableMatches) {
-    const tableName = cleanIdentifier(match[2]);
-    const body = match[3];
+  for (const tableDef of tableDefinitions) {
     const columns: Column[] = [];
     const tableId = `node-${Math.random().toString(36).substr(2, 9)}`;
 
-    const lines = splitByTopLevelCommas(body);
+    const lines = splitByTopLevelCommas(tableDef.body);
     
     lines.forEach(line => {
-      const upperLine = line.toUpperCase();
+      const upperLine = line.toUpperCase().trim();
       
-      // Handle table-level constraints in the body
-      // FOREIGN KEY (col) REFERENCES other(other_col)
-      const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?\s*\(\s*["`]?(\w+)["`]?\s*\)/i);
-      if (fkMatch) {
-          // We'll process relationships in a second pass to ensure all nodes exist
-          return;
-      }
+      // Skip table-level constraints and indexes
+      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)/i.test(upperLine)) return;
 
-      // Skip other table-level constraints for now
-      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX)/i.test(line)) return;
-
-      const parts = line.split(/\s+/);
+      const parts = line.trim().split(/\s+/);
       if (parts.length < 2) return;
 
       const colName = cleanIdentifier(parts[0]);
-      const rawType = parts[1];
+      
+      // Robust type extraction: ignore COLLATE, CHARACTER SET, and other noise
+      // We look for the first part after the name that isn't one of those keywords
+      let rawType = parts[1];
+      
+      // If the word following the type is 'UNSIGNED' or 'ZEROFILL', we include it for better normalization
+      if (parts[2] && /^(UNSIGNED|ZEROFILL)$/i.test(parts[2])) {
+          rawType += ' ' + parts[2];
+      }
+
       const colType = normalizeType(rawType);
       
       const isPk = upperLine.includes('PRIMARY KEY');
@@ -126,7 +175,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       position: { x: xPos, y: yPos },
       data: {
         id: tableId,
-        name: tableName,
+        name: tableDef.name,
         columns,
         color: '#6366f1',
         x: xPos,
@@ -140,11 +189,6 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       yPos += 400;
     }
   }
-
-  // Second Pass: Find Relationships
-  // 1. ALTER TABLE ADD CONSTRAINT FOREIGN KEY
-  const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s+ADD\s+(?:CONSTRAINT\s+["`]?(\w+)["`]?\s+)?FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(\s*["`]?(\w+)["`]?\s*\)/gi;
-  const alterMatches = Array.from(cleanSql.matchAll(alterFkRegex));
 
   const processRel = (sourceTable: string, sourceCol: string, targetTable: string, targetCol: string) => {
     const sNode = nodes.find(n => n.data.name.toLowerCase() === sourceTable.toLowerCase());
@@ -169,27 +213,26 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     }
   };
 
+  // Extract Relationships
+  // 1. ALTER TABLE ADD CONSTRAINT FOREIGN KEY
+  const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s+ADD\s+(?:CONSTRAINT\s+["`]?(\w+)["`]?\s+)?FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(\s*["`]?(\w+)["`]?\s*\)/gi;
+  const alterMatches = Array.from(cleanSql.matchAll(alterFkRegex));
   for (const m of alterMatches) {
     processRel(cleanIdentifier(m[2]), cleanIdentifier(m[4]), cleanIdentifier(m[6]), cleanIdentifier(m[7]));
   }
 
-  // 2. Inline FOREIGN KEY in CREATE TABLE body
-  for (const match of tableMatches) {
-    const parentTableName = cleanIdentifier(match[2]);
-    const body = match[3];
-    const lines = splitByTopLevelCommas(body);
-    
+  // 2. Inline FOREIGN KEY and column REFERENCES
+  for (const tableDef of tableDefinitions) {
+    const lines = splitByTopLevelCommas(tableDef.body);
     lines.forEach(line => {
-        // Handle standalone FOREIGN KEY line
         const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?\s*\(\s*["`]?(\w+)["`]?\s*\)/i);
         if (fkMatch) {
-            processRel(parentTableName, cleanIdentifier(fkMatch[1]), cleanIdentifier(fkMatch[3]), cleanIdentifier(fkMatch[4]));
+            processRel(tableDef.name, cleanIdentifier(fkMatch[1]), cleanIdentifier(fkMatch[3]), cleanIdentifier(fkMatch[4]));
         }
         
-        // Handle inline REFERENCES on a column line
         const inlineFkMatch = line.match(/^(?:["`]?(\w+)["`]?)\s+[^,]+\s+REFERENCES\s+(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?\s*\(\s*["`]?(\w+)["`]?\s*\)/i);
         if (inlineFkMatch) {
-            processRel(parentTableName, cleanIdentifier(inlineFkMatch[1]), cleanIdentifier(inlineFkMatch[3]), cleanIdentifier(inlineFkMatch[4]));
+            processRel(tableDef.name, cleanIdentifier(inlineFkMatch[1]), cleanIdentifier(inlineFkMatch[3]), cleanIdentifier(inlineFkMatch[4]));
         }
     });
   }
