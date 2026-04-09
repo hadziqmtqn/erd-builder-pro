@@ -12,7 +12,9 @@ import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
+import { ImportSQLModal } from './components/modals/ImportSQLModal';
 import PropertiesPanel from './components/PropertiesPanel';
+
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
 
 // Views
@@ -43,6 +45,8 @@ import { usePublicDocument } from './hooks/usePublicDocument';
 import { useERDSession } from './hooks/useERDSession';
 import { useSQLGenerator } from './hooks/useSQLGenerator';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useImageExporter } from './hooks/useImageExporter';
+
 
 // Views
 import { ChangelogView } from './components/views/ChangelogView';
@@ -97,7 +101,9 @@ function AppContent() {
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+
 
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +115,8 @@ function AppContent() {
   useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
+  const { handleExportImage } = useImageExporter();
+
 
   // ERD Session Hook
   const { 
@@ -117,8 +125,10 @@ function AppContent() {
     selectedNodeId, setSelectedNodeId,
     selectedEdgeId, setSelectedEdgeId,
     onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
-    handleFileSelect: selectFile, viewportRef
+    handleFileSelect: selectFile, viewportRef,
+    undo, redo, canUndo, canRedo, takeSnapshot
   } = useERDSession(false, isGuest, isAuthenticated, setView);
+
 
   // Public Document Hook
   const {
@@ -187,7 +197,46 @@ function AppContent() {
     return node ? (node.data as Entity) : null;
   }, [nodes, selectedNodeId]);
 
-  // Effects
+  // Sync active states with deletion status
+  useEffect(() => {
+    if (isPublicView) return;
+
+    const checkActiveItemHealth = () => {
+      // Find the current active object based on view
+      let activeItem: any = null;
+      if (view === 'erd' && activeFileId) activeItem = files.find(f => f.id === activeFileId);
+      else if (view === 'notes' && activeNoteId) activeItem = notes.find(n => n.id === activeNoteId);
+      else if (view === 'drawings' && activeDrawingId) activeItem = drawings.find(d => d.id === activeDrawingId);
+      else if (view === 'flowchart' && activeFlowchartId) activeItem = flowcharts.find(f => f.id === activeFlowchartId);
+
+      if (activeItem && activeItem.is_deleted) {
+        // Current file is deleted, reset it
+        if (view === 'erd') setActiveFileId(null);
+        else if (view === 'notes') setActiveNoteId(null);
+        else if (view === 'drawings') setActiveDrawingId(null);
+        else if (view === 'flowchart') setActiveFlowchartId(null);
+        
+        toast.info("Document closed because it was moved to trash.");
+        return;
+      }
+
+      // If active item belongs to a project, check if that project is deleted
+      if (activeItem && activeItem.project_id) {
+        const parentProject = projects.find(p => String(p.id) === String(activeItem.project_id));
+        if (parentProject && parentProject.is_deleted) {
+          // Parent project is deleted, reset everything
+          setActiveProjectId(null);
+          setActiveFileId(null);
+          setActiveNoteId(null);
+          setActiveDrawingId(null);
+          setActiveFlowchartId(null);
+          toast.warning("Project was deleted. Closing current document.");
+        }
+      }
+    };
+
+    checkActiveItemHealth();
+  }, [view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId, files, notes, drawings, flowcharts, projects, isPublicView]);
   useEffect(() => {
     const shareInfo = getSharePathInfo();
     if (shareInfo) {
@@ -269,6 +318,24 @@ function AppContent() {
       window.removeEventListener('deleteEntity', handleDeleteEntity);
     };
   }, [handleEditEntity, handleDeleteEntity]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (view !== 'erd') return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          if (canRedo) redo();
+        } else {
+          if (canUndo) undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        if (canRedo) redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view, undo, redo, canUndo, canRedo]);
+
 
   const handleSelectionSelect = async (id: number | string) => {
     if (view === 'notes') {
@@ -436,11 +503,57 @@ function AppContent() {
                   onEdgeClick={(_, e) => { if (!isPublicView) setSelectedEdgeId(e.id); }}
                   onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
                   onMove={(_, v) => { viewportRef.current = v; }}
-                  addEntity={addEntity} handleExportSQL={dialect => {
+                  addEntity={addEntity}
+                  openImportModal={() => setIsImportModalOpen(true)}
+                  handleExportSQL={dialect => {
                     const target = isPublicView ? publicData : files.find(f => f.id === activeFileId);
                     if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
+                  handleExportImage={(format) => {
+                    const targetName = isPublicView ? (publicData?.name || 'Shared') : (files.find(f => f.id === activeFileId)?.name || 'Diagram');
+                    handleExportImage(format, targetName);
+                  }}
                   isReadOnly={isPublicView}
+                  undo={undo}
+                  redo={redo}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  takeSnapshot={takeSnapshot}
+                />
+              )}
+              {view === 'erd' && (
+                <ImportSQLModal 
+                  isOpen={isImportModalOpen}
+                  onOpenChange={setIsImportModalOpen}
+                  onImport={(newNodes, newEdges) => {
+                    takeSnapshot(nodes, edges);
+                    
+                    // Handle duplicate names during import
+                    const processedNodes = [...newNodes];
+                    const existingNames = nodes.map(n => n.data.name.toLowerCase());
+                    
+                    processedNodes.forEach(newNode => {
+                      let originalName = newNode.data.name;
+                      let name = originalName;
+                      let counter = 1;
+                      
+                      // Check against existing nodes OR nodes already processed in this import
+                      while (
+                        existingNames.includes(name.toLowerCase()) || 
+                        processedNodes.some(pn => pn !== newNode && pn.data.name.toLowerCase() === name.toLowerCase())
+                      ) {
+                        name = `${originalName}_imported_${counter}`;
+                        counter++;
+                      }
+                      
+                      if (name !== originalName) {
+                        newNode.data.name = name;
+                      }
+                    });
+
+                    setNodes(nds => [...nds, ...processedNodes]);
+                    setEdges(eds => [...eds, ...newEdges]);
+                  }}
                 />
               )}
               {view === 'notes' && activeNote && <NotesView activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}

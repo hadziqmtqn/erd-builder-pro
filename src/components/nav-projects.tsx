@@ -180,6 +180,8 @@ export function NavProjects({
   
   const [editingFile, setEditingFile] = React.useState<{ id: number | string, name: string, projectId: number | string | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
   const [deletingFile, setDeletingFile] = React.useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [deletingProject, setDeletingProject] = React.useState<{ id: number | string, name: string } | null>(null)
+  const [isProjectDeleteConfirmOpen, setIsProjectDeleteConfirmOpen] = React.useState(false)
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
@@ -295,7 +297,14 @@ export function NavProjects({
                   <span>Rename Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => onProjectDelete(item.id)}>
+                <DropdownMenuItem 
+                  disabled={!isOnline} 
+                  className="text-destructive focus:text-destructive" 
+                  onClick={() => {
+                    setDeletingProject({ id: item.id, name: item.name })
+                    setIsProjectDeleteConfirmOpen(true)
+                  }}
+                >
                   <Trash2 className="mr-2 size-4" />
                   <span>Delete Project</span>
                 </DropdownMenuItem>
@@ -675,6 +684,32 @@ export function NavProjects({
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Project Delete Confirmation Dialog */}
+      <Dialog open={isProjectDeleteConfirmOpen} onOpenChange={setIsProjectDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project "{deletingProject?.name}"?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to move this project to the trash?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Moving this project to the trash will also move all its <strong>Files, Notes, Drawings, and Flowcharts</strong> to the trash as well. You can restore them later from the Trash Bin.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProjectDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => {
+              if (deletingProject) {
+                onProjectDelete(deletingProject.id)
+                setIsProjectDeleteConfirmOpen(false)
+                setDeletingProject(null)
+              }
+            }}>Delete Project</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

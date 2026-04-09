@@ -12,6 +12,7 @@ import {
 import { toast } from 'sonner';
 import { Entity, FileData, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { useUndoRedo } from './useUndoRedo';
 
 export function useERDSession(
   isPublicView: boolean,
@@ -25,6 +26,25 @@ export function useERDSession(
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const { setViewport } = useReactFlow();
+  
+  // Undo/Redo Hook
+  const { takeSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo();
+
+  const handleUndo = useCallback(() => {
+    const prev = undo(nodes, edges);
+    if (prev) {
+      setNodes(prev.nodes);
+      setEdges(prev.edges);
+    }
+  }, [undo, nodes, edges, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    const next = redo(nodes, edges);
+    if (next) {
+      setNodes(next.nodes);
+      setEdges(next.edges);
+    }
+  }, [redo, nodes, edges, setNodes, setEdges]);
 
   const handleFileSelect = async (id: number | string, setActiveFileId: (id: any) => void) => {
     try {
@@ -45,6 +65,7 @@ export function useERDSession(
 
       setActiveFileId(id);
       setView('erd');
+      clearHistory();
 
       let finalData = data;
       if (draft && draft.sync_pending) {
@@ -144,14 +165,27 @@ export function useERDSession(
       }
     }
 
+    takeSnapshot(nodes, edges);
     setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', label: '1:N' }, eds));
-  }, [setEdges, isPublicView, nodes]);
+  }, [setEdges, isPublicView, nodes, takeSnapshot, edges]);
+
+  const getUniqueName = (baseName: string, currentNodes: Node<Entity>[]) => {
+    let name = baseName;
+    let counter = 1;
+    while (currentNodes.some(n => n.data.name.toLowerCase() === name.toLowerCase())) {
+      name = `${baseName}_${counter}`;
+      counter++;
+    }
+    return name;
+  };
 
   const addEntity = () => {
     const id = Math.random().toString(36).substr(2, 9);
+    const uniqueName = getUniqueName('NewTable', nodes);
+    
     const newEntity: Entity = {
       id,
-      name: 'NewTable',
+      name: uniqueName,
       x: Math.random() * 400,
       y: Math.random() * 400,
       color: '#6366f1',
@@ -160,10 +194,25 @@ export function useERDSession(
       ],
     };
     const newNode: Node<Entity> = { id, type: 'entity', position: { x: newEntity.x, y: newEntity.y }, data: newEntity };
+    takeSnapshot(nodes, edges);
     setNodes((nds) => nds.concat(newNode));
   };
 
   const updateEntity = useCallback((updatedEntity: Entity) => {
+    // Check for duplicate name (excluding itself)
+    const nameExists = nodes.some(n => 
+      n.id !== updatedEntity.id && 
+      n.data.name.toLowerCase() === updatedEntity.name.toLowerCase()
+    );
+
+    if (nameExists) {
+      toast.error("Duplicate Table Name", {
+        description: `A table with the name "${updatedEntity.name}" already exists.`,
+      });
+      return;
+    }
+
+    takeSnapshot(nodes, edges);
     setNodes((nds) => {
       const newNodes = nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node);
       
@@ -203,19 +252,22 @@ export function useERDSession(
       
       return newNodes;
     });
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, takeSnapshot, nodes, edges]);
 
   const deleteEntity = useCallback((id: string) => {
+    takeSnapshot(nodes, edges);
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
     setSelectedNodeId(null);
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, takeSnapshot, nodes, edges]);
 
   const handleEdgeUpdate = (edgeId: string, label: string) => {
+    takeSnapshot(nodes, edges);
     setEdges((eds) => eds.map((edge) => edge.id === edgeId ? { ...edge, label } : edge));
   };
 
   const deleteEdge = (id: string) => {
+    takeSnapshot(nodes, edges);
     setEdges((eds) => eds.filter((edge) => edge.id !== id));
     setSelectedEdgeId(null);
   };
@@ -262,6 +314,11 @@ export function useERDSession(
     handleEdgeUpdate,
     deleteEdge,
     handleFileSelect,
-    viewportRef
+    viewportRef,
+    undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
+    takeSnapshot
   };
 }

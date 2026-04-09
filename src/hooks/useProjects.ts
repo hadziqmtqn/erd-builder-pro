@@ -112,12 +112,26 @@ export function useProjects(isGuest: boolean = false) {
     if (isGuest) {
       const project = await localPersistence.getResource(id);
       if (project) {
+        const deleted_at = new Date().toISOString();
         project.is_deleted = true;
-        project.deleted_at = new Date().toISOString();
+        project.deleted_at = deleted_at;
         await localPersistence.saveResource(project);
+        
+        // Cascading soft delete for local resources
+        const types = ['erd', 'notes', 'drawings', 'flowchart'];
+        for (const type of types) {
+          const items = await localPersistence.getAllResources(type);
+          const projectItems = items.filter(item => String(item.project_id) === String(id));
+          for (const item of projectItems) {
+            item.is_deleted = true;
+            item.deleted_at = deleted_at;
+            await localPersistence.saveResource(item);
+          }
+        }
+
         setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
         if (activeProjectId === id) setActiveProjectId(null);
-        toast.success('Project moved to local trash');
+        toast.success('Project and its items moved to local trash');
       }
       return true;
     }
@@ -141,8 +155,21 @@ export function useProjects(isGuest: boolean = false) {
         project.is_deleted = false;
         project.deleted_at = undefined;
         await localPersistence.saveResource(project);
+
+        // Cascading restore for local resources
+        const types = ['erd', 'notes', 'drawings', 'flowchart'];
+        for (const type of types) {
+          const items = await localPersistence.getAllResources(type);
+          const projectItems = items.filter(item => String(item.project_id) === String(id));
+          for (const item of projectItems) {
+            item.is_deleted = false;
+            item.deleted_at = undefined;
+            await localPersistence.saveResource(item);
+          }
+        }
+
         fetchProjects();
-        toast.success('Project restored locally');
+        toast.success('Project and its items restored locally');
       }
       return;
     }

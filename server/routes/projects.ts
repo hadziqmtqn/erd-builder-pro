@@ -59,22 +59,54 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const projectId = req.params.id;
+  const update = getSafeUpdate(true);
+  
   const { error } = await supabase
     .from("projects")
-    .update(getSafeUpdate(true))
-    .eq("id", req.params.id);
+    .update(update)
+    .eq("id", projectId);
 
   if (error) return handleError(res, error, "Failed to delete project");
+
+  // Cascading soft delete
+  try {
+    await Promise.all([
+      supabase.from("files").update(update).eq("project_id", projectId),
+      supabase.from("notes").update(update).eq("project_id", projectId),
+      supabase.from("drawings").update(update).eq("project_id", projectId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+    ]);
+  } catch (err) {
+    console.error("Cascading soft delete failed:", err);
+  }
+
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const projectId = req.params.id;
+  const update = getSafeUpdate(false);
+
   const { error } = await supabase
     .from("projects")
-    .update(getSafeUpdate(false))
-    .eq("id", req.params.id);
+    .update(update)
+    .eq("id", projectId);
 
   if (error) return handleError(res, error, "Failed to restore project");
+
+  // Cascading restore
+  try {
+    await Promise.all([
+      supabase.from("files").update(update).eq("project_id", projectId),
+      supabase.from("notes").update(update).eq("project_id", projectId),
+      supabase.from("drawings").update(update).eq("project_id", projectId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+    ]);
+  } catch (err) {
+    console.error("Cascading restore failed:", err);
+  }
+
   res.json({ success: true });
 });
 
