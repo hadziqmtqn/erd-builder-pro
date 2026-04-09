@@ -115,7 +115,7 @@ function AppContent() {
   useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
-  const { handleExportImage } = useImageExporter();
+  const { handleExportImage, handleExportPDF } = useImageExporter();
 
 
   // ERD Session Hook
@@ -506,6 +506,10 @@ function AppContent() {
                   handleExportImage={(format) => {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
                     handleExportImage(format, targetName);
+                  }}
+                  handleExportPDF={() => {
+                    const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
+                    handleExportPDF(targetName);
                   }}
                   isReadOnly={isPublicView}
                   undo={undo}

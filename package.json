@@ -47,6 +47,7 @@
     "framer-motion": "^11.18.2",
     "html-to-image": "^1.11.13",
     "jsonwebtoken": "^9.0.3",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "multer": "^2.1.1",
     "next-themes": "^0.4.6",

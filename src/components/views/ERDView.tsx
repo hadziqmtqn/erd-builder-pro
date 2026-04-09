@@ -10,7 +10,7 @@ import {
   Node,
   Edge
 } from '@xyflow/react';
-import { Plus, Download, ChevronDown, Database, Undo2, Redo2, Image as ImageIcon, FileCode, Upload } from 'lucide-react';
+import { Plus, Download, ChevronDown, Database, Undo2, Redo2, Image as ImageIcon, FileCode, Upload, FileText } from 'lucide-react';
 
 
 
@@ -46,6 +46,7 @@ interface ERDViewProps {
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
 
   handleExportImage: (format: 'png' | 'svg') => void;
+  handleExportPDF: () => void;
   isReadOnly?: boolean;
 
   undo?: () => void;
@@ -71,6 +72,7 @@ export function ERDView({
   handleExportSQL,
 
   handleExportImage,
+  handleExportPDF,
   isReadOnly = false,
 
   undo,
@@ -151,6 +153,10 @@ export function ERDView({
                   <DropdownMenuItem onClick={() => handleExportImage('svg')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
                     <FileCode size={14} className="text-purple-400" />
                     As SVG Vector
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportPDF()} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <FileText size={14} className="text-red-400" />
+                    As PDF Document
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
