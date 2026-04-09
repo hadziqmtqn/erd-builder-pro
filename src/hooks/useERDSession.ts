@@ -21,6 +21,10 @@ export function useERDSession(
   setView: (view: any) => void
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
+  
+  // Ref for previous edges to avoid redundant node updates
+  const lastEdgesHash = useRef<string>("");
+
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -273,6 +277,9 @@ export function useERDSession(
   };
 
   useEffect(() => {
+    const edgeHash = JSON.stringify(edges.map(e => ({ s: e.source, sh: e.sourceHandle, t: e.target, th: e.targetHandle })));
+    
+    // Only update if edges actually changed their geometry/connection
     setEdges(eds => {
       let isChanged = false;
       const newEds = eds.map(edge => {
@@ -300,7 +307,40 @@ export function useERDSession(
       
       return isChanged ? newEds : eds;
     });
-  }, [nodes, setEdges]);
+
+    // Centralized FK Detection
+    if (edgeHash !== lastEdgesHash.current) {
+      lastEdgesHash.current = edgeHash;
+      
+      setNodes(nds => {
+        const fkMap: Record<string, Set<string>> = {};
+        edges.forEach(e => {
+          if (!fkMap[e.source]) fkMap[e.source] = new Set();
+          const colId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+          if (colId) fkMap[e.source].add(colId);
+        });
+
+        let anyNodeDataChanged = false;
+        const nextNodes = nds.map(node => {
+          const nodeFks = fkMap[node.id] || new Set();
+          const newColumns = node.data.columns.map(col => ({
+            ...col,
+            _is_fk: nodeFks.has(col.id)
+          }));
+
+          // Check if FK status actually changed for this node
+          const hasChanged = JSON.stringify(newColumns) !== JSON.stringify(node.data.columns);
+          if (hasChanged) {
+            anyNodeDataChanged = true;
+            return { ...node, data: { ...node.data, columns: newColumns } };
+          }
+          return node;
+        });
+
+        return anyNodeDataChanged ? nextNodes : nds;
+      });
+    }
+  }, [nodes, edges, setNodes, setEdges]);
 
   return {
     nodes, setNodes, onNodesChange,

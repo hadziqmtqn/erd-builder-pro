@@ -10,14 +10,14 @@ interface DrawingsViewProps {
   isReadOnly?: boolean;
 }
 
-export function DrawingsView({
+export const DrawingsView = React.memo(({
   activeDrawingId,
   activeDrawing,
   saveDrawing,
   handleDrawingChange,
   deleteDrawing,
   isReadOnly = false
-}: DrawingsViewProps) {
+}: DrawingsViewProps) => {
   if (!activeDrawing) return null;
 
   return (
@@ -32,4 +32,4 @@ export function DrawingsView({
       />
     </div>
   );
-}
+});

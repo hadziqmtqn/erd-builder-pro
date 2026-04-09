@@ -58,7 +58,7 @@ interface ERDViewProps {
 
 import { JumpToNode } from '../JumpToNode';
 
-export function ERDView({
+export const ERDView = React.memo(({
   nodes,
   edges,
   onNodesChange,
@@ -80,7 +80,7 @@ export function ERDView({
   canUndo,
   canRedo,
   takeSnapshot
-}: ERDViewProps) {
+}: ERDViewProps) => {
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
@@ -187,4 +187,4 @@ export function ERDView({
       </div>
     </div>
   );
-}
+});

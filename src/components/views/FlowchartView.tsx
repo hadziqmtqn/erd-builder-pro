@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -37,7 +37,7 @@ interface FlowchartViewProps {
   isReadOnly?: boolean;
 }
 
-export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowchartChange, isReadOnly = false }: FlowchartViewProps) {
+export const FlowchartView = React.memo(({ activeFlowchartId, activeFlowchart, handleFlowchartChange, isReadOnly = false }: FlowchartViewProps) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -174,6 +174,32 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
     }
   };
 
+  const memoizedNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId })), [nodes, selectedNodeId]);
+  
+  const memoizedEdges = useMemo(() => edges.map(e => {
+    const isHovered = e.id === hoveredEdgeId;
+    const isSelected = e.id === selectedEdgeId;
+    const active = isHovered || isSelected;
+
+    const baseColor = (e.style?.stroke as string) || '#b1b1b7';
+    const interactiveColor = active ? '#ffffff' : baseColor;
+    const interactiveWidth = active ? 2.5 : 1.5;
+
+    const overrideMarker = (marker: any) => {
+      if (!marker) return undefined;
+      if (typeof marker === 'string') return marker;
+      return { ...marker, color: interactiveColor, width: 14, height: 14 };
+    };
+
+    return {
+      ...e,
+      selected: isSelected,
+      style: { ...e.style, stroke: interactiveColor, strokeWidth: interactiveWidth, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
+      markerEnd: overrideMarker(e.markerEnd),
+      markerStart: overrideMarker(e.markerStart),
+    };
+  }), [edges, hoveredEdgeId, selectedEdgeId]);
+
   return (
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
       
@@ -193,31 +219,8 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
 
       <div className="flex-1 w-full h-full relative">
         <ReactFlow
-          nodes={nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId }))}
-          edges={edges.map(e => {
-            const isHovered = e.id === hoveredEdgeId;
-            const isSelected = e.id === selectedEdgeId;
-            const active = isHovered || isSelected;
-
-            const baseColor = (e.style?.stroke as string) || '#b1b1b7';
-            const interactiveColor = active ? '#ffffff' : baseColor;
-            const interactiveWidth = active ? 2.5 : 1.5;
-
-            const overrideMarker = (marker: any) => {
-              if (!marker) return undefined;
-              if (typeof marker === 'string') return marker;
-              // width: 14, height: 14 yields smaller distinct arrows
-              return { ...marker, color: interactiveColor, width: 14, height: 14 };
-            };
-
-            return {
-              ...e,
-              selected: isSelected,
-              style: { ...e.style, stroke: interactiveColor, strokeWidth: interactiveWidth, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
-              markerEnd: overrideMarker(e.markerEnd),
-              markerStart: overrideMarker(e.markerStart),
-            };
-          })}
+          nodes={memoizedNodes}
+          edges={memoizedEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -271,4 +274,4 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
       )}
     </Card>
   );
-}
+});

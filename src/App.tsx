@@ -96,8 +96,21 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>('notes');
-  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>('notes');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>(() => {
+    if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
+  });
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>(() => {
+    if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    return (localStorage.getItem('erd-builder-last-sidebar-view') as any) || 'notes';
+  });
+
+  // Persist views
+  useEffect(() => {
+    if (getSharePathInfo()) return;
+    localStorage.setItem('erd-builder-last-view', view);
+    localStorage.setItem('erd-builder-last-sidebar-view', sidebarView);
+  }, [view, sidebarView]);
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
@@ -137,10 +150,11 @@ function AppContent() {
 
   // Domain Hooks
   const { 
-    diagrams, activeDiagramId, setActiveDiagramId, saveStatus,
+    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId, saveStatus,
     fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
     hasMoreDiagrams
   } = useDiagrams(isAuthenticated, view, isGuest);
+
 
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
@@ -164,6 +178,7 @@ function AppContent() {
 
   const { trashData, fetchTrash } = useTrash(isGuest);
 
+  // Handlers
   // Computed Values
   const currentActiveId = useMemo(() => {
     if (isPublicView) return undefined;
@@ -176,7 +191,7 @@ function AppContent() {
     const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
     const id = view === 'erd' ? activeDiagramId : view === 'notes' ? activeNoteId : view === 'drawings' ? activeDrawingId : activeFlowchartId;
     // @ts-ignore
-    const doc = docArr.find(d => d.id === id);
+    const doc = docArr.find(d => String(d.id) === String(id));
     if (!doc) return undefined;
     return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
   }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
@@ -204,10 +219,10 @@ function AppContent() {
     const checkActiveItemHealth = () => {
       // Find the current active object based on view
       let activeItem: any = null;
-      if (view === 'erd' && activeDiagramId) activeItem = diagrams.find(f => f.id === activeDiagramId);
-      else if (view === 'notes' && activeNoteId) activeItem = notes.find(n => n.id === activeNoteId);
-      else if (view === 'drawings' && activeDrawingId) activeItem = drawings.find(d => d.id === activeDrawingId);
-      else if (view === 'flowchart' && activeFlowchartId) activeItem = flowcharts.find(f => f.id === activeFlowchartId);
+      if (view === 'erd' && activeDiagramId) activeItem = diagrams.find(f => String(f.id) === String(activeDiagramId));
+      else if (view === 'notes' && activeNoteId) activeItem = notes.find(n => String(n.id) === String(activeNoteId));
+      else if (view === 'drawings' && activeDrawingId) activeItem = drawings.find(d => String(d.id) === String(activeDrawingId));
+      else if (view === 'flowchart' && activeFlowchartId) activeItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
 
       if (activeItem && activeItem.is_deleted) {
         // Current file is deleted, reset it
@@ -261,9 +276,9 @@ function AppContent() {
   useEffect(() => {
     if (!isOnline && !isPublicView) {
       if (view === 'erd' && activeDiagramId) saveDiagram(nodes, edges, viewportRef.current);
-      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => n.id === activeNoteId); if (n) saveNote(n); }
-      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => d.id === activeDrawingId); if (d) saveDrawing(d); }
-      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => f.id === activeFlowchartId); if (f) saveFlowchart(f); }
+      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => String(n.id) === String(activeNoteId)); if (n) saveNote(n); }
+      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
+      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
     }
   }, [isOnline, view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
 
@@ -271,29 +286,28 @@ function AppContent() {
     document.documentElement.classList.add('dark');
     document.body.classList.add('dark');
     if (isAuthenticated && !isPublicView) {
+      // Always fetch projects as they are context providers for the sidebar
       fetchProjects(false, debouncedSearchQuery);
-      fetchTrash();
     }
-  }, [isAuthenticated, fetchProjects, fetchTrash, debouncedSearchQuery, isPublicView]);
+  }, [isAuthenticated, fetchProjects, debouncedSearchQuery, isPublicView]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Optimized Lazy Loading: Only fetch data for the active view
   useEffect(() => {
     if (isAuthenticated && !isPublicView) {
       const pid = activeProjectId === null ? 'all' : activeProjectId;
-      // @ts-ignore
-      fetchDiagrams(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchNotes(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchDrawings(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchFlowcharts(false, pid, debouncedSearchQuery);
+      
+      if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery);
+      else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery);
+      else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
+      else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
+      else if (view === 'trash') fetchTrash();
     }
-  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, isPublicView]);
+  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
   // ERD Auto-save
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);

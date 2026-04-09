@@ -10,14 +10,14 @@ interface NotesViewProps {
   isReadOnly?: boolean;
 }
 
-export function NotesView({
+export const NotesView = React.memo(({
   activeNoteId,
   activeNote,
   saveNote,
   handleNoteChange,
   deleteNote,
   isReadOnly = false
-}: NotesViewProps) {
+}: NotesViewProps) => {
   if (!activeNote) return null;
   
   return (
@@ -32,4 +32,4 @@ export function NotesView({
       />
     </div>
   );
-}
+});

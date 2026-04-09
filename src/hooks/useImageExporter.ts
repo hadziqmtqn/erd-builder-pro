@@ -47,13 +47,14 @@ export function useImageExporter() {
             transform: `translate(${-bounds.x + padding}px, ${-bounds.y + padding}px) scale(1)`,
           },
           onClone: (clonedDoc: Document) => {
-            // A. NUCLEAR OPTION: Inject global CSS into the clone
+            // A. INJECT ENHANCED CSS
             const style = clonedDoc.createElement('style');
             style.innerHTML = `
               .react-flow__edge-path, .xy-edge-path {
                 stroke: #ffffff !important;
-                stroke-width: 3px !important;
+                stroke-width: 2.5px !important;
                 stroke-opacity: 1 !important;
+                stroke-dasharray: none !important; /* Force solid for export stability */
                 fill: none !important;
                 visibility: visible !important;
                 display: block !important;
@@ -70,36 +71,47 @@ export function useImageExporter() {
               .react-flow__edge-label {
                 z-index: 100 !important;
               }
-              /* Ensure markers (arrows) are white */
+              /* Force markers (arrows) to be white and visible */
+              [id^="react-flow__arrow"] path, 
               marker path {
                 fill: #ffffff !important;
                 stroke: #ffffff !important;
+                stroke-width: 1px !important;
+                opacity: 1 !important;
               }
             `;
             clonedDoc.head.appendChild(style);
 
-            // B. SVG Normalization
-            const rootSvg = root.querySelector('svg.react-flow__container--svg') || root.querySelector(':scope > svg');
-            const defs = rootSvg?.querySelector('defs');
-            const targetSvg = clonedDoc.querySelector('svg.react-flow__edges') as SVGElement;
+            // B. SVG DEFS CLONING (Crucial for Arrows)
+            const mainSvg = root.querySelector('svg.react-flow__container--svg');
+            const defs = mainSvg?.querySelector('defs');
+            const clonedSvg = clonedDoc.querySelector('svg.react-flow__edges') as SVGElement;
             
-            if (targetSvg) {
-              targetSvg.setAttribute('width', `${width}`);
-              targetSvg.setAttribute('height', `${height}`);
-              targetSvg.style.width = `${width}px`;
-              targetSvg.style.height = `${height}px`;
+            if (clonedSvg) {
+              // Ensure dimensions are correct on the SVG element itself
+              clonedSvg.setAttribute('width', `${width}`);
+              clonedSvg.setAttribute('height', `${height}`);
+              clonedSvg.style.width = `${width}px`;
+              clonedSvg.style.height = `${height}px`;
 
+              // If markers exist, move them into the cloned edge container so they find their references
               if (defs) {
-                const clonedDefs = defs.cloneNode(true);
-                targetSvg.prepend(clonedDefs);
+                const clonedDefs = defs.cloneNode(true) as SVGDefsElement;
+                // Force white inside the cloned defs for paths
+                clonedDefs.querySelectorAll('path').forEach(p => {
+                    p.setAttribute('fill', '#ffffff');
+                    p.setAttribute('stroke', '#ffffff');
+                });
+                clonedSvg.prepend(clonedDefs);
               }
             }
 
-            // C. Force visibility on every path just in case
+            // C. Final Path Sanitization
             const paths = clonedDoc.querySelectorAll('path.react-flow__edge-path, path.xy-edge-path');
             paths.forEach((path: any) => {
               path.setAttribute('stroke', '#ffffff');
-              path.setAttribute('stroke-width', '3');
+              path.setAttribute('stroke-width', '2.5');
+              path.setAttribute('stroke-dasharray', 'none');
               path.setAttribute('visibility', 'visible');
             });
           }
