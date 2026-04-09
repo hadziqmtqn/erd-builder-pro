@@ -35,41 +35,38 @@ export default function ConfirmModal({
 }: ConfirmModalProps) {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shrink-0",
-              variant === 'danger' && "bg-destructive/20 text-destructive shadow-destructive/10",
-              variant === 'warning' && "bg-yellow-500/20 text-yellow-500 shadow-yellow-500/10",
-              variant === 'info' && "bg-primary/20 text-primary shadow-primary/10"
-            )}>
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <AlertDialogTitle className="text-xl font-bold tracking-tight">{title}</AlertDialogTitle>
+      <AlertDialogContent size="sm" className="max-w-[400px]">
+        <AlertDialogHeader className="flex flex-col items-center justify-center text-center">
+          <div className={cn(
+            "w-12 h-12 rounded-full flex items-center justify-center mb-2",
+            variant === 'danger' && "bg-destructive/10 text-destructive",
+            variant === 'warning' && "bg-yellow-500/10 text-yellow-500",
+            variant === 'info' && "bg-primary/10 text-primary"
+          )}>
+            <AlertTriangle className="w-6 h-6" />
           </div>
+          <AlertDialogTitle className="text-xl font-bold tracking-tight sm:text-center">{title}</AlertDialogTitle>
         </AlertDialogHeader>
         
-        <AlertDialogBody>
+        <AlertDialogBody className="text-center">
           <AlertDialogDescription className="text-muted-foreground text-sm leading-relaxed">
             {message}
           </AlertDialogDescription>
         </AlertDialogBody>
-
-        <AlertDialogFooter className="flex gap-3 sm:justify-end">
+        <AlertDialogFooter className="sm:justify-center flex-col sm:flex-row gap-2 mt-2">
           <AlertDialogCancel
             onClick={onCancel}
-            className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold rounded-lg transition-all border-none"
+            className="mt-0 w-full sm:w-auto"
           >
             {cancelText}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className={cn(
-              "px-4 py-2 text-white font-bold rounded-lg shadow-lg transition-all border-none",
-              variant === 'danger' && "bg-destructive hover:bg-destructive/90 shadow-destructive/20",
-              variant === 'warning' && "bg-yellow-500 hover:bg-yellow-600 shadow-yellow-500/20",
-              variant === 'info' && "bg-primary hover:bg-primary/90 shadow-primary/20"
+              "w-full sm:w-auto",
+              variant === 'danger' && "bg-destructive hover:bg-destructive/90",
+              variant === 'warning' && "bg-yellow-500 hover:bg-yellow-600",
+              variant === 'info' && "bg-primary hover:bg-primary/90"
             )}
           >
             {confirmText}
