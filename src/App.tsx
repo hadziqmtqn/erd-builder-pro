@@ -152,31 +152,31 @@ function AppContent() {
   const { 
     diagrams, setDiagrams, activeDiagramId, setActiveDiagramId, saveStatus,
     fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
-    hasMoreDiagrams
+    hasMoreDiagrams, isLoading: isDiagramsLoading
   } = useDiagrams(isAuthenticated, view, isGuest);
 
 
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, saveStatus: notesSaveStatus
+    hasMoreNotes, saveStatus: notesSaveStatus, isLoading: isNotesLoading
   } = useNotes(isGuest);
   
   const { 
     projects, activeProjectId, setActiveProjectId, fetchProjects, createProject, updateProject, deleteProject, restoreProject, deleteProjectPermanent,
-    hasMoreProjects
+    hasMoreProjects, isLoading: isProjectsLoading
   } = useProjects(isGuest);
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings, saveStatus: drawingsSaveStatus
+    hasMoreDrawings, saveStatus: drawingsSaveStatus, isLoading: isDrawingsLoading
   } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
-    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus
+    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus, isLoading: isFlowchartsLoading
   } = useFlowcharts(isGuest);
 
-  const { trashData, fetchTrash } = useTrash(isGuest);
+  const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
 
   // Handlers
   // Computed Values
@@ -506,6 +506,7 @@ function AppContent() {
             <>
               {view === 'erd' && (isPublicView ? publicData : activeDiagramId) && (
                 <ERDView 
+                  isLoading={isDiagramsLoading}
                   nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
                   onNodeClick={(e, n) => { if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id); }}
                   onEdgeClick={(_, e) => { if (!isPublicView) setSelectedEdgeId(e.id); }}
@@ -564,9 +565,9 @@ function AppContent() {
                   }}
                 />
               )}
-              {view === 'notes' && activeNote && <NotesView activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
-              {view === 'drawings' && activeDrawing && <DrawingsView activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
-              {view === 'flowchart' && activeFlowchart && <FlowchartView activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'notes' && activeNote && <NotesView isLoading={isNotesLoading} activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
+              {view === 'drawings' && activeDrawing && <DrawingsView isLoading={isDrawingsLoading} activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
+              {view === 'flowchart' && activeFlowchart && <FlowchartView isLoading={isFlowchartsLoading} activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
               {view === 'changelog' && <ChangelogView />}
             </>
           )}
@@ -584,6 +585,7 @@ function AppContent() {
               handleNotePermanentDelete={id => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); }} 
               handleDrawingPermanentDelete={id => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); }} 
               handleFlowchartPermanentDelete={id => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); }} 
+              isLoading={isTrashLoading}
             />
           )}
         </div>

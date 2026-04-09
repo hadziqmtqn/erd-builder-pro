@@ -92,10 +92,14 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreFlowcharts?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  user: any;
-  isOnline: boolean;
   isInstallable?: boolean;
   onInstall?: () => void;
+  isProjectsLoading?: boolean;
+  isDiagramsLoading?: boolean;
+  isNotesLoading?: boolean;
+  isDrawingsLoading?: boolean;
+  isFlowchartsLoading?: boolean;
+  isTrashLoading?: boolean;
 }
 
 export function AppSidebar({
@@ -154,6 +158,12 @@ export function AppSidebar({
   isOnline,
   isInstallable,
   onInstall,
+  isProjectsLoading,
+  isDiagramsLoading,
+  isNotesLoading,
+  isDrawingsLoading,
+  isFlowchartsLoading,
+  isTrashLoading,
   ...props
 }: AppSidebarProps) {
   const { state, setOpen } = useSidebar();
@@ -325,6 +335,11 @@ export function AppSidebar({
           onLoadMoreDrawings={onLoadMoreDrawings}
           onLoadMoreFlowcharts={onLoadMoreFlowcharts}
           isOnline={isOnline}
+          isProjectsLoading={isProjectsLoading}
+          isDiagramsLoading={isDiagramsLoading}
+          isNotesLoading={isNotesLoading}
+          isDrawingsLoading={isDrawingsLoading}
+          isFlowchartsLoading={isFlowchartsLoading}
         />
       </SidebarContent>
       <SidebarFooter>

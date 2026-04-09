@@ -11,6 +11,7 @@ export function useTrash(isGuest: boolean = false) {
     flowcharts: Flowchart[];
     projects: Project[];
   }>({ diagrams: [], notes: [], drawings: [], flowcharts: [], projects: [] });
+  const [isLoading, setIsLoading] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     if (isGuest) {
@@ -38,6 +39,7 @@ export function useTrash(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const res = await fetch('/api/trash');
       if (res.ok) {
@@ -53,6 +55,8 @@ export function useTrash(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error fetching trash:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -123,6 +127,7 @@ export function useTrash(isGuest: boolean = false) {
     fetchTrash,
     restoreNote,
     restoreDrawing,
-    restoreFlowchart
+    restoreFlowchart,
+    isLoading
   };
 }

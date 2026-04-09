@@ -310,7 +310,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const extensions = React.useMemo(() => [
     TextStyle,
     Color,
-    StarterKit,
+    StarterKit.configure({
+      link: false,
+    }),
     TrailingNode,
     ImageResize.configure({
       inline: false,

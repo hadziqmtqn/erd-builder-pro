@@ -16,7 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
@@ -35,9 +35,24 @@ interface FlowchartViewProps {
   activeFlowchart: Flowchart;
   handleFlowchartChange: (nodes: any[], edges: any[]) => void;
   isReadOnly?: boolean;
+  isLoading?: boolean;
 }
 
-export const FlowchartView = React.memo(({ activeFlowchartId, activeFlowchart, handleFlowchartChange, isReadOnly = false }: FlowchartViewProps) => {
+export const FlowchartView = React.memo(({ 
+  activeFlowchartId, 
+  activeFlowchart, 
+  handleFlowchartChange, 
+  isReadOnly = false,
+  isLoading = false 
+}: FlowchartViewProps) => {
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+      </div>
+    );
+  }
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 

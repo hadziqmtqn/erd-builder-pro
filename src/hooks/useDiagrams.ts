@@ -8,6 +8,7 @@ import { RELATIONSHIP_TYPES } from '../lib/utils';
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [activeDiagramId, setActiveDiagramId] = useState<number | string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -35,6 +36,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       return;
     }
 
+    setIsLoading(true);
     try {
       const offset = isLoadMore ? diagramsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -65,6 +67,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       }
     } catch (err) {
       console.error('Error in fetchDiagrams:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]); 
 
@@ -356,6 +360,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     moveDiagramToProject,
     saveDiagram,
     hasMoreDiagrams,
-    diagramsTotal
+    diagramsTotal,
+    isLoading
   };
 }

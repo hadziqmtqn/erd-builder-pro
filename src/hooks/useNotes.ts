@@ -6,6 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotesList] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<number | string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [notesTotal, setNotesTotal] = useState(0);
@@ -31,6 +32,7 @@ export function useNotes(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const offset = isLoadMore ? notesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -55,6 +57,8 @@ export function useNotes(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error in fetchNotes:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]); 
 
@@ -265,6 +269,7 @@ export function useNotes(isGuest: boolean = false) {
     deleteNotePermanent,
     hasMoreNotes,
     notesTotal,
-    saveStatus
+    saveStatus,
+    isLoading
   };
 }

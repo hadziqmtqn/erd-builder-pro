@@ -10,7 +10,7 @@ import {
   Node,
   Edge
 } from '@xyflow/react';
-import { Plus, Download, ChevronDown, Database, Undo2, Redo2, Image as ImageIcon, FileCode, Upload, FileText } from 'lucide-react';
+import { Plus, Download, ChevronDown, Database, Undo2, Redo2, Image as ImageIcon, FileCode, Upload, FileText, Loader2 } from 'lucide-react';
 
 
 
@@ -53,6 +53,7 @@ interface ERDViewProps {
   canUndo?: boolean;
   canRedo?: boolean;
   takeSnapshot?: (nodes: Node<Entity>[], edges: Edge[]) => void;
+  isLoading?: boolean;
 }
 
 
@@ -79,8 +80,17 @@ export const ERDView = React.memo(({
   redo,
   canUndo,
   canRedo,
-  takeSnapshot
+  takeSnapshot,
+  isLoading = false
 }: ERDViewProps) => {
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">

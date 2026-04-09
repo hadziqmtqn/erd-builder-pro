@@ -7,7 +7,8 @@ import {
   PenTool, 
   Network,
   RefreshCcw, 
-  Trash2 as TrashIcon 
+  Trash2 as TrashIcon,
+  Loader2
 } from 'lucide-react';
 import { 
   Table, 
@@ -39,6 +40,7 @@ interface TrashViewProps {
   handleNotePermanentDelete: (id: number) => void;
   handleDrawingPermanentDelete: (id: number) => void;
   handleFlowchartPermanentDelete: (id: number) => void;
+  isLoading?: boolean;
 }
 
 export function TrashView({
@@ -53,8 +55,17 @@ export function TrashView({
   handleDiagramPermanentDelete,
   handleNotePermanentDelete,
   handleDrawingPermanentDelete,
-  handleFlowchartPermanentDelete
+  handleFlowchartPermanentDelete,
+  isLoading = false
 }: TrashViewProps) {
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/5 min-h-[400px]">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading trash items...</p>
+      </div>
+    );
+  }
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
       <div className="p-6 border-b shrink-0">

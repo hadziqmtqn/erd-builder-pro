@@ -6,6 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useProjects(isGuest: boolean = false) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<number | string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(false);
@@ -25,6 +26,7 @@ export function useProjects(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const offset = isLoadMore ? projectsRef.current.length : 0;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
@@ -48,6 +50,8 @@ export function useProjects(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error in fetchProjects:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -198,7 +202,8 @@ export function useProjects(isGuest: boolean = false) {
     restoreProject,
     deleteProjectPermanent,
     hasMoreProjects,
-    projectsTotal
+    projectsTotal,
+    isLoading
   };
 }
 

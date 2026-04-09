@@ -12,6 +12,7 @@ import {
   Network,
   FolderPlus,
 } from "lucide-react"
+import { Skeleton } from "./ui/skeleton"
 
 import {
   DropdownMenu,
@@ -106,6 +107,11 @@ export function NavProjects({
   onLoadMoreDrawings,
   onLoadMoreFlowcharts,
   isOnline,
+  isProjectsLoading,
+  isDiagramsLoading,
+  isNotesLoading,
+  isDrawingsLoading,
+  isFlowchartsLoading,
 }: {
   projects: {
     id: number | string
@@ -162,6 +168,11 @@ export function NavProjects({
   onLoadMoreDrawings?: () => void
   onLoadMoreFlowcharts?: () => void
   isOnline: boolean
+  isProjectsLoading?: boolean
+  isDiagramsLoading?: boolean
+  isNotesLoading?: boolean
+  isDrawingsLoading?: boolean
+  isFlowchartsLoading?: boolean
 }) {
   const { isMobile } = useSidebar()
   
@@ -269,7 +280,21 @@ export function NavProjects({
             <span>All Project</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        {projects.map((item) => (
+        
+        {isProjectsLoading && (
+          <div className="space-y-2 px-2 py-2">
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          </div>
+        )}
+
+        {!isProjectsLoading && projects.map((item) => (
           <SidebarMenuItem key={item.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               onClick={() => isOnline && onProjectSelect(item.id)} 
@@ -341,7 +366,21 @@ export function NavProjects({
         </SidebarGroupAction>
       )}
       <SidebarMenu>
-        {sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
+        {((sidebarView === 'erd' && isDiagramsLoading) || 
+          (sidebarView === 'notes' && isNotesLoading) || 
+          (sidebarView === 'drawings' && isDrawingsLoading) || 
+          (sidebarView === 'flowchart' && isFlowchartsLoading)) && (
+          <div className="space-y-2 px-2 py-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isDiagramsLoading && sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDiagramId === file.id && view === 'erd'}
@@ -375,7 +414,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
+        {!isNotesLoading && sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
           <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
@@ -409,7 +448,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
+        {!isDrawingsLoading && sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
           <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
