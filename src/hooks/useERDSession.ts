@@ -10,7 +10,7 @@ import {
   useReactFlow 
 } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Entity, FileData, DraftType } from '../types';
+import { Entity, Diagram, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
 
@@ -46,24 +46,24 @@ export function useERDSession(
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
-  const handleFileSelect = async (id: number | string, setActiveFileId: (id: any) => void) => {
+  const handleDiagramSelect = async (id: number | string, setActiveDiagramId: (id: any) => void) => {
     try {
-      const draft = await localPersistence.getDraft(DraftType.ERD, id);
-      let data: FileData;
+      const draft = await localPersistence.getDraft(DraftType.DIAGRAM, id);
+      let data: Diagram;
 
       if (isGuest) {
         const localData = await localPersistence.getResource(id);
         if (!localData) return;
         data = localData;
       } else {
-        const res = await fetch(`/api/files/${id}`);
+        const res = await fetch(`/api/diagrams/${id}`);
         if (res.status === 401) return;
         data = await res.json();
       }
       
       if (data.is_deleted) return;
 
-      setActiveFileId(id);
+      setActiveDiagramId(id);
       setView('erd');
       clearHistory();
 
@@ -313,7 +313,7 @@ export function useERDSession(
     deleteEntity,
     handleEdgeUpdate,
     deleteEdge,
-    handleFileSelect,
+    handleDiagramSelect,
     viewportRef,
     undo: handleUndo,
     redo: handleRedo,

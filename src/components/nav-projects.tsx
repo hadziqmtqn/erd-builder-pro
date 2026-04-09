@@ -54,7 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-import { FileData, Project, Note, Drawing, Flowchart } from "../types"
+import { Diagram, Project, Note, Drawing, Flowchart } from "../types"
 
 export function NavProjects({
   projects,
@@ -63,45 +63,45 @@ export function NavProjects({
   onProjectDelete,
   onProjectUpdate,
   onProjectCreate,
-  onFileCreate,
+  onDiagramCreate,
   onNoteCreate,
   onDrawingCreate,
   onFlowchartCreate,
-  files,
+  diagrams,
   notes,
   drawings,
   flowcharts,
-  onFileSelect,
+  onDiagramSelect,
   onNoteSelect,
   onDrawingSelect,
   onFlowchartSelect,
-  activeFileId,
+  activeDiagramId,
   activeNoteId,
   activeDrawingId,
   activeFlowchartId,
   view,
   sidebarView,
-  onFileDelete,
+  onDiagramDelete,
   onNoteDelete,
   onDrawingDelete,
   onFlowchartDelete,
-  onFileUpdate,
+  onDiagramUpdate,
   onNoteUpdate,
   onDrawingUpdate,
   onFlowchartUpdate,
-  onMoveFileToProject,
+  onMoveDiagramToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
   onMoveFlowchartToProject,
   allProjects,
   searchQuery,
   hasMoreProjects,
-  hasMoreFiles,
+  hasMoreDiagrams,
   hasMoreNotes,
   hasMoreDrawings,
   hasMoreFlowcharts,
   onLoadMoreProjects,
-  onLoadMoreFiles,
+  onLoadMoreDiagrams,
   onLoadMoreNotes,
   onLoadMoreDrawings,
   onLoadMoreFlowcharts,
@@ -119,45 +119,45 @@ export function NavProjects({
   onProjectDelete: (id: number | string) => void
   onProjectUpdate: (id: number | string, name: string) => void
   onProjectCreate: (name: string) => void
-  onFileCreate: (name: string, projectId: number | string | null) => void
+  onDiagramCreate: (name: string, projectId: number | string | null) => void
   onNoteCreate: (title: string, projectId: number | string | null) => void
   onDrawingCreate: (title: string, projectId: number | string | null) => void
   onFlowchartCreate: (title: string, projectId: number | string | null) => void
-  files: FileData[]
+  diagrams: Diagram[]
   notes: Note[]
   drawings: Drawing[]
   flowcharts: Flowchart[]
-  onFileSelect: (id: number | string) => void
+  onDiagramSelect: (id: number | string) => void
   onNoteSelect: (id: number | string) => void
   onDrawingSelect: (id: number | string) => void
   onFlowchartSelect: (id: number | string) => void
-  activeFileId: number | string | null
+  activeDiagramId: number | string | null
   activeNoteId: number | string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
-  onFileDelete: (id: number | string) => void
+  onDiagramDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
   onDrawingDelete: (id: number | string) => void
   onFlowchartDelete: (id: number | string) => void
-  onFileUpdate: (id: number | string, name: string) => void
+  onDiagramUpdate: (id: number | string, name: string) => void
   onNoteUpdate: (id: number | string, title: string) => void
   onDrawingUpdate: (id: number | string, title: string) => void
   onFlowchartUpdate: (id: number | string, title: string) => void
-  onMoveFileToProject: (fileId: number | string, projectId: number | string | null) => void
+  onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null) => void
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void
   onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null) => void
   allProjects: Project[]
   searchQuery: string
   hasMoreProjects?: boolean
-  hasMoreFiles?: boolean
+  hasMoreDiagrams?: boolean
   hasMoreNotes?: boolean
   hasMoreDrawings?: boolean
   hasMoreFlowcharts?: boolean
   onLoadMoreProjects?: () => void
-  onLoadMoreFiles?: () => void
+  onLoadMoreDiagrams?: () => void
   onLoadMoreNotes?: () => void
   onLoadMoreDrawings?: () => void
   onLoadMoreFlowcharts?: () => void
@@ -195,7 +195,7 @@ export function NavProjects({
     if (fileName.trim()) {
       const projectId = selectedProjectId === "none" ? null : selectedProjectId
       if (sidebarView === 'erd') {
-        onFileCreate(fileName.trim(), projectId)
+        onDiagramCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'notes') {
         onNoteCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'drawings') {
@@ -213,8 +213,8 @@ export function NavProjects({
       const projectId = selectedProjectId === "none" ? null : selectedProjectId
       
       if (editingFile.type === 'erd') {
-        onFileUpdate(editingFile.id, editingFile.name.trim())
-        if (projectId !== editingFile.projectId) onMoveFileToProject(editingFile.id, projectId)
+        onDiagramUpdate(editingFile.id, editingFile.name.trim())
+        if (projectId !== editingFile.projectId) onMoveDiagramToProject(editingFile.id, projectId)
       } else if (editingFile.type === 'notes') {
         onNoteUpdate(editingFile.id, editingFile.name.trim())
         if (projectId !== editingFile.projectId) onMoveNoteToProject(editingFile.id, projectId)
@@ -234,7 +234,7 @@ export function NavProjects({
 
   const handleDeleteConfirm = () => {
     if (deletingFile) {
-      if (deletingFile.type === 'erd') onFileDelete(deletingFile.id)
+      if (deletingFile.type === 'erd') onDiagramDelete(deletingFile.id)
       else if (deletingFile.type === 'notes') onNoteDelete(deletingFile.id)
       else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.id)
       else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.id)
@@ -341,11 +341,11 @@ export function NavProjects({
         </SidebarGroupAction>
       )}
       <SidebarMenu>
-        {sidebarView === 'erd' && (files || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
+        {sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
-              isActive={activeFileId === file.id && view === 'erd'}
-              onClick={() => isOnline && onFileSelect(file.id)}
+              isActive={activeDiagramId === file.id && view === 'erd'}
+              onClick={() => isOnline && onDiagramSelect(file.id)}
               className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <Database className="size-4" />
@@ -479,11 +479,11 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
 
-        {sidebarView === 'erd' && hasMoreFiles && (
+        {sidebarView === 'erd' && hasMoreDiagrams && (
           <SidebarMenuItem>
             <SidebarMenuButton 
               className="text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={onLoadMoreFiles}
+              onClick={onLoadMoreDiagrams}
             >
               <MoreHorizontal className="size-4" />
               <span>More</span>
@@ -528,7 +528,7 @@ export function NavProjects({
         )}
 
         {searchQuery && (
-          ((sidebarView === 'erd' && files.length === 0) ||
+          ((sidebarView === 'erd' && diagrams.length === 0) ||
            (sidebarView === 'notes' && notes.length === 0) ||
            (sidebarView === 'drawings' && drawings.length === 0) ||
            (sidebarView === 'flowchart' && flowcharts.length === 0)) && (
@@ -698,7 +698,7 @@ export function NavProjects({
           </DialogHeader>
           <DialogBody>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Moving this project to the trash will also move all its <strong>Files, Notes, Drawings, and Flowcharts</strong> to the trash as well. You can restore them later from the Trash Bin.
+              Moving this project to the trash will also move all its <strong>Diagrams, Notes, Drawings, and Flowcharts</strong> to the trash as well. You can restore them later from the Trash Bin.
             </p>
           </DialogBody>
           <DialogFooter>

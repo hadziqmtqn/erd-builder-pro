@@ -12,7 +12,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const q = req.query.q as string;
 
   let query = supabase
-    .from("files")
+    .from("diagrams")
     .select("*, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false);
 
@@ -25,10 +25,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
     query = query.eq("project_id", parseInt(projectId));
   }
-  // Otherwise (projectId === "all"), no project_id filter is applied for global view
 
-  // Optimization: Filter out files belonging to deleted projects at the database level
-  // to ensure pagination count is correct.
   const { data: deletedProjects } = await supabase.from("projects").select("id").eq("is_deleted", true);
   const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
   
@@ -40,7 +37,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) return handleError(res, error, "Supabase error fetching files");
+  if (error) return handleError(res, error, "Supabase error fetching diagrams");
   
   res.json({ 
     data: data || [], 
@@ -51,30 +48,28 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name, project_id } = req.body;
   const { data, error } = await supabase
-    .from("files")
+    .from("diagrams")
     .insert([{ name, project_id: project_id || null }])
     .select()
     .single();
 
-  if (error) return handleError(res, error, "Failed to create file");
+  if (error) return handleError(res, error, "Failed to create diagram");
   res.json(data);
 });
 
 router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data: file, error: fileError } = await supabase
-    .from("files")
+  const { data: diagram, error: diagramError } = await supabase
+    .from("diagrams")
     .select("*, projects!left(name)")
     .eq("uid", req.params.uid)
     .single();
 
-  if (fileError || !file) return res.status(404).json({ error: "File not found" });
+  if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
 
-  // Security Check: Is it public?
-  if (!file.is_public) {
+  if (!diagram.is_public) {
     return res.status(403).json({ error: "This document is private" });
   }
 
-  // Owner Bypass: For single-account, any logged-in user is the owner
   let isOwner = false;
   const sessionToken = req.cookies.token;
   if (sessionToken) {
@@ -85,31 +80,29 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
   }
 
   if (!isOwner) {
-    // Security Check: Is it expired?
-    if (file.expiry_date && new Date(file.expiry_date) < new Date()) {
+    if (diagram.expiry_date && new Date(diagram.expiry_date) < new Date()) {
       return res.status(403).json({ error: "This share link has expired" });
     }
 
-    // Security Check: Token matching (if required)
     const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
-    if (file.share_token && file.share_token !== providedToken) {
+    if (diagram.share_token && diagram.share_token !== providedToken) {
       return res.status(401).json({ error: "Invalid access token", requiresToken: true });
     }
   }
 
-  const fileId = file.id;
+  const diagramId = diagram.id;
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")
     .select("*")
-    .eq("file_id", fileId);
+    .eq("file_id", diagramId);
 
   if (entitiesError) return res.status(500).json({ error: entitiesError.message });
 
   const { data: relationships, error: relError } = await supabase
     .from("relationships")
     .select("*")
-    .eq("file_id", fileId);
+    .eq("file_id", diagramId);
 
   if (relError) return res.status(500).json({ error: relError.message });
 
@@ -121,7 +114,7 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
     return { ...entity, columns: columns || [] };
   }));
 
-  res.json({ ...file, entities: entitiesWithColumns, relationships });
+  res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
 router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
@@ -129,14 +122,13 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
   const { is_public, share_token, expiry_date } = req.body;
 
   try {
-    // 1. Get current state to check published_at
-    const { data: currentFile } = await supabase
-      .from("files")
+    const { data: currentDiagram } = await supabase
+      .from("diagrams")
       .select("is_public, published_at")
       .eq("id", id)
       .single();
 
-    if (!currentFile) return res.status(404).json({ error: "File not found" });
+    if (!currentDiagram) return res.status(404).json({ error: "Diagram not found" });
 
     let updateData: any = {
       is_public,
@@ -145,17 +137,15 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
     };
 
     if (is_public) {
-      // If turning on public access for the first time
-      if (!currentFile.published_at) {
+      if (!currentDiagram.published_at) {
         updateData.published_at = new Date().toISOString();
       }
     } else {
-      // If turning off, clear published_at
       updateData.published_at = null;
     }
 
     const { data, error } = await supabase
-      .from("files")
+      .from("diagrams")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -169,26 +159,26 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
 });
 
 router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const fileId = req.params.id;
-  const { data: file, error: fileError } = await supabase
-    .from("files")
+  const diagramId = req.params.id;
+  const { data: diagram, error: diagramError } = await supabase
+    .from("diagrams")
     .select("*")
-    .eq("id", fileId)
+    .eq("id", diagramId)
     .single();
 
-  if (fileError || !file) return res.status(404).json({ error: "File not found" });
+  if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")
     .select("*")
-    .eq("file_id", fileId);
+    .eq("file_id", diagramId);
 
   if (entitiesError) return res.status(500).json({ error: entitiesError.message });
 
   const { data: relationships, error: relError } = await supabase
     .from("relationships")
     .select("*")
-    .eq("file_id", fileId);
+    .eq("file_id", diagramId);
 
   if (relError) return res.status(500).json({ error: relError.message });
 
@@ -200,32 +190,32 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     return { ...entity, columns: columns || [] };
   }));
 
-  res.json({ ...file, entities: entitiesWithColumns, relationships });
+  res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
-    .from("files")
+    .from("diagrams")
     .update(getSafeUpdate(true))
     .eq("id", req.params.id);
 
-  if (error) return handleError(res, error, "Failed to delete file");
+  if (error) return handleError(res, error, "Failed to delete diagram");
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
-    .from("files")
+    .from("diagrams")
     .update(getSafeUpdate(false))
     .eq("id", req.params.id);
 
-  if (error) return handleError(res, error, "Failed to restore file");
+  if (error) return handleError(res, error, "Failed to restore diagram");
   res.json({ success: true });
 });
 
 router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
-    .from("files")
+    .from("diagrams")
     .delete()
     .eq("id", req.params.id);
 
@@ -236,7 +226,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
 router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name } = req.body;
   const { error } = await supabase
-    .from("files")
+    .from("diagrams")
     .update({ name })
     .eq("id", req.params.id);
 
@@ -247,7 +237,7 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 router.put("/:id/project", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { project_id } = req.body;
   const { error } = await supabase
-    .from("files")
+    .from("diagrams")
     .update({ project_id: project_id || null })
     .eq("id", req.params.id);
 
@@ -255,27 +245,24 @@ router.put("/:id/project", authenticate, async (req: ExpressRequest, res: Expres
   res.json({ success: true });
 });
 
-// Save Diagram Route (Moved from root level in monolith)
 router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const fileId = req.params.id;
+  const diagramId = req.params.id;
   const { entities, relationships, viewport } = req.body;
 
   try {
-    // Clear existing data for this file
-    await supabase.from("relationships").delete().eq("file_id", fileId);
+    await supabase.from("relationships").delete().eq("file_id", diagramId);
     
-    const { data: existingEntities } = await supabase.from("entities").select("id").eq("file_id", fileId);
+    const { data: existingEntities } = await supabase.from("entities").select("id").eq("file_id", diagramId);
     const existingEntityIds = existingEntities?.map(e => e.id) || [];
     if (existingEntityIds.length > 0) {
       await supabase.from("columns").delete().in("entity_id", existingEntityIds);
     }
-    await supabase.from("entities").delete().eq("file_id", fileId);
+    await supabase.from("entities").delete().eq("file_id", diagramId);
 
-    // Insert entities
     if (entities.length > 0) {
       const entitiesToInsert = entities.map((e: any) => ({
         id: e.id,
-        file_id: fileId,
+        file_id: diagramId,
         name: e.name,
         x: e.x,
         y: e.y,
@@ -283,7 +270,6 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       }));
       await supabase.from("entities").insert(entitiesToInsert);
 
-      // Insert columns
       const allColumns: any[] = [];
       for (const entity of entities) {
         for (const col of entity.columns) {
@@ -303,11 +289,10 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       }
     }
 
-    // Insert relationships
     if (relationships.length > 0) {
       const relsToInsert = relationships.map((r: any) => ({
         id: r.id,
-        file_id: fileId,
+        file_id: diagramId,
         source_entity_id: r.source_entity_id,
         target_entity_id: r.target_entity_id,
         source_column_id: r.source_column_id || null,
@@ -318,12 +303,12 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       await supabase.from("relationships").insert(relsToInsert);
     }
 
-    await supabase.from("files").update({ 
+    await supabase.from("diagrams").update({ 
       updated_at: new Date().toISOString(),
       viewport_x: viewport?.x || 0,
       viewport_y: viewport?.y || 0,
       viewport_zoom: viewport?.zoom || 1.0
-    }).eq("id", fileId);
+    }).eq("id", diagramId);
 
     res.json({ success: true });
   } catch (err: any) {

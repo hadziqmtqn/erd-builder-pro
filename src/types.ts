@@ -1,5 +1,6 @@
 export enum DraftType {
   ERD = 'erd',
+  DIAGRAM = 'diagram',
   NOTES = 'notes',
   FLOWCHART = 'flowchart',
   DRAWINGS = 'drawings',
@@ -45,7 +46,7 @@ export interface Project {
   created_at: string;
 }
 
-export interface FileData {
+export interface Diagram {
   id: number | string;
   uid?: string;
   name: string;

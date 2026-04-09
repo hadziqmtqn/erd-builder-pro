@@ -7,7 +7,7 @@ import fs from "node:fs";
 // Import modular routers and libs
 import { checkSupabase } from "./lib/middleware.js";
 import authRouter from "./routes/auth.js";
-import filesRouter from "./routes/files.js";
+import diagramsRouter from "./routes/diagrams.js";
 import projectsRouter from "./routes/projects.js";
 import notesRouter from "./routes/notes.js";
 import drawingsRouter from "./routes/drawings.js";
@@ -38,7 +38,7 @@ app.use("/api/*", (req, res, next) => {
 
 // Modular Routes
 app.use("/api", authRouter);
-app.use("/api/files", filesRouter);
+app.use("/api/diagrams", diagramsRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/notes", notesRouter);
 app.use("/api/drawings", drawingsRouter);

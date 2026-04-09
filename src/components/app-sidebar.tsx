@@ -37,15 +37,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import { FileData, Project, Note, Drawing, Flowchart } from "../types"
+import { Diagram, Project, Note, Drawing, Flowchart } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  files: FileData[];
+  diagrams: Diagram[];
   notes: Note[];
   drawings: Drawing[];
   flowcharts: Flowchart[];
   projects: Project[];
-  activeFileId: number | string | null;
+  activeDiagramId: number | string | null;
   activeNoteId: number | string | null;
   activeDrawingId: number | string | null;
   activeFlowchartId: number | string | null;
@@ -53,40 +53,40 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog';
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog';
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog') => void;
-  onFileSelect: (id: number | string) => void;
+  onDiagramSelect: (id: number | string) => void;
   onNoteSelect: (id: number | string) => void;
   onDrawingSelect: (id: number | string) => void;
   onFlowchartSelect: (id: number | string) => void;
   onProjectSelect: (id: number | string | null) => void;
-  onFileCreate: (name: string, projectId?: number | string | null) => void;
+  onDiagramCreate: (name: string, projectId?: number | string | null) => void;
   onNoteCreate: (title: string, projectId?: number | string | null) => void;
   onDrawingCreate: (title: string, projectId?: number | string | null) => void;
   onFlowchartCreate: (title: string, projectId?: number | string | null) => void;
   onProjectCreate: (name: string) => void;
   onProjectUpdate: (id: number | string, name: string) => void;
   onProjectDelete: (id: number | string) => void;
-  onFileDelete: (id: number | string) => void;
+  onDiagramDelete: (id: number | string) => void;
   onNoteDelete: (id: number | string) => void;
   onDrawingDelete: (id: number | string) => void;
   onFlowchartDelete: (id: number | string) => void;
-  onFileUpdate: (id: number | string, name: string) => void;
+  onDiagramUpdate: (id: number | string, name: string) => void;
   onNoteUpdate: (id: number | string, title: string) => void;
   onDrawingUpdate: (id: number | string, title: string) => void;
   onFlowchartUpdate: (id: number | string, title: string) => void;
   onLogout: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
-  onMoveFileToProject: (fileId: number | string, projectId: number | string | null) => void;
+  onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null) => void;
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void;
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void;
   onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null) => void;
 
   hasMoreProjects?: boolean;
-  hasMoreFiles?: boolean;
+  hasMoreDiagrams?: boolean;
   hasMoreNotes?: boolean;
   hasMoreDrawings?: boolean;
   hasMoreFlowcharts?: boolean;
   onLoadMoreProjects?: () => void;
-  onLoadMoreFiles?: () => void;
+  onLoadMoreDiagrams?: () => void;
   onLoadMoreNotes?: () => void;
   onLoadMoreDrawings?: () => void;
   onLoadMoreFlowcharts?: () => void;
@@ -99,12 +99,12 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 export function AppSidebar({
-  files,
+  diagrams,
   notes,
   drawings,
   flowcharts,
   projects,
-  activeFileId,
+  activeDiagramId,
   activeNoteId,
   activeDrawingId,
   activeFlowchartId,
@@ -112,39 +112,39 @@ export function AppSidebar({
   view,
   sidebarView,
   onViewChange,
-  onFileSelect,
+  onDiagramSelect,
   onNoteSelect,
   onDrawingSelect,
   onFlowchartSelect,
   onProjectSelect,
-  onFileCreate,
+  onDiagramCreate,
   onNoteCreate,
   onDrawingCreate,
   onFlowchartCreate,
   onProjectCreate,
   onProjectUpdate,
   onProjectDelete,
-  onFileDelete,
+  onDiagramDelete,
   onNoteDelete,
   onDrawingDelete,
   onFlowchartDelete,
-  onFileUpdate,
+  onDiagramUpdate,
   onNoteUpdate,
   onDrawingUpdate,
   onFlowchartUpdate,
   onLogout,
   saveStatus,
-  onMoveFileToProject,
+  onMoveDiagramToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
   onMoveFlowchartToProject,
   hasMoreProjects,
-  hasMoreFiles,
+  hasMoreDiagrams,
   hasMoreNotes,
   hasMoreDrawings,
   hasMoreFlowcharts,
   onLoadMoreProjects,
-  onLoadMoreFiles,
+  onLoadMoreDiagrams,
   onLoadMoreNotes,
   onLoadMoreDrawings,
   onLoadMoreFlowcharts,
@@ -282,45 +282,45 @@ export function AppSidebar({
           onProjectDelete={onProjectDelete}
           onProjectUpdate={onProjectUpdate}
           onProjectCreate={onProjectCreate}
-          onFileCreate={onFileCreate}
+          onDiagramCreate={onDiagramCreate}
           onNoteCreate={onNoteCreate}
           onDrawingCreate={onDrawingCreate}
           onFlowchartCreate={onFlowchartCreate}
-          files={files}
+          diagrams={diagrams}
           notes={notes}
           drawings={drawings}
           flowcharts={flowcharts}
-          onFileSelect={onFileSelect}
+          onDiagramSelect={onDiagramSelect}
           onNoteSelect={onNoteSelect}
           onDrawingSelect={onDrawingSelect}
           onFlowchartSelect={onFlowchartSelect}
-          activeFileId={activeFileId}
+          activeDiagramId={activeDiagramId}
           activeNoteId={activeNoteId}
           activeDrawingId={activeDrawingId}
           activeFlowchartId={activeFlowchartId}
           view={view}
           sidebarView={sidebarView}
-          onFileDelete={onFileDelete}
+          onDiagramDelete={onDiagramDelete}
           onNoteDelete={onNoteDelete}
           onDrawingDelete={onDrawingDelete}
           onFlowchartDelete={onFlowchartDelete}
-          onFileUpdate={onFileUpdate}
+          onDiagramUpdate={onDiagramUpdate}
           onNoteUpdate={onNoteUpdate}
           onDrawingUpdate={onDrawingUpdate}
           onFlowchartUpdate={onFlowchartUpdate}
-          onMoveFileToProject={onMoveFileToProject}
+          onMoveDiagramToProject={onMoveDiagramToProject}
           onMoveNoteToProject={onMoveNoteToProject}
           onMoveDrawingToProject={onMoveDrawingToProject}
           onMoveFlowchartToProject={onMoveFlowchartToProject}
           allProjects={projects.filter(p => !p.is_deleted)}
           searchQuery={searchQuery}
           hasMoreProjects={hasMoreProjects}
-          hasMoreFiles={hasMoreFiles}
+          hasMoreDiagrams={hasMoreDiagrams}
           hasMoreNotes={hasMoreNotes}
           hasMoreDrawings={hasMoreDrawings}
           hasMoreFlowcharts={hasMoreFlowcharts}
           onLoadMoreProjects={onLoadMoreProjects}
-          onLoadMoreFiles={onLoadMoreFiles}
+          onLoadMoreDiagrams={onLoadMoreDiagrams}
           onLoadMoreNotes={onLoadMoreNotes}
           onLoadMoreDrawings={onLoadMoreDrawings}
           onLoadMoreFlowcharts={onLoadMoreFlowcharts}
