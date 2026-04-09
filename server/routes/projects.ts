@@ -13,8 +13,18 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
   let query = supabase
     .from("projects")
-    .select("*", { count: 'exact' })
-    .eq("is_deleted", false);
+    .select(`
+      *,
+      diagrams(count),
+      notes(count),
+      drawings(count),
+      flowcharts(count)
+    `, { count: 'exact' })
+    .eq("is_deleted", false)
+    .eq("diagrams.is_deleted", false)
+    .eq("notes.is_deleted", false)
+    .eq("drawings.is_deleted", false)
+    .eq("flowcharts.is_deleted", false);
 
   if (q && q.trim()) {
     query = query.ilike("name", `%${q.trim()}%`);
@@ -26,8 +36,26 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
   if (error) return handleError(res, error, "Supabase error fetching projects");
   
-  // Safety slice to ensure we don't exceed the limit
-  const slicedData = (data || []).slice(0, limit);
+  // Aggregate counts into individual properties and a single total files_count
+  const projectsWithCounts = (data || []).map((project: any) => {
+    const diagramsCount = (project.diagrams?.[0]?.count || 0);
+    const notesCount = (project.notes?.[0]?.count || 0);
+    const drawingsCount = (project.drawings?.[0]?.count || 0);
+    const flowchartsCount = (project.flowcharts?.[0]?.count || 0);
+    
+    // Create a clean object for the frontend
+    const { diagrams, notes, drawings, flowcharts, ...rest } = project;
+    return {
+      ...rest,
+      files_count: diagramsCount + notesCount + drawingsCount + flowchartsCount,
+      diagrams_count: diagramsCount,
+      notes_count: notesCount,
+      drawings_count: drawingsCount,
+      flowcharts_count: flowchartsCount
+    };
+  });
+  
+  const slicedData = projectsWithCounts.slice(0, limit);
   
   res.json({ 
     data: slicedData, 

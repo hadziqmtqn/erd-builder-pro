@@ -44,6 +44,11 @@ export interface Project {
   is_deleted: boolean;
   deleted_at?: string;
   created_at: string;
+  files_count?: number;
+  diagrams_count?: number;
+  notes_count?: number;
+  drawings_count?: number;
+  flowcharts_count?: number;
 }
 
 export interface Diagram {

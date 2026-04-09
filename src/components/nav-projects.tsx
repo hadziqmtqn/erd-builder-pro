@@ -13,6 +13,7 @@ import {
   FolderPlus,
 } from "lucide-react"
 import { Skeleton } from "./ui/skeleton"
+import { Badge } from "./ui/badge"
 
 import {
   DropdownMenu,
@@ -119,6 +120,11 @@ export function NavProjects({
     url: string
     icon: any
     isActive: boolean
+    files_count?: number
+    diagrams_count?: number
+    notes_count?: number
+    drawings_count?: number
+    flowcharts_count?: number
   }[]
   activeProjectId: number | string | null
   onProjectSelect: (id: number | string | null) => void
@@ -255,6 +261,20 @@ export function NavProjects({
     }
   }
 
+  const getFileCount = (projectId: number | string | null, viewFilter?: string) => {
+    const currentView = viewFilter || sidebarView;
+    const dCount = (diagrams || []).filter(f => !f.is_deleted && (projectId === null || String(f.project_id) === String(projectId)) && (currentView === 'erd')).length
+    const nCount = (notes || []).filter(n => !n.is_deleted && (projectId === null || String(n.project_id) === String(projectId)) && (currentView === 'notes')).length
+    const drCount = (drawings || []).filter(d => !d.is_deleted && (projectId === null || String(d.project_id) === String(projectId)) && (currentView === 'drawings')).length
+    const fCount = (flowcharts || []).filter(f => !f.is_deleted && (projectId === null || String(f.project_id) === String(projectId)) && (currentView === 'flowchart')).length
+    
+    if (currentView === 'erd') return dCount;
+    if (currentView === 'notes') return nCount;
+    if (currentView === 'drawings') return drCount;
+    if (currentView === 'flowchart') return fCount;
+    return dCount + nCount + drCount + fCount;
+  }
+
   return (
     <>
       <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -303,6 +323,18 @@ export function NavProjects({
             >
               <item.icon />
               <span>{item.name}</span>
+              <Badge className="ml-auto bg-green-50 text-green-700 hover:bg-green-50 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-950 border-none px-1.5 h-4.5 text-[10px] font-bold">
+                {(() => {
+                  if (item.diagrams_count !== undefined) {
+                    if (sidebarView === 'erd') return item.diagrams_count;
+                    if (sidebarView === 'notes') return item.notes_count || 0;
+                    if (sidebarView === 'drawings') return item.drawings_count || 0;
+                    if (sidebarView === 'flowchart') return item.flowcharts_count || 0;
+                    return item.files_count || 0;
+                  }
+                  return getFileCount(item.id);
+                })()}
+              </Badge>
             </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>

@@ -10,8 +10,8 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Files Table (ERD Files)
-CREATE TABLE IF NOT EXISTS files (
+-- Diagrams Table (ERD Files)
+CREATE TABLE IF NOT EXISTS diagrams (
   id BIGSERIAL PRIMARY KEY,
   uid UUID DEFAULT gen_random_uuid() UNIQUE,
   name TEXT NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS files (
 -- Entities Table
 CREATE TABLE IF NOT EXISTS entities (
   id TEXT PRIMARY KEY, -- Using UUID or custom ID from frontend
-  file_id BIGINT REFERENCES files(id) ON DELETE CASCADE,
+  file_id BIGINT REFERENCES diagrams(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   x FLOAT NOT NULL,
   y FLOAT NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS columns (
 -- Relationships Table
 CREATE TABLE IF NOT EXISTS relationships (
   id TEXT PRIMARY KEY, -- Using UUID or custom ID from frontend
-  file_id BIGINT REFERENCES files(id) ON DELETE CASCADE,
+  file_id BIGINT REFERENCES diagrams(id) ON DELETE CASCADE,
   source_entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   target_entity_id TEXT REFERENCES entities(id) ON DELETE CASCADE,
   source_column_id TEXT,

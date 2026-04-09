@@ -12,7 +12,7 @@ export function useImageExporter() {
     toast.error("Image export is temporarily disabled. Please use PDF.");
   }, []);
 
-  const handleExportPDF = useCallback(async (fileName: string = 'diagram') => {
+  const handleExportPDF = useCallback(async (fileName: string = 'diagram', exportTheme: 'light' | 'dark' = 'dark') => {
     const nodes = getNodes();
     if (nodes.length === 0) {
       toast.error("Canvas is empty");
@@ -35,95 +35,102 @@ export function useImageExporter() {
         const width = bounds.width + padding * 2;
         const height = bounds.height + padding * 2;
 
+        // 2. DYNAMIC QUALITY: Scale down resolution for very large diagrams to prevent browser freezing
+        // Threshold: > 25 nodes starts scaling down from 2x
+        let pixelRatio = 2;
+        if (nodes.length > 50) pixelRatio = 1.0;
+        else if (nodes.length > 25) pixelRatio = 1.5;
+
+        const isLight = exportTheme === 'light';
+        const bgColor = isLight ? '#ffffff' : '#09090b';
+        const edgeColor = isLight ? '#475569' : '#ffffff';
+        const textColor = isLight ? '#0f172a' : '#ffffff';
+
         const options: any = {
-          backgroundColor: '#09090b',
+          backgroundColor: bgColor,
           width: width,
           height: height,
-          pixelRatio: 2,
+          pixelRatio: pixelRatio,
           style: {
             width: `${width}px`,
             height: `${height}px`,
             transformOrigin: '0 0',
             transform: `translate(${-bounds.x + padding}px, ${-bounds.y + padding}px) scale(1)`,
+            backgroundColor: bgColor, // Force background in style object too
           },
           onClone: (clonedDoc: Document) => {
-            // A. INJECT ENHANCED CSS
+            // A. INJECT ENHANCED THEME-AWARE CSS
             const style = clonedDoc.createElement('style');
             style.innerHTML = `
+              body { background-color: ${bgColor} !important; }
               .react-flow__edge-path, .xy-edge-path {
-                stroke: #ffffff !important;
+                stroke: ${edgeColor} !important;
                 stroke-width: 2.5px !important;
                 stroke-opacity: 1 !important;
-                stroke-dasharray: none !important; /* Force solid for export stability */
+                stroke-dasharray: none !important;
                 fill: none !important;
-                visibility: visible !important;
-                display: block !important;
               }
-              .react-flow__edges {
-                overflow: visible !important;
-                width: 100% !important;
-                height: 100% !important;
-                display: block !important;
-              }
-              .react-flow__nodes {
-                overflow: visible !important;
-              }
-              .react-flow__edge-label {
-                z-index: 100 !important;
-              }
-              /* Force markers (arrows) to be white and visible */
+              /* LIGHT MODE OVERRIDES for nodes */
+              ${isLight ? `
+                .react-flow__node-entity { 
+                  background-color: #ffffff !important; 
+                  border-color: #e2e8f0 !important;
+                  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+                }
+                .react-flow__node-entity [class*="text-foreground"], 
+                .react-flow__node-entity .text-white,
+                .react-flow__node-entity [class*="text-white"],
+                .react-flow__node-entity [class*="font-bold"] { 
+                  color: #0f172a !important; 
+                }
+                .react-flow__node-entity hr,
+                .react-flow__node-entity .border-t {
+                  border-color: #e2e8f0 !important;
+                }
+                /* PK/FK Badge adjustments for light mode */
+                .react-flow__node-entity .text-indigo-400 { color: #4f46e5 !important; }
+                .react-flow__node-entity .text-pink-400 { color: #db2777 !important; }
+                .react-flow__node-entity .text-amber-400 { color: #d97706 !important; }
+                .react-flow__node-entity .bg-muted\\/50 { background-color: #f8fafc !important; }
+              ` : ''}
+
+              .react-flow__edges { overflow: visible !important; }
+              /* Force markers (arrows) to be theme-colored and visible */
               [id^="react-flow__arrow"] path, 
               marker path {
-                fill: #ffffff !important;
-                stroke: #ffffff !important;
+                fill: ${edgeColor} !important;
+                stroke: ${edgeColor} !important;
                 stroke-width: 1px !important;
                 opacity: 1 !important;
               }
             `;
             clonedDoc.head.appendChild(style);
 
-            // B. SVG DEFS CLONING (Crucial for Arrows)
+            // B. SVG DEFS CLONING
             const mainSvg = root.querySelector('svg.react-flow__container--svg');
             const defs = mainSvg?.querySelector('defs');
             const clonedSvg = clonedDoc.querySelector('svg.react-flow__edges') as SVGElement;
             
             if (clonedSvg) {
-              // Ensure dimensions are correct on the SVG element itself
               clonedSvg.setAttribute('width', `${width}`);
               clonedSvg.setAttribute('height', `${height}`);
-              clonedSvg.style.width = `${width}px`;
-              clonedSvg.style.height = `${height}px`;
-
-              // If markers exist, move them into the cloned edge container so they find their references
               if (defs) {
                 const clonedDefs = defs.cloneNode(true) as SVGDefsElement;
-                // Force white inside the cloned defs for paths
                 clonedDefs.querySelectorAll('path').forEach(p => {
-                    p.setAttribute('fill', '#ffffff');
-                    p.setAttribute('stroke', '#ffffff');
+                    p.setAttribute('fill', edgeColor);
+                    p.setAttribute('stroke', edgeColor);
                 });
                 clonedSvg.prepend(clonedDefs);
               }
             }
-
-            // C. Final Path Sanitization
-            const paths = clonedDoc.querySelectorAll('path.react-flow__edge-path, path.xy-edge-path');
-            paths.forEach((path: any) => {
-              path.setAttribute('stroke', '#ffffff');
-              path.setAttribute('stroke-width', '2.5');
-              path.setAttribute('stroke-dasharray', 'none');
-              path.setAttribute('visibility', 'visible');
-            });
           }
         };
 
         const dataUrl = await toPng(viewport, options);
 
-        // Calculate PDF dimensions in points (1px = 0.75pt)
         const pdfWidth = width * 0.75;
         const pdfHeight = height * 0.75;
 
-        // Create PDF with exactly matching dimensions
         const pdf = new jsPDF({
           orientation: pdfWidth > pdfHeight ? 'l' : 'p',
           unit: 'pt',
@@ -132,7 +139,7 @@ export function useImageExporter() {
         });
 
         pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-        pdf.save(`${fileName.replace(/\s+/g, '_').toLowerCase()}_${new Date().getTime()}.pdf`);
+        pdf.save(`${fileName.replace(/\s+/g, '_').toLowerCase()}_${exportTheme}_${new Date().getTime()}.pdf`);
         resolve(true);
       } catch (err) {
         console.error("PDF Export failed:", err);
@@ -141,7 +148,7 @@ export function useImageExporter() {
     });
 
     toast.promise(exportPromise, {
-      loading: 'Generating PDF...',
+      loading: `Generating ${exportTheme === 'light' ? 'Light' : 'Dark'} PDF...`,
       success: 'PDF Export successful!',
       error: 'Failed to export PDF.'
     });

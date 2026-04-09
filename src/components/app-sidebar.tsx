@@ -239,6 +239,11 @@ export function AppSidebar({
     url: "#",
     icon: Folder,
     isActive: activeProjectId !== null && String(activeProjectId) === String(project.id),
+    files_count: project.files_count,
+    diagrams_count: project.diagrams_count,
+    notes_count: project.notes_count,
+    drawings_count: project.drawings_count,
+    flowcharts_count: project.flowcharts_count,
   }))
 
   return (

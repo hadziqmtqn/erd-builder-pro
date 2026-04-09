@@ -57,7 +57,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
       <div 
         className={cn(
           "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform",
-          selected ? "shadow-[0_0_10px_rgba(255,255,255,0.05)]" : "shadow-md"
+          selected && "ring-2 ring-white/10"
         )}
         style={{ borderColor: borderColor }}
       >

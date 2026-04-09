@@ -518,9 +518,9 @@ function AppContent() {
                     const target = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
                     if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
-                  handleExportPDF={() => {
+                  handleExportPDF={(theme) => {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
-                    handleExportPDF(targetName);
+                    handleExportPDF(targetName, theme);
                   }}
                   isReadOnly={isPublicView}
                   undo={undo}
