@@ -11,6 +11,7 @@ import {
   PenTool,
   Network,
   FolderPlus,
+  AlertTriangle,
 } from "lucide-react"
 import { Skeleton } from "./ui/skeleton"
 import { Badge } from "./ui/badge"
@@ -777,47 +778,51 @@ export function NavProjects({
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Are you sure?</DialogTitle>
-            <DialogDescription>
-              This will move the item to the trash. You can restore it later.
-            </DialogDescription>
+        <DialogContent className="max-w-[400px]" showCloseButton={false}>
+          <DialogHeader className="flex flex-col items-center justify-center text-center">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-xl text-center">Move to Trash?</DialogTitle>
           </DialogHeader>
-          <DialogBody>
+          <DialogBody className="text-center">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              If you delete this item, it will be moved to the Trash Bin where you can restore it within 30 days.
+              Are you sure you want to move this item to the trash?
+              <br />
+              You can restore it at any time from the Trash Bin.
             </p>
           </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm}>Delete</Button>
+          <DialogFooter className="sm:justify-center flex-col sm:flex-row gap-2 mt-2">
+            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)} className="mt-0 w-full sm:w-auto">Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm} className="w-full sm:w-auto">Move to Trash</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Project Delete Confirmation Dialog */}
       <Dialog open={isProjectDeleteConfirmOpen} onOpenChange={setIsProjectDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Project "{deletingProject?.name}"?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to move this project to the trash?
-            </DialogDescription>
+        <DialogContent className="max-w-[400px]" showCloseButton={false}>
+          <DialogHeader className="flex flex-col items-center justify-center text-center">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-xl text-center">Move Project to Trash?</DialogTitle>
           </DialogHeader>
-          <DialogBody>
+          <DialogBody className="text-center">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Moving this project to the trash will also move all its <strong>Diagrams, Notes, Drawings, and Flowcharts</strong> to the trash as well. You can restore them later from the Trash Bin.
+              Are you sure you want to move the project "{deletingProject?.name}" to the trash?
+              <br />
+              This will also move all associated <strong>Diagrams, Notes, Drawings, and Flowcharts</strong>.
             </p>
           </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsProjectDeleteConfirmOpen(false)}>Cancel</Button>
+          <DialogFooter className="sm:justify-center flex-col sm:flex-row gap-2 mt-2">
+            <Button variant="outline" onClick={() => setIsProjectDeleteConfirmOpen(false)} className="mt-0 w-full sm:w-auto">Cancel</Button>
             <Button variant="destructive" onClick={() => {
               if (deletingProject) {
                 onProjectDelete(deletingProject.id)
                 setIsProjectDeleteConfirmOpen(false)
                 setDeletingProject(null)
               }
-            }}>Delete Project</Button>
+            }} className="w-full sm:w-auto">Move Project to Trash</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -80,7 +80,7 @@ import {
   DialogDescription,
   DialogBody,
 } from "@/components/ui/dialog"
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 
@@ -634,17 +634,22 @@ function AppContent() {
 
         {/* Delete Confirmation Alert */}
         <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Table</AlertDialogTitle>
+          <AlertDialogContent size="sm" className="max-w-[400px]">
+            <AlertDialogHeader className="flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+              </div>
+              <AlertDialogTitle className="text-xl sm:text-center">Delete Table</AlertDialogTitle>
             </AlertDialogHeader>
-            <AlertDialogBody>
+            <AlertDialogBody className="text-center">
               <AlertDialogDescription>
-                Are you sure you want to delete the table "{selectedEntity?.name}"? This action cannot be undone.
+                Are you sure you want to delete the table "{selectedEntity?.name}"?
+                <br />
+                This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogBody>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogFooter className="sm:justify-center flex-col sm:flex-row gap-2 mt-2">
+              <AlertDialogCancel className="mt-0 w-full sm:w-auto">Cancel</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={() => {
                   if (selectedEntity) {
@@ -653,7 +658,7 @@ function AppContent() {
                     setIsDeleteAlertOpen(false);
                   }
                 }}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto"
               >
                 Delete
               </AlertDialogAction>
