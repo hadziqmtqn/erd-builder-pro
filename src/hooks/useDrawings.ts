@@ -7,6 +7,7 @@ export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingId, setActiveDrawingId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isItemLoading, setIsItemLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);
@@ -247,6 +248,25 @@ export function useDrawings(isGuest: boolean = false) {
     } catch (err) {}
   };
 
+  const selectDrawing = async (id: number | string) => {
+    setIsItemLoading(true);
+    try {
+      if (isGuest) {
+        const localData = await localPersistence.getResource(id);
+        if (!localData || localData.is_deleted) return;
+        setActiveDrawingId(id);
+      } else {
+        const res = await fetch(`/api/drawings/${id}`);
+        if (res.ok) {
+          const d = await res.json();
+          if (!d.is_deleted) setActiveDrawingId(id);
+        }
+      }
+    } finally {
+      setIsItemLoading(false);
+    }
+  };
+
   return {
     drawings,
     setDrawings,
@@ -263,6 +283,8 @@ export function useDrawings(isGuest: boolean = false) {
     hasMoreDrawings,
     drawingsTotal,
     saveStatus,
-    isLoading
+    isLoading,
+    isItemLoading,
+    selectDrawing
   };
 }

@@ -135,19 +135,34 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
 
     const lines = splitByTopLevelCommas(tableDef.body);
     
+    // Pass 1: Find table-level primary keys to ensure we mark columns correctly later
+    const tableLevelPks = new Set<string>();
     lines.forEach(line => {
-      const upperLine = line.toUpperCase().trim();
+      const trimmedLine = line.trim();
+      // Match PRIMARY KEY (id) or PRIMARY KEY (`id`)
+      const pkMatch = trimmedLine.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+      if (pkMatch) {
+        pkMatch[1].split(',').forEach(part => {
+          tableLevelPks.add(cleanIdentifier(part));
+        });
+      }
+    });
+    
+    lines.forEach(line => {
+      const trimmedLine = line.trim();
+      const upperLine = trimmedLine.toUpperCase();
       
       // Skip table-level constraints and indexes
-      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)/i.test(upperLine)) return;
+      // We check if it starts with these keywords but NOT if it's a quoted identifier starting with them
+      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine) && !trimmedLine.startsWith('`') && !trimmedLine.startsWith('"')) return;
 
-      const parts = line.trim().split(/\s+/);
+      const parts = trimmedLine.split(/\s+/);
       if (parts.length < 2) return;
 
       const colName = cleanIdentifier(parts[0]);
+      if (!colName) return;
       
       // Robust type extraction: ignore COLLATE, CHARACTER SET, and other noise
-      // We look for the first part after the name that isn't one of those keywords
       let rawType = parts[1];
       
       // If the word following the type is 'UNSIGNED' or 'ZEROFILL', we include it for better normalization
@@ -157,8 +172,9 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
 
       const colType = normalizeType(rawType);
       
-      const isPk = upperLine.includes('PRIMARY KEY');
-      const isNullable = !upperLine.includes('NOT NULL');
+      // Check for inline PRIMARY KEY or if it was identified in table-level PKs
+      const isPk = upperLine.includes('PRIMARY KEY') || tableLevelPks.has(colName);
+      const isNullable = !upperLine.includes('NOT NULL') && !isPk; // PKs are usually not nullable
 
       columns.push({
         id: `col-${Math.random().toString(36).substr(2, 9)}`,

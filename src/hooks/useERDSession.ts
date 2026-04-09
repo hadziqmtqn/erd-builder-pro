@@ -21,6 +21,7 @@ export function useERDSession(
   setView: (view: any) => void
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
+  const [isItemLoading, setIsItemLoading] = useState(false);
   
   // Ref for previous edges to avoid redundant node updates
   const lastEdgesHash = useRef<string>("");
@@ -51,6 +52,7 @@ export function useERDSession(
   }, [redo, nodes, edges, setNodes, setEdges]);
 
   const handleDiagramSelect = async (id: number | string, setActiveDiagramId: (id: any) => void) => {
+    setIsItemLoading(true);
     try {
       const draft = await localPersistence.getDraft(DraftType.DIAGRAM, id);
       let data: Diagram;
@@ -144,7 +146,9 @@ export function useERDSession(
       } else {
         setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 800 }), 100);
       }
-    } catch (err) {}
+    } catch (err) {} finally {
+      setIsItemLoading(false);
+    }
   };
 
   const onConnect: OnConnect = useCallback((params) => {
@@ -359,6 +363,7 @@ export function useERDSession(
     redo: handleRedo,
     canUndo,
     canRedo,
-    takeSnapshot
+    takeSnapshot,
+    isItemLoading
   };
 }

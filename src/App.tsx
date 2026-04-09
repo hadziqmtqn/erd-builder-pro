@@ -139,7 +139,7 @@ function AppContent() {
     selectedEdgeId, setSelectedEdgeId,
     onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
     handleDiagramSelect: selectDiagram, viewportRef,
-    undo, redo, canUndo, canRedo, takeSnapshot
+    undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading
   } = useERDSession(false, isGuest, isAuthenticated, setView);
 
 
@@ -158,7 +158,7 @@ function AppContent() {
 
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, saveStatus: notesSaveStatus, isLoading: isNotesLoading
+    hasMoreNotes, saveStatus: notesSaveStatus, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote
   } = useNotes(isGuest);
   
   const { 
@@ -168,12 +168,12 @@ function AppContent() {
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings, saveStatus: drawingsSaveStatus, isLoading: isDrawingsLoading
+    hasMoreDrawings, saveStatus: drawingsSaveStatus, isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing
   } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
-    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus, isLoading: isFlowchartsLoading
+    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus, isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
   } = useFlowcharts(isGuest);
 
   const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
@@ -353,33 +353,11 @@ function AppContent() {
 
   const handleSelectionSelect = async (id: number | string) => {
     if (view === 'notes') {
-      const note = notes.find(n => n.id === id);
-      if (note?.is_deleted) return;
-      const draft = await localPersistence.getDraft(DraftType.NOTES, id);
-      if (draft && draft.sync_pending) {
-        try {
-          const parsed = JSON.parse(draft.data);
-          setNotesList(prev => prev.map(n => n.id === id ? { ...n, content: parsed.content } : n));
-          toast.info("Loaded unsynced local note draft");
-        } catch (e) {}
-      }
-      setActiveNoteId(id);
+      await selectNote(id);
     } else if (view === 'drawings') {
-      if (isGuest) {
-        const localData = await localPersistence.getResource(id);
-        if (!localData || localData.is_deleted) return;
-        setActiveDrawingId(id);
-      } else {
-        fetch(`/api/drawings/${id}`).then(res => { if (res.ok) res.json().then(d => { if (!d.is_deleted) setActiveDrawingId(id); }); });
-      }
+      await selectDrawing(id);
     } else if (view === 'flowchart') {
-      if (isGuest) {
-        const localData = await localPersistence.getResource(id);
-        if (!localData || localData.is_deleted) return;
-        setActiveFlowchartId(id);
-      } else {
-        fetch(`/api/flowcharts/${id}`).then(res => { if (res.ok) res.json().then(f => { if (!f.is_deleted) setActiveFlowchartId(id); }); });
-      }
+      await selectFlowchart(id);
     }
   };
 
@@ -506,7 +484,7 @@ function AppContent() {
             <>
               {view === 'erd' && (isPublicView ? publicData : activeDiagramId) && (
                 <ERDView 
-                  isLoading={isDiagramsLoading}
+                  isLoading={isDiagramsLoading || isERDItemLoading}
                   nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
                   onNodeClick={(e, n) => { if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id); }}
                   onEdgeClick={(_, e) => { if (!isPublicView) setSelectedEdgeId(e.id); }}
@@ -565,9 +543,9 @@ function AppContent() {
                   }}
                 />
               )}
-              {view === 'notes' && activeNote && <NotesView isLoading={isNotesLoading} activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
-              {view === 'drawings' && activeDrawing && <DrawingsView isLoading={isDrawingsLoading} activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
-              {view === 'flowchart' && activeFlowchart && <FlowchartView isLoading={isFlowchartsLoading} activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'notes' && activeNote && <NotesView isLoading={isNotesLoading || isNoteItemLoading} activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
+              {view === 'drawings' && activeDrawing && <DrawingsView isLoading={isDrawingsLoading || isDrawingItemLoading} activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
+              {view === 'flowchart' && activeFlowchart && <FlowchartView isLoading={isFlowchartsLoading || isFlowchartItemLoading} activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
               {view === 'changelog' && <ChangelogView />}
             </>
           )}
