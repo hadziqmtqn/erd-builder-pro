@@ -45,7 +45,7 @@
     "downloadjs": "^1.4.7",
     "express": "^4.21.2",
     "framer-motion": "^11.18.2",
-    "html-to-image": "^1.11.13",
+    "html-to-image": "1.11.11",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",

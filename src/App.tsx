@@ -500,6 +500,10 @@ function AppContent() {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
                     handleExportPDF(targetName, theme);
                   }}
+                  handleExportImage={(theme) => {
+                    const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
+                    handleExportImage('png', targetName, theme);
+                  }}
                   isReadOnly={isPublicView}
                   undo={undo}
                   redo={redo}
