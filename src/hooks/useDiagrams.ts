@@ -1,76 +1,81 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
-import { FileData, Entity, Relationship, DraftType } from '../types';
+import { Diagram, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
 
-export function useFiles(isAuthenticated: boolean | null, view: string, isGuest: boolean = false) {
-  const [files, setFiles] = useState<FileData[]>([]);
-  const [activeFileId, setActiveFileId] = useState<number | string | null>(null);
+export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
+  const [diagrams, setDiagrams] = useState<Diagram[]>([]);
+  const [activeDiagramId, setActiveDiagramId] = useState<number | string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [filesTotal, setFilesTotal] = useState(0);
-  const [hasMoreFiles, setHasMoreFiles] = useState(false);
-  const filesRef = useRef<FileData[]>(files);
+  const [diagramsTotal, setDiagramsTotal] = useState(0);
+  const [hasMoreDiagrams, setHasMoreDiagrams] = useState(false);
+  const diagramsRef = useRef<Diagram[]>(diagrams);
 
   // Keep ref in sync
-  filesRef.current = files;
+  diagramsRef.current = diagrams;
 
-  const fetchFiles = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
     if (isGuest) {
-      const localFiles = await localPersistence.getAllResources('erd');
-      let filtered = localFiles.filter(f => !f.is_deleted);
+      // For local, we still use 'erd' type internally to maintain existing data or we migrate it
+      const localResources = await localPersistence.getAllResources('erd');
+      let filtered = localResources.filter(f => !f.is_deleted);
       if (projectId !== 'all') {
         filtered = filtered.filter(f => f.project_id === projectId);
       }
       if (searchQuery) {
         filtered = filtered.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setFiles(filtered);
-      setFilesTotal(filtered.length);
-      setHasMoreFiles(false);
+      setDiagrams(filtered);
+      setDiagramsTotal(filtered.length);
+      setHasMoreDiagrams(false);
       return;
     }
 
+    setIsLoading(true);
     try {
-      const offset = isLoadMore ? filesRef.current.length : 0;
+      const offset = isLoadMore ? diagramsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/files?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
+      const res = await fetch(`/api/diagrams?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
       if (res.ok) {
         let json;
         try {
           json = await res.json();
         } catch (e) {
-          console.error('Failed to parse JSON response in fetchFiles', e);
+          console.error('Failed to parse JSON response in fetchDiagrams', e);
           return;
         }
         const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
         
-        const filesList = Array.isArray(data) ? data : [];
+        const diagramsList = Array.isArray(data) ? data : [];
         if (isLoadMore) {
-          setFiles(prev => [...prev, ...filesList]);
+          setDiagrams(prev => [...prev, ...diagramsList]);
         } else {
-          setFiles(filesList);
+          setDiagrams(diagramsList);
         }
-        setFilesTotal(total);
-        setHasMoreFiles((filesList.length + offset) < total);
+        setDiagramsTotal(total);
+        setHasMoreDiagrams((diagramsList.length + offset) < total);
       } else {
         const errText = await res.text();
-        console.error(`Failed to fetch files: ${res.status} ${res.statusText}`, errText);
+        console.error(`Failed to fetch diagrams: ${res.status} ${res.statusText}`, errText);
       }
     } catch (err) {
-      console.error('Error in fetchFiles:', err);
+      console.error('Error in fetchDiagrams:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]); 
 
-  const createFile = async (name: string, projectId?: number | null) => {
+  const createDiagram = async (name: string, projectId?: number | null) => {
     if (isGuest) {
-      const newFile: FileData = {
-        id: Math.random().toString(36).substr(2, 9) as any, // String ID for guest
+      const newDiagram: Diagram = {
+        id: Math.random().toString(36).substr(2, 9) as any,
         name,
         project_id: projectId || null,
         is_deleted: false,
@@ -80,111 +85,111 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
         relationships: [],
       };
       // @ts-ignore
-      newFile.type = 'erd';
-      await localPersistence.saveResource(newFile);
-      setFiles(prev => [newFile, ...prev]);
+      newDiagram.type = 'erd';
+      await localPersistence.saveResource(newDiagram);
+      setDiagrams(prev => [newDiagram, ...prev]);
       toast.success('Diagram created locally');
-      return newFile;
+      return newDiagram;
     }
 
     try {
-      const res = await fetch('/api/files', {
+      const res = await fetch('/api/diagrams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, project_id: projectId }),
       });
       if (res.ok) {
-        const newFile = await res.json();
-        setFiles(prev => [newFile, ...prev]);
+        const newDiagram = await res.json();
+        setDiagrams(prev => [newDiagram, ...prev]);
         toast.success('Diagram created successfully');
-        return newFile;
+        return newDiagram;
       } else {
         toast.error('Failed to create diagram');
       }
     } catch (err) {
-      console.error('Error creating file:', err);
+      console.error('Error creating diagram:', err);
       toast.error('Error creating diagram');
     }
     return null;
   };
 
-  const updateFile = async (id: number | string, name: string) => {
+  const updateDiagram = async (id: number | string, name: string) => {
     if (isGuest) {
-      const file = await localPersistence.getResource(id);
-      if (file) {
-        file.name = name;
-        file.updated_at = new Date().toISOString();
-        await localPersistence.saveResource(file);
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, name } : f));
+      const diagram = await localPersistence.getResource(id);
+      if (diagram) {
+        diagram.name = name;
+        diagram.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(diagram);
+        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, name } : f));
         toast.success('Diagram renamed locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/files/${id}`, {
+      const res = await fetch(`/api/diagrams/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
       if (res.ok) {
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, name } : f));
+        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, name } : f));
         toast.success('Diagram renamed successfully');
       } else {
         toast.error('Failed to rename diagram');
       }
     } catch (err) {
-      console.error('Error updating file:', err);
+      console.error('Error updating diagram:', err);
       toast.error('Error renaming diagram');
     }
   };
 
-  const deleteFile = async (id: number | string) => {
+  const deleteDiagram = async (id: number | string) => {
     if (isGuest) {
-      const file = await localPersistence.getResource(id);
-      if (file) {
-        file.is_deleted = true;
-        file.deleted_at = new Date().toISOString();
-        await localPersistence.saveResource(file);
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
-        if (activeFileId === id) setActiveFileId(null);
+      const diagram = await localPersistence.getResource(id);
+      if (diagram) {
+        diagram.is_deleted = true;
+        diagram.deleted_at = new Date().toISOString();
+        await localPersistence.saveResource(diagram);
+        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to local trash');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/files/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/diagrams/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setFiles(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
-        if (activeFileId === id) setActiveFileId(null);
+        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to trash');
       } else {
         toast.error('Failed to delete diagram');
       }
     } catch (err) {
-      console.error('Error deleting file:', err);
+      console.error('Error deleting diagram:', err);
       toast.error('Error deleting diagram');
     }
   };
 
-  const restoreFile = async (id: number | string) => {
+  const restoreDiagram = async (id: number | string) => {
     if (isGuest) {
-      const file = await localPersistence.getResource(id);
-      if (file) {
-        file.is_deleted = false;
-        file.deleted_at = undefined;
-        await localPersistence.saveResource(file);
-        fetchFiles();
+      const diagram = await localPersistence.getResource(id);
+      if (diagram) {
+        diagram.is_deleted = false;
+        diagram.deleted_at = undefined;
+        await localPersistence.saveResource(diagram);
+        fetchDiagrams();
         toast.success('Diagram restored locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/files/${id}/restore`, { method: 'POST' });
+      const res = await fetch(`/api/diagrams/${id}/restore`, { method: 'POST' });
       if (res.ok) {
-        fetchFiles();
+        fetchDiagrams();
         toast.success('Diagram restored successfully');
       } else {
         toast.error('Failed to restore diagram');
@@ -194,7 +199,7 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
     }
   };
 
-  const deleteFilePermanent = async (id: number | string) => {
+  const deleteDiagramPermanent = async (id: number | string) => {
     if (isGuest) {
       await localPersistence.deleteResource(id);
       await localPersistence.clearDraft(DraftType.ERD, id);
@@ -203,7 +208,7 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
     }
 
     try {
-      const res = await fetch(`/api/files/${id}/permanent`, { method: 'DELETE' });
+      const res = await fetch(`/api/diagrams/${id}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Diagram permanently deleted');
       } else {
@@ -214,13 +219,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
     }
   };
 
-  const moveFileToProject = async (fileId: number | string, projectId: number | null) => {
+  const moveDiagramToProject = async (diagramId: number | string, projectId: number | null) => {
     if (isGuest) {
-      const file = await localPersistence.getResource(fileId);
-      if (file) {
-        file.project_id = projectId;
-        await localPersistence.saveResource(file);
-        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
+      const diagram = await localPersistence.getResource(diagramId);
+      if (diagram) {
+        diagram.project_id = projectId;
+        await localPersistence.saveResource(diagram);
+        setDiagrams(prev => prev.map(f => f.id === diagramId ? { ...f, project_id: projectId } : f));
         toast.success('Diagram moved to project locally');
         return true;
       }
@@ -228,26 +233,26 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
     }
 
     try {
-      const res = await fetch(`/api/files/${fileId}/project`, {
+      const res = await fetch(`/api/diagrams/${diagramId}/project`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
       });
       if (res.ok) {
-        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, project_id: projectId } : f));
+        setDiagrams(prev => prev.map(f => f.id === diagramId ? { ...f, project_id: projectId } : f));
         toast.success('Diagram moved to project');
         return true;
       } else {
         toast.error('Failed to move diagram');
       }
     } catch (err) {
-      console.error('Error moving file:', err);
+      console.error('Error moving diagram:', err);
       toast.error('Error moving diagram');
     }
   };
 
   const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport) => {
-    if (!activeFileId || view !== 'erd') return;
+    if (!activeDiagramId || (view !== 'erd' && view !== 'diagram')) return;
     if (!isAuthenticated && !isGuest) return;
 
     setSaveStatus('saving');
@@ -256,16 +261,15 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
     
     // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, !isGuest);
+      await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, !isGuest);
     } catch (e) {
       console.warn('Local draft save failed', e);
     }
 
     if (isGuest) {
-      // For guest, also update the main resource so it persists beyond "draft"
       try {
-        const file = await localPersistence.getResource(activeFileId);
-        if (file) {
+        const diagram = await localPersistence.getResource(activeDiagramId);
+        if (diagram) {
           const entities: Entity[] = nodes.map(n => ({
             ...n.data,
             x: n.position.x,
@@ -284,13 +288,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
             label: e.label as string,
           }));
 
-          file.entities = entities;
-          file.relationships = relationships;
-          file.viewport_x = viewport.x;
-          file.viewport_y = viewport.y;
-          file.viewport_zoom = viewport.zoom;
-          file.updated_at = new Date().toISOString();
-          await localPersistence.saveResource(file);
+          diagram.entities = entities;
+          diagram.relationships = relationships;
+          diagram.viewport_x = viewport.x;
+          diagram.viewport_y = viewport.y;
+          diagram.viewport_zoom = viewport.zoom;
+          diagram.updated_at = new Date().toISOString();
+          await localPersistence.saveResource(diagram);
         }
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
@@ -298,7 +302,6 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
       return;
     }
 
-    // Try to save to server only if online and authenticated
     if (navigator.onLine && isAuthenticated) {
       try {
         const entities: Entity[] = nodes.map(n => ({
@@ -319,14 +322,13 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
           label: e.label as string,
         }));
 
-        const res = await fetch(`/api/files/save/${activeFileId}`, {
+        const res = await fetch(`/api/diagrams/save/${activeDiagramId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ entities, relationships, viewport }),
         });
         if (res.ok) {
-          // Clear sync pending
-          await localPersistence.saveDraft(DraftType.ERD, activeFileId, data, false);
+          await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, false);
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2000);
         } else {
@@ -337,28 +339,28 @@ export function useFiles(isAuthenticated: boolean | null, view: string, isGuest:
         console.error('Error saving diagram to server:', err);
       }
     } else {
-      // Offline: just stay in saving/saved state locally
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     }
-  }, [activeFileId, isAuthenticated, isGuest, view]);
+  }, [activeDiagramId, isAuthenticated, isGuest, view]);
 
   return {
-    files,
-    setFiles,
-    activeFileId,
-    setActiveFileId,
+    diagrams,
+    setDiagrams,
+    activeDiagramId,
+    setActiveDiagramId,
     saveStatus,
     setSaveStatus,
-    fetchFiles,
-    createFile,
-    updateFile,
-    deleteFile,
-    restoreFile,
-    deleteFilePermanent,
-    moveFileToProject,
+    fetchDiagrams,
+    createDiagram,
+    updateDiagram,
+    deleteDiagram,
+    restoreDiagram,
+    deleteDiagramPermanent,
+    moveDiagramToProject,
     saveDiagram,
-    hasMoreFiles,
-    filesTotal
+    hasMoreDiagrams,
+    diagramsTotal,
+    isLoading
   };
 }

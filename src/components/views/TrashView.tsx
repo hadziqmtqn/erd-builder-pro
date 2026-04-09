@@ -7,7 +7,8 @@ import {
   PenTool, 
   Network,
   RefreshCcw, 
-  Trash2 as TrashIcon 
+  Trash2 as TrashIcon,
+  Loader2
 } from 'lucide-react';
 import { 
   Table, 
@@ -23,38 +24,48 @@ import { Badge } from "@/components/ui/badge";
 interface TrashViewProps {
   trashData: {
     projects: any[];
-    files: any[];
+    diagrams: any[];
     notes: any[];
     drawings: any[];
     flowcharts: any[];
   };
   restoreProject: (id: number) => Promise<void>;
-  restoreFile: (id: number) => Promise<void>;
+  restoreDiagram: (id: number) => Promise<void>;
   restoreNote: (id: number) => Promise<void>;
   restoreDrawing: (id: number) => Promise<void>;
   restoreFlowchart: (id: number) => Promise<void>;
   fetchTrash: () => void;
   handleProjectPermanentDelete: (id: number) => void;
-  handleFilePermanentDelete: (id: number) => void;
+  handleDiagramPermanentDelete: (id: number) => void;
   handleNotePermanentDelete: (id: number) => void;
   handleDrawingPermanentDelete: (id: number) => void;
   handleFlowchartPermanentDelete: (id: number) => void;
+  isLoading?: boolean;
 }
 
 export function TrashView({
   trashData,
   restoreProject,
-  restoreFile,
+  restoreDiagram,
   restoreNote,
   restoreDrawing,
   restoreFlowchart,
   fetchTrash,
   handleProjectPermanentDelete,
-  handleFilePermanentDelete,
+  handleDiagramPermanentDelete,
   handleNotePermanentDelete,
   handleDrawingPermanentDelete,
-  handleFlowchartPermanentDelete
+  handleFlowchartPermanentDelete,
+  isLoading = false
 }: TrashViewProps) {
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/5 min-h-[400px]">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading trash items...</p>
+      </div>
+    );
+  }
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
       <div className="p-6 border-b shrink-0">
@@ -122,9 +133,9 @@ export function TrashView({
                 <Database size={18} className="text-blue-400" />
                 Diagrams
               </h3>
-              <Badge variant="outline">{trashData.files.length} Items</Badge>
+              <Badge variant="outline">{trashData.diagrams.length} Items</Badge>
             </div>
-            {trashData.files.length === 0 ? (
+            {trashData.diagrams.length === 0 ? (
               <div className="text-center py-12 border rounded-lg border-dashed text-muted-foreground">No deleted diagrams</div>
             ) : (
               <div className="border rounded-lg overflow-hidden">
@@ -138,7 +149,7 @@ export function TrashView({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {trashData.files.map((file) => (
+                    {trashData.diagrams.map((file) => (
                       <TableRow key={file.id}>
                         <TableCell className="font-medium flex items-center gap-2">
                           <Database size={14} className="text-muted-foreground" />
@@ -152,10 +163,10 @@ export function TrashView({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreFile(file.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreDiagram(file.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleFilePermanentDelete(file.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleDiagramPermanentDelete(file.id)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>

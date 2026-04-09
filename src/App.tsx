@@ -12,7 +12,9 @@ import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
+import { ImportSQLModal } from './components/modals/ImportSQLModal';
 import PropertiesPanel from './components/PropertiesPanel';
+
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
 
 // Views
@@ -30,7 +32,7 @@ import { AppInitialization } from './components/layout/AppInitialization';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
-import { useFiles } from './hooks/useFiles';
+import { useDiagrams } from './hooks/useDiagrams';
 import { useNotes } from './hooks/useNotes';
 import { useProjects } from './hooks/useProjects';
 import { useDrawings } from './hooks/useDrawings';
@@ -43,6 +45,8 @@ import { usePublicDocument } from './hooks/usePublicDocument';
 import { useERDSession } from './hooks/useERDSession';
 import { useSQLGenerator } from './hooks/useSQLGenerator';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useImageExporter } from './hooks/useImageExporter';
+
 
 // Views
 import { ChangelogView } from './components/views/ChangelogView';
@@ -92,12 +96,27 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>('notes');
-  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>('notes');
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>(() => {
+    if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
+  });
+  const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>(() => {
+    if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    return (localStorage.getItem('erd-builder-last-sidebar-view') as any) || 'notes';
+  });
+
+  // Persist views
+  useEffect(() => {
+    if (getSharePathInfo()) return;
+    localStorage.setItem('erd-builder-last-view', view);
+    localStorage.setItem('erd-builder-last-sidebar-view', sidebarView);
+  }, [view, sidebarView]);
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+
 
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +128,8 @@ function AppContent() {
   useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
+  const { handleExportImage, handleExportPDF } = useImageExporter();
+
 
   // ERD Session Hook
   const { 
@@ -117,8 +138,10 @@ function AppContent() {
     selectedNodeId, setSelectedNodeId,
     selectedEdgeId, setSelectedEdgeId,
     onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
-    handleFileSelect: selectFile, viewportRef
+    handleDiagramSelect: selectDiagram, viewportRef,
+    undo, redo, canUndo, canRedo, takeSnapshot
   } = useERDSession(false, isGuest, isAuthenticated, setView);
+
 
   // Public Document Hook
   const {
@@ -127,49 +150,51 @@ function AppContent() {
 
   // Domain Hooks
   const { 
-    files, activeFileId, setActiveFileId, saveStatus,
-    fetchFiles, createFile, updateFile, deleteFile, restoreFile, deleteFilePermanent, moveFileToProject, saveDiagram,
-    hasMoreFiles
-  } = useFiles(isAuthenticated, view, isGuest);
+    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId, saveStatus,
+    fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
+    hasMoreDiagrams, isLoading: isDiagramsLoading
+  } = useDiagrams(isAuthenticated, view, isGuest);
+
 
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, saveStatus: notesSaveStatus
+    hasMoreNotes, saveStatus: notesSaveStatus, isLoading: isNotesLoading
   } = useNotes(isGuest);
   
   const { 
     projects, activeProjectId, setActiveProjectId, fetchProjects, createProject, updateProject, deleteProject, restoreProject, deleteProjectPermanent,
-    hasMoreProjects
+    hasMoreProjects, isLoading: isProjectsLoading
   } = useProjects(isGuest);
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings, saveStatus: drawingsSaveStatus
+    hasMoreDrawings, saveStatus: drawingsSaveStatus, isLoading: isDrawingsLoading
   } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
-    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus
+    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus, isLoading: isFlowchartsLoading
   } = useFlowcharts(isGuest);
 
-  const { trashData, fetchTrash } = useTrash(isGuest);
+  const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
 
+  // Handlers
   // Computed Values
   const currentActiveId = useMemo(() => {
     if (isPublicView) return undefined;
-    const viewMap = { erd: activeFileId, notes: activeNoteId, drawings: activeDrawingId, flowchart: activeFlowchartId };
+    const viewMap = { erd: activeDiagramId, notes: activeNoteId, drawings: activeDrawingId, flowchart: activeFlowchartId };
     return viewMap[view as keyof typeof viewMap];
-  }, [view, isPublicView, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
+  }, [view, isPublicView, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   const initialShareSettings = useMemo(() => {
     if (isPublicView) return publicData ? { is_public: !!publicData.is_public, share_token: publicData.share_token, expiry_date: publicData.expiry_date } : undefined;
-    const docArr = view === 'erd' ? files : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
-    const id = view === 'erd' ? activeFileId : view === 'notes' ? activeNoteId : view === 'drawings' ? activeDrawingId : activeFlowchartId;
+    const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
+    const id = view === 'erd' ? activeDiagramId : view === 'notes' ? activeNoteId : view === 'drawings' ? activeDrawingId : activeFlowchartId;
     // @ts-ignore
-    const doc = docArr.find(d => d.id === id);
+    const doc = docArr.find(d => String(d.id) === String(id));
     if (!doc) return undefined;
     return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
-  }, [view, isPublicView, publicData, files, notes, drawings, flowcharts, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
+  }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   const currentSaveStatus = useMemo(() => {
     const statusMap = { erd: saveStatus, notes: notesSaveStatus, drawings: drawingsSaveStatus, flowchart: flowchartsSaveStatus };
@@ -177,9 +202,9 @@ function AppContent() {
   }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
 
   const hasActiveItem = useMemo(() => {
-    const activeMap = { erd: !!activeFileId, notes: !!activeNoteId, drawings: !!activeDrawingId, flowchart: !!activeFlowchartId };
+    const activeMap = { erd: !!activeDiagramId, notes: !!activeNoteId, drawings: !!activeDrawingId, flowchart: !!activeFlowchartId };
     return activeMap[view as keyof typeof activeMap] || false;
-  }, [view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId]);
+  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
   const selectedEntity = useMemo(() => {
     if (!selectedNodeId) return null;
@@ -187,7 +212,46 @@ function AppContent() {
     return node ? (node.data as Entity) : null;
   }, [nodes, selectedNodeId]);
 
-  // Effects
+  // Sync active states with deletion status
+  useEffect(() => {
+    if (isPublicView) return;
+
+    const checkActiveItemHealth = () => {
+      // Find the current active object based on view
+      let activeItem: any = null;
+      if (view === 'erd' && activeDiagramId) activeItem = diagrams.find(f => String(f.id) === String(activeDiagramId));
+      else if (view === 'notes' && activeNoteId) activeItem = notes.find(n => String(n.id) === String(activeNoteId));
+      else if (view === 'drawings' && activeDrawingId) activeItem = drawings.find(d => String(d.id) === String(activeDrawingId));
+      else if (view === 'flowchart' && activeFlowchartId) activeItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+
+      if (activeItem && activeItem.is_deleted) {
+        // Current file is deleted, reset it
+        if (view === 'erd') setActiveDiagramId(null);
+        else if (view === 'notes') setActiveNoteId(null);
+        else if (view === 'drawings') setActiveDrawingId(null);
+        else if (view === 'flowchart') setActiveFlowchartId(null);
+        
+        toast.info("Document closed because it was moved to trash.");
+        return;
+      }
+
+      // If active item belongs to a project, check if that project is deleted
+      if (activeItem && activeItem.project_id) {
+        const parentProject = projects.find(p => String(p.id) === String(activeItem.project_id));
+        if (parentProject && parentProject.is_deleted) {
+          // Parent project is deleted, reset everything
+          setActiveProjectId(null);
+          setActiveDiagramId(null);
+          setActiveNoteId(null);
+          setActiveDrawingId(null);
+          setActiveFlowchartId(null);
+          toast.warning("Project was deleted. Closing current document.");
+        }
+      }
+    };
+
+    checkActiveItemHealth();
+  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, diagrams, notes, drawings, flowcharts, projects, isPublicView]);
   useEffect(() => {
     const shareInfo = getSharePathInfo();
     if (shareInfo) {
@@ -211,53 +275,52 @@ function AppContent() {
 
   useEffect(() => {
     if (!isOnline && !isPublicView) {
-      if (view === 'erd' && activeFileId) saveDiagram(nodes, edges, viewportRef.current);
-      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => n.id === activeNoteId); if (n) saveNote(n); }
-      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => d.id === activeDrawingId); if (d) saveDrawing(d); }
-      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => f.id === activeFlowchartId); if (f) saveFlowchart(f); }
+      if (view === 'erd' && activeDiagramId) saveDiagram(nodes, edges, viewportRef.current);
+      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => String(n.id) === String(activeNoteId)); if (n) saveNote(n); }
+      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
+      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
     }
-  }, [isOnline, view, activeFileId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
+  }, [isOnline, view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
 
   useEffect(() => {
     document.documentElement.classList.add('dark');
     document.body.classList.add('dark');
     if (isAuthenticated && !isPublicView) {
+      // Always fetch projects as they are context providers for the sidebar
       fetchProjects(false, debouncedSearchQuery);
-      fetchTrash();
     }
-  }, [isAuthenticated, fetchProjects, fetchTrash, debouncedSearchQuery, isPublicView]);
+  }, [isAuthenticated, fetchProjects, debouncedSearchQuery, isPublicView]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Optimized Lazy Loading: Only fetch data for the active view
   useEffect(() => {
     if (isAuthenticated && !isPublicView) {
       const pid = activeProjectId === null ? 'all' : activeProjectId;
-      // @ts-ignore
-      fetchFiles(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchNotes(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchDrawings(false, pid, debouncedSearchQuery);
-      // @ts-ignore
-      fetchFlowcharts(false, pid, debouncedSearchQuery);
+      
+      if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery);
+      else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery);
+      else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
+      else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
+      else if (view === 'trash') fetchTrash();
     }
-  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchFiles, fetchNotes, fetchDrawings, fetchFlowcharts, isPublicView]);
+  }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
   // ERD Auto-save
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    if (activeFileId && isAuthenticated && view === 'erd' && !isPublicView) {
+    if (activeDiagramId && isAuthenticated && view === 'erd' && !isPublicView) {
       saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 3000);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [nodes, edges, activeFileId, isAuthenticated, view, saveDiagram, isPublicView]);
+  }, [nodes, edges, activeDiagramId, isAuthenticated, view, saveDiagram, isPublicView]);
 
   // Handlers
-  const handleFileSelect = (id: number | string) => selectFile(id, setActiveFileId);
+  const handleDiagramSelect = (id: number | string) => selectDiagram(id, setActiveDiagramId);
   const handleEditEntity = useCallback((e: any) => setSelectedNodeId(e.detail), [setSelectedNodeId]);
   const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
 
@@ -269,6 +332,24 @@ function AppContent() {
       window.removeEventListener('deleteEntity', handleDeleteEntity);
     };
   }, [handleEditEntity, handleDeleteEntity]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (view !== 'erd') return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          if (canRedo) redo();
+        } else {
+          if (canUndo) undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        if (canRedo) redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [view, undo, redo, canUndo, canRedo]);
+
 
   const handleSelectionSelect = async (id: number | string) => {
     if (view === 'notes') {
@@ -347,7 +428,7 @@ function AppContent() {
     if (itemToDelete) {
       const { id, type } = itemToDelete;
       if (type === 'project') await deleteProjectPermanent(id);
-      else if (type === 'erd') await deleteFilePermanent(id);
+      else if (type === 'erd') await deleteDiagramPermanent(id);
       else if (type === 'notes') await deleteNotePermanent(id);
       else if (type === 'drawings') await deleteDrawingPermanent(id);
       else if (type === 'project' as any) await deleteFlowchartPermanent(id);
@@ -360,12 +441,12 @@ function AppContent() {
   const activeNote = isPublicView ? publicData : notes.find(n => n.id === activeNoteId);
   const activeDrawing = isPublicView ? publicData : drawings.find(d => d.id === activeDrawingId);
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => f.id === activeFlowchartId);
-  const activeFile = isPublicView ? publicData : files.find(f => f.id === activeFileId);
+  const activeDiagram = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
   
   const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : 'Trash Bin');
-  const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeFile?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
-  const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeFile?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
-  const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeFile?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
+  const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeDiagram?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
+  const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeDiagram?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
+  const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeDiagram?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
 
   if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
   if (isPublicLoading) return <AppInitialization type="public" view={view} />;
@@ -389,27 +470,21 @@ function AppContent() {
 
       {!isPublicView && (
         <AppSidebar 
-          files={files} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects} trashData={trashData}
-          activeFileId={activeFileId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
-          onFileSelect={handleFileSelect} onNoteSelect={handleSelectionSelect} onDrawingSelect={handleSelectionSelect} onFlowchartSelect={handleSelectionSelect} onProjectSelect={setActiveProjectId}
-          onFileCreate={async (n, pid) => { const f = await createFile(n, pid ? Number(pid) : null); if (f) handleFileSelect(f.id); }}
+          diagrams={diagrams} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects}
+          activeDiagramId={activeDiagramId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
+          onDiagramSelect={handleDiagramSelect} onNoteSelect={handleSelectionSelect} onDrawingSelect={handleSelectionSelect} onFlowchartSelect={handleSelectionSelect} onProjectSelect={setActiveProjectId}
+          onDiagramCreate={async (n, pid) => { const f = await createDiagram(n, pid ? Number(pid) : null); if (f) handleDiagramSelect(f.id); }}
           onNoteCreate={async (t, pid) => { const n = await createNote(t, pid ? Number(pid) : null); if (n) handleSelectionSelect(n.id); }}
           onDrawingCreate={async (t, pid) => { const d = await createDrawing(t, pid ? Number(pid) : null); if (d) handleSelectionSelect(d.id); }}
           onFlowchartCreate={async (t, pid) => { const f = await createFlowchart(t, pid ? Number(pid) : null); if (f) handleSelectionSelect(f.id); }}
-          onProjectCreate={createProject} onProjectUpdate={updateProject} onProjectDelete={id => { deleteProject(id); fetchTrash(); }} onProjectRestore={id => { restoreProject(id); fetchTrash(); fetchProjects(); }}
-          onFileUpdate={updateFile} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
-          onFileDelete={id => { deleteFile(id); fetchTrash(); }} onNoteDelete={id => { deleteNote(id); fetchTrash(); }} onDrawingDelete={id => { deleteDrawing(id); fetchTrash(); }} onFlowchartDelete={id => { deleteFlowchart(id); fetchTrash(); }}
-          onFileRestore={id => { restoreFile(id); fetchTrash(); fetchFiles(); }} onNoteRestore={id => { restoreNote(id); fetchTrash(); fetchNotes(); }} onDrawingRestore={id => { restoreDrawing(id); fetchTrash(); fetchDrawings(); }} onFlowchartRestore={id => { restoreFlowchart(id); fetchTrash(); fetchFlowcharts(); }}
-          onFilePermanentDelete={id => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); }}
-          onNotePermanentDelete={id => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); }}
-          onDrawingPermanentDelete={id => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); }}
-          onFlowchartPermanentDelete={id => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); }}
-          onProjectPermanentDelete={id => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); }}
+          onProjectCreate={createProject} onProjectUpdate={updateProject} onProjectDelete={id => { deleteProject(id); fetchTrash(); }}
+          onDiagramUpdate={updateDiagram} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
+          onDiagramDelete={id => { deleteDiagram(id); fetchTrash(); }} onNoteDelete={id => { deleteNote(id); fetchTrash(); }} onDrawingDelete={id => { deleteDrawing(id); fetchTrash(); }} onFlowchartDelete={id => { deleteFlowchart(id); fetchTrash(); }}
           onLogout={handleLogout} saveStatus={saveStatus}
-          onMoveFileToProject={moveFileToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
+          onMoveDiagramToProject={moveDiagramToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
           sidebarView={sidebarView} onViewChange={handleViewChange}
-          hasMoreProjects={hasMoreProjects} hasMoreFiles={hasMoreFiles} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
-          onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)} onLoadMoreFiles={() => fetchFiles(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
+          hasMoreProjects={hasMoreProjects} hasMoreDiagrams={hasMoreDiagrams} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
+          onLoadMoreProjects={() => fetchProjects(true, debouncedSearchQuery)} onLoadMoreDiagrams={() => fetchDiagrams(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
           onLoadMoreNotes={() => fetchNotes(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)} onLoadMoreDrawings={() => fetchDrawings(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
           onLoadMoreFlowcharts={() => fetchFlowcharts(true, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery)}
           searchQuery={searchQuery} onSearchChange={setSearchQuery} user={user} isOnline={isOnline} isInstallable={isInstallable} onInstall={installApp}
@@ -422,30 +497,77 @@ function AppContent() {
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
           currentSaveStatus={isPublicView ? 'saved' : currentSaveStatus}
           activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
-          onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchFiles(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
+          onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
           {!hasActiveItem && view !== 'trash' && view !== 'changelog' && !isPublicView ? <WelcomeView /> : (
             <>
-              {view === 'erd' && (isPublicView ? publicData : activeFileId) && (
+              {view === 'erd' && (isPublicView ? publicData : activeDiagramId) && (
                 <ERDView 
+                  isLoading={isDiagramsLoading}
                   nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
                   onNodeClick={(e, n) => { if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id); }}
                   onEdgeClick={(_, e) => { if (!isPublicView) setSelectedEdgeId(e.id); }}
                   onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
                   onMove={(_, v) => { viewportRef.current = v; }}
-                  addEntity={addEntity} handleExportSQL={dialect => {
-                    const target = isPublicView ? publicData : files.find(f => f.id === activeFileId);
+                  addEntity={addEntity}
+                  openImportModal={() => setIsImportModalOpen(true)}
+                  handleExportSQL={dialect => {
+                    const target = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
                     if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
+                  handleExportPDF={(theme) => {
+                    const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
+                    handleExportPDF(targetName, theme);
+                  }}
                   isReadOnly={isPublicView}
+                  undo={undo}
+                  redo={redo}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  takeSnapshot={takeSnapshot}
                 />
               )}
-              {view === 'notes' && activeNote && <NotesView activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
-              {view === 'drawings' && activeDrawing && <DrawingsView activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
-              {view === 'flowchart' && activeFlowchart && <FlowchartView activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
+              {view === 'erd' && (
+                <ImportSQLModal 
+                  isOpen={isImportModalOpen}
+                  onOpenChange={setIsImportModalOpen}
+                  onImport={(newNodes, newEdges) => {
+                    takeSnapshot(nodes, edges);
+                    
+                    // Handle duplicate names during import
+                    const processedNodes = [...newNodes];
+                    const existingNames = nodes.map(n => n.data.name.toLowerCase());
+                    
+                    processedNodes.forEach(newNode => {
+                      let originalName = newNode.data.name;
+                      let name = originalName;
+                      let counter = 1;
+                      
+                      // Check against existing nodes OR nodes already processed in this import
+                      while (
+                        existingNames.includes(name.toLowerCase()) || 
+                        processedNodes.some(pn => pn !== newNode && pn.data.name.toLowerCase() === name.toLowerCase())
+                      ) {
+                        name = `${originalName}_imported_${counter}`;
+                        counter++;
+                      }
+                      
+                      if (name !== originalName) {
+                        newNode.data.name = name;
+                      }
+                    });
+
+                    setNodes(nds => [...nds, ...processedNodes]);
+                    setEdges(eds => [...eds, ...newEdges]);
+                  }}
+                />
+              )}
+              {view === 'notes' && activeNote && <NotesView isLoading={isNotesLoading} activeNoteId={isPublicView ? null : activeNoteId} activeNote={activeNote} saveNote={saveNote} handleNoteChange={handleNoteChange} deleteNote={deleteNote} isReadOnly={isPublicView} />}
+              {view === 'drawings' && activeDrawing && <DrawingsView isLoading={isDrawingsLoading} activeDrawingId={isPublicView ? null : activeDrawingId} activeDrawing={activeDrawing} saveDrawing={saveDrawing} handleDrawingChange={handleDrawingChange} deleteDrawing={deleteDrawing} isReadOnly={isPublicView} />}
+              {view === 'flowchart' && activeFlowchart && <FlowchartView isLoading={isFlowchartsLoading} activeFlowchartId={activeFlowchartId} activeFlowchart={activeFlowchart} handleFlowchartChange={handleFlowchartChange} isReadOnly={isPublicView} />}
               {view === 'changelog' && <ChangelogView />}
             </>
           )}
@@ -453,16 +575,17 @@ function AppContent() {
             <TrashView 
               trashData={trashData} 
               restoreProject={async (id) => { await restoreProject(id); fetchTrash(); fetchProjects(); }} 
-              restoreFile={async (id) => { await restoreFile(id); fetchTrash(); fetchFiles(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
+              restoreDiagram={async (id) => { await restoreDiagram(id); fetchTrash(); fetchDiagrams(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
               restoreNote={async (id) => { await restoreNote(id); fetchTrash(); fetchNotes(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
               restoreDrawing={async (id) => { await restoreDrawing(id); fetchTrash(); fetchDrawings(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
               restoreFlowchart={async (id) => { await restoreFlowchart(id); fetchTrash(); fetchFlowcharts(false, activeProjectId === null ? 'all' : activeProjectId, debouncedSearchQuery); }} 
               fetchTrash={fetchTrash} 
               handleProjectPermanentDelete={id => { setItemToDelete({ id, type: 'project' }); setIsPermanentDeleteConfirmOpen(true); }} 
-              handleFilePermanentDelete={id => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); }} 
+              handleDiagramPermanentDelete={id => { setItemToDelete({ id, type: 'erd' }); setIsPermanentDeleteConfirmOpen(true); }} 
               handleNotePermanentDelete={id => { setItemToDelete({ id, type: 'notes' }); setIsPermanentDeleteConfirmOpen(true); }} 
               handleDrawingPermanentDelete={id => { setItemToDelete({ id, type: 'drawings' }); setIsPermanentDeleteConfirmOpen(true); }} 
               handleFlowchartPermanentDelete={id => { setItemToDelete({ id, type: 'flowchart' as any }); setIsPermanentDeleteConfirmOpen(true); }} 
+              isLoading={isTrashLoading}
             />
           )}
         </div>

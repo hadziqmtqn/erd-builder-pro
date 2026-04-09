@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus';
+import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import ImageResize from 'tiptap-extension-resize-image';
@@ -12,10 +12,9 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { TableRow } from '@tiptap/extension-table-row';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
+import TiptapLink from '@tiptap/extension-link';
+
 import { 
-  Heading1, 
-  Heading2, 
-  List, 
   Check, 
   ChevronRight, 
   ChevronDown, 
@@ -26,16 +25,33 @@ import {
   Share2,
   X, 
   PanelRight, 
-  ChevronFirst 
+  ChevronFirst,
+  Bold,
+  Italic,
+  Strikethrough,
+  Pilcrow,
+  Link,
+  Palette,
+  Code2
 } from 'lucide-react';
+
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogBody,
+} from "@/components/ui/dialog";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
 
-const MenuBar = ({ editor }: { editor: any }) => {
+const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: () => void }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!editor) {
@@ -101,6 +117,9 @@ const MenuBar = ({ editor }: { editor: any }) => {
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
         Code
       </button>
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
+        Code Block
+      </button>
       
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
@@ -112,7 +131,12 @@ const MenuBar = ({ editor }: { editor: any }) => {
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
+          <button className={cn(
+            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+            editor.isActive('heading') 
+              ? 'bg-primary text-primary-foreground shadow-sm' 
+              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
+          )}>
             Heading
           </button>
         </DropdownMenu.Trigger>
@@ -133,7 +157,12 @@ const MenuBar = ({ editor }: { editor: any }) => {
       
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
+          <button className={cn(
+            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+            (editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList'))
+              ? 'bg-primary text-primary-foreground shadow-sm' 
+              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
+          )}>
             List
           </button>
         </DropdownMenu.Trigger>
@@ -153,7 +182,12 @@ const MenuBar = ({ editor }: { editor: any }) => {
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
+          <button className={cn(
+            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+            editor.isActive('table')
+              ? 'bg-primary text-primary-foreground shadow-sm' 
+              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
+          )}>
             Table Controls
           </button>
         </DropdownMenu.Trigger>
@@ -181,6 +215,28 @@ const MenuBar = ({ editor }: { editor: any }) => {
         onChange={handleImageUpload} 
         className="hidden" 
       />
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+      <button 
+        type="button" 
+        onPointerDown={(e) => e.preventDefault()} 
+        onClick={onOpenLinkDialog} 
+        className={cn(toggleClass(editor.isActive('link')), "whitespace-nowrap")}
+      >
+        Link
+      </button>
+
+      {editor.isActive('link') && (
+        <button 
+          type="button" 
+          onPointerDown={(e) => e.preventDefault()} 
+          onClick={() => editor.chain().focus().unsetLink().run()} 
+          className={cn(toggleClass(false), "text-destructive hover:bg-destructive/10 whitespace-nowrap")}
+        >
+          Unlink
+        </button>
+      )}
 
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
@@ -246,12 +302,17 @@ const TrailingNode = Extension.create({
 
 export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
+  const [linkUrl, setLinkUrl] = React.useState('');
+  const [selectionVersion, setSelectionVersion] = React.useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const extensions = React.useMemo(() => [
     TextStyle,
     Color,
-    StarterKit,
+    StarterKit.configure({
+      link: false,
+    }),
     TrailingNode,
     ImageResize.configure({
       inline: false,
@@ -268,6 +329,12 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     TableCell,
     Placeholder.configure({
       placeholder: 'Write something awesome...',
+    }),
+    TiptapLink.configure({
+      openOnClick: false,
+      HTMLAttributes: {
+        class: 'text-primary underline cursor-pointer',
+      },
     }),
   ], []);
 
@@ -287,15 +354,24 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           extracted.push({
             text: node.textContent,
             level: node.attrs.level,
-            pos: pos + 1 // Add 1 to pos to focus correctly
+            pos: pos + 1
           });
         }
       });
       setHeadings(extracted);
     },
+    onSelectionUpdate() {
+      setSelectionVersion(v => v + 1);
+    },
+    onFocus() {
+      setSelectionVersion(v => v + 1);
+    },
+    onBlur() {
+      setSelectionVersion(v => v + 1);
+    },
     editorProps: {
       attributes: {
-        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto',
+        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
       },
     },
   });
@@ -321,6 +397,26 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     }
   }, [content, editor]);
 
+  const openLinkDialog = () => {
+    if (editor) {
+      const previousUrl = editor.getAttributes('link').href || '';
+      setLinkUrl(previousUrl);
+      setIsLinkDialogOpen(true);
+    }
+  };
+
+  const handleLinkSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editor) {
+      if (linkUrl === '') {
+        editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      } else {
+        editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run();
+      }
+      setIsLinkDialogOpen(false);
+    }
+  };
+
   const scrollToHeading = (pos: number) => {
     if (editor) {
       editor.commands.focus(pos);
@@ -342,14 +438,14 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       {!isReadOnly && (
         <div className="flex-none bg-card border-b border-border p-2 z-10 shadow-sm">
           <div className="max-w-4xl mx-auto">
-            <MenuBar editor={editor} />
+            <MenuBar editor={editor} onOpenLinkDialog={openLinkDialog} />
           </div>
         </div>
       )}
 
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-0 sm:px-6 md:px-24"
+        className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-4 sm:px-6 md:px-24"
       >
         <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative group/outline-ctx">
           
@@ -381,11 +477,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                               "pl-4 opacity-60"
                             )}
                           >
-                            {/* Vertical indicator for H1 */}
-                            {heading.level === 1 && (
-                              <div className="absolute left-[-0.6rem] top-1/2 -translate-y-1/2 w-[2px] h-3 bg-yellow-500 group-hover/item:bg-yellow-400 transition-colors" />
-                            )}
-                            
                             <span className="block truncate transition-all duration-200 group-hover/item:translate-x-0.5">
                               {heading.text}
                             </span>
@@ -404,129 +495,158 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           </div>
 
           {editor && !isReadOnly && (
-            <>
-              <BubbleMenu 
-                editor={editor} 
-                pluginKey="textMenu"
-                shouldShow={({ from, to }) => from !== to}
-                {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
-                className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
+            <BubbleMenu 
+              editor={editor} 
+              pluginKey="textMenu"
+              shouldShow={({ editor, view, state, from, to }) => {
+                return editor.isFocused && editor.isEditable && !state.selection.empty;
+              }}
+              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
+              className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
+            >
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().setParagraph().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Paragraph"
               >
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().setParagraph().run()}
-                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                >
-                  Paragraph
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().toggleBold().run()}
-                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                >
-                  Bold
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().toggleItalic().run()}
-                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                >
-                  Italic
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.preventDefault()}
-                  onClick={() => editor.chain().focus().toggleStrike().run()}
-                  className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                >
-                  Strike
-                </button>
+                <Pilcrow className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Bold"
+              >
+                <Bold className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Italic"
+              >
+                <Italic className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleStrike().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Strike"
+              >
+                <Strikethrough className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('codeBlock') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+                title="Code Block"
+              >
+                <Code2 className="w-4 h-4" />
+              </button>
 
-                <DropdownMenu.Root modal={false}>
-                  <DropdownMenu.Trigger asChild>
-                    <button className="px-3 py-1 text-sm font-medium rounded-sm transition-colors hover:bg-accent text-popover-foreground flex items-center gap-1">
-                      Color
-                    </button>
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
-                    <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Colors</div>
-                    {[
-                      { name: 'Default', value: '' },
-                      { name: 'Indigo', value: '#6366f1' },
-                      { name: 'Purple', value: '#8b5cf6' },
-                      { name: 'Pink', value: '#ec4899' },
-                      { name: 'Blue', value: '#3b82f6' },
-                      { name: 'Green', value: '#10b981' },
-                      { name: 'Orange', value: '#f59e0b' },
-                      { name: 'Red', value: '#ef4444' }
-                    ].map(({ name, value }) => {
-                      const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
-                      return (
-                        <DropdownMenu.Item 
-                          key={name}
-                          onSelect={() => {
-                            if (value) {
-                              editor.chain().focus().setColor(value).run();
-                            } else {
-                              editor.chain().focus().unsetColor().run();
-                            }
-                          }}
-                          className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
+              <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
+
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={openLinkDialog}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('link') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground text-primary'}`}
+                title="Link"
+              >
+                <Link className="w-4 h-4" />
+              </button>
+
+              <DropdownMenu.Root modal={false}>
+                <DropdownMenu.Trigger asChild>
+                  <button className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground" title="Color">
+                    <Palette className="w-4 h-4" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
+                  <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Colors</div>
+                  {[
+                    { name: 'Default', value: '' },
+                    { name: 'Indigo', value: '#6366f1' },
+                    { name: 'Purple', value: '#8b5cf6' },
+                    { name: 'Pink', value: '#ec4899' },
+                    { name: 'Blue', value: '#3b82f6' },
+                    { name: 'Green', value: '#10b981' },
+                    { name: 'Orange', value: '#f59e0b' },
+                    { name: 'Red', value: '#ef4444' }
+                  ].map(({ name, value }) => {
+                    const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
+                    return (
+                      <DropdownMenu.Item 
+                        key={name}
+                        onSelect={() => {
+                          if (value) {
+                            editor.chain().focus().setColor(value).run();
+                          } else {
+                            editor.chain().focus().unsetColor().run();
+                          }
+                        }}
+                        className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
+                      >
+                        <div 
+                          className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
+                          style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
                         >
-                          <div 
-                            className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
-                            style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
-                          >
-                            {!value && <span className="text-foreground">A</span>}
-                          </div>
-                          <span className="flex-1">{name}</span>
-                          {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
-                        </DropdownMenu.Item>
-                      );
-                    })}
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
-              </BubbleMenu>
-
-              <FloatingMenu editor={editor} {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)}>
-                <div className="flex gap-1 p-1 bg-[#1a1a24] border border-white/10 rounded-xl shadow-2xl backdrop-blur-xl">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('heading', { level: 1 }) ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
-                  >
-                    <Heading1 className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('heading', { level: 2 }) ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
-                  >
-                    <Heading2 className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => editor.chain().focus().toggleBulletList().run()}
-                    className={`h-8 w-8 p-0 hover:bg-white/5 ${editor.isActive('bulletList') ? 'text-yellow-500 bg-yellow-500/10' : 'text-muted-foreground'}`}
-                  >
-                    <List className="w-4 h-4" />
-                  </Button>
-                </div>
-              </FloatingMenu>
-            </>
+                          {!value && <span className="text-foreground">A</span>}
+                        </div>
+                        <span className="flex-1">{name}</span>
+                        {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
+                      </DropdownMenu.Item>
+                    );
+                  })}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </BubbleMenu>
           )}
 
-          <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor">
+          <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor prose-code:before:content-none prose-code:after:content-none prose-blockquote:before:content-none prose-blockquote:after:content-none">
             <EditorContent editor={editor} />
           </div>
         </div>
       </div>
+
+      <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Link</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleLinkSubmit}>
+            <DialogBody>
+              <div className="grid gap-4 py-2">
+                <div className="space-y-2">
+                  <label htmlFor="url" className="text-sm font-medium">URL</label>
+                  <Input
+                    id="url"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsLinkDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

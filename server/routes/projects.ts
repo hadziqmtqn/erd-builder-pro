@@ -13,8 +13,18 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
   let query = supabase
     .from("projects")
-    .select("*", { count: 'exact' })
-    .eq("is_deleted", false);
+    .select(`
+      *,
+      diagrams(count),
+      notes(count),
+      drawings(count),
+      flowcharts(count)
+    `, { count: 'exact' })
+    .eq("is_deleted", false)
+    .eq("diagrams.is_deleted", false)
+    .eq("notes.is_deleted", false)
+    .eq("drawings.is_deleted", false)
+    .eq("flowcharts.is_deleted", false);
 
   if (q && q.trim()) {
     query = query.ilike("name", `%${q.trim()}%`);
@@ -26,8 +36,26 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
   if (error) return handleError(res, error, "Supabase error fetching projects");
   
-  // Safety slice to ensure we don't exceed the limit
-  const slicedData = (data || []).slice(0, limit);
+  // Aggregate counts into individual properties and a single total files_count
+  const projectsWithCounts = (data || []).map((project: any) => {
+    const diagramsCount = (project.diagrams?.[0]?.count || 0);
+    const notesCount = (project.notes?.[0]?.count || 0);
+    const drawingsCount = (project.drawings?.[0]?.count || 0);
+    const flowchartsCount = (project.flowcharts?.[0]?.count || 0);
+    
+    // Create a clean object for the frontend
+    const { diagrams, notes, drawings, flowcharts, ...rest } = project;
+    return {
+      ...rest,
+      files_count: diagramsCount + notesCount + drawingsCount + flowchartsCount,
+      diagrams_count: diagramsCount,
+      notes_count: notesCount,
+      drawings_count: drawingsCount,
+      flowcharts_count: flowchartsCount
+    };
+  });
+  
+  const slicedData = projectsWithCounts.slice(0, limit);
   
   res.json({ 
     data: slicedData, 
@@ -59,22 +87,54 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const projectId = req.params.id;
+  const update = getSafeUpdate(true);
+  
   const { error } = await supabase
     .from("projects")
-    .update(getSafeUpdate(true))
-    .eq("id", req.params.id);
+    .update(update)
+    .eq("id", projectId);
 
   if (error) return handleError(res, error, "Failed to delete project");
+
+  // Cascading soft delete
+  try {
+    await Promise.all([
+      supabase.from("diagrams").update(update).eq("project_id", projectId),
+      supabase.from("notes").update(update).eq("project_id", projectId),
+      supabase.from("drawings").update(update).eq("project_id", projectId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+    ]);
+  } catch (err) {
+    console.error("Cascading soft delete failed:", err);
+  }
+
   res.json({ success: true });
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const projectId = req.params.id;
+  const update = getSafeUpdate(false);
+
   const { error } = await supabase
     .from("projects")
-    .update(getSafeUpdate(false))
-    .eq("id", req.params.id);
+    .update(update)
+    .eq("id", projectId);
 
   if (error) return handleError(res, error, "Failed to restore project");
+
+  // Cascading restore
+  try {
+    await Promise.all([
+      supabase.from("diagrams").update(update).eq("project_id", projectId),
+      supabase.from("notes").update(update).eq("project_id", projectId),
+      supabase.from("drawings").update(update).eq("project_id", projectId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+    ]);
+  } catch (err) {
+    console.error("Cascading restore failed:", err);
+  }
+
   res.json({ success: true });
 });
 
@@ -82,18 +142,18 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
   const projectId = req.params.id;
   
   try {
-    const { data: files } = await supabase.from("files").select("id").eq("project_id", projectId);
-    const fileIds = files?.map(f => f.id) || [];
+    const { data: diagrams } = await supabase.from("diagrams").select("id").eq("project_id", projectId);
+    const diagramIds = diagrams?.map(f => f.id) || [];
 
-    if (fileIds.length > 0) {
-      await supabase.from("relationships").delete().in("file_id", fileIds);
-      const { data: entities } = await supabase.from("entities").select("id").in("file_id", fileIds);
+    if (diagramIds.length > 0) {
+      await supabase.from("relationships").delete().in("file_id", diagramIds);
+      const { data: entities } = await supabase.from("entities").select("id").in("file_id", diagramIds);
       const entityIds = entities?.map(e => e.id) || [];
       if (entityIds.length > 0) {
         await supabase.from("columns").delete().in("entity_id", entityIds);
       }
-      await supabase.from("entities").delete().in("file_id", fileIds);
-      await supabase.from("files").delete().in("id", fileIds);
+      await supabase.from("entities").delete().in("file_id", diagramIds);
+      await supabase.from("diagrams").delete().in("id", diagramIds);
     }
     
     // Delete images from notes before deleting notes

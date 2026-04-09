@@ -10,8 +10,9 @@ import {
   useReactFlow 
 } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Entity, FileData, DraftType } from '../types';
+import { Entity, Diagram, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { useUndoRedo } from './useUndoRedo';
 
 export function useERDSession(
   isPublicView: boolean,
@@ -20,31 +21,55 @@ export function useERDSession(
   setView: (view: any) => void
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
+  
+  // Ref for previous edges to avoid redundant node updates
+  const lastEdgesHash = useRef<string>("");
+
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const { setViewport } = useReactFlow();
+  
+  // Undo/Redo Hook
+  const { takeSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo();
 
-  const handleFileSelect = async (id: number | string, setActiveFileId: (id: any) => void) => {
+  const handleUndo = useCallback(() => {
+    const prev = undo(nodes, edges);
+    if (prev) {
+      setNodes(prev.nodes);
+      setEdges(prev.edges);
+    }
+  }, [undo, nodes, edges, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    const next = redo(nodes, edges);
+    if (next) {
+      setNodes(next.nodes);
+      setEdges(next.edges);
+    }
+  }, [redo, nodes, edges, setNodes, setEdges]);
+
+  const handleDiagramSelect = async (id: number | string, setActiveDiagramId: (id: any) => void) => {
     try {
-      const draft = await localPersistence.getDraft(DraftType.ERD, id);
-      let data: FileData;
+      const draft = await localPersistence.getDraft(DraftType.DIAGRAM, id);
+      let data: Diagram;
 
       if (isGuest) {
         const localData = await localPersistence.getResource(id);
         if (!localData) return;
         data = localData;
       } else {
-        const res = await fetch(`/api/files/${id}`);
+        const res = await fetch(`/api/diagrams/${id}`);
         if (res.status === 401) return;
         data = await res.json();
       }
       
       if (data.is_deleted) return;
 
-      setActiveFileId(id);
+      setActiveDiagramId(id);
       setView('erd');
+      clearHistory();
 
       let finalData = data;
       if (draft && draft.sync_pending) {
@@ -105,7 +130,7 @@ export function useERDSession(
           targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
           label: r.label,
           type: 'smoothstep',
-          animated: true,
+          animated: false,
         };
       });
 
@@ -144,14 +169,27 @@ export function useERDSession(
       }
     }
 
-    setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', label: '1:N' }, eds));
-  }, [setEdges, isPublicView, nodes]);
+    takeSnapshot(nodes, edges);
+    setEdges((eds) => addEdge({ ...params, animated: false, type: 'smoothstep', label: '1:N' }, eds));
+  }, [setEdges, isPublicView, nodes, takeSnapshot, edges]);
+
+  const getUniqueName = (baseName: string, currentNodes: Node<Entity>[]) => {
+    let name = baseName;
+    let counter = 1;
+    while (currentNodes.some(n => n.data.name.toLowerCase() === name.toLowerCase())) {
+      name = `${baseName}_${counter}`;
+      counter++;
+    }
+    return name;
+  };
 
   const addEntity = () => {
     const id = Math.random().toString(36).substr(2, 9);
+    const uniqueName = getUniqueName('NewTable', nodes);
+    
     const newEntity: Entity = {
       id,
-      name: 'NewTable',
+      name: uniqueName,
       x: Math.random() * 400,
       y: Math.random() * 400,
       color: '#6366f1',
@@ -160,10 +198,25 @@ export function useERDSession(
       ],
     };
     const newNode: Node<Entity> = { id, type: 'entity', position: { x: newEntity.x, y: newEntity.y }, data: newEntity };
+    takeSnapshot(nodes, edges);
     setNodes((nds) => nds.concat(newNode));
   };
 
   const updateEntity = useCallback((updatedEntity: Entity) => {
+    // Check for duplicate name (excluding itself)
+    const nameExists = nodes.some(n => 
+      n.id !== updatedEntity.id && 
+      n.data.name.toLowerCase() === updatedEntity.name.toLowerCase()
+    );
+
+    if (nameExists) {
+      toast.error("Duplicate Table Name", {
+        description: `A table with the name "${updatedEntity.name}" already exists.`,
+      });
+      return;
+    }
+
+    takeSnapshot(nodes, edges);
     setNodes((nds) => {
       const newNodes = nds.map((node) => node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node);
       
@@ -203,24 +256,30 @@ export function useERDSession(
       
       return newNodes;
     });
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, takeSnapshot, nodes, edges]);
 
   const deleteEntity = useCallback((id: string) => {
+    takeSnapshot(nodes, edges);
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
     setSelectedNodeId(null);
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, takeSnapshot, nodes, edges]);
 
   const handleEdgeUpdate = (edgeId: string, label: string) => {
+    takeSnapshot(nodes, edges);
     setEdges((eds) => eds.map((edge) => edge.id === edgeId ? { ...edge, label } : edge));
   };
 
   const deleteEdge = (id: string) => {
+    takeSnapshot(nodes, edges);
     setEdges((eds) => eds.filter((edge) => edge.id !== id));
     setSelectedEdgeId(null);
   };
 
   useEffect(() => {
+    const edgeHash = JSON.stringify(edges.map(e => ({ s: e.source, sh: e.sourceHandle, t: e.target, th: e.targetHandle })));
+    
+    // Only update if edges actually changed their geometry/connection
     setEdges(eds => {
       let isChanged = false;
       const newEds = eds.map(edge => {
@@ -248,7 +307,40 @@ export function useERDSession(
       
       return isChanged ? newEds : eds;
     });
-  }, [nodes, setEdges]);
+
+    // Centralized FK Detection
+    if (edgeHash !== lastEdgesHash.current) {
+      lastEdgesHash.current = edgeHash;
+      
+      setNodes(nds => {
+        const fkMap: Record<string, Set<string>> = {};
+        edges.forEach(e => {
+          if (!fkMap[e.source]) fkMap[e.source] = new Set();
+          const colId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+          if (colId) fkMap[e.source].add(colId);
+        });
+
+        let anyNodeDataChanged = false;
+        const nextNodes = nds.map(node => {
+          const nodeFks = fkMap[node.id] || new Set();
+          const newColumns = node.data.columns.map(col => ({
+            ...col,
+            _is_fk: nodeFks.has(col.id)
+          }));
+
+          // Check if FK status actually changed for this node
+          const hasChanged = JSON.stringify(newColumns) !== JSON.stringify(node.data.columns);
+          if (hasChanged) {
+            anyNodeDataChanged = true;
+            return { ...node, data: { ...node.data, columns: newColumns } };
+          }
+          return node;
+        });
+
+        return anyNodeDataChanged ? nextNodes : nds;
+      });
+    }
+  }, [nodes, edges, setNodes, setEdges]);
 
   return {
     nodes, setNodes, onNodesChange,
@@ -261,7 +353,12 @@ export function useERDSession(
     deleteEntity,
     handleEdgeUpdate,
     deleteEdge,
-    handleFileSelect,
-    viewportRef
+    handleDiagramSelect,
+    viewportRef,
+    undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
+    takeSnapshot
   };
 }

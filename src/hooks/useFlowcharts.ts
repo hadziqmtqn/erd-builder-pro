@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
   const [activeFlowchartId, setActiveFlowchartId] = useState<number | string | null>(null);
-
+  const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);
@@ -32,6 +32,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const offset = isLoadMore ? flowchartsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -53,6 +54,8 @@ export function useFlowcharts(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error fetching flowcharts:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -259,6 +262,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     deleteFlowchartPermanent,
     hasMoreFlowcharts,
     flowchartsTotal,
-    saveStatus
+    saveStatus,
+    isLoading
   };
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -16,7 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
@@ -24,6 +24,7 @@ import { Flowchart } from '@/types';
 import { AddSymbolModal } from '../flowchart/AddSymbolModal';
 import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
+import { JumpToNode } from '../JumpToNode';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -34,9 +35,24 @@ interface FlowchartViewProps {
   activeFlowchart: Flowchart;
   handleFlowchartChange: (nodes: any[], edges: any[]) => void;
   isReadOnly?: boolean;
+  isLoading?: boolean;
 }
 
-export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowchartChange, isReadOnly = false }: FlowchartViewProps) {
+export const FlowchartView = React.memo(({ 
+  activeFlowchartId, 
+  activeFlowchart, 
+  handleFlowchartChange, 
+  isReadOnly = false,
+  isLoading = false 
+}: FlowchartViewProps) => {
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+      </div>
+    );
+  }
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -88,6 +104,7 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
       type: 'smoothstep',
       style: { stroke: '#b1b1b7' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
+      animated: false,
     } as Edge, eds)),
     [setEdges],
   );
@@ -146,7 +163,7 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
   else if (!selectedEdge?.markerStart && !selectedEdge?.markerEnd) arrowType = 'none';
 
   const handleEdgeTypeChange = (val: string) => {
-    if (val === 'dashed') updateEdgeData({ animated: true, style: { ...selectedEdge?.style, strokeDasharray: '5,5' } });
+    if (val === 'dashed') updateEdgeData({ animated: false, style: { ...selectedEdge?.style, strokeDasharray: '5,5' } });
     else updateEdgeData({ animated: false, style: { ...selectedEdge?.style, strokeDasharray: undefined } });
   };
 
@@ -172,16 +189,44 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
     }
   };
 
+  const memoizedNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId })), [nodes, selectedNodeId]);
+  
+  const memoizedEdges = useMemo(() => edges.map(e => {
+    const isHovered = e.id === hoveredEdgeId;
+    const isSelected = e.id === selectedEdgeId;
+    const active = isHovered || isSelected;
+
+    const baseColor = (e.style?.stroke as string) || '#b1b1b7';
+    const interactiveColor = active ? '#ffffff' : baseColor;
+    const interactiveWidth = active ? 2.5 : 1.5;
+
+    const overrideMarker = (marker: any) => {
+      if (!marker) return undefined;
+      if (typeof marker === 'string') return marker;
+      return { ...marker, color: interactiveColor, width: 14, height: 14 };
+    };
+
+    return {
+      ...e,
+      selected: isSelected,
+      style: { ...e.style, stroke: interactiveColor, strokeWidth: interactiveWidth, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
+      markerEnd: overrideMarker(e.markerEnd),
+      markerStart: overrideMarker(e.markerStart),
+    };
+  }), [edges, hoveredEdgeId, selectedEdgeId]);
+
   return (
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
       
       {/* Top Bar */}
       {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-          <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-            <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Symbol
+          <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
+            <JumpToNode nodes={nodes} />
+            <div className="w-px h-6 bg-border mx-0.5" />
+            <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+              <Plus className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Symbol</span>
             </Button>
           </div>
         </div>
@@ -189,31 +234,8 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
 
       <div className="flex-1 w-full h-full relative">
         <ReactFlow
-          nodes={nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId }))}
-          edges={edges.map(e => {
-            const isHovered = e.id === hoveredEdgeId;
-            const isSelected = e.id === selectedEdgeId;
-            const active = isHovered || isSelected;
-
-            const baseColor = (e.style?.stroke as string) || '#b1b1b7';
-            const interactiveColor = active ? '#ffffff' : baseColor;
-            const interactiveWidth = active ? 2.5 : 1.5;
-
-            const overrideMarker = (marker: any) => {
-              if (!marker) return undefined;
-              if (typeof marker === 'string') return marker;
-              // width: 14, height: 14 yields smaller distinct arrows
-              return { ...marker, color: interactiveColor, width: 14, height: 14 };
-            };
-
-            return {
-              ...e,
-              selected: isSelected,
-              style: { ...e.style, stroke: interactiveColor, strokeWidth: interactiveWidth, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
-              markerEnd: overrideMarker(e.markerEnd),
-              markerStart: overrideMarker(e.markerStart),
-            };
-          })}
+          nodes={memoizedNodes}
+          edges={memoizedEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -267,4 +289,4 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
       )}
     </Card>
   );
-}
+});

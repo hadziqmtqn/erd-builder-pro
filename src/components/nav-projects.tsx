@@ -12,6 +12,8 @@ import {
   Network,
   FolderPlus,
 } from "lucide-react"
+import { Skeleton } from "./ui/skeleton"
+import { Badge } from "./ui/badge"
 
 import {
   DropdownMenu,
@@ -54,7 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-import { FileData, Project, Note, Drawing, Flowchart } from "../types"
+import { Diagram, Project, Note, Drawing, Flowchart } from "../types"
 
 export function NavProjects({
   projects,
@@ -63,49 +65,54 @@ export function NavProjects({
   onProjectDelete,
   onProjectUpdate,
   onProjectCreate,
-  onFileCreate,
+  onDiagramCreate,
   onNoteCreate,
   onDrawingCreate,
   onFlowchartCreate,
-  files,
+  diagrams,
   notes,
   drawings,
   flowcharts,
-  onFileSelect,
+  onDiagramSelect,
   onNoteSelect,
   onDrawingSelect,
   onFlowchartSelect,
-  activeFileId,
+  activeDiagramId,
   activeNoteId,
   activeDrawingId,
   activeFlowchartId,
   view,
   sidebarView,
-  onFileDelete,
+  onDiagramDelete,
   onNoteDelete,
   onDrawingDelete,
   onFlowchartDelete,
-  onFileUpdate,
+  onDiagramUpdate,
   onNoteUpdate,
   onDrawingUpdate,
   onFlowchartUpdate,
-  onMoveFileToProject,
+  onMoveDiagramToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,
   onMoveFlowchartToProject,
   allProjects,
   searchQuery,
   hasMoreProjects,
-  hasMoreFiles,
+  hasMoreDiagrams,
   hasMoreNotes,
   hasMoreDrawings,
   hasMoreFlowcharts,
   onLoadMoreProjects,
-  onLoadMoreFiles,
+  onLoadMoreDiagrams,
   onLoadMoreNotes,
   onLoadMoreDrawings,
   onLoadMoreFlowcharts,
   isOnline,
+  isProjectsLoading,
+  isDiagramsLoading,
+  isNotesLoading,
+  isDrawingsLoading,
+  isFlowchartsLoading,
 }: {
   projects: {
     id: number | string
@@ -113,55 +120,65 @@ export function NavProjects({
     url: string
     icon: any
     isActive: boolean
+    files_count?: number
+    diagrams_count?: number
+    notes_count?: number
+    drawings_count?: number
+    flowcharts_count?: number
   }[]
   activeProjectId: number | string | null
   onProjectSelect: (id: number | string | null) => void
   onProjectDelete: (id: number | string) => void
   onProjectUpdate: (id: number | string, name: string) => void
   onProjectCreate: (name: string) => void
-  onFileCreate: (name: string, projectId: number | string | null) => void
+  onDiagramCreate: (name: string, projectId: number | string | null) => void
   onNoteCreate: (title: string, projectId: number | string | null) => void
   onDrawingCreate: (title: string, projectId: number | string | null) => void
   onFlowchartCreate: (title: string, projectId: number | string | null) => void
-  files: FileData[]
+  diagrams: Diagram[]
   notes: Note[]
   drawings: Drawing[]
   flowcharts: Flowchart[]
-  onFileSelect: (id: number | string) => void
+  onDiagramSelect: (id: number | string) => void
   onNoteSelect: (id: number | string) => void
   onDrawingSelect: (id: number | string) => void
   onFlowchartSelect: (id: number | string) => void
-  activeFileId: number | string | null
+  activeDiagramId: number | string | null
   activeNoteId: number | string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
-  onFileDelete: (id: number | string) => void
+  onDiagramDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
   onDrawingDelete: (id: number | string) => void
   onFlowchartDelete: (id: number | string) => void
-  onFileUpdate: (id: number | string, name: string) => void
+  onDiagramUpdate: (id: number | string, name: string) => void
   onNoteUpdate: (id: number | string, title: string) => void
   onDrawingUpdate: (id: number | string, title: string) => void
   onFlowchartUpdate: (id: number | string, title: string) => void
-  onMoveFileToProject: (fileId: number | string, projectId: number | string | null) => void
+  onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null) => void
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void
   onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null) => void
   allProjects: Project[]
   searchQuery: string
   hasMoreProjects?: boolean
-  hasMoreFiles?: boolean
+  hasMoreDiagrams?: boolean
   hasMoreNotes?: boolean
   hasMoreDrawings?: boolean
   hasMoreFlowcharts?: boolean
   onLoadMoreProjects?: () => void
-  onLoadMoreFiles?: () => void
+  onLoadMoreDiagrams?: () => void
   onLoadMoreNotes?: () => void
   onLoadMoreDrawings?: () => void
   onLoadMoreFlowcharts?: () => void
   isOnline: boolean
+  isProjectsLoading?: boolean
+  isDiagramsLoading?: boolean
+  isNotesLoading?: boolean
+  isDrawingsLoading?: boolean
+  isFlowchartsLoading?: boolean
 }) {
   const { isMobile } = useSidebar()
   
@@ -180,6 +197,8 @@ export function NavProjects({
   
   const [editingFile, setEditingFile] = React.useState<{ id: number | string, name: string, projectId: number | string | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
   const [deletingFile, setDeletingFile] = React.useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [deletingProject, setDeletingProject] = React.useState<{ id: number | string, name: string } | null>(null)
+  const [isProjectDeleteConfirmOpen, setIsProjectDeleteConfirmOpen] = React.useState(false)
 
   const handleCreateProject = () => {
     if (projectName.trim()) {
@@ -193,7 +212,7 @@ export function NavProjects({
     if (fileName.trim()) {
       const projectId = selectedProjectId === "none" ? null : selectedProjectId
       if (sidebarView === 'erd') {
-        onFileCreate(fileName.trim(), projectId)
+        onDiagramCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'notes') {
         onNoteCreate(fileName.trim(), projectId)
       } else if (sidebarView === 'drawings') {
@@ -211,8 +230,8 @@ export function NavProjects({
       const projectId = selectedProjectId === "none" ? null : selectedProjectId
       
       if (editingFile.type === 'erd') {
-        onFileUpdate(editingFile.id, editingFile.name.trim())
-        if (projectId !== editingFile.projectId) onMoveFileToProject(editingFile.id, projectId)
+        onDiagramUpdate(editingFile.id, editingFile.name.trim())
+        if (projectId !== editingFile.projectId) onMoveDiagramToProject(editingFile.id, projectId)
       } else if (editingFile.type === 'notes') {
         onNoteUpdate(editingFile.id, editingFile.name.trim())
         if (projectId !== editingFile.projectId) onMoveNoteToProject(editingFile.id, projectId)
@@ -232,7 +251,7 @@ export function NavProjects({
 
   const handleDeleteConfirm = () => {
     if (deletingFile) {
-      if (deletingFile.type === 'erd') onFileDelete(deletingFile.id)
+      if (deletingFile.type === 'erd') onDiagramDelete(deletingFile.id)
       else if (deletingFile.type === 'notes') onNoteDelete(deletingFile.id)
       else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.id)
       else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.id)
@@ -240,6 +259,20 @@ export function NavProjects({
       setIsDeleteConfirmOpen(false)
       setDeletingFile(null)
     }
+  }
+
+  const getFileCount = (projectId: number | string | null, viewFilter?: string) => {
+    const currentView = viewFilter || sidebarView;
+    const dCount = (diagrams || []).filter(f => !f.is_deleted && (projectId === null || String(f.project_id) === String(projectId)) && (currentView === 'erd')).length
+    const nCount = (notes || []).filter(n => !n.is_deleted && (projectId === null || String(n.project_id) === String(projectId)) && (currentView === 'notes')).length
+    const drCount = (drawings || []).filter(d => !d.is_deleted && (projectId === null || String(d.project_id) === String(projectId)) && (currentView === 'drawings')).length
+    const fCount = (flowcharts || []).filter(f => !f.is_deleted && (projectId === null || String(f.project_id) === String(projectId)) && (currentView === 'flowchart')).length
+    
+    if (currentView === 'erd') return dCount;
+    if (currentView === 'notes') return nCount;
+    if (currentView === 'drawings') return drCount;
+    if (currentView === 'flowchart') return fCount;
+    return dCount + nCount + drCount + fCount;
   }
 
   return (
@@ -267,7 +300,21 @@ export function NavProjects({
             <span>All Project</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        {projects.map((item) => (
+        
+        {isProjectsLoading && (
+          <div className="space-y-2 px-2 py-2">
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          </div>
+        )}
+
+        {!isProjectsLoading && projects.map((item) => (
           <SidebarMenuItem key={item.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               onClick={() => isOnline && onProjectSelect(item.id)} 
@@ -276,6 +323,18 @@ export function NavProjects({
             >
               <item.icon />
               <span>{item.name}</span>
+              <Badge className="ml-auto bg-green-50 text-green-700 hover:bg-green-50 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-950 border-none px-1.5 h-4.5 text-[10px] font-bold">
+                {(() => {
+                  if (item.diagrams_count !== undefined) {
+                    if (sidebarView === 'erd') return item.diagrams_count;
+                    if (sidebarView === 'notes') return item.notes_count || 0;
+                    if (sidebarView === 'drawings') return item.drawings_count || 0;
+                    if (sidebarView === 'flowchart') return item.flowcharts_count || 0;
+                    return item.files_count || 0;
+                  }
+                  return getFileCount(item.id);
+                })()}
+              </Badge>
             </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className={cn("cursor-pointer", !isOnline && "pointer-events-none")}><MoreHorizontal /></SidebarMenuAction>}>
@@ -295,7 +354,14 @@ export function NavProjects({
                   <span>Rename Project</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => onProjectDelete(item.id)}>
+                <DropdownMenuItem 
+                  disabled={!isOnline} 
+                  className="text-destructive focus:text-destructive" 
+                  onClick={() => {
+                    setDeletingProject({ id: item.id, name: item.name })
+                    setIsProjectDeleteConfirmOpen(true)
+                  }}
+                >
                   <Trash2 className="mr-2 size-4" />
                   <span>Delete Project</span>
                 </DropdownMenuItem>
@@ -332,11 +398,25 @@ export function NavProjects({
         </SidebarGroupAction>
       )}
       <SidebarMenu>
-        {sidebarView === 'erd' && (files || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
+        {((sidebarView === 'erd' && isDiagramsLoading) || 
+          (sidebarView === 'notes' && isNotesLoading) || 
+          (sidebarView === 'drawings' && isDrawingsLoading) || 
+          (sidebarView === 'flowchart' && isFlowchartsLoading)) && (
+          <div className="space-y-2 px-2 py-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isDiagramsLoading && sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
           <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
-              isActive={activeFileId === file.id && view === 'erd'}
-              onClick={() => isOnline && onFileSelect(file.id)}
+              isActive={activeDiagramId === file.id && view === 'erd'}
+              onClick={() => isOnline && onDiagramSelect(file.id)}
               className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
             >
               <Database className="size-4" />
@@ -366,7 +446,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
+        {!isNotesLoading && sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
           <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeNoteId === note.id && view === 'notes'}
@@ -400,7 +480,7 @@ export function NavProjects({
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
-        {sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
+        {!isDrawingsLoading && sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
           <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
             <SidebarMenuButton 
               isActive={activeDrawingId === drawing.id && view === 'drawings'}
@@ -470,11 +550,11 @@ export function NavProjects({
           </SidebarMenuItem>
         ))}
 
-        {sidebarView === 'erd' && hasMoreFiles && (
+        {sidebarView === 'erd' && hasMoreDiagrams && (
           <SidebarMenuItem>
             <SidebarMenuButton 
               className="text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={onLoadMoreFiles}
+              onClick={onLoadMoreDiagrams}
             >
               <MoreHorizontal className="size-4" />
               <span>More</span>
@@ -519,7 +599,7 @@ export function NavProjects({
         )}
 
         {searchQuery && (
-          ((sidebarView === 'erd' && files.length === 0) ||
+          ((sidebarView === 'erd' && diagrams.length === 0) ||
            (sidebarView === 'notes' && notes.length === 0) ||
            (sidebarView === 'drawings' && drawings.length === 0) ||
            (sidebarView === 'flowchart' && flowcharts.length === 0)) && (
@@ -675,6 +755,32 @@ export function NavProjects({
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConfirm}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Project Delete Confirmation Dialog */}
+      <Dialog open={isProjectDeleteConfirmOpen} onOpenChange={setIsProjectDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project "{deletingProject?.name}"?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to move this project to the trash?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Moving this project to the trash will also move all its <strong>Diagrams, Notes, Drawings, and Flowcharts</strong> to the trash as well. You can restore them later from the Trash Bin.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProjectDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => {
+              if (deletingProject) {
+                onProjectDelete(deletingProject.id)
+                setIsProjectDeleteConfirmOpen(false)
+                setDeletingProject(null)
+              }
+            }}>Delete Project</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

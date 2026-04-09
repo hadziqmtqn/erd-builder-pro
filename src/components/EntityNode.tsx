@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, Node, useEdges } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
@@ -46,8 +46,6 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
     setShowDeleteConfirm(false);
   };
 
-  const edges = useEdges();
-
   // Eraser.io style colors based on data.color
   const borderColor = data.color;
   const headerBg = `${data.color}20`; // 12% opacity
@@ -59,7 +57,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
       <div 
         className={cn(
           "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform",
-          selected ? "shadow-[0_0_10px_rgba(255,255,255,0.05)]" : "shadow-md"
+          selected && "ring-2 ring-white/10"
         )}
         style={{ borderColor: borderColor }}
       >
@@ -104,8 +102,8 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
 
         {/* Columns */}
         <div className="flex flex-col">
-          {data.columns.map((col, index) => {
-            const isFk = edges.some(e => e.source === data.id && e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') === col.id);
+          {data.columns.map((col: any, index: number) => {
+            const isFk = col._is_fk;
             return (
               <div 
                 key={col.id} 

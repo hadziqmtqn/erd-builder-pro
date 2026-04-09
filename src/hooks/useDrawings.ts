@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingId, setActiveDrawingId] = useState<number | string | null>(null);
-
+  const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);
@@ -32,6 +32,7 @@ export function useDrawings(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const offset = isLoadMore ? drawingsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -53,6 +54,8 @@ export function useDrawings(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error fetching drawings:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -259,6 +262,7 @@ export function useDrawings(isGuest: boolean = false) {
     deleteDrawingPermanent,
     hasMoreDrawings,
     drawingsTotal,
-    saveStatus
+    saveStatus,
+    isLoading
   };
 }

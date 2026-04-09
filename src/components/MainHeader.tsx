@@ -32,7 +32,7 @@ interface MainHeaderProps {
   isOnline: boolean;
 }
 
-export function MainHeader({
+export const MainHeader = React.memo(({
   featureLabel,
   activeProjectName,
   activeFileName,
@@ -45,7 +45,7 @@ export function MainHeader({
   onSettingsSaved,
   isPublicView = false,
   isOnline
-}: MainHeaderProps) {
+}: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
 
   return (
@@ -138,4 +138,4 @@ export function MainHeader({
       </div>
     </header>
   );
-}
+});

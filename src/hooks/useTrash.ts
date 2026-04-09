@@ -1,16 +1,17 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { FileData, Note, Drawing, Flowchart, Project } from '../types';
+import { Diagram, Note, Drawing, Flowchart, Project } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 
 export function useTrash(isGuest: boolean = false) {
   const [trashData, setTrashData] = useState<{
-    files: FileData[];
+    diagrams: Diagram[];
     notes: Note[];
     drawings: Drawing[];
     flowcharts: Flowchart[];
     projects: Project[];
-  }>({ files: [], notes: [], drawings: [], flowcharts: [], projects: [] });
+  }>({ diagrams: [], notes: [], drawings: [], flowcharts: [], projects: [] });
+  const [isLoading, setIsLoading] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     if (isGuest) {
@@ -26,7 +27,7 @@ export function useTrash(isGuest: boolean = false) {
         const filterDeleted = (list: any[]) => list.filter(item => item.is_deleted);
         
         setTrashData({
-          files: filterDeleted(files),
+          diagrams: filterDeleted(files),
           notes: filterDeleted(notes),
           drawings: filterDeleted(drawings),
           flowcharts: filterDeleted(flowchart),
@@ -38,12 +39,13 @@ export function useTrash(isGuest: boolean = false) {
       return;
     }
 
+    setIsLoading(true);
     try {
       const res = await fetch('/api/trash');
       if (res.ok) {
         const data = await res.json();
         const sortedData = {
-          files: Array.isArray(data.files) ? data.files.sort((a: any, b: any) => b.id - a.id) : [],
+          diagrams: Array.isArray(data.diagrams) ? data.diagrams.sort((a: any, b: any) => b.id - a.id) : [],
           notes: Array.isArray(data.notes) ? data.notes.sort((a: any, b: any) => b.id - a.id) : [],
           drawings: Array.isArray(data.drawings) ? data.drawings.sort((a: any, b: any) => b.id - a.id) : [],
           flowcharts: Array.isArray(data.flowcharts) ? data.flowcharts.sort((a: any, b: any) => b.id - a.id) : [],
@@ -53,6 +55,8 @@ export function useTrash(isGuest: boolean = false) {
       }
     } catch (err) {
       console.error('Error fetching trash:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -123,6 +127,7 @@ export function useTrash(isGuest: boolean = false) {
     fetchTrash,
     restoreNote,
     restoreDrawing,
-    restoreFlowchart
+    restoreFlowchart,
+    isLoading
   };
 }
