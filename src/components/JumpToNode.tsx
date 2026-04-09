@@ -21,7 +21,7 @@ interface JumpToNodeProps {
 }
 
 export function JumpToNode({ nodes, className }: JumpToNodeProps) {
-  const { setCenter } = useReactFlow();
+  const { fitView } = useReactFlow();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -58,14 +58,20 @@ export function JumpToNode({ nodes, className }: JumpToNodeProps) {
     setOpen(false);
     setSearch('');
 
-    // Small delay to ensure the dropdown menu closure doesn't interfere
-    // with the React Flow viewport manipulation.
+    // Use fitView with a tiny timeout to ensure the UI has updated (dropdown closed)
+    // and the viewport is ready for manipulation.
     const x = node.position.x + (node.measured?.width ?? 200) / 2;
     const y = node.position.y + (node.measured?.height ?? 100) / 2;
 
     setTimeout(() => {
-      setCenter(x, y, { zoom: 1.2 });
-    }, 50);
+      fitView({ 
+        nodes: [{ id: node.id }], 
+        duration: 0, // Instant as requested
+        padding: 1.5,
+        minZoom: 1.2,
+        maxZoom: 1.2
+      });
+    }, 100);
   };
 
   return (
@@ -116,7 +122,7 @@ export function JumpToNode({ nodes, className }: JumpToNodeProps) {
                 return (
                   <DropdownMenuItem 
                     key={node.id} 
-                    onSelect={() => handleJump(node)}
+                    onClick={() => handleJump(node)}
                     className="flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors focus:bg-accent focus:text-accent-foreground rounded-lg mx-1"
                   >
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (node.data as any).color || '#8b5cf6' }} />
