@@ -140,20 +140,11 @@ export const ERDView = React.memo(({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleExportPDF('dark')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
                     <FileText size={14} className="text-red-400" />
-                    As PDF (Dark)
+                    As PDF
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportPDF('light')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <FileText size={14} className="text-orange-400" />
-                    As PDF (Light)
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleExportImage('dark')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
                     <ImageIcon size={14} className="text-purple-400" />
-                    As Image (Dark)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportImage('light')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <ImageIcon size={14} className="text-pink-400" />
-                    As Image (Light)
+                    As Image
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>

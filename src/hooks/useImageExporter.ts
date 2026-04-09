@@ -24,12 +24,11 @@ export function useImageExporter() {
           return;
         }
 
-        const isLight = exportTheme === 'light';
         const isPdf = format === 'pdf';
         
-        // Final export colors
-        const bgColor = isLight ? '#ffffff' : '#09090b';
-        const edgeColor = isLight ? '#475569' : '#f8fafc';
+        // Final export colors (Dark Mode Only)
+        const bgColor = '#09090b';
+        const edgeColor = '#f8fafc';
 
         // 1. Calculate Workspace Bounds (Pixel-Perfect)
         const bounds = getNodesBounds(nodes);
@@ -54,15 +53,15 @@ export function useImageExporter() {
             const clonedViewport = clonedDoc.querySelector('.react-flow__viewport') as HTMLElement;
             if (!clonedViewport) return;
 
-            // Apply Theme and Variables directly to the clone
-            clonedViewport.classList.remove('dark', 'xy-theme-dark');
-            clonedViewport.classList.add(isLight ? 'light' : 'dark', isLight ? 'xy-theme-light' : 'xy-theme-dark');
+            // Apply Dark Theme and Variables directly to the clone
+            clonedViewport.classList.remove('light', 'xy-theme-light');
+            clonedViewport.classList.add('dark', 'xy-theme-dark');
 
             // Force CSS Variables for Edges (Preserves visibility)
             clonedViewport.style.setProperty('--xy-edge-stroke', edgeColor);
             clonedViewport.style.setProperty('--xy-edge-stroke-selected', edgeColor);
-            clonedViewport.style.setProperty('--xy-node-background-color', isLight ? '#ffffff' : '#111827');
-            clonedViewport.style.setProperty('--xy-node-border-default', `2px solid ${isLight ? '#cbd5e1' : '#334155'}`);
+            clonedViewport.style.setProperty('--xy-node-background-color', '#111827');
+            clonedViewport.style.setProperty('--xy-node-border-default', '2px solid #334155');
 
             // Inject Custom Styling
             const style = clonedDoc.createElement('style');
@@ -80,17 +79,9 @@ export function useImageExporter() {
               
               .erd-node-container { 
                 box-shadow: none !important; 
-                background-color: ${isLight ? '#ffffff' : '#111827'} !important;
-                border: 2px solid ${isLight ? '#cbd5e1' : '#334155'} !important;
+                background-color: #111827 !important;
+                border: 2px solid #334155 !important;
               }
-
-              ${isLight ? `
-                .erd-node-container * { color: #0f172a !important; }
-                .erd-node-container .text-white\\/50, .erd-node-container .text-white\\/80 { color: #64748b !important; }
-                .erd-node-container .text-indigo-400 { color: #4338ca !important; }
-                .erd-node-container .text-pink-400 { color: #be185d !important; }
-                .erd-node-container .text-amber-400 { color: #b45309 !important; }
-              ` : ''}
             `;
             clonedDoc.body.appendChild(style);
 
@@ -125,10 +116,10 @@ export function useImageExporter() {
           });
 
           pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-          pdf.save(`${fileName.replace(/\s+/g, '_').toLowerCase()}_${exportTheme}.pdf`);
+          pdf.save(`${fileName.replace(/\s+/g, '_').toLowerCase()}.pdf`);
         } else {
           const link = document.createElement('a');
-          link.download = `${fileName.replace(/\s+/g, '_').toLowerCase()}_${exportTheme}.png`;
+          link.download = `${fileName.replace(/\s+/g, '_').toLowerCase()}.png`;
           link.href = dataUrl;
           link.click();
         }
