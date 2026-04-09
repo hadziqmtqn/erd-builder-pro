@@ -126,7 +126,7 @@ export function useERDSession(
           targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
           label: r.label,
           type: 'smoothstep',
-          animated: true,
+          animated: false,
         };
       });
 
@@ -166,7 +166,7 @@ export function useERDSession(
     }
 
     takeSnapshot(nodes, edges);
-    setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', label: '1:N' }, eds));
+    setEdges((eds) => addEdge({ ...params, animated: false, type: 'smoothstep', label: '1:N' }, eds));
   }, [setEdges, isPublicView, nodes, takeSnapshot, edges]);
 
   const getUniqueName = (baseName: string, currentNodes: Node<Entity>[]) => {

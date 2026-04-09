@@ -207,7 +207,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
                 targetHandle: `col-${tCol.id}-target`,
                 label: '1:N',
                 type: 'smoothstep',
-                animated: true
+                animated: false
             });
         }
     }

@@ -89,6 +89,7 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
       type: 'smoothstep',
       style: { stroke: '#b1b1b7' },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
+      animated: false,
     } as Edge, eds)),
     [setEdges],
   );
@@ -147,7 +148,7 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
   else if (!selectedEdge?.markerStart && !selectedEdge?.markerEnd) arrowType = 'none';
 
   const handleEdgeTypeChange = (val: string) => {
-    if (val === 'dashed') updateEdgeData({ animated: true, style: { ...selectedEdge?.style, strokeDasharray: '5,5' } });
+    if (val === 'dashed') updateEdgeData({ animated: false, style: { ...selectedEdge?.style, strokeDasharray: '5,5' } });
     else updateEdgeData({ animated: false, style: { ...selectedEdge?.style, strokeDasharray: undefined } });
   };
 
