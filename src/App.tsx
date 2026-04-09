@@ -503,10 +503,6 @@ function AppContent() {
                     const target = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
                     if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
-                  handleExportImage={(format) => {
-                    const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
-                    handleExportImage(format, targetName);
-                  }}
                   handleExportPDF={() => {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
                     handleExportPDF(targetName);

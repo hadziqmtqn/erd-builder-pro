@@ -45,7 +45,6 @@ interface ERDViewProps {
   openImportModal: () => void;
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
 
-  handleExportImage: (format: 'png' | 'svg') => void;
   handleExportPDF: () => void;
   isReadOnly?: boolean;
 
@@ -56,6 +55,8 @@ interface ERDViewProps {
   takeSnapshot?: (nodes: Node<Entity>[], edges: Edge[]) => void;
 }
 
+
+import { JumpToNode } from '../JumpToNode';
 
 export function ERDView({
   nodes,
@@ -71,7 +72,6 @@ export function ERDView({
   openImportModal,
   handleExportSQL,
 
-  handleExportImage,
   handleExportPDF,
   isReadOnly = false,
 
@@ -86,18 +86,57 @@ export function ERDView({
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20">
        {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-          <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-            <Button onClick={addEntity} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Table
+          <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
+            <JumpToNode nodes={nodes} />
+            
+            <div className="w-px h-6 bg-border mx-0.5" />
+            
+            <Button onClick={addEntity} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+              <Plus className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Table</span>
             </Button>
-            <Button onClick={openImportModal} variant="outline" size="sm" className="h-9 px-4 font-bold text-muted-foreground border-border/50 hover:bg-muted/50">
-              <Upload className="w-4 h-4 mr-2" />
-              Import SQL
+            
+            <Button onClick={openImportModal} variant="outline" size="sm" className="h-9 px-3 sm:px-4 font-bold text-muted-foreground border-border/50 hover:bg-muted/50">
+              <Upload className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Import SQL</span>
             </Button>
-            <div className="w-px h-6 bg-border mx-1" />
 
-            <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button variant="ghost" size="sm" className="h-9 px-3 sm:px-4 font-bold text-muted-foreground hover:text-foreground">
+                  <Download className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Export</span>
+                  <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
+                </Button>
+              } />
+              <DropdownMenuContent align="end" className="w-48 p-1">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleExportSQL('postgresql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <Database size={14} className="text-blue-400" />
+                    To PostgreSQL
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportSQL('mysql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <Database size={14} className="text-orange-400" />
+                    To MySQL
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">Visual Format</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleExportPDF()} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
+                    <FileText size={14} className="text-red-400" />
+                    As PDF Document
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="w-px h-6 bg-border mx-0.5" />
+
+            <div className="flex items-center gap-0.5 ml-auto">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -119,49 +158,6 @@ export function ERDView({
                 <Redo2 className="w-4 h-4" />
               </Button>
             </div>
-            <div className="w-px h-6 bg-border mx-1" />
-            <DropdownMenu>
-
-              <DropdownMenuTrigger render={
-                <Button variant="ghost" size="sm" className="h-9 px-4 font-bold text-muted-foreground hover:text-foreground">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export
-                  <ChevronDown className="w-3 h-3 ml-1" />
-                </Button>
-              } />
-              <DropdownMenuContent align="end" className="w-48 p-1">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExportSQL('postgresql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <Database size={14} className="text-blue-400" />
-                    To PostgreSQL
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportSQL('mysql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <Database size={14} className="text-orange-400" />
-                    To MySQL
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">Visual Format</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExportImage('png')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <ImageIcon size={14} className="text-emerald-400" />
-                    As PNG Image
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportImage('svg')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <FileCode size={14} className="text-purple-400" />
-                    As SVG Vector
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportPDF()} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <FileText size={14} className="text-red-400" />
-                    As PDF Document
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-
-            </DropdownMenu>
           </div>
         </div>
       )}

@@ -24,6 +24,7 @@ import { Flowchart } from '@/types';
 import { AddSymbolModal } from '../flowchart/AddSymbolModal';
 import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
+import { JumpToNode } from '../JumpToNode';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -178,10 +179,12 @@ export function FlowchartView({ activeFlowchartId, activeFlowchart, handleFlowch
       {/* Top Bar */}
       {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
-          <div className="flex items-center gap-2 p-1.5 bg-background border border-border/50 rounded-2xl shadow-2xl pointer-events-auto">
-            <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Symbol
+          <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
+            <JumpToNode nodes={nodes} />
+            <div className="w-px h-6 bg-border mx-0.5" />
+            <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+              <Plus className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Symbol</span>
             </Button>
           </div>
         </div>
