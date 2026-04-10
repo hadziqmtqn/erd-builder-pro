@@ -20,39 +20,43 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-type ExportFormat = 'pdf' | 'markdown' | 'word';
+type ExportFormat = 'pdf' | 'markdown' | 'word' | 'print';
 
 interface ExportNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat) => void;
+  onExport: (format: ExportFormat, options: any, pageSize: any) => void;
 }
 
 export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalProps) => {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('markdown');
   const [options, setOptions] = useState({
-    includeEmbedded: false,
+    includeTitle: true,
+    includeMetadata: true,
     includeOutline: false,
+    preserveFormatting: true,
+    includeEmbedded: false,
     hideEmpty: true,
     showTypeLabels: false
   });
   const [pageSize, setPageSize] = useState<'a4' | 'letter'>('a4');
 
   const handleExport = () => {
-    if (selectedFormat === 'markdown') {
-      onExport('markdown');
+    if (selectedFormat === 'markdown' || selectedFormat === 'pdf' || selectedFormat === 'print') {
+      onExport(selectedFormat, options, pageSize);
       onClose();
     } else {
-      toast.info(`${selectedFormat === 'word' ? 'Microsoft Word' : selectedFormat.toUpperCase()} export is coming soon!`, {
-        description: "Currently, we only support Markdown export.",
+      toast.info(`${selectedFormat === 'word' ? 'Microsoft Word' : String(selectedFormat).toUpperCase()} export is coming soon!`, {
+        description: "Currently, we only support Markdown and PDF export.",
         duration: 4000
       });
     }
   };
 
   const formats = [
-    { id: 'pdf', label: 'PDF', icon: FileText, color: 'text-red-400' },
     { id: 'markdown', label: 'Markdown', icon: FileEdit, color: 'text-indigo-400' },
+    { id: 'pdf', label: 'PDF (Compact)', icon: FileBox, color: 'text-red-400' },
+    { id: 'print', label: 'High Quality (Print)', icon: FileText, color: 'text-emerald-400' },
     { id: 'word', label: 'Microsoft Word', icon: FileCode, color: 'text-blue-400' },
   ];
 

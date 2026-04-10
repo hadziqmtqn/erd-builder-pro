@@ -457,10 +457,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           {/* Floating Outline Panel Using Standard Shadcn UI Patterns */}
           <div className="absolute -right-14 top-0 h-full hidden md:block z-40">
             <div className="sticky top-1/2 -translate-y-1/2">
-              <TooltipProvider delayDuration={0}>
+              <TooltipProvider delay={0}>
                 <HoverCard openDelay={100} closeDelay={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                   <Tooltip>
+                    <TooltipTrigger render={<div className="flex items-center justify-center" />}>
                       <HoverCardTrigger asChild>
                         <Button 
                           variant="secondary" 
