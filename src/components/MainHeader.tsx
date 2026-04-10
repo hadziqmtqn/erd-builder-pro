@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
+import { NavActionsMenu } from "./NavActionsMenu";
+import { format } from "date-fns";
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
@@ -32,6 +34,9 @@ interface MainHeaderProps {
   onSettingsSaved?: () => void;
   isPublicView?: boolean;
   isOnline: boolean;
+  updatedAt?: string;
+  onDelete?: () => void;
+  onRename?: () => void;
 }
 
 export const MainHeader = React.memo(({
@@ -46,7 +51,10 @@ export const MainHeader = React.memo(({
   initialShareSettings,
   onSettingsSaved,
   isPublicView = false,
-  isOnline
+  isOnline,
+  updatedAt,
+  onDelete,
+  onRename
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
 
@@ -116,28 +124,44 @@ export const MainHeader = React.memo(({
 
       <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
-          <>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => isOnline && setIsShareModalOpen(true)}
-                disabled={!isOnline}
-                className={`h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-2 transition-colors ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest">Share</span>
-              </Button>
-              
-              {!isPublicView && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className={`w-2 h-2 rounded-full ${!isOnline ? 'bg-destructive animate-pulse' : currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                  <span className="text-xs text-muted-foreground font-medium hidden sm:inline">
-                    {!isOnline ? 'Saving Locally' : currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-                  </span>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-2 sm:gap-4">
+            {!isPublicView && updatedAt && (
+              <TooltipProvider delay={200}>
+                <Tooltip>
+                  <TooltipTrigger 
+                    render={
+                      <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium cursor-help hover:text-foreground transition-colors">
+                        <span className="opacity-50">Edited</span>
+                        <span>{format(new Date(updatedAt), 'MMM dd')}</span>
+                      </div>
+                    }
+                  />
+                  <TooltipContent side="bottom" className="text-[10px] py-1 px-2 font-mono">
+                    {format(new Date(updatedAt), 'eee, dd MMM yyyy HH:mm:ss')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {!isPublicView && (
+              <div className="flex items-center gap-2 shrink-0">
+                <div className={`w-1.5 h-1.5 rounded-full ${!isOnline ? 'bg-destructive animate-pulse' : currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                <span className="text-[11px] text-muted-foreground font-medium hidden sm:inline">
+                  {!isOnline ? 'Saving Locally' : currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
+                </span>
+              </div>
+            )}
+
+            <NavActionsMenu 
+              onShare={() => isOnline && setIsShareModalOpen(true)}
+              onDelete={onDelete}
+              onRename={onRename}
+              isOnline={isOnline}
+              isPublicView={isPublicView}
+              isPublic={initialShareSettings?.is_public}
+              activeFileUid={activeFileUid}
+              documentType={view}
+            />
 
             {activeFileUid && activeFileId && isOnline && (
               <ShareModal 
@@ -152,7 +176,7 @@ export const MainHeader = React.memo(({
                 onSettingsSaved={onSettingsSaved}
               />
             )}
-          </>
+          </div>
         )}
       </div>
     </header>
