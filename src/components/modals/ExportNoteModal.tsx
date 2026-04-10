@@ -40,14 +40,9 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
     showTypeLabels: false
   });
   const handleExport = () => {
-    if (selectedFormat === 'markdown' || selectedFormat === 'pdf' || selectedFormat === 'print') {
+    if (['markdown', 'pdf', 'print', 'word'].includes(selectedFormat)) {
       onExport(selectedFormat, options, 'a4');
       onClose();
-    } else {
-      toast.info(`${selectedFormat === 'word' ? 'Microsoft Word' : String(selectedFormat).toUpperCase()} export is coming soon!`, {
-        description: "Currently, we only support Markdown and PDF export.",
-        duration: 4000
-      });
     }
   };
 

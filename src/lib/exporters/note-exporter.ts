@@ -349,13 +349,89 @@ export class NoteExporter {
   }
 
   /**
-   * Placeholder for Word export
+   * Main entry point for Word export (Base64 .doc Engine)
+   * This version avoids 'unreadable' errors in Word Desktop while keeping Google Docs compatibility
    */
   static async exportToWord(
     note: Note,
     options: ExportOptions,
-    pageSize: PageSize = "a4"
   ): Promise<void> {
-    toast.info("Word export is being developed using this core engine!");
+    const toastId = toast.loading("Generating Word-compatible document...");
+    
+    try {
+      // 1. Convert all images to Base64 Data URIs
+      let content = note.content;
+      const imgRegex = /<img [^>]*src=["']([^"']+)["'][^>]*>/g;
+      const matches = [...content.matchAll(imgRegex)];
+      
+      for (const match of matches) {
+        const url = match[1];
+        const imgData = await this.getImageData(url);
+        if (imgData) {
+          content = content.replace(url, imgData.data);
+        }
+      }
+
+      // 2. Prepare the Word HTML Envelope with MSO tags
+      const header = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+              xmlns:w='urn:schemas-microsoft-com:office:word' 
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8">
+          <title>${note.title}</title>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; }
+            h1 { font-size: 24pt; font-weight: bold; color: #000; margin-bottom: 20px; }
+            h2 { font-size: 18pt; font-weight: bold; color: #333; margin-top: 30px; }
+            p { font-size: 11pt; line-height: 1.5; margin-bottom: 10px; }
+            table { border-collapse: collapse; width: 100%; border: 1px solid #ddd; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            blockquote { border-left: 4px solid #ddd; margin: 20px 0; padding-left: 20px; font-style: italic; color: #666; }
+            pre { background-color: #f9f9f9; border: 1px solid #eee; padding: 15px; font-family: 'Consolas', monospace; }
+            img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
+            .meta { color: #888; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 30px; font-size: 10pt; }
+          </style>
+        </head>
+        <body>
+          <h1>${note.title}</h1>
+          <div class="meta">
+            Project: ${note.projects?.name || 'Untitled'} | Updated: ${new Date(note.updated_at).toLocaleDateString()}
+          </div>
+          <div class="content">${content}</div>
+        </body>
+        </html>
+      `;
+
+      // 3. Create Blob and Download as .doc
+      const blob = new Blob(['\ufeff', header], {
+        type: 'application/msword'
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${note.title.toLowerCase().replace(/\s+/g, '_')}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Document exported successfully!", { id: toastId });
+      
+    } catch (error) {
+      console.error("Word Export failed:", error);
+      toast.error("Failed to generate Word document", { id: toastId });
+    }
   }
 }
