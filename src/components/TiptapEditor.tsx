@@ -51,6 +51,19 @@ import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
 
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { ListTree } from 'lucide-react';
+
 const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: () => void }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,7 +75,6 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
     const file = event.target.files?.[0];
     if (file) {
       try {
-        // Compress image before upload (max 1280px width, 80% quality)
         const compressedFile = await compressImage(file, { maxWidth: 1280, quality: 0.8 });
 
         const formData = new FormData();
@@ -86,7 +98,6 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
             .setImage({ src: data.url })
             .run();
           
-          // Use a separate command to focus the end after the image and auto-paragraph are inserted
           editor.commands.focus('end');
         }
       } catch (error) {
@@ -262,7 +273,6 @@ interface HeadingInfo {
   pos: number;
 }
 
-// Custom extension to ensure an empty paragraph is always at the end
 const TrailingNode = Extension.create({
   name: 'customTrailingNode',
   addOptions() {
@@ -292,7 +302,6 @@ const TrailingNode = Extension.create({
             return;
           }
 
-          // If it's an extraAfter type (like image), or any other block that's not a paragraph
           return tr.insert(doc.content.size, nodeType.create());
         },
       }),
@@ -305,6 +314,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
   const [selectionVersion, setSelectionVersion] = React.useState(0);
+  const [showOutline, setShowOutline] = React.useState(false);
+  const [isHovered, setIsHovered] = React.useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const extensions = React.useMemo(() => [
@@ -346,8 +357,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       if (onChange) {
         onChange(editor.getHTML());
       }
-
-      // Extract headings for the outline
       const extracted: HeadingInfo[] = [];
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name === 'heading' && node.attrs.level <= 5) {
@@ -380,8 +389,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     if (editor && typeof content === 'string' && editor.getHTML() !== content) {
       editor.commands.setContent(content);
     }
-    
-    // Extract headings whenever editor is ready or content changes
     if (editor) {
       const extracted: HeadingInfo[] = [];
       editor.state.doc.descendants((node, pos) => {
@@ -420,7 +427,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const scrollToHeading = (pos: number) => {
     if (editor) {
       editor.commands.focus(pos);
-      // Wait a bit for focus to happen, then scroll if needed
       setTimeout(() => {
         const domAtPos = editor.view.domAtPos(pos);
         if (domAtPos.node instanceof HTMLElement) {
@@ -434,7 +440,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
-      {/* Toolbar - Always visible at the top */}
       {!isReadOnly && (
         <div className="flex-none bg-card border-b border-border p-2 z-10 shadow-sm">
           <div className="max-w-4xl mx-auto">
@@ -447,50 +452,70 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-4 sm:px-6 md:px-24"
       >
-        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative group/outline-ctx">
+        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative">
           
-          {/* Floating Outline Panel - Sticky centered in viewport */}
-          <div className="absolute -right-12 top-0 h-full hidden md:block pointer-events-none z-40">
-            <div className="sticky top-1/2 -translate-y-1/2 pointer-events-auto">
-              <div className="group relative">
-                {/* The "Handle" - THE ONLY TRIGGER AREA (Narrow) */}
-                <div className="h-40 w-8 flex flex-col gap-2 justify-center items-center cursor-pointer bg-transparent border-r border-transparent hover:border-yellow-500/20">
-                  <div className="w-1 h-12 rounded-full bg-yellow-500/20 group-hover:bg-yellow-500/60 transition-all duration-300" />
-                  <div className="w-1 h-3 rounded-full bg-yellow-500/10 group-hover:bg-yellow-500/30 transition-all duration-300" />
-                </div>
+          {/* Floating Outline Panel Using Standard Shadcn UI Patterns */}
+          <div className="absolute -right-14 top-0 h-full hidden md:block z-40">
+            <div className="sticky top-1/2 -translate-y-1/2">
+              <TooltipProvider delayDuration={0}>
+                <HoverCard openDelay={100} closeDelay={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HoverCardTrigger asChild>
+                        <Button 
+                          variant="secondary" 
+                          size="icon" 
+                          className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background/80 backdrop-blur-sm hover:bg-accent transition-all duration-300"
+                        >
+                          <ListTree className="w-5 h-5 text-muted-foreground" />
+                        </Button>
+                      </HoverCardTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>Document Outline</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                {/* The Panel - Absolute positioned to the LEFT of handle with a hover bridge */}
-                <div className="absolute right-full top-1/2 -translate-y-1/2 pr-3 opacity-0 translate-x-8 scale-95 group-hover:opacity-100 group-hover:translate-x-0 group-hover:scale-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto origin-right">
-                  <div className="bg-neutral-950/90 backdrop-blur-xl border border-yellow-500/20 rounded-2xl p-5 min-w-[200px] max-w-[280px] max-h-[80vh] overflow-y-auto custom-scrollbar shadow-[0_0_40px_-10px_rgba(234,179,8,0.15)] ring-1 ring-white/5">
-                    {headings.length > 0 ? (
-                      <div className="flex flex-col gap-0.5">
-                        {headings.map((heading, i) => (
-                          <button
-                            key={`${heading.pos}-${i}`}
-                            onClick={() => scrollToHeading(heading.pos)}
-                            className={cn(
-                              "text-left transition-all duration-200 group/item relative py-0.5 pr-4 rounded-sm hover:bg-yellow-500/10 uppercase tracking-wide text-[11px] font-bold text-yellow-500 cursor-pointer",
-                              heading.level === 1 ? "mt-1" : 
-                              heading.level === 2 ? "pl-1 opacity-90" : 
-                              heading.level === 3 ? "pl-2 opacity-80" :
-                              heading.level === 4 ? "pl-3 opacity-70" :
-                              "pl-4 opacity-60"
-                            )}
-                          >
-                            <span className="block truncate transition-all duration-200 group-hover/item:translate-x-0.5">
+                  <HoverCardContent 
+                    side="left" 
+                    align="center" 
+                    sideOffset={15}
+                    className="w-[300px] bg-popover/95 backdrop-blur-xl border-border rounded-lg p-5 shadow-2xl"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b pb-2">
+                        <h4 className="text-sm font-semibold tracking-tight">Navigation</h4>
+                        <span className="text-[10px] text-muted-foreground uppercase font-medium">Headings</span>
+                      </div>
+                      
+                      {headings.length > 0 ? (
+                        <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                          {headings.map((heading, i) => (
+                            <button
+                              key={`${heading.pos}-${i}`}
+                              onClick={() => scrollToHeading(heading.pos)}
+                              className={cn(
+                                "text-left transition-all duration-200 py-1.5 px-3 rounded-md hover:bg-accent text-sm font-medium text-foreground/80 hover:text-foreground truncate",
+                                heading.level === 1 ? "text-primary font-bold bg-primary/5" : 
+                                heading.level === 2 ? "pl-4 text-foreground/70" : 
+                                heading.level === 3 ? "pl-7 text-foreground/60 scale-95 origin-left" :
+                                heading.level === 4 ? "pl-10 text-foreground/50 scale-90 origin-left" :
+                                "pl-12 text-foreground/40 scale-90 origin-left"
+                              )}
+                            >
                               {heading.text}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-8 text-center opacity-40">
-                        <p className="text-[10px] font-medium uppercase tracking-widest text-yellow-500/50">Outline Empty</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground/50">
+                          <p className="text-xs italic">No headings found</p>
+                        </div>
+                      )}
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
+              </TooltipProvider>
             </div>
           </div>
 
@@ -498,7 +523,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
             <BubbleMenu 
               editor={editor} 
               pluginKey="textMenu"
-              shouldShow={({ editor, view, state, from, to }) => {
+              shouldShow={({ editor, state }) => {
                 return editor.isFocused && editor.isEditable && !state.selection.empty;
               }}
               {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
@@ -509,7 +534,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().setParagraph().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('paragraph') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                title="Paragraph"
               >
                 <Pilcrow className="w-4 h-4" />
               </button>
@@ -518,7 +542,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                title="Bold"
               >
                 <Bold className="w-4 h-4" />
               </button>
@@ -527,7 +550,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleItalic().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                title="Italic"
               >
                 <Italic className="w-4 h-4" />
               </button>
@@ -536,7 +558,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleStrike().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                title="Strike"
               >
                 <Strikethrough className="w-4 h-4" />
               </button>
@@ -545,7 +566,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleCodeBlock().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('codeBlock') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-                title="Code Block"
               >
                 <Code2 className="w-4 h-4" />
               </button>
@@ -557,14 +577,13 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                 onPointerDown={(e) => e.preventDefault()}
                 onClick={openLinkDialog}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('link') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground text-primary'}`}
-                title="Link"
               >
                 <Link className="w-4 h-4" />
               </button>
 
               <DropdownMenu.Root modal={false}>
                 <DropdownMenu.Trigger asChild>
-                  <button className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground" title="Color">
+                  <button className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground">
                     <Palette className="w-4 h-4" />
                   </button>
                 </DropdownMenu.Trigger>
@@ -585,11 +604,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                       <DropdownMenu.Item 
                         key={name}
                         onSelect={() => {
-                          if (value) {
-                            editor.chain().focus().setColor(value).run();
-                          } else {
-                            editor.chain().focus().unsetColor().run();
-                          }
+                          if (value) editor.chain().focus().setColor(value).run();
+                          else editor.chain().focus().unsetColor().run();
                         }}
                         className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
                       >
