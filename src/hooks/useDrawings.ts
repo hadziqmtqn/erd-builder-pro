@@ -17,7 +17,7 @@ export function useDrawings(isGuest: boolean = false) {
   // Keep ref in sync
   drawingsRef.current = drawings;
 
-  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
     if (isGuest) {
       const localDrawings = await localPersistence.getAllResources('drawings');
       let filtered = localDrawings.filter(d => !d.is_deleted);
@@ -38,7 +38,8 @@ export function useDrawings(isGuest: boolean = false) {
       const offset = isLoadMore ? drawingsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/drawings?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
+      const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
+      const res = await fetch(`/api/drawings?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json;

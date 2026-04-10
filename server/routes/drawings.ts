@@ -11,11 +11,16 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const offset = parseInt(req.query.offset as string) || 0;
   const projectId = req.query.project_id as string;
   const q = req.query.q as string;
+  const isPublic = req.query.is_public === 'true' ? true : req.query.is_public === 'false' ? false : null;
 
   let query = supabase
     .from("drawings")
     .select("*, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false);
+
+  if (isPublic !== null) {
+    query = query.eq("is_public", isPublic);
+  }
 
   if (q && q.trim()) {
     query = query.ilike("title", `%${q.trim()}%`);

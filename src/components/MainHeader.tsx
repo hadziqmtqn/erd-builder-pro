@@ -10,8 +10,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Share2 } from 'lucide-react';
+import { Share2, Globe } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 interface MainHeaderProps {
   featureLabel: string;
@@ -79,8 +81,25 @@ export const MainHeader = React.memo(({
             {activeFileName && (
               <>
                 {!isPublicView && <BreadcrumbSeparator className="shrink-0" />}
-                <BreadcrumbItem className="min-w-0 shrink">
+                <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
                   <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
+                  
+                  {initialShareSettings?.is_public && !isPublicView && (
+                    <TooltipProvider delay={0}>
+                      <Tooltip>
+                        <TooltipTrigger render={
+                          <Badge variant="outline" className="h-5 px-1.5 gap-1.5 bg-green-500/5 text-green-500 border-green-500/20 rounded-full hover:bg-green-500/10 cursor-help shadow-sm">
+                            <Globe className="w-2.5 h-2.5" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Public</span>
+                            <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse ml-0.5" />
+                          </Badge>
+                        } />
+                        <TooltipContent side="bottom" align="center" className="text-[10px] font-medium">
+                          This document is shared publicly via a secret link.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </BreadcrumbItem>
               </>
             )}
