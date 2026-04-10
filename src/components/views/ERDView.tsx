@@ -113,42 +113,7 @@ export const ERDView = React.memo(({
               <span className="hidden sm:inline">Import SQL</span>
             </Button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger render={
-                <Button variant="ghost" size="sm" className="h-9 px-3 sm:px-4 font-bold text-muted-foreground hover:text-foreground">
-                  <Download className="w-4 h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Export</span>
-                  <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
-                </Button>
-              } />
-              <DropdownMenuContent align="end" className="w-48 p-1">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExportSQL('postgresql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <Database size={14} className="text-blue-400" />
-                    To PostgreSQL
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportSQL('mysql')} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <Database size={14} className="text-orange-400" />
-                    To MySQL
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">Visual Format</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleExportPDF} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <FileText size={14} className="text-red-400" />
-                    As PDF
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportImage} className="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-                    <ImageIcon size={14} className="text-purple-400" />
-                    As Image (SVG)
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+
 
             <div className="w-px h-6 bg-border mx-0.5" />
 

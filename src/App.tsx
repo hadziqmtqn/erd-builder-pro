@@ -502,6 +502,21 @@ function AppContent() {
             setNewName(activeDocument.title || activeDocument.name || "");
             setIsRenameDialogOpen(true);
           }}
+          onExportSQL={(dialect) => {
+            if (activeDocument) {
+              handleExportSQL(dialect, { name: activeFileName || 'Untitled' }, nodes, edges);
+            }
+          }}
+          onExportPDF={() => {
+            if (activeDocument) {
+              handleExportPDF(activeFileName || 'Untitled');
+            }
+          }}
+          onExportImage={() => {
+            if (activeDocument) {
+              handleExportImage(activeFileName || 'Untitled');
+            }
+          }}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
