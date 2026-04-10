@@ -15,7 +15,7 @@ export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOn
 
   useEffect(() => {
     setContent(note.content);
-  }, [note.id]);
+  }, [note.content]);
 
   const handleContentChange = (newContent: string) => {
     setContent(newContent);

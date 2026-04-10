@@ -37,6 +37,11 @@ interface MainHeaderProps {
   updatedAt?: string;
   onDelete?: () => void;
   onRename?: () => void;
+  onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
+  onExportPDF?: () => void;
+  onExportImage?: () => void;
+  onExportMarkdown?: () => void;
+  onImportMarkdown?: () => void;
 }
 
 export const MainHeader = React.memo(({
@@ -54,7 +59,12 @@ export const MainHeader = React.memo(({
   isOnline,
   updatedAt,
   onDelete,
-  onRename
+  onRename,
+  onExportSQL,
+  onExportPDF,
+  onExportImage,
+  onExportMarkdown,
+  onImportMarkdown,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
 
@@ -156,6 +166,11 @@ export const MainHeader = React.memo(({
               onShare={() => isOnline && setIsShareModalOpen(true)}
               onDelete={onDelete}
               onRename={onRename}
+              onExportSQL={onExportSQL}
+              onExportPDF={onExportPDF}
+              onExportImage={onExportImage}
+              onExportMarkdown={onExportMarkdown}
+              onImportMarkdown={onImportMarkdown}
               isOnline={isOnline}
               isPublicView={isPublicView}
               isPublic={initialShareSettings?.is_public}

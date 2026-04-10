@@ -5,6 +5,8 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import TurndownService from 'turndown';
+import { marked } from 'marked';
 
 // Components
 import { AppSidebar } from './components/app-sidebar';
@@ -13,6 +15,8 @@ import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
 import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import { ImportSQLModal } from './components/modals/ImportSQLModal';
+import { ImportNoteModal } from './components/modals/ImportNoteModal';
+import { ExportNoteModal } from './components/modals/ExportNoteModal';
 import PropertiesPanel from './components/PropertiesPanel';
 
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
@@ -121,6 +125,8 @@ function AppContent() {
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [isMoveToTrashAlertOpen, setIsMoveToTrashAlertOpen] = useState(false);
+  const [isImportNoteModalOpen, setIsImportNoteModalOpen] = useState(false);
+  const [isExportNoteModalOpen, setIsExportNoteModalOpen] = useState(false);
 
 
   // Search State
@@ -441,6 +447,53 @@ function AppContent() {
   const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeDiagram?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
   const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeDiagram?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
 
+  const handleExportMarkdown = useCallback(() => {
+    setIsExportNoteModalOpen(true);
+  }, []);
+
+  const handleImportMarkdown = useCallback(() => {
+    setIsImportNoteModalOpen(true);
+  }, []);
+
+  const executeExportMarkdown = useCallback(() => {
+    if (!activeNote) return;
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+      bulletListMarker: '-'
+    });
+    
+    // Add custom rule for tables if used in Tiptap
+    const markdown = turndownService.turndown(activeNote.content);
+    const fileName = `${(activeNote.title || 'Note').replace(/\s+/g, '_').toLowerCase()}.md`;
+    
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Note exported to Markdown");
+  }, [activeNote]);
+
+  const executeImportMarkdown = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const html = await marked.parse(text);
+      
+      // Append instead of overwrite
+      const currentContent = activeNote?.content || '';
+      const separator = currentContent ? '<p></p>' : '';
+      const newContent = currentContent + separator + html;
+      
+      handleNoteChange(newContent);
+      toast.success("Markdown content appended to note");
+    } catch (error) {
+      toast.error("Failed to parse Markdown file");
+    }
+  }, [activeNote, handleNoteChange]);
+
   if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
   if (isPublicLoading) return <AppInitialization type="public" view={view} />;
 
@@ -501,6 +554,39 @@ function AppContent() {
             if (!activeDocument) return;
             setNewName(activeDocument.title || activeDocument.name || "");
             setIsRenameDialogOpen(true);
+          }}
+          onExportSQL={(dialect) => {
+            if (activeDocument) {
+              handleExportSQL(dialect, { name: activeFileName || 'Untitled' }, nodes, edges);
+            }
+          }}
+          onExportPDF={() => {
+            if (activeDocument) {
+              handleExportPDF(activeFileName || 'Untitled');
+            }
+          }}
+          onExportImage={() => {
+            if (activeDocument) {
+              handleExportImage(activeFileName || 'Untitled');
+            }
+          }}
+          onExportMarkdown={handleExportMarkdown}
+          onImportMarkdown={handleImportMarkdown}
+        />
+
+        <ImportNoteModal 
+          isOpen={isImportNoteModalOpen} 
+          onClose={() => setIsImportNoteModalOpen(false)}
+          onImport={executeImportMarkdown}
+        />
+
+        <ExportNoteModal
+          isOpen={isExportNoteModalOpen}
+          onClose={() => setIsExportNoteModalOpen(false)}
+          onExport={(format) => {
+            if (format === 'markdown') {
+              executeExportMarkdown();
+            }
           }}
         />
 
