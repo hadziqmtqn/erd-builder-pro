@@ -12,6 +12,7 @@ import {
   Network,
   FolderPlus,
   AlertTriangle,
+  Globe,
 } from "lucide-react"
 import { Skeleton } from "./ui/skeleton"
 import { Badge } from "./ui/badge"
@@ -430,215 +431,459 @@ export function NavProjects({
           </div>
         )}
 
-        {!isDiagramsLoading && sidebarView === 'erd' && (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(file => (
-          <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeDiagramId === file.id && view === 'erd'}
-              onClick={() => isOnline && onDiagramSelect(file.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Tooltip>
-                <TooltipTrigger render={<Database className="size-4" />} />
-                <TooltipContent side="right" sideOffset={10}>Diagram</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{file.name}</span>} />
-                <TooltipContent side="right" sideOffset={10}>
-                  {file.name}
-                </TooltipContent>
-              </Tooltip>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={
-                <SidebarMenuAction 
-                  showOnHover={false} 
-                  className={cn(
-                    "cursor-pointer opacity-100", 
-                    !isOnline && "pointer-events-none"
-                  )}
-                >
-                  <MoreHorizontal />
-                </SidebarMenuAction>
-              }>
-                <span className="sr-only">More</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem disabled={!isOnline} onClick={() => {
-                  setEditingFile({ id: file.id, name: file.name, projectId: file.project_id, type: 'erd' })
-                  setSelectedProjectId(file.project_id?.toString() || "none")
-                  setIsEditFileDialogOpen(true)
-                }}>
-                  <Edit2 className="mr-2 size-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-                  setDeletingFile({ id: file.id, type: 'erd' })
-                  setIsDeleteConfirmOpen(true)
-                }}>
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
-        {!isNotesLoading && sidebarView === 'notes' && (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId))).map(note => (
-          <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeNoteId === note.id && view === 'notes'}
-              onClick={() => isOnline && onNoteSelect(note.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Tooltip>
-                <TooltipTrigger render={<StickyNote className="size-4" />} />
-                <TooltipContent side="right" sideOffset={10}>Note</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{note.title}</span>} />
-                <TooltipContent side="right" sideOffset={10}>
-                  {note.title}
-                </TooltipContent>
-              </Tooltip>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={
-                <SidebarMenuAction 
-                  showOnHover={false} 
-                  className={cn(
-                    "cursor-pointer opacity-100", 
-                    !isOnline && "pointer-events-none"
-                  )}
-                >
-                  <MoreHorizontal />
-                </SidebarMenuAction>
-              }>
-                <span className="sr-only">More</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem disabled={!isOnline} onClick={() => {
-                  setEditingFile({ id: note.id, name: note.title, projectId: note.project_id, type: 'notes' })
-                  setSelectedProjectId(note.project_id?.toString() || "none")
-                  setIsEditFileDialogOpen(true)
-                }}>
-                  <Edit2 className="mr-2 size-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-                  setDeletingFile({ id: note.id, type: 'notes' })
-                  setIsDeleteConfirmOpen(true)
-                }}>
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
-        {!isDrawingsLoading && sidebarView === 'drawings' && (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId))).map(drawing => (
-          <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeDrawingId === drawing.id && view === 'drawings'}
-              onClick={() => isOnline && onDrawingSelect(drawing.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Tooltip>
-                <TooltipTrigger render={<PenTool className="size-4" />} />
-                <TooltipContent side="right" sideOffset={10}>Drawing</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{drawing.title}</span>} />
-                <TooltipContent side="right" sideOffset={10}>
-                  {drawing.title}
-                </TooltipContent>
-              </Tooltip>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={
-                <SidebarMenuAction 
-                  showOnHover={false} 
-                  className={cn(
-                    "cursor-pointer opacity-100", 
-                    !isOnline && "pointer-events-none"
-                  )}
-                >
-                  <MoreHorizontal />
-                </SidebarMenuAction>
-              }>
-                <span className="sr-only">More</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem disabled={!isOnline} onClick={() => {
-                  setEditingFile({ id: drawing.id, name: drawing.title, projectId: drawing.project_id, type: 'drawings' })
-                  setSelectedProjectId(drawing.project_id?.toString() || "none")
-                  setIsEditFileDialogOpen(true)
-                }}>
-                  <Edit2 className="mr-2 size-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-                  setDeletingFile({ id: drawing.id, type: 'drawings' })
-                  setIsDeleteConfirmOpen(true)
-                }}>
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
+        {!isDiagramsLoading && sidebarView === 'erd' && (() => {
+          const filtered = (diagrams || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId)));
+          const shared = filtered.filter(f => f.is_public);
+          const privateItems = filtered.filter(f => !f.is_public);
+          
+          return (
+            <>
+              {/* Shared Section */}
+              <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Shared</div>
+              {shared.length > 0 ? shared.map(file => (
+                <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                  <SidebarMenuButton 
+                    isActive={activeDiagramId === file.id && view === 'erd'}
+                    onClick={() => isOnline && onDiagramSelect(file.id)}
+                    className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                  >
+                    <Database className="size-4" />
+                    <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                      <Tooltip>
+                        <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{file.name}</span>} />
+                        <TooltipContent side="right" sideOffset={5}>{file.name}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={
+                      <SidebarMenuAction 
+                        showOnHover={false} 
+                        className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                      >
+                        <MoreHorizontal />
+                      </SidebarMenuAction>
+                    }>
+                      <span className="sr-only">More</span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                        setEditingFile({ id: file.id, name: file.name, projectId: file.project_id, type: 'erd' })
+                        setSelectedProjectId(file.project_id?.toString() || "none")
+                        setIsEditFileDialogOpen(true)
+                      }}>
+                        <Edit2 className="mr-2 size-4" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                        setDeletingFile({ id: file.id, type: 'erd' })
+                        setIsDeleteConfirmOpen(true)
+                      }}>
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+              )) : (
+                <div className="px-5 py-2 text-[11px] text-muted-foreground/50 italic">No shared items found</div>
+              )}
 
-        {sidebarView === 'flowchart' && (flowcharts || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId))).map(flowchart => (
-          <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
-            <SidebarMenuButton 
-              isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
-              onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
-              className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
-            >
-              <Tooltip>
-                <TooltipTrigger render={<Network className="size-4" />} />
-                <TooltipContent side="right" sideOffset={10}>Flowchart</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{flowchart.title}</span>} />
-                <TooltipContent side="right" sideOffset={10}>
-                  {flowchart.title}
-                </TooltipContent>
-              </Tooltip>
-            </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={
-                <SidebarMenuAction 
-                  showOnHover={false} 
-                  className={cn(
-                    "cursor-pointer opacity-100", 
-                    !isOnline && "pointer-events-none"
-                  )}
-                >
-                  <MoreHorizontal />
-                </SidebarMenuAction>
-              }>
-                <span className="sr-only">More</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" className="w-40">
-                <DropdownMenuItem disabled={!isOnline} onClick={() => {
-                  setEditingFile({ id: flowchart.id, name: flowchart.title, projectId: flowchart.project_id, type: 'flowchart' })
-                  setSelectedProjectId(flowchart.project_id?.toString() || "none")
-                  setIsEditFileDialogOpen(true)
-                }}>
-                  <Edit2 className="mr-2 size-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-                  setDeletingFile({ id: flowchart.id, type: 'flowchart' })
-                  setIsDeleteConfirmOpen(true)
-                }}>
-                  <Trash2 className="mr-2 size-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        ))}
+              {/* Private Section */}
+              {privateItems.length > 0 && (
+                <>
+                  <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Private</div>
+                  {privateItems.map(file => (
+                    <SidebarMenuItem key={file.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                      <SidebarMenuButton 
+                        isActive={activeDiagramId === file.id && view === 'erd'}
+                        onClick={() => isOnline && onDiagramSelect(file.id)}
+                        className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                      >
+                        <Database className="size-4" />
+                        <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{file.name}</span>} />
+                            <TooltipContent side="right" sideOffset={5}>{file.name}</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <SidebarMenuAction 
+                            showOnHover={false} 
+                            className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                          >
+                            <MoreHorizontal />
+                          </SidebarMenuAction>
+                        }>
+                          <span className="sr-only">More</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="w-40">
+                          <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                            setEditingFile({ id: file.id, name: file.name, projectId: file.project_id, type: 'erd' })
+                            setSelectedProjectId(file.project_id?.toString() || "none")
+                            setIsEditFileDialogOpen(true)
+                          }}>
+                            <Edit2 className="mr-2 size-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                            setDeletingFile({ id: file.id, type: 'erd' })
+                            setIsDeleteConfirmOpen(true)
+                          }}>
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              )}
+            </>
+          );
+        })()}
+        {!isNotesLoading && sidebarView === 'notes' && (() => {
+          const filtered = (notes || []).filter(n => !n.is_deleted && (activeProjectId === null || String(n.project_id) === String(activeProjectId)));
+          const shared = filtered.filter(f => f.is_public);
+          const privateItems = filtered.filter(f => !f.is_public);
+          
+          return (
+            <>
+              {/* Shared Section */}
+              <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Shared</div>
+              {shared.length > 0 ? shared.map(note => (
+                <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                  <SidebarMenuButton 
+                    isActive={activeNoteId === note.id && view === 'notes'}
+                    onClick={() => isOnline && onNoteSelect(note.id)}
+                    className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                  >
+                    <StickyNote className="size-4" />
+                    <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                      <Tooltip>
+                        <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{note.title}</span>} />
+                        <TooltipContent side="right" sideOffset={5}>{note.title}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={
+                      <SidebarMenuAction 
+                        showOnHover={false} 
+                        className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                      >
+                        <MoreHorizontal />
+                      </SidebarMenuAction>
+                    }>
+                      <span className="sr-only">More</span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                        setEditingFile({ id: note.id, name: note.title, projectId: note.project_id, type: 'notes' })
+                        setSelectedProjectId(note.project_id?.toString() || "none")
+                        setIsEditFileDialogOpen(true)
+                      }}>
+                        <Edit2 className="mr-2 size-4" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                        setDeletingFile({ id: note.id, type: 'notes' })
+                        setIsDeleteConfirmOpen(true)
+                      }}>
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+              )) : (
+                <div className="px-5 py-2 text-[11px] text-muted-foreground/50 italic">No shared items found</div>
+              )}
+
+              {/* Private Section */}
+              {privateItems.length > 0 && (
+                <>
+                  <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Private</div>
+                  {privateItems.map(note => (
+                    <SidebarMenuItem key={note.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                      <SidebarMenuButton 
+                        isActive={activeNoteId === note.id && view === 'notes'}
+                        onClick={() => isOnline && onNoteSelect(note.id)}
+                        className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                      >
+                        <StickyNote className="size-4" />
+                        <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{note.title}</span>} />
+                            <TooltipContent side="right" sideOffset={5}>{note.title}</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <SidebarMenuAction 
+                            showOnHover={false} 
+                            className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                          >
+                            <MoreHorizontal />
+                          </SidebarMenuAction>
+                        }>
+                          <span className="sr-only">More</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="w-40">
+                          <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                            setEditingFile({ id: note.id, name: note.title, projectId: note.project_id, type: 'notes' })
+                            setSelectedProjectId(note.project_id?.toString() || "none")
+                            setIsEditFileDialogOpen(true)
+                          }}>
+                            <Edit2 className="mr-2 size-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                            setDeletingFile({ id: note.id, type: 'notes' })
+                            setIsDeleteConfirmOpen(true)
+                          }}>
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              )}
+            </>
+          );
+        })()}
+        {!isDrawingsLoading && sidebarView === 'drawings' && (() => {
+          const filtered = (drawings || []).filter(d => !d.is_deleted && (activeProjectId === null || String(d.project_id) === String(activeProjectId)));
+          const shared = filtered.filter(f => f.is_public);
+          const privateItems = filtered.filter(f => !f.is_public);
+          
+          return (
+            <>
+              {/* Shared Section */}
+              <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Shared</div>
+              {shared.length > 0 ? shared.map(drawing => (
+                <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                  <SidebarMenuButton 
+                    isActive={activeDrawingId === drawing.id && view === 'drawings'}
+                    onClick={() => isOnline && onDrawingSelect(drawing.id)}
+                    className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                  >
+                    <PenTool className="size-4" />
+                    <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                      <Tooltip>
+                        <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{drawing.title}</span>} />
+                        <TooltipContent side="right" sideOffset={5}>{drawing.title}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={
+                      <SidebarMenuAction 
+                        showOnHover={false} 
+                        className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                      >
+                        <MoreHorizontal />
+                      </SidebarMenuAction>
+                    }>
+                      <span className="sr-only">More</span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                        setEditingFile({ id: drawing.id, name: drawing.title, projectId: drawing.project_id, type: 'drawings' })
+                        setSelectedProjectId(drawing.project_id?.toString() || "none")
+                        setIsEditFileDialogOpen(true)
+                      }}>
+                        <Edit2 className="mr-2 size-4" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                        setDeletingFile({ id: drawing.id, type: 'drawings' })
+                        setIsDeleteConfirmOpen(true)
+                      }}>
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+              )) : (
+                <div className="px-5 py-2 text-[11px] text-muted-foreground/50 italic">No shared items found</div>
+              )}
+
+              {/* Private Section */}
+              {privateItems.length > 0 && (
+                <>
+                  <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Private</div>
+                  {privateItems.map(drawing => (
+                    <SidebarMenuItem key={drawing.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                      <SidebarMenuButton 
+                        isActive={activeDrawingId === drawing.id && view === 'drawings'}
+                        onClick={() => isOnline && onDrawingSelect(drawing.id)}
+                        className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                      >
+                        <PenTool className="size-4" />
+                        <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{drawing.title}</span>} />
+                            <TooltipContent side="right" sideOffset={5}>{drawing.title}</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <SidebarMenuAction 
+                            showOnHover={false} 
+                            className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                          >
+                            <MoreHorizontal />
+                          </SidebarMenuAction>
+                        }>
+                          <span className="sr-only">More</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="w-40">
+                          <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                            setEditingFile({ id: drawing.id, name: drawing.title, projectId: drawing.project_id, type: 'drawings' })
+                            setSelectedProjectId(drawing.project_id?.toString() || "none")
+                            setIsEditFileDialogOpen(true)
+                          }}>
+                            <Edit2 className="mr-2 size-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                            setDeletingFile({ id: drawing.id, type: 'drawings' })
+                            setIsDeleteConfirmOpen(true)
+                          }}>
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              )}
+            </>
+          );
+        })()}
+
+        {sidebarView === 'flowchart' && (() => {
+          const filtered = (flowcharts || []).filter(f => !f.is_deleted && (activeProjectId === null || String(f.project_id) === String(activeProjectId)));
+          const shared = filtered.filter(f => f.is_public);
+          const privateItems = filtered.filter(f => !f.is_public);
+          
+          return (
+            <>
+              {/* Shared Section */}
+              <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Shared</div>
+              {shared.length > 0 ? shared.map(flowchart => (
+                <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                  <SidebarMenuButton 
+                    isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
+                    onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
+                    className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                  >
+                    <Network className="size-4" />
+                    <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                      <Tooltip>
+                        <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{flowchart.title}</span>} />
+                        <TooltipContent side="right" sideOffset={5}>{flowchart.title}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={
+                      <SidebarMenuAction 
+                        showOnHover={false} 
+                        className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                      >
+                        <MoreHorizontal />
+                      </SidebarMenuAction>
+                    }>
+                      <span className="sr-only">More</span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                        setEditingFile({ id: flowchart.id, name: flowchart.title, projectId: flowchart.project_id, type: 'flowchart' })
+                        setSelectedProjectId(flowchart.project_id?.toString() || "none")
+                        setIsEditFileDialogOpen(true)
+                      }}>
+                        <Edit2 className="mr-2 size-4" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                        setDeletingFile({ id: flowchart.id, type: 'flowchart' })
+                        setIsDeleteConfirmOpen(true)
+                      }}>
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+              )) : (
+                <div className="px-5 py-2 text-[11px] text-muted-foreground/50 italic">No shared items found</div>
+              )}
+
+              {/* Private Section */}
+              {privateItems.length > 0 && (
+                <>
+                  <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Private</div>
+                  {privateItems.map(flowchart => (
+                    <SidebarMenuItem key={flowchart.id} className={cn(!isOnline && "opacity-50 cursor-not-allowed")}>
+                      <SidebarMenuButton 
+                        isActive={activeFlowchartId === flowchart.id && view === 'flowchart'}
+                        onClick={() => isOnline && onFlowchartSelect(flowchart.id)}
+                        className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+                      >
+                        <Network className="size-4" />
+                        <div className="flex-1 min-w-0 flex items-center gap-2 pr-1">
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="flex-1 min-w-0 truncate">{flowchart.title}</span>} />
+                            <TooltipContent side="right" sideOffset={5}>{flowchart.title}</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <SidebarMenuAction 
+                            showOnHover={false} 
+                            className={cn("cursor-pointer opacity-100", !isOnline && "pointer-events-none")}
+                          >
+                            <MoreHorizontal />
+                          </SidebarMenuAction>
+                        }>
+                          <span className="sr-only">More</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="w-40">
+                          <DropdownMenuItem disabled={!isOnline} onClick={() => {
+                            setEditingFile({ id: flowchart.id, name: flowchart.title, projectId: flowchart.project_id, type: 'flowchart' })
+                            setSelectedProjectId(flowchart.project_id?.toString() || "none")
+                            setIsEditFileDialogOpen(true)
+                          }}>
+                            <Edit2 className="mr-2 size-4" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
+                            setDeletingFile({ id: flowchart.id, type: 'flowchart' })
+                            setIsDeleteConfirmOpen(true)
+                          }}>
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </>
+              )}
+            </>
+          );
+        })()}
 
         {sidebarView === 'erd' && hasMoreDiagrams && (
           <SidebarMenuItem>

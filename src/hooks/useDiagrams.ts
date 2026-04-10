@@ -19,7 +19,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   // Keep ref in sync
   diagramsRef.current = diagrams;
 
-  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
     if (isGuest) {
       // For local, we still use 'erd' type internally to maintain existing data or we migrate it
       const localResources = await localPersistence.getAllResources('erd');
@@ -41,7 +41,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const offset = isLoadMore ? diagramsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/diagrams?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
+      const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
+      const res = await fetch(`/api/diagrams?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         let json;
         try {

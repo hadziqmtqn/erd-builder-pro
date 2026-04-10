@@ -301,10 +301,11 @@ function AppContent() {
     if (isAuthenticated && !isPublicView) {
       const pid = activeProjectId === null ? 'all' : activeProjectId;
       
-      if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery);
-      else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery);
-      else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery);
-      else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery);
+      // We fetch more items (50) for the sidebar to ensure Shared/Private grouping is robust
+      if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery, null, 50);
+      else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery, null, 50);
+      else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery, null, 50);
+      else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50);
       else if (view === 'trash') fetchTrash();
     }
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);

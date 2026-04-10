@@ -17,7 +17,7 @@ export function useNotes(isGuest: boolean = false) {
   // Keep ref in sync
   notesRef.current = notes;
 
-  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '') => {
+  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
     if (isGuest) {
       const localNotes = await localPersistence.getAllResources('notes');
       let filtered = localNotes.filter(n => !n.is_deleted);
@@ -38,7 +38,8 @@ export function useNotes(isGuest: boolean = false) {
       const offset = isLoadMore ? notesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/notes?limit=10&offset=${offset}&project_id=${projIdParam}${qParam}`);
+      const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
+      const res = await fetch(`/api/notes?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
