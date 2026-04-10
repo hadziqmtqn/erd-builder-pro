@@ -20,40 +20,37 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-type ExportFormat = 'pdf' | 'markdown' | 'word';
+type ExportFormat = 'pdf' | 'markdown' | 'word' | 'print';
 
 interface ExportNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: ExportFormat) => void;
+  onExport: (format: ExportFormat, options: any, pageSize: any) => void;
 }
 
 export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalProps) => {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('markdown');
   const [options, setOptions] = useState({
-    includeEmbedded: false,
+    includeTitle: true,
+    includeMetadata: true,
     includeOutline: false,
+    preserveFormatting: true,
+    includeEmbedded: false,
     hideEmpty: true,
     showTypeLabels: false
   });
-  const [pageSize, setPageSize] = useState<'a4' | 'letter'>('a4');
-
   const handleExport = () => {
-    if (selectedFormat === 'markdown') {
-      onExport('markdown');
+    if (['markdown', 'pdf', 'print', 'word'].includes(selectedFormat)) {
+      onExport(selectedFormat, options, 'a4');
       onClose();
-    } else {
-      toast.info(`${selectedFormat === 'word' ? 'Microsoft Word' : selectedFormat.toUpperCase()} export is coming soon!`, {
-        description: "Currently, we only support Markdown export.",
-        duration: 4000
-      });
     }
   };
 
   const formats = [
-    { id: 'pdf', label: 'PDF', icon: FileText, color: 'text-red-400' },
-    { id: 'markdown', label: 'Markdown', icon: FileEdit, color: 'text-indigo-400' },
-    { id: 'word', label: 'Microsoft Word', icon: FileCode, color: 'text-blue-400' },
+    { id: 'markdown', label: 'MD', sub: 'Markdown', icon: FileEdit, color: 'text-indigo-400' },
+    { id: 'pdf', label: 'PDF', sub: 'Compact', icon: FileBox, color: 'text-red-400' },
+    { id: 'print', label: 'Print', sub: 'High Quality', icon: FileText, color: 'text-emerald-400' },
+    { id: 'word', label: 'Word', sub: 'Microsoft', icon: FileCode, color: 'text-blue-400' },
   ];
 
   return (
@@ -64,35 +61,38 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
         </DialogHeader>
 
         <DialogBody className="p-6 pt-0 space-y-8 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
-          {/* Format Selection Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {/* Format Selection Cards - 4 in 1 row on medium screens */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {formats.map((format) => (
               <button
                 key={format.id}
                 onClick={() => setSelectedFormat(format.id as ExportFormat)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-4 p-4 rounded-2xl border-2 transition-all duration-300 group min-h-[140px]",
+                  "relative flex flex-col items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 transition-all duration-300 group min-h-[120px]",
                   selectedFormat === format.id 
                     ? "border-zinc-100 bg-zinc-900 shadow-[0_0_30px_rgba(255,255,255,0.05)]" 
                     : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-800/60"
                 )}
               >
                 <div className={cn(
-                  "w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-300",
+                  "w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300",
                   selectedFormat === format.id ? "bg-zinc-800" : "bg-zinc-800/50 group-hover:bg-zinc-800"
                 )}>
-                  <format.icon className={cn("w-6 h-6", format.color)} />
+                  <format.icon className={cn("w-5 h-5", format.color)} />
                 </div>
-                <span className={cn(
-                  "text-sm font-bold tracking-tight text-center px-1 leading-tight transition-colors",
-                  selectedFormat === format.id ? "text-white" : "text-zinc-500 group-hover:text-zinc-300"
-                )}>
-                  {format.label}
-                </span>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className={cn(
+                    "text-xs font-bold tracking-tight text-center leading-tight transition-colors",
+                    selectedFormat === format.id ? "text-white" : "text-zinc-500 group-hover:text-zinc-300"
+                  )}>
+                    {format.label}
+                  </span>
+                  <span className="text-[10px] text-zinc-600 font-medium">{format.sub}</span>
+                </div>
                 
                 {selectedFormat === format.id && (
                   <div className="absolute top-2 right-2">
-                    <Check className="w-4 h-4 text-zinc-100" />
+                    <Check className="w-3 h-3 text-zinc-100" />
                   </div>
                 )}
               </button>
@@ -145,26 +145,6 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
                   </div>
                 </label>
               ))}
-
-              <div className="pt-4 border-t border-zinc-800/80">
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-3 ml-1">Page Format</p>
-                <div className="flex gap-2 p-1 bg-zinc-950 rounded-lg w-fit">
-                  {['a4', 'letter'].map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => setPageSize(size as any)}
-                      className={cn(
-                        "px-4 py-1.5 text-xs font-bold rounded-md transition-all duration-200 uppercase",
-                        pageSize === size 
-                          ? "bg-zinc-800 text-white shadow-sm" 
-                          : "text-zinc-500 hover:text-zinc-300"
-                      )}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         )}

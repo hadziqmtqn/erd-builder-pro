@@ -17,6 +17,7 @@ import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import { ImportSQLModal } from './components/modals/ImportSQLModal';
 import { ImportNoteModal } from './components/modals/ImportNoteModal';
 import { ExportNoteModal } from './components/modals/ExportNoteModal';
+import { NoteExporter } from './lib/exporters/note-exporter';
 import PropertiesPanel from './components/PropertiesPanel';
 
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
@@ -583,9 +584,17 @@ function AppContent() {
         <ExportNoteModal
           isOpen={isExportNoteModalOpen}
           onClose={() => setIsExportNoteModalOpen(false)}
-          onExport={(format) => {
-            if (format === 'markdown') {
-              executeExportMarkdown();
+          onExport={(format, options, pageSize) => {
+            if (activeNote) {
+              if (format === 'markdown') {
+                executeExportMarkdown();
+              } else if (format === 'pdf') {
+                NoteExporter.exportToPDF(activeNote as any, options, pageSize);
+              } else if (format === 'print') {
+                NoteExporter.printNote(activeNote as any);
+              } else if (format === 'word') {
+                NoteExporter.exportToWord(activeNote as any, options);
+              }
             }
           }}
         />
