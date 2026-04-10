@@ -18,6 +18,7 @@ import { ImportSQLModal } from './components/modals/ImportSQLModal';
 import { ImportNoteModal } from './components/modals/ImportNoteModal';
 import { ExportNoteModal } from './components/modals/ExportNoteModal';
 import { NoteExporter } from './lib/exporters/note-exporter';
+import { NoteImporter } from './lib/importers/note-importer';
 import PropertiesPanel from './components/PropertiesPanel';
 
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
@@ -364,7 +365,9 @@ function AppContent() {
           if (canRedo) redo();
         }
       } else if (view === 'notes') {
-        // Notes specific shortcuts
+        // Notes specific shortcuts - only active when a note is open
+        if (!activeNoteId) return;
+
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
           e.preventDefault();
           setIsExportNoteModalOpen(true);
@@ -374,9 +377,9 @@ function AppContent() {
         }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [view, activeNoteId, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
 
 
   const handleNoteSelect = async (id: number | string) => {
@@ -490,21 +493,44 @@ function AppContent() {
   }, [activeNote]);
 
   const executeImportMarkdown = useCallback(async (file: File) => {
+    const toastId = toast.loading(`Importing ${file.name}...`);
     try {
-      const text = await file.text();
-      const html = await marked.parse(text);
+      let html = '';
+      const extension = file.name.split('.').pop()?.toLowerCase();
+
+      if (extension === 'docx') {
+        html = await NoteImporter.convertDocxToHtml(file);
+      } else if (extension === 'doc') {
+        html = await NoteImporter.convertDocToHtml(file);
+      } else {
+        // Default to Markdown
+        const text = await file.text();
+        html = await marked.parse(text);
+      }
       
-      // Append instead of overwrite
-      const currentContent = activeNote?.content || '';
-      const separator = currentContent ? '<p></p>' : '';
-      const newContent = currentContent + separator + html;
-      
-      handleNoteChange(newContent);
-      toast.success("Markdown content appended to note");
-    } catch (error) {
-      toast.error("Failed to parse Markdown file");
+      if (!activeNoteId) {
+        // No note active, create a new one
+        const baseName = file.name.replace(/\.[^/.]+$/, "");
+        const newNote = await createNote(baseName, activeProjectId === 'all' ? null : activeProjectId);
+        if (newNote) {
+          // Update the content of the newly created note using saveNote
+          await saveNote({ ...newNote, content: html });
+          setActiveNoteId(newNote.id);
+          toast.success(`Created new note from ${file.name}`, { id: toastId });
+        }
+      } else {
+        // Append instead of overwrite
+        const currentContent = activeNote?.content || '';
+        const separator = currentContent ? '<p></p>' : '';
+        const newContent = currentContent + separator + html;
+        
+        handleNoteChange(newContent);
+        toast.success(`${file.name} imported successfully`, { id: toastId });
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to import file", { id: toastId });
     }
-  }, [activeNote, handleNoteChange]);
+  }, [activeNoteId, activeNote, activeProjectId, createNote, updateNote, setActiveNoteId, handleNoteChange]);
 
   if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
   if (isPublicLoading) return <AppInitialization type="public" view={view} />;
