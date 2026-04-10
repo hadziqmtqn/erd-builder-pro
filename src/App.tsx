@@ -496,13 +496,13 @@ function AppContent() {
                     const target = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
                     if (target) handleExportSQL(dialect, target, nodes, edges);
                   }}
-                  handleExportPDF={(theme) => {
+                  handleExportPDF={() => {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
-                    handleExportPDF(targetName, theme);
+                    handleExportPDF(targetName);
                   }}
-                  handleExportImage={(theme) => {
+                  handleExportImage={() => {
                     const targetName = isPublicView ? (publicData?.name || 'Shared') : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
-                    handleExportImage('png', targetName, theme);
+                    handleExportImage(targetName);
                   }}
                   isReadOnly={isPublicView}
                   undo={undo}

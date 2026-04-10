@@ -53,12 +53,14 @@ router.post("/login", async (req: ExpressRequest, res: ExpressResponse) => {
     }
 
     if (authData && authData.session) {
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      
       res.cookie("token", authData.session.access_token, {
         httpOnly: true,
         secure: isProd,
         sameSite: "lax",
         path: "/",
-        maxAge: (authData.session.expires_in || 3600) * 1000
+        maxAge: SEVEN_DAYS_MS
       });
       return res.json({ success: true, user: authData.user });
     }
