@@ -10,6 +10,7 @@ import {
   ExternalLink,
   ChevronRight,
   Download,
+  Upload,
   Database,
   FileText,
   Image as ImageIcon
@@ -38,6 +39,8 @@ interface NavActionsMenuProps {
   onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
   onExportPDF?: () => void;
   onExportImage?: () => void;
+  onExportMarkdown?: () => void;
+  onImportMarkdown?: () => void;
   isOnline: boolean;
   isPublicView?: boolean;
   isPublic?: boolean;
@@ -53,6 +56,8 @@ export const NavActionsMenu = ({
   onExportSQL,
   onExportPDF,
   onExportImage,
+  onExportMarkdown,
+  onImportMarkdown,
   isOnline,
   isPublicView = false,
   isPublic = false,
@@ -92,7 +97,7 @@ export const NavActionsMenu = ({
             className="gap-2 cursor-pointer"
           >
             <Share2 className="h-4 w-4 text-muted-foreground" />
-            <span>Share Document</span>
+            <span>Share</span>
           </DropdownMenuItem>
           
           {isPublic && (
@@ -185,6 +190,28 @@ export const NavActionsMenu = ({
                   </DropdownMenuGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+            </>
+          )}
+
+          {documentType === 'notes' && !isPublicView && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                disabled={!isOnline} 
+                onClick={onImportMarkdown}
+                className="gap-2 cursor-pointer"
+              >
+                <Upload className="h-4 w-4 text-muted-foreground" />
+                <span>Import</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                disabled={!isOnline} 
+                onClick={onExportMarkdown}
+                className="gap-2 cursor-pointer"
+              >
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <span>Export</span>
+              </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>
