@@ -79,6 +79,8 @@ import {
   DialogTitle,
   DialogDescription,
   DialogBody,
+  DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog"
 import { Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -116,6 +118,9 @@ function AppContent() {
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [isMoveToTrashAlertOpen, setIsMoveToTrashAlertOpen] = useState(false);
 
 
   // Search State
@@ -201,10 +206,14 @@ function AppContent() {
     return statusMap[view as keyof typeof statusMap] || 'idle';
   }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
 
-  const hasActiveItem = useMemo(() => {
-    const activeMap = { erd: !!activeDiagramId, notes: !!activeNoteId, drawings: !!activeDrawingId, flowchart: !!activeFlowchartId };
-    return activeMap[view as keyof typeof activeMap] || false;
-  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
+  const activeDocument = useMemo(() => {
+    if (isPublicView) return publicData;
+    const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
+    const id = currentActiveId;
+    return docArr.find(d => String(d.id) === String(id));
+  }, [view, currentActiveId, diagrams, notes, drawings, flowcharts, isPublicView, publicData]);
+
+  const hasActiveItem = !!activeDocument;
 
   const selectedEntity = useMemo(() => {
     if (!selectedNodeId) return null;
@@ -352,14 +361,19 @@ function AppContent() {
   }, [view, undo, redo, canUndo, canRedo]);
 
 
-  const handleSelectionSelect = async (id: number | string) => {
-    if (view === 'notes') {
-      await selectNote(id);
-    } else if (view === 'drawings') {
-      await selectDrawing(id);
-    } else if (view === 'flowchart') {
-      await selectFlowchart(id);
-    }
+  const handleNoteSelect = async (id: number | string) => {
+    setView('notes');
+    await selectNote(id);
+  };
+
+  const handleDrawingSelect = async (id: number | string) => {
+    setView('drawings');
+    await selectDrawing(id);
+  };
+
+  const handleFlowchartSelect = async (id: number | string) => {
+    setView('flowchart');
+    await selectFlowchart(id);
   };
 
   const handleNoteChange = useCallback((content: string) => {
@@ -451,11 +465,11 @@ function AppContent() {
         <AppSidebar 
           diagrams={diagrams} notes={notes} drawings={drawings} flowcharts={flowcharts} projects={projects}
           activeDiagramId={activeDiagramId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeFlowchartId={activeFlowchartId} activeProjectId={activeProjectId} view={view}
-          onDiagramSelect={handleDiagramSelect} onNoteSelect={handleSelectionSelect} onDrawingSelect={handleSelectionSelect} onFlowchartSelect={handleSelectionSelect} onProjectSelect={setActiveProjectId}
+          onDiagramSelect={handleDiagramSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onFlowchartSelect={handleFlowchartSelect} onProjectSelect={setActiveProjectId}
           onDiagramCreate={async (n, pid) => { const f = await createDiagram(n, pid ? Number(pid) : null); if (f) handleDiagramSelect(f.id); }}
-          onNoteCreate={async (t, pid) => { const n = await createNote(t, pid ? Number(pid) : null); if (n) handleSelectionSelect(n.id); }}
-          onDrawingCreate={async (t, pid) => { const d = await createDrawing(t, pid ? Number(pid) : null); if (d) handleSelectionSelect(d.id); }}
-          onFlowchartCreate={async (t, pid) => { const f = await createFlowchart(t, pid ? Number(pid) : null); if (f) handleSelectionSelect(f.id); }}
+          onNoteCreate={async (t, pid) => { const n = await createNote(t, pid ? Number(pid) : null); if (n) handleNoteSelect(n.id); }}
+          onDrawingCreate={async (t, pid) => { const d = await createDrawing(t, pid ? Number(pid) : null); if (d) handleDrawingSelect(d.id); }}
+          onFlowchartCreate={async (t, pid) => { const f = await createFlowchart(t, pid ? Number(pid) : null); if (f) handleFlowchartSelect(f.id); }}
           onProjectCreate={createProject} onProjectUpdate={updateProject} onProjectDelete={id => { deleteProject(id); fetchTrash(); }}
           onDiagramUpdate={updateDiagram} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
           onDiagramDelete={id => { deleteDiagram(id); fetchTrash(); }} onNoteDelete={id => { deleteNote(id); fetchTrash(); }} onDrawingDelete={id => { deleteDrawing(id); fetchTrash(); }} onFlowchartDelete={id => { deleteFlowchart(id); fetchTrash(); }}
@@ -478,6 +492,16 @@ function AppContent() {
           activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
           onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}
+          updatedAt={activeDocument?.updated_at}
+          onDelete={() => {
+            if (!currentActiveId) return;
+            setIsMoveToTrashAlertOpen(true);
+          }}
+          onRename={() => {
+            if (!activeDocument) return;
+            setNewName(activeDocument.title || activeDocument.name || "");
+            setIsRenameDialogOpen(true);
+          }}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
@@ -614,6 +638,107 @@ function AppContent() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Rename Dialog */}
+        {!isPublicView && (
+          <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Rename Document</DialogTitle>
+                <DialogDescription>
+                  Enter a new name for your {view === 'erd' ? 'diagram' : view === 'notes' ? 'note' : view === 'drawings' ? 'drawing' : 'flowchart'}.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="rename-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      New Name
+                    </label>
+                    <input
+                      id="rename-input"
+                      type="text"
+                      className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newName.trim()) {
+                          const id = activeDocument?.id;
+                          if (id) {
+                            if (view === 'erd') updateDiagram(id, newName);
+                            else if (view === 'notes') updateNote(id, newName);
+                            else if (view === 'drawings') updateDrawing(id, newName);
+                            else if (view === 'flowchart') updateFlowchart(id, newName);
+                            setIsRenameDialogOpen(false);
+                          }
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" className="h-9" />}>
+                  Cancel
+                </DialogClose>
+                <Button 
+                  disabled={!newName.trim() || newName === (activeDocument?.title || activeDocument?.name)}
+                  onClick={() => {
+                    const id = activeDocument?.id;
+                    if (id && newName.trim()) {
+                      if (view === 'erd') updateDiagram(id, newName);
+                      else if (view === 'notes') updateNote(id, newName);
+                      else if (view === 'drawings') updateDrawing(id, newName);
+                      else if (view === 'flowchart') updateFlowchart(id, newName);
+                      setIsRenameDialogOpen(false);
+                    }
+                  }}
+                  className="h-9 px-6"
+                >
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Move to Trash Confirmation Alert */}
+        <AlertDialog open={isMoveToTrashAlertOpen} onOpenChange={setIsMoveToTrashAlertOpen}>
+          <AlertDialogContent size="sm" className="max-w-[400px]">
+            <AlertDialogHeader className="flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
+                <Trash2 className="w-6 h-6 text-destructive" />
+              </div>
+              <AlertDialogTitle className="text-xl sm:text-center">Move to Trash?</AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogBody className="text-center">
+              <AlertDialogDescription>
+                Are you sure you want to move "{activeDocument?.title || activeDocument?.name || 'this item'}" to trash?
+                <br />
+                You can restore it later from the trash bin.
+              </AlertDialogDescription>
+            </AlertDialogBody>
+            <AlertDialogFooter className="sm:justify-center flex-col sm:flex-row gap-2 mt-2">
+              <AlertDialogCancel className="mt-0 w-full sm:w-auto">Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  if (currentActiveId) {
+                    if (view === 'erd') deleteDiagram(currentActiveId);
+                    else if (view === 'notes') deleteNote(currentActiveId);
+                    else if (view === 'drawings') deleteDrawing(currentActiveId);
+                    else if (view === 'flowchart') deleteFlowchart(currentActiveId);
+                    fetchTrash();
+                    setIsMoveToTrashAlertOpen(false);
+                  }
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto"
+              >
+                Move to Trash
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Relationship Properties Modal */}
         {!isPublicView && (
