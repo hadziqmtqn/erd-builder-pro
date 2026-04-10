@@ -352,20 +352,31 @@ function AppContent() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (view !== 'erd') return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) {
+      // Global shortcuts based on view
+      if (view === 'erd') {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          if (e.shiftKey) {
+            if (canRedo) redo();
+          } else {
+            if (canUndo) undo();
+          }
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
           if (canRedo) redo();
-        } else {
-          if (canUndo) undo();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        if (canRedo) redo();
+      } else if (view === 'notes') {
+        // Notes specific shortcuts
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          setIsExportNoteModalOpen(true);
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+          e.preventDefault();
+          setIsImportNoteModalOpen(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, undo, redo, canUndo, canRedo]);
+  }, [view, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
 
 
   const handleNoteSelect = async (id: number | string) => {

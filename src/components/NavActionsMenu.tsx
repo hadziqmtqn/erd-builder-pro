@@ -4,11 +4,7 @@ import {
   Link2, 
   Trash2, 
   Edit2, 
-  Copy, 
-  Star,
-  Clock,
-  ExternalLink,
-  ChevronRight,
+  Copy,
   Download,
   Upload,
   Database,
@@ -199,18 +195,30 @@ export const NavActionsMenu = ({
               <DropdownMenuItem 
                 disabled={!isOnline} 
                 onClick={onImportMarkdown}
-                className="gap-2 cursor-pointer"
+                className="gap-2 cursor-pointer flex items-center"
               >
-                <Upload className="h-4 w-4 text-muted-foreground" />
-                <span>Import</span>
+                <div className="flex items-center gap-2 flex-1">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                  <span>Import</span>
+                </div>
+                <div className="ml-auto flex items-center gap-0.5 text-muted-foreground/60">
+                  <span className="text-[13px] font-sans leading-none">⌘</span>
+                  <span className="text-[15px] font-mono font-bold mt-0.5">I</span>
+                </div>
               </DropdownMenuItem>
               <DropdownMenuItem 
                 disabled={!isOnline} 
                 onClick={onExportMarkdown}
-                className="gap-2 cursor-pointer"
+                className="gap-2 cursor-pointer flex items-center"
               >
-                <Download className="h-4 w-4 text-muted-foreground" />
-                <span>Export</span>
+                <div className="flex items-center gap-2 flex-1">
+                  <Download className="h-4 w-4 text-muted-foreground" />
+                  <span>Export</span>
+                </div>
+                <div className="ml-auto flex items-center gap-0.5 text-muted-foreground/60">
+                  <span className="text-[13px] font-sans leading-none">⌘</span>
+                  <span className="text-[15px] font-mono font-bold mt-0.5">E</span>
+                </div>
               </DropdownMenuItem>
             </>
           )}
