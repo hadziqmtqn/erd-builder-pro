@@ -380,6 +380,11 @@ ul[data-type="taskList"] input[type="checkbox"]:checked::after {
   margin-bottom: 0.125rem !important;
 }
 
+ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  @apply text-muted-foreground/60;
+  text-decoration: none !important;
+}
+
 .tiptap-editor table,
 .prose.tiptap-editor table,
 .tiptap-editor-content table {

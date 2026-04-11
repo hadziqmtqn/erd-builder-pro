@@ -78,8 +78,8 @@ export class NoteExporter {
         top: -1px;
       }
       ul[data-type="taskList"] li[data-checked="true"] > div > p {
-        text-decoration: line-through;
-        color: #9ca3af;
+        text-decoration: none;
+        color: #a1a1aa;
       }
 
       /* Lists */
@@ -349,89 +349,102 @@ export class NoteExporter {
   }
 
   /**
-   * Main entry point for Word export (Base64 .doc Engine)
-   * This version avoids 'unreadable' errors in Word Desktop while keeping Google Docs compatibility
+   * Dynamically loads html-docx-js from CDN
+   */
+  private static async loadHtmlDocx(): Promise<any> {
+    if ((window as any).htmlDocx) return (window as any).htmlDocx;
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js";
+      script.onload = () => resolve((window as any).htmlDocx);
+      script.onerror = () => reject(new Error("Failed to load html-docx-js from CDN"));
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Main entry point for Word export (Binary .docx Engine)
+   * This generates a true .docx file compatible with Notion, MS Word, and Google Docs.
    */
   static async exportToWord(
     note: Note,
     options: ExportOptions,
   ): Promise<void> {
-    const toastId = toast.loading("Generating Word-compatible document...");
+    const toastId = toast.loading("Generating binary .docx document...");
     
     try {
-      // 1. Convert all images to Base64 Data URIs
-      let content = note.content;
+      const htmlDocx = await this.loadHtmlDocx();
+
+      // 1. Convert all images to Base64 Data URIs (required for embedding in .docx)
+      let exportedContent = note.content;
       const imgRegex = /<img [^>]*src=["']([^"']+)["'][^>]*>/g;
-      const matches = [...content.matchAll(imgRegex)];
+      const matches = [...exportedContent.matchAll(imgRegex)];
       
-      for (const match of matches) {
-        const url = match[1];
-        const imgData = await this.getImageData(url);
-        if (imgData) {
-          content = content.replace(url, imgData.data);
+      if (matches.length > 0) {
+        toast.loading(`Processing ${matches.length} images for document...`, { id: toastId });
+        for (const match of matches) {
+          const url = match[1];
+          if (url.startsWith('http')) {
+            const imgData = await this.getImageData(url);
+            if (imgData) {
+              exportedContent = exportedContent.replace(url, imgData.data);
+            }
+          }
         }
       }
 
-      // 2. Prepare the Word HTML Envelope with MSO tags
-      const header = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-              xmlns:w='urn:schemas-microsoft-com:office:word' 
-              xmlns='http://www.w3.org/TR/REC-html40'>
+      // 2. Wrap content in a clean HTML structure
+      const fullHtml = `
+        <!DOCTYPE html>
+        <html>
         <head>
           <meta charset="utf-8">
-          <title>${note.title}</title>
-          <!--[if gte mso 9]>
-          <xml>
-            <w:WordDocument>
-              <w:View>Print</w:View>
-              <w:Zoom>100</w:Zoom>
-              <w:DoNotOptimizeForBrowser/>
-            </w:WordDocument>
-          </xml>
-          <![endif]-->
           <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; }
-            h1 { font-size: 24pt; font-weight: bold; color: #000; margin-bottom: 20px; }
-            h2 { font-size: 18pt; font-weight: bold; color: #333; margin-top: 30px; }
-            p { font-size: 11pt; line-height: 1.5; margin-bottom: 10px; }
-            table { border-collapse: collapse; width: 100%; border: 1px solid #ddd; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            blockquote { border-left: 4px solid #ddd; margin: 20px 0; padding-left: 20px; font-style: italic; color: #666; }
-            pre { background-color: #f9f9f9; border: 1px solid #eee; padding: 15px; font-family: 'Consolas', monospace; }
-            img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
-            .meta { color: #888; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 30px; font-size: 10pt; }
+            body { font-family: 'Times New Roman', Times, serif; }
+            h1 { font-size: 24pt; font-weight: bold; }
+            h2 { font-size: 18pt; font-weight: bold; }
+            p { font-size: 11pt; line-height: 1.5; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid black; padding: 5px; }
+            blockquote { border-left: 3px solid #ccc; padding-left: 15px; font-style: italic; }
+            img { max-width: 100%; height: auto; }
           </style>
         </head>
         <body>
-          <h1>${note.title}</h1>
-          <div class="meta">
-            Project: ${note.projects?.name || 'Untitled'} | Updated: ${new Date(note.updated_at).toLocaleDateString()}
-          </div>
-          <div class="content">${content}</div>
+          ${options.includeTitle ? `<h1>${note.title}</h1>` : ''}
+          ${options.includeMetadata ? `
+            <p style="color: #666; font-size: 9pt;">
+              Project: ${note.projects?.name || 'Untitled'} | Updated: ${new Date(note.updated_at).toLocaleDateString()}
+            </p>
+            <hr />
+          ` : ''}
+          <div class="content">${exportedContent}</div>
         </body>
         </html>
       `;
 
-      // 3. Create Blob and Download as .doc
-      const blob = new Blob(['\ufeff', header], {
-        type: 'application/msword'
+      // 3. Convert to binary .docx
+      const blob = htmlDocx.asBlob(fullHtml, {
+        orientation: 'portrait',
+        margins: { top: 720, right: 720, bottom: 720, left: 720 }
       });
 
+      // 4. Download
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${note.title.toLowerCase().replace(/\s+/g, '_')}.doc`;
+      link.download = `${note.title.toLowerCase().replace(/\s+/g, '_')}.docx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      toast.success("Document exported successfully!", { id: toastId });
+      toast.success("Standard .docx exported successfully!", { id: toastId });
       
     } catch (error) {
-      console.error("Word Export failed:", error);
-      toast.error("Failed to generate Word document", { id: toastId });
+      console.error("Binary Word Export failed:", error);
+      toast.error("Failed to generate standard Word document", { id: toastId });
     }
   }
 }
