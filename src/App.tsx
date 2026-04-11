@@ -18,6 +18,7 @@ import { ImportSQLModal } from './components/modals/ImportSQLModal';
 import { ImportNoteModal } from './components/modals/ImportNoteModal';
 import { ExportNoteModal } from './components/modals/ExportNoteModal';
 import { NoteExporter } from './lib/exporters/note-exporter';
+import { NoteImporter } from './lib/importers/note-importer';
 import PropertiesPanel from './components/PropertiesPanel';
 
 import RelationshipPropertiesPanel from './components/RelationshipPropertiesPanel';
@@ -352,20 +353,33 @@ function AppContent() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (view !== 'erd') return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) {
+      // Global shortcuts based on view
+      if (view === 'erd') {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          if (e.shiftKey) {
+            if (canRedo) redo();
+          } else {
+            if (canUndo) undo();
+          }
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
           if (canRedo) redo();
-        } else {
-          if (canUndo) undo();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        if (canRedo) redo();
+      } else if (view === 'notes') {
+        // Notes specific shortcuts - only active when a note is open
+        if (!activeNoteId) return;
+
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          setIsExportNoteModalOpen(true);
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+          e.preventDefault();
+          setIsImportNoteModalOpen(true);
+        }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, undo, redo, canUndo, canRedo]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [view, activeNoteId, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
 
 
   const handleNoteSelect = async (id: number | string) => {
@@ -463,6 +477,48 @@ function AppContent() {
       codeBlockStyle: 'fenced',
       bulletListMarker: '-'
     });
+
+    // Custom rule for Task Lists (GFM standard)
+    turndownService.addRule('taskList', {
+      filter: (node) => 
+        node.nodeName === 'LI' && 
+        node.parentElement?.getAttribute('data-type') === 'taskList',
+      replacement: (content, node) => {
+        const checked = (node as HTMLElement).getAttribute('data-checked') === 'true';
+        return `- [${checked ? 'x' : ' '}] ${content.trim()}\n`;
+      }
+    });
+
+    // Custom rule for Tables (GFM standard)
+    turndownService.addRule('table', {
+      filter: 'table',
+      replacement: (content) => `\n\n${content}\n\n`
+    });
+
+    turndownService.addRule('tableRow', {
+      filter: 'tr',
+      replacement: (content, node) => {
+        let separator = '';
+        const parent = node.parentElement;
+        
+        // If this is the first row of a header or the first row of a table (fallback)
+        // we need to add the Markdown table separator line (|---|---|...)
+        const isHeaderRow = parent?.nodeName === 'THEAD' || 
+                           (!parent?.querySelector('thead') && node === parent?.firstElementChild);
+
+        if (isHeaderRow) {
+          const cellCount = (node as HTMLElement).querySelectorAll('th, td').length;
+          separator = '|' + '---|'.repeat(cellCount) + '\n';
+        }
+        
+        return '|' + content + '\n' + separator;
+      }
+    });
+
+    turndownService.addRule('tableCell', {
+      filter: ['th', 'td'],
+      replacement: (content) => ` ${content.trim()} |`
+    });
     
     // Add custom rule for tables if used in Tiptap
     const markdown = turndownService.turndown(activeNote.content);
@@ -479,21 +535,43 @@ function AppContent() {
   }, [activeNote]);
 
   const executeImportMarkdown = useCallback(async (file: File) => {
+    const toastId = toast.loading(`Importing ${file.name}...`);
     try {
-      const text = await file.text();
-      const html = await marked.parse(text);
+      let html = '';
+      const extension = file.name.split('.').pop()?.toLowerCase();
+
+      if (extension === 'docx') {
+        html = await NoteImporter.convertDocxToHtml(file);
+      } else if (extension === 'doc') {
+        html = await NoteImporter.convertDocToHtml(file);
+      } else {
+        // Use the centralized importer for Markdown (handles task lists, images, etc.)
+        html = await NoteImporter.convertMarkdownToHtml(file);
+      }
       
-      // Append instead of overwrite
-      const currentContent = activeNote?.content || '';
-      const separator = currentContent ? '<p></p>' : '';
-      const newContent = currentContent + separator + html;
-      
-      handleNoteChange(newContent);
-      toast.success("Markdown content appended to note");
-    } catch (error) {
-      toast.error("Failed to parse Markdown file");
+      if (!activeNoteId) {
+        // No note active, create a new one
+        const baseName = file.name.replace(/\.[^/.]+$/, "");
+        const newNote = await createNote(baseName, activeProjectId === 'all' ? null : activeProjectId);
+        if (newNote) {
+          // Update the content of the newly created note using saveNote
+          await saveNote({ ...newNote, content: html });
+          setActiveNoteId(newNote.id);
+          toast.success(`Created new note from ${file.name}`, { id: toastId });
+        }
+      } else {
+        // Append instead of overwrite
+        const currentContent = activeNote?.content || '';
+        const separator = currentContent ? '<p></p>' : '';
+        const newContent = currentContent + separator + html;
+        
+        handleNoteChange(newContent);
+        toast.success(`${file.name} imported successfully`, { id: toastId });
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to import file", { id: toastId });
     }
-  }, [activeNote, handleNoteChange]);
+  }, [activeNoteId, activeNote, activeProjectId, createNote, updateNote, setActiveNoteId, handleNoteChange]);
 
   if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
   if (isPublicLoading) return <AppInitialization type="public" view={view} />;
