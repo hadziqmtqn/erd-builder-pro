@@ -9,7 +9,6 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [activeDiagramId, setActiveDiagramId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [diagramsTotal, setDiagramsTotal] = useState(0);
@@ -254,21 +253,12 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
 
   const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport) => {
     if (!activeDiagramId || (view !== 'erd' && view !== 'diagram')) return;
-    if (!isAuthenticated && !isGuest) return;
-
-    setSaveStatus('saving');
-
-    const data = JSON.stringify({ nodes, edges, viewport });
     
-    // Save to local IndexedDB first
     try {
-      await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, !isGuest);
-    } catch (e) {
-      console.warn('Local draft save failed', e);
-    }
-
-    if (isGuest) {
-      try {
+      const data = JSON.stringify({ nodes, edges, viewport });
+      const isSyncPending = !isGuest;
+      
+      if (isGuest) {
         const diagram = await localPersistence.getResource(activeDiagramId);
         if (diagram) {
           const entities: Entity[] = nodes.map(n => ({
@@ -285,7 +275,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
             target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
             source_handle: e.sourceHandle || undefined,
             target_handle: e.targetHandle || undefined,
-            type: RELATIONSHIP_TYPES.find(t => t.label === e.label)?.value || 'one-to-many',
+            type: RELATIONSHIP_TYPES.find(t => t.label === e.label || t.shortLabel === e.label)?.value || 'one-to-many',
             label: e.label as string,
           }));
 
@@ -297,61 +287,19 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           diagram.updated_at = new Date().toISOString();
           await localPersistence.saveResource(diagram);
         }
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (e) {}
-      return;
-    }
-
-    if (navigator.onLine && isAuthenticated) {
-      try {
-        const entities: Entity[] = nodes.map(n => ({
-          ...n.data,
-          x: n.position.x,
-          y: n.position.y,
-        })) as Entity[];
-
-        const relationships: Relationship[] = edges.map(e => ({
-          id: e.id,
-          source_entity_id: e.source,
-          target_entity_id: e.target,
-          source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-          target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-          source_handle: e.sourceHandle || undefined,
-          target_handle: e.targetHandle || undefined,
-          type: RELATIONSHIP_TYPES.find(t => t.shortLabel === e.label)?.value || 'one-to-many',
-          label: e.label as string,
-        }));
-
-        const res = await fetch(`/api/diagrams/save/${activeDiagramId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ entities, relationships, viewport }),
-        });
-        if (res.ok) {
-          await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, false);
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2000);
-        } else {
-          setSaveStatus('error');
-        }
-      } catch (err) {
-        setSaveStatus('error');
-        console.error('Error saving diagram to server:', err);
       }
-    } else {
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
+
+      await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, isSyncPending);
+    } catch (err) {
+      console.error('Error in local saveDiagram:', err);
     }
-  }, [activeDiagramId, isAuthenticated, isGuest, view]);
+  }, [activeDiagramId, isGuest, view]);
 
   return {
     diagrams,
     setDiagrams,
     activeDiagramId,
     setActiveDiagramId,
-    saveStatus,
-    setSaveStatus,
     fetchDiagrams,
     createDiagram,
     updateDiagram,

@@ -8,7 +8,6 @@ export function useDrawings(isGuest: boolean = false) {
   const [activeDrawingId, setActiveDrawingId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isItemLoading, setIsItemLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);
   const [hasMoreDrawings, setHasMoreFiles] = useState(false);
@@ -175,40 +174,26 @@ export function useDrawings(isGuest: boolean = false) {
 
   const saveDrawing = async (drawing: Drawing) => {
     if (!drawing.id) return false;
-    setSaveStatus('saving');
     
-    if (isGuest) {
-      const localDrawing = await localPersistence.getResource(drawing.id);
-      if (localDrawing) {
-        localDrawing.data = drawing.data;
-        localDrawing.updated_at = new Date().toISOString();
-        await localPersistence.saveResource(localDrawing);
-      }
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-      return true;
-    }
-
     try {
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', true);
-      const res = await fetch(`/api/drawings/${drawing.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: drawing.title, data: drawing.data, project_id: drawing.project_id }),
-      });
-      if (res.ok) {
-        await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, drawing.data || '', false);
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
-        setSaveStatus('error');
+      const isSyncPending = !isGuest;
+      const dataToSave = drawing.data || '';
+      
+      if (isGuest) {
+        const localDrawing = await localPersistence.getResource(drawing.id);
+        if (localDrawing) {
+          localDrawing.data = drawing.data;
+          localDrawing.updated_at = new Date().toISOString();
+          await localPersistence.saveResource(localDrawing);
+        }
       }
+
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, dataToSave, isSyncPending);
+      return true;
     } catch (err) {
-      setSaveStatus('error');
+      console.error('Error in local saveDrawing:', err);
+      return false;
     }
-    return false;
   };
 
   const restoreDrawing = async (id: number | string) => {
@@ -283,7 +268,6 @@ export function useDrawings(isGuest: boolean = false) {
     deleteDrawingPermanent,
     hasMoreDrawings,
     drawingsTotal,
-    saveStatus,
     isLoading,
     isItemLoading,
     selectDrawing

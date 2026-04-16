@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -46,7 +46,7 @@ import {
   DialogBody,
 } from "@/components/ui/dialog";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Extension } from '@tiptap/core';
+import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
@@ -130,6 +130,10 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
       </button>
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
         Code Block
+      </button>
+
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setToggle().run()} className={toggleClass(editor.isActive('toggle'))}>
+        Toggle
       </button>
       
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
@@ -309,6 +313,64 @@ const TrailingNode = Extension.create({
   },
 });
 
+const ToggleExtension = Node.create({
+  name: 'toggle',
+  group: 'block',
+  content: 'block+',
+  addAttributes() {
+    return {
+      open: { default: true },
+      title: { default: 'Toggle Section' }
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="toggle"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'toggle' }), 0];
+  },
+  addCommands() {
+    return {
+      setToggle: () => ({ commands }) => {
+        return commands.insertContent({
+          type: this.name,
+          attrs: { open: true, title: 'Toggle Section' },
+          content: [{ type: 'paragraph' }]
+        });
+      },
+    } as any;
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(({ node, updateAttributes }) => {
+      return (
+        <NodeViewWrapper className="my-2 border border-border/50 rounded-md bg-muted/5 group overflow-hidden">
+          <div 
+            className="flex items-center gap-2 px-3 py-2 cursor-pointer bg-muted/10 hover:bg-muted/20 transition-colors select-none"
+            onClick={() => updateAttributes({ open: !node.attrs.open })}
+            contentEditable={false}
+            suppressContentEditableWarning={true}
+          >
+            <span className="text-muted-foreground shrink-0 w-4 h-4 flex items-center justify-center">
+              {node.attrs.open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </span>
+            <input 
+              value={node.attrs.title}
+              onChange={(e) => updateAttributes({ title: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-transparent border-none focus:ring-0 outline-none text-sm font-semibold text-foreground/80 w-full"
+              placeholder="Toggle Title..."
+            />
+          </div>
+          
+          <div className={cn("p-2 px-4 border-t border-border/20", node.attrs.open ? "block" : "hidden")}>
+            <NodeViewContent className="tiptap-toggle-content outline-none min-h-[1.5rem]" />
+          </div>
+        </NodeViewWrapper>
+      );
+    });
+  }
+});
+
 export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
@@ -321,6 +383,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const extensions = React.useMemo(() => [
     TextStyle,
     Color,
+    ToggleExtension,
     StarterKit.configure({
       link: false,
     }),
