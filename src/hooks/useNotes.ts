@@ -8,7 +8,6 @@ export function useNotes(isGuest: boolean = false) {
   const [activeNoteId, setActiveNoteId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isItemLoading, setIsItemLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [notesTotal, setNotesTotal] = useState(0);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
@@ -180,42 +179,26 @@ export function useNotes(isGuest: boolean = false) {
 
   const saveNote = async (note: Note) => {
     if (!note.id) return false;
-    setSaveStatus('saving');
     
-    if (isGuest) {
-      const localNote = await localPersistence.getResource(note.id);
-      if (localNote) {
-        localNote.content = note.content;
-        localNote.updated_at = new Date().toISOString();
-        await localPersistence.saveResource(localNote);
-      }
-      await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify({ content: note.content }), false);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-      return true;
-    }
-
     try {
-      await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify({ content: note.content }), true);
+      const isSyncPending = !isGuest;
+      const dataToSave = JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id });
       
-      const res = await fetch(`/api/notes/${note.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id }),
-      });
-      
-      if (res.ok) {
-        await localPersistence.saveDraft(DraftType.NOTES, note.id, JSON.stringify({ content: note.content }), false);
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
-        setSaveStatus('error');
+      if (isGuest) {
+        const localNote = await localPersistence.getResource(note.id);
+        if (localNote) {
+          localNote.content = note.content;
+          localNote.updated_at = new Date().toISOString();
+          await localPersistence.saveResource(localNote);
+        }
       }
+
+      await localPersistence.saveDraft(DraftType.NOTES, note.id, dataToSave, isSyncPending);
+      return true;
     } catch (err) {
-      setSaveStatus('error');
+      console.error('Error in local saveNote:', err);
+      return false;
     }
-    return false;
   };
 
   const restoreNote = async (id: number | string) => {
@@ -291,7 +274,6 @@ export function useNotes(isGuest: boolean = false) {
     deleteNotePermanent,
     hasMoreNotes,
     notesTotal,
-    saveStatus,
     isLoading,
     isItemLoading,
     selectNote

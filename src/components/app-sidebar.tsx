@@ -74,7 +74,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDrawingUpdate: (id: number | string, title: string) => void;
   onFlowchartUpdate: (id: number | string, title: string) => void;
   onLogout: () => void;
-  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null) => void;
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null) => void;
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null) => void;
@@ -137,7 +136,6 @@ export function AppSidebar({
   onDrawingUpdate,
   onFlowchartUpdate,
   onLogout,
-  saveStatus,
   onMoveDiagramToProject,
   onMoveNoteToProject,
   onMoveDrawingToProject,

@@ -8,7 +8,6 @@ export function useFlowcharts(isGuest: boolean = false) {
   const [activeFlowchartId, setActiveFlowchartId] = useState<number | string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isItemLoading, setIsItemLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);
   const [hasMoreFlowcharts, setHasMoreFlowcharts] = useState(false);
@@ -175,40 +174,26 @@ export function useFlowcharts(isGuest: boolean = false) {
 
   const saveFlowchart = async (flowchart: Flowchart) => {
     if (!flowchart.id) return false;
-    setSaveStatus('saving');
     
-    if (isGuest) {
-      const localFlowchart = await localPersistence.getResource(flowchart.id);
-      if (localFlowchart) {
-        localFlowchart.data = flowchart.data;
-        localFlowchart.updated_at = new Date().toISOString();
-        await localPersistence.saveResource(localFlowchart);
-      }
-      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-      return true;
-    }
-
     try {
-      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', true);
-      const res = await fetch(`/api/flowcharts/${flowchart.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: flowchart.title, data: flowchart.data, project_id: flowchart.project_id }),
-      });
-      if (res.ok) {
-        await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, flowchart.data || '', false);
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-        return true;
-      } else {
-        setSaveStatus('error');
+      const isSyncPending = !isGuest;
+      const dataToSave = flowchart.data || '';
+      
+      if (isGuest) {
+        const localFlowchart = await localPersistence.getResource(flowchart.id);
+        if (localFlowchart) {
+          localFlowchart.data = flowchart.data;
+          localFlowchart.updated_at = new Date().toISOString();
+          await localPersistence.saveResource(localFlowchart);
+        }
       }
+
+      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, dataToSave, isSyncPending);
+      return true;
     } catch (err) {
-      setSaveStatus('error');
+      console.error('Error in local saveFlowchart:', err);
+      return false;
     }
-    return false;
   };
 
   const restoreFlowchart = async (id: number | string) => {
@@ -283,7 +268,6 @@ export function useFlowcharts(isGuest: boolean = false) {
     deleteFlowchartPermanent,
     hasMoreFlowcharts,
     flowchartsTotal,
-    saveStatus,
     isLoading,
     isItemLoading,
     selectFlowchart

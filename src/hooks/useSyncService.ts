@@ -1,11 +1,17 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { localPersistence } from '../lib/localPersistence';
 import { DraftType } from '../types';
 import { toast } from 'sonner';
 
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<boolean>(false);
+
   const syncDrafts = useCallback(async () => {
     if (!isAuthenticated || !navigator.onLine || isGuest) return;
+
+    setIsSyncing(true);
+    setSyncError(false);
 
     try {
       const pendingSyncs = await localPersistence.getAllPendingSyncs();
@@ -66,18 +72,30 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
           }
         } catch (err) {
           console.warn(`Failed to sync item ${draft.id} (${draft.type}):`, err);
+          setSyncError(true);
         }
       }
 
       if (successCount > 0) {
-        toast.success(`Successfully synced ${successCount} items to cloud`, {
-          description: "Your local changes have been merged.",
-        });
+        // Only notify sparingly for quiet background syncs to avoid spam
+        console.log(`Successfully synced ${successCount} items to cloud`);
       }
     } catch (err) {
       console.error('Sync service error:', err);
+      setSyncError(true);
+    } finally {
+      setIsSyncing(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isGuest]);
+
+  // Debounced trigger to queue syncs (3000ms pause)
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const triggerDebouncedSync = useCallback(() => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(() => {
+      syncDrafts();
+    }, 3000);
+  }, [syncDrafts]);
 
   useEffect(() => {
     // Initial sync check on mount if online
@@ -92,8 +110,11 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     };
 
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    }
   }, [syncDrafts, isAuthenticated]);
 
-  return { syncDrafts };
+  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError };
 }

@@ -138,7 +138,7 @@ function AppContent() {
   // Custom Hooks
   const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin, handleLogout } = useAuth();
   const isOnline = useConnectionStatus();
-  useSyncService(isAuthenticated, isGuest);
+  const { triggerDebouncedSync, isSyncing, syncError } = useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
   const { handleExportImage, handleExportPDF } = useImageExporter();
@@ -163,7 +163,7 @@ function AppContent() {
 
   // Domain Hooks
   const { 
-    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId, saveStatus,
+    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId,
     fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
     hasMoreDiagrams, isLoading: isDiagramsLoading
   } = useDiagrams(isAuthenticated, view, isGuest);
@@ -171,7 +171,7 @@ function AppContent() {
 
   const { 
     notes, setNotesList, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, saveStatus: notesSaveStatus, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote
+    hasMoreNotes, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote
   } = useNotes(isGuest);
   
   const { 
@@ -181,12 +181,12 @@ function AppContent() {
   
   const { 
     drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings, saveStatus: drawingsSaveStatus, isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing
+    hasMoreDrawings, isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing
   } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
-    hasMoreFlowcharts, saveStatus: flowchartsSaveStatus, isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
+    hasMoreFlowcharts, isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
   } = useFlowcharts(isGuest);
 
   const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
@@ -209,10 +209,7 @@ function AppContent() {
     return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
   }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
 
-  const currentSaveStatus = useMemo(() => {
-    const statusMap = { erd: saveStatus, notes: notesSaveStatus, drawings: drawingsSaveStatus, flowchart: flowchartsSaveStatus };
-    return statusMap[view as keyof typeof statusMap] || 'idle';
-  }, [view, saveStatus, notesSaveStatus, drawingsSaveStatus, flowchartsSaveStatus]);
+
 
   const activeDocument = useMemo(() => {
     if (isPublicView) return publicData;
@@ -331,11 +328,14 @@ function AppContent() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    if (activeDiagramId && isAuthenticated && view === 'erd' && !isPublicView) {
-      saveTimeoutRef.current = setTimeout(() => saveDiagram(nodes, edges, viewportRef.current), 3000);
+    if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
+      saveTimeoutRef.current = setTimeout(async () => {
+        await saveDiagram(nodes, edges, viewportRef.current);
+        triggerDebouncedSync();
+      }, 2000);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [nodes, edges, activeDiagramId, isAuthenticated, view, saveDiagram, isPublicView]);
+  }, [nodes, edges, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync]);
 
   // Handlers
   const handleDiagramSelect = (id: number | string) => selectDiagram(id, setActiveDiagramId);
@@ -397,33 +397,54 @@ function AppContent() {
     await selectFlowchart(id);
   };
 
+  const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
-    setNotesList(prev => prev.map(n => n.id === activeNoteId ? { ...n, content } : n));
-    saveNote({
-      id: activeNoteId, content, title: notes.find(n => n.id === activeNoteId)?.title || '',
-      project_id: notes.find(n => n.id === activeNoteId)?.project_id || null
-    } as any);
-  }, [activeNoteId, notes, saveNote, setNotesList]);
+    const noteId = activeNoteId;
+    setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, content } : n));
+    
+    if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
+    notesSaveTimeout.current = setTimeout(async () => {
+      await saveNote({
+        id: noteId, content, title: notes.find(n => n.id === noteId)?.title || '',
+        project_id: notes.find(n => n.id === noteId)?.project_id || null
+      } as any);
+      triggerDebouncedSync();
+    }, 2000);
+  }, [activeNoteId, notes, saveNote, setNotesList, triggerDebouncedSync]);
 
+  const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
-    setDrawings(prev => prev.map(d => d.id === activeDrawingId ? { ...d, data } : d));
-    saveDrawing({
-      id: activeDrawingId, data, title: drawings.find(d => d.id === activeDrawingId)?.title || '',
-      project_id: drawings.find(d => d.id === activeDrawingId)?.project_id || null
-    } as any);
-  }, [activeDrawingId, drawings, saveDrawing, setDrawings]);
+    const drawingId = activeDrawingId;
+    setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, data } : d));
+    
+    if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
+    drawingsSaveTimeout.current = setTimeout(async () => {
+      await saveDrawing({
+        id: drawingId, data, title: drawings.find(d => d.id === drawingId)?.title || '',
+        project_id: drawings.find(d => d.id === drawingId)?.project_id || null
+      } as any);
+      triggerDebouncedSync();
+    }, 2000);
+  }, [activeDrawingId, drawings, saveDrawing, setDrawings, triggerDebouncedSync]);
   
+  const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleFlowchartChange = useCallback((nodesData: any[], edgesData: any[]) => {
     if (!activeFlowchartId) return;
+    const flowchartId = activeFlowchartId;
     const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
-    setFlowcharts(prev => prev.map(f => f.id === activeFlowchartId ? { ...f, data: dataString } : f));
-    saveFlowchart({
-      id: activeFlowchartId, data: dataString, title: flowcharts.find(f => f.id === activeFlowchartId)?.title || '',
-      project_id: flowcharts.find(f => f.id === activeFlowchartId)?.project_id || null
-    } as any);
-  }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts]);
+    setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, data: dataString } : f));
+    
+    if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
+    flowchartsSaveTimeout.current = setTimeout(async () => {
+      await saveFlowchart({
+        id: flowchartId, data: dataString, title: flowcharts.find(f => f.id === flowchartId)?.title || '',
+        project_id: flowcharts.find(f => f.id === flowchartId)?.project_id || null
+      } as any);
+      triggerDebouncedSync();
+    }, 2000);
+  }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts, triggerDebouncedSync]);
 
   const handleViewChange = (newView: typeof view) => {
     if (!isOnline && !isPublicView) {
@@ -605,7 +626,7 @@ function AppContent() {
           onProjectCreate={createProject} onProjectUpdate={updateProject} onProjectDelete={id => { deleteProject(id); fetchTrash(); }}
           onDiagramUpdate={updateDiagram} onNoteUpdate={updateNote} onDrawingUpdate={updateDrawing} onFlowchartUpdate={updateFlowchart}
           onDiagramDelete={id => { deleteDiagram(id); fetchTrash(); }} onNoteDelete={id => { deleteNote(id); fetchTrash(); }} onDrawingDelete={id => { deleteDrawing(id); fetchTrash(); }} onFlowchartDelete={id => { deleteFlowchart(id); fetchTrash(); }}
-          onLogout={handleLogout} saveStatus={saveStatus}
+          onLogout={handleLogout}
           onMoveDiagramToProject={moveDiagramToProject} onMoveNoteToProject={moveNoteToProject} onMoveDrawingToProject={moveDrawingToProject} onMoveFlowchartToProject={moveFlowchartToProject}
           sidebarView={sidebarView} onViewChange={handleViewChange}
           hasMoreProjects={hasMoreProjects} hasMoreDiagrams={hasMoreDiagrams} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
@@ -620,7 +641,8 @@ function AppContent() {
         <MainHeader 
           featureLabel={featureLabel} activeProjectName={activeProjectName} activeFileName={activeFileName} 
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
-          currentSaveStatus={isPublicView ? 'saved' : currentSaveStatus}
+          syncError={syncError}
+          isSyncing={isSyncing}
           activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
           onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}

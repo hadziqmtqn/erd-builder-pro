@@ -10,7 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Share2, Globe } from 'lucide-react';
+import { Share2, Globe, CloudOff, CloudRain, Cloud } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,7 +23,8 @@ interface MainHeaderProps {
   activeFileName: string | null | undefined;
   view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash';
   hasActiveItem: boolean;
-  currentSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  syncError?: boolean;
+  isSyncing?: boolean;
   activeFileUid?: string;
   activeFileId?: number | string;
   initialShareSettings?: {
@@ -50,7 +51,8 @@ export const MainHeader = React.memo(({
   activeFileName,
   view,
   hasActiveItem,
-  currentSaveStatus,
+  syncError,
+  isSyncing,
   activeFileUid,
   activeFileId,
   initialShareSettings,
@@ -155,10 +157,26 @@ export const MainHeader = React.memo(({
 
             {!isPublicView && (
               <div className="flex items-center gap-2 shrink-0">
-                <div className={`w-1.5 h-1.5 rounded-full ${!isOnline ? 'bg-destructive animate-pulse' : currentSaveStatus === 'saving' ? 'bg-amber-500 animate-pulse' : currentSaveStatus === 'saved' ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                <span className="text-[11px] text-muted-foreground font-medium hidden sm:inline">
-                  {!isOnline ? 'Saving Locally' : currentSaveStatus === 'saving' ? 'Saving...' : currentSaveStatus === 'saved' ? 'Saved' : 'Idle'}
-                </span>
+                {syncError ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 border border-destructive/20 text-destructive cursor-help">
+                          <CloudOff className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Sync Failed</span>
+                        </div>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium max-w-[200px] text-center">
+                        Your changes are saved safely on this computer, but we couldn't send them to the cloud. We'll automatically retry when possible.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : isSyncing ? (
+                  <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
+                     <Cloud className="w-3.5 h-3.5 animate-bounce" />
+                     <span className="text-[10px] font-medium uppercase tracking-wider">Syncing...</span>
+                  </div>
+                ) : null}
               </div>
             )}
 
