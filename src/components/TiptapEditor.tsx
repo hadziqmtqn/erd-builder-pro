@@ -115,35 +115,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
 
   return (
     <div className="flex flex-nowrap gap-2 items-center w-full overflow-x-auto custom-scrollbar pb-2 pt-1 px-1">
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBold().run()} className={toggleClass(editor.isActive('bold'))}>
-        Bold
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleItalic().run()} className={toggleClass(editor.isActive('italic'))}>
-        Italic
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleStrike().run()} className={toggleClass(editor.isActive('strike'))}>
-        Strike
-      </button>
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
-        Code
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
-        Code Block
-      </button>
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setToggle().run()} className={toggleClass(editor.isActive('toggle'))}>
-        Toggle
-      </button>
-      
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setParagraph().run()} className={toggleClass(editor.isActive('paragraph'))}>
-        Paragraph
-      </button>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
+      {/* 1. Structural / Block Styles */}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button className={cn(
@@ -169,7 +141,27 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-      
+
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setParagraph().run()} className={toggleClass(editor.isActive('paragraph'))}>
+        Paragraph
+      </button>
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+      {/* 2. Text Formatting */}
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBold().run()} className={toggleClass(editor.isActive('bold'))}>
+        Bold
+      </button>
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleItalic().run()} className={toggleClass(editor.isActive('italic'))}>
+        Italic
+      </button>
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleStrike().run()} className={toggleClass(editor.isActive('strike'))}>
+        Strike
+      </button>
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+      {/* 3. Lists & Organization */}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button className={cn(
@@ -189,12 +181,60 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setToggle().run()} className={toggleClass(editor.isActive('toggle'))}>
+        Toggle
+      </button>
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBlockquote().run()} className={toggleClass(editor.isActive('blockquote'))}>
         Quote
       </button>
 
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
+      {/* 4. Media & Links */}
+      <button 
+        type="button" 
+        onPointerDown={(e) => e.preventDefault()} 
+        onClick={onOpenLinkDialog} 
+        className={cn(toggleClass(editor.isActive('link')), "whitespace-nowrap")}
+      >
+        Link
+      </button>
+      {editor.isActive('link') && (
+        <button 
+          type="button" 
+          onPointerDown={(e) => e.preventDefault()} 
+          onClick={() => editor.chain().focus().unsetLink().run()} 
+          className={cn(toggleClass(false), "text-destructive hover:bg-destructive/10 whitespace-nowrap")}
+        >
+          Unlink
+        </button>
+      )}
+
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
+        Image
+      </button>
+      <input 
+        type="file" 
+        accept="image/*" 
+        ref={fileInputRef} 
+        onChange={handleImageUpload} 
+        className="hidden" 
+      />
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+      {/* 5. Code & Specialized Blocks */}
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
+        Code
+      </button>
+      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
+        Code Block
+      </button>
+
+      <div className="w-px h-6 bg-border mx-1 shrink-0" />
+
+      {/* 6. Advanced Controls */}
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button className={cn(
@@ -220,41 +260,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
 
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
-        Image
-      </button>
-      <input 
-        type="file" 
-        accept="image/*" 
-        ref={fileInputRef} 
-        onChange={handleImageUpload} 
-        className="hidden" 
-      />
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      <button 
-        type="button" 
-        onPointerDown={(e) => e.preventDefault()} 
-        onClick={onOpenLinkDialog} 
-        className={cn(toggleClass(editor.isActive('link')), "whitespace-nowrap")}
-      >
-        Link
-      </button>
-
-      {editor.isActive('link') && (
-        <button 
-          type="button" 
-          onPointerDown={(e) => e.preventDefault()} 
-          onClick={() => editor.chain().focus().unsetLink().run()} 
-          className={cn(toggleClass(false), "text-destructive hover:bg-destructive/10 whitespace-nowrap")}
-        >
-          Unlink
-        </button>
-      )}
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
+      {/* 7. History */}
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().undo().run()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
         Undo
       </button>
