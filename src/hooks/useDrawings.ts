@@ -177,7 +177,13 @@ export function useDrawings(isGuest: boolean = false) {
     
     try {
       const isSyncPending = !isGuest;
-      const dataToSave = drawing.data || '';
+      // We need to save as JSON because useSyncService expects a JSON string with {title, data, project_id}
+      const payload = {
+        title: drawing.title,
+        data: drawing.data || '',
+        project_id: drawing.project_id || null
+      };
+      const dataToSave = JSON.stringify(payload);
       
       if (isGuest) {
         const localDrawing = await localPersistence.getResource(drawing.id);

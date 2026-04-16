@@ -81,7 +81,7 @@ router.post("/upload", authenticate, upload.single("image"), async (req: any, re
     }));
 
     const publicUrl = R2_PUBLIC_URL 
-      ? `${R2_PUBLIC_URL.replace(/\/$/, "")}/${r2Key}`
+      ? `${R2_PUBLIC_URL.replace(/\\n/g, '').replace(/\\r/g, '').trim().replace(/\/$/, "")}/${r2Key}`
       : `https://${R2_BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${r2Key}`;
 
     res.json({ url: publicUrl, key: r2Key });
