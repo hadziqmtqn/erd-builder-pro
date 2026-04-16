@@ -152,18 +152,28 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
                   </span>
                 </div>
                 
-                <div className="flex items-center gap-1.5">
-                  <span 
-                    className="text-[11px] font-mono font-semibold"
-                    style={{ color: typeColor }}
-                  >
-                    {col.type.toLowerCase()}
-                  </span>
-                  {(col.is_pk || isFk) && (
-                    <div className="flex items-center gap-1">
-                      {col.is_pk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>}
-                      {isFk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
-                    </div>
+                <div className="flex flex-col items-end gap-0.5 max-w-[140px]">
+                  <div className="flex items-center gap-1.5">
+                    <span 
+                      className="text-[11px] font-mono font-semibold"
+                      style={{ color: typeColor }}
+                    >
+                      {col.type.toLowerCase()}
+                    </span>
+                    {(col.is_pk || isFk) && (
+                      <div className="flex items-center gap-1">
+                        {col.is_pk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>}
+                        {isFk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
+                      </div>
+                    )}
+                  </div>
+                  {col.type.toUpperCase() === 'ENUM' && col.enum_values && (
+                    <span 
+                      className="font-mono italic text-right leading-tight break-words max-w-full"
+                      style={{ fontSize: '8.5px', color: 'rgba(255, 255, 255, 0.45)' }}
+                    >
+                      ({col.enum_values})
+                    </span>
                   )}
                 </div>
               </div>

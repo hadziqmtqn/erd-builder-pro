@@ -107,57 +107,59 @@ export default function PropertiesPanel({
 
   return (
     <>
-      {/* Entity Settings */}
-      <section className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Table Name</Label>
-              <div className="relative">
-                <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
-                <Input
-                  type="text"
-                  value={editingEntity.name}
-                  onChange={(e) => handleEntityNameChange(e.target.value)}
-                  onBlur={() => syncWithParent(editingEntity)}
-                  className="pl-10 h-10 transition-all focus:ring-1"
+      <div className="sticky top-[-24px] z-10 bg-background pt-6 pb-4 -mt-6 -mx-6 px-6 border-b border-border/50 shadow-sm mb-4">
+        {/* Entity Settings */}
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Table Name</Label>
+            <div className="relative">
+              <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
+              <Input
+                type="text"
+                value={editingEntity.name}
+                onChange={(e) => handleEntityNameChange(e.target.value)}
+                onBlur={() => syncWithParent(editingEntity)}
+                className="pl-10 h-10 transition-all focus:ring-1"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Color</Label>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => handleColorChange(color)}
+                  className={cn(
+                    "w-7 h-7 rounded-full border-2 transition-all shadow-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    editingEntity.color === color ? "border-foreground scale-110 shadow-md" : "border-transparent hover:scale-105"
+                  )}
+                  style={{ backgroundColor: color }}
                 />
-              </div>
+              ))}
             </div>
+          </div>
+        </section>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Color</Label>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
-                  <button
-                    key={color}
-                    onClick={() => handleColorChange(color)}
-                    className={cn(
-                      "w-7 h-7 rounded-full border-2 transition-all shadow-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      editingEntity.color === color ? "border-foreground scale-110 shadow-md" : "border-transparent hover:scale-105"
-                    )}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            </div>
-          </section>
+        <Separator className="my-5" />
 
-          <Separator />
+        {/* Columns Settings Header */}
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Columns ({editingEntity.columns.length})</Label>
+          <Button 
+            variant="secondary"
+            size="icon"
+            onClick={addColumn}
+            className="h-8 w-8 rounded-full shadow-sm hover:shadow-md transition-all"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
 
-          {/* Columns Settings */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Columns ({editingEntity.columns.length})</Label>
-              <Button 
-                variant="secondary"
-                size="icon"
-                onClick={addColumn}
-                className="h-8 w-8 rounded-full shadow-sm hover:shadow-md transition-all"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-3">
+      <section className="space-y-3">
+        <div className="space-y-3">
               {editingEntity.columns.map((col) => (
                 <Card key={col.id} className="p-4 bg-muted/20 space-y-4 group border border-border/40 shadow-none hover:border-border/80 transition-colors">
                   <div className="flex items-center gap-3">
