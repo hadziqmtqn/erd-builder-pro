@@ -53,6 +53,8 @@ import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
+import { SlashMenu } from './SlashMenu';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import {
   HoverCard,
@@ -194,7 +196,10 @@ const IconSelector = ({ editor }: { editor: any }) => {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap flex items-center gap-1.5">
+        <button 
+          data-icon-selector-trigger
+          className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap flex items-center gap-1.5"
+        >
           <Smile className="w-4 h-4" />
           Icon
         </button>
@@ -601,6 +606,17 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const [selectionVersion, setSelectionVersion] = React.useState(0);
   const [showOutline, setShowOutline] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
+  const [slashMenu, setSlashMenu] = React.useState<{
+    isOpen: boolean;
+    query: string;
+    range: { from: number; to: number };
+    coords: { top: number; left: number; bottom: number };
+  }>({
+    isOpen: false,
+    query: '',
+    range: { from: 0, to: 0 },
+    coords: { top: 0, left: 0, bottom: 0 }
+  });
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const extensions = React.useMemo(() => [
@@ -656,9 +672,48 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
         }
       });
       setHeadings(extracted);
+
+      // Slash Menu Logic
+      const { selection } = editor.state;
+      const { $from } = selection;
+      
+      // Get text from start of block to cursor
+      const textFromStartContent = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+      const slashIndex = textFromStartContent.lastIndexOf('/');
+
+      if (slashIndex !== -1) {
+        const query = textFromStartContent.slice(slashIndex + 1);
+        // Only trigger if slash is at start or after a space
+        const charBeforeSlash = textFromStartContent[slashIndex - 1];
+        
+        if (!charBeforeSlash || charBeforeSlash === ' ') {
+          // Check if space exists after the slash (don't show menu if user typed "/ ")
+          if (!query.includes(' ')) {
+            const from = $from.pos - (textFromStartContent.length - slashIndex);
+            const to = $from.pos;
+            const coords = editor.view.coordsAtPos(from);
+            
+            setSlashMenu({
+              isOpen: true,
+              query,
+              range: { from, to },
+              coords
+            });
+            return;
+          }
+        }
+      }
+
+      if (slashMenu.isOpen) {
+        setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      }
     },
-    onSelectionUpdate() {
+    onSelectionUpdate({ editor }) {
       setSelectionVersion(v => v + 1);
+      // Close slash menu on selection change if cursor moved away
+      if (slashMenu.isOpen) {
+        setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      }
     },
     onFocus() {
       setSelectionVersion(v => v + 1);
@@ -957,6 +1012,18 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           </form>
         </DialogContent>
       </Dialog>
+
+      <AnimatePresence>
+        {slashMenu.isOpen && (
+          <SlashMenu 
+            editor={editor}
+            query={slashMenu.query}
+            range={slashMenu.range}
+            coords={slashMenu.coords}
+            onClose={() => setSlashMenu(prev => ({ ...prev, isOpen: false }))}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
