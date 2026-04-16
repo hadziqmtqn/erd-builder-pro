@@ -14,17 +14,17 @@ import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import TiptapLink from '@tiptap/extension-link';
 
-import { 
-  Check, 
-  ChevronRight, 
-  ChevronDown, 
+import {
+  Check,
+  ChevronRight,
+  ChevronDown,
   Search,
   BookOpen,
-  Database, 
-  Trash2, 
+  Database,
+  Trash2,
   Share2,
-  X, 
-  PanelRight, 
+  X,
+  PanelRight,
   ChevronFirst,
   Bold,
   Italic,
@@ -32,8 +32,11 @@ import {
   Pilcrow,
   Link,
   Palette,
-  Code2
+  Code2,
+  Smile,
+  Type
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +66,218 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { ListTree } from 'lucide-react';
+
+const LucideIconExtension = Node.create({
+  name: 'lucideIcon',
+  group: 'inline',
+  inline: true,
+  selectable: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      name: {
+        default: 'HelpCircle',
+      },
+      color: {
+        default: null,
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'span[data-lucide-icon]',
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-lucide-icon': '' }), 0];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer((props) => {
+      const { name, color } = props.node.attrs;
+      // @ts-ignore
+      const IconComponent = LucideIcons[name] || LucideIcons.HelpCircle;
+
+      return (
+        <NodeViewWrapper className="inline-flex items-center align-middle mx-0.5 leading-none translate-y-[-1px]">
+          <IconComponent
+            size="1.1em"
+            color={color || 'currentColor'}
+            className="inline-block"
+            strokeWidth={2.5}
+          />
+        </NodeViewWrapper>
+      );
+    });
+  },
+});
+
+const IconSpaceReset = Extension.create({
+  name: 'iconSpaceReset',
+  addKeyboardShortcuts() {
+    return {
+      'Space': () => {
+        const { state } = this.editor;
+        const { selection } = state;
+        const { $from } = selection;
+
+        // Check if there is a lucideIcon before the cursor
+        const nodeBefore = $from.nodeBefore;
+        if (nodeBefore && nodeBefore.type.name === 'lucideIcon') {
+          this.editor.commands.unsetColor();
+        }
+
+        return false; // Let the space be inserted normally
+      },
+    };
+  },
+});
+
+const IconSelector = ({ editor }: { editor: any }) => {
+  const [search, setSearch] = React.useState('');
+  const [recentIcons, setRecentIcons] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem('tiptap-recent-icons');
+    if (saved) {
+      try {
+        setRecentIcons(JSON.parse(saved));
+      } catch (e) { }
+    }
+  }, []);
+
+  const saveRecentIcon = (name: string) => {
+    const updated = [name, ...recentIcons.filter(i => i !== name)].slice(0, 12);
+    setRecentIcons(updated);
+    localStorage.setItem('tiptap-recent-icons', JSON.stringify(updated));
+  };
+
+  const allIconNames = React.useMemo(() => {
+    return Object.keys(LucideIcons).filter(key =>
+      // Icons in lucide-react always start with an uppercase letter
+      /^[A-Z]/.test(key) &&
+      key !== 'Icon' &&
+      key !== 'LucideIcon' &&
+      key !== 'createLucideIcon' &&
+      key !== 'Smiley' // Avoid our own previous mistake if any
+    );
+  }, []);
+
+  const filteredIcons = React.useMemo(() => {
+    if (search.length < 3) return [];
+    const query = search.toLowerCase();
+    return allIconNames.filter(name => {
+      const lower = name.toLowerCase();
+      // Smart search: match name or components of the name
+      return lower.includes(query) ||
+        name.replace(/([A-Z])/g, ' $1').toLowerCase().includes(query);
+    }).slice(0, 30);
+  }, [search, allIconNames]);
+
+  const insertIcon = (name: string) => {
+    editor.chain()
+      .focus()
+      .insertContent({
+        type: 'lucideIcon',
+        attrs: { name }
+      })
+      .unsetColor()
+      .run();
+    saveRecentIcon(name);
+  };
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap flex items-center gap-1.5">
+          <Smile className="w-4 h-4" />
+          Icon
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="bg-popover border border-border p-3 rounded-xl shadow-2xl z-50 w-[280px] flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200" sideOffset={5}>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-1">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search icons (min 3 chars)..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9 pl-8 text-xs bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 min-h-[100px] max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+            {search.length >= 3 && filteredIcons.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <p className="text-xs italic">No icons found for "{search}"</p>
+              </div>
+            )}
+
+            {search.length < 3 && recentIcons.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">Recently Used</div>
+                <div className="grid grid-cols-6 gap-1">
+                  {recentIcons.map(name => {
+                    // @ts-ignore
+                    const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => insertIcon(name)}
+                        className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-accent transition-colors border border-transparent hover:border-border group"
+                        title={name}
+                      >
+                        <Icon size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {filteredIcons.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">Search Results</div>
+                <div className="grid grid-cols-6 gap-1">
+                  {filteredIcons.map(name => {
+                    // @ts-ignore
+                    const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => insertIcon(name)}
+                        className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-accent transition-colors border border-transparent hover:border-border group"
+                        title={name}
+                      >
+                        <Icon size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {search.length > 0 && search.length < 3 && (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground/50">
+                <p className="text-[10px] uppercase tracking-widest font-bold">Keep typing...</p>
+              </div>
+            )}
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+};
 
 const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: () => void }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,7 +312,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
             .focus()
             .setImage({ src: data.url })
             .run();
-          
+
           editor.commands.focus('end');
         }
       } catch (error) {
@@ -110,7 +325,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
     }
   };
 
-  const toggleClass = (isActive: boolean) => 
+  const toggleClass = (isActive: boolean) =>
     `px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'}`;
 
   return (
@@ -120,8 +335,8 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
         <DropdownMenu.Trigger asChild>
           <button className={cn(
             "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
-            editor.isActive('heading') 
-              ? 'bg-primary text-primary-foreground shadow-sm' 
+            editor.isActive('heading')
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
           )}>
             Heading
@@ -130,9 +345,9 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="bg-popover border border-border p-2 rounded-md shadow-lg z-50 min-w-[150px] flex flex-col gap-1" sideOffset={5}>
             {[1, 2, 3, 4, 5].map((level) => (
-              <DropdownMenu.Item 
+              <DropdownMenu.Item
                 key={level}
-                onSelect={() => editor.chain().focus().toggleHeading({ level: level as any }).run()} 
+                onSelect={() => editor.chain().focus().toggleHeading({ level: level as any }).run()}
                 className={`px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer ${editor.isActive('heading', { level }) ? 'bg-accent' : ''}`}
               >
                 Heading {level}
@@ -167,7 +382,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
           <button className={cn(
             "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
             (editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList'))
-              ? 'bg-primary text-primary-foreground shadow-sm' 
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
           )}>
             List
@@ -192,19 +407,21 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
       {/* 4. Media & Links */}
-      <button 
-        type="button" 
-        onPointerDown={(e) => e.preventDefault()} 
-        onClick={onOpenLinkDialog} 
+      <IconSelector editor={editor} />
+
+      <button
+        type="button"
+        onPointerDown={(e) => e.preventDefault()}
+        onClick={onOpenLinkDialog}
         className={cn(toggleClass(editor.isActive('link')), "whitespace-nowrap")}
       >
         Link
       </button>
       {editor.isActive('link') && (
-        <button 
-          type="button" 
-          onPointerDown={(e) => e.preventDefault()} 
-          onClick={() => editor.chain().focus().unsetLink().run()} 
+        <button
+          type="button"
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => editor.chain().focus().unsetLink().run()}
           className={cn(toggleClass(false), "text-destructive hover:bg-destructive/10 whitespace-nowrap")}
         >
           Unlink
@@ -214,12 +431,12 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
       <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
         Image
       </button>
-      <input 
-        type="file" 
-        accept="image/*" 
-        ref={fileInputRef} 
-        onChange={handleImageUpload} 
-        className="hidden" 
+      <input
+        type="file"
+        accept="image/*"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        className="hidden"
       />
 
       <div className="w-px h-6 bg-border mx-1 shrink-0" />
@@ -240,7 +457,7 @@ const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: 
           <button className={cn(
             "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
             editor.isActive('table')
-              ? 'bg-primary text-primary-foreground shadow-sm' 
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
           )}>
             Table Controls
@@ -350,7 +567,7 @@ const ToggleExtension = Node.create({
     return ReactNodeViewRenderer(({ node, updateAttributes }) => {
       return (
         <NodeViewWrapper className="my-2 border border-border/50 rounded-md bg-muted/5 group overflow-hidden">
-          <div 
+          <div
             className="flex items-center gap-2 px-3 py-2 cursor-pointer bg-muted/10 hover:bg-muted/20 transition-colors select-none"
             onClick={() => updateAttributes({ open: !node.attrs.open })}
             contentEditable={false}
@@ -359,7 +576,7 @@ const ToggleExtension = Node.create({
             <span className="text-muted-foreground shrink-0 w-4 h-4 flex items-center justify-center">
               {node.attrs.open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </span>
-            <input 
+            <input
               value={node.attrs.title}
               onChange={(e) => updateAttributes({ title: e.target.value })}
               onClick={(e) => e.stopPropagation()}
@@ -367,7 +584,7 @@ const ToggleExtension = Node.create({
               placeholder="Toggle Title..."
             />
           </div>
-          
+
           <div className={cn("p-2 px-4 border-t border-border/20", node.attrs.open ? "block" : "hidden")}>
             <NodeViewContent className="tiptap-toggle-content outline-none min-h-[1.5rem]" />
           </div>
@@ -410,6 +627,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     Placeholder.configure({
       placeholder: 'Write something awesome...',
     }),
+    LucideIconExtension,
+    IconSpaceReset,
     TiptapLink.configure({
       openOnClick: false,
       HTMLAttributes: {
@@ -517,23 +736,23 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
         </div>
       )}
 
-      <div 
+      <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-4 sm:px-6 md:px-24"
       >
         <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative">
-          
+
           {/* Floating Outline Panel Using Standard Shadcn UI Patterns */}
           <div className="absolute -right-14 top-0 h-full hidden md:block z-40">
             <div className="sticky top-1/2 -translate-y-1/2">
               <TooltipProvider delay={0}>
                 <HoverCard openDelay={100} closeDelay={300}>
-                   <Tooltip>
+                  <Tooltip>
                     <TooltipTrigger render={<div className="flex items-center justify-center" />}>
                       <HoverCardTrigger asChild>
-                        <Button 
-                          variant="secondary" 
-                          size="icon" 
+                        <Button
+                          variant="secondary"
+                          size="icon"
                           className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background/80 backdrop-blur-sm hover:bg-accent transition-all duration-300"
                         >
                           <ListTree className="w-5 h-5 text-muted-foreground" />
@@ -545,9 +764,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                     </TooltipContent>
                   </Tooltip>
 
-                  <HoverCardContent 
-                    side="left" 
-                    align="center" 
+                  <HoverCardContent
+                    side="left"
+                    align="center"
                     sideOffset={15}
                     className="w-[300px] bg-popover/95 backdrop-blur-xl border-border rounded-lg p-5 shadow-2xl"
                   >
@@ -556,7 +775,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                         <h4 className="text-sm font-semibold tracking-tight">Navigation</h4>
                         <span className="text-[10px] text-muted-foreground uppercase font-medium">Headings</span>
                       </div>
-                      
+
                       {headings.length > 0 ? (
                         <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
                           {headings.map((heading, i) => (
@@ -565,11 +784,11 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                               onClick={() => scrollToHeading(heading.pos)}
                               className={cn(
                                 "text-left transition-all duration-200 py-1.5 px-3 rounded-md hover:bg-accent text-sm font-medium text-foreground/80 hover:text-foreground truncate",
-                                heading.level === 1 ? "text-primary font-bold bg-primary/5" : 
-                                heading.level === 2 ? "pl-4 text-foreground/70" : 
-                                heading.level === 3 ? "pl-7 text-foreground/60 scale-95 origin-left" :
-                                heading.level === 4 ? "pl-10 text-foreground/50 scale-90 origin-left" :
-                                "pl-12 text-foreground/40 scale-90 origin-left"
+                                heading.level === 1 ? "text-primary font-bold bg-primary/5" :
+                                  heading.level === 2 ? "pl-4 text-foreground/70" :
+                                    heading.level === 3 ? "pl-7 text-foreground/60 scale-95 origin-left" :
+                                      heading.level === 4 ? "pl-10 text-foreground/50 scale-90 origin-left" :
+                                        "pl-12 text-foreground/40 scale-90 origin-left"
                               )}
                             >
                               {heading.text}
@@ -589,13 +808,13 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           </div>
 
           {editor && !isReadOnly && (
-            <BubbleMenu 
-              editor={editor} 
+            <BubbleMenu
+              editor={editor}
               pluginKey="textMenu"
               shouldShow={({ editor, state }) => {
                 return editor.isFocused && editor.isEditable && !state.selection.empty;
               }}
-              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)} 
+              {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)}
               className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
             >
               <button
@@ -668,18 +887,24 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                     { name: 'Orange', value: '#f59e0b' },
                     { name: 'Red', value: '#ef4444' }
                   ].map(({ name, value }) => {
-                    const isActive = value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color);
+                    const isActive = editor.isActive('lucideIcon') 
+                      ? editor.getAttributes('lucideIcon').color === value 
+                      : (value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color));
                     return (
-                      <DropdownMenu.Item 
+                      <DropdownMenu.Item
                         key={name}
                         onSelect={() => {
-                          if (value) editor.chain().focus().setColor(value).run();
-                          else editor.chain().focus().unsetColor().run();
+                          if (editor.isActive('lucideIcon')) {
+                            editor.chain().focus().updateAttributes('lucideIcon', { color: value || null }).run();
+                          } else {
+                            if (value) editor.chain().focus().setColor(value).run();
+                            else editor.chain().focus().unsetColor().run();
+                          }
                         }}
                         className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
                       >
-                        <div 
-                          className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]" 
+                        <div
+                          className="w-4 h-4 rounded-sm border border-border/50 shrink-0 flex items-center justify-center font-bold text-white text-[10px]"
                           style={value ? { backgroundColor: value } : { backgroundColor: 'transparent' }}
                         >
                           {!value && <span className="text-foreground">A</span>}
