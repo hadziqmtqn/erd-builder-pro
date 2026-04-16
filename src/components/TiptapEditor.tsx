@@ -13,6 +13,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import TiptapLink from '@tiptap/extension-link';
+import TiptapImage from '@tiptap/extension-image';
 
 import {
   Check,
@@ -34,7 +35,8 @@ import {
   Palette,
   Code2,
   Smile,
-  Type
+  Type,
+  ListTree
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 
@@ -49,6 +51,12 @@ import {
   DialogBody,
 } from "@/components/ui/dialog";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
@@ -61,84 +69,6 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { ListTree } from 'lucide-react';
-
-const LucideIconExtension = Node.create({
-  name: 'lucideIcon',
-  group: 'inline',
-  inline: true,
-  selectable: true,
-  atom: true,
-
-  addAttributes() {
-    return {
-      name: {
-        default: 'HelpCircle',
-      },
-      color: {
-        default: null,
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: 'span[data-lucide-icon]',
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes, { 'data-lucide-icon': '' }), 0];
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer((props) => {
-      const { name, color } = props.node.attrs;
-      // @ts-ignore
-      const IconComponent = LucideIcons[name] || LucideIcons.HelpCircle;
-
-      return (
-        <NodeViewWrapper className="inline-flex items-center align-middle mx-0.5 leading-none translate-y-[-1px]">
-          <IconComponent
-            size="1.1em"
-            color={color || 'currentColor'}
-            className="inline-block"
-            strokeWidth={2.5}
-          />
-        </NodeViewWrapper>
-      );
-    });
-  },
-});
-
-const IconSpaceReset = Extension.create({
-  name: 'iconSpaceReset',
-  addKeyboardShortcuts() {
-    return {
-      'Space': () => {
-        const { state } = this.editor;
-        const { selection } = state;
-        const { $from } = selection;
-
-        // Check if there is a lucideIcon before the cursor
-        const nodeBefore = $from.nodeBefore;
-        if (nodeBefore && nodeBefore.type.name === 'lucideIcon') {
-          this.editor.commands.unsetColor();
-        }
-
-        return false; // Let the space be inserted normally
-      },
-    };
-  },
-});
 
 const IconSelector = ({ editor }: { editor: any }) => {
   const [search, setSearch] = React.useState('');
@@ -165,8 +95,7 @@ const IconSelector = ({ editor }: { editor: any }) => {
       /^[A-Z]/.test(key) &&
       key !== 'Icon' &&
       key !== 'LucideIcon' &&
-      key !== 'createLucideIcon' &&
-      key !== 'Smiley' // Avoid our own previous mistake if any
+      key !== 'createLucideIcon'
     );
   }, []);
 
@@ -175,7 +104,6 @@ const IconSelector = ({ editor }: { editor: any }) => {
     const query = search.toLowerCase();
     return allIconNames.filter(name => {
       const lower = name.toLowerCase();
-      // Smart search: match name or components of the name
       return lower.includes(query) ||
         name.replace(/([A-Z])/g, ' $1').toLowerCase().includes(query);
     }).slice(0, 30);
@@ -198,14 +126,13 @@ const IconSelector = ({ editor }: { editor: any }) => {
       <DropdownMenu.Trigger asChild>
         <button 
           data-icon-selector-trigger
-          className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap flex items-center gap-1.5"
+          className="hidden"
         >
-          <Smile className="w-4 h-4" />
-          Icon
+          Icon Trigger
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="bg-popover border border-border p-3 rounded-xl shadow-2xl z-50 w-[280px] flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200" sideOffset={5}>
+        <DropdownMenu.Content className="bg-popover border border-border p-3 rounded-xl shadow-2xl z-[99999] w-[280px] flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200" sideOffset={5}>
           <div className="space-y-2">
             <div className="flex items-center gap-2 px-1">
               <div className="relative flex-1">
@@ -284,214 +211,76 @@ const IconSelector = ({ editor }: { editor: any }) => {
   );
 };
 
-const MenuBar = ({ editor, onOpenLinkDialog }: { editor: any, onOpenLinkDialog: () => void }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const LucideIconExtension = Node.create({
+  name: 'lucideIcon',
+  group: 'inline',
+  inline: true,
+  selectable: true,
+  atom: true,
 
-  if (!editor) {
-    return null;
-  }
+  addAttributes() {
+    return {
+      name: {
+        default: 'HelpCircle',
+      },
+      color: {
+        default: null,
+      },
+    };
+  },
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        const compressedFile = await compressImage(file, { maxWidth: 1280, quality: 0.8 });
+  parseHTML() {
+    return [
+      {
+        tag: 'span[data-lucide-icon]',
+      },
+    ];
+  },
 
-        const formData = new FormData();
-        formData.append('image', compressedFile);
-        formData.append('feature', 'notes');
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-lucide-icon': '' }), 0];
+  },
 
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
+  addNodeView() {
+    return ReactNodeViewRenderer((props) => {
+      const { name, color } = props.node.attrs;
+      // @ts-ignore
+      const IconComponent = LucideIcons[name] || LucideIcons.HelpCircle;
 
-        if (!response.ok) {
-          throw new Error('Upload failed');
+      return (
+        <NodeViewWrapper className="inline-flex items-center align-middle mx-0.5 leading-none translate-y-[-1px]">
+          <IconComponent
+            size="1.1em"
+            color={color || 'currentColor'}
+            className="inline-block"
+            strokeWidth={2.5}
+          />
+        </NodeViewWrapper>
+      );
+    });
+  },
+});
+
+const IconSpaceReset = Extension.create({
+  name: 'iconSpaceReset',
+  addKeyboardShortcuts() {
+    return {
+      'Space': () => {
+        const { state } = this.editor;
+        const { selection } = state;
+        const { $from } = selection;
+
+        // Check if there is a lucideIcon before the cursor
+        const nodeBefore = $from.nodeBefore;
+        if (nodeBefore && nodeBefore.type.name === 'lucideIcon') {
+          this.editor.commands.unsetColor();
         }
 
-        const data = await response.json();
-        if (data.url) {
-          editor.chain()
-            .focus()
-            .setImage({ src: data.url })
-            .run();
-
-          editor.commands.focus('end');
-        }
-      } catch (error) {
-        console.error('Error uploading image:', error);
-        alert('Failed to upload image');
-      }
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const toggleClass = (isActive: boolean) =>
-    `px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'}`;
-
-  return (
-    <div className="flex flex-nowrap gap-2 items-center w-full overflow-x-auto custom-scrollbar pb-2 pt-1 px-1">
-      {/* 1. Structural / Block Styles */}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={cn(
-            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
-            editor.isActive('heading')
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
-          )}>
-            Heading
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-popover border border-border p-2 rounded-md shadow-lg z-50 min-w-[150px] flex flex-col gap-1" sideOffset={5}>
-            {[1, 2, 3, 4, 5].map((level) => (
-              <DropdownMenu.Item
-                key={level}
-                onSelect={() => editor.chain().focus().toggleHeading({ level: level as any }).run()}
-                className={`px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer ${editor.isActive('heading', { level }) ? 'bg-accent' : ''}`}
-              >
-                Heading {level}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setParagraph().run()} className={toggleClass(editor.isActive('paragraph'))}>
-        Paragraph
-      </button>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 2. Text Formatting */}
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBold().run()} className={toggleClass(editor.isActive('bold'))}>
-        Bold
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleItalic().run()} className={toggleClass(editor.isActive('italic'))}>
-        Italic
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleStrike().run()} className={toggleClass(editor.isActive('strike'))}>
-        Strike
-      </button>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 3. Lists & Organization */}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={cn(
-            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
-            (editor.isActive('bulletList') || editor.isActive('orderedList') || editor.isActive('taskList'))
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
-          )}>
-            List
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-popover border border-border p-2 rounded-md shadow-lg z-50 min-w-[150px] flex flex-col gap-1" sideOffset={5}>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().toggleBulletList().run()} className={`px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer ${editor.isActive('bulletList') ? 'bg-accent' : ''}`}>Bullet List</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().toggleOrderedList().run()} className={`px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer ${editor.isActive('orderedList') ? 'bg-accent' : ''}`}>Numbered List</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().toggleTaskList().run()} className={`px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer ${editor.isActive('taskList') ? 'bg-accent' : ''}`}>Task List</DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().setToggle().run()} className={toggleClass(editor.isActive('toggle'))}>
-        Toggle
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleBlockquote().run()} className={toggleClass(editor.isActive('blockquote'))}>
-        Quote
-      </button>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 4. Media & Links */}
-      <IconSelector editor={editor} />
-
-      <button
-        type="button"
-        onPointerDown={(e) => e.preventDefault()}
-        onClick={onOpenLinkDialog}
-        className={cn(toggleClass(editor.isActive('link')), "whitespace-nowrap")}
-      >
-        Link
-      </button>
-      {editor.isActive('link') && (
-        <button
-          type="button"
-          onPointerDown={(e) => e.preventDefault()}
-          onClick={() => editor.chain().focus().unsetLink().run()}
-          className={cn(toggleClass(false), "text-destructive hover:bg-destructive/10 whitespace-nowrap")}
-        >
-          Unlink
-        </button>
-      )}
-
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
-        Image
-      </button>
-      <input
-        type="file"
-        accept="image/*"
-        ref={fileInputRef}
-        onChange={handleImageUpload}
-        className="hidden"
-      />
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 5. Code & Specialized Blocks */}
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCode().run()} className={toggleClass(editor.isActive('code'))}>
-        Code
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleCodeBlock().run()} className={toggleClass(editor.isActive('codeBlock'))}>
-        Code Block
-      </button>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 6. Advanced Controls */}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className={cn(
-            "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
-            editor.isActive('table')
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/80'
-          )}>
-            Table Controls
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="bg-popover border border-border p-2 rounded-md shadow-lg z-50 min-w-[150px] flex flex-col gap-1" sideOffset={5}>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer">Insert Table</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().addColumnAfter().run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer">+ Col</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().deleteColumn().run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer">- Col</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().addRowAfter().run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer">+ Row</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().deleteRow().run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer">- Row</DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => editor.chain().focus().deleteTable().run()} className="px-2 py-1.5 text-sm rounded-sm hover:bg-accent cursor-pointer text-destructive">Del Table</DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-
-      <div className="w-px h-6 bg-border mx-1 shrink-0" />
-
-      {/* 7. History */}
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().undo().run()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
-        Undo
-      </button>
-      <button type="button" onPointerDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().redo().run()} className="px-3 py-1.5 text-sm font-medium rounded-md bg-secondary/40 text-secondary-foreground hover:bg-secondary/80 whitespace-nowrap">
-        Redo
-      </button>
-    </div>
-  );
-};
+        return false; // Let the space be inserted normally
+      },
+    };
+  },
+});
 
 interface TiptapEditorProps {
   content: string;
@@ -606,6 +395,47 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const [selectionVersion, setSelectionVersion] = React.useState(0);
   const [showOutline, setShowOutline] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        const compressedFile = await compressImage(file, { maxWidth: 1280, quality: 0.8 });
+
+        const formData = new FormData();
+        formData.append('image', compressedFile);
+        formData.append('feature', 'notes');
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
+        }
+
+        const data = await response.json();
+        if (data.url) {
+          editor?.chain()
+            .focus()
+            .setImage({ src: data.url })
+            .run();
+
+          editor?.commands.focus('end');
+        }
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        alert('Failed to upload image');
+      }
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const [slashMenu, setSlashMenu] = React.useState<{
     isOpen: boolean;
     query: string;
@@ -642,6 +472,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     TableCell,
     Placeholder.configure({
       placeholder: 'Write something awesome...',
+    }),
+    TiptapImage.configure({
+      inline: true,
+      allowBase64: true,
     }),
     LucideIconExtension,
     IconSpaceReset,
@@ -783,13 +617,15 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
-      {!isReadOnly && (
-        <div className="flex-none bg-card border-b border-border p-2 z-10 shadow-sm">
-          <div className="max-w-4xl mx-auto">
-            <MenuBar editor={editor} onOpenLinkDialog={openLinkDialog} />
-          </div>
-        </div>
-      )}
+      <IconSelector editor={editor} />
+      <input
+        type="file"
+        id="tiptap-image-upload"
+        accept="image/*"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        className="hidden"
+      />
 
       <div
         ref={scrollContainerRef}
