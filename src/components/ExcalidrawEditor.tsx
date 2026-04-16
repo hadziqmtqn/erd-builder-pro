@@ -17,6 +17,10 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const isReady = useRef(false);
   const drawingRef = useRef(drawing);
   const processedFileIds = useRef<Set<string>>(new Set());
+  const fileUrlMap = useRef<Map<string, string>>(new Map()); // Maps fileId to R2 URL
+  const isProcessingFiles = useRef(false); // Guard to prevent infinite loops
+  const isMountedRef = useRef(true); // Track if component is mounted
+  const lastChangeTimeRef = useRef(0); // Track last change time for debounce
 
   // Store callbacks in refs to prevent dependency cycles
   const onSaveRef = useRef(onSave);
@@ -34,7 +38,8 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
 
   // Helper to process and upload new files to R2
   const processNewFiles = useCallback(async (files: any) => {
-    if (!excalidrawAPI || !files) return;
+    // Guard against infinite loops - don't process if already processing or unmounted
+    if (!isMountedRef.current || isProcessingFiles.current || !excalidrawAPI || !files) return;
 
     const fileIds = Object.keys(files);
     const newFilesToProcess = fileIds.filter(id => 
@@ -45,6 +50,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     if (newFilesToProcess.length === 0) return;
 
     // Mark as processing immediately
+    isProcessingFiles.current = true;
     newFilesToProcess.forEach(id => processedFileIds.current.add(id));
 
     try {
@@ -54,8 +60,15 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         const fileData = files[id];
         
         // Convert base64 to File object
-        const res = await fetch(fileData.dataURL);
-        const blob = await res.blob();
+        let blob;
+        try {
+          const res = await fetch(fileData.dataURL);
+          blob = await res.blob();
+        } catch (e) {
+          console.error(`Failed to fetch/decode dataURL for file ${id}:`, e);
+          continue; // Skip this file to prevent component crash
+        }
+        
         const file = new File([blob], `excalidraw_${id}`, { type: fileData.mimeType });
 
         // Compress
@@ -75,9 +88,12 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         if (uploadRes.ok) {
           const result = await uploadRes.json();
           if (result.url) {
+            // Sanitize URL - remove escaped newlines and trim whitespace
+            const cleanUrl = result.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+            fileUrlMap.current.set(id, cleanUrl); // Cache the R2 URL
             updatedFiles.push({
               id,
-              dataURL: result.url,
+              dataURL: cleanUrl,
               mimeType: fileData.mimeType,
               created: fileData.created,
               lastRetrieved: Date.now(),
@@ -86,13 +102,17 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         }
       }
 
+      // Note: We intentionally do NOT call addFiles() here because it triggers
+      // onChange again, causing an infinite loop. Instead, we just cache the R2 URLs
+      // and let the next handleChange call sanitize the data.
       if (updatedFiles.length > 0) {
-        // Update Excalidraw's internal files map with R2 URLs
-        excalidrawAPI.addFiles(updatedFiles);
-        console.log(`Successfully moved ${updatedFiles.length} images to R2`);
+        console.log(`Queued ${updatedFiles.length} images for R2. URLs cached, will sanitize on next change.`);
       }
     } catch (err) {
       console.error("Failed to process Excalidraw files for R2:", err);
+    } finally {
+      // Always reset the processing flag
+      isProcessingFiles.current = false;
     }
   }, [excalidrawAPI]);
 
@@ -103,11 +123,26 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       const parsed = JSON.parse(drawing.data);
       const { collaborators, ...safeAppState } = parsed.appState || {};
       
-      // Seed processedFileIds with existing IDs to avoid re-uploading
-      if (parsed.files) {
-        Object.keys(parsed.files).forEach(id => {
-          if (!parsed.files[id].dataURL.startsWith('data:image/')) {
-            processedFileIds.current.add(id);
+      // Seed processedFileIds and fileUrlMap with existing IDs to avoid re-uploading
+      // Also sanitize URLs to fix any whitespace/newline issues
+      const filesObject = parsed.files || {};
+      const sanitizedFiles: any = {};
+      
+      if (filesObject) {
+        Object.keys(filesObject).forEach(id => {
+          const file = filesObject[id];
+          if (file && typeof file.dataURL === 'string') {
+            // Sanitize URL - remove escaped newlines and trim whitespace
+            // JSON stores \n as literal characters, not actual newlines
+            let cleanUrl = file.dataURL.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+            
+            if (!cleanUrl.startsWith('data:image/')) {
+              processedFileIds.current.add(id);
+              fileUrlMap.current.set(id, cleanUrl);
+            }
+            
+            // Keep sanitized file
+            sanitizedFiles[id] = { ...file, dataURL: cleanUrl };
           }
         });
       }
@@ -115,7 +150,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       return {
         elements: parsed.elements || [],
         appState: { ...safeAppState, theme: 'dark' },
-        files: parsed.files || {},
+        files: sanitizedFiles,
       };
     } catch (e) {
       console.error("Failed to parse initial drawing data", e);
@@ -126,19 +161,21 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     
-    // Reset ready state on mount
+    // Reset state on mount
+    isMountedRef.current = true;
     isReady.current = false;
     lastDataRef.current = drawing.data;
     processedFileIds.current = new Set(); // Reset on drawing change
     console.log(`ExcalidrawEditor mounted for drawing: ${drawing.id}. Ready in 1500ms...`);
 
-    // Mark as ready after a delay to allow Excalidraw to settle with initialData
+    // Mark as ready after a shorter delay
     timeoutId = setTimeout(() => {
       isReady.current = true;
       console.log(`ExcalidrawEditor for drawing ${drawing.id} is now READY.`);
-    }, 1500); // Increased delay for safety
+    }, 500);
 
     return () => {
+      isMountedRef.current = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [drawing.id]);
@@ -153,11 +190,23 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
 
         const appState = excalidrawAPI.getAppState();
         const files = excalidrawAPI.getFiles();
+        
+        // Sanitize files map: Replace any Base64 with R2 URLs from our map if available
+        const cleanFiles = { ...files };
+        Object.keys(cleanFiles).forEach(id => {
+          const mappedUrl = fileUrlMap.current.get(id);
+          const currentFile = cleanFiles[id];
+          if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
+            // IMMUTABLE UPDATE: Clone the file object to avoid mutating live Excalidraw state
+            cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
+          }
+        });
+
         const { collaborators, ...safeAppState } = appState;
-        const data = JSON.stringify({ elements, appState: safeAppState, files });
+        const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
         
         if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}') {
-          console.log("Saving drawing on unmount...");
+          console.log("Saving drawing on unmount (sanitized)...");
           onSaveRef.current({ ...drawingRef.current, data });
         }
       }
@@ -165,17 +214,40 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   }, [excalidrawAPI]); // Only depend on API
 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
-    // Only report changes if the scene is ready
-    if (!isReady.current) {
+    // Guard: Component unmounted
+    if (!isMountedRef.current) return;
+    
+    // Debounce: Ignore changes that happen within 100ms of each other
+    const now = Date.now();
+    if (now - lastChangeTimeRef.current < 100) {
+      return;
+    }
+    lastChangeTimeRef.current = now;
+
+    // Only report changes if the scene is ready and we're not already processing files
+    if (!isReady.current || isProcessingFiles.current) {
       return;
     }
 
     // Scan and upload any new base64 images to R2
     processNewFiles(files);
 
+    // Sanitize files map: Replace any Base64 with R2 URLs from our map if available
+    const cleanFiles = { ...files };
+    let wasSanitized = false;
+    Object.keys(cleanFiles).forEach(id => {
+      const mappedUrl = fileUrlMap.current.get(id);
+      const currentFile = cleanFiles[id];
+      if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
+        // IMMUTABLE UPDATE: Clone the file object to avoid mutating live Excalidraw state
+        cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
+        wasSanitized = true;
+      }
+    });
+    
     // Clean up appState before stringifying
     const { collaborators, ...safeAppState } = appState;
-    const data = JSON.stringify({ elements, appState: safeAppState, files });
+    const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
     
     // Safety check: If we're getting an empty state but we had data before, 
     // it's likely a race condition during unmount or tab switch.
@@ -191,7 +263,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     }
 
     // Only trigger parent update if data actually changed to avoid loops
-    if (data !== lastDataRef.current) {
+    if (data !== lastDataRef.current || wasSanitized) {
       lastDataRef.current = data;
       if (onChangeRef.current) {
         onChangeRef.current(data);

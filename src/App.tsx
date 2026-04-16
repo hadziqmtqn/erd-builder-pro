@@ -129,6 +129,10 @@ function AppContent() {
   const [isMoveToTrashAlertOpen, setIsMoveToTrashAlertOpen] = useState(false);
   const [isImportNoteModalOpen, setIsImportNoteModalOpen] = useState(false);
   const [isExportNoteModalOpen, setIsExportNoteModalOpen] = useState(false);
+  
+  // Safety Gate & Persistence State
+  const [isLocalSaving, setIsLocalSaving] = useState(false);
+  const lastSaveCallRef = useRef<number>(0);
 
 
   // Search State
@@ -324,15 +328,73 @@ function AppContent() {
     }
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
+  // Safety Gate: Intercept tab close/reload if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isLocalSaving) {
+        e.preventDefault();
+        e.returnValue = ''; // Required by modern browsers to trigger the dialog
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isLocalSaving]);
+
+  // Emergency Flush: Save immediately when switching tabs or minimizing
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && isLocalSaving) {
+        // Trigger all active saves immediately
+        if (view === 'erd' && activeDiagramId) {
+          saveDiagram(nodes, edges, viewportRef.current).then(() => {
+            setIsLocalSaving(false);
+            triggerDebouncedSync();
+          });
+        } else if (view === 'notes' && activeNoteId) {
+          const n = notes.find(n => String(n.id) === String(activeNoteId));
+          if (n) {
+            saveNote(n).then(() => {
+              setIsLocalSaving(false);
+              triggerDebouncedSync();
+            });
+          }
+        } else if (view === 'drawings' && activeDrawingId) {
+          const d = drawings.find(d => String(d.id) === String(activeDrawingId));
+          if (d) {
+            saveDrawing(d).then(() => {
+              setIsLocalSaving(false);
+              triggerDebouncedSync();
+            });
+          }
+        } else if (view === 'flowchart' && activeFlowchartId) {
+          const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+          if (f) {
+            saveFlowchart(f).then(() => {
+              setIsLocalSaving(false);
+              triggerDebouncedSync();
+            });
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges, isLocalSaving, saveDiagram, saveNote, saveDrawing, saveFlowchart, triggerDebouncedSync, notes, drawings, flowcharts]);
+
   // ERD Auto-save
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
+      setIsLocalSaving(true);
       saveTimeoutRef.current = setTimeout(async () => {
         await saveDiagram(nodes, edges, viewportRef.current);
+        setIsLocalSaving(false);
         triggerDebouncedSync();
-      }, 2000);
+      }, 800);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, [nodes, edges, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync]);
@@ -403,30 +465,44 @@ function AppContent() {
     const noteId = activeNoteId;
     setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, content } : n));
     
+    setIsLocalSaving(true);
     if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
+    
+    // Capture metadata at the time of change to avoid stale closure issues in the timeout
+    const currentNote = notes.find(n => String(n.id) === String(noteId));
+    const title = currentNote?.title || '';
+    const project_id = currentNote?.project_id || null;
+
     notesSaveTimeout.current = setTimeout(async () => {
       await saveNote({
-        id: noteId, content, title: notes.find(n => n.id === noteId)?.title || '',
-        project_id: notes.find(n => n.id === noteId)?.project_id || null
+        id: noteId, content, title, project_id
       } as any);
+      setIsLocalSaving(false);
       triggerDebouncedSync();
-    }, 2000);
+    }, 800);
   }, [activeNoteId, notes, saveNote, setNotesList, triggerDebouncedSync]);
 
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
     const drawingId = activeDrawingId;
-    setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, data } : d));
+    setDrawings(prev => prev.map(d => String(d.id) === String(drawingId) ? { ...d, data } : d));
     
+    setIsLocalSaving(true);
     if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
+    
+    // Capture metadata at the time of change to avoid stale closure issues in the timeout
+    const currentDrawing = drawings.find(d => String(d.id) === String(drawingId));
+    const title = currentDrawing?.title || '';
+    const project_id = currentDrawing?.project_id || null;
+
     drawingsSaveTimeout.current = setTimeout(async () => {
       await saveDrawing({
-        id: drawingId, data, title: drawings.find(d => d.id === drawingId)?.title || '',
-        project_id: drawings.find(d => d.id === drawingId)?.project_id || null
+        id: drawingId, data, title, project_id
       } as any);
+      setIsLocalSaving(false);
       triggerDebouncedSync();
-    }, 2000);
+    }, 1500);
   }, [activeDrawingId, drawings, saveDrawing, setDrawings, triggerDebouncedSync]);
   
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -434,16 +510,23 @@ function AppContent() {
     if (!activeFlowchartId) return;
     const flowchartId = activeFlowchartId;
     const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
-    setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, data: dataString } : f));
+    setFlowcharts(prev => prev.map(f => String(f.id) === String(flowchartId) ? { ...f, data: dataString } : f));
     
+    setIsLocalSaving(true);
     if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
+    
+    // Capture metadata at the time of change to avoid stale closure issues in the timeout
+    const currentFlowchart = flowcharts.find(f => String(f.id) === String(flowchartId));
+    const title = currentFlowchart?.title || '';
+    const project_id = currentFlowchart?.project_id || null;
+
     flowchartsSaveTimeout.current = setTimeout(async () => {
       await saveFlowchart({
-        id: flowchartId, data: dataString, title: flowcharts.find(f => f.id === flowchartId)?.title || '',
-        project_id: flowcharts.find(f => f.id === flowchartId)?.project_id || null
+        id: flowchartId, data: dataString, title, project_id
       } as any);
+      setIsLocalSaving(false);
       triggerDebouncedSync();
-    }, 2000);
+    }, 800);
   }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts, triggerDebouncedSync]);
 
   const handleViewChange = (newView: typeof view) => {

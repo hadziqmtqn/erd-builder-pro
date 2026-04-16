@@ -6,6 +6,65 @@ import { toast } from 'sonner';
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<boolean>(false);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const healDraftData = useCallback((draftData: string, type: DraftType): string => {
+    if (!draftData) return draftData;
+
+    try {
+      if (type === DraftType.DRAWINGS) {
+        let parsed;
+        try {
+          parsed = JSON.parse(draftData);
+        } catch (e) {
+          return draftData; // Not JSON, could be legacy raw
+        }
+
+        const isNewFormat = parsed && typeof parsed === 'object' && 'data' in parsed;
+        if (isNewFormat && typeof parsed.data === 'string') {
+          try {
+            const drawingData = JSON.parse(parsed.data);
+            if (drawingData.files) {
+              let hasCorruption = false;
+              const sanitizedFiles = { ...drawingData.files };
+              
+              Object.keys(sanitizedFiles).forEach(id => {
+                const file = sanitizedFiles[id];
+                if (file && typeof file.dataURL === 'string') {
+                  // Sanitize URL - remove escaped newlines and trim whitespace
+                  // JSON stores \n as literal characters, not actual newlines
+                  const cleanUrl = file.dataURL.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+                  const isDataURL = cleanUrl.startsWith('data:');
+                  const isValidHttpUrl = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
+                  
+                  if (isValidHttpUrl && cleanUrl !== file.dataURL) {
+                    // URL had whitespace - sanitize it instead of deleting
+                    sanitizedFiles[id] = { ...file, dataURL: cleanUrl };
+                    hasCorruption = true;
+                  } else if (!isDataURL && !isValidHttpUrl) {
+                    // Invalid format - could crash Excalidraw
+                    delete sanitizedFiles[id];
+                    hasCorruption = true;
+                  }
+                }
+              });
+
+              if (hasCorruption) {
+                console.warn(`Healing corrupted files map in Drawing draft`);
+                parsed.data = JSON.stringify({ ...drawingData, files: sanitizedFiles });
+                return JSON.stringify(parsed);
+              }
+            }
+          } catch (e) {
+            // Keep original
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error during draft healing:", err);
+    }
+    return draftData;
+  }, []);
 
   const syncDrafts = useCallback(async () => {
     if (!isAuthenticated || !navigator.onLine || isGuest) return;
@@ -25,7 +84,20 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
         try {
           let endpoint = '';
           let body = {};
-          const parsedData = JSON.parse(draft.data);
+          let parsedData: any = {};
+          
+          // Apply healing layer to fix corrupted local state before syncing
+          const healedData = healDraftData(draft.data, draft.type);
+          
+          try {
+            parsedData = JSON.parse(healedData);
+          } catch (e) {
+            console.warn(`Malformed JSON in draft ${draft.id} (${draft.type}). Attempting recovery...`);
+            // For Draw/Flowchart, we can treat the raw data as the drawing content
+            if (draft.type !== DraftType.DRAWINGS && draft.type !== DraftType.FLOWCHART) {
+              throw new Error("Critical JSON parse error in non-whiteboard draft");
+            }
+          }
 
           if (draft.type === DraftType.NOTES) {
             endpoint = `/api/notes/${draft.id}`;
@@ -52,10 +124,22 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
             body = { entities, relationships, viewport: parsedData.viewport };
           } else if (draft.type === DraftType.FLOWCHART) {
             endpoint = `/api/flowcharts/${draft.id}`;
-            body = { title: parsedData.title, data: parsedData.data, project_id: parsedData.project_id };
+            // Handle both new payload format and legacy raw data
+            const isNewFormat = parsedData && typeof parsedData === 'object' && 'data' in parsedData;
+            const finalData = isNewFormat ? parsedData.data : draft.data;
+            const finalTitle = isNewFormat ? parsedData.title : 'Untitled Flowchart';
+            const finalProjectId = isNewFormat ? parsedData.project_id : null;
+            
+            body = { title: finalTitle, data: finalData, project_id: finalProjectId };
           } else if (draft.type === DraftType.DRAWINGS) {
             endpoint = `/api/drawings/${draft.id}`;
-            body = { title: parsedData.title, data: parsedData.data, project_id: parsedData.project_id };
+            // Handle both new payload format and legacy raw data
+            const isNewFormat = parsedData && typeof parsedData === 'object' && 'data' in parsedData;
+            const finalData = isNewFormat ? parsedData.data : draft.data;
+            const finalTitle = isNewFormat ? parsedData.title : 'Untitled Drawing';
+            const finalProjectId = isNewFormat ? parsedData.project_id : null;
+            
+            body = { title: finalTitle, data: finalData, project_id: finalProjectId };
           }
 
           if (endpoint) {
@@ -66,7 +150,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
             });
 
             if (res.ok) {
-              await localPersistence.saveDraft(draft.type, draft.id, draft.data, false);
+              await localPersistence.saveDraft(draft.type, draft.id, healedData, false);
               successCount++;
             }
           }
@@ -86,15 +170,14 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     } finally {
       setIsSyncing(false);
     }
-  }, [isAuthenticated, isGuest]);
+  }, [isAuthenticated, isGuest, healDraftData]);
 
   // Debounced trigger to queue syncs (3000ms pause)
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const triggerDebouncedSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(() => {
       syncDrafts();
-    }, 3000);
+    }, 2000);
   }, [syncDrafts]);
 
   useEffect(() => {
@@ -114,7 +197,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
       window.removeEventListener('online', handleOnline);
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     }
-  }, [syncDrafts, isAuthenticated]);
+  }, [syncDrafts, isAuthenticated, isGuest]);
 
-  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError };
+  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError, healDraftData };
 }

@@ -177,7 +177,13 @@ export function useFlowcharts(isGuest: boolean = false) {
     
     try {
       const isSyncPending = !isGuest;
-      const dataToSave = flowchart.data || '';
+      // We need to save as JSON because useSyncService expects a JSON string with {title, data, project_id}
+      const payload = {
+        title: flowchart.title,
+        data: flowchart.data || '',
+        project_id: flowchart.project_id || null
+      };
+      const dataToSave = JSON.stringify(payload);
       
       if (isGuest) {
         const localFlowchart = await localPersistence.getResource(flowchart.id);
