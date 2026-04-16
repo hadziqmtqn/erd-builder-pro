@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "1.1.5",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx api/index.ts",

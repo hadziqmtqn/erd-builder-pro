@@ -205,7 +205,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         const { collaborators, ...safeAppState } = appState;
         const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
         
-        if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}') {
+        if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' && data !== '{"elements":[],"appState":{"theme":"light"},"files":{}}') {
           console.log("Saving drawing on unmount (sanitized)...");
           onSaveRef.current({ ...drawingRef.current, data });
         }
@@ -255,7 +255,8 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     const hadData = lastDataRef.current && 
                     lastDataRef.current !== '[]' && 
                     lastDataRef.current !== '' &&
-                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}';
+                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' &&
+                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"light"},"files":{}}';
     
     if (isEmpty && hadData) {
       console.warn("Excalidraw reported empty state while we had data. Ignoring to prevent reset.");
