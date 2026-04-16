@@ -57,7 +57,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Extension, Node, mergeAttributes } from '@tiptap/core';
+import { Extension, Node, mergeAttributes, RawCommands } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
@@ -348,7 +348,7 @@ const ToggleExtension = Node.create({
   },
   addCommands() {
     return {
-      setToggle: () => ({ commands }) => {
+      setToggle: () => ({ commands }: { commands: RawCommands }) => {
         return commands.insertContent({
           type: this.name,
           attrs: { open: true, title: 'Toggle Section' },
@@ -413,22 +413,27 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
           credentials: 'include',
         });
 
+        const data = await response.json();
+        
         if (!response.ok) {
-          throw new Error('Upload failed');
+          console.error('Upload failed:', data);
+          throw new Error(data.error || 'Upload failed');
         }
 
-        const data = await response.json();
         if (data.url) {
+          // Sanitize URL - remove escaped newlines
+          const cleanUrl = data.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+          
           editor?.chain()
             .focus()
-            .setImage({ src: data.url })
+            .setImage({ src: cleanUrl })
             .run();
 
           editor?.commands.focus('end');
         }
       } catch (error) {
         console.error('Error uploading image:', error);
-        alert('Failed to upload image');
+        alert('Failed to upload image: ' + (error as Error).message);
       }
     }
     if (fileInputRef.current) {
