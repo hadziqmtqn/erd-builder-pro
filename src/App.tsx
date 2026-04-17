@@ -132,7 +132,9 @@ function AppContent() {
   
   // Safety Gate & Persistence State
   const [isLocalSaving, setIsLocalSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const lastSaveCallRef = useRef<number>(0);
+  const lastFocusFetchRef = useRef<number>(0);
 
 
   // Search State
@@ -341,6 +343,53 @@ function AppContent() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isLocalSaving]);
+
+  // Intelligent Fetch on Focus: Refresh data when returning to tab
+  useEffect(() => {
+    const handleFocus = async () => {
+      // Only refresh if online, authenticated, not in public view, and not currently saving/syncing
+      if (!isOnline || !isAuthenticated || isPublicView || isLocalSaving || isRefreshing || isSyncing) return;
+      
+      // Throttle: don't refresh more than once every 30 seconds
+      const now = Date.now();
+      if (now - lastFocusFetchRef.current < 30000) return;
+      lastFocusFetchRef.current = now;
+
+      setIsRefreshing(true);
+      try {
+        const pid = activeProjectId === null ? 'all' : activeProjectId;
+        
+        // Refresh the list and the active item
+        if (view === 'erd') {
+          await fetchDiagrams(false, pid, debouncedSearchQuery, null, 50);
+          if (activeDiagramId) await selectDiagram(activeDiagramId, setActiveDiagramId);
+        } else if (view === 'notes') {
+          await fetchNotes(false, pid, debouncedSearchQuery, null, 50);
+          if (activeNoteId) await selectNote(activeNoteId);
+        } else if (view === 'drawings') {
+          await fetchDrawings(false, pid, debouncedSearchQuery, null, 50);
+          if (activeDrawingId) await selectDrawing(activeDrawingId);
+        } else if (view === 'flowchart') {
+          await fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50);
+          if (activeFlowchartId) await selectFlowchart(activeFlowchartId);
+        }
+      } catch (err) {
+        console.warn("Background refresh on focus failed:", err);
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [
+    isOnline, isAuthenticated, isPublicView, isLocalSaving, isRefreshing, isSyncing,
+    view, activeProjectId, debouncedSearchQuery,
+    activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId,
+    fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
+    selectDiagram, selectNote, selectDrawing, selectFlowchart,
+    setActiveDiagramId
+  ]);
 
   // Emergency Flush: Save immediately when switching tabs or minimizing
   useEffect(() => {
@@ -726,6 +775,7 @@ function AppContent() {
           view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
           syncError={syncError}
           isSyncing={isSyncing}
+          isRefreshing={isRefreshing}
           activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
           onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}
