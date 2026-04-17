@@ -16,7 +16,7 @@ export function useDrawings(isGuest: boolean = false) {
   // Keep ref in sync
   drawingsRef.current = drawings;
 
-  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
+  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
     if (isGuest) {
       const localDrawings = await localPersistence.getAllResources('drawings');
       let filtered = localDrawings.filter(d => !d.is_deleted);
@@ -32,7 +32,7 @@ export function useDrawings(isGuest: boolean = false) {
       return;
     }
 
-    setIsLoading(true);
+    if (!options?.silent) setIsLoading(true);
     try {
       const offset = isLoadMore ? drawingsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -240,8 +240,8 @@ export function useDrawings(isGuest: boolean = false) {
     } catch (err) {}
   };
 
-  const selectDrawing = async (id: number | string) => {
-    setIsItemLoading(true);
+  const selectDrawing = async (id: number | string, options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsItemLoading(true);
     try {
       if (isGuest) {
         const localData = await localPersistence.getResource(id);

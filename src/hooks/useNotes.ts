@@ -16,7 +16,7 @@ export function useNotes(isGuest: boolean = false) {
   // Keep ref in sync
   notesRef.current = notes;
 
-  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
+  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
     if (isGuest) {
       const localNotes = await localPersistence.getAllResources('notes');
       let filtered = localNotes.filter(n => !n.is_deleted);
@@ -32,7 +32,7 @@ export function useNotes(isGuest: boolean = false) {
       return;
     }
 
-    setIsLoading(true);
+    if (!options?.silent) setIsLoading(true);
     try {
       const offset = isLoadMore ? notesRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -239,11 +239,11 @@ export function useNotes(isGuest: boolean = false) {
     } catch (err) {}
   };
 
-  const selectNote = async (id: number | string) => {
+  const selectNote = async (id: number | string, options?: { silent?: boolean }) => {
     const note = notes.find(n => n.id === id);
     if (note?.is_deleted) return;
     
-    setIsItemLoading(true);
+    if (!options?.silent) setIsItemLoading(true);
     try {
       const draft = await localPersistence.getDraft(DraftType.NOTES, id);
       if (draft && draft.sync_pending) {

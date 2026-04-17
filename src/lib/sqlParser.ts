@@ -148,7 +148,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       }
     });
     
-    lines.forEach(line => {
+    lines.forEach((line, index) => {
       const trimmedLine = line.trim();
       const upperLine = trimmedLine.toUpperCase();
       
@@ -181,7 +181,8 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         name: colName,
         type: colType,
         is_pk: isPk,
-        is_nullable: isNullable
+        is_nullable: isNullable,
+        sort_order: columns.length // Assign sequential order
       });
     });
 

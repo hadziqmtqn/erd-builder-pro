@@ -18,7 +18,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   // Keep ref in sync
   diagramsRef.current = diagrams;
 
-  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
+  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
     if (isGuest) {
       // For local, we still use 'erd' type internally to maintain existing data or we migrate it
       const localResources = await localPersistence.getAllResources('erd');
@@ -35,7 +35,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       return;
     }
 
-    setIsLoading(true);
+    if (!options?.silent) setIsLoading(true);
     try {
       const offset = isLoadMore ? diagramsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;

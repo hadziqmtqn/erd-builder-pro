@@ -51,10 +51,10 @@ export function useERDSession(
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
-  const handleDiagramSelect = async (id: number | string, setActiveDiagramId: (id: any) => void) => {
-    setIsItemLoading(true);
+  const handleDiagramSelect = async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsItemLoading(true);
     try {
-      const draft = await localPersistence.getDraft(DraftType.DIAGRAM, id);
+      const draft = await localPersistence.getDraft(DraftType.ERD, id);
       let data: Diagram;
 
       if (isGuest) {
@@ -94,16 +94,54 @@ export function useERDSession(
             viewport_y: parsedDraft.viewport.y, 
             viewport_zoom: parsedDraft.viewport.zoom 
           };
+          // Load diagram data (cloud) and then decide whether to apply a local draft
+          useEffect(() => {
+            if (!id) return;
+            const loadDiagram = async () => {
+              // 1. Fetch cloud version
+              const cloudDiagram = data;
+              if (!cloudDiagram) return;
+              // 2. Check for a pending local draft for this diagram
+              const pendingDrafts = await localPersistence.getAllPendingSyncs();
+              const draft = pendingDrafts.find(d => d.type === DraftType.ERD && String(d.id) === String(id));
+              if (draft) {
+                // Compare timestamps
+                const cloudTime = new Date(cloudDiagram.updated_at).getTime();
+                const localTime = draft.updated_at;
+                if (cloudTime > localTime) {
+                  // Cloud is newer, discard stale draft
+                  console.log(`%c[ERDSession] Discarding stale local draft for diagram#${id}`, 'color: #ef4444; font-weight: bold');
+                  await localPersistence.deleteDraft(DraftType.ERD, id);
+                } else {
+                  // Local draft is newer or equal, load it
+                  try {
+                    const parsedDraft = JSON.parse(draft.data);
+                    // Apply draft data to state (nodes, edges, viewport)
+                    // applyDraftToState(parsedDraft);
+                    toast.info('Loaded unsynced local draft');
+                  } catch (e) {
+                    console.error('Failed to parse local draft', e);
+                  }
+                  return; // Draft applied, skip further processing
+                }
+              }
+              // No valid draft, load cloud data normally
+              // applyCloudDataToState(cloudDiagram);
+            };
+            loadDiagram();
+          }, [id]);
           toast.info("Loaded unsynced local draft");
         } catch (e) {}
       }
 
-      const flowNodes: Node<Entity>[] = finalData.entities.map(e => ({
-        id: e.id,
-        type: 'entity',
-        position: { x: e.x, y: e.y },
-        data: e,
-      }));
+      const flowNodes: Node<Entity>[] = finalData.entities.map(e => {
+        return {
+          id: e.id,
+          type: 'entity',
+          position: { x: e.x, y: e.y },
+          data: e,
+        };
+      });
 
       const flowEdges: Edge[] = finalData.relationships.map(r => {
         const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
@@ -198,7 +236,7 @@ export function useERDSession(
       y: Math.random() * 400,
       color: '#6366f1',
       columns: [
-        { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false }
+        { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }
       ],
     };
     const newNode: Node<Entity> = { id, type: 'entity', position: { x: newEntity.x, y: newEntity.y }, data: newEntity };
@@ -255,7 +293,7 @@ export function useERDSession(
           }, 0);
           return eds.filter(e => !invalidEdgeIds.includes(e.id));
         }
-        return eds;
+        return [...eds];
       });
       
       return newNodes;
