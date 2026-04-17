@@ -109,7 +109,7 @@ const LucideIconExtension = Node.create({
       const IconComponent = LucideIcons[name] || LucideIcons.HelpCircle;
 
       return (
-        <NodeViewWrapper className="inline-flex items-center align-middle mx-0.5 leading-none translate-y-[-1px]">
+        <NodeViewWrapper className="inline-flex items-center align-middle ml-0.5 mr-1.5 leading-none translate-y-[-1px]">
           <IconComponent 
             size={18} 
             strokeWidth={2} 
@@ -425,7 +425,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     },
     editorProps: {
       attributes: {
-        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[150px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
+        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[350px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
       },
     },
   });
