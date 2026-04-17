@@ -25,6 +25,7 @@ interface MainHeaderProps {
   hasActiveItem: boolean;
   syncError?: boolean;
   isSyncing?: boolean;
+  isRefreshing?: boolean;
   activeFileUid?: string;
   activeFileId?: number | string;
   initialShareSettings?: {
@@ -53,6 +54,7 @@ export const MainHeader = React.memo(({
   hasActiveItem,
   syncError,
   isSyncing,
+  isRefreshing,
   activeFileUid,
   activeFileId,
   initialShareSettings,
@@ -175,6 +177,11 @@ export const MainHeader = React.memo(({
                   <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
                      <Cloud className="w-3.5 h-3.5 animate-bounce" />
                      <span className="text-[10px] font-medium uppercase tracking-wider">Syncing...</span>
+                  </div>
+                ) : isRefreshing ? (
+                  <div className="flex items-center gap-2 text-primary animate-pulse">
+                     <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                     <span className="text-[10px] font-bold uppercase tracking-wider">Checking Updates...</span>
                   </div>
                 ) : null}
               </div>
