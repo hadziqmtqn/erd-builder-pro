@@ -476,7 +476,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     TableHeader,
     TableCell,
     Placeholder.configure({
-      placeholder: 'Write something awesome...',
+      placeholder: "Type '/' for commands or start writing...",
     }),
     TiptapImage.configure({
       inline: true,

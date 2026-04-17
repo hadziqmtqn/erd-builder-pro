@@ -8,7 +8,7 @@ import {
   Minus, Type, Search, ChevronRight,
   ChevronLeft, Undo, Redo, Columns,
   Table as TableHeader, AlertCircle,
-  Hash, Layout, Trash2
+  Hash, Layout, Trash2, ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -60,6 +60,7 @@ const MAIN_ITEMS: SlashMenuItem[] = [
 
   // Organization
   { title: 'Blockquote', icon: <Quote className="w-4 h-4" />, shortcut: '>', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
+  { title: 'Toggle Section', icon: <ChevronDown className="w-4 h-4" />, category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).setToggle().run() },
   { title: 'Code block', icon: <Code className="w-4 h-4" />, shortcut: '```', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
 
   // Advanced / Table Submenu
