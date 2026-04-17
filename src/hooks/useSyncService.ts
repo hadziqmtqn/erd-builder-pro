@@ -103,14 +103,14 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
             endpoint = `/api/notes/${draft.id}`;
             body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id };
           } else if (draft.type === DraftType.ERD) {
-            endpoint = `/api/files/save/${draft.id}`;
+            endpoint = `/api/diagrams/save/${draft.id}`;
             // ERD save expects entities and relationships
-            const entities = parsedData.nodes.map((n: any) => ({
+            const entities = (parsedData.nodes || []).map((n: any) => ({
               ...n.data,
-              x: n.position.x,
-              y: n.position.y,
+              x: n.position?.x || 0,
+              y: n.position?.y || 0,
             }));
-            const relationships = parsedData.edges.map((e: any) => ({
+            const relationships = (parsedData.edges || []).map((e: any) => ({
               id: e.id,
               source_entity_id: e.source,
               target_entity_id: e.target,
@@ -124,22 +124,18 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
             body = { entities, relationships, viewport: parsedData.viewport };
           } else if (draft.type === DraftType.FLOWCHART) {
             endpoint = `/api/flowcharts/${draft.id}`;
-            // Handle both new payload format and legacy raw data
-            const isNewFormat = parsedData && typeof parsedData === 'object' && 'data' in parsedData;
-            const finalData = isNewFormat ? parsedData.data : draft.data;
-            const finalTitle = isNewFormat ? parsedData.title : 'Untitled Flowchart';
-            const finalProjectId = isNewFormat ? parsedData.project_id : null;
-            
-            body = { title: finalTitle, data: finalData, project_id: finalProjectId };
+            body = { 
+              title: parsedData.title || 'Untitled Flowchart', 
+              data: parsedData.data || (typeof parsedData === 'string' ? parsedData : draft.data), 
+              project_id: parsedData.project_id || null 
+            };
           } else if (draft.type === DraftType.DRAWINGS) {
             endpoint = `/api/drawings/${draft.id}`;
-            // Handle both new payload format and legacy raw data
-            const isNewFormat = parsedData && typeof parsedData === 'object' && 'data' in parsedData;
-            const finalData = isNewFormat ? parsedData.data : draft.data;
-            const finalTitle = isNewFormat ? parsedData.title : 'Untitled Drawing';
-            const finalProjectId = isNewFormat ? parsedData.project_id : null;
-            
-            body = { title: finalTitle, data: finalData, project_id: finalProjectId };
+            body = { 
+              title: parsedData.title || 'Untitled Drawing', 
+              data: parsedData.data || (typeof parsedData === 'string' ? parsedData : draft.data), 
+              project_id: parsedData.project_id || null 
+            };
           }
 
           if (endpoint) {
@@ -177,7 +173,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(() => {
       syncDrafts();
-    }, 2000);
+    }, 800);
   }, [syncDrafts]);
 
   useEffect(() => {

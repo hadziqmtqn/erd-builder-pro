@@ -70,146 +70,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 
-const IconSelector = ({ editor }: { editor: any }) => {
-  const [search, setSearch] = React.useState('');
-  const [recentIcons, setRecentIcons] = React.useState<string[]>([]);
 
-  React.useEffect(() => {
-    const saved = localStorage.getItem('tiptap-recent-icons');
-    if (saved) {
-      try {
-        setRecentIcons(JSON.parse(saved));
-      } catch (e) { }
-    }
-  }, []);
-
-  const saveRecentIcon = (name: string) => {
-    const updated = [name, ...recentIcons.filter(i => i !== name)].slice(0, 12);
-    setRecentIcons(updated);
-    localStorage.setItem('tiptap-recent-icons', JSON.stringify(updated));
-  };
-
-  const allIconNames = React.useMemo(() => {
-    return Object.keys(LucideIcons).filter(key =>
-      // Icons in lucide-react always start with an uppercase letter
-      /^[A-Z]/.test(key) &&
-      key !== 'Icon' &&
-      key !== 'LucideIcon' &&
-      key !== 'createLucideIcon'
-    );
-  }, []);
-
-  const filteredIcons = React.useMemo(() => {
-    if (search.length < 3) return [];
-    const query = search.toLowerCase();
-    return allIconNames.filter(name => {
-      const lower = name.toLowerCase();
-      return lower.includes(query) ||
-        name.replace(/([A-Z])/g, ' $1').toLowerCase().includes(query);
-    }).slice(0, 30);
-  }, [search, allIconNames]);
-
-  const insertIcon = (name: string) => {
-    editor.chain()
-      .focus()
-      .insertContent({
-        type: 'lucideIcon',
-        attrs: { name }
-      })
-      .unsetColor()
-      .run();
-    saveRecentIcon(name);
-  };
-
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button 
-          data-icon-selector-trigger
-          className="hidden"
-        >
-          Icon Trigger
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content className="bg-popover border border-border p-3 rounded-xl shadow-2xl z-[99999] w-[280px] flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200" sideOffset={5}>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search icons (min 3 chars)..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 pl-8 text-xs bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary"
-                  autoFocus
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 min-h-[100px] max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
-            {search.length >= 3 && filteredIcons.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                <p className="text-xs italic">No icons found for "{search}"</p>
-              </div>
-            )}
-
-            {search.length < 3 && recentIcons.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">Recently Used</div>
-                <div className="grid grid-cols-6 gap-1">
-                  {recentIcons.map(name => {
-                    // @ts-ignore
-                    const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
-                    return (
-                      <button
-                        key={name}
-                        onClick={() => insertIcon(name)}
-                        className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-accent transition-colors border border-transparent hover:border-border group"
-                        title={name}
-                      >
-                        <Icon size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {filteredIcons.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">Search Results</div>
-                <div className="grid grid-cols-6 gap-1">
-                  {filteredIcons.map(name => {
-                    // @ts-ignore
-                    const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
-                    return (
-                      <button
-                        key={name}
-                        onClick={() => insertIcon(name)}
-                        className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-accent transition-colors border border-transparent hover:border-border group"
-                        title={name}
-                      >
-                        <Icon size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {search.length > 0 && search.length < 3 && (
-              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground/50">
-                <p className="text-[10px] uppercase tracking-widest font-bold">Keep typing...</p>
-              </div>
-            )}
-          </div>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  );
-};
 
 const LucideIconExtension = Node.create({
   name: 'lucideIcon',
@@ -232,13 +93,13 @@ const LucideIconExtension = Node.create({
   parseHTML() {
     return [
       {
-        tag: 'span[data-lucide-icon]',
+        tag: 'span[data-lucide-name]',
       },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes, { 'data-lucide-icon': '' }), 0];
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-lucide-name': HTMLAttributes.name, 'data-lucide-icon': '' })];
   },
 
   addNodeView() {
@@ -249,11 +110,13 @@ const LucideIconExtension = Node.create({
 
       return (
         <NodeViewWrapper className="inline-flex items-center align-middle mx-0.5 leading-none translate-y-[-1px]">
-          <IconComponent
-            size="1.1em"
-            color={color || 'currentColor'}
-            className="inline-block"
-            strokeWidth={2.5}
+          <IconComponent 
+            size={18} 
+            strokeWidth={2} 
+            fill="currentColor"
+            fillOpacity={0.2}
+            style={{ color: props.node.attrs.color || 'currentColor' }}
+            className={`transition-colors duration-200 ${props.selected ? 'opacity-50' : 'opacity-100'}`}
           />
         </NodeViewWrapper>
       );
@@ -622,7 +485,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
-      <IconSelector editor={editor} />
       <input
         type="file"
         id="tiptap-image-upload"

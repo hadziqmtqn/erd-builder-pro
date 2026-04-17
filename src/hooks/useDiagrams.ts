@@ -289,7 +289,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         }
       }
 
-      await localPersistence.saveDraft(DraftType.DIAGRAM, activeDiagramId, data, isSyncPending);
+      await localPersistence.saveDraft(DraftType.ERD, activeDiagramId, data, isSyncPending);
     } catch (err) {
       console.error('Error in local saveDiagram:', err);
     }
