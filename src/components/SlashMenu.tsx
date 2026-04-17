@@ -10,6 +10,7 @@ import {
   Table as TableHeader, AlertCircle,
   Hash, Layout, Trash2, ChevronDown
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -20,6 +21,7 @@ interface SlashMenuItem {
   category?: string;
   command?: (editor: any, range: { from: number; to: number }) => void;
   children?: SlashMenuItem[];
+  customView?: 'icon-search';
 }
 
 interface SlashMenuProps {
@@ -52,11 +54,7 @@ const MAIN_ITEMS: SlashMenuItem[] = [
     const input = document.getElementById('tiptap-image-upload') as HTMLInputElement;
     if (input) input.click();
   }},
-  { title: 'Lucide Icon', icon: <Smile className="w-4 h-4" />, category: 'Media', command: (editor, range) => {
-    editor.chain().focus().deleteRange(range).run();
-    const iconBtn = document.querySelector('[data-icon-selector-trigger]') as HTMLButtonElement;
-    if (iconBtn) iconBtn.click();
-  }},
+  { title: 'Lucide Icon', icon: <Smile className="w-4 h-4" />, category: 'Media', customView: 'icon-search' },
 
   // Organization
   { title: 'Blockquote', icon: <Quote className="w-4 h-4" />, shortcut: '>', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
@@ -90,36 +88,54 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   onClose,
   coords 
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [navStack, setNavStack] = useState<SlashMenuItem[][]>([MAIN_ITEMS]);
+  const [indexStack, setIndexStack] = useState<number[]>([0]);
+  const selectedIndex = indexStack[indexStack.length - 1] || 0;
+
+  const setSelectedIndex = (val: number | ((prev: number) => number)) => {
+    setIndexStack(prev => {
+      const copy = [...prev];
+      const top = copy[copy.length - 1] || 0;
+      copy[copy.length - 1] = typeof val === 'function' ? val(top) : val;
+      return copy;
+    });
+  };
+
+  const [navStack, setNavStack] = useState<(SlashMenuItem[] | 'icon-search')[]>([MAIN_ITEMS]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const currentItems = navStack[navStack.length - 1];
   const isSubMenu = navStack.length > 1;
 
   const filteredItems = useMemo(() => {
+    if (currentItems === 'icon-search') return [];
+    
     const q = query.toLowerCase();
     // If searching, we search across all levels for flat access (like Notion)
     if (q.length > 0) {
       const flattened: SlashMenuItem[] = [];
       const collect = (items: SlashMenuItem[]) => {
         items.forEach(item => {
-          if (item.command) flattened.push(item);
+          if (item.command || item.customView) flattened.push(item);
           if (item.children) collect(item.children);
         });
       };
-      collect(MAIN_ITEMS);
+      
+      if (Array.isArray(MAIN_ITEMS)) {
+        collect(MAIN_ITEMS);
+      }
       return flattened.filter(item => item.title.toLowerCase().includes(q));
     }
-    return currentItems;
+    return Array.isArray(currentItems) ? currentItems : [];
   }, [query, currentItems]);
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, navStack]);
+  }, [query]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (currentItems === 'icon-search') return; // Handled by IconSearchView
+      
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => (prev + 1) % filteredItems.length);
@@ -130,8 +146,12 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
         e.preventDefault();
         const item = filteredItems[selectedIndex];
         if (item) {
-          if (item.children) {
+          if (item.customView) {
+            setNavStack([...navStack, item.customView]);
+            setIndexStack(prev => [...prev, 0]);
+          } else if (item.children) {
             setNavStack([...navStack, item.children]);
+            setIndexStack(prev => [...prev, 0]);
           } else if (item.command) {
             item.command(editor, range);
             onClose();
@@ -140,6 +160,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       } else if (e.key === 'Backspace' && query === '' && isSubMenu) {
         e.preventDefault();
         setNavStack(prev => prev.slice(0, -1));
+        setIndexStack(prev => prev.slice(0, -1));
       } else if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
@@ -148,7 +169,8 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [filteredItems, selectedIndex, editor, range, onClose, navStack, query, isSubMenu]);
+  }, [filteredItems, selectedIndex, editor, range, onClose, navStack, query, isSubMenu, currentItems]);
+
 
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -174,6 +196,30 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
     transform: isFlipped ? 'translateY(-100%)' : 'none',
   };
 
+  if (currentItems === 'icon-search') {
+    return createPortal(
+      <div style={style}>
+        <motion.div 
+          initial={{ opacity: 0, y: isFlipped ? 10 : -10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="w-64 h-[350px] bg-popover/95 backdrop-blur-xl border border-border shadow-2xl rounded-lg overflow-hidden flex flex-col"
+        >
+          <IconSearchView 
+            editor={editor} 
+            range={range} 
+            onClose={onClose} 
+            onBack={() => {
+              setNavStack(prev => prev.slice(0, -1));
+              setIndexStack(prev => prev.slice(0, -1));
+            }} 
+          />
+        </motion.div>
+      </div>,
+      document.body
+    );
+  }
+
   if (filteredItems.length === 0) return null;
 
   // Group items by category if not searching
@@ -187,8 +233,16 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
           {catItems.map((item, index) => {
             const globalIndex = filteredItems.indexOf(item);
             return <ItemRow key={item.title} item={item} isSelected={globalIndex === selectedIndex} index={globalIndex} onClick={() => {
-              if (item.children) setNavStack([...navStack, item.children]);
-              else if (item.command) { item.command(editor, range); onClose(); }
+              if (item.customView) {
+                setNavStack([...navStack, item.customView]);
+                setIndexStack(prev => [...prev, 0]);
+              } else if (item.children) {
+                setNavStack([...navStack, item.children]);
+                setIndexStack(prev => [...prev, 0]);
+              } else if (item.command) { 
+                item.command(editor, range); 
+                onClose(); 
+              }
             }} />;
           })}
         </div>
@@ -197,8 +251,16 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   ) : (
     filteredItems.map((item, index) => (
       <ItemRow key={item.title} item={item} isSelected={index === selectedIndex} index={index} onClick={() => {
-        if (item.children) setNavStack([...navStack, item.children]);
-        else if (item.command) { item.command(editor, range); onClose(); }
+        if (item.customView) {
+          setNavStack([...navStack, item.customView]);
+          setIndexStack(prev => [...prev, 0]);
+        } else if (item.children) {
+          setNavStack([...navStack, item.children]);
+          setIndexStack(prev => [...prev, 0]);
+        } else if (item.command) { 
+          item.command(editor, range); 
+          onClose(); 
+        }
       }} />
     ))
   );
@@ -213,7 +275,10 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       >
         {isSubMenu && (
           <button 
-            onClick={() => setNavStack(prev => prev.slice(0, -1))}
+            onClick={() => {
+              setNavStack(prev => prev.slice(0, -1));
+              setIndexStack(prev => prev.slice(0, -1));
+            }}
             className="flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors border-b border-border/50 text-muted-foreground"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -248,13 +313,187 @@ const ItemRow = ({ item, isSelected, index, onClick }: { item: SlashMenuItem, is
       {item.icon}
     </div>
     <span className="text-sm font-medium flex-1 truncate">{item.title}</span>
-    {item.shortcut && !item.children && (
+    {item.shortcut && !item.children && !item.customView && (
       <span className="text-[10px] font-mono opacity-40 ml-auto">{item.shortcut}</span>
     )}
-    {item.children && (
+    {(item.children || item.customView) && (
       <ChevronRight className="w-3 h-3 opacity-40 ml-auto" />
     )}
   </button>
 );
 
 const Trash2Placeholder = ({ className }: { className?: string }) => <Trash2 className={className} />;
+
+
+const IconSearchView = ({ 
+  editor, 
+  range, 
+  onClose, 
+  onBack 
+}: { 
+  editor: any; 
+  range: { from: number; to: number }; 
+  onClose: () => void; 
+  onBack: () => void; 
+}) => {
+  const [search, setSearch] = useState('');
+  const [recentIcons, setRecentIcons] = useState<string[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('tiptap-recent-icons');
+    if (saved) {
+      try { setRecentIcons(JSON.parse(saved)); } catch (e) { }
+    }
+    setTimeout(() => {
+      if (inputRef.current) inputRef.current.focus();
+    }, 50);
+  }, []);
+
+  const saveRecentIcon = (name: string) => {
+    const updated = [name, ...recentIcons.filter(i => i !== name)].slice(0, 12);
+    setRecentIcons(updated);
+    localStorage.setItem('tiptap-recent-icons', JSON.stringify(updated));
+  };
+
+  const allIconNames = useMemo(() => {
+    // @ts-ignore
+    return Object.keys(LucideIcons).filter(key =>
+      /^[A-Z]/.test(key) && key !== 'Icon' && key !== 'LucideIcon' && key !== 'createLucideIcon'
+    );
+  }, []);
+
+  const POPULAR_ICONS = ["Star", "Heart", "Check", "X", "Info", "AlertTriangle", "Settings", "User", "Mail", "Home", "Trash", "Edit", "Camera", "Image", "Link", "Plus", "Minus", "ArrowRight"];
+
+  const filteredIcons = useMemo(() => {
+    if (search.length < 2) return [];
+    const q = search.toLowerCase();
+    return allIconNames.filter(name => {
+      const lower = name.toLowerCase();
+      return lower.includes(q) || name.replace(/([A-Z])/g, ' $1').toLowerCase().includes(q);
+    }).slice(0, 36);
+  }, [search, allIconNames]);
+
+  const displayedIcons = search.length < 2 
+    ? (recentIcons.length > 0 ? recentIcons : POPULAR_ICONS) 
+    : filteredIcons;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.stopPropagation();
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 6, displayedIcons.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 6, 0));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, displayedIcons.length - 1));
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const selectedName = displayedIcons[selectedIndex];
+        if (selectedName) insertIcon(selectedName);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Backspace' && search === '') {
+        e.preventDefault();
+        onBack();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [displayedIcons, selectedIndex, search, onClose, onBack]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [displayedIcons.length, search]);
+
+  const insertIcon = (name: string) => {
+    try {
+      editor.chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent({
+          type: 'lucideIcon',
+          attrs: { name }
+        })
+        .run();
+      saveRecentIcon(name);
+    } catch (err) {
+      console.error("Failed to insert icon:", err);
+    } finally {
+      onClose();
+    }
+  };
+
+  return (
+    <>
+      <div className="p-2 border-b border-border/50 flex flex-col gap-2 shrink-0">
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold hover:bg-muted transition-colors rounded text-muted-foreground w-fit"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          Back to menu
+        </button>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search icons..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full h-8 pl-8 pr-2 text-xs bg-muted/50 border-none rounded focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+          />
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+        {displayedIcons.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-1.5 px-1">
+              {search.length < 2 && recentIcons.length > 0 ? 'Recently Used' : search.length < 2 ? 'Popular Icons' : 'Search Results'}
+            </div>
+            <div className="grid grid-cols-6 gap-0.5">
+              {displayedIcons.map((name, idx) => {
+                // @ts-ignore
+                const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
+                const isSelected = selectedIndex === idx;
+                return (
+                  <button
+                    key={name + idx}
+                    onClick={() => insertIcon(name)}
+                    className={cn(
+                      "w-[34px] h-[34px] flex items-center justify-center rounded transition-all",
+                      isSelected ? "bg-primary text-primary-foreground scale-110 shadow-md relative z-10" : "hover:bg-accent text-foreground hover:scale-105"
+                    )}
+                    title={name}
+                  >
+                    <Icon size={18} strokeWidth={2} fill="currentColor" fillOpacity={0.2} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {search.length > 0 && search.length < 2 && (
+             <div className="text-center py-6 text-[10px] uppercase font-bold tracking-widest text-muted-foreground/50">Keep typing...</div>
+        )}
+        
+        {search.length >= 2 && filteredIcons.length === 0 && (
+          <div className="text-center py-6 text-xs italic text-muted-foreground">No icons found</div>
+        )}
+      </div>
+    </>
+  );
+};
