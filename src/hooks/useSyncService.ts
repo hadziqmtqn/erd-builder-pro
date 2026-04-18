@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
   const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
   const [syncError, setSyncError] = useState<boolean>(false);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -67,8 +68,9 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, []);
 
   const syncDrafts = useCallback(async () => {
-    if (!isAuthenticated || !navigator.onLine || isGuest) return;
-
+    if (!isAuthenticated || !navigator.onLine || isGuest || isSyncingRef.current) return;
+    
+    isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncError(false);
 
@@ -139,15 +141,25 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
           }
 
           if (endpoint) {
+            console.log(`%c[SyncService] 🔄 Syncing ${draft.type}#${draft.id}...`, 'color: #3b82f6');
+            const lastUpdated = draft.updated_at;
             const res = await fetch(endpoint, {
               method: draft.type === DraftType.ERD ? 'POST' : 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(body),
             });
 
+            if (res.status === 429) {
+              console.warn("Sync paused: Server is rate-limiting requests (429).");
+              setIsSyncing(false);
+              isSyncingRef.current = false;
+              return; // Stop processing the queue
+            }
+
             if (res.ok) {
-              await localPersistence.saveDraft(draft.type, draft.id, healedData, false);
-              successCount++;
+              const marked = await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
+              if (marked) successCount++;
+              else console.log(`In-flight update detected for ${draft.id}, deferring markSynced`);
             }
           }
         } catch (err) {
@@ -165,6 +177,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
       setSyncError(true);
     } finally {
       setIsSyncing(false);
+      isSyncingRef.current = false;
     }
   }, [isAuthenticated, isGuest, healDraftData]);
 
@@ -177,14 +190,16 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, [syncDrafts]);
 
   useEffect(() => {
-    // Initial sync check on mount if online
-    if (navigator.onLine && isAuthenticated && !isGuest) {
-      syncDrafts();
-    }
+    // Give metadata-based cleanup (App.tsx) a small head start before trying to auto-sync on mount
+    const initialSyncTimer = setTimeout(() => {
+      if (navigator.onLine && isAuthenticated && !isGuest) {
+        syncDrafts();
+      }
+    }, 2000);
 
     // Listener for coming back online
     const handleOnline = () => {
-      console.log('App is back online. Triggering sync...');
+      console.log('%c[SyncService] App is back online. Triggering sync...', 'color: #10b981');
       syncDrafts();
     };
 
@@ -195,5 +210,56 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     }
   }, [syncDrafts, isAuthenticated, isGuest]);
 
-  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError, healDraftData };
+  const checkAndClearStaleDrafts = useCallback(async (type: DraftType, cloudItems: { id: string | number, updated_at: string | number }[]) => {
+    if (!isAuthenticated || isGuest) return;
+
+    try {
+      const pendingSyncs = await localPersistence.getAllPendingSyncs();
+      const relevantSyncs = pendingSyncs.filter(d => d.type === type);
+      
+      for (const draft of relevantSyncs) {
+        const cloudItem = cloudItems.find(item => String(item.id) === String(draft.id));
+        if (cloudItem) {
+          const cloudTime = new Date(cloudItem.updated_at).getTime();
+          const localTime = draft.updated_at;
+
+          if (cloudTime > localTime) {
+            console.log(`%c[SyncService] Discarding stale local draft for ${type}#${draft.id} (Cloud is newer: ${new Date(cloudTime).toLocaleString()} vs Local: ${new Date(localTime).toLocaleString()})`, 'color: #ef4444; font-weight: bold');
+            await localPersistence.deleteDraft(type, draft.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error in checkAndClearStaleDrafts:", err);
+    }
+  }, [isAuthenticated, isGuest]);
+
+  // One-time migration: Clear legacy 'diagram' drafts from IndexedDB
+  useEffect(() => {
+    const runMigration = async () => {
+      if (!isAuthenticated || isGuest) return;
+      const migrationFlag = localStorage.getItem('erd-builder-migration-diagram-to-erd');
+      if (migrationFlag === 'done') return;
+
+      try {
+        const pendingSyncs = await localPersistence.getAllPendingSyncs();
+        // Since DraftType.DIAGRAM is removed from the enum, we use the string 'diagram' directly
+        const legacyDrafts = pendingSyncs.filter(d => (d as any).type === 'diagram');
+        
+        if (legacyDrafts.length > 0) {
+          console.log(`%c[Migration] Cleaning up ${legacyDrafts.length} legacy 'diagram' drafts...`, 'color: #f59e0b; font-weight: bold');
+          for (const draft of legacyDrafts) {
+            await localPersistence.deleteDraft('diagram' as any, draft.id);
+          }
+          console.log('%c[Migration] Legacy drafts cleaned successfully.', 'color: #10b981; font-weight: bold');
+        }
+        localStorage.setItem('erd-builder-migration-diagram-to-erd', 'done');
+      } catch (err) {
+        console.error("Migration failed:", err);
+      }
+    };
+    runMigration();
+  }, [isAuthenticated, isGuest]);
+
+  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError, healDraftData, checkAndClearStaleDrafts };
 }

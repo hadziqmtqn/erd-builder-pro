@@ -16,7 +16,7 @@ export function useFlowcharts(isGuest: boolean = false) {
   // Keep ref in sync
   flowchartsRef.current = flowcharts;
 
-  const fetchFlowcharts = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10) => {
+  const fetchFlowcharts = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
     if (isGuest) {
       const localFlowcharts = await localPersistence.getAllResources('flowchart');
       let filtered = localFlowcharts.filter(f => !f.is_deleted);
@@ -32,7 +32,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       return;
     }
 
-    setIsLoading(true);
+    if (!options?.silent) setIsLoading(true);
     try {
       const offset = isLoadMore ? flowchartsRef.current.length : 0;
       const projIdParam = (projectId === null || projectId === 'null') ? 'null' : projectId;
@@ -240,8 +240,8 @@ export function useFlowcharts(isGuest: boolean = false) {
     } catch (err) {}
   };
 
-  const selectFlowchart = async (id: number | string) => {
-    setIsItemLoading(true);
+  const selectFlowchart = async (id: number | string, options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsItemLoading(true);
     try {
       if (isGuest) {
         const localData = await localPersistence.getResource(id);

@@ -144,7 +144,7 @@ function AppContent() {
   // Custom Hooks
   const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin, handleLogout } = useAuth();
   const isOnline = useConnectionStatus();
-  const { triggerDebouncedSync, isSyncing, syncError } = useSyncService(isAuthenticated, isGuest);
+  const { triggerDebouncedSync, isSyncing, syncError, syncDrafts, checkAndClearStaleDrafts } = useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
   const { handleExportImage, handleExportPDF } = useImageExporter();
@@ -330,6 +330,16 @@ function AppContent() {
     }
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
+  // Conflict Resolution: Clear stale local drafts when cloud data is loaded
+  useEffect(() => {
+    if (isAuthenticated && !isGuest) {
+      if (diagrams.length > 0) checkAndClearStaleDrafts(DraftType.ERD, diagrams);
+      if (notes.length > 0) checkAndClearStaleDrafts(DraftType.NOTES, notes);
+      if (drawings.length > 0) checkAndClearStaleDrafts(DraftType.DRAWINGS, drawings);
+      if (flowcharts.length > 0) checkAndClearStaleDrafts(DraftType.FLOWCHART, flowcharts);
+    }
+  }, [diagrams, notes, drawings, flowcharts, isAuthenticated, isGuest, checkAndClearStaleDrafts]);
+
   // Safety Gate: Intercept tab close/reload if there are unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -350,28 +360,40 @@ function AppContent() {
       // Only refresh if online, authenticated, not in public view, and not currently saving/syncing
       if (!isOnline || !isAuthenticated || isPublicView || isLocalSaving || isRefreshing || isSyncing) return;
       
-      // Throttle: don't refresh more than once every 30 seconds
+      // Throttle: don't refresh more than once every 120 seconds (2 minutes)
       const now = Date.now();
-      if (now - lastFocusFetchRef.current < 30000) return;
+      if (now - lastFocusFetchRef.current < 120000) return;
       lastFocusFetchRef.current = now;
 
       setIsRefreshing(true);
       try {
         const pid = activeProjectId === null ? 'all' : activeProjectId;
         
-        // Refresh the list and the active item
+        // Refresh the list and the active item SILENTLY (no skeletons)
         if (view === 'erd') {
-          await fetchDiagrams(false, pid, debouncedSearchQuery, null, 50);
-          if (activeDiagramId) await selectDiagram(activeDiagramId, setActiveDiagramId);
+          await fetchDiagrams(false, pid, debouncedSearchQuery, null, 50, { silent: true });
+          if (activeDiagramId) {
+            const hasPending = await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId);
+            if (!hasPending) await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+          }
         } else if (view === 'notes') {
-          await fetchNotes(false, pid, debouncedSearchQuery, null, 50);
-          if (activeNoteId) await selectNote(activeNoteId);
+          await fetchNotes(false, pid, debouncedSearchQuery, null, 50, { silent: true });
+          if (activeNoteId) {
+            const hasPending = await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteId);
+            if (!hasPending) await selectNote(activeNoteId, { silent: true });
+          }
         } else if (view === 'drawings') {
-          await fetchDrawings(false, pid, debouncedSearchQuery, null, 50);
-          if (activeDrawingId) await selectDrawing(activeDrawingId);
+          await fetchDrawings(false, pid, debouncedSearchQuery, null, 50, { silent: true });
+          if (activeDrawingId) {
+            const hasPending = await localPersistence.hasPendingSync(DraftType.DRAWINGS, activeDrawingId);
+            if (!hasPending) await selectDrawing(activeDrawingId, { silent: true });
+          }
         } else if (view === 'flowchart') {
-          await fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50);
-          if (activeFlowchartId) await selectFlowchart(activeFlowchartId);
+          await fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50, { silent: true });
+          if (activeFlowchartId) {
+            const hasPending = await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId);
+            if (!hasPending) await selectFlowchart(activeFlowchartId, { silent: true });
+          }
         }
       } catch (err) {
         console.warn("Background refresh on focus failed:", err);
@@ -449,6 +471,28 @@ function AppContent() {
   }, [nodes, edges, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync]);
 
   // Handlers
+  const handleEntityUpdate = useCallback(async (updatedEntity: Entity, options?: { immediate?: boolean }) => {
+    updateEntity(updatedEntity);
+    
+    if (options?.immediate) {
+      // Clear any pending debounced auto-saves to prevent double sync
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        setIsLocalSaving(false);
+      }
+
+      // 1. Instant Local Save (IndexedDB)
+      // We manually construct the nodes array because state updates are async
+      const currentNodes = nodes.map(node => 
+        node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node
+      );
+      await saveDiagram(currentNodes, edges, viewportRef.current);
+      
+      // 2. Instant Cloud Sync (Supabase)
+      syncDrafts();
+    }
+  }, [updateEntity, nodes, edges, saveDiagram, viewportRef, syncDrafts]);
+
   const handleDiagramSelect = (id: number | string) => selectDiagram(id, setActiveDiagramId);
   const handleEditEntity = useCallback((e: any) => setSelectedNodeId(e.detail), [setSelectedNodeId]);
   const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
@@ -956,7 +1000,7 @@ function AppContent() {
               <DialogBody>
                 <PropertiesPanel 
                   selectedEntity={selectedEntity} 
-                  onUpdateEntity={updateEntity} 
+                  onUpdateEntity={handleEntityUpdate} 
                   onDeleteEntity={(id) => {
                     deleteEntity(id);
                     setSelectedNodeId(null);

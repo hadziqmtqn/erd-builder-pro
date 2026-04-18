@@ -94,6 +94,79 @@ class LocalPersistence {
     });
   }
 
+  async hasPendingSync(type: Draft['type'], id: string | number): Promise<boolean> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get([type, id]);
+
+      request.onsuccess = () => {
+        const draft = request.result as Draft | undefined;
+        resolve(!!draft && draft.sync_pending);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async markSynced(type: Draft['type'], id: string | number, lastUpdatedAt: number): Promise<boolean> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get([type, id]);
+
+      request.onsuccess = () => {
+        const draft = request.result as Draft | undefined;
+        if (draft && draft.updated_at === lastUpdatedAt) {
+          draft.sync_pending = false;
+          const updateRequest = store.put(draft);
+          updateRequest.onsuccess = () => resolve(true);
+          updateRequest.onerror = () => reject(updateRequest.error);
+        } else {
+          // Data was updated while we were syncing, don't mark as synced
+          resolve(false);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clearAllPendingSyncs(): Promise<void> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.openCursor();
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          const draft = cursor.value as Draft;
+          if (draft.sync_pending) {
+            cursor.delete();
+          }
+          cursor.continue();
+        } else {
+          console.log('%c[LocalDB] All pending syncs cleared', 'color: #ef4444; font-weight: bold');
+          resolve();
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteDraft(type: Draft['type'], id: string | number): Promise<void> {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.delete([type, id]);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async getAllPendingSyncs(): Promise<Draft[]> {
     const db = await this.init();
     return new Promise((resolve, reject) => {

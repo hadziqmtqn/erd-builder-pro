@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS columns (
   is_pk BOOLEAN DEFAULT FALSE,
   is_nullable BOOLEAN DEFAULT TRUE,
   enum_values TEXT,
+  sort_order INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

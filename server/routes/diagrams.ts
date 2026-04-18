@@ -115,7 +115,8 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
     const { data: columns } = await supabase
       .from("columns")
       .select("*")
-      .eq("entity_id", entity.id);
+      .eq("entity_id", entity.id)
+      .order("sort_order", { ascending: true });
     return { ...entity, columns: columns || [] };
   }));
 
@@ -191,7 +192,8 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     const { data: columns } = await supabase
       .from("columns")
       .select("*")
-      .eq("entity_id", entity.id);
+      .eq("entity_id", entity.id)
+      .order("sort_order", { ascending: true });
     return { ...entity, columns: columns || [] };
   }));
 
@@ -285,7 +287,8 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
             type: col.type,
             is_pk: col.is_pk || false,
             is_nullable: col.is_nullable !== undefined ? col.is_nullable : true,
-            enum_values: col.enum_values || null
+            enum_values: col.enum_values || null,
+            sort_order: col.sort_order || 0
           });
         }
       }

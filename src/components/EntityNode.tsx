@@ -1,5 +1,5 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import React, { memo, useState, useEffect } from 'react';
+import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
 import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
@@ -26,8 +26,18 @@ import {
 
 type EntityNodeProps = NodeProps<Node<Entity>>;
 
-const EntityNode = ({ data, selected }: EntityNodeProps) => {
+const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  // Notify React Flow when internal handle positions might have changed
+  // Simplified dependency: watching IDs and order is fast and catches all layout shifts
+  const columnOrderHash = data.columns.map(c => `${c.id}-${c.sort_order}`).join(',');
+  
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, columnOrderHash, updateNodeInternals]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -59,7 +69,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
           "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container",
           selected && "ring-2 ring-white/10"
         )}
-        style={{ borderColor: borderColor }}
+        style={{ borderColor: borderColor, overflow: 'visible' }}
       >
         {/* Header */}
         <div 
@@ -102,7 +112,7 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
 
         {/* Columns */}
         <div className="flex flex-col">
-          {data.columns.map((col: any, index: number) => {
+          {[...data.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col: any) => {
             const isFk = col._is_fk;
             return (
               <div 
@@ -112,35 +122,49 @@ const EntityNode = ({ data, selected }: EntityNodeProps) => {
                   "hover:bg-white/5"
                 )}
                 style={{ '--hover-bg': rowHoverBg } as React.CSSProperties}
+                onMouseEnter={() => setHoveredColumnId(col.id)}
+                onMouseLeave={() => setHoveredColumnId(null)}
               >
-                {/* Universal Column Handles (Bidirectional) */}
+                {/* Universal Column Handles (Bidirectional) - VISIBLE ON HOVER ONLY */}
                 <Handle
                   type="target"
                   position={Position.Left}
                   id={`col-${col.id}-target`}
-                  className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                  className={cn(
+                    "!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150",
+                    hoveredColumnId === col.id ? "opacity-100" : "opacity-0"
+                  )}
+                  style={{ top: '50%', left: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="source"
                   position={Position.Left}
                   id={`col-${col.id}-source-l`}
-                  className="!w-2 !h-2 !-left-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                  className={cn(
+                    "!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150",
+                    hoveredColumnId === col.id ? "opacity-100" : "opacity-0"
+                  )}
+                  style={{ top: '50%', left: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="source"
                   position={Position.Right}
                   id={`col-${col.id}-source`}
-                  className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                  className={cn(
+                    "!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150",
+                    hoveredColumnId === col.id ? "opacity-100" : "opacity-0"
+                  )}
+                  style={{ top: '50%', right: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="target"
                   position={Position.Right}
                   id={`col-${col.id}-target-r`}
-                  className="!w-2 !h-2 !-right-[5px] !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ top: '50%', transform: 'translateY(-50%)' }}
+                  className={cn(
+                    "!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150",
+                    hoveredColumnId === col.id ? "opacity-100" : "opacity-0"
+                  )}
+                  style={{ top: '50%', right: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
 
                 <div className="flex items-center gap-2">

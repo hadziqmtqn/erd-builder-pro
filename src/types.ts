@@ -1,6 +1,5 @@
 export enum DraftType {
   ERD = 'erd',
-  DIAGRAM = 'diagram',
   NOTES = 'notes',
   FLOWCHART = 'flowchart',
   DRAWINGS = 'drawings',
@@ -13,6 +12,7 @@ export interface Column {
   is_pk: boolean;
   is_nullable: boolean;
   enum_values?: string;
+  sort_order?: number;
 }
 
 export interface Entity {
