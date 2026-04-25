@@ -56,10 +56,13 @@ jobs:
           BACKUP_ID: "${{ steps.init.outputs.BACKUP_ID }}"
         run: |
           set -o pipefail
+          # Memastikan menggunakan pg_dump versi 17 yang baru diinstal
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          
           FILENAME="backup_${BACKUP_ID}_$(date +'%Y%m%d_%H%M%S').sql.gz"
           
           # 1. Dump & Compress (Will fail if pg_dump fails)
-          echo "--> Starting database dump..."
+          echo "--> Starting database dump using $(pg_dump --version)..."
           pg_dump "$SUPABASE_DB_URL" | gzip > $FILENAME
           
           # 2. Upload to R2
