@@ -205,6 +205,97 @@ code:not(pre code) {
 }
 
 /* Tiptap Editor Styles */
+.tiptap-editor-lined {
+  --line-height: 2rem;
+  --line-color: oklch(1 0 0 / 6%);
+  /* Shift lines slightly up (approx 6px) to meet the baseline of text */
+  background-image: linear-gradient(to bottom, transparent calc(var(--line-height) - 1px), var(--line-color) calc(var(--line-height) - 1px));
+  background-size: 100% var(--line-height);
+  background-position: 0 -0.4rem; 
+  background-attachment: local;
+  background-origin: content-box;
+}
+
+.tiptap-editor-lined .tiptap-editor-content {
+  line-height: var(--line-height) !important;
+}
+
+/* Align all blocks to the grid within lined editor */
+.tiptap-editor-lined .tiptap-editor-content > *,
+.tiptap-editor-lined .ProseMirror > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: var(--line-height) !important;
+  min-height: var(--line-height) !important;
+}
+
+.tiptap-editor-lined h1 {
+  font-size: 2.25rem !important;
+  line-height: calc(var(--line-height) * 2) !important;
+  min-height: calc(var(--line-height) * 2) !important;
+  display: flex !important;
+  align-items: center !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.tiptap-editor-lined h2,
+.tiptap-editor-lined h3,
+.tiptap-editor-lined h4,
+.tiptap-editor-lined h5,
+.tiptap-editor-lined h6 {
+  display: flex !important;
+  align-items: center !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: var(--line-height) !important;
+  min-height: var(--line-height) !important;
+}
+
+.tiptap-editor-lined h2 { font-size: 1.875rem !important; }
+.tiptap-editor-lined h3 { font-size: 1.5rem !important; }
+
+.tiptap-editor-lined ul,
+.tiptap-editor-lined ol {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.tiptap-editor-lined li {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: var(--line-height) !important;
+  min-height: var(--line-height) !important;
+}
+
+.tiptap-editor-lined li > p {
+  margin: 0 !important;
+}
+
+.tiptap-editor-lined ul[data-type="taskList"] li {
+  margin-bottom: 0 !important;
+  align-items: center !important;
+}
+
+.tiptap-editor-lined ul[data-type="taskList"] input[type="checkbox"] {
+  margin-top: 0 !important;
+}
+
+/* Table Grid Alignment */
+.tiptap-editor-lined table {
+  margin: 0 !important;
+}
+
+.tiptap-editor-lined table tr td,
+.tiptap-editor-lined table tr th {
+  height: var(--line-height) !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: var(--line-height) !important;
+  box-sizing: border-box !important;
+}
+
+
 .tiptap-editor .tiptap-editor-content > * + * {
   margin-top: 0.35em !important;
 }
@@ -281,16 +372,35 @@ code:not(pre code) {
 
 .tiptap-editor code {
   background-color: var(--muted) !important;
+  color: var(--foreground) !important;
   padding: 0.2rem 0.4rem !important;
   border-radius: 0.25rem !important;
   font-size: 0.875em !important;
   @apply !font-mono;
 }
 
+.tiptap-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  background-color: color-mix(in srgb, currentColor, transparent 88%) !important;
+  border: 1px solid color-mix(in srgb, currentColor, transparent 70%) !important;
+  color: #a5b4fc; /* Default color */
+  padding: 0.1rem 0.6rem !important;
+  border-radius: 9999px !important;
+  font-size: 0.85em !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  @apply !font-mono;
+  margin: 0 0.15rem !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
+}
+
 .tiptap-editor code::before,
 .tiptap-editor code::after {
   content: none !important;
 }
+
 
 .tiptap-editor pre {
   background: var(--muted) !important;

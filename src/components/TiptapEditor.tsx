@@ -33,10 +33,12 @@ import {
   Pilcrow,
   Link,
   Palette,
+  Code,
   Code2,
   Smile,
   Type,
-  ListTree
+  ListTree,
+  Tag
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 
@@ -57,7 +59,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Extension, Node, mergeAttributes, RawCommands } from '@tiptap/core';
+import { Mark, Extension, Node, mergeAttributes, RawCommands } from '@tiptap/core';
 import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import { compressImage } from '../lib/image-compression';
 import { cn } from '@/lib/utils';
@@ -251,6 +253,78 @@ const ToggleExtension = Node.create({
   }
 });
 
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    toggle: {
+      setToggle: () => ReturnType,
+    },
+    badge: {
+      toggleBadge: () => ReturnType,
+      setBadgeColor: (color: string) => ReturnType,
+    }
+  }
+}
+
+const Badge = Mark.create({
+  name: 'badge',
+  inclusive: true,
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-color'),
+        renderHTML: attributes => {
+          if (!attributes.color) return {};
+          return {
+            'data-color': attributes.color,
+            style: `color: ${attributes.color}`,
+          };
+        },
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-type="badge"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { 'data-type': 'badge', class: 'tiptap-badge' }), 0];
+  },
+  addCommands() {
+    return {
+      toggleBadge: () => ({ commands }) => commands.toggleMark(this.name),
+      setBadgeColor: color => ({ commands }) => commands.updateAttributes(this.name, { color: color || null }),
+    } as any;
+  },
+  addKeyboardShortcuts() {
+    return {
+      ArrowRight: () => {
+        const { state } = this.editor;
+        const { selection, doc } = state;
+        const { $from, empty } = selection;
+
+        if (!empty || !this.editor.isActive('badge')) {
+          return false;
+        }
+
+        const pos = $from.pos;
+        const marks = doc.resolve(pos).marks();
+        const hasBadge = marks.some(m => m.type.name === 'badge');
+        
+        // Check if there's a badge mark at the next position
+        const hasBadgeAfter = pos < doc.content.size && doc.resolve(pos + 1).marks().some(m => m.type.name === 'badge');
+
+        if (hasBadge && !hasBadgeAfter) {
+          // Move cursor one step out and clear the badge mark
+          return this.editor.chain().setTextSelection(pos + 1).unsetMark(this.name).run();
+        }
+
+        return false;
+      },
+    };
+  },
+});
+
+
 export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
@@ -320,6 +394,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   const extensions = React.useMemo(() => [
     TextStyle,
     Color,
+    Badge,
     ToggleExtension,
     StarterKit.configure({
       link: false,
@@ -498,7 +573,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-neutral-950/50 relative px-4 sm:px-6 md:px-24"
       >
-        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative">
+        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative tiptap-editor-lined">
 
           {/* Floating Outline Panel Using Standard Shadcn UI Patterns */}
           <div className="absolute -right-14 top-0 h-full hidden md:block z-40">
@@ -610,6 +685,22 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
               <button
                 type="button"
                 onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleBadge().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('badge') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+              >
+                <Tag className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editor.chain().focus().toggleCode().run()}
+                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('code') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+              >
+                <Code className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={() => editor.chain().focus().toggleCodeBlock().run()}
                 className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('codeBlock') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
               >
@@ -646,7 +737,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                     { name: 'Red', value: '#ef4444' }
                   ].map(({ name, value }) => {
                     const isActive = editor.isActive('lucideIcon') 
-                      ? editor.getAttributes('lucideIcon').color === value 
+                      ? editor.getAttributes('lucideIcon').color === (value || null)
+                      : editor.isActive('badge')
+                      ? editor.getAttributes('badge').color === (value || null)
                       : (value ? editor.isActive('textStyle', { color: value }) : (!editor.getAttributes('textStyle').color));
                     return (
                       <DropdownMenu.Item
@@ -654,6 +747,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
                         onSelect={() => {
                           if (editor.isActive('lucideIcon')) {
                             editor.chain().focus().updateAttributes('lucideIcon', { color: value || null }).run();
+                          } else if (editor.isActive('badge')) {
+                            editor.chain().focus().updateAttributes('badge', { color: value || null }).run();
                           } else {
                             if (value) editor.chain().focus().setColor(value).run();
                             else editor.chain().focus().unsetColor().run();
