@@ -83,7 +83,6 @@ jobs:
           FILENAME: "${{ steps.vars.outputs.FILENAME }}"
         run: |
           FILE_PATH="backups/${{ steps.vars.outputs.FILENAME }}"
-          echo "Updating Supabase for Backup ID: $BACKUP_ID with Path: $FILE_PATH"
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/backups?id=eq.$BACKUP_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \

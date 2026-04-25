@@ -73,12 +73,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
     } catch (s3Error: any) {
       console.error("S3 Get Error:", s3Error);
       return res.status(404).json({ 
-        error: `File not found in storage.`,
-        details: {
-          bucket: R2_BUCKET_NAME,
-          key: backup.file_path,
-          message: s3Error.message
-        }
+        error: "File not found or storage is temporarily unavailable."
       });
     }
 
