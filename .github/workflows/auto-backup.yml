@@ -82,7 +82,8 @@ jobs:
           BACKUP_ID: "${{ steps.init.outputs.BACKUP_ID }}"
           FILENAME: "${{ steps.vars.outputs.FILENAME }}"
         run: |
-          FILE_PATH="backups/$FILENAME"
+          FILE_PATH="backups/${{ steps.vars.outputs.FILENAME }}"
+          echo "Updating Supabase for Backup ID: $BACKUP_ID with Path: $FILE_PATH"
           
           curl -X PATCH "$SUPABASE_URL/rest/v1/backups?id=eq.$BACKUP_ID" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
@@ -91,5 +92,5 @@ jobs:
             -d "{
               \"status\": \"completed\",
               \"file_path\": \"$FILE_PATH\",
-              \"file_size\": $(stat -c%s $FILENAME)
+              \"file_size\": $(stat -c%s ${{ steps.vars.outputs.FILENAME }})
             }"
