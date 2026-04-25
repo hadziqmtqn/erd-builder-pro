@@ -78,8 +78,8 @@ export const BackupsView = () => {
   const handleDownload = (backup: BackupRecord) => {
     if (backup.status !== 'completed' || !backup.file_path) return;
     
-    // Buka URL download di tab baru atau trigger download
-    window.open(`/api/backups/${backup.id}/download`, '_blank');
+    // Trigger download di tab yang sama tanpa flicker tab baru
+    window.location.href = `/api/backups/${backup.id}/download`;
   };
 
   const handleCreateBackup = async () => {
