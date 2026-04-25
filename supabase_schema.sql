@@ -101,6 +101,30 @@ CREATE TABLE IF NOT EXISTS flowcharts (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backups Table
+CREATE TABLE IF NOT EXISTS backups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    file_path TEXT,
+    file_size BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE backups ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view their own backups" ON backups
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own backups" ON backups
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Service role can update backups" ON backups
+    FOR UPDATE USING (true);
+
 -- Enable RLS (Optional, but recommended)
 -- For now, we assume the app uses the service role key which bypasses RLS.
 -- If you want to use public keys, you'll need to add policies.
