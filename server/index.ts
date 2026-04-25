@@ -13,6 +13,7 @@ import notesRouter from "./routes/notes.js";
 import drawingsRouter from "./routes/drawings.js";
 import flowchartsRouter from "./routes/flowcharts.js";
 import feedbackRouter from "./routes/feedback.js";
+import backupsRouter from "./routes/backups.js";
 import commonRouter from "./routes/common.js";
 
 const app = express();
@@ -43,6 +44,7 @@ app.use("/api/projects", projectsRouter);
 app.use("/api/notes", notesRouter);
 app.use("/api/drawings", drawingsRouter);
 app.use("/api/flowcharts", flowchartsRouter);
+app.use("/api/backups", backupsRouter);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter); // trash, upload, test-r2
 

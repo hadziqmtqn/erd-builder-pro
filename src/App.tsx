@@ -56,6 +56,7 @@ import { useImageExporter } from './hooks/useImageExporter';
 
 // Views
 import { ChangelogView } from './components/views/ChangelogView';
+import { BackupsView } from './components/views/BackupsView';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
@@ -104,7 +105,7 @@ const getSharePathInfo = () => {
 };
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'>(() => {
+  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'>(() => {
     if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
     return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
   });
@@ -628,7 +629,7 @@ function AppContent() {
       return;
     }
     setView(newView);
-    if (newView !== 'trash' && newView !== 'changelog') {
+    if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') {
       setSidebarView(newView);
     }
   };
@@ -654,7 +655,7 @@ function AppContent() {
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => f.id === activeFlowchartId);
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
   
-  const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : 'Trash Bin');
+  const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : view === 'backups' ? 'Backups' : 'Trash Bin');
   const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeDiagram?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
   const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeDiagram?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
   const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeDiagram?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
@@ -877,7 +878,7 @@ function AppContent() {
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden">
-          {!hasActiveItem && view !== 'trash' && view !== 'changelog' && !isPublicView ? <WelcomeView /> : (
+          {!hasActiveItem && view !== 'trash' && view !== 'changelog' && view !== 'backups' && !isPublicView ? <WelcomeView /> : (
             <>
               {view === 'erd' && (isPublicView ? publicData : activeDiagramId) && (
                 <ERDView 
@@ -908,6 +909,9 @@ function AppContent() {
                   canRedo={canRedo}
                   takeSnapshot={takeSnapshot}
                 />
+              )}
+              {view === 'backups' && (
+                <BackupsView />
               )}
               {view === 'erd' && (
                 <ImportSQLModal 
