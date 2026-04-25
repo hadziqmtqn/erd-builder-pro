@@ -1,0 +1,84 @@
+name: Database Auto Backup Routine
+
+on:
+  repository_dispatch:
+    types: [manual-backup]
+  schedule:
+    - cron: '0 0 * * *' # Setiap hari jam 00:00 UTC
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Initialize Backup Record
+        id: init
+        run: |
+          # Jika dipicu manual, ambil ID dari payload. 
+          # Jika otomatis (schedule), buat ID baru dan insert ke Supabase dulu.
+          
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "BACKUP_ID=${{ github.event.client_payload.backup_id }}" >> $GITHUB_OUTPUT
+          else
+            # Create a record for scheduled backup
+            RESP=$(curl -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/backups" \
+              -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              -H "Content-Type: application/json" \
+              -H "Prefer: return=representation" \
+              -d "{
+                \"name\": \"Scheduled_Backup_$(date +'%Y%m%d')\",
+                \"status\": \"pending\"
+              }")
+            
+            # Extract ID from response (assuming simple JSON)
+            ID=$(echo $RESP | jq -r '.[0].id')
+            echo "BACKUP_ID=$ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Backup & Upload to R2
+        id: vars
+        env:
+          SUPABASE_DB_URL: "${{ secrets.SUPABASE_DB_URL }}"
+          R2_ACCESS_KEY_ID: "${{ secrets.R2_ACCESS_KEY_ID }}"
+          R2_SECRET_ACCESS_KEY: "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          R2_ACCOUNT_ID: "${{ secrets.R2_ACCOUNT_ID }}"
+          R2_BUCKET_NAME: "${{ secrets.R2_BUCKET_NAME }}"
+          BACKUP_ID: "${{ steps.init.outputs.BACKUP_ID }}"
+        run: |
+          FILENAME="backup_${BACKUP_ID}_$(date +'%Y%m%d_%H%M%S').sql.gz"
+          
+          # 1. Dump & Compress
+          pg_dump "$SUPABASE_DB_URL" | gzip > $FILENAME
+          
+          # 2. Upload to R2
+          export AWS_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION=auto
+          
+          aws s3 cp $FILENAME s3://$R2_BUCKET_NAME/backups/$FILENAME --endpoint-url https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
+          
+          echo "FILENAME=$FILENAME" >> $GITHUB_OUTPUT
+
+      - name: Finalize Status in Supabase
+        env:
+          SUPABASE_URL: "${{ secrets.SUPABASE_URL }}"
+          SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          BACKUP_ID: "${{ steps.init.outputs.BACKUP_ID }}"
+          FILENAME: "${{ steps.vars.outputs.FILENAME }}"
+        run: |
+          FILE_PATH="backups/$FILENAME"
+          
+          curl -X PATCH "$SUPABASE_URL/rest/v1/backups?id=eq.$BACKUP_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"status\": \"completed\",
+              \"file_path\": \"$FILE_PATH\",
+              \"file_size\": $(stat -c%s $FILENAME)
+            }"
