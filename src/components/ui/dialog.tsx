@@ -96,7 +96,7 @@ export function DialogHeader({ className, ...props }: React.ComponentProps<"div"
 export function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div 
-      className={cn("flex-1 overflow-y-auto p-6 min-h-0", className)}
+      className={cn("flex-1 overflow-y-auto p-6 min-h-0 custom-scrollbar", className)}
       {...props}
     />
   )

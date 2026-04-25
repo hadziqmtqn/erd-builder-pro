@@ -80,7 +80,7 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-border/50 rounded-full hover:bg-border transition-colors;
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
 }
 
 
@@ -613,4 +613,12 @@ ul[data-type="taskList"] li[data-checked="true"] > div > p {
 .tiptap-editor .tableWrapper {
   padding: 1rem 0 !important;
   overflow-x: auto !important;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
