@@ -15,6 +15,11 @@ export const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "";
 export const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || "";
 
+// GitHub Config
+export const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
+export const GITHUB_REPO_OWNER = process.env.GITHUB_REPO_OWNER || "";
+export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
+
 // Initialize Supabase
 export let supabase: any = null;
 try {

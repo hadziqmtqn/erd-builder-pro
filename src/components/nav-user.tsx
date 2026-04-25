@@ -7,6 +7,7 @@ import {
   Sparkles,
   Github,
   Trash2,
+  Database,
 } from "lucide-react"
 
 import {
@@ -29,6 +30,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import React from "react"
+import { DatabaseBackupModal } from "./modals/DatabaseBackupModal"
 
 export function NavUser({
   user,
@@ -38,7 +41,7 @@ export function NavUser({
 }: {
   user: any
   onLogout: () => void
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog') => void
+  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void
   isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
@@ -51,85 +54,95 @@ export function NavUser({
   const initials = name.substring(0, 2).toUpperCase();
 
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+    <>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              >
+                <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarImage src={avatar} alt={name} />
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{name}</span>
+                  <span className="truncate text-xs">{email}</span>
+                </div>
+                <ChevronsUpDown className="ml-auto size-4" />
+              </SidebarMenuButton>
+            } />
+            <DropdownMenuContent
+              className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+              side={isMobile ? "bottom" : "right"}
+              align="end"
+              sideOffset={4}
             >
-              <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={avatar} alt={name} />
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{name}</span>
-                <span className="truncate text-xs">{email}</span>
-              </div>
-              <ChevronsUpDown className="ml-auto size-4" />
-            </SidebarMenuButton>
-          } />
-          <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
-          >
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="p-0 font-normal">
-                <DropdownMenuGroup>
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                    <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarImage src={avatar} alt={name} />
-                      <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{name}</span>
-                      <span className="truncate text-xs">{email}</span>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <DropdownMenuGroup>
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                      <Avatar className="h-8 w-8 rounded-lg">
+                        <AvatarImage src={avatar} alt={name} />
+                        <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="grid flex-1 text-left text-sm leading-tight">
+                        <span className="truncate font-semibold">{name}</span>
+                        <span className="truncate text-xs">{email}</span>
+                      </div>
                     </div>
-                  </div>
-                </DropdownMenuGroup>
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
-                <Github className="mr-2 size-4" />
-                Github
-              </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem 
+                  onClick={() => isOnline && onViewChange('backups')}
+                  className="cursor-pointer"
+                  disabled={!isOnline}
+                >
+                  <Database className="mr-2 size-4" />
+                  Database Backup
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
+                  <Github className="mr-2 size-4" />
+                  Github
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => isOnline && onViewChange('changelog')}
+                  className="cursor-pointer"
+                >
+                  <Sparkles className="mr-2 size-4" />
+                  What's New
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem 
+                  onClick={() => isOnline && onViewChange('trash')}
+                  disabled={!isOnline}
+                  className={`text-destructive focus:bg-accent focus:text-destructive cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Trash
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
               <DropdownMenuItem 
-                onClick={() => isOnline && onViewChange('changelog')}
-                className="cursor-pointer"
-              >
-                <Sparkles className="mr-2 size-4" />
-                What's New
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem 
-                onClick={() => isOnline && onViewChange('trash')}
+                onClick={() => isOnline && onLogout()} 
                 disabled={!isOnline}
-                className={`text-destructive focus:bg-accent focus:text-destructive cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+                className={`cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+                title={!isOnline ? "Logging out while offline may cause data loss of unsynced changes" : ""}
               >
-                <Trash2 className="mr-2 size-4" />
-                Trash
+                <LogOut className="mr-2 size-4" />
+                Log out
               </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={() => isOnline && onLogout()} 
-              disabled={!isOnline}
-              className={`cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
-              title={!isOnline ? "Logging out while offline may cause data loss of unsynced changes" : ""}
-            >
-              <LogOut className="mr-2 size-4" />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </>
   )
 }
