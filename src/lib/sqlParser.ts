@@ -172,6 +172,18 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
 
       const colType = normalizeType(rawType);
       
+      // Extract ENUM values if present
+      let enumValues = '';
+      if (colType === 'ENUM') {
+        const enumMatch = trimmedLine.match(/ENUM\s*\(([^)]+)\)/i);
+        if (enumMatch) {
+          enumValues = enumMatch[1]
+            .split(',')
+            .map(v => v.trim().replace(/^['"]|['"]$/g, ''))
+            .join(', ');
+        }
+      }
+      
       // Check for inline PRIMARY KEY or if it was identified in table-level PKs
       const isPk = upperLine.includes('PRIMARY KEY') || tableLevelPks.has(colName);
       const isNullable = !upperLine.includes('NOT NULL') && !isPk; // PKs are usually not nullable
@@ -182,6 +194,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         type: colType,
         is_pk: isPk,
         is_nullable: isNullable,
+        enum_values: enumValues,
         sort_order: columns.length // Assign sequential order
       });
     });

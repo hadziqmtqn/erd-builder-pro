@@ -8,7 +8,7 @@ import {
   Minus, Type, Search, ChevronRight,
   ChevronLeft, Undo, Redo, Columns,
   Table as TableHeader, AlertCircle,
-  Hash, Layout, Trash2, ChevronDown
+  Hash, Layout, Trash2, ChevronDown, Tag
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,6 +41,7 @@ const MAIN_ITEMS: SlashMenuItem[] = [
   { title: 'Heading 2', icon: <Heading2 className="w-4 h-4" />, shortcut: '##', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run() },
   { title: 'Heading 3', icon: <Heading3 className="w-4 h-4" />, shortcut: '###', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run() },
   { title: 'Heading 4', icon: <Heading4 className="w-4 h-4" />, shortcut: '####', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run() },
+  { title: 'Badge', icon: <Tag className="w-4 h-4" />, category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBadge().run() },
   { title: 'Divider', icon: <Minus className="w-4 h-4" />, shortcut: '---', category: 'Basic blocks', command: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run() },
   
   // Lists
