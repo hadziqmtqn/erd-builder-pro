@@ -2,7 +2,8 @@ name: Database Auto Backup Routine
 
 on:
   repository_dispatch:
-    types: [manual-backup]
+    types: [database-backup]
+  workflow_dispatch: # Memungkinkan menjalankan manual dari UI GitHub
   schedule:
     - cron: '0 0 * * *' # Setiap hari jam 00:00 UTC
 
@@ -10,16 +11,20 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install PostgreSQL Client
+      - name: Install PostgreSQL Client 17
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y wget gnupg2
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
 
       - name: Initialize Backup Record
         id: init
         run: |
-          # Jika dipicu manual, ambil ID dari payload. 
-          # Jika otomatis (schedule), buat ID baru dan insert ke Supabase dulu.
+          # Jika dipicu dari aplikasi (repository_dispatch), ambil ID dari payload. 
+          # Jika otomatis atau manual dari GitHub, buat ID baru di Supabase.
           
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             echo "BACKUP_ID=${{ github.event.client_payload.backup_id }}" >> $GITHUB_OUTPUT

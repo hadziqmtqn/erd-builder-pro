@@ -108,7 +108,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
             'User-Agent': 'ERD-Builder-Pro'
           },
           body: JSON.stringify({
-            event_type: 'manual-backup',
+            event_type: 'database-backup',
             client_payload: {
               backup_id: backupRecord.id,
               user_id: user.id
