@@ -45,6 +45,12 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     if (error) throw error;
 
     // 2. Trigger GitHub Action via Repository Dispatch
+    console.log("==> GitHub Config Check:", {
+      owner: GITHUB_REPO_OWNER,
+      repo: GITHUB_REPO_NAME,
+      hasToken: !!GITHUB_TOKEN
+    });
+
     if (GITHUB_TOKEN && GITHUB_REPO_OWNER && GITHUB_REPO_NAME) {
       console.log(`==> Triggering GitHub Action for backup: ${backupRecord.id}`);
       
@@ -56,6 +62,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
             'Authorization': `Bearer ${GITHUB_TOKEN}`,
             'Accept': 'application/vnd.github+json',
             'Content-Type': 'application/json',
+            'User-Agent': 'ERD-Builder-Pro'
           },
           body: JSON.stringify({
             event_type: 'manual-backup',
@@ -67,13 +74,20 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
         }
       );
 
+      console.log(`==> GitHub Response Status: ${githubRes.status} ${githubRes.statusText}`);
+
       if (!githubRes.ok) {
         const errText = await githubRes.text();
-        console.error("==> GitHub API Error:", errText);
-        // Kita tidak gagalkan request utama, tapi log error
+        console.error("==> GitHub API Error Detail:", errText);
+      } else {
+        console.log("==> GitHub Action triggered successfully!");
       }
     } else {
-      console.warn("==> GitHub configuration is incomplete. Skipping trigger.");
+      console.warn("==> GitHub configuration is incomplete. Missing:", 
+        !GITHUB_REPO_OWNER ? "OWNER " : "", 
+        !GITHUB_REPO_NAME ? "REPO " : "", 
+        !GITHUB_TOKEN ? "TOKEN" : ""
+      );
     }
 
     res.json(backupRecord);
