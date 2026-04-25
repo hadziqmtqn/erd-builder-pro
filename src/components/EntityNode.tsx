@@ -9,8 +9,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { GeneratedCodeModal } from './modals/GeneratedCodeModal';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +31,7 @@ type EntityNodeProps = NodeProps<Node<Entity>>;
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
+  const [showSqlModal, setShowSqlModal] = useState(false);
   const updateNodeInternals = useUpdateNodeInternals();
 
   // Notify React Flow when internal handle positions might have changed
@@ -54,6 +57,12 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const confirmDelete = () => {
     window.dispatchEvent(new CustomEvent('deleteEntity', { detail: data.id }));
     setShowDeleteConfirm(false);
+  };
+
+  const handleGenerate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowSqlModal(true);
   };
 
   // Eraser.io style colors based on data.color
@@ -93,10 +102,17 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent 
               align="end" 
-              className="w-40 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
+              className="w-44 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
+              <DropdownMenuItem onClick={handleGenerate} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                <Database className="w-4 h-4 mr-2" />
+                Generate SQL
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator className="bg-white/10" />
+
               <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
                 <Edit2 className="w-4 h-4 mr-2" />
                 Edit Table
@@ -235,6 +251,12 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <GeneratedCodeModal
+        open={showSqlModal}
+        onOpenChange={setShowSqlModal}
+        entity={data}
+      />
     </>
   );
 };
