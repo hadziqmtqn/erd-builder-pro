@@ -1,0 +1,61 @@
+name: Trigger Manual Backup
+
+on:
+  repository_dispatch:
+    types: [manual-backup]
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create Backup Name
+        id: vars
+        run: |
+          BACKUP_NAME="backup_${{ github.event.client_payload.backup_id }}_$(date +'%Y%m%d_%H%M%S')"
+          echo "FILENAME=${BACKUP_NAME}.sql.gz" >> $GITHUB_OUTPUT
+          echo "BACKUP_ID=${{ github.event.client_payload.backup_id }}" >> $GITHUB_OUTPUT
+
+      - name: Dump Database & Upload to R2
+        env:
+          SUPABASE_DB_URL: "${{ secrets.SUPABASE_DB_URL }}"
+          R2_ACCESS_KEY_ID: "${{ secrets.R2_ACCESS_KEY_ID }}"
+          R2_SECRET_ACCESS_KEY: "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          R2_ACCOUNT_ID: "${{ secrets.R2_ACCOUNT_ID }}"
+          R2_BUCKET_NAME: "${{ secrets.R2_BUCKET_NAME }}"
+        run: |
+          # 1. Dump & Compress
+          pg_dump "$SUPABASE_DB_URL" | gzip > ${{ steps.vars.outputs.FILENAME }}
+          
+          # 2. Upload to R2 (using AWS CLI as it's S3 compatible)
+          export AWS_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
+          export AWS_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION=auto
+          
+          aws s3 cp ${{ steps.vars.outputs.FILENAME }} s3://$R2_BUCKET_NAME/backups/${{ steps.vars.outputs.FILENAME }} --endpoint-url https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com
+
+      - name: Update Backup Status in Supabase
+        env:
+          SUPABASE_URL: "${{ secrets.SUPABASE_URL }}"
+          SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          BACKUP_ID: "${{ steps.vars.outputs.BACKUP_ID }}"
+          FILENAME: "${{ steps.vars.outputs.FILENAME }}"
+        run: |
+          # Menggunakan curl untuk memanggil Supabase API secara langsung dari GitHub
+          # File path di R2: backups/$FILENAME
+          
+          FILE_PATH="backups/$FILENAME"
+          
+          curl -X PATCH "$SUPABASE_URL/rest/v1/backups?id=eq.$BACKUP_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"status\": \"completed\",
+              \"file_path\": \"$FILE_PATH\",
+              \"file_size\": $(stat -c%s $FILENAME)
+            }"
