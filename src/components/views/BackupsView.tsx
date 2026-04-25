@@ -30,6 +30,7 @@ interface BackupRecord {
   id: string;
   name: string;
   download_url: string;
+  file_path?: string;
   created_at: string;
   status: 'pending' | 'completed' | 'failed';
   file_size: number | null;
@@ -73,6 +74,13 @@ export const BackupsView = () => {
       fetchBackups();
     }
   }, [page, user]);
+
+  const handleDownload = (backup: BackupRecord) => {
+    if (backup.status !== 'completed' || !backup.file_path) return;
+    
+    // Buka URL download di tab baru atau trigger download
+    window.open(`/api/backups/${backup.id}/download`, '_blank');
+  };
 
   const handleCreateBackup = async () => {
     if (!user) {
@@ -228,21 +236,22 @@ export const BackupsView = () => {
                         {format(new Date(backup.created_at), 'MMM dd, yyyy HH:mm')}
                       </TableCell>
                       <TableCell className="text-right pr-6">
-                        {backup.download_url ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-primary hover:text-primary hover:bg-primary/10"
-                            onClick={() => window.open(backup.download_url, '_blank')}
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            disabled={backup.status !== 'completed' || !backup.file_path}
+                            onClick={() => handleDownload(backup)}
+                            title={backup.status === 'completed' ? 'Download backup' : 'Backup in progress'}
                           >
-                            <Download size={14} className="mr-1" /> Download
+                            {backup.status === 'completed' && backup.file_path ? (
+                              <Download className="h-3.5 w-3.5" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5 opacity-50" />
+                            )}
                           </Button>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1.5 text-muted-foreground/30 text-[10px] font-bold uppercase tracking-wider">
-                            <Lock size={12} />
-                            Locked
-                          </div>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } from "../lib/config.js";
+import { supabase, GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 
 const router = Router();
 
@@ -22,6 +23,56 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     res.json({ data, total: count });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Download backup file (Proxy through server for privacy)
+router.get("/:id/download", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+
+  try {
+    // 1. Fetch record and verify ownership
+    const { data: backup, error } = await supabase
+      .from('backups')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error || !backup) {
+      return res.status(404).json({ error: "Backup record not found" });
+    }
+
+    if (!backup.file_path) {
+      return res.status(400).json({ error: "File has not been uploaded yet" });
+    }
+
+    if (!s3Client || !R2_BUCKET_NAME) {
+      return res.status(500).json({ error: "Storage is not configured on the server" });
+    }
+
+    // 2. Fetch from R2
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: backup.file_path,
+    });
+
+    const response = await s3Client.send(command);
+
+    // 3. Stream to response
+    res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
+    res.setHeader('Content-Type', 'application/gzip');
+    
+    if (response.Body) {
+      (response.Body as any).pipe(res);
+    } else {
+      throw new Error("Empty response body from storage");
+    }
+
+  } catch (error: any) {
+    console.error("Download Error:", error);
+    res.status(500).json({ error: `Failed to download file: ${error.message}` });
   }
 });
 
