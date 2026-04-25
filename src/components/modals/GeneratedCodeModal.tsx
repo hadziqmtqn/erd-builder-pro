@@ -10,7 +10,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Download, Database } from 'lucide-react';
 import { Entity } from '../../types';
-import { generateMySQL, generatePostgreSQL, generateLaravelMigration } from '../../lib/sql-generator';
+import { 
+  generateMySQL, 
+  generatePostgreSQL, 
+  generateLaravelMigration,
+  generateTypeScript,
+  generatePrisma,
+  generateLaravelModel,
+  generateZod
+} from '../../lib/sql-generator';
 import { cn } from '@/lib/utils';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -35,12 +43,24 @@ export const GeneratedCodeModal = ({
     return {
       mysql: generateMySQL(entity),
       postgresql: generatePostgreSQL(entity),
-      laravel: generateLaravelMigration(entity),
+      laravel_migration: generateLaravelMigration(entity),
+      laravel_model: generateLaravelModel(entity),
+      typescript: generateTypeScript(entity),
+      prisma: generatePrisma(entity),
+      zod: generateZod(entity),
     };
   }, [entity]);
 
   const currentCode = (generatedCode as any)[activeTab];
-  const currentLanguage = activeTab === 'laravel' ? 'php' : 'sql';
+  
+  const getLanguage = (tab: string) => {
+    if (tab === 'typescript' || tab === 'zod') return 'typescript';
+    if (tab === 'prisma') return 'prisma';
+    if (tab.startsWith('laravel')) return 'php';
+    return 'sql';
+  };
+
+  const currentLanguage = getLanguage(activeTab);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(currentCode);
@@ -49,7 +69,16 @@ export const GeneratedCodeModal = ({
   };
 
   const downloadFile = () => {
-    const extension = currentLanguage === 'php' ? 'php' : 'sql';
+    const extMap: Record<string, string> = {
+      typescript: 'ts',
+      zod: 'ts',
+      prisma: 'prisma',
+      laravel_migration: 'php',
+      laravel_model: 'php',
+      mysql: 'sql',
+      postgresql: 'sql'
+    };
+    const extension = extMap[activeTab] || 'sql';
     const blob = new Blob([currentCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -64,21 +93,25 @@ export const GeneratedCodeModal = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-2xl bg-[#0f0f14] border-white/10 text-white shadow-2xl"
+        className="max-w-5xl bg-[#0f0f14] border-white/10 text-white shadow-2xl"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
           <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">
-            <DialogTitle className="text-xl font-bold tracking-tight">Generate SQL Schema</DialogTitle>
+            <DialogTitle className="text-xl font-bold tracking-tight">Generate Code Schema</DialogTitle>
             <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
               Table: {entity.name}
             </div>
             
-            <TabsList variant="line" className="mt-4">
+            <TabsList variant="line" className="mt-4 flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0">
               <TabsTrigger value="mysql" data-variant="line">MySQL</TabsTrigger>
               <TabsTrigger value="postgresql" data-variant="line">PostgreSQL</TabsTrigger>
-              <TabsTrigger value="laravel" data-variant="line">Laravel Migration</TabsTrigger>
+              <TabsTrigger value="laravel_migration" data-variant="line">Laravel Migration</TabsTrigger>
+              <TabsTrigger value="laravel_model" data-variant="line">Laravel Model</TabsTrigger>
+              <TabsTrigger value="typescript" data-variant="line">TypeScript</TabsTrigger>
+              <TabsTrigger value="prisma" data-variant="line">Prisma</TabsTrigger>
+              <TabsTrigger value="zod" data-variant="line">Zod</TabsTrigger>
             </TabsList>
           </DialogHeader>
           
@@ -87,23 +120,13 @@ export const GeneratedCodeModal = ({
               {currentLanguage}
             </div>
             
-            <TabsContent value="mysql" className="mt-0">
-              <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                <code className="text-white/90 block">{generatedCode.mysql}</code>
-              </pre>
-            </TabsContent>
-            
-            <TabsContent value="postgresql" className="mt-0">
-              <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                <code className="text-white/90 block">{generatedCode.postgresql}</code>
-              </pre>
-            </TabsContent>
-            
-            <TabsContent value="laravel" className="mt-0">
-              <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                <code className="text-white/90 block">{generatedCode.laravel}</code>
-              </pre>
-            </TabsContent>
+            {Object.entries(generatedCode).map(([key, code]) => (
+              <TabsContent key={key} value={key} className="mt-0">
+                <pre className="p-6 overflow-auto max-h-[600px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
+                  <code className="text-white/90 block">{code}</code>
+                </pre>
+              </TabsContent>
+            ))}
           </div>
         </Tabs>
 

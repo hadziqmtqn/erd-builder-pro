@@ -138,3 +138,141 @@ ${columns}
     $table->timestamps();
 });`;
 }
+
+export function generateTypeScript(entity: Entity): string {
+  const className = entity.name.charAt(0).toUpperCase() + entity.name.slice(1).toLowerCase();
+  
+  const properties = entity.columns.map(col => {
+    const t = col.type.toLowerCase();
+    let tsType = 'string';
+    
+    switch (t) {
+      case 'integer':
+      case 'int':
+      case 'bigint':
+      case 'decimal':
+      case 'float': tsType = 'number'; break;
+      case 'boolean':
+      case 'bool': tsType = 'boolean'; break;
+      case 'json': tsType = 'any'; break;
+      case 'enum': 
+        tsType = col.enum_values ? col.enum_values.split(',').map(v => `'${v.trim()}'`).join(' | ') : 'string';
+        break;
+      default: tsType = 'string';
+    }
+
+    const optional = col.is_nullable ? '?' : '';
+    const nullable = col.is_nullable ? ' | null' : '';
+    
+    return `  ${col.name}${optional}: ${tsType}${nullable};`;
+  }).join('\n');
+
+  return `export interface ${className} {\n${properties}\n  created_at: string;\n  updated_at: string;\n}`;
+}
+
+export function generatePrisma(entity: Entity): string {
+  const modelName = entity.name.charAt(0).toUpperCase() + entity.name.slice(1).toLowerCase();
+  let enums = '';
+  
+  const fields = entity.columns.map(col => {
+    const t = col.type.toLowerCase();
+    const name = col.name;
+    let prismaType = 'String';
+    
+    switch (t) {
+      case 'integer':
+      case 'int': prismaType = 'Int'; break;
+      case 'bigint': prismaType = 'BigInt'; break;
+      case 'decimal':
+      case 'float': prismaType = 'Decimal'; break;
+      case 'boolean':
+      case 'bool': prismaType = 'Boolean'; break;
+      case 'datetime':
+      case 'timestamp': prismaType = 'DateTime'; break;
+      case 'json': prismaType = 'Json'; break;
+      case 'enum': 
+        prismaType = name.charAt(0).toUpperCase() + name.slice(1);
+        const values = col.enum_values ? col.enum_values.split(',').map(v => `  ${v.trim().toUpperCase()}`).join('\n') : '';
+        enums += `\nenum ${prismaType} {\n${values}\n}\n`;
+        break;
+      default: prismaType = 'String';
+    }
+
+    let attributes = '';
+    if (col.is_pk) attributes += ' @id';
+    if (col.is_pk && (t === 'int' || t === 'integer')) attributes += ' @default(autoincrement())';
+    if (col.is_nullable) prismaType += '?';
+    
+    return `  ${name} ${prismaType}${attributes}`;
+  }).join('\n');
+
+  return `model ${modelName} {\n${fields}\n  created_at DateTime @default(now())\n  updated_at DateTime @updatedAt\n}${enums}`;
+}
+
+export function generateLaravelModel(entity: Entity): string {
+  const className = entity.name.charAt(0).toUpperCase() + entity.name.slice(1).toLowerCase();
+  
+  const fillable = entity.columns
+    .filter(col => !col.is_pk && !['created_at', 'updated_at'].includes(col.name))
+    .map(col => `        '${col.name}',`)
+    .join('\n');
+
+  const castItems = entity.columns
+    .filter(col => {
+      const t = col.type.toLowerCase();
+      return col.is_nullable || t === 'datetime' || t === 'timestamp' || t === 'json' || col.name === 'password';
+    })
+    .map(col => {
+      const t = col.type.toLowerCase();
+      let cast = 'string';
+      if (t === 'datetime' || t === 'timestamp') cast = 'datetime';
+      if (t === 'json') cast = 'array';
+      if (col.name === 'password') cast = 'hashed';
+      return `            '${col.name}' => '${cast}',`;
+    })
+    .join('\n');
+
+  return `class ${className} extends Model
+{
+    protected $fillable = [
+${fillable}
+    ];
+
+    protected function casts(): array
+    {
+        return [
+${castItems}
+        ];
+    }
+}`;
+}
+
+export function generateZod(entity: Entity): string {
+  const name = entity.name.toLowerCase();
+  
+  const fields = entity.columns.map(col => {
+    const t = col.type.toLowerCase();
+    let zod = 'z.string()';
+    
+    switch (t) {
+      case 'integer':
+      case 'int':
+      case 'bigint': zod = 'z.number().int()'; break;
+      case 'decimal':
+      case 'float': zod = 'z.number()'; break;
+      case 'boolean':
+      case 'bool': zod = 'z.boolean()'; break;
+      case 'enum': 
+        const values = col.enum_values ? `[${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')}]` : '[]';
+        zod = `z.enum(${values})`;
+        break;
+      default: zod = 'z.string()';
+    }
+
+    if (col.is_nullable) zod += '.nullable().optional()';
+    
+    return `  ${col.name}: ${zod},`;
+  }).join('\n');
+
+  return `import { z } from 'zod';\n\nexport const ${name}Schema = z.object({\n${fields}\n});\n\nexport type ${entity.name.charAt(0).toUpperCase() + entity.name.slice(1).toLowerCase()} = z.infer<typeof ${name}Schema>;`;
+}
