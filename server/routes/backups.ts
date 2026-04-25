@@ -58,16 +58,28 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
       Key: backup.file_path,
     });
 
-    const response = await s3Client.send(command);
-
-    // 3. Stream to response
-    res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
-    res.setHeader('Content-Type', 'application/gzip');
-    
-    if (response.Body) {
-      (response.Body as any).pipe(res);
-    } else {
-      throw new Error("Empty response body from storage");
+    try {
+      const response = await s3Client.send(command);
+      
+      // 3. Stream to response
+      res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
+      res.setHeader('Content-Type', 'application/gzip');
+      
+      if (response.Body) {
+        (response.Body as any).pipe(res);
+      } else {
+        throw new Error("Empty response body from storage");
+      }
+    } catch (s3Error: any) {
+      console.error("S3 Get Error:", s3Error);
+      return res.status(404).json({ 
+        error: `File not found in storage.`,
+        details: {
+          bucket: R2_BUCKET_NAME,
+          key: backup.file_path,
+          message: s3Error.message
+        }
+      });
     }
 
   } catch (error: any) {
