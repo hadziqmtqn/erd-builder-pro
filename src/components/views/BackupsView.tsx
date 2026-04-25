@@ -240,15 +240,19 @@ export const BackupsView = () => {
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground opacity-50'}`}
                             disabled={backup.status !== 'completed' || !backup.file_path}
                             onClick={() => handleDownload(backup)}
-                            title={backup.status === 'completed' ? 'Download backup' : 'Backup in progress'}
+                            title={
+                              backup.status !== 'completed' ? 'Backup still in progress...' : 
+                              !backup.file_path ? 'File path not recorded' : 
+                              'Download backup'
+                            }
                           >
                             {backup.status === 'completed' && backup.file_path ? (
                               <Download className="h-3.5 w-3.5" />
                             ) : (
-                              <Lock className="h-3.5 w-3.5 opacity-50" />
+                              <Lock className="h-3.5 w-3.5" />
                             )}
                           </Button>
                         </div>
