@@ -3,7 +3,7 @@
 **ERD Builder Pro** is a professional-grade, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures. Built with a modular architecture and modern tech stack, it offers a seamless experience for database design and technical documentation.
 
 <div align="center">
-  <img width="1200" alt="ERD Builder Pro Dashboard" src="https://lh3.googleusercontent.com/pw/AP1GczO1oWbiiyyEfI2MLyuHwWW-TVK1q5AihOBdqFZ61hh1xYhqJyO_vDf2p_5XAHKzwT4AuO1vw52gGfT0bjrEe5gvZ6-4tZglIZ-AbsH5cX-_wu2Z15SgiFphRnP7euMdtTgEycPrYpvjeX0V-P-E3NmC=w2966-h1882-s-no-gm?authuser=1" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="public/img/erd-intro.png" />
 </div>
 
 ## 🚀 Key Features
@@ -39,8 +39,10 @@
 
 ## 🏗️ Getting Started
 
-### 📋 Prerequisites
+### � Documentation
+For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https://docs.erd.bekenweb.com)
 
+### 📋 Prerequisites
 - **Node.js**: v20+ 
 - **npm**: v10+
 - **Supabase Account**: For Database and Authentication management
