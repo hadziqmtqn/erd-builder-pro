@@ -80,6 +80,7 @@ export function useERDSession(
       clearHistory();
 
       let finalData = data;
+      
       if (draft && draft.sync_pending) {
         try {
           const parsedDraft = JSON.parse(draft.data);
@@ -100,7 +101,11 @@ export function useERDSession(
             viewport_y: parsedDraft.viewport.y, 
             viewport_zoom: parsedDraft.viewport.zoom 
           };
-          toast.info("Loaded unsynced local draft");
+          // Only show toast if not a silent reload
+          // @ts-ignore - options might be passed from App.tsx
+          if (!window.currentSyncIsSilent) {
+            toast.info("Loaded unsynced local draft", { duration: 2000 });
+          }
         } catch (e) {}
       }
 
@@ -198,12 +203,20 @@ export function useERDSession(
   const addEntity = () => {
     const id = Math.random().toString(36).substr(2, 9);
     const uniqueName = getUniqueName('NewTable', nodes);
+
+    // Calculate the center of the current viewport
+    const { x, y, zoom } = viewportRef.current;
+    
+    // Convert screen center to flow coordinates
+    // We adjust for the sidebar (approx 260px in the current layout)
+    const centerX = -x / zoom + (window.innerWidth - 260) / (2 * zoom);
+    const centerY = -y / zoom + window.innerHeight / (2 * zoom);
     
     const newEntity: Entity = {
       id,
       name: uniqueName,
-      x: Math.random() * 400,
-      y: Math.random() * 400,
+      x: centerX - 100, // Center the table (approx 200px width)
+      y: centerY - 50,
       color: '#6366f1',
       columns: [
         { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }

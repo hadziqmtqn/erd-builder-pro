@@ -139,6 +139,7 @@ function AppContent() {
   const lastLoadedDrawingIdRef = useRef<number | string | null>(null);
   const lastLoadedFlowchartIdRef = useRef<number | string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isIncomingSyncRef = useRef(false);
   const lastSaveCallRef = useRef<number>(0);
   const lastFocusFetchRef = useRef<number>(0);
 
@@ -354,26 +355,31 @@ function AppContent() {
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
   // Cross-Tab Synchronization via Broadcast Channel
-  const { broadcastMessage } = useBroadcastChannel((message) => {
-    if (message.type === BroadcastMessageType.DRAFT_UPDATED) {
-      const { type, id } = message.payload;
-      
-      // If the updated item is the one we're currently looking at, reload it from IndexedDB
-      if (view === 'erd' && type === DraftType.ERD && String(id) === String(activeDiagramId)) {
-        console.log("[Broadcast] Reloading ERD from local draft updated in another tab");
-        selectDiagram(id, setActiveDiagramId, { silent: true });
-      } else if (view === 'notes' && type === DraftType.NOTES && String(id) === String(activeNoteId)) {
-        console.log("[Broadcast] Reloading Note from local draft updated in another tab");
-        selectNote(id, { silent: true });
-      } else if (view === 'drawings' && type === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
-        console.log("[Broadcast] Reloading Drawing from local draft updated in another tab");
-        selectDrawing(id, { silent: true });
-      } else if (view === 'flowchart' && type === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
-        console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
-        selectFlowchart(id, { silent: true });
-      }
+  const { broadcastMessage } = useBroadcastChannel(useCallback(async (message) => {
+    if (message.type !== BroadcastMessageType.DRAFT_UPDATED) return;
+    
+    const { type: dataType, id } = message.payload;
+    
+    if (view === 'erd' && dataType === DraftType.ERD && String(id) === String(activeDiagramId)) {
+      console.log("[Broadcast] Incoming sync: updating state from another tab");
+      isIncomingSyncRef.current = true;
+      // @ts-ignore
+      window.currentSyncIsSilent = true;
+      await selectDiagram(id, setActiveDiagramId, { silent: true });
+      // @ts-ignore
+      window.currentSyncIsSilent = false;
+      setTimeout(() => { isIncomingSyncRef.current = false; }, 1000);
+    } else if (view === 'notes' && dataType === DraftType.NOTES && String(id) === String(activeNoteId)) {
+      console.log("[Broadcast] Reloading Note from local draft updated in another tab");
+      await selectNote(id, { silent: true });
+    } else if (view === 'drawings' && dataType === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
+      console.log("[Broadcast] Reloading Drawing from local draft updated in another tab");
+      await selectDrawing(id, { silent: true });
+    } else if (view === 'flowchart' && dataType === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
+      console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
+      await selectFlowchart(id, { silent: true });
     }
-  });
+  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
 
   // Conflict Resolution: Clear stale local drafts when cloud data is loaded
   useEffect(() => {
@@ -408,14 +414,12 @@ function AppContent() {
       // Throttle: don't refresh more than once every 120 seconds (2 minutes)
       const now = Date.now();
       if (now - lastFocusFetchRef.current < 120000) return;
-
-      // SAFETY: Don't refresh if we have a very recent local save (within 5 seconds)
-      // to avoid overwriting "fresh" edits that might not have reached the cloud yet
-      if (now - lastSaveCallRef.current < 5000) return;
+      
+      // SAFETY: Don't refresh if we have a very recent local save (within 10 seconds)
+      if (now - lastSaveCallRef.current < 10000) return;
 
       lastFocusFetchRef.current = now;
 
-      setIsRefreshing(true);
       try {
         const pid = activeProjectId === null ? 'all' : activeProjectId;
         
@@ -428,10 +432,11 @@ function AppContent() {
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
             
             if (isStale) {
+              console.log("[FocusSync] Cloud is newer, reloading ERD...");
+              setIsRefreshing(true); // Only show loader when we ARE certain we need to reload
               await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
               await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId))) {
-              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+              setIsRefreshing(false);
             }
           }
         } else if (view === 'notes') {
@@ -442,10 +447,11 @@ function AppContent() {
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
             
             if (isStale) {
+              console.log("[FocusSync] Cloud is newer, reloading Note...");
+              setIsRefreshing(true);
               await localPersistence.deleteDraft(DraftType.NOTES, activeNoteId);
               await selectNote(activeNoteId, { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteId))) {
-              await selectNote(activeNoteId, { silent: true });
+              setIsRefreshing(false);
             }
           }
         } else if (view === 'drawings') {
@@ -542,6 +548,12 @@ function AppContent() {
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
+      // Prevent loop: If this change came from another tab's sync, DON'T save it back
+      if (isIncomingSyncRef.current) {
+        console.log("[SaveGuard] Skipping save: Change was from an incoming sync");
+        return;
+      }
+
       setIsLocalSaving(true);
       
       saveTimeoutRef.current = setTimeout(async () => {
@@ -711,6 +723,10 @@ function AppContent() {
   const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleNoteChange = useCallback((content: string) => {
     if (!activeNoteId) return;
+    
+    // Prevent loop: If this change came from another tab's sync, DON'T save it back
+    if (isIncomingSyncRef.current) return;
+
     const noteId = activeNoteId;
     setNotesList(prev => prev.map(n => n.id === noteId ? { ...n, content } : n));
     
@@ -739,6 +755,10 @@ function AppContent() {
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
+    
+    // Prevent loop: If this change came from another tab's sync, DON'T save it back
+    if (isIncomingSyncRef.current) return;
+
     const drawingId = activeDrawingId;
     setDrawings(prev => prev.map(d => String(d.id) === String(drawingId) ? { ...d, data } : d));
     
@@ -769,6 +789,10 @@ function AppContent() {
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleFlowchartChange = useCallback((nodesData: any[], edgesData: any[]) => {
     if (!activeFlowchartId) return;
+
+    // Prevent loop: If this change came from another tab's sync, DON'T save it back
+    if (isIncomingSyncRef.current) return;
+
     const flowchartId = activeFlowchartId;
     const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
     setFlowcharts(prev => prev.map(f => String(f.id) === String(flowchartId) ? { ...f, data: dataString } : f));

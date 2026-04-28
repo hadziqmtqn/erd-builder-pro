@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { parseSQLToERD } from '@/lib/sqlParser';
 import { toast } from 'sonner';
-import { FileCode, Upload, AlertCircle } from 'lucide-react';
+import { FileCode, Upload, AlertCircle, Loader2 } from 'lucide-react';
 
 interface ImportSQLModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ interface ImportSQLModalProps {
 export function ImportSQLModal({ isOpen, onOpenChange, onImport }: ImportSQLModalProps) {
   const [sql, setSql] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,22 +53,30 @@ export function ImportSQLModal({ isOpen, onOpenChange, onImport }: ImportSQLModa
   const handleImport = () => {
     if (!sql.trim()) return;
     
-    try {
-      const { nodes, edges } = parseSQLToERD(sql);
-      if (nodes.length === 0) {
-        toast.error("No valid CREATE TABLE statements found.");
-        return;
+    setIsImporting(true);
+    
+    // Use setTimeout to allow UI to render the loading state before heavy parsing starts
+    setTimeout(() => {
+      try {
+        const { nodes, edges } = parseSQLToERD(sql);
+        if (nodes.length === 0) {
+          toast.error("No valid CREATE TABLE statements found.");
+          setIsImporting(false);
+          return;
+        }
+        
+        onImport(nodes, edges);
+        toast.success(`Successfully imported ${nodes.length} tables!`);
+        setSql('');
+        setError(null);
+        setIsImporting(false);
+        onOpenChange(false);
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to parse SQL. Check your syntax.");
+        setIsImporting(false);
       }
-      
-      onImport(nodes, edges);
-      toast.success(`Successfully imported ${nodes.length} tables!`);
-      setSql('');
-      setError(null);
-      onOpenChange(false);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to parse SQL. Check your syntax.");
-    }
+    }, 100);
   };
 
   return (
@@ -129,11 +138,26 @@ export function ImportSQLModal({ isOpen, onOpenChange, onImport }: ImportSQLModa
             </p>
           </div>
         </DialogBody>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} className="text-xs font-semibold">Cancel</Button>
-          <Button onClick={handleImport} disabled={!sql.trim()} className="text-xs font-bold shadow-lg shadow-primary/20">
-            <FileCode className="w-3.5 h-3.5 mr-2" />
-            Process SQL Schema
+        <DialogFooter className="border-t pt-4">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isImporting}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleImport} 
+            disabled={!sql.trim() || isImporting}
+            className="font-bold min-w-[120px]"
+          >
+            {isImporting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <FileCode className="w-4 h-4 mr-2" />
+                Import SQL
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
