@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS projects (
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   is_deleted BOOLEAN DEFAULT FALSE,
   deleted_at TIMESTAMPTZ DEFAULT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  is_public BOOLEAN DEFAULT FALSE,
+  share_token TEXT,
+  expiry_date TIMESTAMPTZ
 );
 
 -- Diagrams Table (ERD Files)
@@ -116,7 +119,7 @@ CREATE TABLE IF NOT EXISTS flowcharts (
 CREATE TABLE IF NOT EXISTS entity_changes (
   id BIGSERIAL PRIMARY KEY,
   entity_type TEXT NOT NULL, -- 'diagram', 'note', 'drawing', 'flowchart'
-  entity_id BIGINT NOT NULL,
+  entity_id TEXT NOT NULL, -- Changed from BIGINT to TEXT to support UUIDs/IDs from ERD entities
   version INTEGER NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   changes JSONB NOT NULL, -- {field: old_value, field: new_value, ...}
@@ -137,38 +140,93 @@ CREATE INDEX IF NOT EXISTS idx_entity_changes_retention ON entity_changes(create
 CREATE OR REPLACE FUNCTION increment_version()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW._version = OLD._version + 1;
+  NEW._version = COALESCE(OLD._version, 0) + 1;
+  NEW.updated_at = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Diagram version trigger
-DROP TRIGGER IF EXISTS increment_diagram_version_trigger ON diagrams;
-CREATE TRIGGER increment_diagram_version_trigger
-BEFORE UPDATE ON diagrams
-FOR EACH ROW
-EXECUTE FUNCTION increment_version();
+-- Audit Trail Function: Captures changes into entity_changes table
+CREATE OR REPLACE FUNCTION log_entity_changes()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_user_id UUID;
+  v_changes JSONB;
+  v_version INTEGER;
+BEGIN
+  -- Attempt to get the user ID from the session or the record
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    BEGIN
+      v_user_id := NEW.user_id;
+    EXCEPTION WHEN OTHERS THEN
+      v_user_id := NULL;
+    END;
+  END IF;
 
--- Notes version trigger
-DROP TRIGGER IF EXISTS increment_notes_version_trigger ON notes;
-CREATE TRIGGER increment_notes_version_trigger
-BEFORE UPDATE ON notes
-FOR EACH ROW
-EXECUTE FUNCTION increment_version();
+  -- For simplicity and easier rollback, we now store the FULL NEW STATE on every operation
+  -- This allows us to "revert" simply by picking the snapshot at any given time.
+  v_changes := to_jsonb(NEW);
 
--- Drawings version trigger
-DROP TRIGGER IF EXISTS increment_drawings_version_trigger ON drawings;
-CREATE TRIGGER increment_drawings_version_trigger
-BEFORE UPDATE ON drawings
-FOR EACH ROW
-EXECUTE FUNCTION increment_version();
+  -- Safe version extraction (handles tables without _version column)
+  v_version := COALESCE((to_jsonb(NEW)->>'_version')::INTEGER, 0);
 
--- Flowcharts version trigger
-DROP TRIGGER IF EXISTS increment_flowcharts_version_trigger ON flowcharts;
-CREATE TRIGGER increment_flowcharts_version_trigger
-BEFORE UPDATE ON flowcharts
-FOR EACH ROW
-EXECUTE FUNCTION increment_version();
+  INSERT INTO entity_changes (
+    entity_type,
+    entity_id,
+    version,
+    user_id,
+    changes,
+    change_type
+  ) VALUES (
+    TG_TABLE_NAME, 
+    NEW.id::TEXT,
+    v_version,
+    v_user_id,
+    v_changes,
+    LOWER(TG_OP)
+  );
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply Version & Audit Triggers to all main tables
+-- 1. Diagrams
+DROP TRIGGER IF EXISTS tr_diagrams_version ON diagrams;
+CREATE TRIGGER tr_diagrams_version BEFORE UPDATE ON diagrams FOR EACH ROW EXECUTE FUNCTION increment_version();
+DROP TRIGGER IF EXISTS tr_diagrams_audit ON diagrams;
+CREATE TRIGGER tr_diagrams_audit AFTER INSERT OR UPDATE ON diagrams FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 2. Notes
+DROP TRIGGER IF EXISTS tr_notes_version ON notes;
+CREATE TRIGGER tr_notes_version BEFORE UPDATE ON notes FOR EACH ROW EXECUTE FUNCTION increment_version();
+DROP TRIGGER IF EXISTS tr_notes_audit ON notes;
+CREATE TRIGGER tr_notes_audit AFTER INSERT OR UPDATE ON notes FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 3. Drawings
+DROP TRIGGER IF EXISTS tr_drawings_version ON drawings;
+CREATE TRIGGER tr_drawings_version BEFORE UPDATE ON drawings FOR EACH ROW EXECUTE FUNCTION increment_version();
+DROP TRIGGER IF EXISTS tr_drawings_audit ON drawings;
+CREATE TRIGGER tr_drawings_audit AFTER INSERT OR UPDATE ON drawings FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 4. Flowcharts
+DROP TRIGGER IF EXISTS tr_flowcharts_version ON flowcharts;
+CREATE TRIGGER tr_flowcharts_version BEFORE UPDATE ON flowcharts FOR EACH ROW EXECUTE FUNCTION increment_version();
+DROP TRIGGER IF EXISTS tr_flowcharts_audit ON flowcharts;
+CREATE TRIGGER tr_flowcharts_audit AFTER INSERT OR UPDATE ON flowcharts FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 5. Entities (ERD Tables)
+DROP TRIGGER IF EXISTS tr_entities_audit ON entities;
+CREATE TRIGGER tr_entities_audit AFTER INSERT OR UPDATE ON entities FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 6. Columns (ERD Fields)
+DROP TRIGGER IF EXISTS tr_columns_audit ON columns;
+CREATE TRIGGER tr_columns_audit AFTER INSERT OR UPDATE ON columns FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
+
+-- 7. Relationships (ERD Edges)
+DROP TRIGGER IF EXISTS tr_relationships_audit ON relationships;
+CREATE TRIGGER tr_relationships_audit AFTER INSERT OR UPDATE ON relationships FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
 
 -- Performance Indexes for Version Columns
 CREATE INDEX IF NOT EXISTS idx_diagrams_version ON diagrams(_version);

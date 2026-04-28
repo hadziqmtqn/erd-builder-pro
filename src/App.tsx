@@ -90,8 +90,10 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash2, AlertTriangle, History, RotateCcw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HistoryModal } from './components/modals/HistoryModal';
+import { supabase } from './lib/supabase';
 
 
 // Helper to check for share routes
@@ -144,6 +146,11 @@ function AppContent() {
   const lastFocusFetchRef = useRef<number>(0);
 
 
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [pendingRollbackMinutes, setPendingRollbackMinutes] = useState<number | null>(null);
+  const [isRollbackConfirmOpen, setIsRollbackConfirmOpen] = useState(false);
+  const [isRollbackProcessing, setIsRollbackProcessing] = useState(false);
+  
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -860,6 +867,109 @@ function AppContent() {
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);
   
   const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'Diagrams' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : view === 'backups' ? 'Backups' : 'Trash Bin');
+
+  const handleRollback = async (minutes: number) => {
+    setIsHistoryModalOpen(false); // Close the selection modal first
+    setPendingRollbackMinutes(minutes);
+    setIsRollbackConfirmOpen(true); // Then show the confirmation
+  };
+
+  const executeRollback = async () => {
+    if (!isAuthenticated || isPublicView || !pendingRollbackMinutes) return;
+    
+    setIsRollbackProcessing(true);
+    const minutes = pendingRollbackMinutes;
+    
+    try {
+      const id = currentActiveId;
+      if (!id) return;
+
+      if (view === 'erd') {
+        const { data, error } = await supabase.rpc('get_diagram_snapshot', {
+          p_diagram_id: id,
+          p_minutes_ago: minutes
+        });
+
+        if (error) throw error;
+        
+        // Better empty check
+        if (!data || (data.nodes.length === 0 && data.edges.length === 0)) {
+          toast.info(`No history found from ${minutes} minutes ago. The document might be newer than that.`);
+          return;
+        }
+
+        // Apply the snapshot to the current session
+        // Note: we need to map the data back to React Flow format
+        const nodes = (data.nodes || []).map((node: any) => ({
+          id: node.id,
+          type: 'entity',
+          position: { x: node.x, y: node.y },
+          data: node
+        }));
+
+        const edges = (data.edges || []).map((edge: any) => ({
+          id: edge.id,
+          source: edge.source_entity_id,
+          target: edge.target_entity_id,
+          sourceHandle: edge.source_handle,
+          targetHandle: edge.target_handle,
+          label: edge.label
+        }));
+
+        setNodes(nodes);
+        setEdges(edges);
+        if (data.viewport) {
+          viewportRef.current = data.viewport;
+          // Trigger a re-render/zoom to viewport if needed
+        }
+        
+        // Force a save to IndexedDB so the rollback is persistent locally
+        await saveDiagram(nodes, edges, data.viewport);
+        triggerDebouncedSync();
+        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.ERD, id);
+        
+      } else {
+        // For Notes, Drawings, Flowcharts (Single table entities)
+        const targetTime = new Date(Date.now() - minutes * 60000).toISOString();
+        const { data, error } = await supabase
+          .from('entity_changes')
+          .select('changes')
+          .eq('entity_type', view === 'notes' ? 'notes' : view === 'drawings' ? 'drawings' : 'flowcharts')
+          .eq('entity_id', String(id))
+          .lte('created_at', targetTime)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (error || !data) {
+          toast.info(`No history found from ${minutes} minutes ago. The document might be newer than that.`);
+          return;
+        }
+
+        const snapshot = data.changes;
+        if (view === 'notes') {
+          setNotesList(prev => prev.map(n => String(n.id) === String(id) ? { ...n, content: snapshot.content, title: snapshot.title } : n));
+        } else if (view === 'drawings') {
+          setDrawings(prev => prev.map(d => String(d.id) === String(id) ? { ...d, data: snapshot.data, title: snapshot.title } : d));
+        } else if (view === 'flowchart') {
+          setFlowcharts(prev => prev.map(f => String(f.id) === String(id) ? { ...f, data: snapshot.data, title: snapshot.title } : f));
+        }
+        
+        triggerDebouncedSync();
+        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, view === 'notes' ? DraftType.NOTES : view === 'drawings' ? DraftType.DRAWINGS : DraftType.FLOWCHART, id);
+      }
+      
+      toast.success(`Successfully rolled back to ${minutes} minutes ago`);
+      setIsHistoryModalOpen(false);
+      setIsRollbackConfirmOpen(false);
+    } catch (err) {
+      console.error("Rollback execution error:", err);
+      toast.error("Failed to restore history. Please try again.");
+    } finally {
+      setIsRollbackProcessing(false);
+      setPendingRollbackMinutes(null);
+    }
+  };
   const activeFileName = isPublicView ? (publicData?.name || publicData?.title || 'Shared Document') : (view === 'erd' ? activeDiagram?.name : view === 'notes' ? activeNote?.title : view === 'drawings' ? activeDrawing?.title : view === 'flowchart' ? activeFlowchart?.title : null);
   const activeProjectName = isPublicView ? publicData?.projects?.name : (view === 'erd' ? activeDiagram?.projects?.name : view === 'notes' ? activeNote?.projects?.name : view === 'drawings' ? activeDrawing?.projects?.name : view === 'flowchart' ? activeFlowchart?.projects?.name : null);
   const activeFileUid = isPublicView ? publicData?.uid : (view === 'erd' ? activeDiagram?.uid : view === 'notes' ? activeNote?.uid : view === 'drawings' ? activeDrawing?.uid : view === 'flowchart' ? activeFlowchart?.uid : undefined);
@@ -1057,6 +1167,7 @@ function AppContent() {
           }}
           onExportMarkdown={handleExportMarkdown}
           onImportMarkdown={handleImportMarkdown}
+          onShowHistory={() => setIsHistoryModalOpen(true)}
         />
 
         <ImportNoteModal 
@@ -1393,6 +1504,49 @@ function AppContent() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Rollback Confirmation Dialog */}
+        <AlertDialog open={isRollbackConfirmOpen} onOpenChange={setIsRollbackConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <div className="flex items-center gap-2 text-amber-600 mb-2">
+                <RotateCcw className="w-5 h-5" />
+                <AlertDialogTitle>Confirm Rollback</AlertDialogTitle>
+              </div>
+              <AlertDialogDescription>
+                Are you sure you want to revert <strong>{activeDocument?.name || activeDocument?.title || 'this document'}</strong> to its state from <strong>{pendingRollbackMinutes} minutes ago</strong>?
+                <br /><br />
+                <span className="text-destructive font-medium">This action will overwrite your current progress and cannot be undone.</span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isRollbackProcessing}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={(e) => {
+                  e.preventDefault();
+                  executeRollback();
+                }}
+                disabled={isRollbackProcessing}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {isRollbackProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Restoring...
+                  </>
+                ) : "Yes, Restore Version"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Version History Modal */}
+        <HistoryModal 
+          isOpen={isHistoryModalOpen}
+          onClose={() => setIsHistoryModalOpen(false)}
+          onRollback={handleRollback}
+          entityName={activeDocument?.name || activeDocument?.title || 'Current Document'}
+        />
       </SidebarInset>
     </SidebarProvider>
   );
