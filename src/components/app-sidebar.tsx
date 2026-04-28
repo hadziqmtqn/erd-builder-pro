@@ -50,9 +50,9 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeDrawingId: number | string | null;
   activeFlowchartId: number | string | null;
   activeProjectId: number | string | null;
-  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog';
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups';
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog';
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog') => void;
+  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void;
   onDiagramSelect: (id: number | string) => void;
   onNoteSelect: (id: number | string) => void;
   onDrawingSelect: (id: number | string) => void;

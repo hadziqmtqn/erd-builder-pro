@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useMemo } from 'react';
 import { Handle, Position, NodeResizer } from '@xyflow/react';
 
 export type FlowchartShape = 'rectangle' | 'oval' | 'diamond' | 'parallelogram' | 'database' | 'document' | 'cloud' | 'circle';
@@ -9,14 +9,14 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   color: string;
 }
 
-export default function FlowchartNode({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) {
+const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) => {
   const [isHovered, setIsHovered] = useState(false);
   
   const handleClasses = "!w-1.5 !h-1.5 !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity z-20";
 
   // Different padding/width based on shape to ensure text doesn't overflow
-  const getContainerClasses = (shape: FlowchartShape) => {
-    switch (shape) {
+  const containerClasses = useMemo(() => {
+    switch (data.shape) {
       case 'diamond':
         return 'min-w-[130px] min-h-[130px] p-8';
       case 'circle':
@@ -35,17 +35,17 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       default:
         return 'min-w-[140px] max-w-[240px] min-h-[80px] px-8 py-4';
     }
-  };
+  }, [data.shape]);
 
-  const getMinDimensions = (shape: FlowchartShape) => {
-    switch (shape) {
+  const minDimensions = useMemo(() => {
+    switch (data.shape) {
       case 'diamond': return { width: 100, height: 100 };
       case 'circle': return { width: 80, height: 80 };
       default: return { width: 100, height: 60 };
     }
-  };
+  }, [data.shape]);
 
-  const getShapeBackground = () => {
+  const shapeBackground = useMemo(() => {
     const baseStyle: React.CSSProperties = {
       background: `linear-gradient(135deg, ${data.color}25 0%, ${data.color}10 100%)`,
       borderColor: data.color,
@@ -154,12 +154,11 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       default:
         return <div className="absolute inset-0 rounded-md pointer-events-none" style={baseStyle} />;
     }
-  };
-
+  }, [data.color, data.shape, selected]);
 
   return (
     <div 
-      className={`relative group flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-[1.02] ${getContainerClasses(data.shape)}`}
+      className={`relative group flex items-center justify-center cursor-pointer transition-all duration-300 hover:scale-[1.02] ${containerClasses}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{ aspectRatio: data.shape === 'circle' ? '1 / 1' : 'auto' }}
@@ -167,8 +166,8 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       <NodeResizer 
         isVisible={selected || isHovered} 
         keepAspectRatio={data.shape === 'circle'}
-        minWidth={getMinDimensions(data.shape).width}
-        minHeight={getMinDimensions(data.shape).height}
+        minWidth={minDimensions.width}
+        minHeight={minDimensions.height}
         handleStyle={{ 
           width: 8, 
           height: 8, 
@@ -181,7 +180,7 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       />
       
       {/* Background Shape */}
-      {getShapeBackground()}
+      {shapeBackground}
 
       {/* Universal Handles: All 4 directions support both incoming and outgoing connections */}
       <Handle id="top" type="target" position={Position.Top} className={handleClasses} />
@@ -202,4 +201,6 @@ export default function FlowchartNode({ data, selected }: { data: FlowchartNodeD
       </div>
     </div>
   );
-}
+};
+
+export default memo(FlowchartNode);

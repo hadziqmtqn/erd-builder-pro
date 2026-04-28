@@ -21,6 +21,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
       flowcharts(count)
     `, { count: 'exact' })
     .eq("is_deleted", false)
+    .eq("user_id", (req as any).user.id)
     .eq("diagrams.is_deleted", false)
     .eq("notes.is_deleted", false)
     .eq("drawings.is_deleted", false)
@@ -67,7 +68,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   const { name } = req.body;
   const { data, error } = await supabase
     .from("projects")
-    .insert([{ name }])
+    .insert([{ name, user_id: (req as any).user.id }])
     .select()
     .single();
 
@@ -80,7 +81,8 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("projects")
     .update({ name })
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to update project");
   res.json({ success: true });
@@ -93,7 +95,8 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
   const { error } = await supabase
     .from("projects")
     .update(update)
-    .eq("id", projectId);
+    .eq("id", projectId)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete project");
 
@@ -119,7 +122,8 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
   const { error } = await supabase
     .from("projects")
     .update(update)
-    .eq("id", projectId);
+    .eq("id", projectId)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore project");
 
@@ -183,7 +187,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
 
     await supabase.from("notes").delete().eq("project_id", projectId);
     await supabase.from("drawings").delete().eq("project_id", projectId);
-    await supabase.from("projects").delete().eq("id", projectId);
+    await supabase.from("projects").delete().eq("id", projectId).eq("user_id", (req as any).user.id);
 
     res.json({ success: true });
   } catch (err: any) {

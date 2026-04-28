@@ -4,6 +4,12 @@ import { Node, Edge, Viewport } from '@xyflow/react';
 import { Diagram, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
+import { 
+  getCachedDiagramVersion, 
+  updateCachedDiagramVersion,
+  clearCachedDiagramVersion,
+  refreshDiagramVersion
+} from '../lib/diagramVersioning';
 
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
@@ -251,8 +257,10 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
   };
 
-  const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport) => {
+  const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport, options?: { expectedVersion?: number; retryCount?: number }) => {
     if (!activeDiagramId || (view !== 'erd' && view !== 'diagram')) return;
+    
+    const { expectedVersion: passedVersion, retryCount = 0 } = options || {};
     
     try {
       const data = JSON.stringify({ nodes, edges, viewport });
@@ -289,7 +297,21 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         }
       }
 
+      // 🔒 Get version for optimistic locking
+      const expectedVersion = passedVersion !== undefined ? passedVersion : await getCachedDiagramVersion(activeDiagramId);
+
       await localPersistence.saveDraft(DraftType.ERD, activeDiagramId, data, isSyncPending);
+      
+      // For authenticated users, also track version for next sync
+      if (!isGuest && expectedVersion !== null) {
+        // Store the expected version to be sent with next sync
+        try {
+          const versionKey = `draft_version_${activeDiagramId}`;
+          sessionStorage.setItem(versionKey, String(expectedVersion));
+        } catch (e) {
+          // Fail silently
+        }
+      }
     } catch (err) {
       console.error('Error in local saveDiagram:', err);
     }

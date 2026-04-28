@@ -151,7 +151,7 @@ export function NavProjects({
   activeNoteId: number | string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
-  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog'
+  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
   onDiagramDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void

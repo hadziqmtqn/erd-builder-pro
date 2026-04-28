@@ -16,7 +16,8 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   let query = supabase
     .from("notes")
     .select("*, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false);
+    .eq("is_deleted", false)
+    .eq("user_id", (req as any).user.id);
 
   if (isPublic !== null) {
     query = query.eq("is_public", isPublic);
@@ -57,7 +58,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   const { title, content, project_id } = req.body;
   const { data, error } = await supabase
     .from("notes")
-    .insert([{ title, content: content || "", project_id: project_id || null }])
+    .insert([{ title, content: content || "", project_id: project_id || null, user_id: (req as any).user.id }])
     .select()
     .single();
 
@@ -115,6 +116,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
       .from("notes")
       .select("is_public, published_at")
       .eq("id", id)
+      .eq("user_id", (req as any).user.id)
       .single();
 
     if (!currentNote) return res.status(404).json({ error: "Note not found" });
@@ -137,6 +139,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
       .from("notes")
       .update(updateData)
       .eq("id", id)
+      .eq("user_id", (req as any).user.id)
       .select()
       .single();
 
@@ -152,6 +155,7 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     .from("notes")
     .select("*")
     .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id)
     .single();
 
   if (error || !data) return res.status(404).json({ error: "Note not found" });
@@ -163,7 +167,8 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("notes")
     .update({ title, content, project_id: project_id || null, updated_at: new Date().toISOString() })
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to update note");
   res.json({ success: true });
@@ -173,7 +178,8 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
   const { error } = await supabase
     .from("notes")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete note");
   res.json({ success: true });
@@ -183,7 +189,8 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
   const { error } = await supabase
     .from("notes")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore note");
   res.json({ success: true });
@@ -195,6 +202,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
       .from("notes")
       .select("content")
       .eq("id", req.params.id)
+      .eq("user_id", (req as any).user.id)
       .single();
 
     if (note && note.content && s3Client && R2_BUCKET_NAME) {
@@ -219,7 +227,8 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
     const { error } = await supabase
       .from("notes")
       .delete()
-      .eq("id", req.params.id);
+      .eq("id", req.params.id)
+      .eq("user_id", (req as any).user.id);
 
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });

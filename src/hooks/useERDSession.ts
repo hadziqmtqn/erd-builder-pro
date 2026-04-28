@@ -22,6 +22,7 @@ export function useERDSession(
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
   const [isItemLoading, setIsItemLoading] = useState(false);
+  const [saveCounter, setSaveCounter] = useState(0);
   
   // Ref for previous edges to avoid redundant node updates
   const lastEdgesHash = useRef<string>("");
@@ -31,6 +32,11 @@ export function useERDSession(
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const { setViewport } = useReactFlow();
+
+  // Watch for nodes/edges changes to increment save counter
+  useEffect(() => {
+    setSaveCounter(prev => prev + 1);
+  }, [nodes, edges]);
   
   // Undo/Redo Hook
   const { takeSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo();
@@ -74,6 +80,7 @@ export function useERDSession(
       clearHistory();
 
       let finalData = data;
+      
       if (draft && draft.sync_pending) {
         try {
           const parsedDraft = JSON.parse(draft.data);
@@ -87,50 +94,18 @@ export function useERDSession(
               source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
               target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
               source_handle: e.sourceHandle || undefined,
-              target_handle: e.target_handle || undefined,
+              target_handle: e.targetHandle || undefined,
               label: e.label
             })), 
             viewport_x: parsedDraft.viewport.x, 
             viewport_y: parsedDraft.viewport.y, 
             viewport_zoom: parsedDraft.viewport.zoom 
           };
-          // Load diagram data (cloud) and then decide whether to apply a local draft
-          useEffect(() => {
-            if (!id) return;
-            const loadDiagram = async () => {
-              // 1. Fetch cloud version
-              const cloudDiagram = data;
-              if (!cloudDiagram) return;
-              // 2. Check for a pending local draft for this diagram
-              const pendingDrafts = await localPersistence.getAllPendingSyncs();
-              const draft = pendingDrafts.find(d => d.type === DraftType.ERD && String(d.id) === String(id));
-              if (draft) {
-                // Compare timestamps
-                const cloudTime = new Date(cloudDiagram.updated_at).getTime();
-                const localTime = draft.updated_at;
-                if (cloudTime > localTime) {
-                  // Cloud is newer, discard stale draft
-                  console.log(`%c[ERDSession] Discarding stale local draft for diagram#${id}`, 'color: #ef4444; font-weight: bold');
-                  await localPersistence.deleteDraft(DraftType.ERD, id);
-                } else {
-                  // Local draft is newer or equal, load it
-                  try {
-                    const parsedDraft = JSON.parse(draft.data);
-                    // Apply draft data to state (nodes, edges, viewport)
-                    // applyDraftToState(parsedDraft);
-                    toast.info('Loaded unsynced local draft');
-                  } catch (e) {
-                    console.error('Failed to parse local draft', e);
-                  }
-                  return; // Draft applied, skip further processing
-                }
-              }
-              // No valid draft, load cloud data normally
-              // applyCloudDataToState(cloudDiagram);
-            };
-            loadDiagram();
-          }, [id]);
-          toast.info("Loaded unsynced local draft");
+          // Only show toast if not a silent reload
+          // @ts-ignore - options might be passed from App.tsx
+          if (!window.currentSyncIsSilent) {
+            toast.info("Loaded unsynced local draft", { duration: 2000 });
+          }
         } catch (e) {}
       }
 
@@ -228,12 +203,20 @@ export function useERDSession(
   const addEntity = () => {
     const id = Math.random().toString(36).substr(2, 9);
     const uniqueName = getUniqueName('NewTable', nodes);
+
+    // Calculate the center of the current viewport
+    const { x, y, zoom } = viewportRef.current;
+    
+    // Convert screen center to flow coordinates
+    // We adjust for the sidebar (approx 260px in the current layout)
+    const centerX = -x / zoom + (window.innerWidth - 260) / (2 * zoom);
+    const centerY = -y / zoom + window.innerHeight / (2 * zoom);
     
     const newEntity: Entity = {
       id,
       name: uniqueName,
-      x: Math.random() * 400,
-      y: Math.random() * 400,
+      x: centerX - 100, // Center the table (approx 200px width)
+      y: centerY - 50,
       color: '#6366f1',
       columns: [
         { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }
@@ -402,6 +385,7 @@ export function useERDSession(
     canUndo,
     canRedo,
     takeSnapshot,
-    isItemLoading
+    isItemLoading,
+    saveCounter
   };
 }
