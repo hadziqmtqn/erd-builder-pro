@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS relationships (
   type TEXT DEFAULT 'one-to-many',
   source_handle TEXT,
   target_handle TEXT,
+  label TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

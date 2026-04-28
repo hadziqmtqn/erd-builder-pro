@@ -68,166 +68,140 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     return draftData;
   }, []);
 
+  const [hasPendingSyncs, setHasPendingSyncs] = useState(false);
+  const syncNeededRef = useRef(false);
+
+  // Helper to check for pending syncs across all types
+  const refreshPendingStatus = useCallback(async () => {
+    try {
+      const pending = await localPersistence.getAllPendingSyncs();
+      setHasPendingSyncs(pending.length > 0);
+    } catch (err) {
+      console.warn("Failed to check pending sync status:", err);
+    }
+  }, []);
+
   const syncDrafts = useCallback(async () => {
-    if (!isAuthenticated || !navigator.onLine || isGuest || isSyncingRef.current) return;
+    if (!isAuthenticated || !navigator.onLine || isGuest) return;
+    
+    if (isSyncingRef.current) {
+      syncNeededRef.current = true;
+      return;
+    }
     
     isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncError(false);
 
     try {
-      const pendingSyncs = await localPersistence.getAllPendingSyncs();
-      if (pendingSyncs.length === 0) return;
-
-      console.log(`Starting sync for ${pendingSyncs.length} pending items...`);
-      
-      let successCount = 0;
-
-      for (const draft of pendingSyncs) {
-        try {
-          let endpoint = '';
-          let body = {};
-          let parsedData: any = {};
+      let hasMoreToSync = true;
+      while (hasMoreToSync) {
+        syncNeededRef.current = false;
+        const pendingSyncs = await localPersistence.getAllPendingSyncs();
+        
+        if (pendingSyncs.length > 0) {
+          console.log(`[SyncService] 🔄 Processing ${pendingSyncs.length} pending items...`);
           
-          // Apply healing layer to fix corrupted local state before syncing
-          const healedData = healDraftData(draft.data, draft.type);
-          
-          try {
-            parsedData = JSON.parse(healedData);
-          } catch (e) {
-            console.warn(`Malformed JSON in draft ${draft.id} (${draft.type}). Attempting recovery...`);
-            // For Draw/Flowchart, we can treat the raw data as the drawing content
-            if (draft.type !== DraftType.DRAWINGS && draft.type !== DraftType.FLOWCHART) {
-              throw new Error("Critical JSON parse error in non-whiteboard draft");
-            }
-          }
-
-          if (draft.type === DraftType.NOTES) {
-            endpoint = `/api/notes/${draft.id}`;
-            body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id };
-          } else if (draft.type === DraftType.ERD) {
-            endpoint = `/api/diagrams/save/${draft.id}`;
-            // ERD save expects entities and relationships
-            const entities = (parsedData.nodes || []).map((n: any) => ({
-              ...n.data,
-              x: n.position?.x || 0,
-              y: n.position?.y || 0,
-            }));
-            const relationships = (parsedData.edges || []).map((e: any) => ({
-              id: e.id,
-              source_entity_id: e.source,
-              target_entity_id: e.target,
-              source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-              target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-              source_handle: e.sourceHandle || undefined,
-              target_handle: e.targetHandle || undefined,
-              type: 'one-to-many',
-              label: e.label,
-            }));
-            
-            // 🔒 Include version for optimistic locking
-            const cachedVersion = await getCachedDiagramVersion(draft.id);
-            const expectedVersion = cachedVersion !== null ? cachedVersion : undefined;
-            
-            body = { entities, relationships, viewport: parsedData.viewport, expectedVersion };
-          } else if (draft.type === DraftType.FLOWCHART) {
-            endpoint = `/api/flowcharts/${draft.id}`;
-            body = { 
-              title: parsedData.title || 'Untitled Flowchart', 
-              data: parsedData.data || (typeof parsedData === 'string' ? parsedData : draft.data), 
-              project_id: parsedData.project_id || null 
-            };
-          } else if (draft.type === DraftType.DRAWINGS) {
-            endpoint = `/api/drawings/${draft.id}`;
-            body = { 
-              title: parsedData.title || 'Untitled Drawing', 
-              data: parsedData.data || (typeof parsedData === 'string' ? parsedData : draft.data), 
-              project_id: parsedData.project_id || null 
-            };
-          }
-
-          if (endpoint) {
-            console.log(`%c[SyncService] 🔄 Syncing ${draft.type}#${draft.id}...`, 'color: #3b82f6');
-            const lastUpdated = draft.updated_at;
-            const res = await fetch(endpoint, {
-              method: draft.type === DraftType.ERD ? 'POST' : 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body),
-            });
-
-            if (res.status === 429) {
-              console.warn("Sync paused: Server is rate-limiting requests (429).");
-              setIsSyncing(false);
-              isSyncingRef.current = false;
-              return; // Stop processing the queue
-            }
-
-            // ❌ Handle conflict (409) - version mismatch
-            if (res.status === 409) {
-              console.warn(`[Race Condition] Conflict detected for ${draft.type}#${draft.id} - version mismatch`);
+          for (const draft of pendingSyncs) {
+            try {
+              let endpoint = '';
+              let body = {};
+              let parsedData: any = {};
+              
+              const healedData = healDraftData(draft.data, draft.type);
+              
               try {
-                const errorData = await res.json();
+                parsedData = JSON.parse(healedData);
+              } catch (e) {
+                if (draft.type !== DraftType.DRAWINGS && draft.type !== DraftType.FLOWCHART) {
+                  throw new Error("Critical JSON parse error");
+                }
+              }
+
+              if (draft.type === DraftType.NOTES) {
+                endpoint = `/api/notes/${draft.id}`;
+                body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id };
+              } else if (draft.type === DraftType.ERD) {
+                endpoint = `/api/diagrams/save/${draft.id}`;
+                const entities = (parsedData.nodes || []).map((n: any) => ({
+                  ...n.data,
+                  x: n.position?.x || 0,
+                  y: n.position?.y || 0,
+                }));
+                const relationships = (parsedData.edges || []).map((e: any) => ({
+                  id: e.id,
+                  source_entity_id: e.source,
+                  target_entity_id: e.target,
+                  source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+                  target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+                  source_handle: e.sourceHandle || undefined,
+                  target_handle: e.targetHandle || undefined,
+                  type: 'one-to-many',
+                  label: e.label,
+                }));
                 
-                // 🔄 Clear cached version and refresh from server
-                await clearCachedDiagramVersion(draft.id);
-                
-                if (draft.type === DraftType.ERD && errorData.currentVersion !== undefined) {
-                  // Update version from server response
-                  await updateCachedDiagramVersion(draft.id, errorData.currentVersion);
-                  console.log(`[Sync] Updated version for ${draft.id} to ${errorData.currentVersion}`);
-                  
-                  // Retry sync with new version
-                  if (errorData.retryable) {
-                    console.log(`[Sync] Retrying sync for ${draft.id} with new version...`);
-                    // Keep the draft pending, will retry next sync cycle
-                    continue; // Skip marking as synced, let it retry
+                const cachedVersion = await getCachedDiagramVersion(draft.id);
+                body = { entities, relationships, viewport: parsedData.viewport, expectedVersion: cachedVersion !== null ? cachedVersion : undefined };
+              } else if (draft.type === DraftType.FLOWCHART) {
+                endpoint = `/api/flowcharts/${draft.id}`;
+                body = { title: parsedData.title, data: parsedData.data || draft.data, project_id: parsedData.project_id };
+              } else if (draft.type === DraftType.DRAWINGS) {
+                endpoint = `/api/drawings/${draft.id}`;
+                body = { title: parsedData.title, data: parsedData.data || draft.data, project_id: parsedData.project_id };
+              }
+
+              if (endpoint) {
+                const lastUpdated = draft.updated_at;
+                const res = await fetch(endpoint, {
+                  method: draft.type === DraftType.ERD ? 'POST' : 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                });
+
+                if (res.status === 429) {
+                  hasMoreToSync = false;
+                  break;
+                }
+
+                if (res.status === 409) {
+                  try {
+                    const errorData = await res.json();
+                    await clearCachedDiagramVersion(draft.id);
+                    if (draft.type === DraftType.ERD && errorData.currentVersion !== undefined) {
+                      await updateCachedDiagramVersion(draft.id, errorData.currentVersion);
+                    }
+                  } catch (e) {}
+                  continue;
+                }
+
+                if (res.ok) {
+                  const responseData = await res.json();
+                  if (draft.type === DraftType.ERD && responseData.version !== undefined) {
+                    await updateCachedDiagramVersion(draft.id, responseData.version);
                   }
+                  await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
                 }
-              } catch (e) {
-                console.warn('Failed to parse 409 response:', e);
               }
-              // Mark as failed but keep in pending queue for retry
-              continue;
-            }
-
-            if (res.ok) {
-              try {
-                const responseData = await res.json();
-                
-                // ✅ Update cached version from successful response
-                if (draft.type === DraftType.ERD && responseData.version !== undefined) {
-                  await updateCachedDiagramVersion(draft.id, responseData.version);
-                }
-                
-                const marked = await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
-                if (marked) successCount++;
-                else console.log(`In-flight update detected for ${draft.id}, deferring markSynced`);
-              } catch (e) {
-                console.warn('Failed to parse success response:', e);
-              }
+            } catch (err) {
+              setSyncError(true);
             }
           }
-        } catch (err) {
-          console.warn(`Failed to sync item ${draft.id} (${draft.type}):`, err);
-          setSyncError(true);
         }
-      }
-
-      if (successCount > 0) {
-        // Only notify sparingly for quiet background syncs to avoid spam
-        console.log(`Successfully synced ${successCount} items to cloud`);
+        
+        hasMoreToSync = syncNeededRef.current;
       }
     } catch (err) {
-      console.error('Sync service error:', err);
       setSyncError(true);
     } finally {
       setIsSyncing(false);
       isSyncingRef.current = false;
+      refreshPendingStatus(); // Update the UI status at the end
     }
-  }, [isAuthenticated, isGuest, healDraftData]);
+  }, [isAuthenticated, isGuest, healDraftData, refreshPendingStatus]);
 
-  // Debounced trigger to queue syncs (3000ms pause)
   const triggerDebouncedSync = useCallback(() => {
+    // Optimistically show pending status as soon as a change is made
+    setHasPendingSyncs(true);
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(() => {
       syncDrafts();
@@ -235,7 +209,9 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, [syncDrafts]);
 
   useEffect(() => {
-    // Give metadata-based cleanup (App.tsx) a small head start before trying to auto-sync on mount
+    // Initial check on mount
+    refreshPendingStatus();
+    
     const initialSyncTimer = setTimeout(() => {
       if (navigator.onLine && isAuthenticated && !isGuest) {
         syncDrafts();
@@ -306,5 +282,5 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
     runMigration();
   }, [isAuthenticated, isGuest]);
 
-  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError, healDraftData, checkAndClearStaleDrafts };
+  return { syncDrafts, triggerDebouncedSync, isSyncing, syncError, healDraftData, checkAndClearStaleDrafts, hasPendingSyncs, refreshPendingStatus };
 }

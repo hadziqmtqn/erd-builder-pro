@@ -22,6 +22,7 @@ export function useERDSession(
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
   const [isItemLoading, setIsItemLoading] = useState(false);
+  const [saveCounter, setSaveCounter] = useState(0);
   
   // Ref for previous edges to avoid redundant node updates
   const lastEdgesHash = useRef<string>("");
@@ -31,6 +32,11 @@ export function useERDSession(
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const { setViewport } = useReactFlow();
+
+  // Watch for nodes/edges changes to increment save counter
+  useEffect(() => {
+    setSaveCounter(prev => prev + 1);
+  }, [nodes, edges]);
   
   // Undo/Redo Hook
   const { takeSnapshot, undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo();
@@ -366,6 +372,7 @@ export function useERDSession(
     canUndo,
     canRedo,
     takeSnapshot,
-    isItemLoading
+    isItemLoading,
+    saveCounter
   };
 }

@@ -52,6 +52,7 @@ import { useERDSession } from './hooks/useERDSession';
 import { useSQLGenerator } from './hooks/useSQLGenerator';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useImageExporter } from './hooks/useImageExporter';
+import { useBroadcastChannel, BroadcastMessageType } from './hooks/useBroadcastChannel';
 
 
 // Views
@@ -61,7 +62,7 @@ import { BackupsView } from './components/views/BackupsView';
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
 import { toast } from 'sonner';
-import { Entity, DraftType } from './types';
+import { Entity, DraftType, Relationship } from './types';
 
 // UI
 import {
@@ -133,6 +134,10 @@ function AppContent() {
   
   // Safety Gate & Persistence State
   const [isLocalSaving, setIsLocalSaving] = useState(false);
+  const lastLoadedDiagramIdRef = useRef<number | string | null>(null);
+  const lastLoadedNoteIdRef = useRef<number | string | null>(null);
+  const lastLoadedDrawingIdRef = useRef<number | string | null>(null);
+  const lastLoadedFlowchartIdRef = useRef<number | string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const lastSaveCallRef = useRef<number>(0);
   const lastFocusFetchRef = useRef<number>(0);
@@ -145,7 +150,7 @@ function AppContent() {
   // Custom Hooks
   const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin, handleLogout } = useAuth();
   const isOnline = useConnectionStatus();
-  const { triggerDebouncedSync, isSyncing, syncError, syncDrafts, checkAndClearStaleDrafts } = useSyncService(isAuthenticated, isGuest);
+  const { triggerDebouncedSync, isSyncing, syncError, syncDrafts, checkAndClearStaleDrafts, hasPendingSyncs } = useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
   const { handleExportImage, handleExportPDF } = useImageExporter();
@@ -159,7 +164,7 @@ function AppContent() {
     selectedEdgeId, setSelectedEdgeId,
     onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
     handleDiagramSelect: selectDiagram, viewportRef,
-    undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading
+    undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter
   } = useERDSession(false, isGuest, isAuthenticated, setView);
 
 
@@ -226,6 +231,23 @@ function AppContent() {
   }, [view, currentActiveId, diagrams, notes, drawings, flowcharts, isPublicView, publicData]);
 
   const hasActiveItem = !!activeDocument;
+
+  // Sync initialization: Ensure guards allow saving once data is loaded
+  useEffect(() => {
+    if (activeDiagramId && !isERDItemLoading) lastLoadedDiagramIdRef.current = activeDiagramId;
+  }, [activeDiagramId, isERDItemLoading]);
+
+  useEffect(() => {
+    if (activeNoteId && !isNoteItemLoading) lastLoadedNoteIdRef.current = activeNoteId;
+  }, [activeNoteId, isNoteItemLoading]);
+
+  useEffect(() => {
+    if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
+  }, [activeDrawingId, isDrawingItemLoading]);
+
+  useEffect(() => {
+    if (activeFlowchartId && !isFlowchartItemLoading) lastLoadedFlowchartIdRef.current = activeFlowchartId;
+  }, [activeFlowchartId, isFlowchartItemLoading]);
 
   const selectedEntity = useMemo(() => {
     if (!selectedNodeId) return null;
@@ -331,6 +353,28 @@ function AppContent() {
     }
   }, [isAuthenticated, activeProjectId, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts, fetchTrash, isPublicView, view]);
 
+  // Cross-Tab Synchronization via Broadcast Channel
+  const { broadcastMessage } = useBroadcastChannel((message) => {
+    if (message.type === BroadcastMessageType.DRAFT_UPDATED) {
+      const { type, id } = message.payload;
+      
+      // If the updated item is the one we're currently looking at, reload it from IndexedDB
+      if (view === 'erd' && type === DraftType.ERD && String(id) === String(activeDiagramId)) {
+        console.log("[Broadcast] Reloading ERD from local draft updated in another tab");
+        selectDiagram(id, setActiveDiagramId, { silent: true });
+      } else if (view === 'notes' && type === DraftType.NOTES && String(id) === String(activeNoteId)) {
+        console.log("[Broadcast] Reloading Note from local draft updated in another tab");
+        selectNote(id, { silent: true });
+      } else if (view === 'drawings' && type === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
+        console.log("[Broadcast] Reloading Drawing from local draft updated in another tab");
+        selectDrawing(id, { silent: true });
+      } else if (view === 'flowchart' && type === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
+        console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
+        selectFlowchart(id, { silent: true });
+      }
+    }
+  });
+
   // Conflict Resolution: Clear stale local drafts when cloud data is loaded
   useEffect(() => {
     if (isAuthenticated && !isGuest) {
@@ -379,26 +423,58 @@ function AppContent() {
         if (view === 'erd') {
           await fetchDiagrams(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeDiagramId) {
-            const hasPending = await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId);
-            if (!hasPending) await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+            const draft = await localPersistence.getDraft(DraftType.ERD, activeDiagramId);
+            const cloudItem = diagrams.find(d => String(d.id) === String(activeDiagramId));
+            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
+            
+            if (isStale) {
+              await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
+              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+            } else if (!(await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId))) {
+              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+            }
           }
         } else if (view === 'notes') {
           await fetchNotes(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeNoteId) {
-            const hasPending = await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteId);
-            if (!hasPending) await selectNote(activeNoteId, { silent: true });
+            const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteId);
+            const cloudItem = notes.find(n => String(n.id) === String(activeNoteId));
+            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
+            
+            if (isStale) {
+              await localPersistence.deleteDraft(DraftType.NOTES, activeNoteId);
+              await selectNote(activeNoteId, { silent: true });
+            } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteId))) {
+              await selectNote(activeNoteId, { silent: true });
+            }
           }
         } else if (view === 'drawings') {
           await fetchDrawings(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeDrawingId) {
-            const hasPending = await localPersistence.hasPendingSync(DraftType.DRAWINGS, activeDrawingId);
-            if (!hasPending) await selectDrawing(activeDrawingId, { silent: true });
+            const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
+            const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId));
+            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
+            
+            if (isStale) {
+              await localPersistence.deleteDraft(DraftType.DRAWINGS, activeDrawingId);
+              await selectDrawing(activeDrawingId, { silent: true });
+            } else if (!(await localPersistence.hasPendingSync(DraftType.DRAWINGS, activeDrawingId))) {
+              await selectDrawing(activeDrawingId, { silent: true });
+            }
           }
         } else if (view === 'flowchart') {
           await fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeFlowchartId) {
-            const hasPending = await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId);
-            if (!hasPending) await selectFlowchart(activeFlowchartId, { silent: true });
+            const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
+            const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
+            
+            if (isStale) {
+              await localPersistence.deleteDraft(DraftType.FLOWCHART, activeFlowchartId);
+              await selectFlowchart(activeFlowchartId, { silent: true });
+            } else if (!(await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId))) {
+              await selectFlowchart(activeFlowchartId, { silent: true });
+            }
           }
         }
       } catch (err) {
@@ -467,15 +543,34 @@ function AppContent() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
       setIsLocalSaving(true);
+      
       saveTimeoutRef.current = setTimeout(async () => {
+        // SAFETY 1: ID Validation Guard
+        if (lastLoadedDiagramIdRef.current !== activeDiagramId) return;
+
+        // SAFETY 2: Loading/Refresh Guard - Wait if still loading
+        if (isRefreshing || isERDItemLoading || isDiagramsLoading) {
+          console.log("[SaveGuard] Deferring save: App is refreshing/loading");
+          return; 
+        }
+
+        // SAFETY 3: Race Condition Guard for empty states
+        if (nodes.length === 0 && lastSaveCallRef.current > 0) {
+          const now = Date.now();
+          if (now - lastFocusFetchRef.current < 5000) {
+             console.warn("[RaceConditionGuard] Blocking save of empty ERD during refresh cycle");
+             return;
+          }
+        }
         await saveDiagram(nodes, edges, viewportRef.current);
         lastSaveCallRef.current = Date.now();
         setIsLocalSaving(false);
         triggerDebouncedSync();
+        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.ERD, activeDiagramId);
       }, 800);
     }
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [nodes, edges, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync]);
+  }, [nodes, edges, saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, isRefreshing, isERDItemLoading, isDiagramsLoading, broadcastMessage]);
 
   // Handlers
   const handleEntityUpdate = useCallback(async (updatedEntity: Entity, options?: { immediate?: boolean }) => {
@@ -501,7 +596,47 @@ function AppContent() {
     }
   }, [updateEntity, nodes, edges, saveDiagram, viewportRef, syncDrafts]);
 
-  const handleDiagramSelect = (id: number | string) => selectDiagram(id, setActiveDiagramId);
+  const flushPendingSaves = async () => {
+    if (!isLocalSaving) return;
+
+    // 1. Force clear any pending timeouts
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
+    if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
+    if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
+
+    // 2. Perform immediate local save for current active document
+    try {
+      if (view === 'erd' && activeDiagramId) {
+        await saveDiagram(nodes, edges, viewportRef.current);
+      } else if (view === 'notes' && activeNoteId) {
+        const n = notes.find(n => String(n.id) === String(activeNoteId));
+        if (n) await saveNote(n);
+      } else if (view === 'drawings' && activeDrawingId) {
+        const d = drawings.find(d => String(d.id) === String(activeDrawingId));
+        if (d) await saveDrawing(d);
+      } else if (view === 'flowchart' && activeFlowchartId) {
+        const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+        if (f) await saveFlowchart(f);
+      }
+      
+      lastSaveCallRef.current = Date.now();
+      setIsLocalSaving(false);
+      
+      // 3. Trigger cloud sync immediately (skip debounce)
+      await syncDrafts();
+    } catch (err) {
+      console.warn("Failed to flush pending saves during switch:", err);
+    }
+  };
+
+  const handleDiagramSelect = async (id: number | string) => {
+    await flushPendingSaves();
+    await selectDiagram(id, (newId) => {
+      setActiveDiagramId(newId);
+      lastLoadedDiagramIdRef.current = newId;
+    });
+  };
   const handleEditEntity = useCallback((e: any) => setSelectedNodeId(e.detail), [setSelectedNodeId]);
   const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
 
@@ -516,7 +651,14 @@ function AppContent() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Global shortcuts based on view
+      // Global shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (hasPendingSyncs && !isSyncing && isOnline) {
+          syncDrafts();
+        }
+      }
+
       if (view === 'erd') {
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
           if (e.shiftKey) {
@@ -546,18 +688,24 @@ function AppContent() {
 
 
   const handleNoteSelect = async (id: number | string) => {
+    await flushPendingSaves();
     setView('notes');
     await selectNote(id);
+    lastLoadedNoteIdRef.current = id;
   };
 
   const handleDrawingSelect = async (id: number | string) => {
+    await flushPendingSaves();
     setView('drawings');
     await selectDrawing(id);
+    lastLoadedDrawingIdRef.current = id;
   };
 
   const handleFlowchartSelect = async (id: number | string) => {
+    await flushPendingSaves();
     setView('flowchart');
     await selectFlowchart(id);
+    lastLoadedFlowchartIdRef.current = id;
   };
 
   const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -571,18 +719,22 @@ function AppContent() {
     
     // Capture metadata at the time of change to avoid stale closure issues in the timeout
     const currentNote = notes.find(n => String(n.id) === String(noteId));
-    const title = currentNote?.title || '';
-    const project_id = currentNote?.project_id || null;
+    if (!activeNoteId || !currentNote) return;
+
+    // SAFETY: Note ID Validation Guard
+    if (lastLoadedNoteIdRef.current !== activeNoteId) return;
 
     notesSaveTimeout.current = setTimeout(async () => {
-      await saveNote({
-        id: noteId, content, title, project_id
-      } as any);
+      // SAFETY: Wait if still loading/refreshing
+      if (isRefreshing || isNoteItemLoading) return;
+      const n = notes.find(n => String(n.id) === String(activeNoteId));
+      if (n) await saveNote(n);
       lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
+      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.NOTES, activeNoteId);
     }, 800);
-  }, [activeNoteId, notes, saveNote, setNotesList, triggerDebouncedSync]);
+  }, [activeNoteId, notes, saveNote, setNotesList, triggerDebouncedSync, isRefreshing, isNoteItemLoading, broadcastMessage]);
 
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleDrawingChange = useCallback((data: string) => {
@@ -593,20 +745,26 @@ function AppContent() {
     setIsLocalSaving(true);
     if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
     
-    // Capture metadata at the time of change to avoid stale closure issues in the timeout
     const currentDrawing = drawings.find(d => String(d.id) === String(drawingId));
+    if (!activeDrawingId || !currentDrawing) return;
     const title = currentDrawing?.title || '';
     const project_id = currentDrawing?.project_id || null;
 
+    // SAFETY: Drawing ID Validation Guard
+    if (lastLoadedDrawingIdRef.current !== activeDrawingId) return;
+
     drawingsSaveTimeout.current = setTimeout(async () => {
+      // SAFETY: Wait if still loading/refreshing
+      if (isRefreshing || isDrawingItemLoading) return;
       await saveDrawing({
         id: drawingId, data, title, project_id
       } as any);
       lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
+      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, activeDrawingId);
     }, 1500);
-  }, [activeDrawingId, drawings, saveDrawing, setDrawings, triggerDebouncedSync]);
+  }, [activeDrawingId, drawings, saveDrawing, setDrawings, triggerDebouncedSync, isRefreshing, isDrawingItemLoading, broadcastMessage]);
   
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const handleFlowchartChange = useCallback((nodesData: any[], edgesData: any[]) => {
@@ -618,26 +776,38 @@ function AppContent() {
     setIsLocalSaving(true);
     if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
     
-    // Capture metadata at the time of change to avoid stale closure issues in the timeout
     const currentFlowchart = flowcharts.find(f => String(f.id) === String(flowchartId));
+    if (!activeFlowchartId || !currentFlowchart) return;
     const title = currentFlowchart?.title || '';
     const project_id = currentFlowchart?.project_id || null;
 
+    // SAFETY: Flowchart ID Validation Guard
+    if (lastLoadedFlowchartIdRef.current !== activeFlowchartId) return;
+
     flowchartsSaveTimeout.current = setTimeout(async () => {
+      // SAFETY: Wait if still loading/refreshing
+      if (isRefreshing || isFlowchartItemLoading) return;
       await saveFlowchart({
         id: flowchartId, data: dataString, title, project_id
       } as any);
       lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
+      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.FLOWCHART, activeFlowchartId);
     }, 800);
-  }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts, triggerDebouncedSync]);
+  }, [activeFlowchartId, flowcharts, saveFlowchart, setFlowcharts, triggerDebouncedSync, isRefreshing, isFlowchartItemLoading, broadcastMessage]);
 
-  const handleViewChange = (newView: typeof view) => {
+  const handleViewChange = async (newView: typeof view) => {
     if (!isOnline && !isPublicView) {
       toast.error("Offline Mode: Navigation is disabled.", { duration: 5000 });
       return;
     }
+    
+    // Flush any pending changes before switching views
+    if (newView !== view) {
+      await flushPendingSaves();
+    }
+
     setView(newView);
     if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') {
       setSidebarView(newView);
@@ -831,6 +1001,8 @@ function AppContent() {
           syncError={syncError}
           isSyncing={isSyncing}
           isRefreshing={isRefreshing}
+          hasPendingSyncs={hasPendingSyncs}
+          onSave={syncDrafts}
           activeFileUid={activeFileUid} activeFileId={currentActiveId} initialShareSettings={initialShareSettings} isPublicView={isPublicView}
           onSettingsSaved={() => { const pid = activeProjectId === null ? 'all' : activeProjectId; if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery); else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery); else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery); else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery); }}
           isOnline={isOnline}
@@ -953,8 +1125,24 @@ function AppContent() {
                       }
                     });
 
-                    setNodes(nds => [...nds, ...processedNodes]);
-                    setEdges(eds => [...eds, ...newEdges]);
+                    const updatedNodes = [...nodes, ...processedNodes];
+                    const updatedEdges = [...edges, ...newEdges];
+                    
+                    setNodes(updatedNodes);
+                    setEdges(updatedEdges);
+
+                    // Force open the safety gate and trigger immediate save
+                    if (activeDiagramId) {
+                      lastLoadedDiagramIdRef.current = activeDiagramId;
+                      setIsLocalSaving(true);
+                      
+                      // Perform immediate local save for imported data
+                      saveDiagram(updatedNodes, updatedEdges, viewportRef.current).then(() => {
+                        setIsLocalSaving(false);
+                        triggerDebouncedSync();
+                        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.ERD, activeDiagramId);
+                      });
+                    }
                   }}
                 />
               )}

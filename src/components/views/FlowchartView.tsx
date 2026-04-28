@@ -251,6 +251,8 @@ export const FlowchartView = React.memo(({
           nodesDraggable={!isReadOnly}
           nodesConnectable={!isReadOnly}
           elementsSelectable={!isReadOnly}
+          minZoom={0.1}
+          maxZoom={2.5}
         >
           <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />

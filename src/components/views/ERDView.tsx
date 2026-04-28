@@ -160,6 +160,12 @@ export const ERDView = React.memo(({
           nodesConnectable={!isReadOnly}
           elementsSelectable={!isReadOnly}
           onNodeDragStop={() => takeSnapshot && takeSnapshot(nodes, edges)}
+          minZoom={0.1}
+          maxZoom={2.5}
+          defaultEdgeOptions={{
+            type: 'smoothstep',
+            animated: false,
+          }}
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />

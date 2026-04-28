@@ -70,15 +70,13 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
   const nodes: Node<Entity>[] = [];
   const edges: Edge[] = [];
   
-  // Normalize SQL: remove comments and handle line breaks
-  const cleanSql = sql
+  // 1. IMPROVED CLEANING
+  // Instead of aggressive global stripping, we do a more surgical removal
+  // to avoid deleting legitimate CREATE TABLE statements that follow an INSERT with a semicolon in a string.
+  let cleanSql = sql
     .replace(/--.*$/gm, '') // Remove single line comments
     .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
-    .replace(/INSERT\s+INTO[\s\S]*?;/gi, '') // Remove Data Records
-    .replace(/SET\s+\w+[\s\S]*?;/gi, '') // Remove Session/System Vars
-    .replace(/LOCK\s+TABLES[\s\S]*?;/gi, '') // Remove Locks
-    .replace(/UNLOCK\s+TABLES\s*;/gi, '') // Remove Unlocks
-    .replace(/DROP\s+TABLE[\s\S]*?;/gi, ''); // Remove Drops
+    .replace(/#.*$/gm, ''); // Remove MySQL style # comments
 
   // Find all CREATE TABLE start positions
   const tableStarts: number[] = [];
@@ -95,8 +93,10 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     const nextStart = tableStarts[i + 1] || cleanSql.length;
     const segment = cleanSql.substring(start, nextStart);
 
-    // Extract table name (handle schemas and backticks)
-    const nameMatch = segment.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(/i);
+    // IMPROVED REGEX: 
+    // Matches: `schema`.`table`, `table`, table, "table", etc.
+    // Supports hyphens and other common identifier characters.
+    const nameMatch = segment.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60(]+)["`\x60]?)\s*\(/i);
     if (!nameMatch) continue;
 
     const tableName = cleanIdentifier(nameMatch[2]);
@@ -152,9 +152,17 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       const trimmedLine = line.trim();
       const upperLine = trimmedLine.toUpperCase();
       
-      // Skip table-level constraints and indexes
-      // We check if it starts with these keywords but NOT if it's a quoted identifier starting with them
-      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine) && !trimmedLine.startsWith('`') && !trimmedLine.startsWith('"')) return;
+      // Skip table-level constraints/indexes
+      // Improved logic: skip if it starts with these but is clearly a constraint (contains parens or keyword sequence)
+      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine)) {
+          // If it doesn't look like a column definition (e.g., contains a '(' for a list of columns), it's a constraint
+          if (trimmedLine.includes('(') || upperLine.includes('FOREIGN KEY')) return;
+          
+          // Exception: If the identifier is quoted, it might be a column named "KEY"
+          if (!trimmedLine.startsWith('`') && !trimmedLine.startsWith('"')) {
+              // Standard reserved word check: if it's just "KEY INT", we might want to check further
+          }
+      }
 
       const parts = trimmedLine.split(/\s+/);
       if (parts.length < 2) return;
@@ -243,24 +251,26 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     }
   };
 
-  // Extract Relationships
-  // 1. ALTER TABLE ADD CONSTRAINT FOREIGN KEY
-  const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s+ADD\s+(?:CONSTRAINT\s+["`]?(\w+)["`]?\s+)?FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?)\s*\(\s*["`]?(\w+)["`]?\s*\)/gi;
+  // 3. EXTRACT RELATIONSHIPS
+  // Handle ALTER TABLE constraints with better regex for special characters
+  const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s+ADD\s+(?:CONSTRAINT\s+["`\x60]?([^"`\s\x60]+)["`\x60]?\s+)?FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/gi;
   const alterMatches = Array.from(cleanSql.matchAll(alterFkRegex));
   for (const m of alterMatches) {
     processRel(cleanIdentifier(m[2]), cleanIdentifier(m[4]), cleanIdentifier(m[6]), cleanIdentifier(m[7]));
   }
 
-  // 2. Inline FOREIGN KEY and column REFERENCES
+  // Handle inline constraints
   for (const tableDef of tableDefinitions) {
     const lines = splitByTopLevelCommas(tableDef.body);
     lines.forEach(line => {
-        const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`]?(\w+)["`]?\s*\)\s+REFERENCES\s+(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?\s*\(\s*["`]?(\w+)["`]?\s*\)/i);
+        // FOREIGN KEY (...) REFERENCES ...
+        const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/i);
         if (fkMatch) {
             processRel(tableDef.name, cleanIdentifier(fkMatch[1]), cleanIdentifier(fkMatch[3]), cleanIdentifier(fkMatch[4]));
         }
         
-        const inlineFkMatch = line.match(/^(?:["`]?(\w+)["`]?)\s+[^,]+\s+REFERENCES\s+(?:["`]?(\w+)["`]?\.)?["`]?(\w+)["`]?\s*\(\s*["`]?(\w+)["`]?\s*\)/i);
+        // inline column REFERENCES: col_name type REFERENCES target_table(col)
+        const inlineFkMatch = line.match(/^(?:["`\x60]?([^"`\s\x60]+)["`\x60]?)\s+[^,]+\s+REFERENCES\s+(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/i);
         if (inlineFkMatch) {
             processRel(tableDef.name, cleanIdentifier(inlineFkMatch[1]), cleanIdentifier(inlineFkMatch[3]), cleanIdentifier(inlineFkMatch[4]));
         }

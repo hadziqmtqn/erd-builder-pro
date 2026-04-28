@@ -10,13 +10,15 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Share2, Globe, CloudOff, CloudRain, Cloud } from 'lucide-react';
+import { Share2, Globe, CloudOff, CloudRain, Cloud, Save, Check } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
@@ -26,6 +28,7 @@ interface MainHeaderProps {
   syncError?: boolean;
   isSyncing?: boolean;
   isRefreshing?: boolean;
+  hasPendingSyncs?: boolean;
   activeFileUid?: string;
   activeFileId?: number | string;
   initialShareSettings?: {
@@ -39,6 +42,7 @@ interface MainHeaderProps {
   updatedAt?: string;
   onDelete?: () => void;
   onRename?: () => void;
+  onSave?: () => void;
   onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
   onExportPDF?: () => void;
   onExportImage?: () => void;
@@ -55,6 +59,7 @@ export const MainHeader = React.memo(({
   syncError,
   isSyncing,
   isRefreshing,
+  hasPendingSyncs,
   activeFileUid,
   activeFileId,
   initialShareSettings,
@@ -64,6 +69,7 @@ export const MainHeader = React.memo(({
   updatedAt,
   onDelete,
   onRename,
+  onSave,
   onExportSQL,
   onExportPDF,
   onExportImage,
@@ -71,6 +77,11 @@ export const MainHeader = React.memo(({
   onImportMarkdown,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+  const [isMac, setIsMac] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMac(window.navigator.userAgent.toLowerCase().includes('mac'));
+  }, []);
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
@@ -173,17 +184,56 @@ export const MainHeader = React.memo(({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                ) : isSyncing ? (
-                  <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
-                     <Cloud className="w-3.5 h-3.5 animate-bounce" />
-                     <span className="text-[10px] font-medium uppercase tracking-wider">Syncing...</span>
-                  </div>
-                ) : isRefreshing ? (
+                ) : (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onSave}
+                          disabled={!hasPendingSyncs || isSyncing || !isOnline}
+                          className={cn(
+                            "h-8 px-2 gap-2 transition-all duration-300",
+                            hasPendingSyncs ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground/40 opacity-50 cursor-default"
+                          )}
+                        >
+                          {isSyncing ? (
+                            <>
+                              <Cloud className="w-4 h-4 animate-bounce" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Syncing...</span>
+                            </>
+                          ) : hasPendingSyncs ? (
+                            <>
+                              <Save className="w-4 h-4 animate-in zoom-in-50 duration-300" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Save</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-4 h-4 text-green-500/50" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Synced</span>
+                            </>
+                          )}
+                        </Button>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium">
+                        {hasPendingSyncs ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>Save changes to cloud</span>
+                            <span className="opacity-50 text-[9px]">{isMac ? '⌘' : 'Ctrl'} + S</span>
+                          </div>
+                        ) : "All changes are saved and synced"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                
+                {isRefreshing && (
                   <div className="flex items-center gap-2 text-primary animate-pulse">
                      <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                     <span className="text-[10px] font-bold uppercase tracking-wider">Checking Updates...</span>
+                     <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Checking Updates...</span>
                   </div>
-                ) : null}
+                )}
               </div>
             )}
 

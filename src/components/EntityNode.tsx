@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
 import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle } from 'lucide-react';
 import { Entity } from '../types';
@@ -36,7 +36,10 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
 
   // Notify React Flow when internal handle positions might have changed
   // Simplified dependency: watching IDs and order is fast and catches all layout shifts
-  const columnOrderHash = data.columns.map(c => `${c.id}-${c.sort_order}`).join(',');
+  const columnOrderHash = useMemo(() => 
+    data.columns.map(c => `${c.id}-${c.sort_order}`).join(','),
+    [data.columns]
+  );
   
   useEffect(() => {
     updateNodeInternals(id);
@@ -66,18 +69,22 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   };
 
   // Eraser.io style colors based on data.color
-  const borderColor = data.color;
-  const headerBg = `${data.color}20`; // 12% opacity
-  const rowHoverBg = `${data.color}10`; // 6% opacity
-  const typeColor = data.color;
+  const { borderColor, headerBg, rowHoverBg, typeColor } = useMemo(() => ({
+    borderColor: data.color,
+    headerBg: `${data.color}20`, // 12% opacity
+    rowHoverBg: `${data.color}10`, // 6% opacity
+    typeColor: data.color,
+  }), [data.color]);
+
+  const containerClasses = useMemo(() => cn(
+    "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container",
+    selected && "ring-2 ring-white/10"
+  ), [selected]);
 
   return (
     <>
       <div 
-        className={cn(
-          "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container",
-          selected && "ring-2 ring-white/10"
-        )}
+        className={containerClasses}
         style={{ borderColor: borderColor, overflow: 'visible' }}
       >
         {/* Header */}
