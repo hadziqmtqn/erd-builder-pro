@@ -87,49 +87,13 @@ export function useERDSession(
               source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
               target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
               source_handle: e.sourceHandle || undefined,
-              target_handle: e.target_handle || undefined,
+              target_handle: e.targetHandle || undefined,
               label: e.label
             })), 
             viewport_x: parsedDraft.viewport.x, 
             viewport_y: parsedDraft.viewport.y, 
             viewport_zoom: parsedDraft.viewport.zoom 
           };
-          // Load diagram data (cloud) and then decide whether to apply a local draft
-          useEffect(() => {
-            if (!id) return;
-            const loadDiagram = async () => {
-              // 1. Fetch cloud version
-              const cloudDiagram = data;
-              if (!cloudDiagram) return;
-              // 2. Check for a pending local draft for this diagram
-              const pendingDrafts = await localPersistence.getAllPendingSyncs();
-              const draft = pendingDrafts.find(d => d.type === DraftType.ERD && String(d.id) === String(id));
-              if (draft) {
-                // Compare timestamps
-                const cloudTime = new Date(cloudDiagram.updated_at).getTime();
-                const localTime = draft.updated_at;
-                if (cloudTime > localTime) {
-                  // Cloud is newer, discard stale draft
-                  console.log(`%c[ERDSession] Discarding stale local draft for diagram#${id}`, 'color: #ef4444; font-weight: bold');
-                  await localPersistence.deleteDraft(DraftType.ERD, id);
-                } else {
-                  // Local draft is newer or equal, load it
-                  try {
-                    const parsedDraft = JSON.parse(draft.data);
-                    // Apply draft data to state (nodes, edges, viewport)
-                    // applyDraftToState(parsedDraft);
-                    toast.info('Loaded unsynced local draft');
-                  } catch (e) {
-                    console.error('Failed to parse local draft', e);
-                  }
-                  return; // Draft applied, skip further processing
-                }
-              }
-              // No valid draft, load cloud data normally
-              // applyCloudDataToState(cloudDiagram);
-            };
-            loadDiagram();
-          }, [id]);
           toast.info("Loaded unsynced local draft");
         } catch (e) {}
       }

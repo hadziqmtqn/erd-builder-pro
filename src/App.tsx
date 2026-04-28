@@ -364,6 +364,11 @@ function AppContent() {
       // Throttle: don't refresh more than once every 120 seconds (2 minutes)
       const now = Date.now();
       if (now - lastFocusFetchRef.current < 120000) return;
+
+      // SAFETY: Don't refresh if we have a very recent local save (within 5 seconds)
+      // to avoid overwriting "fresh" edits that might not have reached the cloud yet
+      if (now - lastSaveCallRef.current < 5000) return;
+
       lastFocusFetchRef.current = now;
 
       setIsRefreshing(true);
@@ -464,6 +469,7 @@ function AppContent() {
       setIsLocalSaving(true);
       saveTimeoutRef.current = setTimeout(async () => {
         await saveDiagram(nodes, edges, viewportRef.current);
+        lastSaveCallRef.current = Date.now();
         setIsLocalSaving(false);
         triggerDebouncedSync();
       }, 800);
@@ -488,6 +494,7 @@ function AppContent() {
         node.id === updatedEntity.id ? { ...node, data: updatedEntity } : node
       );
       await saveDiagram(currentNodes, edges, viewportRef.current);
+      lastSaveCallRef.current = Date.now();
       
       // 2. Instant Cloud Sync (Supabase)
       syncDrafts();
@@ -571,6 +578,7 @@ function AppContent() {
       await saveNote({
         id: noteId, content, title, project_id
       } as any);
+      lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
     }, 800);
@@ -594,6 +602,7 @@ function AppContent() {
       await saveDrawing({
         id: drawingId, data, title, project_id
       } as any);
+      lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
     }, 1500);
@@ -618,6 +627,7 @@ function AppContent() {
       await saveFlowchart({
         id: flowchartId, data: dataString, title, project_id
       } as any);
+      lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
       triggerDebouncedSync();
     }, 800);
@@ -817,7 +827,7 @@ function AppContent() {
       <SidebarInset className={isPublicView ? "w-full" : ""}>
         <MainHeader 
           featureLabel={featureLabel} activeProjectName={activeProjectName} activeFileName={activeFileName} 
-          view={view as any} hasActiveItem={isPublicView ? true : hasActiveItem} 
+          view={view} hasActiveItem={isPublicView ? true : hasActiveItem} 
           syncError={syncError}
           isSyncing={isSyncing}
           isRefreshing={isRefreshing}

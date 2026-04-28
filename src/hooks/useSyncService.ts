@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { localPersistence } from '../lib/localPersistence';
 import { DraftType } from '../types';
 import { toast } from 'sonner';
+import { getCachedDiagramVersion, updateCachedDiagramVersion, clearCachedDiagramVersion, refreshDiagramVersion } from '../lib/diagramVersioning';
 
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -123,7 +124,12 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
               type: 'one-to-many',
               label: e.label,
             }));
-            body = { entities, relationships, viewport: parsedData.viewport };
+            
+            // 🔒 Include version for optimistic locking
+            const cachedVersion = await getCachedDiagramVersion(draft.id);
+            const expectedVersion = cachedVersion !== null ? cachedVersion : undefined;
+            
+            body = { entities, relationships, viewport: parsedData.viewport, expectedVersion };
           } else if (draft.type === DraftType.FLOWCHART) {
             endpoint = `/api/flowcharts/${draft.id}`;
             body = { 
@@ -156,10 +162,49 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
               return; // Stop processing the queue
             }
 
+            // ❌ Handle conflict (409) - version mismatch
+            if (res.status === 409) {
+              console.warn(`[Race Condition] Conflict detected for ${draft.type}#${draft.id} - version mismatch`);
+              try {
+                const errorData = await res.json();
+                
+                // 🔄 Clear cached version and refresh from server
+                await clearCachedDiagramVersion(draft.id);
+                
+                if (draft.type === DraftType.ERD && errorData.currentVersion !== undefined) {
+                  // Update version from server response
+                  await updateCachedDiagramVersion(draft.id, errorData.currentVersion);
+                  console.log(`[Sync] Updated version for ${draft.id} to ${errorData.currentVersion}`);
+                  
+                  // Retry sync with new version
+                  if (errorData.retryable) {
+                    console.log(`[Sync] Retrying sync for ${draft.id} with new version...`);
+                    // Keep the draft pending, will retry next sync cycle
+                    continue; // Skip marking as synced, let it retry
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to parse 409 response:', e);
+              }
+              // Mark as failed but keep in pending queue for retry
+              continue;
+            }
+
             if (res.ok) {
-              const marked = await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
-              if (marked) successCount++;
-              else console.log(`In-flight update detected for ${draft.id}, deferring markSynced`);
+              try {
+                const responseData = await res.json();
+                
+                // ✅ Update cached version from successful response
+                if (draft.type === DraftType.ERD && responseData.version !== undefined) {
+                  await updateCachedDiagramVersion(draft.id, responseData.version);
+                }
+                
+                const marked = await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
+                if (marked) successCount++;
+                else console.log(`In-flight update detected for ${draft.id}, deferring markSynced`);
+              } catch (e) {
+                console.warn('Failed to parse success response:', e);
+              }
             }
           }
         } catch (err) {

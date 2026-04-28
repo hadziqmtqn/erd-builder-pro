@@ -15,7 +15,8 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   let query = supabase
     .from("diagrams")
     .select("*, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false);
+    .eq("is_deleted", false)
+    .eq("user_id", (req as any).user.id);
 
   if (isPublic !== null) {
     query = query.eq("is_public", isPublic);
@@ -54,7 +55,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   const { name, project_id } = req.body;
   const { data, error } = await supabase
     .from("diagrams")
-    .insert([{ name, project_id: project_id || null }])
+    .insert([{ name, project_id: project_id || null, user_id: (req as any).user.id }])
     .select()
     .single();
 
@@ -111,7 +112,7 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
 
   if (relError) return res.status(500).json({ error: relError.message });
 
-  const entitiesWithColumns = await Promise.all(entities.map(async (entity) => {
+  const entitiesWithColumns = await Promise.all(entities.map(async (entity: any) => {
     const { data: columns } = await supabase
       .from("columns")
       .select("*")
@@ -154,6 +155,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
       .from("diagrams")
       .update(updateData)
       .eq("id", id)
+      .eq("user_id", (req as any).user.id)
       .select()
       .single();
 
@@ -170,6 +172,7 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     .from("diagrams")
     .select("*")
     .eq("id", diagramId)
+    .eq("user_id", (req as any).user.id)
     .single();
 
   if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -188,7 +191,7 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 
   if (relError) return res.status(500).json({ error: relError.message });
 
-  const entitiesWithColumns = await Promise.all(entities.map(async (entity) => {
+  const entitiesWithColumns = await Promise.all(entities.map(async (entity: any) => {
     const { data: columns } = await supabase
       .from("columns")
       .select("*")
@@ -204,7 +207,8 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
   const { error } = await supabase
     .from("diagrams")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete diagram");
   res.json({ success: true });
@@ -214,7 +218,8 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
   const { error } = await supabase
     .from("diagrams")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore diagram");
   res.json({ success: true });
@@ -224,7 +229,8 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
   const { error } = await supabase
     .from("diagrams")
     .delete()
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -235,7 +241,8 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("diagrams")
     .update({ name })
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -246,7 +253,8 @@ router.put("/:id/project", authenticate, async (req: ExpressRequest, res: Expres
   const { error } = await supabase
     .from("diagrams")
     .update({ project_id: project_id || null })
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -254,18 +262,79 @@ router.put("/:id/project", authenticate, async (req: ExpressRequest, res: Expres
 
 router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const diagramId = req.params.id;
-  const { entities, relationships, viewport } = req.body;
+  const { entities, relationships, viewport, expectedVersion } = req.body;
 
   try {
-    await supabase.from("relationships").delete().eq("file_id", diagramId);
-    
-    const { data: existingEntities } = await supabase.from("entities").select("id").eq("file_id", diagramId);
-    const existingEntityIds = existingEntities?.map(e => e.id) || [];
-    if (existingEntityIds.length > 0) {
-      await supabase.from("columns").delete().in("entity_id", existingEntityIds);
-    }
-    await supabase.from("entities").delete().eq("file_id", diagramId);
+    // ✅ STEP 1: Fetch current diagram state with version check
+    const { data: currentDiagram, error: fetchError } = await supabase
+      .from("diagrams")
+      .select("_version, updated_at")
+      .eq("id", diagramId)
+      .eq("user_id", (req as any).user.id)
+      .single();
 
+    if (fetchError || !currentDiagram) {
+      return res.status(404).json({ error: "Diagram not found" });
+    }
+
+    // ✅ STEP 2: Optimistic locking - reject if version mismatch
+    if (expectedVersion !== undefined && expectedVersion !== null) {
+      if (currentDiagram._version !== expectedVersion) {
+        console.warn(`[Race Condition] Version mismatch for diagram ${diagramId}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
+        return res.status(409).json({ 
+          error: "Conflict: Diagram was modified. Please refresh and try again.",
+          currentVersion: currentDiagram._version,
+          retryable: true
+        });
+      }
+    }
+
+    // ✅ STEP 3: Get existing relationships for comparison (to detect true changes)
+    const { data: existingRelationships } = await supabase
+      .from("relationships")
+      .select("id")
+      .eq("file_id", diagramId);
+    
+    const existingRelIds = new Set(existingRelationships?.map((r: any) => r.id) || []);
+    const newRelIds = new Set(relationships.map((r: any) => r.id));
+
+    // ✅ STEP 4: Delete relationships that were removed
+    const relsToDelete = Array.from(existingRelIds).filter(id => !newRelIds.has(id));
+    if (relsToDelete.length > 0) {
+      const { error: delRelError } = await supabase
+        .from("relationships")
+        .delete()
+        .in("id", relsToDelete);
+      if (delRelError) throw delRelError;
+    }
+
+    // ✅ STEP 5: Delete entities that were removed (and their columns)
+    const { data: existingEntities } = await supabase
+      .from("entities")
+      .select("id")
+      .eq("file_id", diagramId);
+    
+    const existingEntityIds = new Set(existingEntities?.map((e: any) => e.id) || []);
+    const newEntityIds = new Set(entities.map((e: any) => e.id));
+    const entitiesToDelete = Array.from(existingEntityIds).filter(id => !newEntityIds.has(id));
+
+    if (entitiesToDelete.length > 0) {
+      // Delete columns first (FK constraint)
+      const { error: delColError } = await supabase
+        .from("columns")
+        .delete()
+        .in("entity_id", entitiesToDelete);
+      if (delColError) throw delColError;
+
+      // Then delete entities
+      const { error: delEntError } = await supabase
+        .from("entities")
+        .delete()
+        .in("id", entitiesToDelete);
+      if (delEntError) throw delEntError;
+    }
+
+    // ✅ STEP 6: Upsert entities (update or insert)
     if (entities.length > 0) {
       const entitiesToInsert = entities.map((e: any) => ({
         id: e.id,
@@ -275,8 +344,14 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
         y: e.y,
         color: e.color || '#6366f1'
       }));
-      await supabase.from("entities").insert(entitiesToInsert);
+      
+      const { error: upsertEntError } = await supabase
+        .from("entities")
+        .upsert(entitiesToInsert, { onConflict: 'id' });
+      
+      if (upsertEntError) throw upsertEntError;
 
+      // ✅ STEP 7: Upsert columns
       const allColumns: any[] = [];
       for (const entity of entities) {
         for (const col of entity.columns) {
@@ -293,10 +368,15 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
         }
       }
       if (allColumns.length > 0) {
-        await supabase.from("columns").insert(allColumns);
+        const { error: upsertColError } = await supabase
+          .from("columns")
+          .upsert(allColumns, { onConflict: 'id' });
+        
+        if (upsertColError) throw upsertColError;
       }
     }
 
+    // ✅ STEP 8: Upsert relationships (prevent race condition data loss)
     if (relationships.length > 0) {
       const relsToInsert = relationships.map((r: any) => ({
         id: r.id,
@@ -305,21 +385,41 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
         target_entity_id: r.target_entity_id,
         source_column_id: r.source_column_id || null,
         target_column_id: r.target_column_id || null,
+        source_handle: r.source_handle || null,
+        target_handle: r.target_handle || null,
         type: r.type || 'one-to-many',
         label: r.label || null
       }));
-      await supabase.from("relationships").insert(relsToInsert);
+      
+      const { error: upsertRelError } = await supabase
+        .from("relationships")
+        .upsert(relsToInsert, { onConflict: 'id' });
+      
+      if (upsertRelError) throw upsertRelError;
     }
 
-    await supabase.from("diagrams").update({ 
-      updated_at: new Date().toISOString(),
-      viewport_x: viewport?.x || 0,
-      viewport_y: viewport?.y || 0,
-      viewport_zoom: viewport?.zoom || 1.0
-    }).eq("id", diagramId);
+    // ✅ STEP 9: Update diagram metadata
+    const { data: updatedDiagram, error: updateError } = await supabase
+      .from("diagrams")
+      .update({ 
+        updated_at: new Date().toISOString(),
+        viewport_x: viewport?.x || 0,
+        viewport_y: viewport?.y || 0,
+        viewport_zoom: viewport?.zoom || 1.0
+      })
+      .eq("id", diagramId)
+      .select("_version")
+      .single();
 
-    res.json({ success: true });
+    if (updateError) throw updateError;
+
+    // ✅ STEP 10: Return new version for next save
+    res.json({ 
+      success: true,
+      version: updatedDiagram?._version || currentDiagram._version + 1
+    });
   } catch (err: any) {
+    console.error(`[Save Error] Diagram ${diagramId}:`, err);
     res.status(500).json({ error: err.message });
   }
 });

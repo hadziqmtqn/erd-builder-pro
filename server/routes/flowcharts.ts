@@ -15,7 +15,8 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   let query = supabase
     .from("flowcharts")
     .select("*, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false);
+    .eq("is_deleted", false)
+    .eq("user_id", (req as any).user.id);
 
   if (isPublic !== null) {
     query = query.eq("is_public", isPublic);
@@ -56,7 +57,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   const { title, data, project_id } = req.body;
   const { data: inserted, error } = await supabase
     .from("flowcharts")
-    .insert([{ title, data: data || '{"nodes":[], "edges":[]}', project_id: project_id || null }])
+    .insert([{ title, data: data || '{"nodes":[], "edges":[]}', project_id: project_id || null, user_id: (req as any).user.id }])
     .select()
     .single();
 
@@ -113,6 +114,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
       .from("flowcharts")
       .select("is_public, published_at")
       .eq("id", id)
+      .eq("user_id", (req as any).user.id)
       .single();
 
     if (!currentFlowchart) return res.status(404).json({ error: "Flowchart not found" });
@@ -135,6 +137,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
       .from("flowcharts")
       .update(updateData)
       .eq("id", id)
+      .eq("user_id", (req as any).user.id)
       .select()
       .single();
 
@@ -150,6 +153,7 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
     .from("flowcharts")
     .select("*")
     .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id)
     .single();
 
   if (error || !data) return res.status(404).json({ error: "Flowchart not found" });
@@ -161,7 +165,8 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("flowcharts")
     .update({ title, data, project_id: project_id || null, updated_at: new Date().toISOString() })
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -171,7 +176,8 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
   const { error } = await supabase
     .from("flowcharts")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete flowchart");
   res.json({ success: true });
@@ -181,7 +187,8 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
   const { error } = await supabase
     .from("flowcharts")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id);
+    .eq("id", req.params.id)
+    .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore flowchart");
   res.json({ success: true });
@@ -192,7 +199,8 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
     const { error } = await supabase
       .from("flowcharts")
       .delete()
-      .eq("id", req.params.id);
+      .eq("id", req.params.id)
+      .eq("user_id", (req as any).user.id);
 
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });

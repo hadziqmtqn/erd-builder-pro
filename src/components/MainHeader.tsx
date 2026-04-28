@@ -21,7 +21,7 @@ interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
   activeFileName: string | null | undefined;
-  view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash';
+  view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash' | 'changelog' | 'backups';
   hasActiveItem: boolean;
   syncError?: boolean;
   isSyncing?: boolean;

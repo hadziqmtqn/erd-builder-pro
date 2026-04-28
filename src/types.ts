@@ -55,6 +55,7 @@ export interface Diagram {
   id: number | string;
   uid?: string;
   name: string;
+  user_id?: string; // Owner of the diagram
   project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
@@ -69,6 +70,7 @@ export interface Diagram {
   is_public?: boolean;
   share_token?: string;
   expiry_date?: string;
+  _version?: number; // For optimistic locking - prevents race conditions
 }
 
 export interface Note {
@@ -76,6 +78,7 @@ export interface Note {
   uid?: string;
   title: string;
   content: string;
+  user_id?: string; // Owner of the note
   project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
@@ -85,6 +88,7 @@ export interface Note {
   is_public?: boolean;
   share_token?: string;
   expiry_date?: string;
+  _version?: number; // For optimistic locking - prevents race conditions
 }
 
 export interface Drawing {
@@ -92,6 +96,7 @@ export interface Drawing {
   uid?: string;
   title: string;
   data: string;
+  user_id?: string; // Owner of the drawing
   project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
@@ -101,6 +106,7 @@ export interface Drawing {
   is_public?: boolean;
   share_token?: string;
   expiry_date?: string;
+  _version?: number; // For optimistic locking - prevents race conditions
 }
 
 export interface Flowchart {
@@ -108,6 +114,7 @@ export interface Flowchart {
   uid?: string;
   title: string;
   data: string;
+  user_id?: string; // Owner of the flowchart
   project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;
@@ -117,4 +124,16 @@ export interface Flowchart {
   is_public?: boolean;
   share_token?: string;
   expiry_date?: string;
+  _version?: number; // For optimistic locking - prevents race conditions
+}
+
+export interface EntityChange {
+  id: number;
+  entity_type: 'diagram' | 'note' | 'drawing' | 'flowchart';
+  entity_id: number;
+  version: number;
+  user_id?: string;
+  changes: Record<string, any>; // {field: old_value, field: new_value, ...}
+  change_type: 'create' | 'update' | 'delete';
+  created_at: string;
 }
