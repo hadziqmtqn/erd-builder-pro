@@ -61,7 +61,8 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   onRenameSuccess,
 }) => {
   const handleSave = async () => {
-    const id = activeDocument?.id;
+    // Notes use uid (UUID), others use id (auto-increment). Pick the right one.
+    const id = view === 'notes' ? activeDocument?.uid : activeDocument?.id;
     if (id && newName.trim()) {
       const projectId = selectedProjectId === "none" ? null : selectedProjectId;
       const currentProjectId = activeDocument?.project_id || activeDocument?.projectId;
