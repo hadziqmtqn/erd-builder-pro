@@ -10,7 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Share2, Globe, CloudOff, CloudRain, Cloud, Save, Check } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -28,6 +28,7 @@ interface MainHeaderProps {
   syncError?: boolean;
   isSyncing?: boolean;
   isRefreshing?: boolean;
+  isLocalSaving?: boolean;
   hasPendingSyncs?: boolean;
   activeFileUid?: string;
   activeFileId?: number | string | null;
@@ -62,6 +63,7 @@ export const MainHeader = React.memo(({
   syncError,
   isSyncing,
   isRefreshing,
+  isLocalSaving = false,
   hasPendingSyncs,
   activeFileUid,
   activeFileId,
@@ -156,27 +158,23 @@ export const MainHeader = React.memo(({
       <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
           <div className="flex items-center gap-2 sm:gap-4">
-            {!isPublicView && updatedAt && (
-              <TooltipProvider delay={200}>
-                <Tooltip>
-                  <TooltipTrigger 
-                    render={
-                      <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium cursor-help hover:text-foreground transition-colors">
-                        <span className="opacity-50">Edited</span>
-                        <span>{format(new Date(updatedAt), 'MMM dd')}</span>
-                      </div>
-                    }
-                  />
-                  <TooltipContent side="bottom" className="text-[10px] py-1 px-2 font-mono">
-                    {format(new Date(updatedAt), 'eee, dd MMM yyyy HH:mm:ss')}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
             {!isPublicView && (
               <div className="flex items-center gap-2 shrink-0">
-                {syncError ? (
+                {isLocalSaving ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Saving...</span>
+                        </div>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium">
+                        Saving changes locally...
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : syncError ? (
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
@@ -204,7 +202,6 @@ export const MainHeader = React.memo(({
                             hasPendingSyncs ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground/40 opacity-50 cursor-default"
                           )}
                         >
-
                           {isSyncing ? (
                             <>
                               <Cloud className="w-4 h-4 animate-bounce" />
@@ -241,9 +238,25 @@ export const MainHeader = React.memo(({
                      <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Checking Updates...</span>
                   </div>
                 )}
-
-
               </div>
+            )}
+
+            {!isPublicView && updatedAt && (
+              <TooltipProvider delay={200}>
+                <Tooltip>
+                  <TooltipTrigger 
+                    render={
+                      <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium cursor-help hover:text-foreground transition-colors">
+                        <span className="opacity-50">Edited</span>
+                        <span>{format(new Date(updatedAt), 'MMM dd')}</span>
+                      </div>
+                    }
+                  />
+                  <TooltipContent side="bottom" className="text-[10px] py-1 px-2 font-mono">
+                    {format(new Date(updatedAt), 'eee, dd MMM yyyy HH:mm:ss')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
 
             <NavActionsMenu 
