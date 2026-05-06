@@ -128,7 +128,7 @@ export function FileGroup({
                 item={file}
                 type={sidebarView as any}
                 icon={Icon}
-                isActive={activeFileId === getFileIdentifier(file) && view === sidebarView}
+                isActive={String(activeFileId) === String(getFileIdentifier(file)) && view === sidebarView}
                 isOnline={isOnline}
                 onSelect={onFileSelect}
                 setEditingFile={setEditingFile}
@@ -153,7 +153,7 @@ export function FileGroup({
                   item={file}
                   type={sidebarView as any}
                   icon={Icon}
-                  isActive={activeFileId === getFileIdentifier(file) && view === sidebarView}
+                  isActive={String(activeFileId) === String(getFileIdentifier(file)) && view === sidebarView}
                   isOnline={isOnline}
                   onSelect={onFileSelect}
                     setEditingFile={setEditingFile}

@@ -12,6 +12,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -212,7 +214,7 @@ export function ProjectMenuItem({
                 key={file.id}
                 item={file}
                 type={sidebarView as any}
-                isActive={activeFileId === file.id && view === sidebarView}
+                isActive={String(activeFileId) === String(file.uid ?? file.id) && view === sidebarView}
                 isOnline={isOnline}
                 onSelect={onFileSelect}
                 setEditingFile={setEditingFile}
