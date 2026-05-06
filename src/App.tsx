@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   ReactFlowProvider,
-  Node,
   Edge,
 } from '@xyflow/react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -23,15 +22,15 @@ import { DuplicateDocumentDialog } from './components/modals/DuplicateDocumentDi
 import { TablePropertiesModal } from './components/modals/TablePropertiesModal';
 import { RelationshipPropertiesModal } from './components/modals/RelationshipPropertiesModal';
 
-
 import { ForbiddenView } from "./components/views/ForbiddenView";
 import { WorkspaceContent } from '@/components/layout/WorkspaceContent';
+import { NotesPage } from '@/components/pages/NotesPage';
 
 // Layout Components
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
 import { AppInitialization } from './components/layout/AppInitialization';
 import { useAppMetadata } from './hooks/useAppMetadata';
-import { getTitleCache, getContentCache, saveContentCache } from './utils/titleCache';
+import { saveContentCache } from './utils/titleCache';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useActiveItemGuard } from './hooks/useActiveItemGuard';
 
@@ -324,10 +323,6 @@ function AppContent() {
   }, [activeDiagramId, isERDItemLoading]);
 
   useEffect(() => {
-    if (activeNoteUid && !isNoteItemLoading) lastLoadedNoteIdRef.current = activeNoteUid;
-  }, [activeNoteUid, isNoteItemLoading]);
-
-  useEffect(() => {
     if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
   }, [activeDrawingId, isDrawingItemLoading]);
 
@@ -549,6 +544,20 @@ function AppContent() {
     syncDrafts,
   });
 
+  // Route /notes/:uid → select note (only after auth and on external URL change)
+  const lastProcessedNotesUrlRef = useRef('');
+  const handleNoteSelectRef = useRef(handleNoteSelect);
+  handleNoteSelectRef.current = handleNoteSelect;
+  useEffect(() => {
+    if (!isAuthenticated || getSharePathInfo()) return;
+    if (lastProcessedNotesUrlRef.current === location.pathname) return;
+    const m = location.pathname.match(/^\/notes\/([^/]+)/);
+    if (m) {
+      lastProcessedNotesUrlRef.current = location.pathname;
+      handleNoteSelectRef.current(m[1]);
+    }
+  }, [isAuthenticated, location.pathname]);
+
   async function handleDiagramSelect(id: number | string) {
     if (activeDiagramId === id && view === 'erd') return;
     await flushPendingSaves();
@@ -586,7 +595,15 @@ function AppContent() {
     if (!getSharePathInfo() && location.pathname !== '/notes/' + uid) {
       navigate('/notes/' + uid);
     }
-    await selectNote(uid, { contentVersionAtStart: versionAtStart });
+    // Pass fallbackNote from projects data — selectNote uses it directly
+    // instead of waiting for notesRef to update on the next React render
+    const fromProjects = (projects as any[])
+      ?.flatMap((p: any) => p.notes || [])
+      .find((n: any) => n.uid === uid);
+    await selectNote(uid, {
+      contentVersionAtStart: versionAtStart,
+      fallbackNote: fromProjects,
+    });
     lastLoadedNoteIdRef.current = uid;
   }
 
@@ -714,9 +731,7 @@ function AppContent() {
     }
   }, [activeDocument, activeFileName, handleExportImage]);
 
-
   useUpdateCheck(() => handleViewChange('changelog'));
-
 
   useEffect(() => {
     const shareInfo = getSharePathInfo();
@@ -738,80 +753,6 @@ function AppContent() {
       }
     }
   }, [isInstallable, installApp]);
-
-  // Optimistic breadcrumb + content from cache — runs before auth on first mount only
-  // Provides instant display via stale-while-revalidate pattern:
-  //   1. Content cache (localStorage) — fastest, populated from prev API calls
-  //   2. IndexedDB draft — fallback if localStorage cache is empty
-  // The real API call in handleNoteSelect will refresh content in background.
-  useEffect(() => {
-    if (isAuthenticated !== null || getSharePathInfo()) return;
-    const notesMatch = location.pathname.match(/^\/notes\/([^/]+)/);
-    if (notesMatch) {
-      const uid = notesMatch[1];
-      
-      // 1. Breadcrumb title from cache
-      const titleCached = getTitleCache(uid);
-      // 2. Full content from cache (stale-while-revalidate)
-      const contentCached = getContentCache(uid);
-      
-      if (titleCached || contentCached) {
-        if (!notes.some(n => n.uid === uid)) {
-          setView('notes');
-          setSidebarView('notes');
-          setActiveNoteUid(uid);
-          setNotes(prev => prev.some(n => n.uid === uid) ? prev : [...prev, {
-            uid,
-            title: contentCached?.title || titleCached?.title || 'Untitled',
-            projects: titleCached?.projectName ? { name: titleCached.projectName } : undefined,
-            content: contentCached?.content,  // full content from cache!
-          } as any]);
-        }
-      } else {
-        // 3. Fallback: IndexedDB draft (exists if user ever edited this note)
-        // Kick off async draft fetch to prepopulate content before auth resolves
-        localPersistence.getDraft(DraftType.NOTES, uid).then(draft => {
-          if (!draft || !draft.data) return;
-          try {
-            const parsed = JSON.parse(draft.data);
-            const draftContent = parsed.content || '';
-            if (draftContent && !notesRef.current.some(n => n.uid === uid && n.content)) {
-              setView('notes');
-              setSidebarView('notes');
-              setActiveNoteUid(uid);
-              setNotes(prev => prev.some(n => n.uid === uid && n.content) ? prev : [...prev, {
-                uid,
-                title: parsed.title || 'Untitled',
-                content: draftContent,
-              } as any]);
-            }
-          } catch {}
-        }).catch(() => {});
-      }
-    }
-  }, [location.pathname]);
-
-  // Route /notes/:uid → select note (only after auth and on external URL change)
-  // Does NOT re-fire on internal navigation (sidebar click, handleNoteSelect's own navigate)
-  const lastProcessedNotesUrlRef = useRef('');
-  useEffect(() => {
-    if (!isAuthenticated || getSharePathInfo()) return;
-    // Skip if this URL was already processed by the current handleNoteSelect call
-    if (lastProcessedNotesUrlRef.current === location.pathname) return;
-    const m = location.pathname.match(/^\/notes\/([^/]+)/);
-    if (m) {
-      lastProcessedNotesUrlRef.current = location.pathname;
-      handleNoteSelect(m[1]);
-    }
-  }, [isAuthenticated, location.pathname]);
-
-  // View change → navigate URL
-  useEffect(() => {
-    if (getSharePathInfo()) return;
-    if (view !== 'notes' && location.pathname.startsWith('/notes/')) {
-      navigate('/', { replace: true });
-    }
-  }, [view]);
 
   useEffect(() => {
     if (!isOnline && !isPublicView) {
@@ -1035,9 +976,6 @@ function AppContent() {
 
   // Handlers
 
-
-
-
   useEffect(() => {
     window.addEventListener('editEntity', handleEditEntity);
     window.addEventListener('deleteEntity', handleDeleteEntity);
@@ -1067,25 +1005,23 @@ function AppContent() {
         } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
           if (canRedo) redo();
         }
-      } else if (view === 'notes') {
-        // Notes specific shortcuts - only active when a note is open
-        if (!activeNoteUid) return;
-
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e') {
-          e.preventDefault();
-          setIsExportNoteModalOpen(true);
-        } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'i') {
-          e.preventDefault();
-          setIsImportNoteModalOpen(true);
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [view, activeNoteUid, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
+  }, [view, undo, redo, canUndo, canRedo]);
 
-  
-
+  // Listen for NotesPage custom events to open/close modals
+  useEffect(() => {
+    const onOpenExport = () => setIsExportNoteModalOpen(true);
+    const onOpenImport = () => setIsImportNoteModalOpen(true);
+    window.addEventListener('notes:open-export-modal', onOpenExport);
+    window.addEventListener('notes:open-import-modal', onOpenImport);
+    return () => {
+      window.removeEventListener('notes:open-export-modal', onOpenExport);
+      window.removeEventListener('notes:open-import-modal', onOpenImport);
+    };
+  }, []);
 
   const handleViewChange = async (newView: typeof view) => {
     if (!isOnline && !isPublicView) {
@@ -1104,7 +1040,6 @@ function AppContent() {
     }
   };
 
-
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
       const { id, type } = itemToDelete;
@@ -1118,10 +1053,6 @@ function AppContent() {
       await fetchTrash();
     }
   };
-
-
-
-
 
   const handleDuplicate = () => {
     if (!activeDocument) return;
@@ -1291,6 +1222,28 @@ function AppContent() {
           onImportMarkdown={handleImportMarkdown}
           onDuplicate={handleDuplicate}
           isGuest={isGuest}
+        />
+
+        <NotesPage
+          notes={notes}
+          setNotes={setNotes}
+          activeNoteUid={activeNoteUid}
+          setActiveNoteUid={setActiveNoteUid}
+          saveNote={saveNote}
+          bumpContentVersion={bumpContentVersion}
+          getContentVersion={getContentVersion}
+          isNoteItemLoading={isNoteItemLoading}
+          isAuthenticated={isAuthenticated}
+          isRefreshing={isRefreshing}
+          syncDrafts={syncDrafts}
+          broadcastMessage={broadcastMessage}
+          setIsLocalSaving={setIsLocalSaving}
+          isIncomingSyncRef={isIncomingSyncRef}
+          notesSaveTimeout={notesSaveTimeout}
+          view={view}
+          setView={setView}
+          setSidebarView={setSidebarView}
+          lastLoadedNoteIdRef={lastLoadedNoteIdRef}
         />
 
         <ImportNoteModal 

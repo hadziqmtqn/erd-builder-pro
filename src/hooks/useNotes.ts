@@ -282,72 +282,104 @@ export function useNotes(isGuest: boolean = false) {
      *  changed since the function started — meaning the user edited the note
      *  while the async operations were in-flight. */
     contentVersionAtStart?: number;
+    /** Note from sidebar/projects data with content — used as fallback
+     *  if not in notesRef.current yet (ref is stale before next render). */
+    fallbackNote?: Note;
   }) => {
-    // Use notesRef.current to get the latest state even if the component hasn't re-rendered yet
-    const note = notesRef.current.find(n => n.uid === uid);
+    // Use notesRef.current OR fallbackNote (direct from caller, no render wait)
+    const note = notesRef.current.find(n => n.uid === uid) || options?.fallbackNote;
     if (note?.is_deleted) return;
     
     if (!options?.silent) setIsItemLoading(true);
     try {
-      // ALWAYS load full content from server if not guest.
-      // This ensures we have the latest data from the database and avoids the bug 
-      // where App.tsx clears content while this function sees stale state.
-      if (!isGuest) {
+      // Step 1: Start API fetch immediately (fire in background, don't block)
+      const apiPromise = !isGuest ? (async () => {
         try {
           const res = await fetch(`/api/notes/${uid}`);
-          if (res.ok) {
-            const fullNote = await res.json();
-            // Only update if it's not deleted (might have changed on another tab)
-            // AND if user hasn't edited since selectNote started (prevent overwrite)
-            const shouldApplyServerContent = fullNote && !fullNote.is_deleted && (
-              options?.contentVersionAtStart === undefined ||
-              contentVersionRef.current === options.contentVersionAtStart
-            );
-            if (shouldApplyServerContent) {
-              setNotes(prev => {
-                const exists = prev.some(n => n.uid === uid);
-                if (exists) {
-                  return prev.map(n => n.uid === uid ? { ...n, content: fullNote.content } : n);
-                }
-                return [...prev, fullNote];
-              });
-              // Cache title for instant breadcrumb on next page load
-              try { saveTitleCache(uid, fullNote.title || 'Untitled', fullNote.projects?.name); } catch {}
-              // Cache full content for instant display on next page load (stale-while-revalidate)
-              try { saveContentCache(uid, fullNote.title || 'Untitled', fullNote.content || ''); } catch {}
-            }
-          }
+          if (!res.ok) return null;
+          const fullNote = await res.json();
+          // Cache for instant display on next page load
+          try { saveTitleCache(uid, fullNote.title || 'Untitled', fullNote.projects?.name); } catch {}
+          try { saveContentCache(uid, fullNote.title || 'Untitled', fullNote.content || ''); } catch {}
+          return fullNote;
         } catch (e) {
           console.error("Failed to load note content:", e);
+          return null;
+        }
+      })() : Promise.resolve(null);
+
+      // Step 2: Check if we already have content (from notes state or fallbackNote)
+      const existingNote = notesRef.current.find(n => n.uid === uid) || options?.fallbackNote;
+      const hasContent = existingNote?.content !== undefined && existingNote.content !== null && existingNote.content !== '';
+
+      const versionCheck = () =>
+        options?.contentVersionAtStart === undefined ||
+        contentVersionRef.current === options?.contentVersionAtStart;
+
+      if (hasContent) {
+        // Ensure note is in notes state for future navigations (if injected via fallbackNote)
+        if (options?.fallbackNote && !notesRef.current.some(n => n.uid === uid)) {
+          notesRef.current = [...notesRef.current, options.fallbackNote];
+          setNotes(notesRef.current);
+        }
+
+        // Show existing content immediately — release loading state
+        setIsItemLoading(false);
+
+        // Background refresh: apply API content, then check draft
+        apiPromise.then(fullNote => {
+          if (!fullNote || fullNote.is_deleted || !versionCheck()) return;
+          setNotes(prev => {
+            const exists = prev.some(n => n.uid === uid);
+            if (exists) return prev.map(n => n.uid === uid ? { ...n, content: fullNote.content } : n);
+            return [...prev, fullNote];
+          });
+        }).then(async () => {
+          // Step 3: Check draft AFTER API content (draft wins if sync_pending)
+          const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
+          if (!draft || !draft.sync_pending || !versionCheck()) return;
+          try {
+            const parsed = JSON.parse(draft.data);
+            setNotes(prev => {
+              const exists = prev.some(n => n.uid === uid);
+              if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
+              return prev;
+            });
+            if (!options?.silent) toast.info("Loaded unsynced local note draft");
+            try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+          } catch (e) {}
+        });
+      } else {
+        // No cached content — block on API fetch
+        const fullNote = await apiPromise;
+        if (fullNote && !fullNote.is_deleted) {
+          const shouldApplyServerContent = versionCheck();
+          if (shouldApplyServerContent) {
+            setNotes(prev => {
+              const exists = prev.some(n => n.uid === uid);
+              if (exists) return prev.map(n => n.uid === uid ? { ...n, content: fullNote.content } : n);
+              return [...prev, fullNote];
+            });
+          }
+        }
+        setIsItemLoading(false);
+
+        // Step 3: Check draft (same as before)
+        const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
+        if (draft && draft.sync_pending && versionCheck()) {
+          try {
+            const parsed = JSON.parse(draft.data);
+            setNotes(prev => {
+              const exists = prev.some(n => n.uid === uid);
+              if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
+              return prev;
+            });
+            if (!options?.silent) toast.info("Loaded unsynced local note draft");
+            try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+          } catch (e) {}
         }
       }
 
-      // Check for local unsynced drafts which should take priority
-      const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
-      // Only apply draft if user hasn't edited since selectNote started
-      const shouldApplyDraft = draft && draft.sync_pending && (
-        options?.contentVersionAtStart === undefined ||
-        contentVersionRef.current === options.contentVersionAtStart
-      );
-      if (shouldApplyDraft) {
-        try {
-          const parsed = JSON.parse(draft.data);
-          setNotes(prev => {
-            const exists = prev.some(n => n.uid === uid);
-            if (exists) {
-              return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
-            }
-            return prev;
-          });
-          // Only show toast if not a silent operation
-          if (!options?.silent) {
-            toast.info("Loaded unsynced local note draft");
-          }
-          // Cache draft content for instant display on next page load
-          try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
-        } catch (e) {}
-      }
-      
       setActiveNoteUid(uid);
     } finally {
       setIsItemLoading(false);
