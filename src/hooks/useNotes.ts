@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
-import { saveTitleCache } from '../utils/titleCache';
+import { saveTitleCache, saveContentCache } from '../utils/titleCache';
 
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -313,6 +313,8 @@ export function useNotes(isGuest: boolean = false) {
               });
               // Cache title for instant breadcrumb on next page load
               try { saveTitleCache(uid, fullNote.title || 'Untitled', fullNote.projects?.name); } catch {}
+              // Cache full content for instant display on next page load (stale-while-revalidate)
+              try { saveContentCache(uid, fullNote.title || 'Untitled', fullNote.content || ''); } catch {}
             }
           }
         } catch (e) {
@@ -341,6 +343,8 @@ export function useNotes(isGuest: boolean = false) {
           if (!options?.silent) {
             toast.info("Loaded unsynced local note draft");
           }
+          // Cache draft content for instant display on next page load
+          try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
         } catch (e) {}
       }
       
