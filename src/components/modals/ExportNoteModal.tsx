@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -18,7 +18,6 @@ import {
   FileBox
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
 type ExportFormat = 'pdf' | 'markdown' | 'word' | 'print';
 
@@ -57,7 +56,12 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-none shadow-2xl bg-[#0f0f11] text-zinc-100">
         <DialogHeader className="p-6 pb-4 border-none bg-transparent flex flex-row items-center justify-between">
-          <DialogTitle className="text-xl font-semibold tracking-tight pr-0">Export</DialogTitle>
+          <DialogTitle className="text-xl font-semibold tracking-tight pr-0">
+            Export
+            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wider uppercase rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              experimental
+            </span>
+          </DialogTitle>
         </DialogHeader>
 
         <DialogBody className="p-6 pt-0 space-y-8 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
