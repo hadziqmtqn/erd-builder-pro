@@ -125,7 +125,8 @@ function AppContent() {
   
   // Safety Gate & Persistence State
   const isLocalSavingRef = useRef(false);
-  const setIsLocalSaving = useCallback((val: boolean) => { isLocalSavingRef.current = val; }, []);
+  const [isLocalSaving, setIsLocalSavingState] = useState(false);
+  const setIsLocalSaving = useCallback((val: boolean) => { isLocalSavingRef.current = val; setIsLocalSavingState(val); }, []);
   const lastLoadedDiagramIdRef = useRef<number | string | null>(null);
   const lastLoadedNoteIdRef = useRef<number | string | null>(null);
   const lastLoadedDrawingIdRef = useRef<number | string | null>(null);
@@ -1069,12 +1070,16 @@ function AppContent() {
         const newNote = await duplicateNote(activeDocument.uid, duplicateName);
         if (newNote) {
           await handleNoteSelect(newNote.uid);
+          // Refresh sidebar tree so the new note appears immediately
+          fetchProjects(false, debouncedSearchQuery);
           toast.success("Note duplicated successfully");
         }
       } else if (view === 'drawings') {
         const newDrawing = await duplicateDrawing(activeDocument.id, duplicateName);
         if (newDrawing) {
           await handleDrawingSelect(newDrawing.id);
+          // Refresh sidebar tree so the new drawing appears immediately
+          fetchProjects(false, debouncedSearchQuery);
           toast.success("Drawing duplicated successfully");
         }
       } else {
@@ -1205,6 +1210,7 @@ function AppContent() {
           view={view} hasActiveItem={isPublicView ? true : hasActiveItem} 
           syncError={syncError}
           isSyncing={isSyncing}
+          isLocalSaving={isLocalSaving}
           isRefreshing={isRefreshing}
           hasPendingSyncs={hasPendingSyncs}
           onSave={syncDrafts}
