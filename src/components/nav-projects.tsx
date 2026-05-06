@@ -28,7 +28,7 @@ export function NavProjects({
   onDrawingSelect,
   onFlowchartSelect,
   activeDiagramId,
-  activeNoteId,
+  activeNoteUid,
   activeDrawingId,
   activeFlowchartId,
   view,
@@ -83,11 +83,11 @@ export function NavProjects({
   drawings: Drawing[]
   flowcharts: Flowchart[]
   onDiagramSelect: (id: number | string) => void
-  onNoteSelect: (id: number | string) => void
+  onNoteSelect: (uid: string) => void
   onDrawingSelect: (id: number | string) => void
   onFlowchartSelect: (id: number | string) => void
   activeDiagramId: number | string | null
-  activeNoteId: number | string | null
+  activeNoteUid: string | null
   activeDrawingId: number | string | null
   activeFlowchartId: number | string | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'
@@ -117,7 +117,7 @@ export function NavProjects({
   onLoadMoreDrawings?: () => void
   onLoadMoreFlowcharts?: () => void
   onNoteCopyMarkdown?: (id: number | string) => void
-  onNoteImportMarkdown?: (projectId: number | string | null) => void
+  onNoteImportMarkdown?: (id: number | string) => void
   onNoteExportMarkdown?: (id: number | string) => void
   isOnline: boolean
   isProjectsLoading?: boolean
@@ -258,7 +258,7 @@ export function NavProjects({
   const getActiveFileId = () => {
     switch (sidebarView) {
       case 'erd': return activeDiagramId
-      case 'notes': return activeNoteId
+      case 'notes': return activeNoteUid
       case 'drawings': return activeDrawingId
       case 'flowchart': return activeFlowchartId
       default: return null
@@ -268,7 +268,7 @@ export function NavProjects({
   const getOnFileSelect = () => {
     switch (sidebarView) {
       case 'erd': return onDiagramSelect
-      case 'notes': return onNoteSelect
+      case 'notes': return (id: number | string) => onNoteSelect(String(id))
       case 'drawings': return onDrawingSelect
       case 'flowchart': return onFlowchartSelect
       default: return () => {}

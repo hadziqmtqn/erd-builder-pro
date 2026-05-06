@@ -1,6 +1,5 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import pkg from "../../package.json"
 import {
   Database,
   StickyNote,
@@ -8,7 +7,6 @@ import {
   Folder,
   Search,
   Network,
-  Sparkles,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -16,7 +14,6 @@ import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
-import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import {
@@ -35,6 +32,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  TooltipProvider,
 } from "@/components/ui/tooltip"
 
 import { Diagram, Project, Note, Drawing, Flowchart } from "../types"
@@ -46,7 +44,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   flowcharts: Flowchart[];
   projects: Project[];
   activeDiagramId: number | string | null;
-  activeNoteId: number | string | null;
+  activeNoteUid: string | null;
   activeDrawingId: number | string | null;
   activeFlowchartId: number | string | null;
   activeProjectId: number | string | null;
@@ -54,7 +52,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog';
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void;
   onDiagramSelect: (id: number | string) => void;
-  onNoteSelect: (id: number | string) => void;
+  onNoteSelect: (uid: string) => void;
   onDrawingSelect: (id: number | string) => void;
   onFlowchartSelect: (id: number | string) => void;
   onProjectSelect: (id: number | string | null) => void;
@@ -118,7 +116,7 @@ export const AppSidebar = React.memo(({
   projects,
   uncategorized,
   activeDiagramId,
-  activeNoteId,
+  activeNoteUid,
   activeDrawingId,
   activeFlowchartId,
   activeProjectId,
@@ -207,6 +205,14 @@ export const AppSidebar = React.memo(({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state, setOpen]);
+
+  // Auto-expand sidebar when a file is selected
+  useEffect(() => {
+    if (activeDiagramId || activeNoteUid || activeDrawingId || activeFlowchartId) {
+      setOpen(true);
+    }
+  }, [activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId]);
+
   // Navigation items for the main section
   const navMain = [
     {
@@ -327,7 +333,7 @@ export const AppSidebar = React.memo(({
           onDrawingSelect={onDrawingSelect}
           onFlowchartSelect={onFlowchartSelect}
           activeDiagramId={activeDiagramId}
-          activeNoteId={activeNoteId}
+          activeNoteUid={activeNoteUid}
           activeDrawingId={activeDrawingId}
           activeFlowchartId={activeFlowchartId}
           view={view}
@@ -373,7 +379,7 @@ export const AppSidebar = React.memo(({
           <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger>
                   <Button 
                     variant="outline" 
                     size={isCollapsed ? "icon" : "sm"} 

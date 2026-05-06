@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 interface ActiveItemGuardProps {
   view: string;
   activeDiagramId: number | string | null;
-  activeNoteId: number | string | null;
+  activeNoteUid: number | string | null;
   activeDrawingId: number | string | null;
   activeFlowchartId: number | string | null;
   diagrams: any[];
@@ -14,7 +14,7 @@ interface ActiveItemGuardProps {
   projects: any[];
   isPublicView: boolean;
   setActiveDiagramId: (id: number | string | null) => void;
-  setActiveNoteId: (id: number | string | null) => void;
+  setActiveNoteUid: (uid: string | null) => void;
   setActiveDrawingId: (id: number | string | null) => void;
   setActiveFlowchartId: (id: number | string | null) => void;
   setActiveProjectId: (id: number | string | null) => void;
@@ -23,7 +23,7 @@ interface ActiveItemGuardProps {
 export const useActiveItemGuard = ({
   view,
   activeDiagramId,
-  activeNoteId,
+  activeNoteUid,
   activeDrawingId,
   activeFlowchartId,
   diagrams,
@@ -33,7 +33,7 @@ export const useActiveItemGuard = ({
   projects,
   isPublicView,
   setActiveDiagramId,
-  setActiveNoteId,
+  setActiveNoteUid,
   setActiveDrawingId,
   setActiveFlowchartId,
   setActiveProjectId,
@@ -44,13 +44,13 @@ export const useActiveItemGuard = ({
     const checkActiveItemHealth = () => {
       let activeItem: any = null;
       if (view === 'erd' && activeDiagramId) activeItem = diagrams.find(f => String(f.id) === String(activeDiagramId));
-      else if (view === 'notes' && activeNoteId) activeItem = notes.find(n => String(n.id) === String(activeNoteId));
+      else if (view === 'notes' && activeNoteUid) activeItem = notes.find(n => String(n.uid) === String(activeNoteUid));
       else if (view === 'drawings' && activeDrawingId) activeItem = drawings.find(d => String(d.id) === String(activeDrawingId));
       else if (view === 'flowchart' && activeFlowchartId) activeItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
 
       if (activeItem && activeItem.is_deleted) {
         if (view === 'erd') setActiveDiagramId(null);
-        else if (view === 'notes') setActiveNoteId(null);
+        else if (view === 'notes') setActiveNoteUid(null);
         else if (view === 'drawings') setActiveDrawingId(null);
         else if (view === 'flowchart') setActiveFlowchartId(null);
         
@@ -63,7 +63,7 @@ export const useActiveItemGuard = ({
         if (parentProject && parentProject.is_deleted) {
           setActiveProjectId(null);
           setActiveDiagramId(null);
-          setActiveNoteId(null);
+          setActiveNoteUid(null);
           setActiveDrawingId(null);
           setActiveFlowchartId(null);
           toast.warning("Project was deleted. Closing current document.");
@@ -73,8 +73,8 @@ export const useActiveItemGuard = ({
 
     checkActiveItemHealth();
   }, [
-    view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, 
+    view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, 
     diagrams, notes, drawings, flowcharts, projects, isPublicView,
-    setActiveDiagramId, setActiveNoteId, setActiveDrawingId, setActiveFlowchartId, setActiveProjectId
+    setActiveDiagramId, setActiveNoteUid, setActiveDrawingId, setActiveFlowchartId, setActiveProjectId
   ]);
 };

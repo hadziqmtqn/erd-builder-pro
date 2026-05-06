@@ -89,13 +89,16 @@ export function ProjectMenuItem({
   const [showAll, setShowAll] = React.useState(false)
   const hasTruncated = files.length > visibleCount
  
-  // Sync open state with active project
+  // Sync open state with active project or active file inside this project
   React.useEffect(() => {
-    if (item.isActive && !isManualToggle.current) {
-      setIsOpen(true)
+    const hasActiveFile = files.some(f => String(f.uid ?? f.id) === String(activeFileId));
+    if (item.isActive || hasActiveFile) {
+      if (!isManualToggle.current) {
+        setIsOpen(true);
+      }
     }
     isManualToggle.current = false
-  }, [item.isActive])
+  }, [item.isActive, activeFileId, files]);
   
   // Reset visible count when files change or collapsible closes
   React.useEffect(() => {

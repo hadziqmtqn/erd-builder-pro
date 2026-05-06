@@ -66,7 +66,7 @@ export interface WorkspaceContentProps {
 
   // Notes
   activeNote: any;
-  activeNoteId: any;
+  activeNoteUid: any;
   saveNote: (note: any) => Promise<boolean>;
   handleNoteChange: (content: string) => void;
   deleteNote: (id: any) => Promise<void>;
@@ -161,7 +161,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
               lastLoadedDiagramIdRef={props.lastLoadedDiagramIdRef}
             />
           )}
-          {props.view === 'notes' && props.activeNote && <NotesView isLoading={props.isLoading} activeNoteId={props.isPublicView ? null : props.activeNoteId} activeNote={props.activeNote} saveNote={props.saveNote} handleNoteChange={props.handleNoteChange} deleteNote={props.deleteNote} isReadOnly={props.isReadOnly} />}
+          {props.view === 'notes' && props.activeNote && <NotesView isLoading={props.isLoading} activeNoteUid={props.isPublicView ? null : props.activeNoteUid} activeNote={props.activeNote} saveNote={props.saveNote} handleNoteChange={props.handleNoteChange} deleteNote={props.deleteNote} isReadOnly={props.isReadOnly} />}
           {props.view === 'drawings' && props.activeDrawing && <DrawingsView isLoading={props.isLoading} activeDrawingId={props.isPublicView ? null : props.activeDrawingId} activeDrawing={props.activeDrawing} saveDrawing={props.saveDrawing} handleDrawingChange={props.handleDrawingChange} deleteDrawing={props.deleteDrawing} isReadOnly={props.isReadOnly} />}
           {props.view === 'flowchart' && props.activeFlowchart && <FlowchartView isLoading={props.isLoading} activeFlowchartId={props.activeFlowchartId} activeFlowchart={props.activeFlowchart} handleFlowchartChange={props.handleFlowchartChange} isReadOnly={props.isReadOnly} />}
           {props.view === 'changelog' && <ChangelogView />}

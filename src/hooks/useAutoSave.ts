@@ -24,7 +24,7 @@ export interface UseAutoSaveParams {
   isERDItemLoading: boolean;
   isDiagramsLoading: boolean;
   // For visibility change flush
-  activeNoteId: any;
+  activeNoteUid: any;
   notes: any[];
   saveNote: (note: any) => Promise<boolean>;
   activeDrawingId: any;
@@ -55,7 +55,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
     activeDiagramId, nodes, edges, viewportRef,
     saveDiagram, setIsLocalSaving, triggerDebouncedSync, broadcastMessage,
     isRefreshing, isERDItemLoading, isDiagramsLoading,
-    activeNoteId, notes, saveNote,
+    activeNoteUid, notes, saveNote,
     activeDrawingId, drawings, saveDrawing,
     activeFlowchartId, flowcharts, saveFlowchart,
     notesSaveTimeoutRef, drawingsSaveTimeoutRef, flowchartsSaveTimeoutRef,
@@ -76,8 +76,8 @@ export function useAutoSave(params: UseAutoSaveParams) {
             setIsLocalSaving(false);
             triggerDebouncedSync();
           });
-        } else if (view === 'notes' && activeNoteId) {
-          const n = notes.find(n => String(n.id) === String(activeNoteId));
+        } else if (view === 'notes' && activeNoteUid) {
+          const n = notes.find(n => String(n.uid) === String(activeNoteUid));
           if (n) {
             saveNote(n).then(() => {
               setIsLocalSaving(false);
@@ -107,7 +107,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [
-    view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId,
+    view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     nodes, edges, saveDiagram, saveNote, saveDrawing, saveFlowchart,
     triggerDebouncedSync, notes, drawings, flowcharts,
     isLocalSavingRef, setIsLocalSaving, viewportRef,
@@ -179,8 +179,8 @@ export function useAutoSave(params: UseAutoSaveParams) {
     try {
       if (view === 'erd' && activeDiagramId) {
         await saveDiagram(nodes, edges, viewportRef.current);
-      } else if (view === 'notes' && activeNoteId) {
-        const n = notes.find(n => String(n.id) === String(activeNoteId));
+      } else if (view === 'notes' && activeNoteUid) {
+        const n = notes.find(n => String(n.uid) === String(activeNoteUid));
         if (n) await saveNote(n);
       } else if (view === 'drawings' && activeDrawingId) {
         const d = drawings.find(d => String(d.id) === String(activeDrawingId));

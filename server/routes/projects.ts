@@ -15,10 +15,10 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     .from("projects")
     .select(`
       *,
-      diagrams(id, name, updated_at, created_at, is_deleted, project_id),
-      notes(id, title, updated_at, created_at, is_deleted, project_id),
-      drawings(id, title, updated_at, created_at, is_deleted, project_id),
-      flowcharts(id, title, updated_at, created_at, is_deleted, project_id)
+      diagrams(id, uid, name, updated_at, created_at, is_deleted, project_id),
+      notes(id, uid, title, updated_at, created_at, is_deleted, project_id),
+      drawings(id, uid, title, updated_at, created_at, is_deleted, project_id),
+      flowcharts(id, uid, title, updated_at, created_at, is_deleted, project_id)
     `, { count: 'exact' })
     .eq("is_deleted", false)
     .eq("user_id", (req as any).user.id);
@@ -36,10 +36,10 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     ]);
 
     const matchingProjectIds = new Set([
-      ...(dMatches.data?.map(m => m.project_id) || []),
-      ...(nMatches.data?.map(m => m.project_id) || []),
-      ...(drMatches.data?.map(m => m.project_id) || []),
-      ...(fMatches.data?.map(m => m.project_id) || []),
+      ...(dMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
+      ...(nMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
+      ...(drMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
+      ...(fMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
     ]);
 
     if (matchingProjectIds.size > 0) {
@@ -87,10 +87,10 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   
   // Also fetch Uncategorized files (project_id is null)
   const userId = (req as any).user.id;
-  let uDQuery = supabase.from("diagrams").select("id, name, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uNQuery = supabase.from("notes").select("id, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uDrQuery = supabase.from("drawings").select("id, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uFQuery = supabase.from("flowcharts").select("id, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
+  let uDQuery = supabase.from("diagrams").select("id, uid, name, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
+  let uNQuery = supabase.from("notes").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
+  let uDrQuery = supabase.from("drawings").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
+  let uFQuery = supabase.from("flowcharts").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
 
   if (searchLower) {
     uDQuery = uDQuery.ilike("name", `%${searchLower}%`);
@@ -201,12 +201,12 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
   
   try {
     const { data: diagrams } = await supabase.from("diagrams").select("id").eq("project_id", projectId);
-    const diagramIds = diagrams?.map(f => f.id) || [];
+    const diagramIds = diagrams?.map((f: { id: number }) => f.id) || [];
 
     if (diagramIds.length > 0) {
       await supabase.from("relationships").delete().in("diagram_id", diagramIds);
       const { data: entities } = await supabase.from("entities").select("id").in("diagram_id", diagramIds);
-      const entityIds = entities?.map(e => e.id) || [];
+      const entityIds = entities?.map((e: { id: number }) => e.id) || [];
       if (entityIds.length > 0) {
         await supabase.from("columns").delete().in("entity_id", entityIds);
       }

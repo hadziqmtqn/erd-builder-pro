@@ -5,7 +5,7 @@ interface AppMetadataProps {
   isPublicView: boolean;
   publicData: any;
   activeDiagramId: number | string | null;
-  activeNoteId: number | string | null;
+  activeNoteUid: string | null;
   activeDrawingId: number | string | null;
   activeFlowchartId: number | string | null;
   diagrams: any[];
@@ -19,7 +19,7 @@ export const useAppMetadata = ({
   isPublicView,
   publicData,
   activeDiagramId,
-  activeNoteId,
+  activeNoteUid,
   activeDrawingId,
   activeFlowchartId,
   diagrams,
@@ -31,29 +31,29 @@ export const useAppMetadata = ({
     if (isPublicView) return undefined;
     const viewMap: Record<string, number | string | null> = { 
       erd: activeDiagramId, 
-      notes: activeNoteId, 
+      notes: activeNoteUid, 
       drawings: activeDrawingId, 
       flowchart: activeFlowchartId 
     };
     return viewMap[view] || null;
-  }, [view, isPublicView, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId]);
+  }, [view, isPublicView, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId]);
 
   const activeDocument = useMemo(() => {
     if (isPublicView) return publicData;
     const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
-    return docArr.find(d => String(d.id) === String(currentActiveId));
+    return docArr.find(d => String(d.uid ?? d.id) === String(currentActiveId));
   }, [view, currentActiveId, diagrams, notes, drawings, flowcharts, isPublicView, publicData]);
 
   const initialShareSettings = useMemo(() => {
     if (isPublicView) return publicData ? { is_public: !!publicData.is_public, share_token: publicData.share_token, expiry_date: publicData.expiry_date } : undefined;
     const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
     const id = currentActiveId;
-    const doc = docArr.find(d => String(d.id) === String(id));
+    const doc = docArr.find(d => String(d.uid ?? d.id) === String(id));
     if (!doc) return undefined;
     return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
   }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, currentActiveId]);
 
-  const activeNote = isPublicView ? publicData : notes.find(n => n.id === activeNoteId);
+  const activeNote = isPublicView ? publicData : notes.find(n => n.uid === activeNoteUid);
   const activeDrawing = isPublicView ? publicData : drawings.find(d => d.id === activeDrawingId);
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => f.id === activeFlowchartId);
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => f.id === activeDiagramId);

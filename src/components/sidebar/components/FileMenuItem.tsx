@@ -18,6 +18,7 @@ import { TruncatedTooltip } from "./TruncatedTooltip"
 interface FileMenuItemProps {
   item: {
     id: number | string
+    uid?: string
     name?: string
     title?: string
     project_id?: number | string | null
@@ -54,8 +55,12 @@ export const FileMenuItem = React.memo(function FileMenuItem({
     <SidebarMenuSubItem className={cn("relative", !isOnline && "opacity-50 cursor-not-allowed")}>
       <SidebarMenuSubButton 
         isActive={isActive}
-        onClick={() => isOnline && onSelect(item.id)}
-        className={cn("cursor-pointer", !isOnline && "pointer-events-none")}
+        onClick={() => isOnline && onSelect(item.uid ?? item.id)}
+        className={cn(
+          "cursor-pointer",
+          isActive && "relative before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary",
+          !isOnline && "pointer-events-none"
+        )}
       >
         {Icon && <Icon className="size-4" />}
         <TruncatedTooltip content={displayName} sideOffset={5}>
@@ -85,7 +90,7 @@ export const FileMenuItem = React.memo(function FileMenuItem({
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="start" className="w-40">
           <DropdownMenuItem disabled={!isOnline} onClick={() => {
-            setEditingFile({ id: item.id, name: displayName, projectId: item.project_id, type })
+            setEditingFile({ id: item.uid ?? item.id, name: displayName, projectId: item.project_id, type })
             setSelectedProjectId(item.project_id?.toString() || "none")
             setIsEditFileDialogOpen(true)
           }}>
@@ -93,7 +98,7 @@ export const FileMenuItem = React.memo(function FileMenuItem({
             Edit
           </DropdownMenuItem>
           <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-            setDeletingFile({ id: item.id, type })
+            setDeletingFile({ id: item.uid ?? item.id, type })
             setIsDeleteConfirmOpen(true)
           }}>
             <Trash2 className="mr-2 size-4" />
