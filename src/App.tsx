@@ -31,7 +31,7 @@ import { WorkspaceContent } from '@/components/layout/WorkspaceContent';
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
 import { AppInitialization } from './components/layout/AppInitialization';
 import { useAppMetadata } from './hooks/useAppMetadata';
-import { getTitleCache } from './utils/titleCache';
+import { getTitleCache, getContentCache, saveContentCache } from './utils/titleCache';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useActiveItemGuard } from './hooks/useActiveItemGuard';
 
@@ -146,6 +146,7 @@ function AppContent() {
 
   // Auto-save & Sync Timeouts
   const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
+  const noteCloudSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -400,14 +401,21 @@ function AppContent() {
     const noteId = activeNoteUid;
     // Track edit version — selectNote checks this to avoid overwriting user edits
     bumpContentVersion();
-    setNotes(prev => prev.map(n => n.uid === noteId ? { ...n, content } : n));
+    
+    // ⚡ Do NOT call setNotes here — it causes full React re-render on every keystroke.
+    // Tiptap manages its own content internally via ProseMirror.
+    // State is updated only when saving (800ms debounce below).
     
     setIsLocalSaving(true);
+    
+    // Clear BOTH timers on every keystroke (IndexedDB + Cloud)
     if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
+    if (noteCloudSyncTimeoutRef.current) clearTimeout(noteCloudSyncTimeoutRef.current);
     
     // SAFETY: Note ID Validation Guard
     if (lastLoadedNoteIdRef.current !== activeNoteUid) return;
 
+    // Stage 1: 800ms idle → IndexedDB (local draft, no cloud)
     notesSaveTimeout.current = setTimeout(async () => {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isNoteItemLoading) return;
@@ -418,14 +426,22 @@ function AppContent() {
         // which contains the LATEST change, rather than 'n.content' from 
         // the potentially stale 'notes' state array.
         await saveNote({ ...n, content });
+        // Update local content cache for instant reload
+        saveContentCache(n.uid as string, n.title || 'Untitled', content);
+        // Update notes state now (only once per save, not per keystroke)
+        setNotes(prev => prev.map(n => n.uid === noteId ? { ...n, content } : n));
       }
       
       lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);
-      triggerDebouncedSync();
       broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.NOTES, noteId);
     }, 800);
-  }, [activeNoteUid, bumpContentVersion, saveNote, setNotes, triggerDebouncedSync, isRefreshing, isNoteItemLoading, broadcastMessage]);
+
+    // Stage 2: 1600ms idle → Cloud (syncDrafts — syncs pending IndexedDB drafts to Supabase)
+    noteCloudSyncTimeoutRef.current = setTimeout(async () => {
+      await syncDrafts();
+    }, 1600);
+  }, [activeNoteUid, bumpContentVersion, saveNote, setNotes, syncDrafts, noteCloudSyncTimeoutRef, isRefreshing, isNoteItemLoading, broadcastMessage]);
 
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
@@ -557,8 +573,13 @@ function AppContent() {
     // Set activeNoteUid early so breadcrumb can appear from list data (fetchProjects)
     // before selectNote's detail API call completes
     setActiveNoteUid(uid);
-    // Clear current note content to avoid showing stale data while loading
-    setNotes(prev => prev.map(n => n.uid === uid ? { ...n, content: undefined } : n));
+    // Clear current note content to avoid showing stale data while loading,
+    // BUT only if we don't have cached content (stale-while-revalidate).
+    // If cached content is already visible, keep it while API loads in background.
+    setNotes(prev => prev.map(n => n.uid === uid ? {
+      ...n,
+      content: n.content !== undefined ? n.content : undefined,
+    } : n));
     // Mark this URL as processed before navigate, so the URL effect skips its
     // own handleNoteSelect call (preventing double API load)
     lastProcessedNotesUrlRef.current = '/notes/' + uid;
@@ -659,12 +680,9 @@ function AppContent() {
 
   // 🛡️ Header Handlers (Memoized to prevent flicker)
   const handleHeaderSettingsSaved = useCallback(() => {
-    const pid = 'all';
-    if (view === 'erd') fetchDiagrams(false, pid, debouncedSearchQuery, null, 50);
-    else if (view === 'notes') fetchNotes(false, pid, debouncedSearchQuery, null, 50);
-    else if (view === 'drawings') fetchDrawings(false, pid, debouncedSearchQuery, null, 50);
-    else if (view === 'flowchart') fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50);
-  }, [view, debouncedSearchQuery, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts]);
+    // Refresh the full project tree (single source of truth) instead of per-type flat endpoints
+    fetchProjects(false, debouncedSearchQuery);
+  }, [debouncedSearchQuery, fetchProjects]);
 
   const handleHeaderDelete = useCallback(() => {
     if (!currentActiveId) return;
@@ -721,22 +739,54 @@ function AppContent() {
     }
   }, [isInstallable, installApp]);
 
-  // Optimistic breadcrumb from cache — runs before auth on first mount only
+  // Optimistic breadcrumb + content from cache — runs before auth on first mount only
+  // Provides instant display via stale-while-revalidate pattern:
+  //   1. Content cache (localStorage) — fastest, populated from prev API calls
+  //   2. IndexedDB draft — fallback if localStorage cache is empty
+  // The real API call in handleNoteSelect will refresh content in background.
   useEffect(() => {
     if (isAuthenticated !== null || getSharePathInfo()) return;
     const notesMatch = location.pathname.match(/^\/notes\/([^/]+)/);
     if (notesMatch) {
       const uid = notesMatch[1];
-      const cached = getTitleCache(uid);
-      if (cached && !notes.some(n => n.uid === uid)) {
-        setView('notes');
-        setSidebarView('notes');
-        setActiveNoteUid(uid);
-        setNotes(prev => prev.some(n => n.uid === uid) ? prev : [...prev, {
-          uid, title: cached.title,
-          projects: cached.projectName ? { name: cached.projectName } : undefined,
-          content: undefined,
-        } as any]);
+      
+      // 1. Breadcrumb title from cache
+      const titleCached = getTitleCache(uid);
+      // 2. Full content from cache (stale-while-revalidate)
+      const contentCached = getContentCache(uid);
+      
+      if (titleCached || contentCached) {
+        if (!notes.some(n => n.uid === uid)) {
+          setView('notes');
+          setSidebarView('notes');
+          setActiveNoteUid(uid);
+          setNotes(prev => prev.some(n => n.uid === uid) ? prev : [...prev, {
+            uid,
+            title: contentCached?.title || titleCached?.title || 'Untitled',
+            projects: titleCached?.projectName ? { name: titleCached.projectName } : undefined,
+            content: contentCached?.content,  // full content from cache!
+          } as any]);
+        }
+      } else {
+        // 3. Fallback: IndexedDB draft (exists if user ever edited this note)
+        // Kick off async draft fetch to prepopulate content before auth resolves
+        localPersistence.getDraft(DraftType.NOTES, uid).then(draft => {
+          if (!draft || !draft.data) return;
+          try {
+            const parsed = JSON.parse(draft.data);
+            const draftContent = parsed.content || '';
+            if (draftContent && !notesRef.current.some(n => n.uid === uid && n.content)) {
+              setView('notes');
+              setSidebarView('notes');
+              setActiveNoteUid(uid);
+              setNotes(prev => prev.some(n => n.uid === uid && n.content) ? prev : [...prev, {
+                uid,
+                title: parsed.title || 'Untitled',
+                content: draftContent,
+              } as any]);
+            }
+          } catch {}
+        }).catch(() => {});
       }
     }
   }, [location.pathname]);
@@ -816,9 +866,10 @@ function AppContent() {
           });
 
           setNotes(prev => {
-            const currentMap = new Map(prev.map(n => [String(n.id), n]));
+            const idMap = new Map(prev.map(n => [String(n.id), n]));
+            const uidMap = new Map(prev.map(n => [String(n.uid), n]));
             return allNotes.map(newN => {
-              const existing = currentMap.get(String(newN.id));
+              const existing = idMap.get(String(newN.id)) || uidMap.get(String(newN.uid));
               if (existing) {
                 return { ...newN, content: existing.content };
               }
@@ -897,11 +948,11 @@ function AppContent() {
       lastFocusFetchRef.current = now;
 
       try {
-        const pid = 'all'; // Always fetch all to keep sidebar and current document stable
+        // Refresh the full project tree (all files included) SILENTLY (no skeletons)
+        // Using the single source of truth: /api/projects instead of per-type flat endpoints
+        await fetchProjects(false, debouncedSearchQuery);
         
-        // Refresh the list and the active item SILENTLY (no skeletons)
         if (view === 'erd') {
-          await fetchDiagrams(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeDiagramId) {
             const draft = await localPersistence.getDraft(DraftType.ERD, activeDiagramId);
             const cloudItem = diagrams.find(d => String(d.id) === String(activeDiagramId));
@@ -918,7 +969,6 @@ function AppContent() {
             }
           }
         } else if (view === 'notes') {
-          await fetchNotes(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeNoteUid) {
             const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteUid);
             const cloudItem = notes.find(n => String(n.uid) === String(activeNoteUid));
@@ -928,14 +978,13 @@ function AppContent() {
               console.log("[FocusSync] Cloud is newer, reloading Note...");
               setIsRefreshing(true);
               await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
-              await selectNote(activeNoteUid, { silent: true });
+              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
               setIsRefreshing(false);
             } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteUid))) {
-              await selectNote(activeNoteUid, { silent: true });
+              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
             }
           }
         } else if (view === 'drawings') {
-          await fetchDrawings(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeDrawingId) {
             const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
             const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId));
@@ -949,7 +998,6 @@ function AppContent() {
             }
           }
         } else if (view === 'flowchart') {
-          await fetchFlowcharts(false, pid, debouncedSearchQuery, null, 50, { silent: true });
           if (activeFlowchartId) {
             const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
             const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
@@ -976,9 +1024,13 @@ function AppContent() {
     isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing,
     view, debouncedSearchQuery,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
-    fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
+    fetchProjects,
     selectDiagram, selectNote, selectDrawing, selectFlowchart,
-    setActiveDiagramId
+    setActiveDiagramId,
+    diagrams, notes, drawings, flowcharts,
+    localPersistence,
+    setIsRefreshing,
+    getContentVersion,
   ]);
 
   // Handlers
