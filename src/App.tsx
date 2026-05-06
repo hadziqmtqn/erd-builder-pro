@@ -54,6 +54,7 @@ import { useRealtimeSync } from './hooks/useRealtimeSync';
 import { useSidebarHandlers } from './hooks/useSidebarHandlers';
 import { useTrashHandlers } from './hooks/useTrashHandlers';
 import { useWorkspaceCallbacks } from './hooks/useWorkspaceCallbacks';
+import { useAutoSave } from './hooks/useAutoSave';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
@@ -139,7 +140,6 @@ function AppContent() {
   const edgesRef = useRef<any[]>([]);
 
   // Auto-save & Sync Timeouts
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -489,39 +489,42 @@ function AppContent() {
     }, 1500);
   }, [activeFlowchartId, saveFlowchart, setFlowcharts, triggerDebouncedSync, isRefreshing, isFlowchartItemLoading, broadcastMessage]);
 
-  async function flushPendingSaves() {
-    if (!isLocalSavingRef.current) return;
-
-    // 1. Force clear any pending timeouts
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
-    if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
-    if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
-
-    // 2. Perform immediate local save for current active document
-    try {
-      if (view === 'erd' && activeDiagramId) {
-        await saveDiagram(nodes, edges, viewportRef.current);
-      } else if (view === 'notes' && activeNoteId) {
-        const n = notes.find(n => String(n.id) === String(activeNoteId));
-        if (n) await saveNote(n);
-      } else if (view === 'drawings' && activeDrawingId) {
-        const d = drawings.find(d => String(d.id) === String(activeDrawingId));
-        if (d) await saveDrawing(d);
-      } else if (view === 'flowchart' && activeFlowchartId) {
-        const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
-        if (f) await saveFlowchart(f);
-      }
-      
-      lastSaveCallRef.current = Date.now();
-      setIsLocalSaving(false);
-      
-      // 3. Trigger cloud sync immediately (skip debounce)
-      await syncDrafts();
-    } catch (err) {
-      console.warn("Failed to flush pending saves during switch:", err);
-    }
-  }
+  const { saveTimeoutRef, flushPendingSaves } = useAutoSave({
+    saveCounter,
+    isLocalSavingRef,
+    isIncomingSyncRef,
+    lastLoadedDiagramIdRef,
+    lastSaveCallRef,
+    lastDiagramLoadTimestampRef,
+    isAuthenticated,
+    isGuest,
+    view,
+    isPublicView,
+    activeDiagramId,
+    nodes,
+    edges,
+    viewportRef,
+    saveDiagram,
+    setIsLocalSaving,
+    triggerDebouncedSync,
+    broadcastMessage,
+    isRefreshing,
+    isERDItemLoading,
+    isDiagramsLoading,
+    activeNoteId,
+    notes,
+    saveNote,
+    activeDrawingId,
+    drawings,
+    saveDrawing,
+    activeFlowchartId,
+    flowcharts,
+    saveFlowchart,
+    notesSaveTimeoutRef: notesSaveTimeout,
+    drawingsSaveTimeoutRef: drawingsSaveTimeout,
+    flowchartsSaveTimeoutRef: flowchartsSaveTimeout,
+    syncDrafts,
+  });
 
   async function handleDiagramSelect(id: number | string) {
     if (activeDiagramId === id && view === 'erd') return;
@@ -911,121 +914,6 @@ function AppContent() {
     selectDiagram, selectNote, selectDrawing, selectFlowchart,
     setActiveDiagramId
   ]);
-
-  // Emergency Flush: Save immediately when switching tabs or minimizing
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && isLocalSavingRef.current) {
-        // Trigger all active saves immediately
-        if (view === 'erd' && activeDiagramId) {
-          saveDiagram(nodes, edges, viewportRef.current).then(() => {
-            setIsLocalSaving(false);
-            triggerDebouncedSync();
-          });
-        } else if (view === 'notes' && activeNoteId) {
-          const n = notes.find(n => String(n.id) === String(activeNoteId));
-          if (n) {
-            saveNote(n).then(() => {
-              setIsLocalSaving(false);
-              triggerDebouncedSync();
-            });
-          }
-        } else if (view === 'drawings' && activeDrawingId) {
-          const d = drawings.find(d => String(d.id) === String(activeDrawingId));
-          if (d) {
-            saveDrawing(d).then(() => {
-              setIsLocalSaving(false);
-              triggerDebouncedSync();
-            });
-          }
-        } else if (view === 'flowchart' && activeFlowchartId) {
-          const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
-          if (f) {
-            saveFlowchart(f).then(() => {
-              setIsLocalSaving(false);
-              triggerDebouncedSync();
-            });
-          }
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges, saveDiagram, saveNote, saveDrawing, saveFlowchart, triggerDebouncedSync, notes, drawings, flowcharts]);
-
-  // 🛡️ Track last processed saveCounter to skip effect on diagram navigation (no actual edits)
-  const lastProcessedCounterRef = useRef(0);
-
-  // ERD Auto-save
-  useEffect(() => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-
-    // 🛡️ Skip if saveCounter hasn't actually incremented (e.g., only activeDiagramId changed
-    // due to diagram navigation). This prevents unnecessary save trigger + flicker on initial load.
-    if (saveCounter === lastProcessedCounterRef.current) return;
-    lastProcessedCounterRef.current = saveCounter;
-
-    if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
-      // Prevent loop: If this change came from another tab's sync, DON'T save it back
-      if (isIncomingSyncRef.current) {
-        console.log("[SaveGuard] Skipping save: Change was from an incoming sync");
-        return;
-      }
-
-      setIsLocalSaving(true);
-      
-      saveTimeoutRef.current = setTimeout(async () => {
-        // SAFETY 0: Skip if an immediate save was just performed
-        if (Date.now() - lastSaveCallRef.current < 500) {
-          console.log("[SaveGuard] Skipping auto-save: immediate save was just performed");
-          setIsLocalSaving(false);
-          return;
-        }
-
-        // SAFETY 0b: Skip if diagram was just loaded (no changes made yet)
-        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
-          console.log("[SaveGuard] Skipping auto-save: diagram was just loaded");
-          setIsLocalSaving(false);
-          return;
-        }
-
-        // SAFETY 1: ID Validation Guard — diagram was switched, nothing to save
-        if (lastLoadedDiagramIdRef.current !== activeDiagramId) {
-          setIsLocalSaving(false);
-          return;
-        }
-
-        // SAFETY 2: Loading/Refresh Guard - Wait if still loading
-        if (isRefreshing || isERDItemLoading || isDiagramsLoading) {
-          console.log("[SaveGuard] Deferring save: App is refreshing/loading");
-          setIsLocalSaving(false);
-          return; 
-        }
-
-        // SAFETY 3: Hard Guard for empty states
-        // Never save a completely empty ERD automatically unless we are absolutely sure 
-        // it's not a loading/race condition error.
-        if (nodes.length === 0) {
-           console.warn("[SaveGuard] Blocking auto-save of empty ERD to prevent data loss");
-           setIsLocalSaving(false);
-           return;
-        }
-        await saveDiagram(nodes, edges, viewportRef.current);
-        lastSaveCallRef.current = Date.now();
-        setIsLocalSaving(false);
-        triggerDebouncedSync();
-        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.ERD, activeDiagramId);
-      }, 800);
-    }
-    return () => { 
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-      setIsLocalSaving(false); 
-    };
-  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage]);
 
   // Handlers
 
@@ -1461,7 +1349,6 @@ function AppContent() {
           deleteEntity={deleteEntity}
           setSelectedNodeId={setSelectedNodeId}
         />
-
 
         {/* Duplicate Document Dialog */}
         <DuplicateDocumentDialog
