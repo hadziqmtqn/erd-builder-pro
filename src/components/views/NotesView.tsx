@@ -3,17 +3,17 @@ import { Skeleton } from '../ui/skeleton';
 import NotesEditor from '../NotesEditor';
 
 interface NotesViewProps {
-  activeNoteId: number | string | null;
+  activeNoteUid: string | null;
   activeNote: any;
   saveNote: (note: any) => Promise<boolean | void>;
   handleNoteChange: (content: string) => void;
-  deleteNote: (id: number | string) => Promise<void>;
+  deleteNote: (uid: string) => Promise<void>;
   isReadOnly?: boolean;
   isLoading?: boolean;
 }
 
 export const NotesView = React.memo(({
-  activeNoteId,
+  activeNoteUid,
   activeNote,
   saveNote,
   handleNoteChange,
@@ -49,7 +49,7 @@ export const NotesView = React.memo(({
   return (
     <div className="flex-1 border rounded-xl overflow-hidden bg-background">
       <NotesEditor 
-        key={activeNoteId} 
+        key={activeNoteUid} 
         note={activeNote} 
         onSave={saveNote} 
         onChange={handleNoteChange} 

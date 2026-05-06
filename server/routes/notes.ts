@@ -117,15 +117,15 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
   res.json(note);
 });
 
-router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { id } = req.params;
+router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { is_public, share_token, expiry_date } = req.body;
 
   try {
     const { data: currentNote } = await supabase
       .from("notes")
       .select("*")
-      .eq("id", id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .single();
 
@@ -148,7 +148,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
     const { data, error } = await supabase
       .from("notes")
       .update(updateData)
-      .eq("id", id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .select()
       .single();
@@ -160,11 +160,11 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
   }
 });
 
-router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { data, error } = await supabase
     .from("notes")
     .select("*")
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id)
     .single();
 
@@ -172,7 +172,7 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   res.json(data);
 });
 
-router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, content, project_id } = req.body;
   
   const updateData: any = { updated_at: new Date().toISOString() };
@@ -183,41 +183,41 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("notes")
     .update(updateData)
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to update note");
   res.json({ success: true });
 });
 
-router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete note");
   res.json({ success: true });
 });
 
-router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("notes")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore note");
   res.json({ success: true });
 });
 
-router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { data: note } = await supabase
       .from("notes")
       .select("content")
-      .eq("id", req.params.id)
+      .eq("uid", req.params.uid)
       .eq("user_id", (req as any).user.id)
       .single();
 
@@ -243,7 +243,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
     const { error } = await supabase
       .from("notes")
       .delete()
-      .eq("id", req.params.id)
+      .eq("uid", req.params.uid)
       .eq("user_id", (req as any).user.id);
 
     if (error) return res.status(500).json({ error: error.message });

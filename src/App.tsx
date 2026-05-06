@@ -4,6 +4,7 @@ import {
   Node,
   Edge,
 } from '@xyflow/react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { copyMarkdownToClipboard } from './lib/markdownUtils';
 
 // Components
@@ -30,6 +31,7 @@ import { WorkspaceContent } from '@/components/layout/WorkspaceContent';
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
 import { AppInitialization } from './components/layout/AppInitialization';
 import { useAppMetadata } from './hooks/useAppMetadata';
+import { getTitleCache } from './utils/titleCache';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useActiveItemGuard } from './hooks/useActiveItemGuard';
 
@@ -103,6 +105,9 @@ function AppContent() {
     localStorage.setItem('erd-builder-last-view', view);
     localStorage.setItem('erd-builder-last-sidebar-view', sidebarView);
   }, [sidebarView]);
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [isTablePropertiesOpen, setIsTablePropertiesOpen] = useState(false);
 
@@ -215,7 +220,7 @@ function AppContent() {
   }, [broadcastNodeMove, broadcastNodeUpdate, broadcastEdgesUpdate]);
 
   const { 
-    notes, setNotes, activeNoteId, setActiveNoteId, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
+    notes, setNotes, activeNoteUid, setActiveNoteUid, bumpContentVersion, getContentVersion, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
     hasMoreNotes, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote, duplicateNote
   } = useNotes(isGuest);
   
@@ -261,9 +266,9 @@ function AppContent() {
       // @ts-ignore
       window.currentSyncIsSilent = false;
       setTimeout(() => { isIncomingSyncRef.current = false; }, 1000);
-    } else if (view === 'notes' && dataType === DraftType.NOTES && String(id) === String(activeNoteId)) {
+    } else if (view === 'notes' && dataType === DraftType.NOTES && String(id) === String(activeNoteUid)) {
       console.log("[Broadcast] Reloading Note from local draft updated in another tab");
-      await selectNote(id, { silent: true });
+      await selectNote(String(id), { silent: true });
     } else if (view === 'drawings' && dataType === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
       console.log("[Broadcast] Reloading Drawing from local draft updated in another tab");
       await selectDrawing(id, { silent: true });
@@ -271,7 +276,7 @@ function AppContent() {
       console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
       await selectFlowchart(id, { silent: true });
     }
-  }, [view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
+  }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
 
   // Sync refs with latest state
   useEffect(() => { notesRef.current = notes; }, [notes]);
@@ -299,7 +304,7 @@ function AppContent() {
     isPublicView,
     publicData,
     activeDiagramId,
-    activeNoteId,
+    activeNoteUid,
     activeDrawingId,
     activeFlowchartId,
     diagrams,
@@ -318,8 +323,8 @@ function AppContent() {
   }, [activeDiagramId, isERDItemLoading]);
 
   useEffect(() => {
-    if (activeNoteId && !isNoteItemLoading) lastLoadedNoteIdRef.current = activeNoteId;
-  }, [activeNoteId, isNoteItemLoading]);
+    if (activeNoteUid && !isNoteItemLoading) lastLoadedNoteIdRef.current = activeNoteUid;
+  }, [activeNoteUid, isNoteItemLoading]);
 
   useEffect(() => {
     if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
@@ -338,7 +343,7 @@ function AppContent() {
   useActiveItemGuard({
     view,
     activeDiagramId,
-    activeNoteId,
+    activeNoteUid,
     activeDrawingId,
     activeFlowchartId,
     diagrams,
@@ -348,7 +353,7 @@ function AppContent() {
     projects,
     isPublicView,
     setActiveDiagramId,
-    setActiveNoteId,
+    setActiveNoteUid,
     setActiveDrawingId,
     setActiveFlowchartId,
     setActiveProjectId,
@@ -387,25 +392,27 @@ function AppContent() {
   const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
 
   const handleNoteChange = useCallback((content: string) => {
-    if (!activeNoteId) return;
+    if (!activeNoteUid) return;
     
     // Prevent loop: If this change came from another tab's sync, DON'T save it back
     if (isIncomingSyncRef.current) return;
 
-    const noteId = activeNoteId;
-    setNotes(prev => prev.map(n => n.id === noteId ? { ...n, content } : n));
+    const noteId = activeNoteUid;
+    // Track edit version — selectNote checks this to avoid overwriting user edits
+    bumpContentVersion();
+    setNotes(prev => prev.map(n => n.uid === noteId ? { ...n, content } : n));
     
     setIsLocalSaving(true);
     if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
     
     // SAFETY: Note ID Validation Guard
-    if (lastLoadedNoteIdRef.current !== activeNoteId) return;
+    if (lastLoadedNoteIdRef.current !== activeNoteUid) return;
 
     notesSaveTimeout.current = setTimeout(async () => {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isNoteItemLoading) return;
       
-      const n = notesRef.current.find(n => String(n.id) === String(noteId));
+      const n = notesRef.current.find(n => String(n.uid) === String(noteId));
       if (n) {
         // CRITICAL: We must use the 'content' argument from the outer scope 
         // which contains the LATEST change, rather than 'n.content' from 
@@ -418,7 +425,7 @@ function AppContent() {
       triggerDebouncedSync();
       broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.NOTES, noteId);
     }, 800);
-  }, [activeNoteId, saveNote, setNotes, triggerDebouncedSync, isRefreshing, isNoteItemLoading, broadcastMessage]);
+  }, [activeNoteUid, bumpContentVersion, saveNote, setNotes, triggerDebouncedSync, isRefreshing, isNoteItemLoading, broadcastMessage]);
 
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
@@ -511,7 +518,7 @@ function AppContent() {
     isRefreshing,
     isERDItemLoading,
     isDiagramsLoading,
-    activeNoteId,
+    activeNoteUid,
     notes,
     saveNote,
     activeDrawingId,
@@ -539,14 +546,27 @@ function AppContent() {
     });
   }
 
-  async function handleNoteSelect(id: number | string) {
-    if (activeNoteId === id && view === 'notes') return; 
+  async function handleNoteSelect(uid: string) {
+    // Capture content version before any async work. If user edits between now
+    // and selectNote's API/IndexedDB response, the version changes and selectNote
+    // skips overwriting their in-flight edits.
+    const versionAtStart = getContentVersion();
     await flushPendingSaves();
     setView('notes');
+    setSidebarView('notes');
+    // Set activeNoteUid early so breadcrumb can appear from list data (fetchProjects)
+    // before selectNote's detail API call completes
+    setActiveNoteUid(uid);
     // Clear current note content to avoid showing stale data while loading
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, content: undefined } : n));
-    await selectNote(id);
-    lastLoadedNoteIdRef.current = id;
+    setNotes(prev => prev.map(n => n.uid === uid ? { ...n, content: undefined } : n));
+    // Mark this URL as processed before navigate, so the URL effect skips its
+    // own handleNoteSelect call (preventing double API load)
+    lastProcessedNotesUrlRef.current = '/notes/' + uid;
+    if (!getSharePathInfo() && location.pathname !== '/notes/' + uid) {
+      navigate('/notes/' + uid);
+    }
+    await selectNote(uid, { contentVersionAtStart: versionAtStart });
+    lastLoadedNoteIdRef.current = uid;
   }
 
   async function handleDrawingSelect(id: number | string) {
@@ -582,11 +602,11 @@ function AppContent() {
     executeImportMarkdown,
   } = useFileOperations({
     activeNote,
-    activeNoteId,
+    activeNoteUid,
     activeProjectId,
     createNote,
     saveNote,
-    setActiveNoteId,
+    setActiveNoteUid,
     handleNoteChange,
     setIsExportNoteModalOpen,
     setIsImportNoteModalOpen,
@@ -701,14 +721,56 @@ function AppContent() {
     }
   }, [isInstallable, installApp]);
 
+  // Optimistic breadcrumb from cache — runs before auth on first mount only
+  useEffect(() => {
+    if (isAuthenticated !== null || getSharePathInfo()) return;
+    const notesMatch = location.pathname.match(/^\/notes\/([^/]+)/);
+    if (notesMatch) {
+      const uid = notesMatch[1];
+      const cached = getTitleCache(uid);
+      if (cached && !notes.some(n => n.uid === uid)) {
+        setView('notes');
+        setSidebarView('notes');
+        setActiveNoteUid(uid);
+        setNotes(prev => prev.some(n => n.uid === uid) ? prev : [...prev, {
+          uid, title: cached.title,
+          projects: cached.projectName ? { name: cached.projectName } : undefined,
+          content: undefined,
+        } as any]);
+      }
+    }
+  }, [location.pathname]);
+
+  // Route /notes/:uid → select note (only after auth and on external URL change)
+  // Does NOT re-fire on internal navigation (sidebar click, handleNoteSelect's own navigate)
+  const lastProcessedNotesUrlRef = useRef('');
+  useEffect(() => {
+    if (!isAuthenticated || getSharePathInfo()) return;
+    // Skip if this URL was already processed by the current handleNoteSelect call
+    if (lastProcessedNotesUrlRef.current === location.pathname) return;
+    const m = location.pathname.match(/^\/notes\/([^/]+)/);
+    if (m) {
+      lastProcessedNotesUrlRef.current = location.pathname;
+      handleNoteSelect(m[1]);
+    }
+  }, [isAuthenticated, location.pathname]);
+
+  // View change → navigate URL
+  useEffect(() => {
+    if (getSharePathInfo()) return;
+    if (view !== 'notes' && location.pathname.startsWith('/notes/')) {
+      navigate('/', { replace: true });
+    }
+  }, [view]);
+
   useEffect(() => {
     if (!isOnline && !isPublicView) {
       if (view === 'erd' && activeDiagramId) saveDiagram(nodes, edges, viewportRef.current);
-      else if (view === 'notes' && activeNoteId) { const n = notes.find(n => String(n.id) === String(activeNoteId)); if (n) saveNote(n); }
+      else if (view === 'notes' && activeNoteUid) { const n = notes.find(n => String(n.uid) === String(activeNoteUid)); if (n) saveNote(n); }
       else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
       else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
     }
-  }, [isOnline, view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId, nodes, edges]);
+  }, [isOnline, view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, nodes, edges]);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
     return () => clearTimeout(timer);
@@ -851,21 +913,25 @@ function AppContent() {
               await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
               await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
               setIsRefreshing(false);
+            } else if (!(await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId))) {
+              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
             }
           }
         } else if (view === 'notes') {
           await fetchNotes(false, pid, debouncedSearchQuery, null, 50, { silent: true });
-          if (activeNoteId) {
-            const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteId);
-            const cloudItem = notes.find(n => String(n.id) === String(activeNoteId));
+          if (activeNoteUid) {
+            const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteUid);
+            const cloudItem = notes.find(n => String(n.uid) === String(activeNoteUid));
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
             
             if (isStale) {
               console.log("[FocusSync] Cloud is newer, reloading Note...");
               setIsRefreshing(true);
-              await localPersistence.deleteDraft(DraftType.NOTES, activeNoteId);
-              await selectNote(activeNoteId, { silent: true });
+              await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
+              await selectNote(activeNoteUid, { silent: true });
               setIsRefreshing(false);
+            } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteUid))) {
+              await selectNote(activeNoteUid, { silent: true });
             }
           }
         } else if (view === 'drawings') {
@@ -909,7 +975,7 @@ function AppContent() {
   }, [
     isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing,
     view, debouncedSearchQuery,
-    activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId,
+    activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
     selectDiagram, selectNote, selectDrawing, selectFlowchart,
     setActiveDiagramId
@@ -951,7 +1017,7 @@ function AppContent() {
         }
       } else if (view === 'notes') {
         // Notes specific shortcuts - only active when a note is open
-        if (!activeNoteId) return;
+        if (!activeNoteUid) return;
 
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'e') {
           e.preventDefault();
@@ -964,7 +1030,7 @@ function AppContent() {
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [view, activeNoteId, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
+  }, [view, activeNoteUid, undo, redo, canUndo, canRedo, setIsExportNoteModalOpen, setIsImportNoteModalOpen]);
 
   
 
@@ -992,7 +1058,7 @@ function AppContent() {
       const { id, type } = itemToDelete;
       if (type === 'project') await deleteProjectPermanent(id);
       else if (type === 'erd') await deleteDiagramPermanent(id);
-      else if (type === 'notes') await deleteNotePermanent(id);
+      else if (type === 'notes') await deleteNotePermanent(String(id));
       else if (type === 'drawings') await deleteDrawingPermanent(id);
       else if (type === 'flowchart') await deleteFlowchartPermanent(id);
       setIsPermanentDeleteConfirmOpen(false);
@@ -1017,9 +1083,9 @@ function AppContent() {
     setIsRefreshing(true);
     try {
       if (view === 'notes') {
-        const newNote = await duplicateNote(activeDocument.id, duplicateName);
+        const newNote = await duplicateNote(activeDocument.uid, duplicateName);
         if (newNote) {
-          await handleNoteSelect(newNote.id);
+          await handleNoteSelect(newNote.uid);
           toast.success("Note duplicated successfully");
         }
       } else if (view === 'drawings') {
@@ -1106,7 +1172,7 @@ function AppContent() {
       {!isPublicView && (
         <AppSidebar 
           diagrams={diagrams} notes={notes} drawings={drawings} projects={projects} uncategorized={uncategorized} flowcharts={flowcharts}
-          activeDiagramId={activeDiagramId} activeNoteId={activeNoteId} activeDrawingId={activeDrawingId} activeProjectId={activeProjectId} activeFlowchartId={activeFlowchartId}
+          activeDiagramId={activeDiagramId} activeNoteUid={activeNoteUid} activeDrawingId={activeDrawingId} activeProjectId={activeProjectId} activeFlowchartId={activeFlowchartId}
           view={view}
           onDiagramSelect={handleDiagramSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onProjectSelect={handleProjectSelect} onFlowchartSelect={handleFlowchartSelect}
 
@@ -1244,7 +1310,7 @@ function AppContent() {
           lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
 
           activeNote={activeNote}
-          activeNoteId={activeNoteId}
+          activeNoteUid={activeNoteUid}
           saveNote={saveNote}
           handleNoteChange={handleNoteChange}
           deleteNote={deleteNote}

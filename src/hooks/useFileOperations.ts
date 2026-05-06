@@ -5,11 +5,11 @@ import { NoteImporter } from '../lib/importers/note-importer';
 
 interface FileOperationsProps {
   activeNote: any;
-  activeNoteId: number | string | null;
+  activeNoteUid: number | string | null;
   activeProjectId: number | string | null;
   createNote: (title: string, projectId: number | string | null) => Promise<any>;
   saveNote: (note: any) => Promise<any>;
-  setActiveNoteId: (id: number | string | null) => void;
+  setActiveNoteUid: (uid: string | null) => void;
   handleNoteChange: (content: string) => void;
   setIsExportNoteModalOpen: (open: boolean) => void;
   setIsImportNoteModalOpen: (open: boolean) => void;
@@ -17,11 +17,11 @@ interface FileOperationsProps {
 
 export const useFileOperations = ({
   activeNote,
-  activeNoteId,
+  activeNoteUid,
   activeProjectId,
   createNote,
   saveNote,
-  setActiveNoteId,
+  setActiveNoteUid,
   handleNoteChange,
   setIsExportNoteModalOpen,
   setIsImportNoteModalOpen,
@@ -70,12 +70,12 @@ export const useFileOperations = ({
         html = await NoteImporter.convertMarkdownToHtml(file);
       }
       
-      if (!activeNoteId) {
+      if (!activeNoteUid) {
         const baseName = file.name.replace(/\.[^/.]+$/, "");
         const newNote = await createNote(baseName, activeProjectId === 'all' ? null : activeProjectId);
         if (newNote) {
           await saveNote({ ...newNote, content: html });
-          setActiveNoteId(newNote.id);
+          setActiveNoteUid(newNote.uid);
           toast.success(`Created new note from ${file.name}`, { id: toastId });
         }
       } else {
@@ -89,7 +89,7 @@ export const useFileOperations = ({
     } catch (error: any) {
       toast.error(error.message || "Failed to import file", { id: toastId });
     }
-  }, [activeNoteId, activeNote, activeProjectId, createNote, saveNote, setActiveNoteId, handleNoteChange]);
+  }, [activeNoteUid, activeNote, activeProjectId, createNote, saveNote, setActiveNoteUid, handleNoteChange]);
 
   return {
     handleExportMarkdown,

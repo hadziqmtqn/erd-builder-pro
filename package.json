@@ -61,6 +61,7 @@
     "react-day-picker": "^9.14.0",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.15.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "shadcn": "^4.1.2",

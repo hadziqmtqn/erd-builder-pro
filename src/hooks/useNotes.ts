@@ -2,16 +2,22 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { saveTitleCache } from '../utils/titleCache';
 
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotes] = useState<Note[]>([]);
-  const [activeNoteId, setActiveNoteId] = useState<number | string | null>(null);
+  const [activeNoteUid, setActiveNoteUid] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isItemLoading, setIsItemLoading] = useState(false);
 
   const [notesTotal, setNotesTotal] = useState(0);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
   const notesRef = useRef<Note[]>(notes);
+  // Content edit version — bumped on every user edit, checked by selectNote to
+  // prevent API/IndexedDB response from overwriting user's in-flight edits
+  const contentVersionRef = useRef(0);
+  const bumpContentVersion = useCallback(() => { contentVersionRef.current++; return contentVersionRef.current; }, []);
+  const getContentVersion = useCallback(() => contentVersionRef.current, []);
 
   // Keep ref in sync
   notesRef.current = notes;
@@ -67,8 +73,10 @@ export function useNotes(isGuest: boolean = false) {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
     if (isGuest) {
+      const noteUid = crypto.randomUUID();
       const newNote: Note = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: noteUid,
+        uid: noteUid,
         title,
         content: content || '',
         project_id: effectiveProjectId || null,
@@ -102,8 +110,8 @@ export function useNotes(isGuest: boolean = false) {
     return null;
   };
 
-  const duplicateNote = async (id: number | string, newTitle: string) => {
-    const sourceNote = notesRef.current.find(n => String(n.id) === String(id));
+  const duplicateNote = async (uid: string, newTitle: string) => {
+    const sourceNote = notesRef.current.find(n => n.uid === uid);
     if (!sourceNote) {
       toast.error('Source note not found');
       return null;
@@ -113,7 +121,7 @@ export function useNotes(isGuest: boolean = false) {
     let content = sourceNote.content;
     
     // If it's the active note, we might have unsaved changes in local draft
-    const draft = await localPersistence.getDraft(DraftType.NOTES, id);
+    const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
     if (draft) {
       try {
         const parsed = JSON.parse(draft.data);
@@ -124,78 +132,78 @@ export function useNotes(isGuest: boolean = false) {
     return await createNote(newTitle, sourceNote.project_id, content);
   };
 
-  const updateNote = async (id: number | string, title: string, options?: { silent?: boolean }) => {
+  const updateNote = async (uid: string, title: string, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const note = await localPersistence.getResource(id);
+      const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.title = title;
         note.updated_at = new Date().toISOString();
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => n.id === id ? { ...n, title } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, title } : n));
         if (!options?.silent) toast.success('Note renamed locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/notes/${id}`, {
+      const res = await fetch(`/api/notes/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setNotes(prev => prev.map(n => n.id === id ? { ...n, title } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, title } : n));
         if (!options?.silent) toast.success('Note renamed successfully');
       }
     } catch (err) {}
   };
 
-  const deleteNote = async (id: number | string) => {
+  const deleteNote = async (uid: string) => {
     if (isGuest) {
-      const note = await localPersistence.getResource(id);
+      const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.is_deleted = true;
         note.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => n.id === id ? { ...n, is_deleted: true } : n));
-        if (activeNoteId === id) setActiveNoteId(null);
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: true } : n));
+        if (activeNoteUid === uid) setActiveNoteUid(null);
         toast.success('Note moved to local trash');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/notes/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setNotes(prev => prev.map(n => n.id === id ? { ...n, is_deleted: true } : n));
-        if (activeNoteId === id) setActiveNoteId(null);
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: true } : n));
+        if (activeNoteUid === uid) setActiveNoteUid(null);
         toast.success('Note moved to trash');
       }
     } catch (err) {}
   };
 
-  const moveNoteToProject = async (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => {
+  const moveNoteToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
     if (isGuest) {
-      const note = await localPersistence.getResource(noteId);
+      const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.project_id = effectiveProjectId;
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, project_id: effectiveProjectId } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, project_id: effectiveProjectId } : n));
         if (!options?.silent) toast.success('Note moved to project locally');
       }
       return true;
     }
 
     try {
-      const res = await fetch(`/api/notes/${noteId}`, {
+      const res = await fetch(`/api/notes/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: effectiveProjectId }),
       });
       if (res.ok) {
-        setNotes(prev => prev.map(n => n.id === noteId ? { ...n, project_id: effectiveProjectId } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, project_id: effectiveProjectId } : n));
         if (!options?.silent) toast.success('Note moved to project');
         return true;
       }
@@ -219,7 +227,7 @@ export function useNotes(isGuest: boolean = false) {
         }
       }
 
-      await localPersistence.saveDraft(DraftType.NOTES, note.id, dataToSave, isSyncPending);
+      await localPersistence.saveDraft(DraftType.NOTES, note.uid || note.id, dataToSave, isSyncPending);
       return true;
     } catch (err) {
       console.error('Error in local saveNote:', err);
@@ -227,47 +235,56 @@ export function useNotes(isGuest: boolean = false) {
     }
   };
 
-  const restoreNote = async (id: number | string) => {
+  const restoreNote = async (uid: string) => {
     if (isGuest) {
-      const note = await localPersistence.getResource(id);
+      const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.is_deleted = false;
         note.deleted_at = undefined;
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => String(n.id) === String(id) ? { ...n, is_deleted: false } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: false } : n));
         toast.success('Note restored locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
+      const res = await fetch(`/api/notes/${uid}/restore`, { method: 'POST' });
       if (res.ok) {
-        setNotes(prev => prev.map(n => String(n.id) === String(id) ? { ...n, is_deleted: false } : n));
+        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: false } : n));
         toast.success('Note restored successfully');
       }
     } catch (err) {}
   };
 
-  const deleteNotePermanent = async (id: number | string) => {
+  const deleteNotePermanent = async (uid: string) => {
     if (isGuest) {
-      await localPersistence.deleteResource(id);
-      await localPersistence.clearDraft(DraftType.NOTES, id);
-      toast.success('Note permanently deleted from local');
+      const note = notesRef.current.find(n => n.uid === uid);
+      if (note) {
+        await localPersistence.deleteResource(note.id);
+        await localPersistence.clearDraft(DraftType.NOTES, uid);
+        toast.success('Note permanently deleted from local');
+      }
       return;
     }
 
     try {
-      const res = await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
+      const res = await fetch(`/api/notes/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Note permanently deleted');
       }
     } catch (err) {}
   };
 
-  const selectNote = async (id: number | string, options?: { silent?: boolean }) => {
+  const selectNote = async (uid: string, options?: {
+    silent?: boolean;
+    /** If set, selectNote skips applying API/IndexedDB content when version has
+     *  changed since the function started — meaning the user edited the note
+     *  while the async operations were in-flight. */
+    contentVersionAtStart?: number;
+  }) => {
     // Use notesRef.current to get the latest state even if the component hasn't re-rendered yet
-    const note = notesRef.current.find(n => String(n.id) === String(id));
+    const note = notesRef.current.find(n => n.uid === uid);
     if (note?.is_deleted) return;
     
     if (!options?.silent) setIsItemLoading(true);
@@ -277,12 +294,25 @@ export function useNotes(isGuest: boolean = false) {
       // where App.tsx clears content while this function sees stale state.
       if (!isGuest) {
         try {
-          const res = await fetch(`/api/notes/${id}`);
+          const res = await fetch(`/api/notes/${uid}`);
           if (res.ok) {
             const fullNote = await res.json();
             // Only update if it's not deleted (might have changed on another tab)
-            if (fullNote && !fullNote.is_deleted) {
-              setNotes(prev => prev.map(n => String(n.id) === String(id) ? { ...n, content: fullNote.content } : n));
+            // AND if user hasn't edited since selectNote started (prevent overwrite)
+            const shouldApplyServerContent = fullNote && !fullNote.is_deleted && (
+              options?.contentVersionAtStart === undefined ||
+              contentVersionRef.current === options.contentVersionAtStart
+            );
+            if (shouldApplyServerContent) {
+              setNotes(prev => {
+                const exists = prev.some(n => n.uid === uid);
+                if (exists) {
+                  return prev.map(n => n.uid === uid ? { ...n, content: fullNote.content } : n);
+                }
+                return [...prev, fullNote];
+              });
+              // Cache title for instant breadcrumb on next page load
+              try { saveTitleCache(uid, fullNote.title || 'Untitled', fullNote.projects?.name); } catch {}
             }
           }
         } catch (e) {
@@ -291,11 +321,22 @@ export function useNotes(isGuest: boolean = false) {
       }
 
       // Check for local unsynced drafts which should take priority
-      const draft = await localPersistence.getDraft(DraftType.NOTES, id);
-      if (draft && draft.sync_pending) {
+      const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
+      // Only apply draft if user hasn't edited since selectNote started
+      const shouldApplyDraft = draft && draft.sync_pending && (
+        options?.contentVersionAtStart === undefined ||
+        contentVersionRef.current === options.contentVersionAtStart
+      );
+      if (shouldApplyDraft) {
         try {
           const parsed = JSON.parse(draft.data);
-          setNotes(prev => prev.map(n => String(n.id) === String(id) ? { ...n, content: parsed.content } : n));
+          setNotes(prev => {
+            const exists = prev.some(n => n.uid === uid);
+            if (exists) {
+              return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
+            }
+            return prev;
+          });
           // Only show toast if not a silent operation
           if (!options?.silent) {
             toast.info("Loaded unsynced local note draft");
@@ -303,7 +344,7 @@ export function useNotes(isGuest: boolean = false) {
         } catch (e) {}
       }
       
-      setActiveNoteId(id);
+      setActiveNoteUid(uid);
     } finally {
       setIsItemLoading(false);
     }
@@ -312,8 +353,10 @@ export function useNotes(isGuest: boolean = false) {
   return {
     notes,
     setNotes,
-    activeNoteId,
-    setActiveNoteId,
+    activeNoteUid,
+    setActiveNoteUid,
+    bumpContentVersion,
+    getContentVersion,
     fetchNotes,
     createNote,
     updateNote,

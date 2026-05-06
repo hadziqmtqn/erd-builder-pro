@@ -30,11 +30,11 @@ interface RenameDocumentDialogProps {
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
   updateDiagram: (id: string | number, name: string, options?: { silent?: boolean }) => void;
-  updateNote: (id: string | number, name: string, options?: { silent?: boolean }) => void;
+  updateNote: (uid: string, name: string, options?: { silent?: boolean }) => void;
   updateDrawing: (id: string | number, name: string, options?: { silent?: boolean }) => void;
   updateFlowchart: (id: string | number, name: string, options?: { silent?: boolean }) => void;
   onMoveDiagramToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
-  onMoveNoteToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
+  onMoveNoteToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveDrawingToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveFlowchartToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onRenameSuccess?: () => Promise<void>;
@@ -72,7 +72,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
         // 1. Rename (silent)
         if (hasNameChanged) {
           if (view === 'erd') await updateDiagram(id, newName, { silent: true });
-          else if (view === 'notes') await updateNote(id, newName, { silent: true });
+          else if (view === 'notes') await updateNote(String(id), newName, { silent: true });
           else if (view === 'drawings') await updateDrawing(id, newName, { silent: true });
           else if (view === 'flowchart') await updateFlowchart(id, newName, { silent: true });
         }
@@ -132,7 +132,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Project
               </label>
-              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <Select value={selectedProjectId} onValueChange={(value) => value !== null && setSelectedProjectId(value)}>
                 <SelectTrigger className="h-9">
                   <SelectValue>
                     {selectedProjectId === "none" ? "Uncategorized" : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
