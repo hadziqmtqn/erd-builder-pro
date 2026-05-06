@@ -15,7 +15,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
   let query = supabase
     .from("notes")
-    .select("id, uid, title, project_id, is_public, share_token, expiry_date, created_at, updated_at, is_deleted, user_id, projects!left(*)", { count: 'exact' })
+    .select("id, uid, title, content, project_id, is_public, share_token, expiry_date, created_at, updated_at, is_deleted, user_id, projects!left(*)", { count: 'exact' })
     .eq("is_deleted", false)
     .eq("user_id", (req as any).user.id);
 

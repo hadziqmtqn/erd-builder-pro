@@ -16,7 +16,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     .select(`
       *,
       diagrams(id, uid, name, updated_at, created_at, is_deleted, project_id),
-      notes(id, uid, title, updated_at, created_at, is_deleted, project_id),
+      notes(id, uid, title, content, updated_at, created_at, is_deleted, project_id),
       drawings(id, uid, title, updated_at, created_at, is_deleted, project_id),
       flowcharts(id, uid, title, updated_at, created_at, is_deleted, project_id)
     `, { count: 'exact' })
