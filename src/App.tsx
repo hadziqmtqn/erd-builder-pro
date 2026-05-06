@@ -1268,7 +1268,7 @@ function AppContent() {
               } else if (format === 'pdf') {
                 NoteExporter.exportToPDF(activeNote as any, options, pageSize);
               } else if (format === 'print') {
-                NoteExporter.printNote(activeNote as any);
+                NoteExporter.printNote(activeNote as any, options);
               } else if (format === 'word') {
                 NoteExporter.exportToWord(activeNote as any, options);
               }
