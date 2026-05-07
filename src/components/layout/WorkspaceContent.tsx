@@ -40,6 +40,7 @@ export interface WorkspaceContentProps {
   canRedo?: boolean;
   takeSnapshot: (nodes: Node<Entity>[], edges: Edge[]) => void;
   onNodeDragStop?: () => void;
+  onMoveEnd?: (e: any, v: any) => void;
 
   // Stabilized inline callbacks
   onNodeClick: (e: React.MouseEvent, n: Node) => void;
@@ -138,6 +139,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
               takeSnapshot={props.takeSnapshot}
               selectedNodeId={props.selectedNodeId}
               onNodeDragStop={props.onNodeDragStop}
+              onMoveEnd={props.onMoveEnd}
             />
           )}
           {props.view === 'backups' && (

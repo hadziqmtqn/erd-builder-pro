@@ -25,6 +25,7 @@ import { RelationshipPropertiesModal } from './components/modals/RelationshipPro
 import { ForbiddenView } from "./components/views/ForbiddenView";
 import { WorkspaceContent } from '@/components/layout/WorkspaceContent';
 import { NotesPage } from '@/components/pages/NotesPage';
+import { DiagramsPage } from '@/components/pages/DiagramsPage';
 
 // Layout Components
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
@@ -199,7 +200,7 @@ function AppContent() {
     onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
     handleDiagramSelect: selectDiagram, viewportRef,
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
-    onNodeDragStop
+    onNodeDragStop, onMoveEnd
   } = useERDSession(isPublicView, isGuest, isAuthenticated, setView, erdOptions);
 
   // Effective ID for realtime sync (works for both owner and public guest)
@@ -315,13 +316,7 @@ function AppContent() {
   });
 
 
-  // Sync initialization: Ensure guards allow saving once data is loaded
-  useEffect(() => {
-    if (activeDiagramId && !isERDItemLoading) {
-      lastLoadedDiagramIdRef.current = activeDiagramId;
-      lastDiagramLoadTimestampRef.current = Date.now();
-    }
-  }, [activeDiagramId, isERDItemLoading]);
+
 
   useEffect(() => {
     if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
@@ -560,12 +555,26 @@ function AppContent() {
   }, [isAuthenticated, location.pathname]);
 
   async function handleDiagramSelect(id: number | string) {
-    if (activeDiagramId === id && view === 'erd') return;
+    // Resolve identifier for URL (prefer UID)
+    const diagram = diagrams.find(d => String(d.id) === String(id) || d.uid === id);
+    const urlIdentifier = diagram?.uid || id;
+
+    if (activeDiagramId === id && view === 'erd') {
+      if (!location.pathname.startsWith('/diagrams/')) {
+        navigate('/diagrams/' + urlIdentifier);
+      }
+      return;
+    }
     await flushPendingSaves();
     setView('erd');
     // Clear current diagram entities to avoid showing stale data while loading
     setNodes([]);
     setEdges([]);
+    
+    if (!getSharePathInfo() && location.pathname !== '/diagrams/' + urlIdentifier) {
+      navigate('/diagrams/' + urlIdentifier);
+    }
+
     await selectDiagram(id, (newId) => {
       setActiveDiagramId(newId);
       lastLoadedDiagramIdRef.current = newId;
@@ -1252,6 +1261,19 @@ function AppContent() {
           lastLoadedNoteIdRef={lastLoadedNoteIdRef}
         />
 
+        <DiagramsPage
+          diagrams={diagrams}
+          activeDiagramId={activeDiagramId}
+          handleDiagramSelect={handleDiagramSelect}
+          isAuthenticated={isAuthenticated}
+          isERDItemLoading={isERDItemLoading}
+          view={view}
+          setView={setView}
+          setSidebarView={setSidebarView}
+          lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
+          lastDiagramLoadTimestampRef={lastDiagramLoadTimestampRef}
+        />
+
         <ImportNoteModal 
           isOpen={isImportNoteModalOpen} 
           onClose={() => setIsImportNoteModalOpen(false)}
@@ -1298,6 +1320,7 @@ function AppContent() {
           canRedo={canRedo}
           takeSnapshot={takeSnapshot}
           onNodeDragStop={onNodeDragStop}
+          onMoveEnd={onMoveEnd}
 
           onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}

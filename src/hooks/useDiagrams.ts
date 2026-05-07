@@ -135,7 +135,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch(`/api/diagrams/${id}`, {
+      const diagram = diagramsRef.current.find(d => d.id === id);
+      const identifier = diagram?.uid || id;
+      const res = await fetch(`/api/diagrams/${identifier}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -167,7 +169,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch(`/api/diagrams/${id}`, { method: 'DELETE' });
+      const diagram = diagramsRef.current.find(d => d.id === id);
+      const identifier = diagram?.uid || id;
+      const res = await fetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setDiagrams(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
         if (activeDiagramId === id) setActiveDiagramId(null);
@@ -195,7 +199,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch(`/api/diagrams/${id}/restore`, { method: 'POST' });
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id));
+      const identifier = diagram?.uid || id;
+      const res = await fetch(`/api/diagrams/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         // Optimistically update the state instead of full fetch to avoid losing other project data
         setDiagrams(prev => prev.map(d => String(d.id) === String(id) ? { ...d, is_deleted: false } : d));
@@ -217,7 +223,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch(`/api/diagrams/${id}/permanent`, { method: 'DELETE' });
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id));
+      const identifier = diagram?.uid || id;
+      const res = await fetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Diagram permanently deleted');
       } else {
@@ -244,7 +252,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch(`/api/diagrams/${diagramId}/project`, {
+      const diagram = diagramsRef.current.find(d => d.id === diagramId);
+      const identifier = diagram?.uid || diagramId;
+      const res = await fetch(`/api/diagrams/${identifier}/project`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: effectiveProjectId }),

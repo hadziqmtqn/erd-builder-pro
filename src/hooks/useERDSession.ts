@@ -37,7 +37,7 @@ export function useERDSession(
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const { setViewport, getNodes, getEdges } = useReactFlow();
+  const { setViewport, fitView, getNodes, getEdges } = useReactFlow();
 
   // Wrapped onNodesChange to broadcast movement
   const onNodesChangeWrapped = useCallback((changes: any) => {
@@ -85,9 +85,20 @@ export function useERDSession(
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
+  const isInitializingRef = useRef(false);
+
+  const loadingIdRef = useRef<string | number | null>(null);
+
   const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean }) => {
+    // Prevent duplicate concurrent loads for the same ID
+    if (loadingIdRef.current === id) return;
+    loadingIdRef.current = id;
+
     if (!options?.silent) {
       setIsItemLoading(true);
+      isInitializingRef.current = true;
+      // Update active ID immediately to satisfy routing checks and prevent duplicate triggers from parent
+      setActiveDiagramId(id);
       // Clear current view to avoid showing stale data from previous diagram
       setNodes([]);
       setEdges([]);
@@ -98,7 +109,10 @@ export function useERDSession(
 
       if (isGuest) {
         const localData = await localPersistence.getResource(id);
-        if (!localData) return;
+        if (!localData) {
+          loadingIdRef.current = null;
+          return;
+        }
         data = localData;
       } else {
         const res = await fetch(`/api/diagrams/${id}`);
@@ -106,6 +120,7 @@ export function useERDSession(
           const errText = await res.text();
           console.error(`Failed to fetch diagram ${id}:`, res.status, errText);
           toast.error("Failed to load diagram details");
+          loadingIdRef.current = null;
           return;
         }
         data = await res.json();
@@ -117,7 +132,6 @@ export function useERDSession(
       if (!data.entities) data.entities = [];
       if (!data.relationships) data.relationships = [];
 
-      setActiveDiagramId(id);
       setView('erd');
       clearHistory();
 
@@ -195,14 +209,34 @@ export function useERDSession(
       setEdges(flowEdges);
       setSelectedNodeId(null);
 
-      if (finalData.viewport_x !== undefined && finalData.viewport_y !== undefined && finalData.viewport_zoom) {
-        setViewport({ x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom }, { duration: 800 });
-        viewportRef.current = { x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom };
-      } else {
-        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 800 }), 100);
+      // Robust viewport positioning:
+      // On fresh page load/refresh, React Flow might take a moment to be ready for viewport commands.
+      // We use a slightly longer initial timeout and an additional retry to ensure it applies.
+      const applyViewport = (duration: number = 0) => {
+        if (finalData.viewport_x !== undefined && finalData.viewport_y !== undefined && finalData.viewport_zoom && (finalData.viewport_x !== 0 || finalData.viewport_y !== 0)) {
+          setViewport({ x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom }, { duration });
+          viewportRef.current = { x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom };
+        } else if (flowNodes.length > 0) {
+          fitView({ padding: 0.2, duration });
+        }
+      };
+
+      // Try immediately with a small delay for DOM rendering
+      setTimeout(() => applyViewport(0), 50);
+      // Retry once more after a bit longer to be absolutely sure (especially for refresh)
+      setTimeout(() => applyViewport(0), 300);
+      
+      if (!finalData.viewport_x && flowNodes.length === 0) {
+        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 0 }), 100);
       }
+
+      // Allow auto-save only after everything is settled
+      setTimeout(() => {
+        isInitializingRef.current = false;
+      }, 2000);
     } catch (err) {} finally {
       setIsItemLoading(false);
+      loadingIdRef.current = null;
     }
   }, [isGuest, clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
 
@@ -480,6 +514,23 @@ export function useERDSession(
     takeSnapshot(currentNodes as Node<Entity>[], currentEdges);
   }, [setEdges, takeSnapshot, getNodes, getEdges]);
 
+  const handleMoveEnd = useCallback((_: any, v: Viewport) => {
+    // Only trigger save if user is not a public visitor AND not initializing
+    if (!isPublicView && !isInitializingRef.current) {
+      // Avoid saving if viewport hasn't significantly changed (prevents accidental saves on click)
+      const prev = viewportRef.current;
+      const hasChanged = 
+        Math.abs((prev.x || 0) - v.x) > 0.5 || 
+        Math.abs((prev.y || 0) - v.y) > 0.5 || 
+        Math.abs((prev.zoom || 1) - v.zoom) > 0.001;
+
+      if (hasChanged) {
+        viewportRef.current = v;
+        setSaveCounter(prevCounter => prevCounter + 1);
+      }
+    }
+  }, [isPublicView]);
+
   return {
     nodes, setNodes, onNodesChange: onNodesChangeWrapped,
     edges, setEdges, onEdgesChange: onEdgesChangeWrapped,
@@ -500,6 +551,7 @@ export function useERDSession(
     takeSnapshot,
     isItemLoading,
     saveCounter,
-    onNodeDragStop
+    onNodeDragStop,
+    onMoveEnd: handleMoveEnd
   };
 }

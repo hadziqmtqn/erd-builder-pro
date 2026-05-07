@@ -134,15 +134,15 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
   res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
-router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { id } = req.params;
+router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { is_public, share_token, expiry_date } = req.body;
 
   try {
     const { data: currentDiagram } = await supabase
       .from("diagrams")
       .select("*")
-      .eq("id", id)
+      .eq("uid", uid)
       .single();
 
     if (!currentDiagram) return res.status(404).json({ error: "Diagram not found" });
@@ -164,7 +164,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
     const { data, error } = await supabase
       .from("diagrams")
       .update(updateData)
-      .eq("id", id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .select()
       .single();
@@ -176,16 +176,28 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
   }
 });
 
-router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const diagramId = req.params.id;
-  const { data: diagram, error: diagramError } = await supabase
+router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const identifier = req.params.uid;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+  
+  let query = supabase
     .from("diagrams")
     .select("*")
-    .eq("id", diagramId)
-    .eq("user_id", (req as any).user.id)
-    .single();
+    .eq("user_id", (req as any).user.id);
+
+  if (isUuid) {
+    query = query.eq("uid", identifier);
+  } else if (!isNaN(Number(identifier))) {
+    query = query.eq("id", identifier);
+  } else {
+    return res.status(400).json({ error: "Invalid identifier format" });
+  }
+
+  const { data: diagram, error: diagramError } = await query.single();
 
   if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
+
+  const diagramId = diagram.id;
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")
@@ -213,73 +225,73 @@ router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
-router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("diagrams")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete diagram");
   res.json({ success: true });
 });
 
-router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("diagrams")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore diagram");
   res.json({ success: true });
 });
 
-router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { error } = await supabase
     .from("diagrams")
     .delete()
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { name } = req.body;
   const { error } = await supabase
     .from("diagrams")
     .update({ name })
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-router.put("/:id/project", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.put("/:uid/project", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const { project_id } = req.body;
   const { error } = await supabase
     .from("diagrams")
     .update({ project_id: project_id || null })
-    .eq("id", req.params.id)
+    .eq("uid", req.params.uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const diagramId = req.params.id;
+router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const uid = req.params.uid;
   const { entities, relationships, viewport, expectedVersion } = req.body;
 
   try {
     // ✅ STEP 1: Fetch current diagram state with version check
     const { data: currentDiagram, error: fetchError } = await supabase
       .from("diagrams")
-      .select("_version, updated_at")
-      .eq("id", diagramId)
+      .select("id, _version, updated_at")
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .single();
 
@@ -287,10 +299,12 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       return res.status(404).json({ error: "Diagram not found" });
     }
 
+    const diagramId = currentDiagram.id;
+
     // ✅ STEP 2: Optimistic locking - reject if version mismatch
     if (expectedVersion !== undefined && expectedVersion !== null) {
       if (currentDiagram._version !== expectedVersion) {
-        console.warn(`[Race Condition] Version mismatch for diagram ${diagramId}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
+        console.warn(`[Race Condition] Version mismatch for diagram ${uid}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
         return res.status(409).json({ 
           error: "Conflict: Diagram was modified. Please refresh and try again.",
           currentVersion: currentDiagram._version,
@@ -491,7 +505,7 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       version: updatedDiagram?._version || currentDiagram._version + 1
     });
   } catch (err: any) {
-    console.error(`[Save Error] Diagram ${diagramId}:`, err);
+    console.error(`[Save Error] Diagram ${uid}:`, err);
     res.status(500).json({ error: err.message });
   }
 });
