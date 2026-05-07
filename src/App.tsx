@@ -25,7 +25,6 @@ import { RelationshipPropertiesModal } from './components/modals/RelationshipPro
 import { ForbiddenView } from "./components/views/ForbiddenView";
 import { WorkspaceContent } from '@/components/layout/WorkspaceContent';
 import { NotesPage } from '@/components/pages/NotesPage';
-import { DiagramsPage } from '@/components/pages/DiagramsPage';
 
 // Layout Components
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
@@ -57,9 +56,11 @@ import { useSidebarHandlers } from './hooks/useSidebarHandlers';
 import { useTrashHandlers } from './hooks/useTrashHandlers';
 import { useWorkspaceCallbacks } from './hooks/useWorkspaceCallbacks';
 import { useAutoSave } from './hooks/useAutoSave';
+import { useDiagramNavigation } from './hooks/useDiagramNavigation';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
+import { getSharePathInfo } from './lib/urlUtils';
 import { toast } from 'sonner';
 import { Entity, DraftType } from './types';
 
@@ -68,26 +69,6 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-
-// Helper to check for share routes
-const getSharePathInfo = () => {
-  if (typeof window === 'undefined') return null;
-  const path = window.location.pathname;
-  const match = path.match(/^\/(view|share)\/(diagram|note|drawing|flowchart|erd|notes|drawings)\/([^/]+)/);
-  if (match) {
-    const typeMap: Record<string, any> = {
-      diagram: 'erd',
-      erd: 'erd',
-      note: 'notes',
-      notes: 'notes',
-      drawing: 'drawings',
-      drawings: 'drawings',
-      flowchart: 'flowchart'
-    };
-    return { type: typeMap[match[2]] || match[2], uid: match[3] };
-  }
-  return null;
-};
 
 function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'>(() => {
@@ -537,11 +518,28 @@ function AppContent() {
     syncDrafts,
   });
 
+  // ── Diagram Navigation ──
+  // Extracted to useDiagramNavigation: handleDiagramSelect, URL routing,
+  // view cleanup, and diagram loaded tracking.
+  const { handleDiagramSelect } = useDiagramNavigation({
+    diagrams,
+    activeDiagramId,
+    setActiveDiagramId,
+    view,
+    setView,
+    setSidebarView,
+    setNodes,
+    setEdges,
+    selectDiagram,
+    flushPendingSaves,
+    isAuthenticated,
+    isERDItemLoading,
+    lastLoadedDiagramIdRef,
+    lastDiagramLoadTimestampRef,
+  });
+
   // Route /notes/:uid → select note (only after auth and on external URL change)
   const lastProcessedNotesUrlRef = useRef('');
-  const lastProcessedDiagramUrlRef = useRef('');
-  const diagramTargetRef = useRef<number | string | null>(null); // Guard against stale fetch results
-  const isSwitchingDiagramRef = useRef(false); // Re-entrant lock: prevents URL effect from triggering handleDiagramSelect while a switch is in-flight
   const handleNoteSelectRef = useRef(handleNoteSelect);
   handleNoteSelectRef.current = handleNoteSelect;
   useEffect(() => {
@@ -553,52 +551,6 @@ function AppContent() {
       handleNoteSelectRef.current(m[1]);
     }
   }, [isAuthenticated, location.pathname]);
-
-  async function handleDiagramSelect(id: number | string) {
-    // Re-entrant guard: if a diagram switch is already in-flight (e.g. URL effect
-    // fires while user's click-originated switch is still processing), skip.
-    // This prevents the URL effect from re-triggering handleDiagramSelect with
-    // the OLD diagram's ID (from stale location.pathname) mid-transition.
-    if (isSwitchingDiagramRef.current) return;
-    isSwitchingDiagramRef.current = true;
-    diagramTargetRef.current = id;
-
-    try {
-      // Resolve identifier for URL (prefer UID)
-      const diagram = diagrams.find(d => String(d.id) === String(id) || d.uid === id);
-      const urlIdentifier = diagram?.uid || id;
-
-      if (activeDiagramId === id && view === 'erd') {
-        if (!location.pathname.startsWith('/diagrams/')) {
-          navigate('/diagrams/' + urlIdentifier);
-        }
-        isSwitchingDiagramRef.current = false;
-        return;
-      }
-      await flushPendingSaves();
-
-      // ⚡ Set ref + navigate BEFORE state updates, so when DiagramsPage URL effect
-      // fires (reacting to activeDiagramId change), location.pathname is already set
-      // to the new diagram's URL
-      lastProcessedDiagramUrlRef.current = '/diagrams/' + urlIdentifier;
-      if (!getSharePathInfo() && location.pathname !== '/diagrams/' + urlIdentifier) {
-        navigate('/diagrams/' + urlIdentifier);
-      }
-
-      setActiveDiagramId(id);
-      setView('erd');
-      // Clear current diagram entities to avoid showing stale data while loading
-      setNodes([]);
-      setEdges([]);
-
-      await selectDiagram(id, (newId) => {
-        setActiveDiagramId(newId);
-        lastLoadedDiagramIdRef.current = newId;
-      }, { isStale: () => diagramTargetRef.current !== id });
-    } finally {
-      isSwitchingDiagramRef.current = false;
-    }
-  }
 
   async function handleNoteSelect(uid: string) {
     // Capture content version before any async work. If user edits between now
@@ -1278,20 +1230,6 @@ function AppContent() {
           setView={setView}
           setSidebarView={setSidebarView}
           lastLoadedNoteIdRef={lastLoadedNoteIdRef}
-        />
-
-        <DiagramsPage
-          diagrams={diagrams}
-          activeDiagramId={activeDiagramId}
-          handleDiagramSelect={handleDiagramSelect}
-          isAuthenticated={isAuthenticated}
-          isERDItemLoading={isERDItemLoading}
-          view={view}
-          setView={setView}
-          setSidebarView={setSidebarView}
-          lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
-          lastDiagramLoadTimestampRef={lastDiagramLoadTimestampRef}
-          lastProcessedDiagramUrlRef={lastProcessedDiagramUrlRef}
         />
 
         <ImportNoteModal 
