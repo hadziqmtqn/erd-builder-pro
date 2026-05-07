@@ -8,7 +8,7 @@ export interface UseWorkspaceCallbacksParams {
   setSelectedEdgeId: (id: string | null) => void;
   setIsTablePropertiesOpen: (open: boolean) => void;
   setIsImportModalOpen: (open: boolean) => void;
-  viewportRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
   publicData: any;
   diagrams: any[];
   activeDiagramId: any;

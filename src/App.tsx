@@ -57,6 +57,7 @@ import { useTrashHandlers } from './hooks/useTrashHandlers';
 import { useWorkspaceCallbacks } from './hooks/useWorkspaceCallbacks';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useDiagramNavigation } from './hooks/useDiagramNavigation';
+import { useNoteNavigation } from './hooks/useNoteNavigation';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
@@ -294,6 +295,7 @@ function AppContent() {
     notes,
     drawings,
     flowcharts,
+    projects,
   });
 
   useEffect(() => {
@@ -538,55 +540,24 @@ function AppContent() {
     lastDiagramLoadTimestampRef,
   });
 
-  // Route /notes/:uid → select note (only after auth and on external URL change)
-  const lastProcessedNotesUrlRef = useRef('');
-  const handleNoteSelectRef = useRef(handleNoteSelect);
-  handleNoteSelectRef.current = handleNoteSelect;
-  useEffect(() => {
-    if (!isAuthenticated || getSharePathInfo()) return;
-    if (lastProcessedNotesUrlRef.current === location.pathname) return;
-    const m = location.pathname.match(/^\/notes\/([^/]+)/);
-    if (m) {
-      lastProcessedNotesUrlRef.current = location.pathname;
-      handleNoteSelectRef.current(m[1]);
-    }
-  }, [isAuthenticated, location.pathname]);
-
-  async function handleNoteSelect(uid: string) {
-    // Capture content version before any async work. If user edits between now
-    // and selectNote's API/IndexedDB response, the version changes and selectNote
-    // skips overwriting their in-flight edits.
-    const versionAtStart = getContentVersion();
-    await flushPendingSaves();
-    setView('notes');
-    setSidebarView('notes');
-    // Set activeNoteUid early so breadcrumb can appear from list data (fetchProjects)
-    // before selectNote's detail API call completes
-    setActiveNoteUid(uid);
-    // Clear current note content to avoid showing stale data while loading,
-    // BUT only if we don't have cached content (stale-while-revalidate).
-    // If cached content is already visible, keep it while API loads in background.
-    setNotes(prev => prev.map(n => n.uid === uid ? {
-      ...n,
-      content: n.content !== undefined ? n.content : undefined,
-    } : n));
-    // Mark this URL as processed before navigate, so the URL effect skips its
-    // own handleNoteSelect call (preventing double API load)
-    lastProcessedNotesUrlRef.current = '/notes/' + uid;
-    if (!getSharePathInfo() && location.pathname !== '/notes/' + uid) {
-      navigate('/notes/' + uid);
-    }
-    // Pass fallbackNote from projects data — selectNote uses it directly
-    // instead of waiting for notesRef to update on the next React render
-    const fromProjects = (projects as any[])
-      ?.flatMap((p: any) => p.notes || [])
-      .find((n: any) => n.uid === uid);
-    await selectNote(uid, {
-      contentVersionAtStart: versionAtStart,
-      fallbackNote: fromProjects,
-    });
-    lastLoadedNoteIdRef.current = uid;
-  }
+  // ── Note Navigation ──
+  // Extracted to useNoteNavigation: handleNoteSelect, URL routing,
+  // view cleanup, and note loaded tracking.
+  const { handleNoteSelect } = useNoteNavigation({
+    notes,
+    setNotes,
+    activeNoteUid,
+    setActiveNoteUid,
+    view,
+    setView,
+    setSidebarView,
+    selectNote,
+    flushPendingSaves,
+    isAuthenticated,
+    getContentVersion,
+    projects,
+    lastLoadedNoteIdRef,
+  });
 
   async function handleDrawingSelect(id: number | string) {
     if (activeDrawingId === id && view === 'drawings') return; 
@@ -1215,21 +1186,11 @@ function AppContent() {
           setNotes={setNotes}
           activeNoteUid={activeNoteUid}
           setActiveNoteUid={setActiveNoteUid}
-          saveNote={saveNote}
-          bumpContentVersion={bumpContentVersion}
-          getContentVersion={getContentVersion}
-          isNoteItemLoading={isNoteItemLoading}
           isAuthenticated={isAuthenticated}
-          isRefreshing={isRefreshing}
-          syncDrafts={syncDrafts}
-          broadcastMessage={broadcastMessage}
-          setIsLocalSaving={setIsLocalSaving}
-          isIncomingSyncRef={isIncomingSyncRef}
           notesSaveTimeout={notesSaveTimeout}
           view={view}
           setView={setView}
           setSidebarView={setSidebarView}
-          lastLoadedNoteIdRef={lastLoadedNoteIdRef}
         />
 
         <ImportNoteModal 

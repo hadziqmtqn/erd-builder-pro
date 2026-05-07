@@ -20,9 +20,9 @@ export interface UseDiagramNavigationProps {
   isAuthenticated: boolean | null;
   isERDItemLoading: boolean;
   /** Ref for diagram loaded tracking — created by parent so useAutoSave can share it */
-  lastLoadedDiagramIdRef: React.MutableRefObject<number | string | null>;
+  lastLoadedDiagramIdRef: { current: number | string | null };
   /** Ref for diagram load timestamp — created by parent so useAutoSave can share it */
-  lastDiagramLoadTimestampRef: React.MutableRefObject<number>;
+  lastDiagramLoadTimestampRef: { current: number };
 }
 
 // ──────────────────────────────────────────

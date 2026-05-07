@@ -32,7 +32,7 @@ export interface UseSidebarHandlersParams {
   handleFlowchartSelect: (id: any) => void;
   searchQuery: string;
   activeProjectId: number | string | null;
-  notesRef: React.MutableRefObject<any[]>;
+  notesRef: { current: any[] };
   copyMarkdownToClipboard: (content: string) => Promise<void>;
   setIsImportNoteModalOpen: (open: boolean) => void;
   setIsExportNoteModalOpen: (open: boolean) => void;

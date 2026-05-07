@@ -62,8 +62,8 @@ export interface WorkspaceContentProps {
   triggerDebouncedSync: () => void;
   broadcastMessage: (type: any, draftType: any, id: any) => void;
   setIsLocalSaving: (val: boolean) => void;
-  viewportRef: React.MutableRefObject<any>;
-  lastLoadedDiagramIdRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
+  lastLoadedDiagramIdRef: { current: any };
 
   // Notes
   activeNote: any;
