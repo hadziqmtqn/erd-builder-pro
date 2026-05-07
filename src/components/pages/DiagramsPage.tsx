@@ -38,6 +38,7 @@ export interface DiagramsPageProps {
 
   lastLoadedDiagramIdRef: React.MutableRefObject<any>;
   lastDiagramLoadTimestampRef: React.MutableRefObject<number>;
+  lastProcessedDiagramUrlRef: React.MutableRefObject<string>;
 }
 
 /**
@@ -60,6 +61,7 @@ export const DiagramsPage = React.memo(function DiagramsPage(props: DiagramsPage
     setSidebarView,
     lastLoadedDiagramIdRef,
     lastDiagramLoadTimestampRef,
+    lastProcessedDiagramUrlRef,
   } = props;
 
   const navigate = useNavigate();
@@ -68,17 +70,23 @@ export const DiagramsPage = React.memo(function DiagramsPage(props: DiagramsPage
   // ── Effect: URL Routing for /diagrams/:id ──
   useEffect(() => {
     if (!isAuthenticated || getSharePathInfo()) return;
+
+    // Skip if this URL was already handled by handleDiagramSelect's own navigate
+    // (prevents race condition where URL effect re-triggers handleDiagramSelect
+    //  while the user's click-originated load is still in flight)
+    if (lastProcessedDiagramUrlRef.current === location.pathname) return;
     
     const diagramMatch = location.pathname.match(/^\/diagrams\/([^/]+)/);
     if (diagramMatch) {
       const id = diagramMatch[1];
+      lastProcessedDiagramUrlRef.current = location.pathname;
       if (String(activeDiagramId) !== String(id)) {
         setView('erd');
         setSidebarView('erd');
         handleDiagramSelect(id);
       }
     }
-  }, [isAuthenticated, location.pathname, activeDiagramId, handleDiagramSelect, setView, setSidebarView]);
+  }, [isAuthenticated, location.pathname, activeDiagramId, handleDiagramSelect, setView, setSidebarView, lastProcessedDiagramUrlRef]);
 
   // ── Effect: View Cleanup ──
   useEffect(() => {

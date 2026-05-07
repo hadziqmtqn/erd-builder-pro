@@ -315,9 +315,6 @@ function AppContent() {
     flowcharts,
   });
 
-
-
-
   useEffect(() => {
     if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
   }, [activeDrawingId, isDrawingItemLoading]);
@@ -542,6 +539,9 @@ function AppContent() {
 
   // Route /notes/:uid → select note (only after auth and on external URL change)
   const lastProcessedNotesUrlRef = useRef('');
+  const lastProcessedDiagramUrlRef = useRef('');
+  const diagramTargetRef = useRef<number | string | null>(null); // Guard against stale fetch results
+  const isSwitchingDiagramRef = useRef(false); // Re-entrant lock: prevents URL effect from triggering handleDiagramSelect while a switch is in-flight
   const handleNoteSelectRef = useRef(handleNoteSelect);
   handleNoteSelectRef.current = handleNoteSelect;
   useEffect(() => {
@@ -555,30 +555,49 @@ function AppContent() {
   }, [isAuthenticated, location.pathname]);
 
   async function handleDiagramSelect(id: number | string) {
-    // Resolve identifier for URL (prefer UID)
-    const diagram = diagrams.find(d => String(d.id) === String(id) || d.uid === id);
-    const urlIdentifier = diagram?.uid || id;
+    // Re-entrant guard: if a diagram switch is already in-flight (e.g. URL effect
+    // fires while user's click-originated switch is still processing), skip.
+    // This prevents the URL effect from re-triggering handleDiagramSelect with
+    // the OLD diagram's ID (from stale location.pathname) mid-transition.
+    if (isSwitchingDiagramRef.current) return;
+    isSwitchingDiagramRef.current = true;
+    diagramTargetRef.current = id;
 
-    if (activeDiagramId === id && view === 'erd') {
-      if (!location.pathname.startsWith('/diagrams/')) {
+    try {
+      // Resolve identifier for URL (prefer UID)
+      const diagram = diagrams.find(d => String(d.id) === String(id) || d.uid === id);
+      const urlIdentifier = diagram?.uid || id;
+
+      if (activeDiagramId === id && view === 'erd') {
+        if (!location.pathname.startsWith('/diagrams/')) {
+          navigate('/diagrams/' + urlIdentifier);
+        }
+        isSwitchingDiagramRef.current = false;
+        return;
+      }
+      await flushPendingSaves();
+
+      // ⚡ Set ref + navigate BEFORE state updates, so when DiagramsPage URL effect
+      // fires (reacting to activeDiagramId change), location.pathname is already set
+      // to the new diagram's URL
+      lastProcessedDiagramUrlRef.current = '/diagrams/' + urlIdentifier;
+      if (!getSharePathInfo() && location.pathname !== '/diagrams/' + urlIdentifier) {
         navigate('/diagrams/' + urlIdentifier);
       }
-      return;
-    }
-    await flushPendingSaves();
-    setView('erd');
-    // Clear current diagram entities to avoid showing stale data while loading
-    setNodes([]);
-    setEdges([]);
-    
-    if (!getSharePathInfo() && location.pathname !== '/diagrams/' + urlIdentifier) {
-      navigate('/diagrams/' + urlIdentifier);
-    }
 
-    await selectDiagram(id, (newId) => {
-      setActiveDiagramId(newId);
-      lastLoadedDiagramIdRef.current = newId;
-    });
+      setActiveDiagramId(id);
+      setView('erd');
+      // Clear current diagram entities to avoid showing stale data while loading
+      setNodes([]);
+      setEdges([]);
+
+      await selectDiagram(id, (newId) => {
+        setActiveDiagramId(newId);
+        lastLoadedDiagramIdRef.current = newId;
+      }, { isStale: () => diagramTargetRef.current !== id });
+    } finally {
+      isSwitchingDiagramRef.current = false;
+    }
   }
 
   async function handleNoteSelect(uid: string) {
@@ -1272,6 +1291,7 @@ function AppContent() {
           setSidebarView={setSidebarView}
           lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
           lastDiagramLoadTimestampRef={lastDiagramLoadTimestampRef}
+          lastProcessedDiagramUrlRef={lastProcessedDiagramUrlRef}
         />
 
         <ImportNoteModal 

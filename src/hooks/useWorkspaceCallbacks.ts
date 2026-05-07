@@ -91,12 +91,12 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
   }, [isPublicView, publicData, diagrams, activeDiagramId, handleExportImage]);
 
   const workspaceIsLoading = useMemo(() => {
-    if (view === 'erd') return isDiagramsLoading || isERDItemLoading;
-    if (view === 'notes') return isNotesLoading || isNoteItemLoading;
-    if (view === 'drawings') return isDrawingsLoading || isDrawingItemLoading;
-    if (view === 'flowchart') return isFlowchartsLoading || isFlowchartItemLoading;
+    if (view === 'erd') return isERDItemLoading;
+    if (view === 'notes') return isNoteItemLoading;
+    if (view === 'drawings') return isDrawingItemLoading;
+    if (view === 'flowchart') return isFlowchartItemLoading;
     return false;
-  }, [view, isDiagramsLoading, isERDItemLoading, isNotesLoading, isNoteItemLoading, isDrawingsLoading, isDrawingItemLoading, isFlowchartsLoading, isFlowchartItemLoading]);
+  }, [view, isERDItemLoading, isNoteItemLoading, isDrawingItemLoading, isFlowchartItemLoading]);
 
   return {
     handleNodeClick,
