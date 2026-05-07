@@ -16,7 +16,7 @@ export function usePublicDocument(
   const [publicData, setPublicData] = useState<any>(null);
   const [isPublicLoading, setIsPublicLoading] = useState(false);
   const [forbiddenDoc, setForbiddenDoc] = useState<ForbiddenDoc | null>(null);
-  const { setViewport } = useReactFlow();
+  const { setViewport, fitView } = useReactFlow();
 
   const fetchPublicDocument = async (type: string, uid: string, setNodes?: any, setEdges?: any, token?: string): Promise<boolean> => {
     setIsPublicLoading(true);
@@ -100,17 +100,32 @@ export function usePublicDocument(
 
         setNodes(flowNodes);
         setEdges(flowEdges);
-        if (data.viewport_x !== undefined) {
-          setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
-        }
+        const applyViewport = (duration: number = 0) => {
+          if (data.viewport_x !== undefined && (data.viewport_x !== 0 || data.viewport_y !== 0)) {
+            setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration });
+          } else if (flowNodes.length > 0) {
+            fitView({ padding: 0.2, duration });
+          }
+        };
+
+        setTimeout(() => applyViewport(0), 50);
+        setTimeout(() => applyViewport(0), 300);
       } else if (type === 'flowchart') {
         try {
           const parsedData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
           setNodes(parsedData.nodes || []);
           setEdges(parsedData.edges || []);
-          if (data.viewport_x !== undefined) {
-            setTimeout(() => setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration: 800 }), 100);
-          }
+          
+          const applyViewport = (duration: number = 0) => {
+            if (data.viewport_x !== undefined && (data.viewport_x !== 0 || data.viewport_y !== 0)) {
+              setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration });
+            } else if (parsedData.nodes?.length > 0) {
+              fitView({ padding: 0.2, duration });
+            }
+          };
+
+          setTimeout(() => applyViewport(0), 50);
+          setTimeout(() => applyViewport(0), 300);
         } catch (e) {
           console.error("Failed to parse flowchart data:", e);
         }

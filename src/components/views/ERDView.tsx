@@ -49,6 +49,7 @@ interface ERDViewProps {
   takeSnapshot?: (nodes: Node<Entity>[], edges: Edge[]) => void;
   isLoading?: boolean;
   selectedNodeId?: string | null;
+  onMoveEnd?: (e: any, v: any) => void;
 }
 
 
@@ -80,7 +81,8 @@ const ERDViewComponent = ({
   takeSnapshot,
   isLoading = false,
   selectedNodeId,
-  onNodeDragStop
+  onNodeDragStop,
+  onMoveEnd
 }: ERDViewProps) => {
   const showLoadingOverlay = isLoading && nodes.length === 0;
 
@@ -181,6 +183,7 @@ const ERDViewComponent = ({
           nodesConnectable={!isReadOnly}
           elementsSelectable={!isReadOnly}
           onNodeDragStop={onNodeDragStop}
+          onMoveEnd={onMoveEnd}
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={{

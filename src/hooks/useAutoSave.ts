@@ -113,11 +113,25 @@ export function useAutoSave(params: UseAutoSaveParams) {
     isLocalSavingRef, setIsLocalSaving, viewportRef,
   ]);
 
+  // 🔄 Track nodes/edges via refs to avoid re-triggering the effect on every change
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
   // ERD Auto-save
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
+    // 🛡️ Guard 1: Only trigger if saveCounter actually changed
     if (saveCounter === lastProcessedCounterRef.current) return;
+    
+    // 🛡️ Guard 2: Ignore any changes (like initial viewport jumps) for the first 2 seconds after load
+    if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
+      lastProcessedCounterRef.current = saveCounter; // Consume the counter so it doesn't trigger later
+      return;
+    }
+
     lastProcessedCounterRef.current = saveCounter;
 
     if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
@@ -128,12 +142,13 @@ export function useAutoSave(params: UseAutoSaveParams) {
       setIsLocalSaving(true);
 
       saveTimeoutRef.current = setTimeout(async () => {
-        if (Date.now() - lastSaveCallRef.current < 500) {
+        // Double check load timestamp inside timeout just in case
+        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
           setIsLocalSaving(false);
           return;
         }
 
-        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
+        if (Date.now() - lastSaveCallRef.current < 500) {
           setIsLocalSaving(false);
           return;
         }
@@ -148,11 +163,12 @@ export function useAutoSave(params: UseAutoSaveParams) {
           return;
         }
 
-        if (nodes.length === 0) {
+        if (nodesRef.current.length === 0) {
           setIsLocalSaving(false);
           return;
         }
-        await saveDiagram(nodes, edges, viewportRef.current);
+
+        await saveDiagram(nodesRef.current, edgesRef.current, viewportRef.current);
         lastSaveCallRef.current = Date.now();
         setIsLocalSaving(false);
         triggerDebouncedSync();
@@ -166,7 +182,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
       }
       setIsLocalSaving(false);
     };
-  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage]);
+  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage, lastDiagramLoadTimestampRef]);
 
   async function flushPendingSaves() {
     if (!isLocalSavingRef.current) return;
