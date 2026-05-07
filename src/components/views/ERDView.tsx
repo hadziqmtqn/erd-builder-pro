@@ -12,7 +12,7 @@ import {
   MarkerType
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Download, ChevronDown, Database, Undo2, Redo2, Image as ImageIcon, FileCode, Upload, FileText, Loader2 } from 'lucide-react';
+import { Plus, Undo2, Redo2, Image as Upload } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
@@ -68,23 +68,17 @@ const ERDViewComponent = ({
   onMove,
   addEntity,
   openImportModal,
-  handleExportSQL,
-
-  handleExportPDF,
-  handleExportImage,
   isReadOnly = false,
 
   undo,
   redo,
   canUndo,
   canRedo,
-  takeSnapshot,
-  isLoading = false,
   selectedNodeId,
   onNodeDragStop,
-  onMoveEnd
+  onMoveEnd,
+  isLoading,
 }: ERDViewProps) => {
-  const showLoadingOverlay = isLoading && nodes.length === 0;
 
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
@@ -110,13 +104,7 @@ const ERDViewComponent = ({
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
-      {/* Loading overlay - keeps ReactFlow mounted underneath */}
-      {showLoadingOverlay && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-muted/10 backdrop-blur-[1px]">
-          <Loader2 className="w-10 h-10 text-primary animate-spin opacity-60" />
-          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
-        </div>
-      )}
+
 
       {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
@@ -162,6 +150,11 @@ const ERDViewComponent = ({
               </Button>
             </div>
           </div>
+        </div>
+      )}
+      {isLoading && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-[1px] transition-opacity duration-150">
+          <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       )}
       <div className="flex-1">
@@ -211,9 +204,12 @@ const ERDViewComponent = ({
 export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
   // Optimization: If we already have nodes, don't re-render just because isLoading flickers
   // (e.g. during a background sync). This prevents the ReactFlow canvas from "blinking".
+  // NOTE: When switching diagrams (prev.nodes was empty / fresh load), we MUST allow the
+  // isLoading→false transition to render — otherwise spinner never disappears (#2).
   const loadingFlickered = prev.isLoading !== next.isLoading;
   const hasData = next.nodes.length > 0;
-  const shouldIgnoreLoading = loadingFlickered && hasData;
+  const wasEmptyBefore = prev.nodes.length === 0;
+  const shouldIgnoreLoading = loadingFlickered && hasData && !wasEmptyBefore;
 
   // Structural check for nodes and edges to handle reference changes during sync
   const nodesChanged = prev.nodes !== next.nodes && (

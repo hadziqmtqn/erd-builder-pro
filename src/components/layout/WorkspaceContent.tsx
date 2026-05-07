@@ -119,6 +119,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
         <>
           {props.view === 'erd' && (props.isPublicView ? props.publicData : props.activeDiagramId) && (
             <ERDView 
+              key={props.isPublicView ? props.publicData?.id : props.activeDiagramId}
               isLoading={props.isLoading}
               nodes={props.nodes} edges={props.edges} onNodesChange={props.onNodesChange} onEdgesChange={props.onEdgesChange} onConnect={props.onConnect}
               onNodeClick={props.onNodeClick}

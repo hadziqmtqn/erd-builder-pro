@@ -89,7 +89,7 @@ export function useERDSession(
 
   const loadingIdRef = useRef<string | number | null>(null);
 
-  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean }) => {
+  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }) => {
     // Prevent duplicate concurrent loads for the same ID
     if (loadingIdRef.current === id) return;
     loadingIdRef.current = id;
@@ -205,9 +205,15 @@ export function useERDSession(
         };
       });
 
+      // === STALE GUARD: If the user has navigated to a different diagram    ===
+      // === while this fetch was in-flight, discard to prevent stale data    ===
+      // === overwriting the correct diagram's canvas.                        ===
+      if (options?.isStale && options.isStale()) return;
+
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedNodeId(null);
+      setIsItemLoading(false); // ⚡ Hilangkan loading SEBELUM viewport
 
       // Robust viewport positioning:
       // On fresh page load/refresh, React Flow might take a moment to be ready for viewport commands.
@@ -235,7 +241,6 @@ export function useERDSession(
         isInitializingRef.current = false;
       }, 2000);
     } catch (err) {} finally {
-      setIsItemLoading(false);
       loadingIdRef.current = null;
     }
   }, [isGuest, clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
