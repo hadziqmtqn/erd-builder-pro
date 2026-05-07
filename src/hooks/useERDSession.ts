@@ -213,25 +213,25 @@ export function useERDSession(
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedNodeId(null);
-      setIsItemLoading(false); // ⚡ Hilangkan loading SEBELUM viewport
 
-      // Robust viewport positioning:
-      // On fresh page load/refresh, React Flow might take a moment to be ready for viewport commands.
-      // We use a slightly longer initial timeout and an additional retry to ensure it applies.
-      const applyViewport = (duration: number = 0) => {
-        if (finalData.viewport_x !== undefined && finalData.viewport_y !== undefined && finalData.viewport_zoom && (finalData.viewport_x !== 0 || finalData.viewport_y !== 0)) {
-          setViewport({ x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom }, { duration });
-          viewportRef.current = { x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom };
-        } else if (flowNodes.length > 0) {
-          fitView({ padding: 0.2, duration });
-        }
-      };
+      // === Apply saved viewport BEFORE hiding loading overlay ===
+      // This prevents a visible snap/flash from (0,0) to the correct position
+      const vx = finalData.viewport_x;
+      const vy = finalData.viewport_y;
+      const vz = finalData.viewport_zoom;
+      const hasSavedViewport = vx !== undefined && vy !== undefined && vz && (vx !== 0 || vy !== 0);
+      if (hasSavedViewport) {
+        setViewport({ x: vx, y: vy, zoom: vz }, { duration: 0 });
+        viewportRef.current = { x: vx, y: vy, zoom: vz };
+      }
 
-      // Try immediately with a small delay for DOM rendering
-      setTimeout(() => applyViewport(0), 50);
-      // Retry once more after a bit longer to be absolutely sure (especially for refresh)
-      setTimeout(() => applyViewport(0), 300);
-      
+      // Now hide loading — viewport is already in the correct position
+      setIsItemLoading(false);
+
+      if (!hasSavedViewport && flowNodes.length > 0) {
+        // No saved viewport — fit view after React Flow has rendered nodes
+        setTimeout(() => fitView({ padding: 0.2, duration: 0 }), 100);
+      }
       if (!finalData.viewport_x && flowNodes.length === 0) {
         setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 0 }), 100);
       }
