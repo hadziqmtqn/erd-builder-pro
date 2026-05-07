@@ -308,17 +308,10 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
     const existingRelIds = new Set(existingRelationships?.map((r: any) => r.id) || []);
     const newRelIds = new Set(relationships.map((r: any) => r.id));
 
-    // ✅ STEP 4: Delete relationships that were removed
-    const relsToDelete = Array.from(existingRelIds).filter(id => !newRelIds.has(id));
-    if (relsToDelete.length > 0) {
-      const { error: delRelError } = await supabase
-        .from("relationships")
-        .delete()
-        .in("id", relsToDelete);
-      if (delRelError) throw delRelError;
-    }
-
-    // ✅ STEP 5: Delete entities that were removed (and their columns)
+    // We will collect IDs for Deletion, but execute the Deletes AFTER Upserts succeed.
+    // This prevents data loss if Upserts fail due to schema mismatch.
+    
+    // (A) Collect IDs for Deletion
     const { data: existingEntities } = await supabase
       .from("entities")
       .select("id")
@@ -327,22 +320,7 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
     const existingEntityIds = new Set(existingEntities?.map((e: any) => e.id) || []);
     const newEntityIds = new Set(entities.map((e: any) => e.id));
     const entitiesToDelete = Array.from(existingEntityIds).filter(id => !newEntityIds.has(id));
-
-    if (entitiesToDelete.length > 0) {
-      // Delete columns first (FK constraint)
-      const { error: delColError } = await supabase
-        .from("columns")
-        .delete()
-        .in("entity_id", entitiesToDelete);
-      if (delColError) throw delColError;
-
-      // Then delete entities
-      const { error: delEntError } = await supabase
-        .from("entities")
-        .delete()
-        .in("id", entitiesToDelete);
-      if (delEntError) throw delEntError;
-    }
+    let colsToDelete: string[] = [];
 
     // ✅ STEP 6: Upsert entities (update or insert)
     if (entities.length > 0) {
@@ -380,7 +358,7 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
         }
       }
 
-      // ✅ STEP 7.5: Delete removed columns from kept entities
+      // Collect columns to delete (executed later)
       const keptEntityIds = Array.from(existingEntityIds).filter(id => newEntityIds.has(id));
       if (keptEntityIds.length > 0) {
         const { data: existingColumns } = await supabase
@@ -389,15 +367,7 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
           .in("entity_id", keptEntityIds);
           
         const existingColIds = new Set(existingColumns?.map((c: any) => c.id) || []);
-        const colsToDelete = Array.from(existingColIds).filter(id => !newColIds.has(id));
-        
-        if (colsToDelete.length > 0) {
-          const { error: delColError } = await supabase
-            .from("columns")
-            .delete()
-            .in("id", colsToDelete);
-          if (delColError) throw delColError;
-        }
+        colsToDelete = Array.from(existingColIds).filter(id => !newColIds.has(id)) as string[];
       }
 
       if (allColumns.length > 0) {
@@ -409,7 +379,7 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
       }
     }
 
-    // ✅ STEP 8: Upsert relationships (prevent race condition data loss)
+    // ✅ STEP 6: Upsert relationships (prevent race condition data loss)
     if (relationships.length > 0) {
       const relsToInsert = relationships.map((r: any) => ({
         id: r.id,
@@ -429,6 +399,44 @@ router.post("/save/:id", authenticate, async (req: ExpressRequest, res: ExpressR
         .upsert(relsToInsert, { onConflict: 'id' });
       
       if (upsertRelError) throw upsertRelError;
+    }
+
+    // ✅ STEP 7: Safe Deletion Phase (Only runs if ALL Upserts succeeded)
+    
+    // 7.1 Delete removed relationships
+    const relsToDelete = Array.from(existingRelIds).filter(id => !newRelIds.has(id));
+    if (relsToDelete.length > 0) {
+      const { error: delRelError } = await supabase
+        .from("relationships")
+        .delete()
+        .in("id", relsToDelete);
+      if (delRelError) throw delRelError;
+    }
+
+    // 7.2 Delete removed columns from kept entities
+    if (typeof colsToDelete !== 'undefined' && colsToDelete.length > 0) {
+      const { error: delColError } = await supabase
+        .from("columns")
+        .delete()
+        .in("id", colsToDelete);
+      if (delColError) throw delColError;
+    }
+
+    // 7.3 Delete removed entities (and their columns due to CASCADE / manual delete)
+    if (entitiesToDelete.length > 0) {
+      // Delete columns first to satisfy FK if cascade isn't reliable
+      const { error: delColError2 } = await supabase
+        .from("columns")
+        .delete()
+        .in("entity_id", entitiesToDelete);
+      if (delColError2) throw delColError2;
+
+      // Delete the entities
+      const { error: delEntError } = await supabase
+        .from("entities")
+        .delete()
+        .in("id", entitiesToDelete);
+      if (delEntError) throw delEntError;
     }
 
     // ✅ STEP 9: Update diagram metadata
