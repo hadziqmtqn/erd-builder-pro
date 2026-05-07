@@ -16,8 +16,8 @@ interface ERDImportModalProps {
   triggerDebouncedSync: () => void;
   broadcastMessage: (type: BroadcastMessageType, draftType: DraftType, id: number | string) => void;
   setIsLocalSaving: (loading: boolean) => void;
-  viewportRef: React.MutableRefObject<any>;
-  lastLoadedDiagramIdRef: React.MutableRefObject<number | string | null>;
+  viewportRef: { current: any };
+  lastLoadedDiagramIdRef: { current: number | string | null };
 }
 
 export const ERDImportModal: React.FC<ERDImportModalProps> = ({

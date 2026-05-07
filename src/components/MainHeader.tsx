@@ -17,7 +17,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 
 interface MainHeaderProps {
   featureLabel: string;
@@ -103,18 +102,18 @@ export const MainHeader = React.memo(({
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
             {!isPublicView && (
-              <BreadcrumbItem className="shrink-0 hidden sm:block">
+              <BreadcrumbItem className="shrink-0">
                 <BreadcrumbPage className="font-medium text-muted-foreground">
                   {featureLabel}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             )}
             
-            {!isPublicView && activeProjectName && (
+            {!isPublicView && hasActiveItem && (
               <>
-                <BreadcrumbSeparator className="shrink-0 hidden sm:block" />
+                <BreadcrumbSeparator className="shrink-0" />
                 <BreadcrumbItem className="min-w-0 shrink">
-                  <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName}</BreadcrumbPage>
+                  <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName || "Uncategorized"}</BreadcrumbPage>
                 </BreadcrumbItem>
               </>
             )}
@@ -155,16 +154,16 @@ export const MainHeader = React.memo(({
         </div>
       )}
 
-      <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
+      <div className="ml-auto px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1 sm:gap-4">
             {!isPublicView && (
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="hidden sm:flex items-center gap-1.5 shrink-0">
                 {isLocalSaving ? (
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-500 shadow-sm transition-all duration-300">
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-amber-500/10 sm:border sm:border-amber-500/20 text-amber-500 sm:shadow-sm transition-all duration-300">
                           <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                           <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Saving...</span>
                         </div>
@@ -178,7 +177,7 @@ export const MainHeader = React.memo(({
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-destructive/10 border border-destructive/20 text-destructive cursor-help shadow-sm transition-all duration-300">
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-destructive/10 sm:border sm:border-destructive/20 text-destructive cursor-help sm:shadow-sm transition-all duration-300">
                           <CloudOff className="w-3.5 h-3.5" />
                           <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Sync Failed</span>
                         </div>
@@ -189,7 +188,7 @@ export const MainHeader = React.memo(({
                     </Tooltip>
                   </TooltipProvider>
                 ) : isSyncing ? (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 border border-primary/20 text-primary shadow-sm transition-all duration-300">
+                  <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-primary/10 sm:border sm:border-primary/20 text-primary sm:shadow-sm transition-all duration-300">
                     <Cloud className="w-3.5 h-3.5 animate-bounce" />
                     <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Syncing...</span>
                   </div>
@@ -202,7 +201,7 @@ export const MainHeader = React.memo(({
                           size="sm"
                           onClick={onSave}
                           disabled={!isOnline}
-                          className="h-7 px-2 gap-2 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary-foreground border border-primary/20 transition-all duration-300 shadow-sm"
+                          className="h-6 sm:h-7 px-1 sm:px-2 gap-1 sm:gap-2 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary-foreground border border-primary/20 transition-all duration-300 sm:shadow-sm"
                         >
                           <Save className="w-3.5 h-3.5 animate-in zoom-in-50" />
                           <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Save</span>
@@ -220,7 +219,7 @@ export const MainHeader = React.memo(({
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/5 border border-green-500/10 text-green-500/60 shadow-sm transition-all duration-300">
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-green-500/5 sm:border sm:border-green-500/10 text-green-500/60 sm:shadow-sm transition-all duration-300">
                           <Check className="w-3.5 h-3.5" />
                           <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Synced</span>
                         </div>
@@ -233,7 +232,7 @@ export const MainHeader = React.memo(({
                 )}
                 
                 {isRefreshing && (
-                  <div className="flex items-center gap-2 text-primary animate-pulse ml-2">
+                  <div className="flex items-center gap-2 text-primary animate-pulse ml-1 sm:ml-2">
                      <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}

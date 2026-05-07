@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getTitleCache, getContentCache, saveContentCache } from '@/utils/titleCache';
+import { getTitleCache, getContentCache } from '@/utils/titleCache';
 import { localPersistence } from '@/lib/localPersistence';
 import { Note, DraftType } from '@/types';
 
@@ -31,25 +31,11 @@ export interface NotesPageProps {
   setNotes: React.Dispatch<React.SetStateAction<Note[]>>;
   activeNoteUid: string | null;
   setActiveNoteUid: (uid: string | null) => void;
-  saveNote: (note: Note) => Promise<boolean>;
-  setNotesSaveTimeout?: React.Dispatch<React.SetStateAction<NodeJS.Timeout | null>>;
-  bumpContentVersion: () => number;
-  getContentVersion: () => number;
-  isNoteItemLoading: boolean;
-
   isAuthenticated: boolean | null;
-  isRefreshing: boolean;
-  syncDrafts: () => Promise<void>;
-  broadcastMessage: (type: any, draftType: any, id: any) => void;
-  setIsLocalSaving: (val: boolean) => void;
-  isIncomingSyncRef: React.MutableRefObject<boolean>;
-  notesSaveTimeout: React.MutableRefObject<NodeJS.Timeout | null>;
-
+  notesSaveTimeout: { current: NodeJS.Timeout | null };
   view: string;
   setView: (view: any) => void;
   setSidebarView: (view: any) => void;
-
-  lastLoadedNoteIdRef: React.MutableRefObject<any>;
 }
 
 /**
@@ -58,21 +44,19 @@ export interface NotesPageProps {
  * Mounted unconditionally. Renders null (no visible DOM).
  * Handles:
  *  - Cache preload (stale-while-revalidate) — instant content before auth
- *  - View cleanup — navigate away from /notes/ when switching views
  *  - Keyboard shortcuts — Ctrl+Shift+E (export), Ctrl+Shift+I (import)
- *  - Note loaded tracking — keeps lastLoadedNoteIdRef in sync
  *  - noteCloudSyncTimeoutRef — cleanup on unmount
+ *
+ * Note Navigation (handleNoteSelect, URL routing, view cleanup, loaded tracking)
+ * has been extracted to useNoteNavigation hook.
  */
 export const NotesPage = React.memo(function NotesPage(props: NotesPageProps) {
   const {
     notes, setNotes, activeNoteUid, setActiveNoteUid,
-    saveNote,
-    bumpContentVersion,
-    isNoteItemLoading,
-    isAuthenticated, isRefreshing, syncDrafts, broadcastMessage,
-    setIsLocalSaving, isIncomingSyncRef, notesSaveTimeout,
-    view, setView, setSidebarView,
-    lastLoadedNoteIdRef,
+    isAuthenticated,
+    notesSaveTimeout,
+    view,
+    setView, setSidebarView,
   } = props;
 
   const navigate = useNavigate();
@@ -141,15 +125,6 @@ export const NotesPage = React.memo(function NotesPage(props: NotesPageProps) {
     }
   }, [location.pathname]);
 
-  // ── Effect: View Cleanup ──
-  // Extracted from App.tsx lines 809-814
-  useEffect(() => {
-    if (getSharePathInfo()) return;
-    if (view !== 'notes' && location.pathname.startsWith('/notes/')) {
-      navigate('/', { replace: true });
-    }
-  }, [view, location.pathname, navigate]);
-
   // ── Effect: Keyboard Shortcuts (notes only) ──
   // Extracted from App.tsx lines 1070-1080
   useEffect(() => {
@@ -166,14 +141,6 @@ export const NotesPage = React.memo(function NotesPage(props: NotesPageProps) {
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
   }, [view, activeNoteUid]);
-
-  // ── Effect: Note Loaded Tracking ──
-  // Extracted from App.tsx lines 327-328
-  useEffect(() => {
-    if (activeNoteUid && !isNoteItemLoading) {
-      lastLoadedNoteIdRef.current = activeNoteUid;
-    }
-  }, [activeNoteUid, isNoteItemLoading, lastLoadedNoteIdRef]);
 
   // ── Effect: Cleanup timeouts on unmount ──
   useEffect(() => {

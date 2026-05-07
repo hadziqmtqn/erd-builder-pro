@@ -5,17 +5,17 @@ import { BroadcastMessageType } from './useBroadcastChannel';
 
 export interface UseAutoSaveParams {
   saveCounter: number;
-  isLocalSavingRef: React.MutableRefObject<boolean>;
-  isIncomingSyncRef: React.MutableRefObject<boolean>;
-  lastLoadedDiagramIdRef: React.MutableRefObject<number | string | null>;
-  lastSaveCallRef: React.MutableRefObject<number>;
-  lastDiagramLoadTimestampRef: React.MutableRefObject<number>;
+  isLocalSavingRef: { current: boolean };
+  isIncomingSyncRef: { current: boolean };
+  lastLoadedDiagramIdRef: { current: number | string | null };
+  lastSaveCallRef: { current: number };
+  lastDiagramLoadTimestampRef: { current: number };
   isAuthenticated: boolean | null;
   isGuest: boolean;
   view: string;
   isPublicView: boolean;
   activeDiagramId: any;
-  viewportRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
   saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
   setIsLocalSaving: (val: boolean) => void;
   triggerDebouncedSync: () => void;
@@ -35,9 +35,9 @@ export interface UseAutoSaveParams {
   saveFlowchart: (flowchart: any) => Promise<any>;
   // For flushPendingSaves
   // For flushPendingSaves
-  notesSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
-  drawingsSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
-  flowchartsSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  notesSaveTimeoutRef: { current: NodeJS.Timeout | null };
+  drawingsSaveTimeoutRef: { current: NodeJS.Timeout | null };
+  flowchartsSaveTimeoutRef: { current: NodeJS.Timeout | null };
   syncDrafts: () => Promise<void>;
   nodes: Node<Entity>[];
   edges: Edge[];
