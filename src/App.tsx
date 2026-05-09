@@ -113,7 +113,7 @@ function AppContent() {
   const setIsLocalSaving = useCallback((val: boolean) => { isLocalSavingRef.current = val; setIsLocalSavingState(val); }, []);
   const lastLoadedDiagramIdRef = useRef<number | string | null>(null);
   const lastLoadedNoteIdRef = useRef<number | string | null>(null);
-  const lastLoadedDrawingIdRef = useRef<number | string | null>(null);
+  const lastLoadedDrawingIdRef = useRef<string | null>(null);
   const lastLoadedFlowchartIdRef = useRef<number | string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isIncomingSyncRef = useRef(false);
@@ -228,7 +228,7 @@ function AppContent() {
   } = useProjects(isGuest);
   
   const { 
-    drawings, setDrawings, activeDrawingId, setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
+    drawings, setDrawings, activeDrawingUid: activeDrawingId, setActiveDrawingUid: setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
     hasMoreDrawings, isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing, duplicateDrawing
   } = useDrawings(isGuest);
 
@@ -258,7 +258,7 @@ function AppContent() {
       await selectNote(String(id), { silent: true });
     } else if (view === 'drawings' && dataType === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
       console.log("[Broadcast] Reloading Drawing from local draft updated in another tab");
-      await selectDrawing(id, { silent: true });
+      await selectDrawing(String(id), { silent: true });
     } else if (view === 'flowchart' && dataType === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
       console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
       await selectFlowchart(String(id), { silent: true });
@@ -380,7 +380,7 @@ function AppContent() {
     if (isIncomingSyncRef.current) return;
 
     const drawingId = activeDrawingId;
-    setDrawings(prev => prev.map(d => String(d.id) === String(drawingId) ? { ...d, data } : d));
+    setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === String(drawingId) ? { ...d, data } : d));
     
     setIsLocalSaving(true);
     if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
@@ -392,7 +392,7 @@ function AppContent() {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isDrawingItemLoading) return;
       
-      const currentDrawing = drawingsRef.current.find(d => String(d.id) === String(drawingId));
+      const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
       if (!currentDrawing) return;
       
       await saveDrawing({
@@ -542,14 +542,14 @@ function AppContent() {
     lastLoadedFlowchartIdRef,
   });
 
-  async function handleDrawingSelect(id: number | string) {
-    if (activeDrawingId === id && view === 'drawings') return; 
+  async function handleDrawingSelect(uid: string) {
+    if (activeDrawingId === uid && view === 'drawings') return; 
     await flushPendingSaves();
     setView('drawings');
     // Clear current drawing data to avoid showing stale data while loading
-    setDrawings(prev => prev.map(d => d.id === id ? { ...d, data: undefined } : d));
-    await selectDrawing(id);
-    lastLoadedDrawingIdRef.current = id;
+    setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, data: undefined } : d));
+    await selectDrawing(uid);
+    lastLoadedDrawingIdRef.current = uid;
   }
 
   async function handleProjectSelect(id: number | string | null) {
@@ -683,7 +683,7 @@ function AppContent() {
     if (!isOnline && !isPublicView) {
       if (view === 'erd' && activeDiagramId) saveDiagram(nodes, edges, viewportRef.current);
       else if (view === 'notes' && activeNoteUid) { const n = notes.find(n => String(n.uid) === String(activeNoteUid)); if (n) saveNote(n); }
-      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
+      else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
       else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
     }
   }, [isOnline, view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, nodes, edges]);
@@ -853,7 +853,7 @@ function AppContent() {
         } else if (view === 'drawings') {
           if (activeDrawingId) {
             const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
-            const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId));
+            const cloudItem = drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId));
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
             
             if (isStale) {
@@ -964,7 +964,7 @@ function AppContent() {
       if (type === 'project') await deleteProjectPermanent(id);
       else if (type === 'erd') await deleteDiagramPermanent(id);
       else if (type === 'notes') await deleteNotePermanent(String(id));
-      else if (type === 'drawings') await deleteDrawingPermanent(id);
+      else if (type === 'drawings') await deleteDrawingPermanent(uid || String(id));
       else if (type === 'flowchart') await deleteFlowchartPermanent(uid || String(id));
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
@@ -992,9 +992,9 @@ function AppContent() {
           toast.success("Note duplicated successfully");
         }
       } else if (view === 'drawings') {
-        const newDrawing = await duplicateDrawing(activeDocument.id, duplicateName);
+        const newDrawing = await duplicateDrawing(activeDocument.uid, duplicateName);
         if (newDrawing) {
-          await handleDrawingSelect(newDrawing.id);
+          await handleDrawingSelect(newDrawing.uid);
           // Refresh sidebar tree so the new drawing appears immediately
           fetchProjects(false, debouncedSearchQuery);
           toast.success("Drawing duplicated successfully");

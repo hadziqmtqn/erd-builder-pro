@@ -45,7 +45,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
   activeDiagramId: number | string | null;
   activeNoteUid: string | null;
-  activeDrawingId: number | string | null;
+  activeDrawingId: string | null;
   activeFlowchartId: number | string | null;
   activeProjectId: number | string | null;
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups';
@@ -53,7 +53,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void;
   onDiagramSelect: (id: number | string) => void;
   onNoteSelect: (uid: string) => void;
-  onDrawingSelect: (id: number | string) => void;
+  onDrawingSelect: (uid: string) => void;
   onFlowchartSelect: (uid: string) => void;
   onProjectSelect: (id: number | string | null) => void;
   onDiagramCreate: (name: string, projectId?: number | string | null) => void;
@@ -65,16 +65,16 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onProjectDelete: (id: number | string) => void;
   onDiagramDelete: (id: number | string) => void;
   onNoteDelete: (id: number | string) => void;
-  onDrawingDelete: (id: number | string) => void;
+  onDrawingDelete: (uid: string) => void;
   onFlowchartDelete: (uid: string) => void;
   onDiagramUpdate: (id: number | string, name: string, options?: { silent?: boolean }) => void;
   onNoteUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
-  onDrawingUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
+  onDrawingUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void;
   onFlowchartUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void;
   onLogout: () => void;
   onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-  onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
+  onMoveDrawingToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void;
   onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void;
 
   hasMoreProjects?: boolean;
