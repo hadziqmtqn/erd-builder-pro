@@ -32,11 +32,11 @@ interface RenameDocumentDialogProps {
   updateDiagram: (id: string | number, name: string, options?: { silent?: boolean }) => void;
   updateNote: (uid: string, name: string, options?: { silent?: boolean }) => void;
   updateDrawing: (id: string | number, name: string, options?: { silent?: boolean }) => void;
-  updateFlowchart: (id: string | number, name: string, options?: { silent?: boolean }) => void;
+  updateFlowchart: (uid: string, name: string, options?: { silent?: boolean }) => void;
   onMoveDiagramToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveNoteToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onMoveDrawingToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
-  onMoveFlowchartToProject: (id: number | string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
+  onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => Promise<boolean | undefined>;
   onRenameSuccess?: () => Promise<void>;
 }
 
@@ -62,7 +62,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
 }) => {
   const handleSave = async () => {
     // Notes use uid (UUID), others use id (auto-increment). Pick the right one.
-    const id = view === 'notes' ? activeDocument?.uid : activeDocument?.id;
+    const id = view === 'notes' || view === 'flowchart' ? activeDocument?.uid : activeDocument?.id;
     if (id && newName.trim()) {
       const projectId = selectedProjectId === "none" ? null : selectedProjectId;
       const currentProjectId = activeDocument?.project_id || activeDocument?.projectId;

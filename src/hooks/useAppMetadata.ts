@@ -57,7 +57,7 @@ export const useAppMetadata = ({
 
   const activeNote = isPublicView ? publicData : notes.find(n => n.uid === activeNoteUid);
   const activeDrawing = isPublicView ? publicData : drawings.find(d => String(d.id) === String(activeDrawingId));
-  const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+  const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => (f.uid && String(f.uid) === String(activeFlowchartId)) || String(f.id) === String(activeFlowchartId));
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => String(f.id) === String(activeDiagramId) || (f.uid && f.uid === activeDiagramId));
 
   const featureLabel = isPublicView ? `Public Shared ${view}` : (view === 'erd' ? 'ERD Builder' : view === 'notes' ? 'Notes' : view === 'drawings' ? 'Drawings' : view === 'flowchart' ? 'Flowcharts' : view === 'changelog' ? 'Changelog' : view === 'backups' ? 'Backups' : 'Trash Bin');

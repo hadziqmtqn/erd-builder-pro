@@ -82,7 +82,7 @@ export function NavProjects({
   onDiagramSelect: (id: number | string) => void
   onNoteSelect: (uid: string) => void
   onDrawingSelect: (id: number | string) => void
-  onFlowchartSelect: (id: number | string) => void
+  onFlowchartSelect: (uid: string) => void
   activeDiagramId: number | string | null
   activeNoteUid: string | null
   activeDrawingId: number | string | null
@@ -92,15 +92,15 @@ export function NavProjects({
   onDiagramDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
   onDrawingDelete: (id: number | string) => void
-  onFlowchartDelete: (id: number | string) => void
+  onFlowchartDelete: (uid: string) => void
   onDiagramUpdate: (id: number | string, name: string, options?: { silent?: boolean }) => void
   onNoteUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void
   onDrawingUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void
-  onFlowchartUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void
+  onFlowchartUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void
   onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
-  onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
+  onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void
   allProjects: Project[]
   searchQuery: string
   hasMoreProjects?: boolean
@@ -144,8 +144,8 @@ export function NavProjects({
   const [editingProjectId, setEditingProjectId] = React.useState<number | string | null>(null)
   const [editingProjectName, setEditingProjectName] = React.useState("")
   
-  const [editingFile, setEditingFile] = React.useState<{ id: number | string, name: string, projectId: number | string | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
-  const [deletingFile, setDeletingFile] = React.useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart' } | null>(null)
+  const [editingFile, setEditingFile] = React.useState<{ id: number | string, name: string, projectId: number | string | null, type: 'erd' | 'notes' | 'drawings' | 'flowchart', uid?: string } | null>(null)
+  const [deletingFile, setDeletingFile] = React.useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart', uid?: string } | null>(null)
   const [deletingProject, setDeletingProject] = React.useState<{ id: number | string, name: string } | null>(null)
   const [isProjectDeleteConfirmOpen, setIsProjectDeleteConfirmOpen] = React.useState(false)
 
@@ -189,8 +189,8 @@ export function NavProjects({
           await onDrawingUpdate(editingFile.id, editingFile.name.trim(), { silent: true })
           if (String(projectId) !== String(editingFile.projectId)) await onMoveDrawingToProject(editingFile.id, projectId, { silent: true })
         } else if (editingFile.type === 'flowchart') {
-          await onFlowchartUpdate(editingFile.id, editingFile.name.trim(), { silent: true })
-          if (String(projectId) !== String(editingFile.projectId)) await onMoveFlowchartToProject(editingFile.id, projectId, { silent: true })
+          await onFlowchartUpdate(editingFile.uid!, editingFile.name.trim(), { silent: true })
+          if (String(projectId) !== String(editingFile.projectId)) await onMoveFlowchartToProject(editingFile.uid!, projectId, { silent: true })
         }
         toast.success('File updated successfully')
       } catch (err) {
@@ -207,7 +207,7 @@ export function NavProjects({
       if (deletingFile.type === 'erd') onDiagramDelete(deletingFile.id)
       else if (deletingFile.type === 'notes') onNoteDelete(deletingFile.id)
       else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.id)
-      else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.id)
+      else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.uid!)
       
       setIsDeleteConfirmOpen(false)
       setDeletingFile(null)
@@ -257,7 +257,11 @@ export function NavProjects({
       case 'erd': return activeDiagramId
       case 'notes': return activeNoteUid
       case 'drawings': return activeDrawingId
-      case 'flowchart': return activeFlowchartId
+      case 'flowchart': {
+        // Map numeric activeFlowchartId to uid for sidebar highlighting
+        const fc = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+        return fc?.uid ?? activeFlowchartId;
+      }
       default: return null
     }
   }
@@ -267,7 +271,7 @@ export function NavProjects({
       case 'erd': return onDiagramSelect
       case 'notes': return (id: number | string) => onNoteSelect(String(id))
       case 'drawings': return onDrawingSelect
-      case 'flowchart': return onFlowchartSelect
+      case 'flowchart': return (id: number | string) => onFlowchartSelect(String(id))
       default: return () => {}
     }
   }
