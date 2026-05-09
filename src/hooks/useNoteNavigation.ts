@@ -62,17 +62,32 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
   activeNoteUidRef.current = activeNoteUid;
   const viewRef = useRef(view);
   viewRef.current = view;
+  const selectNoteRef = useRef(selectNote);
+  selectNoteRef.current = selectNote;
+  const flushPendingSavesRef = useRef(flushPendingSaves);
+  flushPendingSavesRef.current = flushPendingSaves;
+  // Stable versions of functions that are recreated every render
+  const selectNoteStable = useCallback((uid: string, options?: any) => selectNoteRef.current(uid, options), []);
+  const flushPendingSavesStable = useCallback(() => flushPendingSavesRef.current(), []);
 
-  // ── Internal ref ──
+  // ── Internal refs ──
   const lastProcessedNotesUrlRef = useRef('');
+  const lastSelectedNoteRef = useRef<{ uid: string; time: number } | null>(null);
 
   // ── handleNoteSelect: the core orchestration ──
   const handleNoteSelect = useCallback(async (uid: string) => {
+    // Guard: prevent sequential duplicate within 1.5s (e.g. double-click, Effect 1 + sidebar)
+    const now = Date.now();
+    if (lastSelectedNoteRef.current?.uid === uid && now - lastSelectedNoteRef.current.time < 1500) {
+      return;
+    }
+    lastSelectedNoteRef.current = { uid, time: now };
+    
     // Capture content version before any async work. If user edits between now
     // and selectNote's API/IndexedDB response, the version changes and selectNote
     // skips overwriting their in-flight edits.
     const versionAtStart = getContentVersion();
-    await flushPendingSaves();
+    await flushPendingSavesStable();
     setView('notes');
     setSidebarView('notes');
     // Set activeNoteUid early so breadcrumb can appear from list data (fetchProjects)
@@ -97,7 +112,7 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
     const fromProjects = (currentProjects as any[])
       ?.flatMap((p: any) => p.notes || [])
       .find((n: any) => n.uid === uid);
-    await selectNote(uid, {
+    await selectNoteStable(uid, {
       contentVersionAtStart: versionAtStart,
       fallbackNote: fromProjects,
     });
@@ -109,8 +124,6 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
     setView,
     setSidebarView,
     setNotes,
-    selectNote,
-    flushPendingSaves,
     getContentVersion,
   ]);
 

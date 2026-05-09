@@ -16,6 +16,8 @@ export function useNotes(isGuest: boolean = false) {
   // Content edit version — bumped on every user edit, checked by selectNote to
   // prevent API/IndexedDB response from overwriting user's in-flight edits
   const contentVersionRef = useRef(0);
+  // Guard: prevent duplicate concurrent loads for the same note UID (matching ERD's loadingIdRef pattern)
+  const loadingNoteUidRef = useRef<string | null>(null);
   const bumpContentVersion = useCallback(() => { contentVersionRef.current++; return contentVersionRef.current; }, []);
   const getContentVersion = useCallback(() => contentVersionRef.current, []);
 
@@ -290,6 +292,10 @@ export function useNotes(isGuest: boolean = false) {
     const note = notesRef.current.find(n => n.uid === uid) || options?.fallbackNote;
     if (note?.is_deleted) return;
     
+    // Guard: prevent duplicate concurrent loads for the same UID (parallel to ERD's loadingIdRef pattern)
+    if (loadingNoteUidRef.current === uid) return;
+    loadingNoteUidRef.current = uid;
+    
     if (!options?.silent) setIsItemLoading(true);
     try {
       // Step 1: Start API fetch immediately (fire in background, don't block)
@@ -323,21 +329,20 @@ export function useNotes(isGuest: boolean = false) {
           setNotes(notesRef.current);
         }
 
-        // Show existing content immediately — release loading state
-        setIsItemLoading(false);
-
+        // Keep isItemLoading true — show "Loading..." spinner during background refresh.
         // Background refresh: apply API content, then check draft
-        apiPromise.then(fullNote => {
-          if (!fullNote || fullNote.is_deleted || !versionCheck()) return;
+        const fullNote = await apiPromise;
+        if (fullNote && !fullNote.is_deleted && versionCheck()) {
           setNotes(prev => {
             const exists = prev.some(n => n.uid === uid);
             if (exists) return prev.map(n => n.uid === uid ? { ...n, content: fullNote.content } : n);
             return [...prev, fullNote];
           });
-        }).then(async () => {
-          // Step 3: Check draft AFTER API content (draft wins if sync_pending)
-          const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
-          if (!draft || !draft.sync_pending || !versionCheck()) return;
+        }
+
+        // Step 3: Check draft AFTER API content (draft wins if sync_pending)
+        const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
+        if (draft && draft.sync_pending && versionCheck()) {
           try {
             const parsed = JSON.parse(draft.data);
             setNotes(prev => {
@@ -348,7 +353,7 @@ export function useNotes(isGuest: boolean = false) {
             if (!options?.silent) toast.info("Loaded unsynced local note draft");
             try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
           } catch (e) {}
-        });
+        }
       } else {
         // No cached content — block on API fetch
         const fullNote = await apiPromise;
@@ -383,6 +388,7 @@ export function useNotes(isGuest: boolean = false) {
       setActiveNoteUid(uid);
     } finally {
       setIsItemLoading(false);
+      loadingNoteUidRef.current = null;
     }
   };
 
