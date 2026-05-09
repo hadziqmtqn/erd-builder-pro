@@ -57,6 +57,7 @@ import { useWorkspaceCallbacks } from './hooks/useWorkspaceCallbacks';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useDiagramNavigation } from './hooks/useDiagramNavigation';
 import { useNoteNavigation } from './hooks/useNoteNavigation';
+import { useFlowchartNavigation } from './hooks/useFlowchartNavigation';
 import { useNoteChangeHandler } from './hooks/useNoteChangeHandler';
 
 // Lib & Types
@@ -96,7 +97,7 @@ function AppContent() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'project' } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: number | string, type: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'project', uid?: string } | null>(null);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [renameProjectId, setRenameProjectId] = useState<string>("none");
@@ -260,7 +261,7 @@ function AppContent() {
       await selectDrawing(id, { silent: true });
     } else if (view === 'flowchart' && dataType === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
       console.log("[Broadcast] Reloading Flowchart from local draft updated in another tab");
-      await selectFlowchart(id, { silent: true });
+      await selectFlowchart(String(id), { silent: true });
     }
   }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
 
@@ -414,7 +415,13 @@ function AppContent() {
 
     const flowchartId = activeFlowchartId;
     const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
-    setFlowcharts(prev => prev.map(f => String(f.id) === String(flowchartId) ? { ...f, data: dataString } : f));
+    
+    // Skip if data hasn't actually changed (prevents re-render loop)
+    setFlowcharts(prev => {
+      const existing = prev.find(f => String(f.uid ?? f.id) === String(flowchartId));
+      if (existing && existing.data === dataString) return prev;
+      return prev.map(f => String(f.uid ?? f.id) === String(flowchartId) ? { ...f, data: dataString } : f);
+    });
     
     setIsLocalSaving(true);
     if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
@@ -426,7 +433,7 @@ function AppContent() {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isFlowchartItemLoading) return;
       
-      const currentFlowchart = flowchartsRef.current.find(f => String(f.id) === String(flowchartId));
+      const currentFlowchart = flowchartsRef.current.find(f => String(f.uid ?? f.id) === String(flowchartId));
       if (!currentFlowchart) return;
       
       await saveFlowchart({
@@ -517,6 +524,24 @@ function AppContent() {
     lastLoadedNoteIdRef,
   });
 
+  // ── Flowchart Navigation ──
+  // Extracted to useFlowchartNavigation: handleFlowchartSelect, URL routing,
+  // view cleanup, and flowchart loaded tracking.
+  const { handleFlowchartSelect } = useFlowchartNavigation({
+    flowcharts,
+    setFlowcharts,
+    activeFlowchartId,
+    setActiveFlowchartId,
+    view,
+    setView,
+    setSidebarView,
+    selectFlowchart,
+    flushPendingSaves,
+    isAuthenticated,
+    projects,
+    lastLoadedFlowchartIdRef,
+  });
+
   async function handleDrawingSelect(id: number | string) {
     if (activeDrawingId === id && view === 'drawings') return; 
     await flushPendingSaves();
@@ -525,16 +550,6 @@ function AppContent() {
     setDrawings(prev => prev.map(d => d.id === id ? { ...d, data: undefined } : d));
     await selectDrawing(id);
     lastLoadedDrawingIdRef.current = id;
-  }
-
-  async function handleFlowchartSelect(id: number | string) {
-    if (activeFlowchartId === id && view === 'flowchart') return; 
-    await flushPendingSaves();
-    setView('flowchart');
-    // Clear current flowchart data to avoid showing stale data while loading
-    setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, data: undefined } : f));
-    await selectFlowchart(id);
-    lastLoadedFlowchartIdRef.current = id;
   }
 
   async function handleProjectSelect(id: number | string | null) {
@@ -669,7 +684,7 @@ function AppContent() {
       if (view === 'erd' && activeDiagramId) saveDiagram(nodes, edges, viewportRef.current);
       else if (view === 'notes' && activeNoteUid) { const n = notes.find(n => String(n.uid) === String(activeNoteUid)); if (n) saveNote(n); }
       else if (view === 'drawings' && activeDrawingId) { const d = drawings.find(d => String(d.id) === String(activeDrawingId)); if (d) saveDrawing(d); }
-      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
+      else if (view === 'flowchart' && activeFlowchartId) { const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId)); if (f) saveFlowchart(f); }
     }
   }, [isOnline, view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, nodes, edges]);
   useEffect(() => {
@@ -851,14 +866,14 @@ function AppContent() {
         } else if (view === 'flowchart') {
           if (activeFlowchartId) {
             const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
-            const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+            const cloudItem = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
             
             if (isStale) {
               await localPersistence.deleteDraft(DraftType.FLOWCHART, activeFlowchartId);
-              await selectFlowchart(activeFlowchartId, { silent: true });
+              await selectFlowchart(String(activeFlowchartId), { silent: true });
             } else if (!(await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId))) {
-              await selectFlowchart(activeFlowchartId, { silent: true });
+              await selectFlowchart(String(activeFlowchartId), { silent: true });
             }
           }
         }
@@ -931,12 +946,12 @@ function AppContent() {
 
   const confirmPermanentDelete = async () => {
     if (itemToDelete) {
-      const { id, type } = itemToDelete;
+      const { id, type, uid } = itemToDelete;
       if (type === 'project') await deleteProjectPermanent(id);
       else if (type === 'erd') await deleteDiagramPermanent(id);
       else if (type === 'notes') await deleteNotePermanent(String(id));
       else if (type === 'drawings') await deleteDrawingPermanent(id);
-      else if (type === 'flowchart') await deleteFlowchartPermanent(id);
+      else if (type === 'flowchart') await deleteFlowchartPermanent(uid || String(id));
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
       await fetchTrash();

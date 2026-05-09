@@ -54,7 +54,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDiagramSelect: (id: number | string) => void;
   onNoteSelect: (uid: string) => void;
   onDrawingSelect: (id: number | string) => void;
-  onFlowchartSelect: (id: number | string) => void;
+  onFlowchartSelect: (uid: string) => void;
   onProjectSelect: (id: number | string | null) => void;
   onDiagramCreate: (name: string, projectId?: number | string | null) => void;
   onNoteCreate: (title: string, projectId?: number | string | null) => void;
@@ -66,16 +66,16 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDiagramDelete: (id: number | string) => void;
   onNoteDelete: (id: number | string) => void;
   onDrawingDelete: (id: number | string) => void;
-  onFlowchartDelete: (id: number | string) => void;
+  onFlowchartDelete: (uid: string) => void;
   onDiagramUpdate: (id: number | string, name: string, options?: { silent?: boolean }) => void;
   onNoteUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
   onDrawingUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
-  onFlowchartUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
+  onFlowchartUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void;
   onLogout: () => void;
   onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
   onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-  onMoveFlowchartToProject: (flowchartId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
+  onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void;
 
   hasMoreProjects?: boolean;
   hasMoreDiagrams?: boolean;

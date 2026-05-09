@@ -8,6 +8,7 @@ import {
   useEdgesState,
   addEdge,
   Connection,
+  Edge,
   Node,
   BackgroundVariant,
   MarkerType,
@@ -44,23 +45,28 @@ export const FlowchartView = React.memo(({
   isReadOnly = false,
   isLoading = false 
 }: FlowchartViewProps) => {
-  // Only show full loader if we are loading AND don't have the flowchart data yet.
+  // ── Hooks FIRST (before any conditional return — Rule of Hooks) ──
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [isAddingNode, setIsAddingNode] = useState(false);
+  const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
+    label: 'New Symbol',
+    shape: 'rectangle',
+    color: '#8b5cf6',
+  });
+  const initialLoadRef = React.useRef(true);
+
+  // ── Derived (guaranteed stable number of hooks) ──
   const showLoader = isLoading && (!activeFlowchart || !activeFlowchart.data);
 
-  if (showLoader) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
-        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
-      </div>
-    );
-  }
-
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
   // Initialize from db or use defaults
+  // Depend on activeFlowchain.data instead of just id,
+  // because data arrives async after selectFlowchart completes
   useEffect(() => {
+    initialLoadRef.current = true;
     try {
       const parsed = JSON.parse(activeFlowchart.data || '{"nodes":[], "edges":[]}');
       const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : initialNodes;
@@ -74,35 +80,26 @@ export const FlowchartView = React.memo(({
       setNodes(initialNodes);
       setEdges(initialEdges);
     }
-  }, [activeFlowchartId]); // Only trigger when switching flowcharts
+  }, [activeFlowchartId, activeFlowchart.data]); // ← re-run when data loads asynchronously
 
   const handleFlowchartChangeRef = React.useRef(handleFlowchartChange);
   useEffect(() => {
     handleFlowchartChangeRef.current = handleFlowchartChange;
   }, [handleFlowchartChange]);
 
-  // Trigger autosave internally when local state changes
+  // Trigger autosave internally when local state changes (skip initial load)
   useEffect(() => {
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
     if (nodes.length > 0 || edges.length > 0) {
       handleFlowchartChangeRef.current(nodes, edges);
     }
   }, [nodes, edges]);
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
-
-  // Add Node State
-  const [isAddingNode, setIsAddingNode] = useState(false);
-  const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
-    label: 'New Symbol',
-    shape: 'rectangle',
-    color: '#8b5cf6',
-  });
-
   const onConnect = useCallback(
-    (params: Connection | Edge) => setEdges((eds) => addEdge({
+    (params: Connection) => setEdges((eds) => addEdge({
       ...params,
       type: 'smoothstep',
       style: { stroke: '#b1b1b7' },
@@ -217,6 +214,16 @@ export const FlowchartView = React.memo(({
       markerStart: overrideMarker(e.markerStart),
     };
   }), [edges, hoveredEdgeId, selectedEdgeId]);
+
+  // ── EARLY RETURN (setelah semua hooks) ──
+  if (showLoader) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+      </div>
+    );
+  }
 
   return (
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
