@@ -30,7 +30,6 @@ import { NotesPage } from '@/components/pages/NotesPage';
 import { OfflineOverlay } from './components/layout/OfflineOverlay';
 import { AppInitialization } from './components/layout/AppInitialization';
 import { useAppMetadata } from './hooks/useAppMetadata';
-import { saveContentCache } from './utils/titleCache';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useActiveItemGuard } from './hooks/useActiveItemGuard';
 
@@ -58,6 +57,7 @@ import { useWorkspaceCallbacks } from './hooks/useWorkspaceCallbacks';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useDiagramNavigation } from './hooks/useDiagramNavigation';
 import { useNoteNavigation } from './hooks/useNoteNavigation';
+import { useNoteChangeHandler } from './hooks/useNoteChangeHandler';
 
 // Lib & Types
 import { localPersistence } from './lib/localPersistence';
@@ -128,8 +128,7 @@ function AppContent() {
   const edgesRef = useRef<any[]>([]);
 
   // Auto-save & Sync Timeouts
-  const notesSaveTimeout = useRef<NodeJS.Timeout | null>(null);
-  const noteCloudSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // notesSaveTimeout + noteCloudSyncTimeoutRef → owned by useNoteChangeHandler
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -172,6 +171,9 @@ function AppContent() {
     broadcastNodeMove: (id: string, x: number, y: number) => broadcastRef.current.move(id, x, y),
     broadcastNodeUpdate: (id: string, data: Entity) => broadcastRef.current.update(id, data),
     broadcastEdgesUpdate: (edges: Edge[]) => broadcastRef.current.edges(edges),
+    onEditEntity: (entityId: string) => {
+      setIsTablePropertiesOpen(true);
+    },
   }), []);
 
   const { 
@@ -306,12 +308,6 @@ function AppContent() {
     if (activeFlowchartId && !isFlowchartItemLoading) lastLoadedFlowchartIdRef.current = activeFlowchartId;
   }, [activeFlowchartId, isFlowchartItemLoading]);
 
-  const selectedEntity = useMemo(() => {
-    if (!selectedNodeId) return null;
-    const node = nodes.find((n) => n.id === selectedNodeId);
-    return node ? (node.data as Entity) : null;
-  }, [nodes, selectedNodeId]);
-
   useActiveItemGuard({
     view,
     activeDiagramId,
@@ -357,62 +353,24 @@ function AppContent() {
     }
   }, [updateEntity, saveDiagram, viewportRef, syncDrafts, broadcastNodeUpdate]);
 
-  const handleEditEntity = useCallback((e: any) => {
-    setSelectedNodeId(e.detail);
-    setIsTablePropertiesOpen(true);
-  }, [setSelectedNodeId]);
-  const handleDeleteEntity = useCallback((e: any) => deleteEntity(e.detail), [deleteEntity]);
-
-  const handleNoteChange = useCallback((content: string) => {
-    if (!activeNoteUid) return;
-    
-    // Prevent loop: If this change came from another tab's sync, DON'T save it back
-    if (isIncomingSyncRef.current) return;
-
-    const noteId = activeNoteUid;
-    // Track edit version — selectNote checks this to avoid overwriting user edits
-    bumpContentVersion();
-    
-    // ⚡ Do NOT call setNotes here — it causes full React re-render on every keystroke.
-    // Tiptap manages its own content internally via ProseMirror.
-    // State is updated only when saving (800ms debounce below).
-    
-    setIsLocalSaving(true);
-    
-    // Clear BOTH timers on every keystroke (IndexedDB + Cloud)
-    if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
-    if (noteCloudSyncTimeoutRef.current) clearTimeout(noteCloudSyncTimeoutRef.current);
-    
-    // SAFETY: Note ID Validation Guard
-    if (lastLoadedNoteIdRef.current !== activeNoteUid) return;
-
-    // Stage 1: 800ms idle → IndexedDB (local draft, no cloud)
-    notesSaveTimeout.current = setTimeout(async () => {
-      // SAFETY: Wait if still loading/refreshing
-      if (isRefreshing || isNoteItemLoading) return;
-      
-      const n = notesRef.current.find(n => String(n.uid) === String(noteId));
-      if (n) {
-        // CRITICAL: We must use the 'content' argument from the outer scope 
-        // which contains the LATEST change, rather than 'n.content' from 
-        // the potentially stale 'notes' state array.
-        await saveNote({ ...n, content });
-        // Update local content cache for instant reload
-        saveContentCache(n.uid as string, n.title || 'Untitled', content);
-        // Update notes state now (only once per save, not per keystroke)
-        setNotes(prev => prev.map(n => n.uid === noteId ? { ...n, content } : n));
-      }
-      
-      lastSaveCallRef.current = Date.now();
-      setIsLocalSaving(false);
-      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.NOTES, noteId);
-    }, 800);
-
-    // Stage 2: 1600ms idle → Cloud (syncDrafts — syncs pending IndexedDB drafts to Supabase)
-    noteCloudSyncTimeoutRef.current = setTimeout(async () => {
-      await syncDrafts();
-    }, 1600);
-  }, [activeNoteUid, bumpContentVersion, saveNote, setNotes, syncDrafts, noteCloudSyncTimeoutRef, isRefreshing, isNoteItemLoading, broadcastMessage]);
+  // ── Note Change Handler ──
+  // Extracted to useNoteChangeHandler: 2-stage debounce save (800ms local, 1600ms cloud),
+  // timeout refs, content version tracking.
+  const { handleNoteChange, notesSaveTimeout, noteCloudSyncTimeoutRef } = useNoteChangeHandler({
+    activeNoteUid,
+    isIncomingSyncRef,
+    notesRef,
+    lastLoadedNoteIdRef,
+    lastSaveCallRef,
+    bumpContentVersion,
+    saveNote,
+    setNotes,
+    setIsLocalSaving,
+    broadcastMessage,
+    syncDrafts,
+    isRefreshing,
+    isNoteItemLoading,
+  });
 
   const handleDrawingChange = useCallback((data: string) => {
     if (!activeDrawingId) return;
@@ -929,15 +887,6 @@ function AppContent() {
   // Handlers
 
   useEffect(() => {
-    window.addEventListener('editEntity', handleEditEntity);
-    window.addEventListener('deleteEntity', handleDeleteEntity);
-    return () => {
-      window.removeEventListener('editEntity', handleEditEntity);
-      window.removeEventListener('deleteEntity', handleDeleteEntity);
-    };
-  }, [handleEditEntity, handleDeleteEntity]);
-
-  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Global shortcuts
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -946,22 +895,10 @@ function AppContent() {
           syncDrafts();
         }
       }
-
-      if (view === 'erd') {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-          if (e.shiftKey) {
-            if (canRedo) redo();
-          } else {
-            if (canUndo) undo();
-          }
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-          if (canRedo) redo();
-        }
-      }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [view, undo, redo, canUndo, canRedo]);
+  }, [hasPendingSyncs, isSyncing, isOnline, syncDrafts]);
 
   // Listen for NotesPage custom events to open/close modals
   useEffect(() => {
@@ -1056,6 +993,7 @@ function AppContent() {
     handleWorkspaceExportPDF,
     handleWorkspaceExportImage,
     workspaceIsLoading,
+    selectedEntity,
   } = useWorkspaceCallbacks({
     isPublicView, setSelectedNodeId, setSelectedEdgeId,
     setIsTablePropertiesOpen, setIsImportModalOpen,
@@ -1068,6 +1006,7 @@ function AppContent() {
     isNotesLoading, isNoteItemLoading,
     isDrawingsLoading, isDrawingItemLoading,
     isFlowchartsLoading, isFlowchartItemLoading,
+    selectedNodeId,
   });
 
   const {

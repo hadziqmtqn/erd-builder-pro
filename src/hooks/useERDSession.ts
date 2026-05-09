@@ -24,6 +24,7 @@ export function useERDSession(
     broadcastNodeMove?: (id: string, x: number, y: number) => void;
     broadcastNodeUpdate?: (id: string, data: Entity) => void;
     broadcastEdgesUpdate?: (edges: Edge[]) => void;
+    onEditEntity?: (entityId: string) => void;
   }
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
@@ -535,6 +536,45 @@ export function useERDSession(
       }
     }
   }, [isPublicView]);
+
+  // ── ERD Keyboard Shortcuts (undo/redo) ──
+  // Extracted from App.tsx global keydown handler — only active in erd view
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          if (canRedo) handleRedo();
+        } else {
+          if (canUndo) handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        if (canRedo) handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleUndo, handleRedo, canUndo, canRedo]);
+
+  // ── ERD Custom Event Listeners (editEntity / deleteEntity) ──
+  // Dispatched from EntityNode.tsx dropdown menu actions
+  // Extracted from App.tsx to keep ERD concerns co-located
+  useEffect(() => {
+    const onEditEntity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSelectedNodeId(detail);
+      options?.onEditEntity?.(detail);
+    };
+    const onDeleteEntity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      deleteEntity(detail);
+    };
+    window.addEventListener('editEntity', onEditEntity);
+    window.addEventListener('deleteEntity', onDeleteEntity);
+    return () => {
+      window.removeEventListener('editEntity', onEditEntity);
+      window.removeEventListener('deleteEntity', onDeleteEntity);
+    };
+  }, [setSelectedNodeId, deleteEntity, options?.onEditEntity]);
 
   return {
     nodes, setNodes, onNodesChange: onNodesChangeWrapped,

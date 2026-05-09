@@ -26,6 +26,8 @@ export interface UseWorkspaceCallbacksParams {
   isDrawingItemLoading: boolean;
   isFlowchartsLoading: boolean;
   isFlowchartItemLoading: boolean;
+  /** selectedNodeId from useERDSession — needed for selectedEntity derivation */
+  selectedNodeId: string | null;
 }
 
 export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
@@ -41,7 +43,16 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     isNotesLoading, isNoteItemLoading,
     isDrawingsLoading, isDrawingItemLoading,
     isFlowchartsLoading, isFlowchartItemLoading,
+    selectedNodeId,
   } = params;
+
+  // ── Derived: selectedEntity from selectedNodeId + nodes ──
+  // Extracted from App.tsx useMemo — co-located with other ERD workspace logic
+  const selectedEntity = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return node ? (node.data as Entity) : null;
+  }, [nodes, selectedNodeId]);
 
   const handleNodeClick = useCallback((e: React.MouseEvent, n: Node) => {
     if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id);
@@ -109,5 +120,6 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     handleWorkspaceExportPDF,
     handleWorkspaceExportImage,
     workspaceIsLoading,
+    selectedEntity,
   };
 }
