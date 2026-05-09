@@ -15,7 +15,7 @@ interface ActiveItemGuardProps {
   isPublicView: boolean;
   setActiveDiagramId: (id: number | string | null) => void;
   setActiveNoteUid: (uid: string | null) => void;
-  setActiveDrawingId: (id: number | string | null) => void;
+  setActiveDrawingId: (id: string | null) => void;
   setActiveFlowchartId: (id: number | string | null) => void;
   setActiveProjectId: (id: number | string | null) => void;
 }

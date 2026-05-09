@@ -81,25 +81,25 @@ export function NavProjects({
   flowcharts: Flowchart[]
   onDiagramSelect: (id: number | string) => void
   onNoteSelect: (uid: string) => void
-  onDrawingSelect: (id: number | string) => void
+  onDrawingSelect: (uid: string) => void
   onFlowchartSelect: (uid: string) => void
   activeDiagramId: number | string | null
   activeNoteUid: string | null
-  activeDrawingId: number | string | null
+  activeDrawingId: string | null
   activeFlowchartId: number | string | null
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'
   sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'
   onDiagramDelete: (id: number | string) => void
   onNoteDelete: (id: number | string) => void
-  onDrawingDelete: (id: number | string) => void
+  onDrawingDelete: (uid: string) => void
   onFlowchartDelete: (uid: string) => void
   onDiagramUpdate: (id: number | string, name: string, options?: { silent?: boolean }) => void
   onNoteUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void
-  onDrawingUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void
+  onDrawingUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void
   onFlowchartUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void
   onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
   onMoveNoteToProject: (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
-  onMoveDrawingToProject: (drawingId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void
+  onMoveDrawingToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void
   onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void
   allProjects: Project[]
   searchQuery: string
@@ -186,8 +186,8 @@ export function NavProjects({
           await onNoteUpdate(editingFile.id, editingFile.name.trim(), { silent: true })
           if (String(projectId) !== String(editingFile.projectId)) await onMoveNoteToProject(editingFile.id, projectId, { silent: true })
         } else if (editingFile.type === 'drawings') {
-          await onDrawingUpdate(editingFile.id, editingFile.name.trim(), { silent: true })
-          if (String(projectId) !== String(editingFile.projectId)) await onMoveDrawingToProject(editingFile.id, projectId, { silent: true })
+          await onDrawingUpdate(editingFile.uid!, editingFile.name.trim(), { silent: true })
+          if (String(projectId) !== String(editingFile.projectId)) await onMoveDrawingToProject(editingFile.uid!, projectId, { silent: true })
         } else if (editingFile.type === 'flowchart') {
           await onFlowchartUpdate(editingFile.uid!, editingFile.name.trim(), { silent: true })
           if (String(projectId) !== String(editingFile.projectId)) await onMoveFlowchartToProject(editingFile.uid!, projectId, { silent: true })
@@ -206,7 +206,7 @@ export function NavProjects({
     if (deletingFile) {
       if (deletingFile.type === 'erd') onDiagramDelete(deletingFile.id)
       else if (deletingFile.type === 'notes') onNoteDelete(deletingFile.id)
-      else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.id)
+      else if (deletingFile.type === 'drawings') onDrawingDelete(deletingFile.uid!)
       else if (deletingFile.type === 'flowchart') onFlowchartDelete(deletingFile.uid!)
       
       setIsDeleteConfirmOpen(false)
@@ -270,7 +270,7 @@ export function NavProjects({
     switch (sidebarView) {
       case 'erd': return onDiagramSelect
       case 'notes': return (id: number | string) => onNoteSelect(String(id))
-      case 'drawings': return onDrawingSelect
+      case 'drawings': return (id: number | string) => onDrawingSelect(String(id))
       case 'flowchart': return (id: number | string) => onFlowchartSelect(String(id))
       default: return () => {}
     }

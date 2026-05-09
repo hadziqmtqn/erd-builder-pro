@@ -20,7 +20,7 @@ interface MoveToTrashAlertProps {
   view: string;
   deleteDiagram: (id: number | string) => Promise<void> | void;
   deleteNote: (uid: string) => Promise<void> | void;
-  deleteDrawing: (id: number | string) => Promise<void> | void;
+  deleteDrawing: (uid: string) => Promise<void> | void;
   deleteFlowchart: (uid: string) => Promise<void> | void;
   fetchTrash: () => void;
 }
@@ -37,7 +37,7 @@ export const MoveToTrashAlert: React.FC<MoveToTrashAlertProps> = ({
   fetchTrash,
 }) => {
   const handleConfirm = async () => {
-    const currentId = view === 'flowchart' ? (activeDocument?.uid ?? activeDocument?.id) : activeDocument?.id;
+    const currentId = view === 'flowchart' || view === 'drawings' ? (activeDocument?.uid ?? activeDocument?.id) : activeDocument?.id;
     if (!currentId) return;
     if (view === 'erd') await deleteDiagram(currentId);
     else if (view === 'notes') await deleteNote(String(currentId));
