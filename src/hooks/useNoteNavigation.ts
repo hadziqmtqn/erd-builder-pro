@@ -139,17 +139,7 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
     }
   }, [isAuthenticated, location.pathname, handleNoteSelect]);
 
-  // ── Effect 2: View Cleanup ──
-  // Navigate away from /notes/ when switching to a non-notes view
-  // (moved from NotesPage.tsx)
-  useEffect(() => {
-    if (getSharePathInfo()) return;
-    if (view !== 'notes' && location.pathname.startsWith('/notes/')) {
-      navigate('/', { replace: true });
-    }
-  }, [view, location.pathname, navigate]);
-
-  // ── Effect 3: Note Loaded Tracking ──
+  // ── Effect 2: Note Loaded Tracking ──
   // Update refs when a note finishes loading
   // (moved from NotesPage.tsx)
   useEffect(() => {

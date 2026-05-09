@@ -942,6 +942,20 @@ function AppContent() {
     if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') {
       setSidebarView(newView);
     }
+
+    // Navigate to the correct URL when switching views (the active document is preserved)
+    if (!getSharePathInfo()) {
+      let targetUrl: string | null = null;
+      if (newView === 'notes' && activeNoteUid) targetUrl = '/notes/' + activeNoteUid;
+      else if (newView === 'flowchart' && activeFlowchartId) targetUrl = '/flowcharts/' + activeFlowchartId;
+      else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
+      else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
+      else if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
+      
+      if (targetUrl && targetUrl !== location.pathname) {
+        navigate(targetUrl, { replace: true });
+      }
+    }
   };
 
   const confirmPermanentDelete = async () => {

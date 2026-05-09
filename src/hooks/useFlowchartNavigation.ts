@@ -70,6 +70,7 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
 
   // ── Internal refs ──
   const lastProcessedFlowchartsUrlRef = useRef('');
+  const lastProcessedFlowchartsUrlTimeRef = useRef(0);
   const lastSelectedFlowchartRef = useRef<{ uid: string; time: number } | null>(null);
 
   // ── handleFlowchartSelect: the core orchestration ──
@@ -96,6 +97,7 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
 
     // Mark this URL as processed before navigate, so URL effect skips its own call
     lastProcessedFlowchartsUrlRef.current = '/flowcharts/' + uid;
+    lastProcessedFlowchartsUrlTimeRef.current = Date.now();
     if (!getSharePathInfo() && location.pathname !== '/flowcharts/' + uid) {
       navigate('/flowcharts/' + uid);
     }
@@ -130,22 +132,7 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
     }
   }, [isAuthenticated, location.pathname, handleFlowchartSelect]);
 
-  // ── Effect 2: View Cleanup ──
-  // Navigate away from /flowcharts/ when switching to a non-flowchart view
-  // Guard: skip during initial auth loading to prevent redirecting before
-  // Effect 1 (URL routing) can process the URL
-  useEffect(() => {
-    if (getSharePathInfo()) return;
-    if (!isAuthenticated) return;
-    // Don't redirect if we're currently processing this URL
-    // (Effect 1 already set lastProcessedFlowchartsUrlRef before navigate)
-    if (lastProcessedFlowchartsUrlRef.current === location.pathname) return;
-    if (view !== 'flowchart' && location.pathname.startsWith('/flowcharts/')) {
-      navigate('/', { replace: true });
-    }
-  }, [view, location.pathname, navigate, isAuthenticated]);
-
-  // ── Effect 3: Flowchart Loaded Tracking ──
+  // ── Effect 2: Flowchart Loaded Tracking ──
   useEffect(() => {
     if (activeFlowchartId) {
       lastLoadedFlowchartIdRef.current = activeFlowchartId;

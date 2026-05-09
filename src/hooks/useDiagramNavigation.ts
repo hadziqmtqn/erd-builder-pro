@@ -161,16 +161,7 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
     setSidebarView,
   ]);
 
-  // ── Effect 2: View Cleanup ──
-  // Navigate away from /diagrams/ when switching to a non-ERD view
-  useEffect(() => {
-    if (getSharePathInfo()) return;
-    if (view !== 'erd' && location.pathname.startsWith('/diagrams/')) {
-      navigate('/', { replace: true });
-    }
-  }, [view, location.pathname, navigate]);
-
-  // ── Effect 3: Diagram Loaded Tracking ──
+  // ── Effect 2: Diagram Loaded Tracking ──
   // Update refs when a diagram finishes loading
   useEffect(() => {
     if (activeDiagramId && !isERDItemLoading) {
