@@ -1,5 +1,4 @@
 import React from 'react';
-import { Skeleton } from '../ui/skeleton';
 import NotesEditor from '../NotesEditor';
 
 interface NotesViewProps {
@@ -21,23 +20,17 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
-  // Only show skeleton if we are loading AND don't have the note data yet.
-  // This prevents flickering during background refreshes or auto-saves.
-  const showSkeleton = isLoading && (!activeNote || activeNote.content === undefined);
+  // Show skeleton during initial load — covers both cached and uncached notes.
+  // The guard (!activeNote || activeNote.content === undefined) was removed so the
+  // spinner appears even when cached content is available, matching focus-sync behavior.
+  const showSkeleton = isLoading;
 
   if (showSkeleton) {
     return (
-      <div className="flex-1 space-y-4 p-8 border rounded-xl bg-background">
-        <Skeleton className="h-10 w-3/4 rounded-lg" />
-        <div className="space-y-2 pt-4">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-        <div className="space-y-2 pt-8">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-          <Skeleton className="h-4 w-full" />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <span className="text-xs text-muted-foreground/60 animate-pulse">Loading...</span>
         </div>
       </div>
     );
