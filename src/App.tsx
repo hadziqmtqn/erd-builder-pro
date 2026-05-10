@@ -550,6 +550,7 @@ function AppContent() {
     setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, data: undefined } : d));
     await selectDrawing(uid);
     lastLoadedDrawingIdRef.current = uid;
+    navigate('/drawings/' + uid, { replace: true });
   }
 
   async function handleProjectSelect(id: number | string | null) {
