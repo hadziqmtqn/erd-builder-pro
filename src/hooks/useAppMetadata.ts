@@ -6,7 +6,7 @@ interface AppMetadataProps {
   publicData: any;
   activeDiagramId: number | string | null;
   activeNoteUid: string | null;
-  activeDrawingId: number | string | null;
+  activeDrawingId: string | null;
   activeFlowchartId: number | string | null;
   diagrams: any[];
   notes: any[];
@@ -56,7 +56,7 @@ export const useAppMetadata = ({
   }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, currentActiveId]);
 
   const activeNote = isPublicView ? publicData : notes.find(n => n.uid === activeNoteUid);
-  const activeDrawing = isPublicView ? publicData : drawings.find(d => String(d.id) === String(activeDrawingId));
+  const activeDrawing = isPublicView ? publicData : drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId));
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => (f.uid && String(f.uid) === String(activeFlowchartId)) || String(f.id) === String(activeFlowchartId));
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => String(f.id) === String(activeDiagramId) || (f.uid && f.uid === activeDiagramId));
 
