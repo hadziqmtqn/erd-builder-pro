@@ -3,7 +3,7 @@ import {
   ReactFlowProvider,
   Edge,
 } from '@xyflow/react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { copyMarkdownToClipboard } from './lib/markdownUtils';
 
 // Components
@@ -106,6 +106,11 @@ function AppContent() {
   const [isExportNoteModalOpen, setIsExportNoteModalOpen] = useState(false);
   const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
   const [duplicateName, setDuplicateName] = useState("");
+  // Temp document target for editing from table view (where there's no activeDocument)
+  const [editDialogNote, setEditDialogNote] = useState<any | null>(null);
+  // Create document dialog (table view)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createDialogView, setCreateDialogView] = useState<string>('notes');
   
   // Safety Gate & Persistence State
   const isLocalSavingRef = useRef(false);
@@ -137,6 +142,23 @@ function AppContent() {
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  // Table View URL Params
+  const [tableSearchParams, setTableSearchParams] = useSearchParams();
+  const selectedWorkspaceUid = tableSearchParams.get('workspace') || null;
+  const handleWorkspaceFilter = useCallback((uid: string | null) => {
+    setTableSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (uid) {
+        next.set('view', 'table');
+        next.set('workspace', uid);
+      } else {
+        next.delete('workspace');
+      }
+      next.delete('page');
+      return next;
+    }, { replace: true });
+  }, [setTableSearchParams]);
   
   // Custom Hooks
   const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin, handleLogout } = useAuth();
@@ -653,6 +675,36 @@ function AppContent() {
     setIsRenameDialogOpen(true);
   }, [activeDocument]);
 
+  // Open RenameDocumentDialog for a note from table view (no activeDocument)
+  const handleOpenEditDocument = useCallback((uid: string) => {
+    const note = notes?.find((n: any) => n.uid === uid || String(n.id) === uid);
+    if (!note) return;
+    setEditDialogNote(note);
+    setNewName(note.title || '');
+    const pid = note.projects?.uid || note.project_id?.toString() || '';
+    setRenameProjectId(pid === '' ? 'none' : pid);
+    setIsRenameDialogOpen(true);
+  }, [notes]);
+
+  // Open RenameDocumentDialog for creating a document from table view
+  const handleOpenCreateDocument = useCallback((featureView: string) => {
+    setNewName('');
+    // Pre-select current workspace filter if it matches a known project
+    if (selectedWorkspaceUid) {
+      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
+      if (p) {
+        setRenameProjectId(String(p.id));
+      } else {
+        setRenameProjectId('none');
+      }
+    } else {
+      setRenameProjectId('none');
+    }
+    setCreateDialogView(featureView);
+    setCreateDialogOpen(true);
+    setEditDialogNote(null);
+  }, [selectedWorkspaceUid, projects]);
+
   const handleHeaderExportSQL = useCallback((dialect: 'postgresql' | 'mysql') => {
     if (activeDocument) {
       handleExportSQL(dialect, { name: activeFileName || 'Untitled' }, nodesRef.current, edgesRef.current);
@@ -942,7 +994,7 @@ function AppContent() {
     };
   }, []);
 
-  const handleViewChange = async (newView: typeof view) => {
+  const handleViewChange = async (newView: typeof view, showTable?: boolean, workspaceUid?: string | null) => {
     if (!isOnline && !isPublicView) {
       toast.error("Offline Mode: Navigation is disabled.", { duration: 5000 });
       return;
@@ -956,6 +1008,18 @@ function AppContent() {
     setView(newView);
     if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') {
       setSidebarView(newView);
+    }
+
+    // "Show Table" mode: clear active document and navigate to table view list
+    if (showTable) {
+      setActiveNoteUid(null);
+      setActiveDrawingId(null);
+      let tableUrl = '/?view=table&feature=' + newView;
+      if (workspaceUid) tableUrl += '&workspace=' + workspaceUid;
+      if (tableUrl !== location.pathname + location.search) {
+        navigate(tableUrl, { replace: true });
+      }
+      return;
     }
 
     // Navigate to the correct URL when switching views (the active document is preserved)
@@ -1093,48 +1157,19 @@ function AppContent() {
 
       {!isPublicView && (
         <AppSidebar 
-          diagrams={diagrams} notes={notes} drawings={drawings} projects={projects} uncategorized={uncategorized} flowcharts={flowcharts}
-          activeDiagramId={activeDiagramId} activeNoteUid={activeNoteUid} activeDrawingId={activeDrawingId} activeProjectId={activeProjectId} activeFlowchartId={activeFlowchartId}
           view={view}
-          onDiagramSelect={handleDiagramSelect} onNoteSelect={handleNoteSelect} onDrawingSelect={handleDrawingSelect} onProjectSelect={handleProjectSelect} onFlowchartSelect={handleFlowchartSelect}
-
-          onDiagramCreate={handleSidebarDiagramCreate}
-          onNoteCreate={handleSidebarNoteCreate}
-          onDrawingCreate={handleSidebarDrawingCreate}
-          onFlowchartCreate={handleSidebarFlowchartCreate}
+          projects={projects}
+          onViewChange={handleViewChange}
+          onNoteSelect={handleNoteSelect}
+          onDrawingSelect={handleDrawingSelect}
           onProjectCreate={handleSidebarProjectCreate}
           onProjectUpdate={handleSidebarProjectUpdate}
           onProjectDelete={handleSidebarProjectDelete}
-          onDiagramUpdate={handleSidebarDiagramUpdate}
-          onNoteUpdate={handleSidebarNoteUpdate}
-          onDrawingUpdate={handleSidebarDrawingUpdate}
-          onFlowchartUpdate={handleSidebarFlowchartUpdate}
-          onDiagramDelete={handleSidebarDiagramDelete}
-          onNoteDelete={handleSidebarNoteDelete}
-          onDrawingDelete={handleSidebarDrawingDelete}
-          onFlowchartDelete={handleSidebarFlowchartDelete}
           onLogout={handleLogout}
-          onMoveDiagramToProject={handleSidebarMoveDiagramToProject}
-          onMoveNoteToProject={handleSidebarMoveNoteToProject}
-          onMoveDrawingToProject={handleSidebarMoveDrawingToProject}
-          onMoveFlowchartToProject={handleSidebarMoveFlowchartToProject}
-          sidebarView={sidebarView} onViewChange={handleViewChange}
-          hasMoreProjects={hasMoreProjects} hasMoreDiagrams={hasMoreDiagrams} hasMoreNotes={hasMoreNotes} hasMoreDrawings={hasMoreDrawings} hasMoreFlowcharts={hasMoreFlowcharts}
-          onLoadMoreProjects={handleSidebarLoadMoreProjects}
-          onLoadMoreDiagrams={handleSidebarLoadMoreDiagrams}
-          onLoadMoreNotes={handleSidebarLoadMoreNotes}
-          onNoteCopyMarkdown={handleSidebarNoteCopyMarkdown}
-          onNoteImportMarkdown={handleSidebarNoteImportMarkdown}
-          onNoteExportMarkdown={handleSidebarNoteExportMarkdown}
-          onLoadMoreDrawings={handleSidebarLoadMoreDrawings}
-          onLoadMoreFlowcharts={handleSidebarLoadMoreFlowcharts}
+          onWorkspaceFilter={handleWorkspaceFilter}
+          selectedWorkspaceUid={selectedWorkspaceUid}
           searchQuery={searchQuery} onSearchChange={setSearchQuery} user={user} isOnline={isOnline} isInstallable={isInstallable} onInstall={installApp}
           isProjectsLoading={isProjectsLoading}
-          isDiagramsLoading={isDiagramsLoading}
-          isNotesLoading={isNotesLoading}
-          isDrawingsLoading={isDrawingsLoading}
-          isFlowchartsLoading={isFlowchartsLoading}
-          isTrashLoading={isTrashLoading}
         />
       )}
 
@@ -1250,6 +1285,14 @@ function AppContent() {
           saveNote={saveNote}
           handleNoteChange={handleNoteChange}
           deleteNote={deleteNote}
+          notes={notes}
+          projects={projects}
+          onNoteCreate={() => handleOpenCreateDocument('notes')}
+          onNoteSelect={handleNoteSelect}
+          selectedWorkspaceUid={selectedWorkspaceUid}
+          tablePage={parseInt(tableSearchParams.get('page') || '1', 10)}
+          onOpenEditDocument={(uid) => handleOpenEditDocument(uid)}
+          onDeleteNote={(uid) => handleSidebarNoteDelete(uid)}
 
           activeDrawing={activeDrawing}
           activeDrawingId={activeDrawingId}
@@ -1297,9 +1340,9 @@ function AppContent() {
         {!isPublicView && (
           <RenameDocumentDialog
             isOpen={isRenameDialogOpen}
-            onOpenChange={setIsRenameDialogOpen}
+            onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
             view={view}
-            activeDocument={activeDocument}
+            activeDocument={editDialogNote ?? activeDocument}
             newName={newName}
             setNewName={setNewName}
             projects={projects}
@@ -1313,6 +1356,35 @@ function AppContent() {
             onMoveNoteToProject={moveNoteToProject}
             onMoveDrawingToProject={moveDrawingToProject}
             onMoveFlowchartToProject={moveFlowchartToProject}
+            onRenameSuccess={fetchProjects}
+          />
+        )}
+
+        {/* Create Document Dialog (from table view) */}
+        {!isPublicView && (
+          <RenameDocumentDialog
+            isOpen={createDialogOpen}
+            onOpenChange={(open) => { setCreateDialogOpen(open); }}
+            mode="create"
+            view={createDialogView}
+            activeDocument={null}
+            newName={newName}
+            setNewName={setNewName}
+            projects={projects}
+            selectedProjectId={renameProjectId}
+            setSelectedProjectId={setRenameProjectId}
+            onCreate={(title, projectId) => {
+              const viewCb = createDialogView;
+              if (viewCb === 'notes') {
+                handleSidebarNoteCreate(title, projectId);
+              } else if (viewCb === 'erd') {
+                handleSidebarDiagramCreate(title, projectId);
+              } else if (viewCb === 'drawings') {
+                handleSidebarDrawingCreate(title, projectId);
+              } else if (viewCb === 'flowchart') {
+                handleSidebarFlowchartCreate(title, projectId);
+              }
+            }}
             onRenameSuccess={fetchProjects}
           />
         )}

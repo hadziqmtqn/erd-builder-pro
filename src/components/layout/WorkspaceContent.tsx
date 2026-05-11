@@ -13,6 +13,7 @@ const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m
 
 // Lightweight views — eager loaded
 import { WelcomeView } from '@/components/views/WelcomeView';
+import { NotesTableView } from '@/components/views/NotesTableView';
 
 // Modals used inside workspace
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
@@ -71,6 +72,14 @@ export interface WorkspaceContentProps {
   saveNote: (note: any) => Promise<boolean>;
   handleNoteChange: (content: string) => void;
   deleteNote: (id: any) => Promise<void>;
+  notes: any[];
+  projects: any[];
+  onNoteCreate: () => void;
+  onNoteSelect: (uid: string) => void;
+  selectedWorkspaceUid: string | null;
+  tablePage: number;
+  onOpenEditDocument?: (uid: string) => void;
+  onDeleteNote?: (uid: string) => void;
 
   // Drawings
   activeDrawing: any;
@@ -115,7 +124,25 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           </div>
         </div>
       }>
-      {!props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? <WelcomeView /> : (
+      {!props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? (
+        props.view === 'notes' ? (
+          <NotesTableView
+            notes={props.notes}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            isLoading={false}
+            onSelectNote={props.onNoteSelect}
+            onCreateNote={props.onNoteCreate}
+            onPageChange={(p) => { /* URL update TBD */ }}
+            onWorkspaceClick={(uid) => { /* handled via sidebar */ }}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteNote={(uid) => props.onDeleteNote?.(uid)}
+          />
+        ) : (
+          <WelcomeView />
+        )
+      ) : (
         <>
           {props.view === 'erd' && (props.isPublicView ? props.publicData : props.activeDiagramId) && (
             <ERDView 

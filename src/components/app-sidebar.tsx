@@ -4,14 +4,14 @@ import {
   Database,
   StickyNote,
   PenTool,
-  Folder,
   Search,
   Network,
+  Folder,
+  Plus,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { Button } from "@/components/ui/button"
@@ -35,144 +35,48 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
 
-import { Diagram, Project, Note, Drawing, Flowchart } from "../types"
+import { Project } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  diagrams: Diagram[];
-  notes: Note[];
-  drawings: Drawing[];
-  flowcharts: Flowchart[];
   projects: Project[];
-  activeDiagramId: number | string | null;
-  activeNoteUid: string | null;
-  activeDrawingId: string | null;
-  activeFlowchartId: number | string | null;
-  activeProjectId: number | string | null;
   view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups';
-  sidebarView: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog';
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void;
-  onDiagramSelect: (id: number | string) => void;
+  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups', showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
   onNoteSelect: (uid: string) => void;
   onDrawingSelect: (uid: string) => void;
-  onFlowchartSelect: (uid: string) => void;
-  onProjectSelect: (id: number | string | null) => void;
-  onDiagramCreate: (name: string, projectId?: number | string | null) => void;
-  onNoteCreate: (title: string, projectId?: number | string | null) => void;
-  onDrawingCreate: (title: string, projectId?: number | string | null) => void;
-  onFlowchartCreate: (title: string, projectId?: number | string | null) => void;
   onProjectCreate: (name: string) => void;
   onProjectUpdate: (id: number | string, name: string) => void;
   onProjectDelete: (id: number | string) => void;
-  onDiagramDelete: (id: number | string) => void;
-  onNoteDelete: (id: number | string) => void;
-  onDrawingDelete: (uid: string) => void;
-  onFlowchartDelete: (uid: string) => void;
-  onDiagramUpdate: (id: number | string, name: string, options?: { silent?: boolean }) => void;
-  onNoteUpdate: (id: number | string, title: string, options?: { silent?: boolean }) => void;
-  onDrawingUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void;
-  onFlowchartUpdate: (uid: string, title: string, options?: { silent?: boolean }) => void;
   onLogout: () => void;
-  onMoveDiagramToProject: (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-  onMoveNoteToProject: (noteId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-  onMoveDrawingToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-  onMoveFlowchartToProject: (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => void;
-
-  hasMoreProjects?: boolean;
-  hasMoreDiagrams?: boolean;
-  hasMoreNotes?: boolean;
-  hasMoreDrawings?: boolean;
-  hasMoreFlowcharts?: boolean;
-  onLoadMoreProjects?: () => void;
-  onLoadMoreDiagrams?: () => void;
-  onLoadMoreNotes?: () => void;
-  onNoteCopyMarkdown?: (id: number | string) => void;
-  onNoteImportMarkdown?: (id: number | string) => void;
-  onNoteExportMarkdown?: (id: number | string) => void;
-  onLoadMoreDrawings?: () => void;
-  onLoadMoreFlowcharts?: () => void;
+  onWorkspaceFilter: (uid: string | null) => void;
+  selectedWorkspaceUid: string | null;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   isInstallable?: boolean;
   onInstall?: () => void;
   isProjectsLoading?: boolean;
-  isDiagramsLoading?: boolean;
-  isNotesLoading?: boolean;
-  isDrawingsLoading?: boolean;
-  isFlowchartsLoading?: boolean;
-  isTrashLoading?: boolean;
-  uncategorized: {
-    diagrams: Diagram[];
-    notes: Note[];
-    drawings: Drawing[];
-    flowcharts: Flowchart[];
-  };
+  user: any;
+  isOnline: boolean;
 }
 
 export const AppSidebar = React.memo(({
-  diagrams,
-  notes,
-  drawings,
-  flowcharts,
   projects,
-  uncategorized,
-  activeDiagramId,
-  activeNoteUid,
-  activeDrawingId,
-  activeFlowchartId,
-  activeProjectId,
   view,
-  sidebarView,
   onViewChange,
-  onDiagramSelect,
   onNoteSelect,
   onDrawingSelect,
-  onFlowchartSelect,
-  onProjectSelect,
-  onDiagramCreate,
-  onNoteCreate,
-  onDrawingCreate,
-  onFlowchartCreate,
   onProjectCreate,
   onProjectUpdate,
   onProjectDelete,
-  onDiagramDelete,
-  onNoteDelete,
-  onDrawingDelete,
-  onFlowchartDelete,
-  onDiagramUpdate,
-  onNoteUpdate,
-  onDrawingUpdate,
-  onFlowchartUpdate,
   onLogout,
-  onMoveDiagramToProject,
-  onMoveNoteToProject,
-  onMoveDrawingToProject,
-  onMoveFlowchartToProject,
-  hasMoreProjects,
-  hasMoreDiagrams,
-  hasMoreNotes,
-  hasMoreDrawings,
-  hasMoreFlowcharts,
-  onLoadMoreProjects,
-  onLoadMoreDiagrams,
-  onLoadMoreNotes,
-  onNoteCopyMarkdown,
-  onNoteImportMarkdown,
-  onNoteExportMarkdown,
-  onLoadMoreDrawings,
-  onLoadMoreFlowcharts,
+  onWorkspaceFilter,
+  selectedWorkspaceUid,
   searchQuery,
   onSearchChange,
-  user,
-  isOnline,
   isInstallable,
   onInstall,
   isProjectsLoading,
-  isDiagramsLoading,
-  isNotesLoading,
-  isDrawingsLoading,
-  isFlowchartsLoading,
-  isTrashLoading,
+  user,
+  isOnline,
   ...props
 }: AppSidebarProps) => {
   const { state, setOpen } = useSidebar();
@@ -181,39 +85,24 @@ export const AppSidebar = React.memo(({
   const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
-    // Better OS detection
     const userAgent = window.navigator.userAgent.toLowerCase();
     setIsMac(userAgent.includes('mac') || userAgent.includes('iphone') || userAgent.includes('ipad'));
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        
-        // Auto-expand if collapsed
-        if (state === "collapsed") {
-          setOpen(true);
-        }
-
-        // Delay focus slightly to allow state transition if needed
+        if (state === "collapsed") setOpen(true);
         setTimeout(() => {
           searchInputRef.current?.focus();
-          searchInputRef.current?.select(); // Select existing text for quick re-search
+          searchInputRef.current?.select();
         }, 50);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state, setOpen]);
 
-  // Auto-expand sidebar when a file is selected
-  useEffect(() => {
-    if (activeDiagramId || activeNoteUid || activeDrawingId || activeFlowchartId) {
-      setOpen(true);
-    }
-  }, [activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId]);
-
-  // Navigation items for the main section
+  // Navigation items for the feature section
   const navMain = [
     {
       title: "Notes",
@@ -221,7 +110,7 @@ export const AppSidebar = React.memo(({
       icon: StickyNote,
       iconClassName: "text-yellow-400",
       isActive: view === 'notes',
-      onClick: () => onViewChange('notes'),
+      onClick: () => onViewChange('notes', true),
     },
     {
       title: "ERD Builder",
@@ -247,27 +136,14 @@ export const AppSidebar = React.memo(({
       isActive: view === 'drawings',
       onClick: () => onViewChange('drawings'),
     },
-  ]
+  ];
 
-  // Projects navigation
-  const navProjects = projects.filter(p => !p.is_deleted).map(project => ({
-    ...project,
-    id: project.id,
-    name: project.name,
-    url: "#",
-    icon: Folder,
-    isActive: activeProjectId !== null && String(activeProjectId) === String(project.id),
-    files_count: project.files_count,
-    diagrams_count: project.diagrams_count,
-    notes_count: project.notes_count,
-    drawings_count: project.drawings_count,
-    flowcharts_count: project.flowcharts_count,
-    // Ensure nested files are passed through
-    diagrams: project.diagrams || [],
-    notes: project.notes || [],
-    drawings: project.drawings || [],
-    flowcharts: project.flowcharts || [],
-  }))
+  // Filtered non-deleted projects
+  const activeProjects = projects.filter(p => !p.is_deleted);
+
+  const handleWorkspaceClick = (uid: string | null) => {
+    onViewChange('notes', true, uid);
+  };
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -285,7 +161,7 @@ export const AppSidebar = React.memo(({
           <SidebarGroupContent className="relative">
             <SidebarInput 
               ref={searchInputRef}
-              placeholder={`Search ${sidebarView === 'erd' ? 'diagrams' : sidebarView === 'notes' ? 'notes' : 'drawings'}...`}
+              placeholder="Search..."
               className="pl-8 pr-12"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -313,66 +189,74 @@ export const AppSidebar = React.memo(({
         </SidebarGroup>
       </SidebarHeader>
       <SidebarContent>
-        <NavProjects 
-          projects={navProjects} 
-          activeProjectId={activeProjectId}
-          onProjectSelect={onProjectSelect}
-          onProjectDelete={onProjectDelete}
-          onProjectUpdate={onProjectUpdate}
-          onProjectCreate={onProjectCreate}
-          onDiagramCreate={onDiagramCreate}
-          onNoteCreate={onNoteCreate}
-          onDrawingCreate={onDrawingCreate}
-          onFlowchartCreate={onFlowchartCreate}
-          diagrams={diagrams}
-          notes={notes}
-          drawings={drawings}
-          flowcharts={flowcharts}
-          onDiagramSelect={onDiagramSelect}
-          onNoteSelect={onNoteSelect}
-          onDrawingSelect={onDrawingSelect}
-          onFlowchartSelect={onFlowchartSelect}
-          activeDiagramId={activeDiagramId}
-          activeNoteUid={activeNoteUid}
-          activeDrawingId={activeDrawingId}
-          activeFlowchartId={activeFlowchartId}
-          view={view}
-          sidebarView={sidebarView}
-          onDiagramDelete={onDiagramDelete}
-          onNoteDelete={onNoteDelete}
-          onDrawingDelete={onDrawingDelete}
-          onFlowchartDelete={onFlowchartDelete}
-          onDiagramUpdate={onDiagramUpdate}
-          onNoteUpdate={onNoteUpdate}
-          onDrawingUpdate={onDrawingUpdate}
-          onFlowchartUpdate={onFlowchartUpdate}
-          onMoveDiagramToProject={onMoveDiagramToProject}
-          onMoveNoteToProject={onMoveNoteToProject}
-          onMoveDrawingToProject={onMoveDrawingToProject}
-          onMoveFlowchartToProject={onMoveFlowchartToProject}
-          allProjects={projects.filter(p => !p.is_deleted)}
-          searchQuery={searchQuery}
-          hasMoreProjects={hasMoreProjects}
-          hasMoreDiagrams={hasMoreDiagrams}
-          hasMoreNotes={hasMoreNotes}
-          hasMoreDrawings={hasMoreDrawings}
-          hasMoreFlowcharts={hasMoreFlowcharts}
-          onLoadMoreProjects={onLoadMoreProjects}
-          onLoadMoreDiagrams={onLoadMoreDiagrams}
-          onLoadMoreNotes={onLoadMoreNotes}
-          onNoteCopyMarkdown={onNoteCopyMarkdown}
-          onNoteImportMarkdown={onNoteImportMarkdown}
-          onNoteExportMarkdown={onNoteExportMarkdown}
-          onLoadMoreDrawings={onLoadMoreDrawings}
-          onLoadMoreFlowcharts={onLoadMoreFlowcharts}
-          isOnline={isOnline}
-          isProjectsLoading={isProjectsLoading}
-          isDiagramsLoading={isDiagramsLoading}
-          isNotesLoading={isNotesLoading}
-          isDrawingsLoading={isDrawingsLoading}
-          isFlowchartsLoading={isFlowchartsLoading}
-          uncategorized={uncategorized}
-        />
+        {/* Workspaces section */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>Workspaces</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    onClick={() => {
+                      const name = prompt('Workspace name:');
+                      if (name?.trim()) onProjectCreate(name.trim());
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Create Workspace</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            {/* "All" option (clear filter) */}
+            <div
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md cursor-pointer transition-colors",
+                selectedWorkspaceUid === null
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              )}
+              onClick={() => handleWorkspaceClick(null)}
+            >
+              <Folder className="h-4 w-4 shrink-0" />
+              <span className="truncate group-data-[collapsible=icon]:hidden">All Workspaces</span>
+            </div>
+
+            {/* Project list */}
+            {isProjectsLoading ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse">
+                Loading workspaces...
+              </div>
+            ) : activeProjects.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                No workspaces yet
+              </div>
+            ) : (
+              activeProjects.map(project => (
+                <div
+                  key={project.uid ?? project.id}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md cursor-pointer transition-colors group",
+                    selectedWorkspaceUid === project.uid
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  )}
+                  onClick={() => handleWorkspaceClick(project.uid ?? null)}
+                >
+                  <Folder className="h-4 w-4 shrink-0" />
+                  <span className="truncate group-data-[collapsible=icon]:hidden flex-1">
+                    {project.name}
+                  </span>
+                </div>
+              ))
+            )}
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         {isInstallable && (
@@ -418,4 +302,3 @@ export const AppSidebar = React.memo(({
     </Sidebar>
   );
 });
-
