@@ -56,7 +56,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal"
+import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 
 import { Project } from "../types"
 
@@ -148,7 +148,7 @@ export const AppSidebar = React.memo(({
       icon: Database,
       iconClassName: "text-blue-400",
       isActive: view === 'erd',
-      onClick: () => onViewChange('erd'),
+      onClick: () => onViewChange('erd', true),
     },
     {
       title: "Flowchart",
@@ -156,7 +156,7 @@ export const AppSidebar = React.memo(({
       icon: Network,
       iconClassName: "text-green-400",
       isActive: view === 'flowchart',
-      onClick: () => onViewChange('flowchart'),
+      onClick: () => onViewChange('flowchart', true),
     },
     {
       title: "Drawings",
@@ -164,7 +164,7 @@ export const AppSidebar = React.memo(({
       icon: PenTool,
       iconClassName: "text-purple-400",
       isActive: view === 'drawings',
-      onClick: () => onViewChange('drawings'),
+      onClick: () => onViewChange('drawings', true),
     },
   ];
 
@@ -172,7 +172,7 @@ export const AppSidebar = React.memo(({
   const activeProjects = projects.filter(p => !p.is_deleted);
 
   const handleWorkspaceClick = (uid: string | null) => {
-    onViewChange('notes', true, uid);
+    onViewChange(view, true, uid);
   };
 
   return (
@@ -274,7 +274,7 @@ export const AppSidebar = React.memo(({
                       {/* Three-dots menu */}
                       <span onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
-                          <DropdownMenuTrigger render={
+                          <DropdownMenuTrigger nativeButton={false} render={
                             <span className="p-1 rounded hover:bg-accent/50 cursor-pointer inline-flex items-center justify-center">
                               <MoreHorizontal className="h-3.5 w-3.5" />
                             </span>
@@ -439,17 +439,14 @@ export const AppSidebar = React.memo(({
       </Dialog>
 
       {/* Delete Workspace Confirmation */}
-      <DeleteConfirmModal
+      <MoveToTrashAlert
         isOpen={deletingProject !== null}
         onOpenChange={(open) => { if (!open) setDeletingProject(null); }}
-        onConfirm={() => {
-          if (deletingProject) {
-            onProjectDelete(deletingProject.id);
-            setDeletingProject(null);
-          }
-        }}
-        onCancel={() => setDeletingProject(null)}
-        itemType="project"
+        mode="move-to-trash"
+        view="project"
+        activeDocument={deletingProject ? { id: deletingProject.id, name: deletingProject.name } : undefined}
+        deleteProject={onProjectDelete}
+        onAfterDelete={() => setDeletingProject(null)}
       />
     </>
   );

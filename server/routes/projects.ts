@@ -145,22 +145,23 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const projectId = req.params.id;
   const update = getSafeUpdate(true);
-  
+  const userId = (req as any).user.id;
+
   const { error } = await supabase
     .from("projects")
     .update(update)
     .eq("id", projectId)
-    .eq("user_id", (req as any).user.id);
+    .eq("user_id", userId);
 
   if (error) return handleError(res, error, "Failed to delete project");
 
   // Cascading soft delete
   try {
     await Promise.all([
-      supabase.from("diagrams").update(update).eq("project_id", projectId),
-      supabase.from("notes").update(update).eq("project_id", projectId),
-      supabase.from("drawings").update(update).eq("project_id", projectId),
-      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+      supabase.from("diagrams").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("notes").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("drawings").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
     ]);
   } catch (err) {
     console.error("Cascading soft delete failed:", err);
@@ -172,22 +173,23 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const projectId = req.params.id;
   const update = getSafeUpdate(false);
+  const userId = (req as any).user.id;
 
   const { error } = await supabase
     .from("projects")
     .update(update)
     .eq("id", projectId)
-    .eq("user_id", (req as any).user.id);
+    .eq("user_id", userId);
 
   if (error) return handleError(res, error, "Failed to restore project");
 
   // Cascading restore
   try {
     await Promise.all([
-      supabase.from("diagrams").update(update).eq("project_id", projectId),
-      supabase.from("notes").update(update).eq("project_id", projectId),
-      supabase.from("drawings").update(update).eq("project_id", projectId),
-      supabase.from("flowcharts").update(update).eq("project_id", projectId),
+      supabase.from("diagrams").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("notes").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("drawings").update(update).eq("project_id", projectId).eq("user_id", userId),
+      supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
     ]);
   } catch (err) {
     console.error("Cascading restore failed:", err);
@@ -198,9 +200,10 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
 
 router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const projectId = req.params.id;
-  
+  const userId = (req as any).user.id;
+
   try {
-    const { data: diagrams } = await supabase.from("diagrams").select("id").eq("project_id", projectId);
+    const { data: diagrams } = await supabase.from("diagrams").select("id").eq("project_id", projectId).eq("user_id", userId);
     const diagramIds = diagrams?.map((f: { id: number }) => f.id) || [];
 
     if (diagramIds.length > 0) {
@@ -213,9 +216,9 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
       await supabase.from("entities").delete().in("diagram_id", diagramIds);
       await supabase.from("diagrams").delete().in("id", diagramIds);
     }
-    
+
     // Delete images from notes before deleting notes
-    const { data: notes } = await supabase.from("notes").select("content").eq("project_id", projectId);
+    const { data: notes } = await supabase.from("notes").select("content").eq("project_id", projectId).eq("user_id", userId);
     if (notes && notes.length > 0 && s3Client && R2_BUCKET_NAME) {
       for (const note of notes) {
         if (note.content) {
@@ -239,9 +242,10 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
       }
     }
 
-    await supabase.from("notes").delete().eq("project_id", projectId);
-    await supabase.from("drawings").delete().eq("project_id", projectId);
-    await supabase.from("projects").delete().eq("id", projectId).eq("user_id", (req as any).user.id);
+    await supabase.from("notes").delete().eq("project_id", projectId).eq("user_id", userId);
+    await supabase.from("drawings").delete().eq("project_id", projectId).eq("user_id", userId);
+    await supabase.from("flowcharts").delete().eq("project_id", projectId).eq("user_id", userId);
+    await supabase.from("projects").delete().eq("id", projectId).eq("user_id", userId);
 
     res.json({ success: true });
   } catch (err: any) {

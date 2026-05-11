@@ -24,26 +24,51 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   // Keep ref in sync
   diagramsRef.current = diagrams;
 
-  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
+  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
     if (isGuest) {
-      // For local, we still use 'erd' type internally to maintain existing data or we migrate it
-      const localResources = await localPersistence.getAllResources('erd');
-      let filtered = localResources.filter(f => !f.is_deleted);
+      const [localResources, localProjects] = await Promise.all([
+        localPersistence.getAllResources('erd'),
+        localPersistence.getAllResources('project'),
+      ]);
+      const projectMap = new Map(
+        localProjects
+          .filter((p: any) => !p.is_deleted)
+          .map((p: any) => [String(p.id), { uid: p.uid || String(p.id), name: p.name }])
+      );
+      let filtered = localResources.filter((f: any) => !f.is_deleted);
       if (projectId !== 'all') {
-        filtered = filtered.filter(f => f.project_id === projectId);
+        filtered = filtered.filter((f: any) => String(f.project_id) === String(projectId));
       }
       if (searchQuery) {
-        filtered = filtered.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        filtered = filtered.filter((f: any) => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setDiagrams(filtered);
-      setDiagramsTotal(filtered.length);
+      const enriched = filtered.map((f: any) => ({
+        ...f,
+        projects: f.projects || projectMap.get(String(f.project_id)) || null,
+      }));
+
+      // Sort: newest first by created_at
+      enriched.sort((a: any, b: any) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return db - da;
+      });
+
+      // Paginate
+      const pageSize = limit;
+      const pageNum = page !== undefined ? page : 1;
+      const startIdx = (pageNum - 1) * pageSize;
+      const paged = enriched.slice(startIdx, startIdx + pageSize);
+
+      setDiagrams(paged);
+      setDiagramsTotal(enriched.length);
       setHasMoreDiagrams(false);
       return;
     }
 
     if (!options?.silent) setIsLoading(true);
     try {
-      const offset = isLoadMore ? diagramsRef.current.length : 0;
+      const offset = page !== undefined ? (page - 1) * limit : (isLoadMore ? diagramsRef.current.length : 0);
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
@@ -84,6 +109,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     if (isGuest) {
       const newDiagram: Diagram = {
         id: Math.random().toString(36).substr(2, 9) as any,
+        uid: crypto.randomUUID(),
         name,
         project_id: effectiveProjectId || null,
         is_deleted: false,

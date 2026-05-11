@@ -14,6 +14,7 @@ const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m
 // Lightweight views — eager loaded
 import { WelcomeView } from '@/components/views/WelcomeView';
 import { NotesTableView } from '@/components/views/NotesTableView';
+import { ErdTableView } from '@/components/views/ErdTableView';
 
 // Modals used inside workspace
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
@@ -84,6 +85,13 @@ export interface WorkspaceContentProps {
   onOpenEditDocument?: (uid: string) => void;
   onDeleteNote?: (uid: string) => void;
 
+  // ERD
+  diagrams: any[];
+  diagramsTotal: number;
+  onDiagramCreate: () => void;
+  onDiagramSelect: (uid: string) => void;
+  onDeleteDiagram: (uid: string) => void;
+
   // Drawings
   activeDrawing: any;
   activeDrawingId: any;
@@ -142,6 +150,21 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
             onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
             onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
             onDeleteNote={(uid) => props.onDeleteNote?.(uid)}
+          />
+        ) : props.view === 'erd' ? (
+          <ErdTableView
+            diagrams={props.diagrams}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalDiagrams={props.diagramsTotal}
+            isLoading={false}
+            onSelectDiagram={props.onDiagramSelect}
+            onCreateDiagram={props.onDiagramCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteDiagram={props.onDeleteDiagram}
           />
         ) : (
           <WelcomeView />
