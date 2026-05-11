@@ -115,6 +115,7 @@ function AppContent() {
   const lastLoadedNoteIdRef = useRef<number | string | null>(null);
   const lastLoadedDrawingIdRef = useRef<string | null>(null);
   const lastLoadedFlowchartIdRef = useRef<number | string | null>(null);
+  const lastProcessedDrawingUrlRef = useRef('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isIncomingSyncRef = useRef(false);
   const lastSaveCallRef = useRef<number>(0);
@@ -548,10 +549,23 @@ function AppContent() {
     setView('drawings');
     // Clear current drawing data to avoid showing stale data while loading
     setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, data: undefined } : d));
+    lastProcessedDrawingUrlRef.current = '/drawings/' + uid;
+    navigate('/drawings/' + uid, { replace: true });
     await selectDrawing(uid);
     lastLoadedDrawingIdRef.current = uid;
-    navigate('/drawings/' + uid, { replace: true });
   }
+
+  // ── URL Routing for /drawings/:uid ──
+  // Handles page refresh on a drawings URL
+  useEffect(() => {
+    if (!isAuthenticated || getSharePathInfo()) return;
+    if (lastProcessedDrawingUrlRef.current === location.pathname) return;
+    const m = location.pathname.match(/^\/drawings\/([^/]+)/);
+    if (m) {
+      lastProcessedDrawingUrlRef.current = location.pathname;
+      handleDrawingSelect(m[1]);
+    }
+  }, [isAuthenticated, location.pathname]);
 
   async function handleProjectSelect(id: number | string | null) {
     await flushPendingSaves();

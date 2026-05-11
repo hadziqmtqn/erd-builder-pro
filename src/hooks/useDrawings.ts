@@ -269,13 +269,81 @@ export function useDrawings(isGuest: boolean = false) {
         if (!localData || localData.is_deleted) return;
         setActiveDrawingUid(uid);
       } else {
-        const res = await fetch(`/api/drawings/${uid}`);
-        if (res.ok) {
-          const d = await res.json();
-          if (!d.is_deleted) {
-            setDrawings(prev => prev.map(existing => String(existing.uid ?? existing.id) === uid ? { ...existing, data: d.data } : existing));
-            setActiveDrawingUid(uid);
+        // Helper: try to read local draft data for this drawing
+        const tryGetDraftData = async (numericFallbackId?: string | number): Promise<string | null> => {
+          const checkDraft = async (id: string | number): Promise<string | null> => {
+            try {
+              const draft = await localPersistence.getDraft(DraftType.DRAWINGS, id);
+              if (draft && draft.data) {
+                const parsedDraft = JSON.parse(draft.data);
+                if (parsedDraft && typeof parsedDraft.data === 'string') {
+                  const excalidrawData = JSON.parse(parsedDraft.data);
+                  if (excalidrawData?.elements?.length > 0) {
+                    return parsedDraft.data;
+                  }
+                }
+              }
+            } catch (e) { /* ignore parse errors */ }
+            return null;
+          };
+
+          // Check under UUID first, then numeric ID fallback
+          const uuidResult = await checkDraft(uid);
+          if (uuidResult) return uuidResult;
+          if (numericFallbackId != null && String(numericFallbackId) !== uid) {
+            return await checkDraft(numericFallbackId);
           }
+          return null;
+        };
+
+        let effectiveData: string | null = null;
+        let fetchFailed = false;
+        let serverDrawing: any = null;
+
+        try {
+          const res = await fetch(`/api/drawings/${uid}`);
+          if (res.ok) {
+            const d = await res.json();
+            if (!d.is_deleted) {
+              serverDrawing = d;
+              effectiveData = d.data;
+              // Prefer draft data if it has actual elements (sync may not have run)
+              const draftData = await tryGetDraftData(d.id);
+              if (draftData) effectiveData = draftData;
+            }
+          } else {
+            fetchFailed = true;
+          }
+        } catch (err) {
+          // Network/server failure — fall back to local draft entirely
+          fetchFailed = true;
+        }
+
+        if (fetchFailed) {
+          const draftData = await tryGetDraftData();
+          if (draftData) effectiveData = draftData;
+          // Still set the active drawing even without server data
+          // so the user can at least see the Excalidraw editor
+          if (!effectiveData) effectiveData = '';
+        }
+
+        // Only proceed if we have a valid drawing (even with empty data)
+        if (effectiveData !== null) {
+          setDrawings(prev => {
+            const exists = prev.some(existing => String(existing.uid ?? existing.id) === uid);
+            if (exists) {
+              return prev.map(existing => String(existing.uid ?? existing.id) === uid
+                ? { ...existing, data: effectiveData }
+                : existing
+              );
+            }
+            // Drawing not yet in state — use server response if available, else minimal entry
+            if (serverDrawing) {
+              return [{ ...serverDrawing, data: effectiveData }, ...prev];
+            }
+            return [{ id: uid as any, uid, data: effectiveData, title: '', is_deleted: false } as Drawing, ...prev];
+          });
+          setActiveDrawingUid(uid);
         }
       }
     } finally {

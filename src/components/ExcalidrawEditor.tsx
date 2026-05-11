@@ -156,7 +156,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       console.error("Failed to parse initial drawing data", e);
       return null;
     }
-  }, [drawing.id]);
+  }, [drawing.id, drawing.data]);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -178,7 +178,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       isMountedRef.current = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [drawing.id]);
+  }, [drawing.id, drawing.data]);
 
   // Save on unmount if there are changes
   useEffect(() => {
