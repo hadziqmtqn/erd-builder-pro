@@ -26,16 +26,28 @@ export function useNotes(isGuest: boolean = false) {
 
   const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const localNotes = await localPersistence.getAllResources('notes');
+      const [localNotes, localProjects] = await Promise.all([
+        localPersistence.getAllResources('notes'),
+        localPersistence.getAllResources('project'),
+      ]);
+      const projectMap = new Map(
+        localProjects
+          .filter(p => !p.is_deleted)
+          .map((p: any) => [String(p.id), { uid: p.uid || String(p.id), name: p.name }])
+      );
       let filtered = localNotes.filter(n => !n.is_deleted);
       if (projectId !== 'all') {
-        filtered = filtered.filter(n => n.project_id === projectId);
+        filtered = filtered.filter(n => String(n.project_id) === String(projectId));
       }
       if (searchQuery) {
         filtered = filtered.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setNotes(filtered);
-      setNotesTotal(filtered.length);
+      const enriched = filtered.map((n: any) => ({
+        ...n,
+        projects: n.projects || projectMap.get(String(n.project_id)) || null,
+      }));
+      setNotes(enriched);
+      setNotesTotal(enriched.length);
       setHasMoreNotes(false);
       return;
     }
