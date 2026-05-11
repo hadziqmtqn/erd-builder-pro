@@ -8,6 +8,9 @@ import {
   Network,
   Folder,
   Plus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -25,6 +28,9 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInput,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
@@ -34,6 +40,23 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog"
+import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal"
 
 import { Project } from "../types"
 
@@ -83,6 +106,13 @@ export const AppSidebar = React.memo(({
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMac, setIsMac] = useState(false);
+
+  // Rename/delete project dialog state
+  const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
 
   useEffect(() => {
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -146,6 +176,7 @@ export const AppSidebar = React.memo(({
   };
 
   return (
+    <>
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamSwitcher 
@@ -195,66 +226,80 @@ export const AppSidebar = React.memo(({
             <span>Workspaces</span>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={() => {
-                      const name = prompt('Workspace name:');
-                      if (name?.trim()) onProjectCreate(name.trim());
-                    }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
+                <TooltipTrigger
+                  className="hover:bg-muted hover:text-foreground rounded-md p-0.5 cursor-pointer"
+                  onClick={() => {
+                    setCreateName('');
+                    setIsCreateOpen(true);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
                 </TooltipTrigger>
                 <TooltipContent side="right">Create Workspace</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {/* "All" option (clear filter) */}
-            <div
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md cursor-pointer transition-colors",
-                selectedWorkspaceUid === null
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-              )}
-              onClick={() => handleWorkspaceClick(null)}
-            >
-              <Folder className="h-4 w-4 shrink-0" />
-              <span className="truncate group-data-[collapsible=icon]:hidden">All Workspaces</span>
-            </div>
-
-            {/* Project list */}
-            {isProjectsLoading ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse">
-                Loading workspaces...
-              </div>
-            ) : activeProjects.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                No workspaces yet
-              </div>
-            ) : (
-              activeProjects.map(project => (
-                <div
-                  key={project.uid ?? project.id}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md cursor-pointer transition-colors group",
-                    selectedWorkspaceUid === project.uid
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                  )}
-                  onClick={() => handleWorkspaceClick(project.uid ?? null)}
+            {/* "All" option + project list */}
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="All Workspaces"
+                  isActive={selectedWorkspaceUid === null}
+                  onClick={() => handleWorkspaceClick(null)}
                 >
                   <Folder className="h-4 w-4 shrink-0" />
-                  <span className="truncate group-data-[collapsible=icon]:hidden flex-1">
-                    {project.name}
-                  </span>
+                  <span>All Workspaces</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {isProjectsLoading ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse">
+                  Loading workspaces...
                 </div>
-              ))
-            )}
+              ) : activeProjects.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  No workspaces yet
+                </div>
+              ) : (
+                activeProjects.map(project => (
+                  <SidebarMenuItem key={project.uid ?? project.id}>
+                    <SidebarMenuButton
+                      tooltip={project.name}
+                      isActive={selectedWorkspaceUid === project.uid}
+                      onClick={() => handleWorkspaceClick(project.uid ?? null)}
+                    >
+                      <Folder className="h-4 w-4 shrink-0" />
+                      <span className="truncate flex-1 text-left">{project.name}</span>
+                      {/* Three-dots menu */}
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <span className="p-1 rounded hover:bg-accent/50 cursor-pointer inline-flex items-center justify-center">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </span>
+                          } />
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                              setRenameValue(project.name);
+                              setEditingProject(project);
+                            }}>
+                              <Pencil className="h-3.5 w-3.5 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => setDeletingProject(project)}>
+                              <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              )}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -263,24 +308,21 @@ export const AppSidebar = React.memo(({
           <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger>
-                  <Button 
-                    variant="outline" 
-                    size={isCollapsed ? "icon" : "sm"} 
-                    className={cn(
-                      "border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-300",
-                      isCollapsed ? "size-9 p-0" : "w-full justify-start gap-2 h-9"
-                    )}
-                    onClick={onInstall}
+                <TooltipTrigger
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                    "border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-300",
+                    isCollapsed ? "size-9 p-0 justify-center" : "w-full justify-start gap-2 h-9 px-2.5"
+                  )}
+                  onClick={onInstall}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 15, -15, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
                   >
-                    <motion.div
-                      animate={{ rotate: [0, 15, -15, 0] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    >
-                      <Database className="w-4 h-4" />
-                    </motion.div>
-                    {!isCollapsed && <span>Install App</span>}
-                  </Button>
+                    <Database className="w-4 h-4" />
+                  </motion.div>
+                  {!isCollapsed && <span>Install App</span>}
                 </TooltipTrigger>
                 {isCollapsed && (
                   <TooltipContent side="right">
@@ -300,5 +342,115 @@ export const AppSidebar = React.memo(({
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+      {/* Rename Workspace Dialog */}
+      <Dialog open={editingProject !== null} onOpenChange={(open) => { if (!open) setEditingProject(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Workspace</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-2">
+              <label htmlFor="rename-project-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Name
+              </label>
+              <input
+                id="rename-project-input"
+                type="text"
+                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && renameValue.trim() && editingProject) {
+                    onProjectUpdate(editingProject.id, renameValue.trim());
+                    setEditingProject(null);
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" className="h-9" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              className="h-9 px-6"
+              disabled={!renameValue.trim()}
+              onClick={() => {
+                if (editingProject && renameValue.trim()) {
+                  onProjectUpdate(editingProject.id, renameValue.trim());
+                  setEditingProject(null);
+                }
+              }}
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Workspace Dialog */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Create Workspace</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-2">
+              <label htmlFor="create-project-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Name
+              </label>
+              <input
+                id="create-project-input"
+                type="text"
+                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && createName.trim()) {
+                    onProjectCreate(createName.trim());
+                    setIsCreateOpen(false);
+                    setCreateName('');
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" className="h-9" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              className="h-9 px-6"
+              disabled={!createName.trim()}
+              onClick={() => {
+                if (createName.trim()) {
+                  onProjectCreate(createName.trim());
+                  setIsCreateOpen(false);
+                  setCreateName('');
+                }
+              }}
+            >
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Workspace Confirmation */}
+      <DeleteConfirmModal
+        isOpen={deletingProject !== null}
+        onOpenChange={(open) => { if (!open) setDeletingProject(null); }}
+        onConfirm={() => {
+          if (deletingProject) {
+            onProjectDelete(deletingProject.id);
+            setDeletingProject(null);
+          }
+        }}
+        onCancel={() => setDeletingProject(null)}
+        itemType="project"
+      />
+    </>
   );
 });

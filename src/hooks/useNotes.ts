@@ -24,7 +24,7 @@ export function useNotes(isGuest: boolean = false) {
   // Keep ref in sync
   notesRef.current = notes;
 
-  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
+  const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
     if (isGuest) {
       const localNotes = await localPersistence.getAllResources('notes');
       let filtered = localNotes.filter(n => !n.is_deleted);
@@ -42,7 +42,7 @@ export function useNotes(isGuest: boolean = false) {
 
     if (!options?.silent) setIsLoading(true);
     try {
-      const offset = isLoadMore ? notesRef.current.length : 0;
+      const offset = page !== undefined ? (page - 1) * limit : (isLoadMore ? notesRef.current.length : 0);
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
