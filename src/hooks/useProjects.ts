@@ -32,7 +32,10 @@ export function useProjects(isGuest: boolean = false) {
         localPersistence.getAllResources('flowchart'),
       ]);
 
-      let filteredProjects = localProjects.filter(p => !p.is_deleted);
+      let filteredProjects = localProjects.filter(p => !p.is_deleted).map(p => ({
+        ...p,
+        uid: p.uid || String(p.id),
+      }));
       if (searchQuery) filteredProjects = filteredProjects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
       
       // For guest, we also need to nested the files manually or just filter them in the UI
@@ -96,6 +99,7 @@ export function useProjects(isGuest: boolean = false) {
     if (isGuest) {
       const newProject: Project = {
         id: Math.random().toString(36).substr(2, 9),
+        uid: crypto.randomUUID(),
         name,
         is_deleted: false,
         created_at: new Date().toISOString(),
