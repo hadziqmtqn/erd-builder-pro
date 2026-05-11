@@ -11,7 +11,6 @@ import { AppSidebar } from './components/app-sidebar';
 import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { Login } from './components/Login';
 import { MainHeader } from './components/MainHeader';
-import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import { ImportNoteModal } from './components/modals/ImportNoteModal';
 import { ExportNoteModal } from './components/modals/ExportNoteModal';
 import { NoteExporter } from './lib/exporters/note-exporter';
@@ -108,6 +107,8 @@ function AppContent() {
   const [duplicateName, setDuplicateName] = useState("");
   // Temp document target for editing from table view (where there's no activeDocument)
   const [editDialogNote, setEditDialogNote] = useState<any | null>(null);
+  // Temp document target for deletion from table view (where there's no activeDocument)
+  const [tableDeleteDoc, setTableDeleteDoc] = useState<any | null>(null);
   // Create document dialog (table view)
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createDialogView, setCreateDialogView] = useState<string>('notes');
@@ -175,9 +176,9 @@ function AppContent() {
   } = usePublicDocument(setView);
 
   // ERD Session Hook - moved after diagrams state to get access to activeDiagramId
-  const { diagrams, setDiagrams, activeDiagramId, setActiveDiagramId,
+  const { diagrams, activeDiagramId, setActiveDiagramId,
     fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
-    hasMoreDiagrams, isLoading: isDiagramsLoading } = useDiagrams(isAuthenticated, view, isGuest);
+    diagramsTotal, isLoading: isDiagramsLoading } = useDiagrams(isAuthenticated, view, isGuest);
 
   // 🔄 Circular Dependency Resolution: useERDSession needs broadcast functions from useRealtimeSync, 
   // but useRealtimeSync needs setNodes/setEdges from useERDSession.
@@ -196,7 +197,7 @@ function AppContent() {
     broadcastNodeMove: (id: string, x: number, y: number) => broadcastRef.current.move(id, x, y),
     broadcastNodeUpdate: (id: string, data: Entity) => broadcastRef.current.update(id, data),
     broadcastEdgesUpdate: (edges: Edge[]) => broadcastRef.current.edges(edges),
-    onEditEntity: (entityId: string) => {
+    onEditEntity: () => {
       setIsTablePropertiesOpen(true);
     },
   }), []);
@@ -232,13 +233,11 @@ function AppContent() {
 
   const { 
     notes, setNotes, activeNoteUid, setActiveNoteUid, bumpContentVersion, getContentVersion, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, notesTotal, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote, duplicateNote
+    notesTotal, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote, duplicateNote
   } = useNotes(isGuest);
   
   const { 
     projects, 
-    setProjects, 
-    uncategorized,
     activeProjectId, 
     setActiveProjectId, 
     fetchProjects, 
@@ -247,18 +246,17 @@ function AppContent() {
     deleteProject,
     restoreProject,
     deleteProjectPermanent,
-    hasMoreProjects,
     isLoading: isProjectsLoading
   } = useProjects(isGuest);
   
   const { 
     drawings, setDrawings, activeDrawingUid: activeDrawingId, setActiveDrawingUid: setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
-    hasMoreDrawings, isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing, duplicateDrawing
+    isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing, duplicateDrawing
   } = useDrawings(isGuest);
 
   const {
     flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
-    hasMoreFlowcharts, isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
+    isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
   } = useFlowcharts(isGuest);
 
   const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
@@ -381,7 +379,7 @@ function AppContent() {
   // ── Note Change Handler ──
   // Extracted to useNoteChangeHandler: 2-stage debounce save (800ms local, 1600ms cloud),
   // timeout refs, content version tracking.
-  const { handleNoteChange, notesSaveTimeout, noteCloudSyncTimeoutRef } = useNoteChangeHandler({
+  const { handleNoteChange, notesSaveTimeout } = useNoteChangeHandler({
     activeNoteUid,
     isIncomingSyncRef,
     notesRef,
@@ -590,10 +588,6 @@ function AppContent() {
     }
   }, [isAuthenticated, location.pathname]);
 
-  async function handleProjectSelect(id: number | string | null) {
-    await flushPendingSaves();
-    setActiveProjectId(id);
-  }
 
   const {
     handleExportMarkdown,
@@ -622,26 +616,6 @@ function AppContent() {
     handleSidebarProjectCreate,
     handleSidebarProjectUpdate,
     handleSidebarProjectDelete,
-    handleSidebarDiagramUpdate,
-    handleSidebarNoteUpdate,
-    handleSidebarDrawingUpdate,
-    handleSidebarFlowchartUpdate,
-    handleSidebarDiagramDelete,
-    handleSidebarNoteDelete,
-    handleSidebarDrawingDelete,
-    handleSidebarFlowchartDelete,
-    handleSidebarMoveDiagramToProject,
-    handleSidebarMoveNoteToProject,
-    handleSidebarMoveDrawingToProject,
-    handleSidebarMoveFlowchartToProject,
-    handleSidebarLoadMoreProjects,
-    handleSidebarLoadMoreDiagrams,
-    handleSidebarLoadMoreNotes,
-    handleSidebarLoadMoreDrawings,
-    handleSidebarLoadMoreFlowcharts,
-    handleSidebarNoteCopyMarkdown,
-    handleSidebarNoteImportMarkdown,
-    handleSidebarNoteExportMarkdown,
   } = useSidebarHandlers({
     createDiagram, updateDiagram, deleteDiagram,
     createNote, updateNote, deleteNote,
@@ -676,16 +650,25 @@ function AppContent() {
     setIsRenameDialogOpen(true);
   }, [activeDocument]);
 
-  // Open RenameDocumentDialog for a note from table view (no activeDocument)
+  // Open RenameDocumentDialog for a document from table view (no activeDocument)
   const handleOpenEditDocument = useCallback((uid: string) => {
-    const note = notes?.find((n: any) => n.uid === uid || String(n.id) === uid);
-    if (!note) return;
-    setEditDialogNote(note);
-    setNewName(note.title || '');
-    const pid = note.projects?.uid || note.project_id?.toString() || '';
+    let doc: any = null;
+    if (view === 'notes') {
+      doc = notes?.find((n: any) => n.uid === uid || String(n.id) === uid);
+    } else if (view === 'erd') {
+      doc = diagrams?.find((d: any) => d.uid === uid || String(d.id) === uid);
+    } else if (view === 'drawings') {
+      doc = drawings?.find((d: any) => d.uid === uid || String(d.id) === uid);
+    } else if (view === 'flowchart') {
+      doc = flowcharts?.find((f: any) => f.uid === uid || String(f.id) === uid);
+    }
+    if (!doc) return;
+    setEditDialogNote(doc);
+    setNewName(doc.title || doc.name || '');
+    const pid = doc.projects?.uid || doc.project_id?.toString() || '';
     setRenameProjectId(pid === '' ? 'none' : pid);
     setIsRenameDialogOpen(true);
-  }, [notes]);
+  }, [view, notes, diagrams, drawings, flowcharts]);
 
   // Open RenameDocumentDialog for creating a document from table view
   const handleOpenCreateDocument = useCallback((featureView: string) => {
@@ -774,56 +757,8 @@ function AppContent() {
     initialFetchDoneRef.current = true;
     lastFocusFetchRef.current = Date.now();
 
-    fetchProjects(false, '').then(json => {
-      if (json && json.data) {
-        const allDiagrams = [
-          ...json.data.flatMap((p: any) => p.diagrams || []),
-          ...(json.uncategorized?.diagrams || [])
-        ];
-        const allDrawings = [
-          ...json.data.flatMap((p: any) => p.drawings || []),
-          ...(json.uncategorized?.drawings || [])
-        ];
-        const allFlowcharts = [
-          ...json.data.flatMap((p: any) => p.flowcharts || []),
-          ...(json.uncategorized?.flowcharts || [])
-        ];
-
-        setDiagrams(prev => {
-          const currentMap = new Map(prev.map(d => [String(d.id), d]));
-          return allDiagrams.map(newD => {
-            const existing = currentMap.get(String(newD.id));
-            if (existing) {
-              return { ...newD, entities: existing.entities, relationships: existing.relationships };
-            }
-            return newD;
-          });
-        });
-
-        setDrawings(prev => {
-          const currentMap = new Map(prev.map(d => [String(d.id), d]));
-          return allDrawings.map(newD => {
-            const existing = currentMap.get(String(newD.id));
-            if (existing) {
-              return { ...newD, data: existing.data };
-            }
-            return newD;
-          });
-        });
-
-        setFlowcharts(prev => {
-          const currentMap = new Map(prev.map(f => [String(f.id), f]));
-          return allFlowcharts.map(newF => {
-            const existing = currentMap.get(String(newF.id));
-            if (existing) {
-              return { ...newF, data: existing.data };
-            }
-            return newF;
-          });
-        });
-      }
-    });
-  }, [isAuthenticated, isPublicView, fetchProjects, setDiagrams, setDrawings, setFlowcharts]);
+    fetchProjects(false, '');
+  }, [isAuthenticated, isPublicView, fetchProjects]);
 
   // Focus-sync: fetch trash when switching to trash view (depend only on view)
   useEffect(() => {
@@ -874,10 +809,7 @@ function AppContent() {
       lastFocusFetchRef.current = now;
 
       try {
-        // Refresh the full project tree (all files included) SILENTLY (no skeletons)
-        // Using the single source of truth: /api/projects instead of per-type flat endpoints
-        await fetchProjects(false, debouncedSearchQuery);
-        
+        // Only check stale drafts for active document — no full project refetch
         if (view === 'erd') {
           if (activeDiagramId) {
             const draft = await localPersistence.getDraft(DraftType.ERD, activeDiagramId);
@@ -948,9 +880,8 @@ function AppContent() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [
     isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing,
-    view, debouncedSearchQuery,
+    view,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
-    fetchProjects,
     selectDiagram, selectNote, selectDrawing, selectFlowchart,
     setActiveDiagramId,
     diagrams, notes, drawings, flowcharts,
@@ -976,6 +907,23 @@ function AppContent() {
 
     fetchNotes(false, projId, '', null, 10, pageNum);
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView]);
+
+  // 🗂 Server-side pagination: fetch diagrams from dedicated endpoint when table params change
+  useEffect(() => {
+    const isTableMode = view === 'erd' && !hasActiveItem;
+    if (!isTableMode) return;
+    if (!isAuthenticated || isPublicView) return;
+
+    let projId: string | number | null = 'all';
+    if (selectedWorkspaceUid) {
+      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
+      projId = p ? p.id : null;
+    }
+
+    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
+
+    fetchDiagrams(false, projId, '', null, 10, pageNum);
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView]);
 
   // Handlers
 
@@ -1025,6 +973,8 @@ function AppContent() {
     if (showTable) {
       setActiveNoteUid(null);
       setActiveDrawingId(null);
+      setActiveDiagramId(null);
+      setActiveFlowchartId(null);
       let tableUrl = '/?view=table&feature=' + newView;
       if (workspaceUid) tableUrl += '&workspace=' + workspaceUid;
       if (tableUrl !== location.pathname + location.search) {
@@ -1315,14 +1265,27 @@ function AppContent() {
             } else {
               params.delete('workspace');
             }
-            params.set('page', '1'); // Reset to page 1 on filter change
+            params.set('page', '1');
             setTableSearchParams(params, { replace: true });
           }}
           onOpenEditDocument={(uid) => handleOpenEditDocument(uid)}
           onDeleteNote={async (uid) => {
-            await handleSidebarNoteDelete(uid);
-            if (activeNoteUid === uid) {
-              await handleViewChange('notes', true);
+            const note = notes?.find((n: any) => n.uid === uid || String(n.id) === uid);
+            if (note) {
+              setTableDeleteDoc(note);
+              setIsMoveToTrashAlertOpen(true);
+            }
+          }}
+
+          diagrams={diagrams}
+          diagramsTotal={diagramsTotal}
+          onDiagramCreate={() => handleOpenCreateDocument('erd')}
+          onDiagramSelect={handleDiagramSelect}
+          onDeleteDiagram={async (uid) => {
+            const diagram = diagrams?.find((d: any) => d.uid === uid || String(d.id) === uid);
+            if (diagram) {
+              setTableDeleteDoc(diagram);
+              setIsMoveToTrashAlertOpen(true);
             }
           }}
 
@@ -1353,7 +1316,14 @@ function AppContent() {
 
         <FeedbackDialog />
 
-        <DeleteConfirmModal isOpen={isPermanentDeleteConfirmOpen} onOpenChange={setIsPermanentDeleteConfirmOpen} onConfirm={confirmPermanentDelete} onCancel={() => setItemToDelete(null)} itemType={itemToDelete?.type || ''} />
+        <MoveToTrashAlert
+          isOpen={isPermanentDeleteConfirmOpen}
+          onOpenChange={setIsPermanentDeleteConfirmOpen}
+          mode="permanent-delete"
+          itemType={itemToDelete?.type || ''}
+          onConfirm={confirmPermanentDelete}
+          onAfterDelete={undefined}
+        />
 
         {/* Entity Properties Modal */}
         {!isPublicView && (
@@ -1388,7 +1358,7 @@ function AppContent() {
             onMoveNoteToProject={moveNoteToProject}
             onMoveDrawingToProject={moveDrawingToProject}
             onMoveFlowchartToProject={moveFlowchartToProject}
-            onRenameSuccess={fetchProjects}
+            onRenameSuccess={undefined}
           />
         )}
 
@@ -1417,22 +1387,22 @@ function AppContent() {
                 handleSidebarFlowchartCreate(title, projectId);
               }
             }}
-            onRenameSuccess={fetchProjects}
+            onRenameSuccess={undefined}
           />
         )}
 
         {/* Move to Trash Confirmation Alert */}
         <MoveToTrashAlert
           isOpen={isMoveToTrashAlertOpen}
-          onOpenChange={setIsMoveToTrashAlertOpen}
-          activeDocument={activeDocument}
+          onOpenChange={(open) => { setIsMoveToTrashAlertOpen(open); if (!open) setTableDeleteDoc(null); }}
+          activeDocument={tableDeleteDoc ?? activeDocument}
           view={view}
           deleteDiagram={deleteDiagram}
           deleteNote={deleteNote}
           deleteDrawing={deleteDrawing}
           deleteFlowchart={deleteFlowchart}
           fetchTrash={fetchTrash}
-          onAfterDelete={() => handleViewChange(view, true)}
+          onAfterDelete={() => { setTableDeleteDoc(null); handleViewChange(view, true); }}
         />
 
 

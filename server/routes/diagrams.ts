@@ -36,7 +36,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
   
   if (deletedIds.length > 0) {
-    query = query.not("project_id", "in", `(${deletedIds.join(",")})`);
+    query = query.or(`project_id.is.null,project_id.not.in.(${deletedIds.join(",")})`);
   }
 
   const { data, error, count } = await query

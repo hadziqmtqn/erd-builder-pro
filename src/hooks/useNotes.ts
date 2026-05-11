@@ -46,7 +46,21 @@ export function useNotes(isGuest: boolean = false) {
         ...n,
         projects: n.projects || projectMap.get(String(n.project_id)) || null,
       }));
-      setNotes(enriched);
+
+      // Sort: newest first by created_at
+      enriched.sort((a: any, b: any) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return db - da;
+      });
+
+      // Paginate
+      const pageSize = limit;
+      const pageNum = page !== undefined ? page : 1;
+      const startIdx = (pageNum - 1) * pageSize;
+      const paged = enriched.slice(startIdx, startIdx + pageSize);
+
+      setNotes(paged);
       setNotesTotal(enriched.length);
       setHasMoreNotes(false);
       return;
