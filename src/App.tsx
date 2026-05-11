@@ -126,6 +126,7 @@ function AppContent() {
   const lastSaveCallRef = useRef<number>(0);
   const lastDiagramLoadTimestampRef = useRef<number>(0);
   const lastFocusFetchRef = useRef<number>(0);
+  const initialFetchDoneRef = useRef(false);
   
   // 🛡️ Stable State Refs: Used to maintain handler identity without stale closures
   const notesRef = useRef<any[]>([]);
@@ -759,72 +760,77 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Apply dark mode
   useEffect(() => {
     document.documentElement.classList.add('dark');
     document.body.classList.add('dark');
-    
-    if (isAuthenticated && !isPublicView) {
-      // One master fetch to rule them all (Sidebar Tree + Initial File Lists)
-      fetchProjects(false, debouncedSearchQuery).then(json => {
-        if (json && json.data) {
-          // Aggregate all files from all projects + uncategorized to populate main states
-          const allDiagrams = [
-            ...json.data.flatMap((p: any) => p.diagrams || []),
-            ...(json.uncategorized?.diagrams || [])
-          ];
-          const allDrawings = [
-            ...json.data.flatMap((p: any) => p.drawings || []),
-            ...(json.uncategorized?.drawings || [])
-          ];
-          const allFlowcharts = [
-            ...json.data.flatMap((p: any) => p.flowcharts || []),
-            ...(json.uncategorized?.flowcharts || [])
-          ];
+  }, []);
 
-          // Update main states to keep them in sync with the tree
-          // IMPORTANT: Merge with existing data to preserve 'content', 'entities', etc. for active items
-          setDiagrams(prev => {
-            const currentMap = new Map(prev.map(d => [String(d.id), d]));
-            return allDiagrams.map(newD => {
-              const existing = currentMap.get(String(newD.id));
-              if (existing) {
-                return { ...newD, entities: existing.entities, relationships: existing.relationships };
-              }
-              return newD;
-            });
+  // Initial data fetch — only runs once on mount (or on auth gain)
+  useEffect(() => {
+    if (initialFetchDoneRef.current) return;
+    if (!isAuthenticated || isPublicView) return;
+
+    initialFetchDoneRef.current = true;
+    lastFocusFetchRef.current = Date.now();
+
+    fetchProjects(false, '').then(json => {
+      if (json && json.data) {
+        const allDiagrams = [
+          ...json.data.flatMap((p: any) => p.diagrams || []),
+          ...(json.uncategorized?.diagrams || [])
+        ];
+        const allDrawings = [
+          ...json.data.flatMap((p: any) => p.drawings || []),
+          ...(json.uncategorized?.drawings || [])
+        ];
+        const allFlowcharts = [
+          ...json.data.flatMap((p: any) => p.flowcharts || []),
+          ...(json.uncategorized?.flowcharts || [])
+        ];
+
+        setDiagrams(prev => {
+          const currentMap = new Map(prev.map(d => [String(d.id), d]));
+          return allDiagrams.map(newD => {
+            const existing = currentMap.get(String(newD.id));
+            if (existing) {
+              return { ...newD, entities: existing.entities, relationships: existing.relationships };
+            }
+            return newD;
           });
+        });
 
-          // Notes are fetched separately via fetchNotes() — skip aggregate to prevent flash
-          // with server-side paginated data.
-
-          setDrawings(prev => {
-            const currentMap = new Map(prev.map(d => [String(d.id), d]));
-            return allDrawings.map(newD => {
-              const existing = currentMap.get(String(newD.id));
-              if (existing) {
-                return { ...newD, data: existing.data };
-              }
-              return newD;
-            });
+        setDrawings(prev => {
+          const currentMap = new Map(prev.map(d => [String(d.id), d]));
+          return allDrawings.map(newD => {
+            const existing = currentMap.get(String(newD.id));
+            if (existing) {
+              return { ...newD, data: existing.data };
+            }
+            return newD;
           });
+        });
 
-          setFlowcharts(prev => {
-            const currentMap = new Map(prev.map(f => [String(f.id), f]));
-            return allFlowcharts.map(newF => {
-              const existing = currentMap.get(String(newF.id));
-              if (existing) {
-                return { ...newF, data: existing.data };
-              }
-              return newF;
-            });
+        setFlowcharts(prev => {
+          const currentMap = new Map(prev.map(f => [String(f.id), f]));
+          return allFlowcharts.map(newF => {
+            const existing = currentMap.get(String(newF.id));
+            if (existing) {
+              return { ...newF, data: existing.data };
+            }
+            return newF;
           });
-        }
-      });
-      
-      // Still need trash as it's a different view
-      if (view === 'trash') fetchTrash();
+        });
+      }
+    });
+  }, [isAuthenticated, isPublicView, fetchProjects, setDiagrams, setDrawings, setFlowcharts]);
+
+  // Focus-sync: fetch trash when switching to trash view (depend only on view)
+  useEffect(() => {
+    if (view === 'trash' && isAuthenticated && !isPublicView) {
+      fetchTrash();
     }
-  }, [isAuthenticated, fetchProjects, debouncedSearchQuery, isPublicView, view, fetchTrash, setDiagrams, setNotes, setDrawings, setFlowcharts]);
+  }, [view, isAuthenticated, isPublicView, fetchTrash]);
 
   // Cross-Tab Synchronization via Broadcast Channel
 
