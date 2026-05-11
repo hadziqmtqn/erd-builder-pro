@@ -31,6 +31,26 @@
   code, pre, .font-mono {
     @apply font-mono;
   }
+
+  /* Dark scrollbar styling (shadcn default) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(1 0 0 / 10%) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 10%);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(1 0 0 / 18%);
+  }
 }
 
 .custom-node {
