@@ -90,7 +90,7 @@ export const FileMenuItem = React.memo(function FileMenuItem({
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="start" className="w-40">
           <DropdownMenuItem disabled={!isOnline} onClick={() => {
-            setEditingFile({ id: item.uid ?? item.id, name: displayName, projectId: item.project_id, type })
+            setEditingFile({ id: item.uid ?? item.id, uid: item.uid, name: displayName, projectId: item.project_id, type })
             setSelectedProjectId(item.project_id?.toString() || "none")
             setIsEditFileDialogOpen(true)
           }}>
@@ -98,7 +98,7 @@ export const FileMenuItem = React.memo(function FileMenuItem({
             Edit
           </DropdownMenuItem>
           <DropdownMenuItem disabled={!isOnline} className="text-destructive focus:text-destructive" onClick={() => {
-            setDeletingFile({ id: item.uid ?? item.id, type })
+            setDeletingFile({ id: item.uid ?? item.id, uid: item.uid, type })
             setIsDeleteConfirmOpen(true)
           }}>
             <Trash2 className="mr-2 size-4" />
