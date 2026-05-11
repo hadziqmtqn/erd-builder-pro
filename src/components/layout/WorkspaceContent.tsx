@@ -73,11 +73,14 @@ export interface WorkspaceContentProps {
   handleNoteChange: (content: string) => void;
   deleteNote: (id: any) => Promise<void>;
   notes: any[];
+  notesTotal: number;
   projects: any[];
   onNoteCreate: () => void;
   onNoteSelect: (uid: string) => void;
   selectedWorkspaceUid: string | null;
   tablePage: number;
+  onTablePageChange?: (page: number) => void;
+  onWorkspaceClick?: (uid: string | null) => void;
   onOpenEditDocument?: (uid: string) => void;
   onDeleteNote?: (uid: string) => void;
 
@@ -131,11 +134,12 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
             projects={props.projects}
             selectedWorkspace={props.selectedWorkspaceUid}
             page={props.tablePage}
+            totalNotes={props.notesTotal}
             isLoading={false}
             onSelectNote={props.onNoteSelect}
             onCreateNote={props.onNoteCreate}
-            onPageChange={(p) => { /* URL update TBD */ }}
-            onWorkspaceClick={(uid) => { /* handled via sidebar */ }}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
             onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
             onDeleteNote={(uid) => props.onDeleteNote?.(uid)}
           />

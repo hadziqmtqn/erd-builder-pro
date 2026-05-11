@@ -29,6 +29,15 @@ export function DeleteConfirmModal({
 }: DeleteConfirmModalProps) {
   const itemLabel = itemType === 'erd' ? 'diagram' : itemType === 'notes' ? 'note' : itemType === 'drawings' ? 'drawing' : 'project';
 
+  const description = itemType === 'project' ? (
+    <>
+      This action cannot be undone. Deleting this workspace will also permanently delete all
+      <strong> notes, diagrams, drawings, and flowcharts</strong> inside it.
+    </>
+  ) : (
+    <>This action cannot be undone. This will permanently delete the <strong>{itemLabel}</strong> from our servers.</>
+  );
+
   return (
     <AlertDialog open={isOpen} onOpenChange={onOpenChange}>
       <AlertDialogContent size="sm" className="max-w-[400px]">
@@ -40,7 +49,7 @@ export function DeleteConfirmModal({
         </AlertDialogHeader>
         <AlertDialogBody>
           <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete the <strong>{itemLabel}</strong> from our servers.
+            {description}
           </AlertDialogDescription>
         </AlertDialogBody>
         <AlertDialogFooter>

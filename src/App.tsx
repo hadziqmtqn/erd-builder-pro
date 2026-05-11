@@ -231,7 +231,7 @@ function AppContent() {
 
   const { 
     notes, setNotes, activeNoteUid, setActiveNoteUid, bumpContentVersion, getContentVersion, fetchNotes, createNote, updateNote, deleteNote, moveNoteToProject, saveNote, restoreNote, deleteNotePermanent,
-    hasMoreNotes, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote, duplicateNote
+    hasMoreNotes, notesTotal, isLoading: isNotesLoading, isItemLoading: isNoteItemLoading, selectNote, duplicateNote
   } = useNotes(isGuest);
   
   const { 
@@ -772,10 +772,6 @@ function AppContent() {
             ...json.data.flatMap((p: any) => p.diagrams || []),
             ...(json.uncategorized?.diagrams || [])
           ];
-          const allNotes = [
-            ...json.data.flatMap((p: any) => p.notes || []),
-            ...(json.uncategorized?.notes || [])
-          ];
           const allDrawings = [
             ...json.data.flatMap((p: any) => p.drawings || []),
             ...(json.uncategorized?.drawings || [])
@@ -798,17 +794,8 @@ function AppContent() {
             });
           });
 
-          setNotes(prev => {
-            const idMap = new Map(prev.map(n => [String(n.id), n]));
-            const uidMap = new Map(prev.map(n => [String(n.uid), n]));
-            return allNotes.map(newN => {
-              const existing = idMap.get(String(newN.id)) || uidMap.get(String(newN.uid));
-              if (existing) {
-                return { ...newN, content: existing.content };
-              }
-              return newN;
-            });
-          });
+          // Notes are fetched separately via fetchNotes() — skip aggregate to prevent flash
+          // with server-side paginated data.
 
           setDrawings(prev => {
             const currentMap = new Map(prev.map(d => [String(d.id), d]));
@@ -965,6 +952,24 @@ function AppContent() {
     setIsRefreshing,
     getContentVersion,
   ]);
+
+  // 🗂 Server-side pagination: fetch notes from dedicated endpoint when table params change
+  useEffect(() => {
+    const isTableMode = view === 'notes' && !hasActiveItem;
+    if (!isTableMode) return;
+    if (!isAuthenticated || isPublicView) return;
+
+    // Map workspace UUID → numeric project ID for the API
+    let projId: string | number | null = 'all';
+    if (selectedWorkspaceUid) {
+      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
+      projId = p ? p.id : null;
+    }
+
+    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
+
+    fetchNotes(false, projId, '', null, 10, pageNum);
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView]);
 
   // Handlers
 
@@ -1286,13 +1291,34 @@ function AppContent() {
           handleNoteChange={handleNoteChange}
           deleteNote={deleteNote}
           notes={notes}
+          notesTotal={notesTotal}
           projects={projects}
           onNoteCreate={() => handleOpenCreateDocument('notes')}
           onNoteSelect={handleNoteSelect}
           selectedWorkspaceUid={selectedWorkspaceUid}
           tablePage={parseInt(tableSearchParams.get('page') || '1', 10)}
+          onTablePageChange={(p) => {
+            const params = new URLSearchParams(tableSearchParams);
+            params.set('page', String(p));
+            setTableSearchParams(params, { replace: true });
+          }}
+          onWorkspaceClick={(uid) => {
+            const params = new URLSearchParams(tableSearchParams);
+            if (uid) {
+              params.set('workspace', uid);
+            } else {
+              params.delete('workspace');
+            }
+            params.set('page', '1'); // Reset to page 1 on filter change
+            setTableSearchParams(params, { replace: true });
+          }}
           onOpenEditDocument={(uid) => handleOpenEditDocument(uid)}
-          onDeleteNote={(uid) => handleSidebarNoteDelete(uid)}
+          onDeleteNote={async (uid) => {
+            await handleSidebarNoteDelete(uid);
+            if (activeNoteUid === uid) {
+              await handleViewChange('notes', true);
+            }
+          }}
 
           activeDrawing={activeDrawing}
           activeDrawingId={activeDrawingId}
@@ -1400,6 +1426,7 @@ function AppContent() {
           deleteDrawing={deleteDrawing}
           deleteFlowchart={deleteFlowchart}
           fetchTrash={fetchTrash}
+          onAfterDelete={() => handleViewChange(view, true)}
         />
 
 
