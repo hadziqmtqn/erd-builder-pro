@@ -308,7 +308,11 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const isSyncPending = !isGuest;
       
       if (isGuest) {
-        const diagram = await localPersistence.getResource(activeDiagramId);
+        let diagram = await localPersistence.getResource(activeDiagramId);
+        if (!diagram) {
+          const allDiagrams = await localPersistence.getAllResources('erd');
+          diagram = allDiagrams.find((d: any) => d.uid === activeDiagramId) || null;
+        }
         if (diagram) {
           const entities: Entity[] = nodes.map(n => ({
             ...n.data,

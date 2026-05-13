@@ -18,9 +18,10 @@ import { cn } from '@/lib/utils';
 interface JumpToNodeProps {
   nodes: Node[];
   className?: string;
+  label?: string;
 }
 
-export function JumpToNode({ nodes, className }: JumpToNodeProps) {
+export function JumpToNode({ nodes, className, label = 'Symbol' }: JumpToNodeProps) {
   const { fitView } = useReactFlow();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -86,7 +87,7 @@ export function JumpToNode({ nodes, className }: JumpToNodeProps) {
           )}
         >
           <MapPin className="w-3.5 h-3.5 mr-2" />
-          <span className="hidden sm:inline">Jump to Symbol</span>
+          <span className="hidden sm:inline">Jump to {label}</span>
           <span className="sm:hidden">Jump</span>
           <ChevronDown className="w-3 h-3 ml-2 opacity-50" />
         </Button>
@@ -97,7 +98,7 @@ export function JumpToNode({ nodes, className }: JumpToNodeProps) {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input 
               ref={inputRef}
-              placeholder="Search symbols..." 
+              placeholder={`Search ${label.toLowerCase()}s...`} 
               className="h-8 pl-8 text-xs bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -109,7 +110,7 @@ export function JumpToNode({ nodes, className }: JumpToNodeProps) {
         <DropdownMenuSeparator className="bg-border/50" />
         <DropdownMenuGroup>
           <DropdownMenuLabel className="px-3 pt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-            Showing {filteredNodes.length} of {nodes.length} symbols
+            Showing {filteredNodes.length} of {nodes.length} {label.toLowerCase()}s
           </DropdownMenuLabel>
           <ScrollArea className="h-[250px] px-1 pb-1">
             {filteredNodes.length === 0 ? (
