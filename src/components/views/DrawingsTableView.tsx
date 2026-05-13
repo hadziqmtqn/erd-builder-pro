@@ -86,6 +86,26 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
     }
   };
 
+  const formatDateOnly = (dateStr?: string) => {
+    if (!dateStr) return '—';
+    try {
+      return new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'long',
+      }).format(new Date(dateStr));
+    } catch {
+      return dateStr.slice(0, 10);
+    }
+  };
+
+  const isExpired = (dateStr?: string) => {
+    if (!dateStr) return false;
+    try {
+      return new Date(dateStr) < new Date();
+    } catch {
+      return false;
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -128,17 +148,19 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[35%]">Name</TableHead>
-              <TableHead className="w-[22%]">Workspace</TableHead>
-              <TableHead className="w-[18%]">Updated</TableHead>
-              <TableHead className="w-[15%]">Created</TableHead>
-              <TableHead className="w-[10%] text-right">Actions</TableHead>
+              <TableHead className="w-[28%]">Name</TableHead>
+              <TableHead className="w-[18%]">Workspace</TableHead>
+              <TableHead className="w-[13%]">Updated</TableHead>
+              <TableHead className="w-[8%]">Status</TableHead>
+              <TableHead className="w-[12%]">Created</TableHead>
+              <TableHead className="w-[13%]">Expires</TableHead>
+              <TableHead className="w-[8%] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {drawings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   {totalDrawings === 0
                     ? 'No drawings yet. Create your first drawing to get started.'
                     : 'No drawings on this page.'}
@@ -173,8 +195,16 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
                     <TableCell className="text-muted-foreground text-xs">
                       {formatDate(drawing.updated_at)}
                     </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${drawing.is_public ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
+                        {drawing.is_public ? 'Public' : 'Private'}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {formatDate(drawing.created_at)}
+                    </TableCell>
+                    <TableCell className={`text-muted-foreground text-xs ${isExpired(drawing.expiry_date) ? 'text-red-500 font-medium' : ''}`}>
+                      {formatDateOnly(drawing.expiry_date)}
                     </TableCell>
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <DropdownMenu>
