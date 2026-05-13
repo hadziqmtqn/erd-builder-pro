@@ -93,7 +93,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
             });
           }
         } else if (view === 'flowchart' && activeFlowchartId) {
-          const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+          const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
           if (f) {
             saveFlowchart(f).then(() => {
               setIsLocalSaving(false);
@@ -202,7 +202,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
         const d = drawings.find(d => String(d.id) === String(activeDrawingId));
         if (d) await saveDrawing(d);
       } else if (view === 'flowchart' && activeFlowchartId) {
-        const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+        const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
         if (f) await saveFlowchart(f);
       }
     } catch (err) {

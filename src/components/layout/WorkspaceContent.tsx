@@ -30,6 +30,10 @@ export interface WorkspaceContentProps {
   isLoading: boolean;
   isReadOnly: boolean;
   hasActiveItem: boolean;
+  activeDiagram: any;
+  isNotesDocumentRoute?: boolean;
+  isERDDocumentRoute?: boolean;
+  isFlowchartDocumentRoute?: boolean;
 
   // ERDView callbacks (stabilized by parent)
   onNodesChange: OnNodesChange<Node<Entity>>;
@@ -143,7 +147,22 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           </div>
         </div>
       }>
-      {!props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? (
+      {props.view === 'notes' && props.isNotesDocumentRoute && !props.activeNote ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading note...</p>
+        </div>
+      ) : props.view === 'erd' && props.isERDDocumentRoute && !props.activeDiagram ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
+        </div>
+      ) : props.view === 'flowchart' && props.isFlowchartDocumentRoute && !props.activeFlowchart ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+        </div>
+      ) : !props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? (
         props.view === 'notes' ? (
           <NotesTableView
             notes={props.notes}

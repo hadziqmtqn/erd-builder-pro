@@ -90,6 +90,9 @@ function AppContent() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const isNotesDocumentRoute = /^\/notes\/[^/]+$/.test(location.pathname);
+  const isERDDocumentRoute = /^\/diagrams\/[^/]+$/.test(location.pathname);
+  const isFlowchartDocumentRoute = /^\/flowcharts\/[^/]+$/.test(location.pathname);
 
   const [isTablePropertiesOpen, setIsTablePropertiesOpen] = useState(false);
 
@@ -308,6 +311,7 @@ function AppContent() {
     activeProjectName,
     activeFileUid,
     hasActiveItem,
+    activeDiagram,
   } = useAppMetadata({
     view,
     isPublicView,
@@ -1224,6 +1228,10 @@ function AppContent() {
           isLoading={workspaceIsLoading}
           isReadOnly={isPublicView}
           hasActiveItem={hasActiveItem}
+          activeDiagram={activeDiagram}
+          isNotesDocumentRoute={isNotesDocumentRoute}
+          isERDDocumentRoute={isERDDocumentRoute}
+          isFlowchartDocumentRoute={isFlowchartDocumentRoute}
 
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}

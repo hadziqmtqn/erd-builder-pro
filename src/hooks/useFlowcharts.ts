@@ -20,6 +20,27 @@ export function useFlowcharts(isGuest: boolean = false) {
     return String(flowchart.uid ?? flowchart.id) === String(uid);
   };
 
+  const mergeFlowchartRecord = (existing: Flowchart | undefined, incoming: Flowchart) => {
+    if (!existing) return incoming;
+    return {
+      ...existing,
+      ...incoming,
+      // List fetches usually omit `data`; preserve the fully loaded payload
+      // so an active flowchart does not fall back to the default template.
+      data: incoming.data !== undefined ? incoming.data : existing.data,
+    };
+  };
+
+  const parseFlowchartPayload = (raw?: string) => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
   const fetchFlowcharts = useCallback(async (
     isLoadMore = false,
     projectId: number | null | string = 'all',
@@ -66,11 +87,20 @@ export function useFlowcharts(isGuest: boolean = false) {
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const flowchartsListData = Array.isArray(data) ? data : [];
-        if (isLoadMore) {
-          setFlowcharts(prev => [...prev, ...flowchartsListData]);
-        } else {
-          setFlowcharts(flowchartsListData);
-        }
+        setFlowcharts(prev => {
+          const mergedList = flowchartsListData.map((incoming: Flowchart) => {
+            const existing = prev.find(item => matchesFlowchartId(item, incoming.uid ?? incoming.id));
+            return mergeFlowchartRecord(existing, incoming);
+          });
+
+          if (isLoadMore) {
+            const existingIds = new Set(mergedList.map(item => String(item.uid ?? item.id)));
+            const preservedPrev = prev.filter(item => !existingIds.has(String(item.uid ?? item.id)));
+            return [...preservedPrev, ...mergedList];
+          }
+
+          return mergedList;
+        });
         setFlowchartsTotal(total);
         setHasMoreFlowcharts((flowchartsListData.length + offset) < total);
       }
@@ -277,33 +307,92 @@ export function useFlowcharts(isGuest: boolean = false) {
   const selectFlowchart = async (uid: string, options?: { silent?: boolean; fallbackFlowchart?: any }) => {
     if (!options?.silent) setIsItemLoading(true);
     try {
+      const localDraft = await localPersistence.getDraft(DraftType.FLOWCHART, uid);
+      const draftPayload = localDraft ? parseFlowchartPayload(localDraft.data) : null;
+      const draftShouldWin = !!localDraft?.sync_pending;
+      const draftFlowchartData = draftPayload?.data;
+      const draftTitle = draftPayload?.title;
+      const draftProjectId = draftPayload?.project_id;
+
       if (isGuest) {
         const localData = await localPersistence.getResource(uid);
         if (!localData || localData.is_deleted) return;
-        setActiveFlowchartId(uid);
+        setFlowcharts(prev => {
+          const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+          const merged = {
+            ...localData,
+            ...draftPayload,
+            data: draftFlowchartData ?? localData.data ?? '',
+          };
+          return exists
+            ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...merged } : existing)
+            : [...prev, merged];
+        });
+        setActiveFlowchartId(localData.uid ?? uid);
       } else {
         const res = await fetch(`/api/flowcharts/${uid}`);
         if (res.ok) {
           const f = await res.json();
           if (!f.is_deleted) {
+            const mergedFlowchart = draftShouldWin
+              ? {
+                  ...f,
+                  title: draftTitle ?? f.title,
+                  data: draftFlowchartData ?? f.data,
+                  project_id: draftProjectId ?? f.project_id,
+                }
+              : f;
+
             setFlowcharts(prev => {
               // Check by uid first, fallback to numeric id
               const exists = prev.some(
-                existing => (existing.uid && String(existing.uid) === String(f.uid)) || String(existing.id) === String(f.id)
+                existing => (existing.uid && String(existing.uid) === String(mergedFlowchart.uid)) || String(existing.id) === String(mergedFlowchart.id)
               );
               if (exists) {
                 return prev.map(existing =>
-                  (existing.uid && String(existing.uid) === String(f.uid)) || String(existing.id) === String(f.id)
-                    ? { ...existing, data: f.data }
+                  (existing.uid && String(existing.uid) === String(mergedFlowchart.uid)) || String(existing.id) === String(mergedFlowchart.id)
+                    ? { ...existing, ...mergedFlowchart }
                     : existing
                 );
               } else {
                 // Flowchart not in local state yet — add it (e.g. initial URL load)
-                return [...prev, f];
+                return [...prev, mergedFlowchart];
               }
             });
-            setActiveFlowchartId(f.uid ?? uid);
+            setActiveFlowchartId(mergedFlowchart.uid ?? uid);
+          } else if (draftShouldWin && draftPayload) {
+            const fallback = options?.fallbackFlowchart || {};
+            const mergedFlowchart = {
+              ...fallback,
+              ...draftPayload,
+              uid: fallback.uid ?? uid,
+              id: fallback.id ?? uid,
+              data: draftFlowchartData ?? fallback.data ?? '',
+            };
+            setFlowcharts(prev => {
+              const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+              return exists
+                ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...mergedFlowchart } : existing)
+                : [...prev, mergedFlowchart];
+            });
+            setActiveFlowchartId(String(mergedFlowchart.uid ?? uid));
           }
+        } else if (draftShouldWin && draftPayload) {
+          const fallback = options?.fallbackFlowchart || {};
+          const mergedFlowchart = {
+            ...fallback,
+            ...draftPayload,
+            uid: fallback.uid ?? uid,
+            id: fallback.id ?? uid,
+            data: draftFlowchartData ?? fallback.data ?? '',
+          };
+          setFlowcharts(prev => {
+            const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+            return exists
+              ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...mergedFlowchart } : existing)
+              : [...prev, mergedFlowchart];
+          });
+          setActiveFlowchartId(String(mergedFlowchart.uid ?? uid));
         }
       }
     } finally {
