@@ -59,6 +59,17 @@ export const FlowchartView = React.memo(({
   });
   const initialLoadRef = React.useRef(true);
 
+  const parseFlowchartData = (raw: any) => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    if (typeof raw !== 'string') return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
   // ── Derived (guaranteed stable number of hooks) ──
   const showLoader = isLoading && (!activeFlowchart || !activeFlowchart.data);
 
@@ -68,7 +79,7 @@ export const FlowchartView = React.memo(({
   useEffect(() => {
     initialLoadRef.current = true;
     try {
-      const parsed = JSON.parse(activeFlowchart.data || '{"nodes":[], "edges":[]}');
+      const parsed = parseFlowchartData(activeFlowchart.data) || { nodes: [], edges: [] };
       const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : initialNodes;
       const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : initialEdges;
       
@@ -190,6 +201,17 @@ export const FlowchartView = React.memo(({
   };
 
   const memoizedNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId })), [nodes, selectedNodeId]);
+
+  const handleNodesChange = useCallback(
+    (changes: any[]) => {
+      // Ignore pure selection updates so a click that only opens the symbol modal
+      // does not count as a content edit and does not trigger autosave.
+      const dataChanges = changes.filter((change) => change.type !== 'select');
+      if (dataChanges.length === 0) return;
+      onNodesChange(dataChanges);
+    },
+    [onNodesChange],
+  );
   
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
@@ -246,7 +268,7 @@ export const FlowchartView = React.memo(({
         <ReactFlow
           nodes={memoizedNodes}
           edges={memoizedEdges}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
