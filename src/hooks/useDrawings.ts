@@ -239,7 +239,8 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const saveDrawing = async (drawing: Drawing) => {
-    if (!drawing.uid) return false;
+    const drawingId = String(drawing.uid ?? drawing.id);
+    if (!drawingId) return false;
     
     try {
       const isSyncPending = !isGuest;
@@ -252,7 +253,7 @@ export function useDrawings(isGuest: boolean = false) {
       const dataToSave = JSON.stringify(payload);
       
       if (isGuest) {
-        const localDrawing = await localPersistence.getResource(drawing.uid);
+        const localDrawing = await localPersistence.getResource(drawingId);
         if (localDrawing) {
           localDrawing.data = drawing.data;
           localDrawing.updated_at = new Date().toISOString();
@@ -260,7 +261,7 @@ export function useDrawings(isGuest: boolean = false) {
         }
       }
 
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.uid, dataToSave, isSyncPending);
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawingId, dataToSave, isSyncPending);
       return true;
     } catch (err) {
       console.error('Error in local saveDrawing:', err);
