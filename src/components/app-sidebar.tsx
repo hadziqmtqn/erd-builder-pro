@@ -105,7 +105,6 @@ export const AppSidebar = React.memo(({
   const { state, setOpen } = useSidebar();
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [isMac, setIsMac] = useState(false);
 
   // Rename/delete project dialog state
   const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);
@@ -113,24 +112,6 @@ export const AppSidebar = React.memo(({
   const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
-
-  useEffect(() => {
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    setIsMac(userAgent.includes('mac') || userAgent.includes('iphone') || userAgent.includes('ipad'));
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (state === "collapsed") setOpen(true);
-        setTimeout(() => {
-          searchInputRef.current?.focus();
-          searchInputRef.current?.select();
-        }, 50);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state, setOpen]);
 
   // Navigation items for the feature section
   const navMain = [
@@ -192,18 +173,13 @@ export const AppSidebar = React.memo(({
           <SidebarGroupContent className="relative">
             <SidebarInput 
               ref={searchInputRef}
-              placeholder="Search..."
-              className="pl-8 pr-12"
+              placeholder="search workspace"
+              className="pl-8"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               disabled={!isOnline}
             />
             <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground transition-opacity group-disabled:opacity-50" />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1 opacity-50 group-data-[collapsible=icon]:hidden">
-              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                <span className="text-xs">{isMac ? '⌘' : 'Ctrl'}</span>K
-              </kbd>
-            </div>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
@@ -221,7 +197,7 @@ export const AppSidebar = React.memo(({
       </SidebarHeader>
       <SidebarContent>
         {/* Workspaces section */}
-        <SidebarGroup>
+        <SidebarGroup className="px-4">
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>Workspaces</span>
             <TooltipProvider>

@@ -152,9 +152,14 @@ function AppContent() {
   // flowchartsSaveTimeout → owned by useFlowchartChangeHandler
   // lastFocusFetchRef → owned by useFocusSync
 
-  // Search State
+  // Search State — sidebar (workspace/project search)
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  // Search State — navbar (file/document search in table view)
+  const fileSearchRef = useRef<HTMLInputElement | null>(null);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [debouncedFileSearchQuery, setDebouncedFileSearchQuery] = useState("");
 
   // Table View URL Params
   const [tableSearchParams, setTableSearchParams] = useSearchParams();
@@ -681,6 +686,18 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedFileSearchQuery(fileSearchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [fileSearchQuery]);
+
+  // 🔍 Sidebar search: refetch projects when debounced search query changes
+  useEffect(() => {
+    if (isAuthenticated && !isPublicView) {
+      fetchProjects(false, debouncedSearchQuery);
+    }
+  }, [debouncedSearchQuery, fetchProjects, isAuthenticated, isPublicView]);
+
   // Apply dark mode
   useEffect(() => {
     document.documentElement.classList.add('dark');
@@ -760,6 +777,7 @@ function AppContent() {
   useTableViewPagination({
     view, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid, tableSearchParams, projects,
+    fileSearchQuery: debouncedFileSearchQuery,
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
   });
 
@@ -774,10 +792,18 @@ function AppContent() {
           syncDrafts();
         }
       }
+      // CMD/CTRL+K → focus file search in navbar (only in table view)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        if (!hasActiveItem && !isPublicView && isAuthenticated) {
+          e.preventDefault();
+          fileSearchRef.current?.focus();
+          fileSearchRef.current?.select();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [hasPendingSyncs, isSyncing, isOnline, syncDrafts]);
+  }, [hasPendingSyncs, isSyncing, isOnline, syncDrafts, hasActiveItem, isPublicView, isAuthenticated]);
 
   // Listen for NotesPage custom events to open/close modals
   useEffect(() => {
@@ -998,6 +1024,9 @@ function AppContent() {
           onImportMarkdown={handleImportMarkdown}
           onDuplicate={handleDuplicate}
           isGuest={isGuest}
+          fileSearchRef={fileSearchRef}
+          fileSearchQuery={fileSearchQuery}
+          onFileSearchChange={setFileSearchQuery}
         />
 
         <NotesPage

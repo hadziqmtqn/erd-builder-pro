@@ -10,7 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff, Cloud, Save, Check } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check, Search } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -51,6 +51,9 @@ interface MainHeaderProps {
   onImportMarkdown?: () => void;
   onDuplicate?: () => void;
   isGuest?: boolean;
+  fileSearchRef?: React.RefObject<HTMLInputElement | null>;
+  fileSearchQuery?: string;
+  onFileSearchChange?: (value: string) => void;
 }
 
 export const MainHeader = React.memo(({
@@ -82,6 +85,9 @@ export const MainHeader = React.memo(({
   onImportMarkdown,
   onDuplicate,
   isGuest = false,
+  fileSearchRef,
+  fileSearchQuery = '',
+  onFileSearchChange,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
@@ -155,6 +161,25 @@ export const MainHeader = React.memo(({
       )}
 
       <div className="ml-auto px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
+        {/* File search — only in table list view (no active item) */}
+        {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
+          <div className="relative flex items-center mr-1 sm:mr-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
+            <input
+              ref={fileSearchRef}
+              type="text"
+              placeholder="Search files..."
+              value={fileSearchQuery}
+              onChange={(e) => onFileSearchChange?.(e.target.value)}
+              className="h-7 w-[120px] sm:w-[180px] md:w-[220px] rounded-md border border-input bg-background pl-7 pr-7 text-xs outline-none focus:border-primary/50 focus:ring-0"
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-0.5 opacity-40">
+              <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[9px] font-medium text-muted-foreground">
+                <span className="text-[10px]">{isMac ? '⌘' : 'Ctrl'}</span>K
+              </kbd>
+            </div>
+          </div>
+        )}
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
           <div className="flex items-center gap-1 sm:gap-4">
             {!isPublicView && (
