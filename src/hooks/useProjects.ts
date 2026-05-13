@@ -174,7 +174,7 @@ export function useProjects(isGuest: boolean = false) {
           }
         }
 
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        setProjects(prev => prev.filter(p => p.id !== id));
         if (activeProjectId === id) setActiveProjectId(null);
         toast.success('Project and its items moved to local trash');
       }
@@ -184,7 +184,7 @@ export function useProjects(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        setProjects(prev => prev.filter(p => p.id !== id));
         if (activeProjectId === id) setActiveProjectId(null);
         toast.success('Project moved to trash');
         return true;
@@ -225,10 +225,12 @@ export function useProjects(isGuest: boolean = false) {
   const deleteProjectPermanent = async (id: number | string) => {
     if (isGuest) {
       await localPersistence.deleteResource(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
       toast.success('Project permanently deleted from local');
       return;
     }
     await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
+    setProjects(prev => prev.filter(p => p.id !== id));
   };
 
   return {

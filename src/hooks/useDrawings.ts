@@ -194,7 +194,7 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.is_deleted = true;
         drawing.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: true } : d));
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to local trash');
       }
@@ -204,7 +204,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/drawings/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: true } : d));
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to trash');
       }
@@ -239,7 +239,8 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const saveDrawing = async (drawing: Drawing) => {
-    if (!drawing.uid) return false;
+    const drawingId = String(drawing.uid ?? drawing.id);
+    if (!drawingId) return false;
     
     try {
       const isSyncPending = !isGuest;
@@ -252,7 +253,7 @@ export function useDrawings(isGuest: boolean = false) {
       const dataToSave = JSON.stringify(payload);
       
       if (isGuest) {
-        const localDrawing = await localPersistence.getResource(drawing.uid);
+        const localDrawing = await localPersistence.getResource(drawingId);
         if (localDrawing) {
           localDrawing.data = drawing.data;
           localDrawing.updated_at = new Date().toISOString();
@@ -260,7 +261,7 @@ export function useDrawings(isGuest: boolean = false) {
         }
       }
 
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.uid, dataToSave, isSyncPending);
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawingId, dataToSave, isSyncPending);
       return true;
     } catch (err) {
       console.error('Error in local saveDrawing:', err);
@@ -294,6 +295,7 @@ export function useDrawings(isGuest: boolean = false) {
     if (isGuest) {
       await localPersistence.deleteResource(uid);
       await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
+      setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
       toast.success('Drawing permanently deleted from local');
       return;
     }
@@ -301,6 +303,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/drawings/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         toast.success('Drawing permanently deleted');
       }
     } catch (err) {}

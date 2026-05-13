@@ -58,6 +58,7 @@ export const FlowchartView = React.memo(({
     color: '#8b5cf6',
   });
   const initialLoadRef = React.useRef(true);
+  const isParsingFromDataRef = React.useRef(false);
 
   const parseFlowchartData = (raw: any) => {
     if (!raw) return null;
@@ -77,6 +78,7 @@ export const FlowchartView = React.memo(({
   // Depend on activeFlowchain.data instead of just id,
   // because data arrives async after selectFlowchart completes
   useEffect(() => {
+    isParsingFromDataRef.current = true;
     initialLoadRef.current = true;
     try {
       const parsed = parseFlowchartData(activeFlowchart.data) || { nodes: [], edges: [] };
@@ -91,6 +93,18 @@ export const FlowchartView = React.memo(({
       setNodes(initialNodes);
       setEdges(initialEdges);
     }
+
+    // Reset flag setelah render cycle selesai — ini biar auto-save trigger
+    // effect bisa detek bahwa perubahan nodes/edges berasal dari parsing data,
+    // bukan dari user edit.
+    const timer = setTimeout(() => {
+      isParsingFromDataRef.current = false;
+      initialLoadRef.current = false;
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      isParsingFromDataRef.current = false;
+    };
   }, [activeFlowchartId, activeFlowchart.data]); // ← re-run when data loads asynchronously
 
   const handleFlowchartChangeRef = React.useRef(handleFlowchartChange);
@@ -98,10 +112,9 @@ export const FlowchartView = React.memo(({
     handleFlowchartChangeRef.current = handleFlowchartChange;
   }, [handleFlowchartChange]);
 
-  // Trigger autosave internally when local state changes (skip initial load)
+  // Trigger autosave internally when local state changes (skip initial load & data parsing)
   useEffect(() => {
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
+    if (initialLoadRef.current || isParsingFromDataRef.current) {
       return;
     }
     if (nodes.length > 0 || edges.length > 0) {
@@ -254,7 +267,7 @@ export const FlowchartView = React.memo(({
       {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
-            <JumpToNode nodes={nodes} />
+            <JumpToNode nodes={nodes} label="Symbol" />
             <div className="w-px h-6 bg-border mx-0.5" />
             <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
               <Plus className="w-4 h-4 sm:mr-2" />

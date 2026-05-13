@@ -184,7 +184,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.is_deleted = true;
         flowchart.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: true } : f));
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         if (activeFlowchartId !== null) {
           const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
@@ -197,7 +197,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/flowcharts/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: true } : f));
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         if (activeFlowchartId !== null) {
           const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
@@ -273,7 +273,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.is_deleted = false;
         flowchart.deleted_at = undefined;
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored locally');
       }
       return;
@@ -282,7 +282,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/flowcharts/${uid}/restore`, { method: 'POST' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored successfully');
       }
     } catch (err) {}
@@ -292,6 +292,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     if (isGuest) {
       await localPersistence.deleteResource(uid);
       await localPersistence.clearDraft(DraftType.FLOWCHART, uid);
+      setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
       toast.success('Flowchart permanently deleted from local');
       return;
     }
@@ -299,6 +300,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/flowcharts/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         toast.success('Flowchart permanently deleted');
       }
     } catch (err) {}

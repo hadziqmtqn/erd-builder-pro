@@ -109,7 +109,13 @@ export function useERDSession(
       let data: Diagram;
 
       if (isGuest) {
-        const localData = await localPersistence.getResource(id);
+        let localData = await localPersistence.getResource(id);
+        // id bisa berupa uid (UUID) karena sidebar pass `item.uid ?? item.id`.
+        // IndexedDB store menggunakan `id` sebagai keyPath, jadi fallback cari by uid.
+        if (!localData) {
+          const allDiagrams = await localPersistence.getAllResources('erd');
+          localData = allDiagrams.find((d: any) => d.uid === id) || null;
+        }
         if (!localData) {
           loadingIdRef.current = null;
           return;
