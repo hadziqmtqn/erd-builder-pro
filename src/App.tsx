@@ -58,9 +58,13 @@ import { useDiagramNavigation } from './hooks/useDiagramNavigation';
 import { useNoteNavigation } from './hooks/useNoteNavigation';
 import { useFlowchartNavigation } from './hooks/useFlowchartNavigation';
 import { useNoteChangeHandler } from './hooks/useNoteChangeHandler';
+import { useDrawingChangeHandler } from './hooks/useDrawingChangeHandler';
+import { useFlowchartChangeHandler } from './hooks/useFlowchartChangeHandler';
+import { useFocusSync } from './hooks/useFocusSync';
+import { useTableViewPagination } from './hooks/useTableViewPagination';
+import { useDocumentActions } from './hooks/useDocumentActions';
 
 // Lib & Types
-import { localPersistence } from './lib/localPersistence';
 import { getSharePathInfo } from './lib/urlUtils';
 import { toast } from 'sonner';
 import { Entity, DraftType } from './types';
@@ -133,7 +137,6 @@ function AppContent() {
   const isIncomingSyncRef = useRef(false);
   const lastSaveCallRef = useRef<number>(0);
   const lastDiagramLoadTimestampRef = useRef<number>(0);
-  const lastFocusFetchRef = useRef<number>(0);
   const initialFetchDoneRef = useRef(false);
   
   // 🛡️ Stable State Refs: Used to maintain handler identity without stale closures
@@ -145,12 +148,9 @@ function AppContent() {
 
   // Auto-save & Sync Timeouts
   // notesSaveTimeout + noteCloudSyncTimeoutRef → owned by useNoteChangeHandler
-  const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
-  const drawingIsSavingRef = useRef(false);
-  const lastDrawingDataRef = useRef<string | null>(null);
-  const lastDrawingSaveTimeRef = useRef(0); // For maxSaveInterval (3s)
-  const drawingSavePendingRef = useRef(false); // Track if a save is already queued
-  const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
+  // drawingsSaveTimeout, drawingIsSavingRef, lastDrawingDataRef, etc → owned by useDrawingChangeHandler
+  // flowchartsSaveTimeout → owned by useFlowchartChangeHandler
+  // lastFocusFetchRef → owned by useFocusSync
 
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -408,120 +408,35 @@ function AppContent() {
     isNoteItemLoading,
   });
 
-  const handleDrawingChange = useCallback((data: string) => {
-    if (!activeDrawingId) return;
-    
-    // Prevent loop: If this change came from another tab's sync, DON'T save it back
-    if (isIncomingSyncRef.current) return;
+  const { handleDrawingChange, drawingsSaveTimeoutRef } = useDrawingChangeHandler({
+    activeDrawingId,
+    isIncomingSyncRef,
+    drawingsRef,
+    lastLoadedDrawingIdRef,
+    lastSaveCallRef,
+    setIsLocalSaving,
+    saveDrawing,
+    setDrawings,
+    broadcastMessage,
+    triggerDebouncedSync,
+    isRefreshing,
+    isDrawingItemLoading,
+  });
 
-    const drawingId = activeDrawingId;
-
-    // 1️⃣ Data dedup: skip entirely if data hasn't changed
-    if (data === lastDrawingDataRef.current) return;
-    lastDrawingDataRef.current = data;
-
-    setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === String(drawingId) ? { ...d, data } : d));
-
-    // 2️⃣ Max save interval: force save at most once per 3s even during continuous editing
-    const now = Date.now();
-    if (now - lastDrawingSaveTimeRef.current > 3000 && !drawingSavePendingRef.current) {
-      // Save immediately (throttled)
-      drawingSavePendingRef.current = true;
-      setIsLocalSaving(true);
-      drawingsSaveTimeout.current = setTimeout(async () => {
-        drawingSavePendingRef.current = false;
-        // SAFETY: Drawing ID Validation Guard
-        if (lastLoadedDrawingIdRef.current !== activeDrawingId) { setIsLocalSaving(false); return; }
-        if (isRefreshing || isDrawingItemLoading) { setIsLocalSaving(false); return; }
-        if (drawingIsSavingRef.current) { setIsLocalSaving(false); return; }
-
-        const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
-        if (!currentDrawing) { setIsLocalSaving(false); return; }
-
-        drawingIsSavingRef.current = true;
-        try {
-          await saveDrawing({ ...currentDrawing, data } as any);
-          lastDrawingSaveTimeRef.current = Date.now();
-          lastSaveCallRef.current = Date.now();
-          triggerDebouncedSync();
-          broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, drawingId);
-        } finally {
-          drawingIsSavingRef.current = false;
-          setIsLocalSaving(false);
-        }
-      }, 300); // shorter debounce for interval save
-      return;
-    }
-
-    // 3️⃣ Regular debounced save: 1500ms after last change
-    setIsLocalSaving(true);
-    if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
-    
-    // SAFETY: Drawing ID Validation Guard
-    if (lastLoadedDrawingIdRef.current !== activeDrawingId) return;
-
-    drawingsSaveTimeout.current = setTimeout(async () => {
-      // SAFETY: Wait if still loading/refreshing
-      if (isRefreshing || isDrawingItemLoading) return;
-      if (drawingIsSavingRef.current) return;
-      
-      const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
-      if (!currentDrawing) return;
-      
-      drawingIsSavingRef.current = true;
-      try {
-        await saveDrawing({ ...currentDrawing, data } as any);
-        lastDrawingSaveTimeRef.current = Date.now();
-        lastSaveCallRef.current = Date.now();
-        triggerDebouncedSync();
-        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, drawingId);
-      } finally {
-        drawingIsSavingRef.current = false;
-        setIsLocalSaving(false);
-      }
-    }, 1500);
-  }, [activeDrawingId, saveDrawing, setDrawings, triggerDebouncedSync, isRefreshing, isDrawingItemLoading, broadcastMessage]);
-
-  const handleFlowchartChange = useCallback((nodesData: any[], edgesData: any[]) => {
-    if (!activeFlowchartId) return;
-
-    // Prevent loop: If this change came from another tab's sync, DON'T save it back
-    if (isIncomingSyncRef.current) return;
-
-    const flowchartId = activeFlowchartId;
-    const dataString = JSON.stringify({ nodes: nodesData, edges: edgesData });
-    
-    // Skip if data hasn't actually changed (prevents re-render loop)
-    setFlowcharts(prev => {
-      const existing = prev.find(f => String(f.uid ?? f.id) === String(flowchartId));
-      if (existing && existing.data === dataString) return prev;
-      return prev.map(f => String(f.uid ?? f.id) === String(flowchartId) ? { ...f, data: dataString } : f);
-    });
-    
-    setIsLocalSaving(true);
-    if (flowchartsSaveTimeout.current) clearTimeout(flowchartsSaveTimeout.current);
-    
-    // SAFETY: Flowchart ID Validation Guard
-    if (lastLoadedFlowchartIdRef.current !== activeFlowchartId) return;
-
-    flowchartsSaveTimeout.current = setTimeout(async () => {
-      // SAFETY: Wait if still loading/refreshing
-      if (isRefreshing || isFlowchartItemLoading) return;
-      
-      const currentFlowchart = flowchartsRef.current.find(f => String(f.uid ?? f.id) === String(flowchartId));
-      if (!currentFlowchart) return;
-      
-      await saveFlowchart({
-        ...currentFlowchart,
-        data: dataString
-      } as any);
-      
-      lastSaveCallRef.current = Date.now();
-      setIsLocalSaving(false);
-      triggerDebouncedSync();
-      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.FLOWCHART, flowchartId);
-    }, 1500);
-  }, [activeFlowchartId, saveFlowchart, setFlowcharts, triggerDebouncedSync, isRefreshing, isFlowchartItemLoading, broadcastMessage]);
+  const { handleFlowchartChange, flowchartsSaveTimeoutRef } = useFlowchartChangeHandler({
+    activeFlowchartId,
+    isIncomingSyncRef,
+    flowchartsRef,
+    lastLoadedFlowchartIdRef,
+    lastSaveCallRef,
+    setIsLocalSaving,
+    saveFlowchart,
+    setFlowcharts,
+    broadcastMessage,
+    triggerDebouncedSync,
+    isRefreshing,
+    isFlowchartItemLoading,
+  });
 
   const { saveTimeoutRef, flushPendingSaves } = useAutoSave({
     saveCounter,
@@ -555,8 +470,8 @@ function AppContent() {
     flowcharts,
     saveFlowchart,
     notesSaveTimeoutRef: notesSaveTimeout,
-    drawingsSaveTimeoutRef: drawingsSaveTimeout,
-    flowchartsSaveTimeoutRef: flowchartsSaveTimeout,
+    drawingsSaveTimeoutRef: drawingsSaveTimeoutRef,
+    flowchartsSaveTimeoutRef: flowchartsSaveTimeoutRef,
     syncDrafts,
   });
 
@@ -704,44 +619,13 @@ function AppContent() {
     setIsRenameDialogOpen(true);
   }, [activeDocument, projects]);
 
-  // Open RenameDocumentDialog for a document from table view (no activeDocument)
-  const handleOpenEditDocument = useCallback((uid: string) => {
-    let doc: any = null;
-    if (view === 'notes') {
-      doc = notes?.find((n: any) => n.uid === uid || String(n.id) === uid);
-    } else if (view === 'erd') {
-      doc = diagrams?.find((d: any) => d.uid === uid || String(d.id) === uid);
-    } else if (view === 'drawings') {
-      doc = drawings?.find((d: any) => d.uid === uid || String(d.id) === uid);
-    } else if (view === 'flowchart') {
-      doc = flowcharts?.find((f: any) => f.uid === uid || String(f.id) === uid);
-    }
-    if (!doc) return;
-    setEditDialogNote(doc);
-    setNewName(doc.title || doc.name || '');
-    const currentProject = projects?.find((proj: any) => String(proj.id) === String(doc.project_id) || String(proj.uid) === String(doc.project_id) || String(proj.uid) === String(doc.projects?.uid));
-    setRenameProjectId(currentProject ? String(currentProject.id) : 'none');
-    setIsRenameDialogOpen(true);
-  }, [view, notes, diagrams, drawings, flowcharts, projects]);
-
-  // Open RenameDocumentDialog for creating a document from table view
-  const handleOpenCreateDocument = useCallback((featureView: string) => {
-    setNewName('');
-    // Pre-select current workspace filter if it matches a known project
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      if (p) {
-        setRenameProjectId(String(p.id));
-      } else {
-        setRenameProjectId('none');
-      }
-    } else {
-      setRenameProjectId('none');
-    }
-    setCreateDialogView(featureView);
-    setCreateDialogOpen(true);
-    setEditDialogNote(null);
-  }, [selectedWorkspaceUid, projects]);
+  // Open RenameDocumentDialog for documents from table view
+  const { handleOpenEditDocument, handleOpenCreateDocument } = useDocumentActions({
+    view, notes, diagrams, drawings, flowcharts, projects,
+    selectedWorkspaceUid,
+    setEditDialogNote, setNewName, setRenameProjectId,
+    setIsRenameDialogOpen, setCreateDialogOpen, setCreateDialogView,
+  });
 
   const handleHeaderExportSQL = useCallback((dialect: 'postgresql' | 'mysql') => {
     if (activeDocument) {
@@ -809,7 +693,6 @@ function AppContent() {
     if (!isAuthenticated || isPublicView) return;
 
     initialFetchDoneRef.current = true;
-    lastFocusFetchRef.current = Date.now();
 
     fetchProjects(false, '');
   }, [isAuthenticated, isPublicView, fetchProjects]);
@@ -848,170 +731,37 @@ function AppContent() {
   }, []);
 
   // Intelligent Fetch on Focus: Refresh data when returning to tab
-  useEffect(() => {
-    const handleFocus = async () => {
-      // Only refresh if online, authenticated, not in public view, and not currently saving/syncing
-      if (!isOnline || !isAuthenticated || isPublicView || isLocalSavingRef.current || isRefreshing || isSyncing) return;
-      
-      // Throttle: don't refresh more than once every 120 seconds (2 minutes)
-      const now = Date.now();
-      if (now - lastFocusFetchRef.current < 120000) return;
-      
-      // SAFETY: Don't refresh if we have a very recent local save (within 10 seconds)
-      if (now - lastSaveCallRef.current < 10000) return;
-
-      lastFocusFetchRef.current = now;
-
-      try {
-        // Only check stale drafts for active document — no full project refetch
-        if (view === 'erd') {
-          if (activeDiagramId) {
-            const draft = await localPersistence.getDraft(DraftType.ERD, activeDiagramId);
-            const cloudItem = diagrams.find(d => String(d.id) === String(activeDiagramId));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-            
-            if (isStale) {
-              console.log("[FocusSync] Cloud is newer, reloading ERD...");
-              setIsRefreshing(true); // Only show loader when we ARE certain we need to reload
-              await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
-              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
-              setIsRefreshing(false);
-            } else if (!(await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId))) {
-              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
-            }
-          }
-        } else if (view === 'notes') {
-          if (activeNoteUid) {
-            const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteUid);
-            const cloudItem = notes.find(n => String(n.uid) === String(activeNoteUid));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-            
-            if (isStale) {
-              console.log("[FocusSync] Cloud is newer, reloading Note...");
-              setIsRefreshing(true);
-              await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
-              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
-              setIsRefreshing(false);
-            } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteUid))) {
-              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
-            }
-          }
-        } else if (view === 'drawings') {
-          if (activeDrawingId) {
-            const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
-            const cloudItem = drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-            
-            if (isStale) {
-              await localPersistence.deleteDraft(DraftType.DRAWINGS, activeDrawingId);
-              await selectDrawing(activeDrawingId, { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.DRAWINGS, activeDrawingId))) {
-              await selectDrawing(activeDrawingId, { silent: true });
-            }
-          }
-        } else if (view === 'flowchart') {
-          if (activeFlowchartId) {
-            const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
-            const cloudItem = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-            
-            if (isStale) {
-              await localPersistence.deleteDraft(DraftType.FLOWCHART, activeFlowchartId);
-              await selectFlowchart(String(activeFlowchartId), { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId))) {
-              await selectFlowchart(String(activeFlowchartId), { silent: true });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Background refresh on focus failed:", err);
-      } finally {
-        setIsRefreshing(false);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [
-    isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing,
+  useFocusSync({
+    isOnline,
+    isAuthenticated,
+    isPublicView,
+    isRefreshing,
+    isSyncing,
     view,
-    activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
-    selectDiagram, selectNote, selectDrawing, selectFlowchart,
+    activeDiagramId,
+    activeNoteUid,
+    activeDrawingId,
+    activeFlowchartId,
+    selectDiagram,
+    selectNote,
+    selectDrawing,
+    selectFlowchart,
     setActiveDiagramId,
-    diagrams, notes, drawings, flowcharts,
-    localPersistence,
+    diagrams,
+    notes,
+    drawings,
+    flowcharts,
     setIsRefreshing,
     getContentVersion,
-  ]);
+    lastSaveCallRef,
+  });
 
-  // 🗂 Server-side pagination: fetch notes from dedicated endpoint when table params change
-  useEffect(() => {
-    const isTableMode = view === 'notes' && !hasActiveItem;
-    if (!isTableMode) return;
-    if (!isAuthenticated || isPublicView) return;
-
-    // Map workspace UUID → numeric project ID for the API
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
-
-    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-
-    fetchNotes(false, projId, '', null, 10, pageNum);
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView]);
-
-  // 🗂 Server-side pagination: fetch diagrams from dedicated endpoint when table params change
-  useEffect(() => {
-    const isTableMode = view === 'erd' && !hasActiveItem;
-    if (!isTableMode) return;
-    if (!isAuthenticated || isPublicView) return;
-
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
-
-    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-
-    fetchDiagrams(false, projId, '', null, 10, pageNum);
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView]);
-
-  // 🗂 Server-side pagination: fetch flowcharts from dedicated endpoint when table params change
-  useEffect(() => {
-    const isTableMode = view === 'flowchart' && !hasActiveItem;
-    if (!isTableMode) return;
-    if (!isAuthenticated || isPublicView) return;
-
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
-
-    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-
-    fetchFlowcharts(false, projId, '', null, 10, { page: pageNum });
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView]);
-
-  // 🗂 Server-side pagination: fetch drawings from dedicated endpoint when table params change
-  useEffect(() => {
-    const isTableMode = view === 'drawings' && !hasActiveItem;
-    if (!isTableMode) return;
-    if (!isAuthenticated || isPublicView) return;
-
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
-
-    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-
-    fetchDrawings(false, projId, '', null, 10, pageNum, { silent: true });
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView]);
+  // 🗂 Server-side pagination for all table views
+  useTableViewPagination({
+    view, hasActiveItem, isAuthenticated, isPublicView,
+    selectedWorkspaceUid, tableSearchParams, projects,
+    fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
+  });
 
   // Handlers
 
