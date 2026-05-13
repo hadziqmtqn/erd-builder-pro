@@ -57,9 +57,9 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
 
   /** Restore a diagram, warning if its project is also deleted. Accepts file object or numeric ID. */
   const handleTrashRestoreDiagram = useCallback(async (file: any) => {
-    const uid = typeof file === 'object' ? file.uid : file;
+    const id = typeof file === 'object' ? file.id : file;
     if (warnIfProjectDeleted(file, deletedProjects)) return;
-    await restoreDiagram(uid);
+    await restoreDiagram(id);
     await fetchTrash();
     await fetchProjects();
     await fetchDiagrams(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
@@ -67,9 +67,9 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
 
   /** Restore a note, warning if its project is also deleted. Accepts file object or numeric ID. */
   const handleTrashRestoreNote = useCallback(async (file: any) => {
-    const uid = typeof file === 'object' ? file.uid : file;
+    const id = typeof file === 'object' ? file.id : file;
     if (warnIfProjectDeleted(file, deletedProjects)) return;
-    await restoreNote(uid);
+    await restoreNote(id);
     await fetchTrash();
     await fetchProjects();
     await fetchNotes(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
@@ -77,9 +77,9 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
 
   /** Restore a drawing, warning if its project is also deleted. Accepts file object or numeric ID. */
   const handleTrashRestoreDrawing = useCallback(async (file: any) => {
-    const uid = typeof file === 'object' ? file.uid : file;
+    const id = typeof file === 'object' ? file.id : file;
     if (warnIfProjectDeleted(file, deletedProjects)) return;
-    await restoreDrawing(uid);
+    await restoreDrawing(id);
     await fetchTrash();
     await fetchProjects();
     await fetchDrawings(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
@@ -87,9 +87,9 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
 
   /** Restore a flowchart, warning if its project is also deleted. Accepts file object or numeric ID. */
   const handleTrashRestoreFlowchart = useCallback(async (file: any) => {
-    const uid = typeof file === 'object' ? file.uid : file;
+    const id = typeof file === 'object' ? file.id : file;
     if (warnIfProjectDeleted(file, deletedProjects)) return;
-    await restoreFlowchart(uid);
+    await restoreFlowchart(id);
     await fetchTrash();
     await fetchProjects();
     await fetchFlowcharts(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });

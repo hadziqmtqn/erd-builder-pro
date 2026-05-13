@@ -194,7 +194,7 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.is_deleted = true;
         drawing.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: true } : d));
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to local trash');
       }
@@ -204,7 +204,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/drawings/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: true } : d));
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to trash');
       }
@@ -295,6 +295,7 @@ export function useDrawings(isGuest: boolean = false) {
     if (isGuest) {
       await localPersistence.deleteResource(uid);
       await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
+      setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
       toast.success('Drawing permanently deleted from local');
       return;
     }
@@ -302,6 +303,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/drawings/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         toast.success('Drawing permanently deleted');
       }
     } catch (err) {}

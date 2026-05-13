@@ -20,7 +20,13 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const fileUrlMap = useRef<Map<string, string>>(new Map()); // Maps fileId to R2 URL
   const isProcessingFiles = useRef(false); // Guard to prevent infinite loops
   const isMountedRef = useRef(true); // Track if component is mounted
-  const lastChangeTimeRef = useRef(0); // Track last change time for debounce
+
+  // ——— New: throttle/debounce refs for canvas ———
+  const latestSceneRef = useRef<{ elements: any[]; appState: any; files: any } | null>(null);
+  const rAFIdRef = useRef<number | null>(null);
+  const fileDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastEmittedDataRef = useRef<string | null>(null);
+  const processNewFilesRef = useRef<((files: any) => Promise<void>) | null>(null);
 
   // Store callbacks in refs to prevent dependency cycles
   const onSaveRef = useRef(onSave);
@@ -36,10 +42,77 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     drawingRef.current = drawing;
   }, [drawing]);
 
+  // Clean up throttles on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (rAFIdRef.current !== null) cancelAnimationFrame(rAFIdRef.current);
+      if (fileDebounceRef.current) clearTimeout(fileDebounceRef.current);
+    };
+  }, []);
+
+  // ——— Helper: emit batched scene data (called from rAF) ———
+  const emitLatestScene = useCallback(() => {
+    if (!isMountedRef.current || !latestSceneRef.current) return;
+
+    const { elements, appState, files } = latestSceneRef.current;
+    latestSceneRef.current = null; // consumed
+
+    // Sanitize files: replace base64 with R2 URLs
+    const cleanFiles = { ...files };
+    let wasSanitized = false;
+    Object.keys(cleanFiles).forEach(id => {
+      const mappedUrl = fileUrlMap.current.get(id);
+      const currentFile = cleanFiles[id];
+      if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
+        cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
+        wasSanitized = true;
+      }
+    });
+
+    const { collaborators, ...safeAppState } = appState;
+    const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
+
+    // Dedup: skip if data hasn't changed from last emitted
+    if (data === lastEmittedDataRef.current && !wasSanitized) return;
+    lastEmittedDataRef.current = data;
+
+    const isEmpty = !elements || elements.length === 0;
+    const hadData = lastDataRef.current &&
+      lastDataRef.current !== '[]' && lastDataRef.current !== '' &&
+      lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' &&
+      lastDataRef.current !== '{"elements":[],"appState":{"theme":"light"},"files":{}}';
+
+    if (isEmpty && hadData) {
+      console.warn("Excalidraw reported empty state while we had data. Ignoring to prevent reset.");
+      return;
+    }
+
+    if (data !== lastDataRef.current || wasSanitized) {
+      lastDataRef.current = data;
+      if (onChangeRef.current) {
+        onChangeRef.current(data);
+      }
+    }
+  }, []);
+
+  // ——— Helper: debounced file processing ———
+  const scheduleFileProcessing = useCallback((files: any) => {
+    if (fileDebounceRef.current) clearTimeout(fileDebounceRef.current);
+    fileDebounceRef.current = setTimeout(() => {
+      if (isMountedRef.current && processNewFilesRef.current) {
+        processNewFilesRef.current(files);
+      }
+    }, 500);
+  }, []);
+
   // Helper to process and upload new files to R2
   const processNewFiles = useCallback(async (files: any) => {
     // Guard against infinite loops - don't process if already processing or unmounted
     if (!isMountedRef.current || isProcessingFiles.current || !excalidrawAPI || !files) return;
+    
+    // Update ref so scheduleFileProcessing always has the latest version
+    processNewFilesRef.current = processNewFiles;
 
     const fileIds = Object.keys(files);
     const newFilesToProcess = fileIds.filter(id => 
@@ -216,61 +289,26 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
     // Guard: Component unmounted
     if (!isMountedRef.current) return;
-    
-    // Debounce: Ignore changes that happen within 100ms of each other
-    const now = Date.now();
-    if (now - lastChangeTimeRef.current < 100) {
-      return;
-    }
-    lastChangeTimeRef.current = now;
 
-    // Only report changes if the scene is ready and we're not already processing files
+    // Only report changes if the scene is ready and we're not currently processing files
     if (!isReady.current || isProcessingFiles.current) {
       return;
     }
 
-    // Scan and upload any new base64 images to R2
-    processNewFiles(files);
+    // Store the latest scene data for batched emission via rAF
+    latestSceneRef.current = { elements: elements as any[], appState, files };
 
-    // Sanitize files map: Replace any Base64 with R2 URLs from our map if available
-    const cleanFiles = { ...files };
-    let wasSanitized = false;
-    Object.keys(cleanFiles).forEach(id => {
-      const mappedUrl = fileUrlMap.current.get(id);
-      const currentFile = cleanFiles[id];
-      if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
-        // IMMUTABLE UPDATE: Clone the file object to avoid mutating live Excalidraw state
-        cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
-        wasSanitized = true;
-      }
-    });
-    
-    // Clean up appState before stringifying
-    const { collaborators, ...safeAppState } = appState;
-    const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
-    
-    // Safety check: If we're getting an empty state but we had data before, 
-    // it's likely a race condition during unmount or tab switch.
-    const isEmpty = !elements || elements.length === 0;
-    const hadData = lastDataRef.current && 
-                    lastDataRef.current !== '[]' && 
-                    lastDataRef.current !== '' &&
-                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' &&
-                    lastDataRef.current !== '{"elements":[],"appState":{"theme":"light"},"files":{}}';
-    
-    if (isEmpty && hadData) {
-      console.warn("Excalidraw reported empty state while we had data. Ignoring to prevent reset.");
-      return;
-    }
+    // Schedule file processing with its own debounce (separate from scene throttle)
+    scheduleFileProcessing(files);
 
-    // Only trigger parent update if data actually changed to avoid loops
-    if (data !== lastDataRef.current || wasSanitized) {
-      lastDataRef.current = data;
-      if (onChangeRef.current) {
-        onChangeRef.current(data);
-      }
+    // Throttle via requestAnimationFrame — only emit the latest batch once per frame
+    if (rAFIdRef.current === null) {
+      rAFIdRef.current = requestAnimationFrame(() => {
+        rAFIdRef.current = null;
+        emitLatestScene();
+      });
     }
-  }, [processNewFiles]);
+  }, [emitLatestScene, scheduleFileProcessing]);
 
   const uiOptions = useMemo(() => ({
     canvasActions: {

@@ -187,7 +187,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         diagram.is_deleted = true;
         diagram.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(diagram);
-        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        setDiagrams(prev => prev.filter(f => f.id !== id));
         if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to local trash');
       }
@@ -199,7 +199,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
-        setDiagrams(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
+        setDiagrams(prev => prev.filter(f => f.id !== id));
         if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to trash');
       } else {
@@ -244,6 +244,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     if (isGuest) {
       await localPersistence.deleteResource(id);
       await localPersistence.clearDraft(DraftType.ERD, id);
+      setDiagrams(prev => prev.filter(f => f.id !== id));
       toast.success('Diagram permanently deleted from local storage');
       return;
     }
@@ -253,6 +254,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setDiagrams(prev => prev.filter(f => f.id !== id));
         toast.success('Diagram permanently deleted');
       } else {
         toast.error('Failed to permanently delete diagram');

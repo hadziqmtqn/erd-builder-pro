@@ -193,7 +193,7 @@ export function useNotes(isGuest: boolean = false) {
         note.is_deleted = true;
         note.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: true } : n));
+        setNotes(prev => prev.filter(n => n.uid !== uid));
         if (activeNoteUid === uid) setActiveNoteUid(null);
         toast.success('Note moved to local trash');
       }
@@ -203,7 +203,7 @@ export function useNotes(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/notes/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: true } : n));
+        setNotes(prev => prev.filter(n => n.uid !== uid));
         if (activeNoteUid === uid) setActiveNoteUid(null);
         toast.success('Note moved to trash');
       }
@@ -265,12 +265,12 @@ export function useNotes(isGuest: boolean = false) {
 
   const restoreNote = async (uid: string) => {
     if (isGuest) {
-      const note = notesRef.current.find(n => n.uid === uid);
+      const note = await localPersistence.getResource(uid);
       if (note) {
         note.is_deleted = false;
         note.deleted_at = undefined;
         await localPersistence.saveResource(note);
-        setNotes(prev => prev.map(n => n.uid === uid ? { ...n, is_deleted: false } : n));
+        setNotes(prev => prev.map(n => String(n.uid ?? n.id) === uid ? { ...n, is_deleted: false } : n));
         toast.success('Note restored locally');
       }
       return;
@@ -291,6 +291,7 @@ export function useNotes(isGuest: boolean = false) {
       if (note) {
         await localPersistence.deleteResource(note.id);
         await localPersistence.clearDraft(DraftType.NOTES, uid);
+        setNotes(prev => prev.filter(n => n.uid !== uid));
         toast.success('Note permanently deleted from local');
       }
       return;
@@ -299,6 +300,7 @@ export function useNotes(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/notes/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setNotes(prev => prev.filter(n => n.uid !== uid));
         toast.success('Note permanently deleted');
       }
     } catch (err) {}

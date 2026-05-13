@@ -146,6 +146,10 @@ function AppContent() {
   // Auto-save & Sync Timeouts
   // notesSaveTimeout + noteCloudSyncTimeoutRef → owned by useNoteChangeHandler
   const drawingsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
+  const drawingIsSavingRef = useRef(false);
+  const lastDrawingDataRef = useRef<string | null>(null);
+  const lastDrawingSaveTimeRef = useRef(0); // For maxSaveInterval (3s)
+  const drawingSavePendingRef = useRef(false); // Track if a save is already queued
   const flowchartsSaveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Search State
@@ -411,8 +415,45 @@ function AppContent() {
     if (isIncomingSyncRef.current) return;
 
     const drawingId = activeDrawingId;
+
+    // 1️⃣ Data dedup: skip entirely if data hasn't changed
+    if (data === lastDrawingDataRef.current) return;
+    lastDrawingDataRef.current = data;
+
     setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === String(drawingId) ? { ...d, data } : d));
-    
+
+    // 2️⃣ Max save interval: force save at most once per 3s even during continuous editing
+    const now = Date.now();
+    if (now - lastDrawingSaveTimeRef.current > 3000 && !drawingSavePendingRef.current) {
+      // Save immediately (throttled)
+      drawingSavePendingRef.current = true;
+      setIsLocalSaving(true);
+      drawingsSaveTimeout.current = setTimeout(async () => {
+        drawingSavePendingRef.current = false;
+        // SAFETY: Drawing ID Validation Guard
+        if (lastLoadedDrawingIdRef.current !== activeDrawingId) { setIsLocalSaving(false); return; }
+        if (isRefreshing || isDrawingItemLoading) { setIsLocalSaving(false); return; }
+        if (drawingIsSavingRef.current) { setIsLocalSaving(false); return; }
+
+        const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
+        if (!currentDrawing) { setIsLocalSaving(false); return; }
+
+        drawingIsSavingRef.current = true;
+        try {
+          await saveDrawing({ ...currentDrawing, data } as any);
+          lastDrawingSaveTimeRef.current = Date.now();
+          lastSaveCallRef.current = Date.now();
+          triggerDebouncedSync();
+          broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, drawingId);
+        } finally {
+          drawingIsSavingRef.current = false;
+          setIsLocalSaving(false);
+        }
+      }, 300); // shorter debounce for interval save
+      return;
+    }
+
+    // 3️⃣ Regular debounced save: 1500ms after last change
     setIsLocalSaving(true);
     if (drawingsSaveTimeout.current) clearTimeout(drawingsSaveTimeout.current);
     
@@ -422,19 +463,22 @@ function AppContent() {
     drawingsSaveTimeout.current = setTimeout(async () => {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isDrawingItemLoading) return;
+      if (drawingIsSavingRef.current) return;
       
       const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
       if (!currentDrawing) return;
       
-      await saveDrawing({
-        ...currentDrawing,
-        data
-      } as any);
-      
-      lastSaveCallRef.current = Date.now();
-      setIsLocalSaving(false);
-      triggerDebouncedSync();
-      broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, drawingId);
+      drawingIsSavingRef.current = true;
+      try {
+        await saveDrawing({ ...currentDrawing, data } as any);
+        lastDrawingSaveTimeRef.current = Date.now();
+        lastSaveCallRef.current = Date.now();
+        triggerDebouncedSync();
+        broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.DRAWINGS, drawingId);
+      } finally {
+        drawingIsSavingRef.current = false;
+        setIsLocalSaving(false);
+      }
     }, 1500);
   }, [activeDrawingId, saveDrawing, setDrawings, triggerDebouncedSync, isRefreshing, isDrawingItemLoading, broadcastMessage]);
 
