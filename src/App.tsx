@@ -92,6 +92,7 @@ function AppContent() {
   const location = useLocation();
   const isNotesDocumentRoute = /^\/notes\/[^/]+$/.test(location.pathname);
   const isERDDocumentRoute = /^\/diagrams\/[^/]+$/.test(location.pathname);
+  const isDrawingsDocumentRoute = /^\/drawings\/[^/]+$/.test(location.pathname);
   const isFlowchartDocumentRoute = /^\/flowcharts\/[^/]+$/.test(location.pathname);
 
   const [isTablePropertiesOpen, setIsTablePropertiesOpen] = useState(false);
@@ -254,6 +255,7 @@ function AppContent() {
   
   const { 
     drawings, setDrawings, activeDrawingUid: activeDrawingId, setActiveDrawingUid: setActiveDrawingId, fetchDrawings, createDrawing, updateDrawing, deleteDrawing, moveDrawingToProject, saveDrawing, restoreDrawing, deleteDrawingPermanent,
+    drawingsTotal,
     isLoading: isDrawingsLoading, isItemLoading: isDrawingItemLoading, selectDrawing, duplicateDrawing
   } = useDrawings(isGuest);
 
@@ -947,6 +949,23 @@ function AppContent() {
     fetchFlowcharts(false, projId, '', null, 10, { page: pageNum });
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView]);
 
+  // 🗂 Server-side pagination: fetch drawings from dedicated endpoint when table params change
+  useEffect(() => {
+    const isTableMode = view === 'drawings' && !hasActiveItem;
+    if (!isTableMode) return;
+    if (!isAuthenticated || isPublicView) return;
+
+    let projId: string | number | null = 'all';
+    if (selectedWorkspaceUid) {
+      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
+      projId = p ? p.id : null;
+    }
+
+    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
+
+    fetchDrawings(false, projId, '', null, 10, pageNum, { silent: true });
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView]);
+
   // Handlers
 
   useEffect(() => {
@@ -1231,6 +1250,7 @@ function AppContent() {
           activeDiagram={activeDiagram}
           isNotesDocumentRoute={isNotesDocumentRoute}
           isERDDocumentRoute={isERDDocumentRoute}
+          isDrawingsDocumentRoute={isDrawingsDocumentRoute}
           isFlowchartDocumentRoute={isFlowchartDocumentRoute}
 
           onNodesChange={onNodesChange}
@@ -1329,6 +1349,17 @@ function AppContent() {
 
           activeDrawing={activeDrawing}
           activeDrawingId={activeDrawingId}
+          drawings={drawings}
+          drawingsTotal={drawingsTotal}
+          onDrawingCreate={() => handleOpenCreateDocument('drawings')}
+          onDrawingSelect={handleDrawingSelect}
+          onDeleteDrawing={async (uid) => {
+            const drawing = drawings?.find((d: any) => d.uid === uid || String(d.id) === uid);
+            if (drawing) {
+              setTableDeleteDoc(drawing);
+              setIsMoveToTrashAlertOpen(true);
+            }
+          }}
           saveDrawing={saveDrawing}
           handleDrawingChange={handleDrawingChange}
           deleteDrawing={deleteDrawing}

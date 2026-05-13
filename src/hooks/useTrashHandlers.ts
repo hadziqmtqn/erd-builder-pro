@@ -8,10 +8,10 @@ export interface UseTrashHandlersParams {
   restoreFlowchart: (id: any) => Promise<void>;
   fetchTrash: () => Promise<void>;
   fetchProjects: (loadMore?: boolean, searchQuery?: string) => Promise<void>;
-  fetchDiagrams: (loadMore?: boolean, projectId?: any, searchQuery?: string, isPublic?: boolean | null, limit?: number, options?: any) => Promise<void>;
-  fetchNotes: (loadMore?: boolean, projectId?: any, searchQuery?: string, isPublic?: boolean | null, limit?: number, options?: any) => Promise<void>;
-  fetchDrawings: (loadMore?: boolean, projectId?: any, searchQuery?: string, isPublic?: boolean | null, limit?: number, options?: any) => Promise<void>;
-  fetchFlowcharts: (loadMore?: boolean, projectId?: any, searchQuery?: string, isPublic?: boolean | null, limit?: number, options?: any) => Promise<void>;
+  fetchDiagrams: (...args: any[]) => Promise<void>;
+  fetchNotes: (...args: any[]) => Promise<void>;
+  fetchDrawings: (...args: any[]) => Promise<void>;
+  fetchFlowcharts: (...args: any[]) => Promise<void>;
   debouncedSearchQuery: string;
   setItemToDelete: (value: any) => void;
   setIsPermanentDeleteConfirmOpen: (open: boolean) => void;
@@ -35,28 +35,28 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
     await restoreDiagram(id);
     await fetchTrash();
     await fetchProjects();
-    await fetchDiagrams(false, 'all', debouncedSearchQuery, null, 50, { silent: true });
+    await fetchDiagrams(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
   }, [restoreDiagram, fetchTrash, fetchProjects, fetchDiagrams, debouncedSearchQuery]);
 
   const handleTrashRestoreNote = useCallback(async (id: any) => {
     await restoreNote(id);
     await fetchTrash();
     await fetchProjects();
-    await fetchNotes(false, 'all', debouncedSearchQuery, null, 50, { silent: true });
+    await fetchNotes(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
   }, [restoreNote, fetchTrash, fetchProjects, fetchNotes, debouncedSearchQuery]);
 
   const handleTrashRestoreDrawing = useCallback(async (id: any) => {
     await restoreDrawing(id);
     await fetchTrash();
     await fetchProjects();
-    await fetchDrawings(false, 'all', debouncedSearchQuery, null, 50, { silent: true });
+    await fetchDrawings(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
   }, [restoreDrawing, fetchTrash, fetchProjects, fetchDrawings, debouncedSearchQuery]);
 
   const handleTrashRestoreFlowchart = useCallback(async (id: any) => {
     await restoreFlowchart(id);
     await fetchTrash();
     await fetchProjects();
-    await fetchFlowcharts(false, 'all', debouncedSearchQuery, null, 50, { silent: true });
+    await fetchFlowcharts(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
   }, [restoreFlowchart, fetchTrash, fetchProjects, fetchFlowcharts, debouncedSearchQuery]);
 
   const handleTrashProjectPermanentDelete = useCallback((id: any) => {

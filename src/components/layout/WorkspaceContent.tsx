@@ -15,6 +15,7 @@ const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m
 import { WelcomeView } from '@/components/views/WelcomeView';
 import { NotesTableView } from '@/components/views/NotesTableView';
 import { ErdTableView } from '@/components/views/ErdTableView';
+import { DrawingsTableView } from '@/components/views/DrawingsTableView';
 import { FlowchartTableView } from '@/components/views/FlowchartTableView';
 
 // Modals used inside workspace
@@ -33,6 +34,7 @@ export interface WorkspaceContentProps {
   activeDiagram: any;
   isNotesDocumentRoute?: boolean;
   isERDDocumentRoute?: boolean;
+  isDrawingsDocumentRoute?: boolean;
   isFlowchartDocumentRoute?: boolean;
 
   // ERDView callbacks (stabilized by parent)
@@ -107,6 +109,11 @@ export interface WorkspaceContentProps {
   // Drawings
   activeDrawing: any;
   activeDrawingId: any;
+  drawings: any[];
+  drawingsTotal: number;
+  onDrawingCreate: () => void;
+  onDrawingSelect: (uid: string) => void;
+  onDeleteDrawing: (uid: string) => void;
   saveDrawing: (drawing: any) => Promise<boolean>;
   handleDrawingChange: (data: string) => void;
   deleteDrawing: (id: any) => Promise<void>;
@@ -162,6 +169,11 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
           <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
         </div>
+      ) : props.view === 'drawings' && props.isDrawingsDocumentRoute && !props.activeDrawing ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
+        </div>
       ) : !props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? (
         props.view === 'notes' ? (
           <NotesTableView
@@ -207,6 +219,21 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
             onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
             onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
             onDeleteFlowchart={props.onDeleteFlowchart}
+          />
+        ) : props.view === 'drawings' ? (
+          <DrawingsTableView
+            drawings={props.drawings}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalDrawings={props.drawingsTotal}
+            isLoading={false}
+            onSelectDrawing={props.onDrawingSelect}
+            onCreateDrawing={props.onDrawingCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteDrawing={props.onDeleteDrawing}
           />
         ) : (
           <WelcomeView />
