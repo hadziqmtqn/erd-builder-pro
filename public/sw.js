@@ -1,4 +1,4 @@
-const CACHE_NAME = 'erd-builder-cache-v1.1'; // Update version
+const CACHE_NAME = 'erd-builder-cache-v1.2'; // Update version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -42,19 +42,14 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/')) return;
   if (!event.request.url.startsWith(self.location.origin)) return;
 
-  // STRATEGY: Network-First for Navigation (HTML)
-  // This ensures index.html is always fresh if online, picking up new hashed JS/CSS
+  // STRATEGY: Network-First with Offline Fallback for Navigation (SPA Support)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .then((networkResponse) => {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
         .catch(() => {
-          return caches.match(event.request);
+          // If network fails (offline), provide index.html from cache
+          // This allows React Router to handle the route client-side
+          return caches.match('/index.html') || caches.match('/');
         })
     );
     return;

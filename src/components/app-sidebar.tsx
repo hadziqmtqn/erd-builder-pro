@@ -197,7 +197,7 @@ export const AppSidebar = React.memo(({
       </SidebarHeader>
       <SidebarContent>
         {/* Workspaces section */}
-        <SidebarGroup className="px-4">
+        <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
           <SidebarGroupLabel className="flex items-center justify-between">
             <span>Workspaces</span>
             <TooltipProvider>
