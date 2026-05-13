@@ -15,6 +15,7 @@ const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m
 import { WelcomeView } from '@/components/views/WelcomeView';
 import { NotesTableView } from '@/components/views/NotesTableView';
 import { ErdTableView } from '@/components/views/ErdTableView';
+import { FlowchartTableView } from '@/components/views/FlowchartTableView';
 
 // Modals used inside workspace
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
@@ -92,6 +93,13 @@ export interface WorkspaceContentProps {
   onDiagramSelect: (uid: string) => void;
   onDeleteDiagram: (uid: string) => void;
 
+  // Flowcharts
+  flowcharts: any[];
+  flowchartsTotal: number;
+  onFlowchartCreate: () => void;
+  onFlowchartSelect: (uid: string) => void;
+  onDeleteFlowchart: (uid: string) => void;
+
   // Drawings
   activeDrawing: any;
   activeDrawingId: any;
@@ -165,6 +173,21 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
             onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
             onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
             onDeleteDiagram={props.onDeleteDiagram}
+          />
+        ) : props.view === 'flowchart' ? (
+          <FlowchartTableView
+            flowcharts={props.flowcharts}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalFlowcharts={props.flowchartsTotal}
+            isLoading={false}
+            onSelectFlowchart={props.onFlowchartSelect}
+            onCreateFlowchart={props.onFlowchartCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteFlowchart={props.onDeleteFlowchart}
           />
         ) : (
           <WelcomeView />
