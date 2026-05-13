@@ -149,28 +149,28 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
                   position={Position.Left}
                   id={`col-${col.id}-target`}
                   className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
-                  style={{ top: '50%', left: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
+                  style={{ top: '50%', left: '-4px', transform: 'translate(-50%, -50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="source"
                   position={Position.Left}
                   id={`col-${col.id}-source-l`}
                   className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
-                  style={{ top: '50%', left: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
+                  style={{ top: '50%', left: '-4px', transform: 'translate(-50%, -50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="source"
                   position={Position.Right}
                   id={`col-${col.id}-source`}
                   className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
-                  style={{ top: '50%', right: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
+                  style={{ top: '50%', right: '-4px', transform: 'translate(50%, -50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
                 <Handle
                   type="target"
                   position={Position.Right}
                   id={`col-${col.id}-target-r`}
                   className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
-                  style={{ top: '50%', right: '-4.5px', transform: 'translateY(-50%)', backgroundColor: borderColor, zIndex: 50 }}
+                  style={{ top: '50%', right: '-4px', transform: 'translate(50%, -50%)', backgroundColor: borderColor, zIndex: 50 }}
                 />
 
                 <div className="flex items-center gap-2">
