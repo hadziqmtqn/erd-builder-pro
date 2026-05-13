@@ -5,17 +5,17 @@ import { BroadcastMessageType } from './useBroadcastChannel';
 
 export interface UseAutoSaveParams {
   saveCounter: number;
-  isLocalSavingRef: React.MutableRefObject<boolean>;
-  isIncomingSyncRef: React.MutableRefObject<boolean>;
-  lastLoadedDiagramIdRef: React.MutableRefObject<number | string | null>;
-  lastSaveCallRef: React.MutableRefObject<number>;
-  lastDiagramLoadTimestampRef: React.MutableRefObject<number>;
+  isLocalSavingRef: { current: boolean };
+  isIncomingSyncRef: { current: boolean };
+  lastLoadedDiagramIdRef: { current: number | string | null };
+  lastSaveCallRef: { current: number };
+  lastDiagramLoadTimestampRef: { current: number };
   isAuthenticated: boolean | null;
   isGuest: boolean;
   view: string;
   isPublicView: boolean;
   activeDiagramId: any;
-  viewportRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
   saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
   setIsLocalSaving: (val: boolean) => void;
   triggerDebouncedSync: () => void;
@@ -24,7 +24,7 @@ export interface UseAutoSaveParams {
   isERDItemLoading: boolean;
   isDiagramsLoading: boolean;
   // For visibility change flush
-  activeNoteId: any;
+  activeNoteUid: any;
   notes: any[];
   saveNote: (note: any) => Promise<boolean>;
   activeDrawingId: any;
@@ -35,9 +35,9 @@ export interface UseAutoSaveParams {
   saveFlowchart: (flowchart: any) => Promise<any>;
   // For flushPendingSaves
   // For flushPendingSaves
-  notesSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
-  drawingsSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
-  flowchartsSaveTimeoutRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  notesSaveTimeoutRef: { current: NodeJS.Timeout | null };
+  drawingsSaveTimeoutRef: { current: NodeJS.Timeout | null };
+  flowchartsSaveTimeoutRef: { current: NodeJS.Timeout | null };
   syncDrafts: () => Promise<void>;
   nodes: Node<Entity>[];
   edges: Edge[];
@@ -55,7 +55,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
     activeDiagramId, nodes, edges, viewportRef,
     saveDiagram, setIsLocalSaving, triggerDebouncedSync, broadcastMessage,
     isRefreshing, isERDItemLoading, isDiagramsLoading,
-    activeNoteId, notes, saveNote,
+    activeNoteUid, notes, saveNote,
     activeDrawingId, drawings, saveDrawing,
     activeFlowchartId, flowcharts, saveFlowchart,
     notesSaveTimeoutRef, drawingsSaveTimeoutRef, flowchartsSaveTimeoutRef,
@@ -76,8 +76,8 @@ export function useAutoSave(params: UseAutoSaveParams) {
             setIsLocalSaving(false);
             triggerDebouncedSync();
           });
-        } else if (view === 'notes' && activeNoteId) {
-          const n = notes.find(n => String(n.id) === String(activeNoteId));
+        } else if (view === 'notes' && activeNoteUid) {
+          const n = notes.find(n => String(n.uid) === String(activeNoteUid));
           if (n) {
             saveNote(n).then(() => {
               setIsLocalSaving(false);
@@ -93,7 +93,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
             });
           }
         } else if (view === 'flowchart' && activeFlowchartId) {
-          const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+          const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
           if (f) {
             saveFlowchart(f).then(() => {
               setIsLocalSaving(false);
@@ -107,17 +107,31 @@ export function useAutoSave(params: UseAutoSaveParams) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [
-    view, activeDiagramId, activeNoteId, activeDrawingId, activeFlowchartId,
+    view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     nodes, edges, saveDiagram, saveNote, saveDrawing, saveFlowchart,
     triggerDebouncedSync, notes, drawings, flowcharts,
     isLocalSavingRef, setIsLocalSaving, viewportRef,
   ]);
 
+  // 🔄 Track nodes/edges via refs to avoid re-triggering the effect on every change
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
+
   // ERD Auto-save
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
+    // 🛡️ Guard 1: Only trigger if saveCounter actually changed
     if (saveCounter === lastProcessedCounterRef.current) return;
+    
+    // 🛡️ Guard 2: Ignore any changes (like initial viewport jumps) for the first 2 seconds after load
+    if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
+      lastProcessedCounterRef.current = saveCounter; // Consume the counter so it doesn't trigger later
+      return;
+    }
+
     lastProcessedCounterRef.current = saveCounter;
 
     if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
@@ -128,12 +142,13 @@ export function useAutoSave(params: UseAutoSaveParams) {
       setIsLocalSaving(true);
 
       saveTimeoutRef.current = setTimeout(async () => {
-        if (Date.now() - lastSaveCallRef.current < 500) {
+        // Double check load timestamp inside timeout just in case
+        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
           setIsLocalSaving(false);
           return;
         }
 
-        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
+        if (Date.now() - lastSaveCallRef.current < 500) {
           setIsLocalSaving(false);
           return;
         }
@@ -148,11 +163,12 @@ export function useAutoSave(params: UseAutoSaveParams) {
           return;
         }
 
-        if (nodes.length === 0) {
+        if (nodesRef.current.length === 0) {
           setIsLocalSaving(false);
           return;
         }
-        await saveDiagram(nodes, edges, viewportRef.current);
+
+        await saveDiagram(nodesRef.current, edgesRef.current, viewportRef.current);
         lastSaveCallRef.current = Date.now();
         setIsLocalSaving(false);
         triggerDebouncedSync();
@@ -166,7 +182,7 @@ export function useAutoSave(params: UseAutoSaveParams) {
       }
       setIsLocalSaving(false);
     };
-  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage]);
+  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage, lastDiagramLoadTimestampRef]);
 
   async function flushPendingSaves() {
     if (!isLocalSavingRef.current) return;
@@ -179,14 +195,14 @@ export function useAutoSave(params: UseAutoSaveParams) {
     try {
       if (view === 'erd' && activeDiagramId) {
         await saveDiagram(nodes, edges, viewportRef.current);
-      } else if (view === 'notes' && activeNoteId) {
-        const n = notes.find(n => String(n.id) === String(activeNoteId));
+      } else if (view === 'notes' && activeNoteUid) {
+        const n = notes.find(n => String(n.uid) === String(activeNoteUid));
         if (n) await saveNote(n);
       } else if (view === 'drawings' && activeDrawingId) {
         const d = drawings.find(d => String(d.id) === String(activeDrawingId));
         if (d) await saveDrawing(d);
       } else if (view === 'flowchart' && activeFlowchartId) {
-        const f = flowcharts.find(f => String(f.id) === String(activeFlowchartId));
+        const f = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
         if (f) await saveFlowchart(f);
       }
     } catch (err) {

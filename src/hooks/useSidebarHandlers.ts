@@ -5,21 +5,21 @@ export interface UseSidebarHandlersParams {
   updateDiagram: (id: number | string, n: string, opts?: any) => Promise<any>;
   deleteDiagram: (id: number | string) => Promise<any>;
   createNote: (t: string, pid?: number | string | null) => Promise<any>;
-  updateNote: (id: number | string, t: string, opts?: any) => Promise<any>;
-  deleteNote: (id: number | string) => Promise<any>;
+  updateNote: (uid: string, t: string, opts?: any) => Promise<any>;
+  deleteNote: (uid: string) => Promise<any>;
   createDrawing: (t: string, pid?: number | string | null) => Promise<any>;
-  updateDrawing: (id: number | string, t: string, opts?: any) => Promise<any>;
-  deleteDrawing: (id: number | string) => Promise<any>;
+  updateDrawing: (uid: string, t: string, opts?: any) => Promise<any>;
+  deleteDrawing: (uid: string) => Promise<any>;
   createFlowchart: (t: string, pid?: number | string | null) => Promise<any>;
-  updateFlowchart: (id: number | string, t: string, opts?: any) => Promise<any>;
-  deleteFlowchart: (id: number | string) => Promise<any>;
+  updateFlowchart: (uid: string, t: string, opts?: any) => Promise<any>;
+  deleteFlowchart: (uid: string) => Promise<any>;
   createProject: (n: string) => Promise<any>;
   updateProject: (id: number | string, n: string) => Promise<any>;
   deleteProject: (id: number | string) => Promise<any>;
   moveDiagramToProject: (id: number | string, pid: number | string | null, opts?: any) => Promise<any>;
-  moveNoteToProject: (id: number | string, pid: number | string | null, opts?: any) => Promise<any>;
-  moveDrawingToProject: (id: number | string, pid: number | string | null, opts?: any) => Promise<any>;
-  moveFlowchartToProject: (id: number | string, pid: number | string | null, opts?: any) => Promise<any>;
+  moveNoteToProject: (uid: string, pid: number | string | null, opts?: any) => Promise<any>;
+  moveDrawingToProject: (uid: string, pid: number | string | null, opts?: any) => Promise<any>;
+  moveFlowchartToProject: (uid: string, pid: number | string | null, opts?: any) => Promise<any>;
   fetchProjects: (loadMore?: boolean, searchQuery?: string) => Promise<void>;
   fetchDiagrams: (loadMore?: boolean, projectId?: any, searchQuery?: string) => Promise<void>;
   fetchNotes: (loadMore?: boolean, projectId?: any, searchQuery?: string) => Promise<void>;
@@ -32,7 +32,7 @@ export interface UseSidebarHandlersParams {
   handleFlowchartSelect: (id: any) => void;
   searchQuery: string;
   activeProjectId: number | string | null;
-  notesRef: React.MutableRefObject<any[]>;
+  notesRef: { current: any[] };
   copyMarkdownToClipboard: (content: string) => Promise<void>;
   setIsImportNoteModalOpen: (open: boolean) => void;
   setIsExportNoteModalOpen: (open: boolean) => void;
@@ -65,7 +65,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const n = await createNote(t, pid);
     if (n) {
       await fetchProjects();
-      handleNoteSelect(n.id);
+      handleNoteSelect(n.uid);
     }
   }, [createNote, fetchProjects, handleNoteSelect]);
 
@@ -73,7 +73,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const d = await createDrawing(t, pid);
     if (d) {
       await fetchProjects();
-      handleDrawingSelect(d.id);
+      handleDrawingSelect(d.uid ?? d.id);
     }
   }, [createDrawing, fetchProjects, handleDrawingSelect]);
 
@@ -81,7 +81,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const f = await createFlowchart(t, pid);
     if (f) {
       await fetchProjects();
-      handleFlowchartSelect(f.id);
+      handleFlowchartSelect(f.uid);
     }
   }, [createFlowchart, fetchProjects, handleFlowchartSelect]);
 
@@ -107,17 +107,17 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
   }, [updateDiagram, fetchProjects]);
 
   const handleSidebarNoteUpdate = useCallback(async (id: number | string, t: string, opts?: any) => {
-    await updateNote(id, t, opts);
+    await updateNote(String(id), t, opts);
     await fetchProjects();
   }, [updateNote, fetchProjects]);
 
-  const handleSidebarDrawingUpdate = useCallback(async (id: number | string, t: string, opts?: any) => {
-    await updateDrawing(id, t, opts);
+  const handleSidebarDrawingUpdate = useCallback(async (uid: string, t: string, opts?: any) => {
+    await updateDrawing(uid, t, opts);
     await fetchProjects();
   }, [updateDrawing, fetchProjects]);
 
-  const handleSidebarFlowchartUpdate = useCallback(async (id: number | string, t: string, opts?: any) => {
-    await updateFlowchart(id, t, opts);
+  const handleSidebarFlowchartUpdate = useCallback(async (uid: string, t: string, opts?: any) => {
+    await updateFlowchart(uid, t, opts);
     await fetchProjects();
   }, [updateFlowchart, fetchProjects]);
 
@@ -128,19 +128,19 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
   }, [deleteDiagram, fetchTrash, fetchProjects]);
 
   const handleSidebarNoteDelete = useCallback(async (id: number | string) => {
-    await deleteNote(id);
+    await deleteNote(String(id));
     await fetchTrash();
     await fetchProjects();
   }, [deleteNote, fetchTrash, fetchProjects]);
 
-  const handleSidebarDrawingDelete = useCallback(async (id: number | string) => {
-    await deleteDrawing(id);
+  const handleSidebarDrawingDelete = useCallback(async (uid: string) => {
+    await deleteDrawing(uid);
     await fetchTrash();
     await fetchProjects();
   }, [deleteDrawing, fetchTrash, fetchProjects]);
 
-  const handleSidebarFlowchartDelete = useCallback(async (id: number | string) => {
-    await deleteFlowchart(id);
+  const handleSidebarFlowchartDelete = useCallback(async (uid: string) => {
+    await deleteFlowchart(uid);
     await fetchTrash();
     await fetchProjects();
   }, [deleteFlowchart, fetchTrash, fetchProjects]);
@@ -151,17 +151,17 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
   }, [moveDiagramToProject, fetchProjects]);
 
   const handleSidebarMoveNoteToProject = useCallback(async (id: number | string, pid: number | string | null, opts?: any) => {
-    await moveNoteToProject(id, pid, opts);
+    await moveNoteToProject(String(id), pid, opts);
     await fetchProjects();
   }, [moveNoteToProject, fetchProjects]);
 
-  const handleSidebarMoveDrawingToProject = useCallback(async (id: number | string, pid: number | string | null, opts?: any) => {
-    await moveDrawingToProject(id, pid, opts);
+  const handleSidebarMoveDrawingToProject = useCallback(async (uid: string, pid: number | string | null, opts?: any) => {
+    await moveDrawingToProject(uid, pid, opts);
     await fetchProjects();
   }, [moveDrawingToProject, fetchProjects]);
 
-  const handleSidebarMoveFlowchartToProject = useCallback(async (id: number | string, pid: number | string | null, opts?: any) => {
-    await moveFlowchartToProject(id, pid, opts);
+  const handleSidebarMoveFlowchartToProject = useCallback(async (uid: string, pid: number | string | null, opts?: any) => {
+    await moveFlowchartToProject(uid, pid, opts);
     await fetchProjects();
   }, [moveFlowchartToProject, fetchProjects]);
 
@@ -184,7 +184,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
   );
 
   const handleSidebarNoteCopyMarkdown = useCallback(async (id: number | string) => {
-    const note = notesRef.current.find((n: any) => String(n.id) === String(id));
+    const note = notesRef.current.find((n: any) => String(n.uid) === String(id));
     if (note) await copyMarkdownToClipboard(note.content || '');
   }, [notesRef, copyMarkdownToClipboard]);
 

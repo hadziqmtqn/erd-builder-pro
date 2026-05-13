@@ -5,7 +5,7 @@ import { localPersistence } from '../lib/localPersistence';
 
 export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
-  const [activeDrawingId, setActiveDrawingId] = useState<number | string | null>(null);
+  const [activeDrawingUid, setActiveDrawingUid] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isItemLoading, setIsItemLoading] = useState(false);
 
@@ -16,7 +16,38 @@ export function useDrawings(isGuest: boolean = false) {
   // Keep ref in sync
   drawingsRef.current = drawings;
 
-  const fetchDrawings = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
+  const matchesDrawingId = (drawing: Drawing, uid: string | number) => {
+    return String(drawing.uid ?? drawing.id) === String(uid);
+  };
+
+  const mergeDrawingRecord = (existing: Drawing | undefined, incoming: Drawing) => {
+    if (!existing) return incoming;
+    return {
+      ...existing,
+      ...incoming,
+      data: incoming.data !== undefined ? incoming.data : existing.data,
+    };
+  };
+
+  const normalizeDrawingData = (raw: any) => {
+    if (raw === null || raw === undefined || raw === '') return '';
+    if (typeof raw === 'string') return raw;
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return '';
+    }
+  };
+
+  const fetchDrawings = useCallback(async (
+    isLoadMore = false,
+    projectId: number | null | string = 'all',
+    searchQuery = '',
+    isPublic: boolean | null = null,
+    limit = 10,
+    page?: number,
+    options?: { silent?: boolean }
+  ) => {
     if (isGuest) {
       const localDrawings = await localPersistence.getAllResources('drawings');
       let filtered = localDrawings.filter(d => !d.is_deleted);
@@ -26,7 +57,12 @@ export function useDrawings(isGuest: boolean = false) {
       if (searchQuery) {
         filtered = filtered.filter(d => d.title.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setDrawings(filtered);
+      const pageSize = limit;
+      const pageNum = page !== undefined ? page : 1;
+      const startIdx = (pageNum - 1) * pageSize;
+      const paged = filtered.slice(startIdx, startIdx + pageSize);
+
+      setDrawings(paged);
       setDrawingsTotal(filtered.length);
       setHasMoreFiles(false);
       return;
@@ -34,7 +70,7 @@ export function useDrawings(isGuest: boolean = false) {
 
     if (!options?.silent) setIsLoading(true);
     try {
-      const offset = isLoadMore ? drawingsRef.current.length : 0;
+      const offset = page !== undefined ? (page - 1) * limit : (isLoadMore ? drawingsRef.current.length : 0);
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
@@ -45,11 +81,20 @@ export function useDrawings(isGuest: boolean = false) {
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const drawingsListData = Array.isArray(data) ? data : [];
-        if (isLoadMore) {
-          setDrawings(prev => [...prev, ...drawingsListData]);
-        } else {
-          setDrawings(drawingsListData);
-        }
+        setDrawings(prev => {
+          const mergedList = drawingsListData.map((incoming: Drawing) => {
+            const existing = prev.find(item => matchesDrawingId(item, incoming.uid ?? incoming.id));
+            return mergeDrawingRecord(existing, incoming);
+          });
+
+          if (isLoadMore) {
+            const existingIds = new Set(mergedList.map(item => String(item.uid ?? item.id)));
+            const preservedPrev = prev.filter(item => !existingIds.has(String(item.uid ?? item.id)));
+            return [...preservedPrev, ...mergedList];
+          }
+
+          return mergedList;
+        });
         setDrawingsTotal(total);
         setHasMoreFiles((drawingsListData.length + offset) < total);
       }
@@ -97,15 +142,15 @@ export function useDrawings(isGuest: boolean = false) {
     return null;
   };
 
-  const duplicateDrawing = async (id: number | string, newTitle: string) => {
-    const sourceDrawing = drawingsRef.current.find(d => String(d.id) === String(id));
+  const duplicateDrawing = async (uid: string, newTitle: string) => {
+    const sourceDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === uid);
     if (!sourceDrawing) {
       toast.error('Source drawing not found');
       return null;
     }
 
     let data = sourceDrawing.data;
-    const draft = await localPersistence.getDraft(DraftType.DRAWINGS, id);
+    const draft = await localPersistence.getDraft(DraftType.DRAWINGS, uid);
     if (draft) {
       try {
         const parsed = JSON.parse(draft.data);
@@ -116,76 +161,76 @@ export function useDrawings(isGuest: boolean = false) {
     return await createDrawing(newTitle, sourceDrawing.project_id, data);
   };
 
-  const updateDrawing = async (id: number | string, title: string, options?: { silent?: boolean }) => {
+  const updateDrawing = async (uid: string, title: string, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const drawing = await localPersistence.getResource(id);
+      const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.title = title;
         drawing.updated_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => d.id === id ? { ...d, title } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, title } : d));
         if (!options?.silent) toast.success('Drawing renamed locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/drawings/${id}`, {
+      const res = await fetch(`/api/drawings/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => d.id === id ? { ...d, title } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, title } : d));
         if (!options?.silent) toast.success('Drawing renamed successfully');
       }
     } catch (err) {}
   };
 
-  const deleteDrawing = async (id: number | string) => {
+  const deleteDrawing = async (uid: string) => {
     if (isGuest) {
-      const drawing = await localPersistence.getResource(id);
+      const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.is_deleted = true;
         drawing.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
-        if (activeDrawingId === id) setActiveDrawingId(null);
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to local trash');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/drawings/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/drawings/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => d.id === id ? { ...d, is_deleted: true } : d));
-        if (activeDrawingId === id) setActiveDrawingId(null);
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to trash');
       }
     } catch (err) {}
   };
 
-  const moveDrawingToProject = async (drawingId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => {
+  const moveDrawingToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const drawing = await localPersistence.getResource(drawingId);
+      const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.project_id = projectId;
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, project_id: projectId, projects: undefined } : d));
         if (!options?.silent) toast.success('Drawing moved to project locally');
       }
       return true;
     }
 
     try {
-      const res = await fetch(`/api/drawings/${drawingId}`, {
+      const res = await fetch(`/api/drawings/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
       });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, project_id: projectId } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, project_id: projectId, projects: undefined } : d));
         if (!options?.silent) toast.success('Drawing moved to project');
         return true;
       }
@@ -194,7 +239,8 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const saveDrawing = async (drawing: Drawing) => {
-    if (!drawing.id) return false;
+    const drawingId = String(drawing.uid ?? drawing.id);
+    if (!drawingId) return false;
     
     try {
       const isSyncPending = !isGuest;
@@ -207,7 +253,7 @@ export function useDrawings(isGuest: boolean = false) {
       const dataToSave = JSON.stringify(payload);
       
       if (isGuest) {
-        const localDrawing = await localPersistence.getResource(drawing.id);
+        const localDrawing = await localPersistence.getResource(drawingId);
         if (localDrawing) {
           localDrawing.data = drawing.data;
           localDrawing.updated_at = new Date().toISOString();
@@ -215,7 +261,7 @@ export function useDrawings(isGuest: boolean = false) {
         }
       }
 
-      await localPersistence.saveDraft(DraftType.DRAWINGS, drawing.id, dataToSave, isSyncPending);
+      await localPersistence.saveDraft(DraftType.DRAWINGS, drawingId, dataToSave, isSyncPending);
       return true;
     } catch (err) {
       console.error('Error in local saveDrawing:', err);
@@ -223,59 +269,129 @@ export function useDrawings(isGuest: boolean = false) {
     }
   };
 
-  const restoreDrawing = async (id: number | string) => {
+  const restoreDrawing = async (uid: string) => {
     if (isGuest) {
-      const drawing = await localPersistence.getResource(id);
+      const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.is_deleted = false;
         drawing.deleted_at = undefined;
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.id) === String(id) ? { ...d, is_deleted: false } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
+      const res = await fetch(`/api/drawings/${uid}/restore`, { method: 'POST' });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.id) === String(id) ? { ...d, is_deleted: false } : d));
+        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored successfully');
       }
     } catch (err) {}
   };
 
-  const deleteDrawingPermanent = async (id: number | string) => {
+  const deleteDrawingPermanent = async (uid: string) => {
     if (isGuest) {
-      await localPersistence.deleteResource(id);
-      await localPersistence.clearDraft(DraftType.DRAWINGS, id);
+      await localPersistence.deleteResource(uid);
+      await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
+      setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
       toast.success('Drawing permanently deleted from local');
       return;
     }
 
     try {
-      const res = await fetch(`/api/drawings/${id}/permanent`, { method: 'DELETE' });
+      const res = await fetch(`/api/drawings/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         toast.success('Drawing permanently deleted');
       }
     } catch (err) {}
   };
 
-  const selectDrawing = async (id: number | string, options?: { silent?: boolean }) => {
+  const selectDrawing = async (uid: string, options?: { silent?: boolean }) => {
     if (!options?.silent) setIsItemLoading(true);
     try {
       if (isGuest) {
-        const localData = await localPersistence.getResource(id);
+        const localData = await localPersistence.getResource(uid);
         if (!localData || localData.is_deleted) return;
-        setActiveDrawingId(id);
+        setDrawings(prev => {
+          const exists = prev.some(existing => matchesDrawingId(existing, uid));
+          const merged = {
+            ...localData,
+            data: normalizeDrawingData(localData.data),
+          };
+          return exists
+            ? prev.map(existing => matchesDrawingId(existing, uid) ? { ...existing, ...merged } : existing)
+            : [...prev, merged];
+        });
+        setActiveDrawingUid(localData.uid ?? uid);
       } else {
-        const res = await fetch(`/api/drawings/${id}`);
-        if (res.ok) {
-          const d = await res.json();
-          if (!d.is_deleted) {
-            setDrawings(prev => prev.map(existing => existing.id === id ? { ...existing, data: d.data } : existing));
-            setActiveDrawingId(id);
+        const localDraft = await localPersistence.getDraft(DraftType.DRAWINGS, uid);
+        const draftPayload = localDraft?.data ? (() => {
+          try {
+            const parsed = JSON.parse(localDraft.data);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+          } catch {
+            return null;
           }
+        })() : null;
+        const draftData = normalizeDrawingData(draftPayload?.data);
+        const draftShouldWin = !!localDraft?.sync_pending && !!draftData;
+
+        let effectiveData: string | null = null;
+        let serverDrawing: any = null;
+
+        try {
+          const res = await fetch(`/api/drawings/${uid}`);
+          if (res.ok) {
+            const d = await res.json();
+            if (!d.is_deleted) {
+              serverDrawing = d;
+              effectiveData = normalizeDrawingData(d.data);
+              if (draftShouldWin) {
+                effectiveData = draftData;
+              }
+            }
+          }
+        } catch (err) {
+          // Network/server failure — fall back to local draft entirely
+          effectiveData = draftData;
+        }
+
+        if (draftShouldWin && !effectiveData) {
+          effectiveData = draftData;
+        }
+        if (effectiveData === null) {
+          effectiveData = '';
+        }
+
+        // Only proceed if we have a valid drawing (even with empty data)
+        if (effectiveData !== null) {
+          setDrawings(prev => {
+            const exists = prev.some(existing => matchesDrawingId(existing, uid));
+            const mergedDrawing = draftShouldWin && draftPayload
+              ? {
+                  ...(serverDrawing || { uid, id: uid }),
+                  ...draftPayload,
+                  uid: (serverDrawing?.uid ?? uid),
+                  id: (serverDrawing?.id ?? uid),
+                  data: effectiveData,
+                }
+              : {
+                  ...(serverDrawing || { uid, id: uid }),
+                  data: effectiveData,
+                };
+            if (exists) {
+              return prev.map(existing => matchesDrawingId(existing, uid)
+                ? { ...existing, ...mergedDrawing }
+                : existing
+              );
+            }
+            // Drawing not yet in state — use server response if available, else minimal entry
+            return [{ ...mergedDrawing } as Drawing, ...prev];
+          });
+          setActiveDrawingUid(String((serverDrawing?.uid ?? uid)));
         }
       }
     } finally {
@@ -286,8 +402,8 @@ export function useDrawings(isGuest: boolean = false) {
   return {
     drawings,
     setDrawings,
-    activeDrawingId,
-    setActiveDrawingId,
+    activeDrawingUid,
+    setActiveDrawingUid,
     fetchDrawings,
     createDrawing,
     updateDrawing,
@@ -298,9 +414,9 @@ export function useDrawings(isGuest: boolean = false) {
     deleteDrawingPermanent,
     hasMoreDrawings,
     drawingsTotal,
+    duplicateDrawing,
+    selectDrawing,
     isLoading,
     isItemLoading,
-    selectDrawing,
-    duplicateDrawing
   };
 }

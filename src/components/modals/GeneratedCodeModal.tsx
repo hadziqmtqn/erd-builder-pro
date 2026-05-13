@@ -96,6 +96,7 @@ export const GeneratedCodeModal = ({
         className="max-w-5xl bg-[#0f0f14] border-white/10 text-white shadow-2xl"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
           <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">

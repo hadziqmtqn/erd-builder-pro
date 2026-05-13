@@ -10,7 +10,6 @@ export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only check in production or if needed
     const checkUpdate = async () => {
       try {
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
@@ -19,8 +18,6 @@ export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
         const data = await response.json();
         const newestVersion = data.tag_name.replace('v', '');
 
-        // Simple version comparison (e.g. 1.0.1 vs 1.0.0)
-        // For a more robust check, you'd use a library like semver
         if (newestVersion !== CURRENT_VERSION && isVersionNewer(newestVersion, CURRENT_VERSION)) {
           setHasUpdate(true);
           setLatestVersion(newestVersion);
@@ -41,11 +38,10 @@ export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
           });
         }
       } catch (error) {
-        console.error('Failed to check for updates:', error);
+        // Silently ignore — GitHub API rate limits are expected in dev
       }
     };
 
-    // Delay check slightly to not interfere with initial load
     const timer = setTimeout(checkUpdate, 5000);
     return () => clearTimeout(timer);
   }, []);
@@ -56,7 +52,7 @@ export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
 function isVersionNewer(newV: string, currentV: string) {
   const n = newV.split('.').map(Number);
   const c = currentV.split('.').map(Number);
-  
+
   for (let i = 0; i < Math.max(n.length, c.length); i++) {
     const nv = n[i] || 0;
     const cv = c[i] || 0;

@@ -10,14 +10,13 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Share2, Globe, CloudOff, CloudRain, Cloud, Save, Check } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check, Search } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 
 interface MainHeaderProps {
   featureLabel: string;
@@ -28,6 +27,7 @@ interface MainHeaderProps {
   syncError?: boolean;
   isSyncing?: boolean;
   isRefreshing?: boolean;
+  isLocalSaving?: boolean;
   hasPendingSyncs?: boolean;
   activeFileUid?: string;
   activeFileId?: number | string | null;
@@ -51,6 +51,9 @@ interface MainHeaderProps {
   onImportMarkdown?: () => void;
   onDuplicate?: () => void;
   isGuest?: boolean;
+  fileSearchRef?: React.RefObject<HTMLInputElement | null>;
+  fileSearchQuery?: string;
+  onFileSearchChange?: (value: string) => void;
 }
 
 export const MainHeader = React.memo(({
@@ -62,6 +65,7 @@ export const MainHeader = React.memo(({
   syncError,
   isSyncing,
   isRefreshing,
+  isLocalSaving = false,
   hasPendingSyncs,
   activeFileUid,
   activeFileId,
@@ -81,6 +85,9 @@ export const MainHeader = React.memo(({
   onImportMarkdown,
   onDuplicate,
   isGuest = false,
+  fileSearchRef,
+  fileSearchQuery = '',
+  onFileSearchChange,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
@@ -101,18 +108,18 @@ export const MainHeader = React.memo(({
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
             {!isPublicView && (
-              <BreadcrumbItem className="shrink-0 hidden sm:block">
+              <BreadcrumbItem className="shrink-0">
                 <BreadcrumbPage className="font-medium text-muted-foreground">
                   {featureLabel}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             )}
             
-            {!isPublicView && activeProjectName && (
+            {!isPublicView && hasActiveItem && (
               <>
-                <BreadcrumbSeparator className="shrink-0 hidden sm:block" />
+                <BreadcrumbSeparator className="shrink-0" />
                 <BreadcrumbItem className="min-w-0 shrink">
-                  <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName}</BreadcrumbPage>
+                  <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName || "Uncategorized"}</BreadcrumbPage>
                 </BreadcrumbItem>
               </>
             )}
@@ -153,9 +160,110 @@ export const MainHeader = React.memo(({
         </div>
       )}
 
-      <div className="ml-auto px-4 flex items-center gap-2 sm:gap-4">
+      <div className="ml-auto px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
+        {/* File search — only in table list view (no active item) */}
+        {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
+          <div className="relative flex items-center mr-1 sm:mr-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
+            <input
+              ref={fileSearchRef}
+              type="text"
+              placeholder="Search files..."
+              value={fileSearchQuery}
+              onChange={(e) => onFileSearchChange?.(e.target.value)}
+              className="h-7 w-[120px] sm:w-[180px] md:w-[220px] rounded-md border border-input bg-background pl-7 pr-7 text-xs outline-none focus:border-primary/50 focus:ring-0"
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-0.5 opacity-40">
+              <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[9px] font-medium text-muted-foreground">
+                <span className="text-[10px]">{isMac ? '⌘' : 'Ctrl'}</span>K
+              </kbd>
+            </div>
+          </div>
+        )}
         {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1 sm:gap-4">
+            {!isPublicView && (
+              <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                {isLocalSaving ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-amber-500/10 sm:border sm:border-amber-500/20 text-amber-500 sm:shadow-sm transition-all duration-300">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Saving...</span>
+                        </div>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium">
+                        Saving changes locally...
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : syncError ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-destructive/10 sm:border sm:border-destructive/20 text-destructive cursor-help sm:shadow-sm transition-all duration-300">
+                          <CloudOff className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Sync Failed</span>
+                        </div>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium max-w-[200px] text-center">
+                        Changes saved locally, but cloud sync failed. We'll retry automatically.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : isSyncing ? (
+                  <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-primary/10 sm:border sm:border-primary/20 text-primary sm:shadow-sm transition-all duration-300">
+                    <Cloud className="w-3.5 h-3.5 animate-bounce" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Syncing...</span>
+                  </div>
+                ) : hasPendingSyncs ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onSave}
+                          disabled={!isOnline}
+                          className="h-6 sm:h-7 px-1 sm:px-2 gap-1 sm:gap-2 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary-foreground border border-primary/20 transition-all duration-300 sm:shadow-sm"
+                        >
+                          <Save className="w-3.5 h-3.5 animate-in zoom-in-50" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Save</span>
+                        </Button>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span>Save changes to cloud</span>
+                          <span className="opacity-50 text-[9px]">{isMac ? '⌘' : 'Ctrl'} + S</span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger render={
+                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-green-500/5 sm:border sm:border-green-500/10 text-green-500/60 sm:shadow-sm transition-all duration-300">
+                          <Check className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Synced</span>
+                        </div>
+                      } />
+                      <TooltipContent side="bottom" className="text-[10px] font-medium">
+                        All changes are saved and synced
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                
+                {isRefreshing && (
+                  <div className="flex items-center gap-2 text-primary animate-pulse ml-1 sm:ml-2">
+                     <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+            )}
+
             {!isPublicView && updatedAt && (
               <TooltipProvider delay={200}>
                 <Tooltip>
@@ -172,78 +280,6 @@ export const MainHeader = React.memo(({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-
-            {!isPublicView && (
-              <div className="flex items-center gap-2 shrink-0">
-                {syncError ? (
-                  <TooltipProvider delay={0}>
-                    <Tooltip>
-                      <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 border border-destructive/20 text-destructive cursor-help">
-                          <CloudOff className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Sync Failed</span>
-                        </div>
-                      } />
-                      <TooltipContent side="bottom" className="text-[10px] font-medium max-w-[200px] text-center">
-                        Your changes are saved safely on this computer, but we couldn't send them to the cloud. We'll automatically retry when possible.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : (
-                  <TooltipProvider delay={0}>
-                    <Tooltip>
-                      <TooltipTrigger render={
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={onSave}
-                          disabled={!hasPendingSyncs || isSyncing || !isOnline}
-                          className={cn(
-                            "h-8 px-2 gap-2 transition-all duration-300 min-w-[100px] justify-center",
-                            hasPendingSyncs ? "text-primary hover:text-primary hover:bg-primary/10" : "text-muted-foreground/40 opacity-50 cursor-default"
-                          )}
-                        >
-
-                          {isSyncing ? (
-                            <>
-                              <Cloud className="w-4 h-4 animate-bounce" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Syncing...</span>
-                            </>
-                          ) : hasPendingSyncs ? (
-                            <>
-                              <Save className="w-4 h-4 animate-in zoom-in-50 duration-300" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Save</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4 text-green-500/50" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Synced</span>
-                            </>
-                          )}
-                        </Button>
-                      } />
-                      <TooltipContent side="bottom" className="text-[10px] font-medium">
-                        {hasPendingSyncs ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span>Save changes to cloud</span>
-                            <span className="opacity-50 text-[9px]">{isMac ? '⌘' : 'Ctrl'} + S</span>
-                          </div>
-                        ) : "All changes are saved and synced"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                
-                {isRefreshing && (
-                  <div className="flex items-center gap-2 text-primary animate-pulse">
-                     <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                     <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Checking Updates...</span>
-                  </div>
-                )}
-
-
-              </div>
             )}
 
             <NavActionsMenu 

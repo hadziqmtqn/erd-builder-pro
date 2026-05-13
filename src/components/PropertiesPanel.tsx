@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Key, Check, X, Palette, Type, Settings2, ChevronRight, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
 import { Entity, Column } from '../types';
@@ -155,6 +156,27 @@ export default function PropertiesPanel({
   };
 
   const updateColumnSync = (colId: string, updates: Partial<Column>, immediate: boolean = false) => {
+    // Validate duplicate column name before syncing
+    if ('name' in updates && typeof updates.name === 'string') {
+      const newName = updates.name.trim();
+      const isDuplicate = editingEntity.columns.some(
+        c => c.id !== colId && c.name.toLowerCase() === newName.toLowerCase()
+      );
+      if (isDuplicate) {
+        toast.error(`Column name "${newName}" already exists in this table`);
+        // Revert local state to current value (before onChange changed it)
+        const currentCol = editingEntity.columns.find(c => c.id === colId);
+        if (currentCol) {
+          setEditingEntity({
+            ...editingEntity,
+            columns: editingEntity.columns.map(c => c.id === colId ? currentCol : c),
+          });
+        }
+        return;
+      }
+      // Use trimmed name
+      updates = { ...updates, name: newName };
+    }
     const updated = {
       ...editingEntity,
       columns: editingEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
@@ -305,7 +327,7 @@ export default function PropertiesPanel({
                     <div className="flex-1">
                       <Select
                         value={col.type}
-                        onValueChange={(value) => updateColumnSync(col.id, { type: value }, true)}
+                        onValueChange={(value) => updateColumnSync(col.id, { type: value ?? '' }, true)}
                       >
                         <SelectTrigger className="h-8 text-[11px] font-medium bg-background/50 border-border/50">
                           <SelectValue placeholder="Type" />

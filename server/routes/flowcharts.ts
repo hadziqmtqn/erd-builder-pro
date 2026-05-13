@@ -38,7 +38,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
   
   if (deletedIds.length > 0) {
-    query = query.not("project_id", "in", `(${deletedIds.join(",")})`);
+    query = query.or(`project_id.is.null,project_id.not.in.(${deletedIds.join(",")})`);
   }
 
   const { data, error, count } = await query
@@ -115,15 +115,15 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
   res.json(flowchart);
 });
 
-router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { id } = req.params;
+router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { is_public, share_token, expiry_date } = req.body;
 
   try {
     const { data: currentFlowchart } = await supabase
       .from("flowcharts")
       .select("*")
-      .eq("id", id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .single();
 
@@ -146,7 +146,7 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
     const { data, error } = await supabase
       .from("flowcharts")
       .update(updateData)
-      .eq("id", id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id)
       .select()
       .single();
@@ -158,19 +158,23 @@ router.put("/:id/share", authenticate, async (req: ExpressRequest, res: ExpressR
   }
 });
 
-router.get("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data, error } = await supabase
+router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
+
+  let query = supabase
     .from("flowcharts")
     .select("*")
-    .eq("id", req.params.id)
-    .eq("user_id", (req as any).user.id)
-    .single();
+    .eq("uid", uid)
+    .eq("user_id", (req as any).user.id);
+
+  const { data, error } = await query.single();
 
   if (error || !data) return res.status(404).json({ error: "Flowchart not found" });
   res.json(data);
 });
 
-router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { title, data, project_id } = req.body;
   
   const updateData: any = { updated_at: new Date().toISOString() };
@@ -181,41 +185,44 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   const { error } = await supabase
     .from("flowcharts")
     .update(updateData)
-    .eq("id", req.params.id)
+    .eq("uid", uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { error } = await supabase
     .from("flowcharts")
     .update(getSafeUpdate(true))
-    .eq("id", req.params.id)
+    .eq("uid", uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to delete flowchart");
   res.json({ success: true });
 });
 
-router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   const { error } = await supabase
     .from("flowcharts")
     .update(getSafeUpdate(false))
-    .eq("id", req.params.id)
+    .eq("uid", uid)
     .eq("user_id", (req as any).user.id);
 
   if (error) return handleError(res, error, "Failed to restore flowchart");
   res.json({ success: true });
 });
 
-router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const { uid } = req.params;
   try {
     const { error } = await supabase
       .from("flowcharts")
       .delete()
-      .eq("id", req.params.id)
+      .eq("uid", uid)
       .eq("user_id", (req as any).user.id);
 
     if (error) return res.status(500).json({ error: error.message });

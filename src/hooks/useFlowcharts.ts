@@ -16,7 +16,39 @@ export function useFlowcharts(isGuest: boolean = false) {
   // Keep ref in sync
   flowchartsRef.current = flowcharts;
 
-  const fetchFlowcharts = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
+  const matchesFlowchartId = (flowchart: Flowchart, uid: string | number) => {
+    return String(flowchart.uid ?? flowchart.id) === String(uid);
+  };
+
+  const mergeFlowchartRecord = (existing: Flowchart | undefined, incoming: Flowchart) => {
+    if (!existing) return incoming;
+    return {
+      ...existing,
+      ...incoming,
+      // List fetches usually omit `data`; preserve the fully loaded payload
+      // so an active flowchart does not fall back to the default template.
+      data: incoming.data !== undefined ? incoming.data : existing.data,
+    };
+  };
+
+  const parseFlowchartPayload = (raw?: string) => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const fetchFlowcharts = useCallback(async (
+    isLoadMore = false,
+    projectId: number | null | string = 'all',
+    searchQuery = '',
+    isPublic: boolean | null = null,
+    limit = 10,
+    options?: { silent?: boolean; page?: number },
+  ) => {
     if (isGuest) {
       const localFlowcharts = await localPersistence.getAllResources('flowchart');
       let filtered = localFlowcharts.filter(f => !f.is_deleted);
@@ -26,7 +58,17 @@ export function useFlowcharts(isGuest: boolean = false) {
       if (searchQuery) {
         filtered = filtered.filter(f => f.title.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setFlowcharts(filtered);
+      filtered.sort((a: any, b: any) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return db - da;
+      });
+
+      const pageNum = options?.page ?? 1;
+      const startIdx = (pageNum - 1) * limit;
+      const paged = filtered.slice(startIdx, startIdx + limit);
+
+      setFlowcharts(paged);
       setFlowchartsTotal(filtered.length);
       setHasMoreFlowcharts(false);
       return;
@@ -34,7 +76,7 @@ export function useFlowcharts(isGuest: boolean = false) {
 
     if (!options?.silent) setIsLoading(true);
     try {
-      const offset = isLoadMore ? flowchartsRef.current.length : 0;
+      const offset = options?.page !== undefined ? (options.page - 1) * limit : (isLoadMore ? flowchartsRef.current.length : 0);
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
@@ -45,11 +87,20 @@ export function useFlowcharts(isGuest: boolean = false) {
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
 
         const flowchartsListData = Array.isArray(data) ? data : [];
-        if (isLoadMore) {
-          setFlowcharts(prev => [...prev, ...flowchartsListData]);
-        } else {
-          setFlowcharts(flowchartsListData);
-        }
+        setFlowcharts(prev => {
+          const mergedList = flowchartsListData.map((incoming: Flowchart) => {
+            const existing = prev.find(item => matchesFlowchartId(item, incoming.uid ?? incoming.id));
+            return mergeFlowchartRecord(existing, incoming);
+          });
+
+          if (isLoadMore) {
+            const existingIds = new Set(mergedList.map(item => String(item.uid ?? item.id)));
+            const preservedPrev = prev.filter(item => !existingIds.has(String(item.uid ?? item.id)));
+            return [...preservedPrev, ...mergedList];
+          }
+
+          return mergedList;
+        });
         setFlowchartsTotal(total);
         setHasMoreFlowcharts((flowchartsListData.length + offset) < total);
       }
@@ -97,76 +148,85 @@ export function useFlowcharts(isGuest: boolean = false) {
     return null;
   };
 
-  const updateFlowchart = async (id: number | string, title: string, options?: { silent?: boolean }) => {
+  // All mutation/CRUD functions use uid (UUID) for API calls.
+  // The server endpoint now requires /api/flowcharts/:uid.
+
+  const updateFlowchart = async (uid: string, title: string, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(id);
+      const flowchart = await localPersistence.getResource(uid);
       if (flowchart) {
         flowchart.title = title;
         flowchart.updated_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, title } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, title } : f));
         if (!options?.silent) toast.success('Flowchart renamed locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${id}`, {
+      const res = await fetch(`/api/flowcharts/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, title } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, title } : f));
         if (!options?.silent) toast.success('Flowchart renamed successfully');
       }
     } catch (err) {}
   };
 
-  const deleteFlowchart = async (id: number | string) => {
+  const deleteFlowchart = async (uid: string) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(id);
+      const flowchart = await localPersistence.getResource(uid);
       if (flowchart) {
         flowchart.is_deleted = true;
         flowchart.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
-        if (activeFlowchartId === id) setActiveFlowchartId(null);
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
+        if (activeFlowchartId !== null) {
+          const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
+          if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
+        }
         toast.success('Flowchart moved to local trash');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/flowcharts/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.id === id ? { ...f, is_deleted: true } : f));
-        if (activeFlowchartId === id) setActiveFlowchartId(null);
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
+        if (activeFlowchartId !== null) {
+          const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
+          if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
+        }
         toast.success('Flowchart moved to trash');
       }
     } catch (err) {}
   };
 
-  const moveFlowchartToProject = async (flowchartId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => {
+  const moveFlowchartToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(flowchartId);
+      const flowchart = await localPersistence.getResource(uid);
       if (flowchart) {
         flowchart.project_id = projectId;
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, project_id: projectId } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, project_id: projectId } : f));
         if (!options?.silent) toast.success('Flowchart moved to project locally');
       }
       return true;
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${flowchartId}`, {
+      const res = await fetch(`/api/flowcharts/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
       });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.id === flowchartId ? { ...f, project_id: projectId } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, project_id: projectId } : f));
         if (!options?.silent) toast.success('Flowchart moved to project');
         return true;
       }
@@ -175,7 +235,7 @@ export function useFlowcharts(isGuest: boolean = false) {
   };
 
   const saveFlowchart = async (flowchart: Flowchart) => {
-    if (!flowchart.id) return false;
+    if (!flowchart.id && !flowchart.uid) return false;
     
     try {
       const isSyncPending = !isGuest;
@@ -196,7 +256,9 @@ export function useFlowcharts(isGuest: boolean = false) {
         }
       }
 
-      await localPersistence.saveDraft(DraftType.FLOWCHART, flowchart.id, dataToSave, isSyncPending);
+      // Use uid for draft so sync service builds the correct /api/flowcharts/:uid endpoint
+      const draftId = flowchart.uid || flowchart.id;
+      await localPersistence.saveDraft(DraftType.FLOWCHART, draftId, dataToSave, isSyncPending);
       return true;
     } catch (err) {
       console.error('Error in local saveFlowchart:', err);
@@ -204,59 +266,135 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
   };
 
-  const restoreFlowchart = async (id: number | string) => {
+  const restoreFlowchart = async (uid: string) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(id);
+      const flowchart = await localPersistence.getResource(uid);
       if (flowchart) {
         flowchart.is_deleted = false;
         flowchart.deleted_at = undefined;
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => String(f.id) === String(id) ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored locally');
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${id}/restore`, { method: 'POST' });
+      const res = await fetch(`/api/flowcharts/${uid}/restore`, { method: 'POST' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => String(f.id) === String(id) ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored successfully');
       }
     } catch (err) {}
   };
 
-  const deleteFlowchartPermanent = async (id: number | string) => {
+  const deleteFlowchartPermanent = async (uid: string) => {
     if (isGuest) {
-      await localPersistence.deleteResource(id);
-      await localPersistence.clearDraft(DraftType.FLOWCHART, id);
+      await localPersistence.deleteResource(uid);
+      await localPersistence.clearDraft(DraftType.FLOWCHART, uid);
+      setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
       toast.success('Flowchart permanently deleted from local');
       return;
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${id}/permanent`, { method: 'DELETE' });
+      const res = await fetch(`/api/flowcharts/${uid}/permanent`, { method: 'DELETE' });
       if (res.ok) {
+        setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         toast.success('Flowchart permanently deleted');
       }
     } catch (err) {}
   };
 
-  const selectFlowchart = async (id: number | string, options?: { silent?: boolean }) => {
+  const selectFlowchart = async (uid: string, options?: { silent?: boolean; fallbackFlowchart?: any }) => {
     if (!options?.silent) setIsItemLoading(true);
     try {
+      const localDraft = await localPersistence.getDraft(DraftType.FLOWCHART, uid);
+      const draftPayload = localDraft ? parseFlowchartPayload(localDraft.data) : null;
+      const draftShouldWin = !!localDraft?.sync_pending;
+      const draftFlowchartData = draftPayload?.data;
+      const draftTitle = draftPayload?.title;
+      const draftProjectId = draftPayload?.project_id;
+
       if (isGuest) {
-        const localData = await localPersistence.getResource(id);
+        const localData = await localPersistence.getResource(uid);
         if (!localData || localData.is_deleted) return;
-        setActiveFlowchartId(id);
+        setFlowcharts(prev => {
+          const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+          const merged = {
+            ...localData,
+            ...draftPayload,
+            data: draftFlowchartData ?? localData.data ?? '',
+          };
+          return exists
+            ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...merged } : existing)
+            : [...prev, merged];
+        });
+        setActiveFlowchartId(localData.uid ?? uid);
       } else {
-        const res = await fetch(`/api/flowcharts/${id}`);
+        const res = await fetch(`/api/flowcharts/${uid}`);
         if (res.ok) {
           const f = await res.json();
           if (!f.is_deleted) {
-            setFlowcharts(prev => prev.map(existing => existing.id === id ? { ...existing, data: f.data } : existing));
-            setActiveFlowchartId(id);
+            const mergedFlowchart = draftShouldWin
+              ? {
+                  ...f,
+                  title: draftTitle ?? f.title,
+                  data: draftFlowchartData ?? f.data,
+                  project_id: draftProjectId ?? f.project_id,
+                }
+              : f;
+
+            setFlowcharts(prev => {
+              // Check by uid first, fallback to numeric id
+              const exists = prev.some(
+                existing => (existing.uid && String(existing.uid) === String(mergedFlowchart.uid)) || String(existing.id) === String(mergedFlowchart.id)
+              );
+              if (exists) {
+                return prev.map(existing =>
+                  (existing.uid && String(existing.uid) === String(mergedFlowchart.uid)) || String(existing.id) === String(mergedFlowchart.id)
+                    ? { ...existing, ...mergedFlowchart }
+                    : existing
+                );
+              } else {
+                // Flowchart not in local state yet — add it (e.g. initial URL load)
+                return [...prev, mergedFlowchart];
+              }
+            });
+            setActiveFlowchartId(mergedFlowchart.uid ?? uid);
+          } else if (draftShouldWin && draftPayload) {
+            const fallback = options?.fallbackFlowchart || {};
+            const mergedFlowchart = {
+              ...fallback,
+              ...draftPayload,
+              uid: fallback.uid ?? uid,
+              id: fallback.id ?? uid,
+              data: draftFlowchartData ?? fallback.data ?? '',
+            };
+            setFlowcharts(prev => {
+              const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+              return exists
+                ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...mergedFlowchart } : existing)
+                : [...prev, mergedFlowchart];
+            });
+            setActiveFlowchartId(String(mergedFlowchart.uid ?? uid));
           }
+        } else if (draftShouldWin && draftPayload) {
+          const fallback = options?.fallbackFlowchart || {};
+          const mergedFlowchart = {
+            ...fallback,
+            ...draftPayload,
+            uid: fallback.uid ?? uid,
+            id: fallback.id ?? uid,
+            data: draftFlowchartData ?? fallback.data ?? '',
+          };
+          setFlowcharts(prev => {
+            const exists = prev.some(existing => matchesFlowchartId(existing, uid));
+            return exists
+              ? prev.map(existing => matchesFlowchartId(existing, uid) ? { ...existing, ...mergedFlowchart } : existing)
+              : [...prev, mergedFlowchart];
+          });
+          setActiveFlowchartId(String(mergedFlowchart.uid ?? uid));
         }
       }
     } finally {

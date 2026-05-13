@@ -32,7 +32,10 @@ export function useProjects(isGuest: boolean = false) {
         localPersistence.getAllResources('flowchart'),
       ]);
 
-      let filteredProjects = localProjects.filter(p => !p.is_deleted);
+      let filteredProjects = localProjects.filter(p => !p.is_deleted).map(p => ({
+        ...p,
+        uid: p.uid || String(p.id),
+      }));
       if (searchQuery) filteredProjects = filteredProjects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
       
       // For guest, we also need to nested the files manually or just filter them in the UI
@@ -96,6 +99,7 @@ export function useProjects(isGuest: boolean = false) {
     if (isGuest) {
       const newProject: Project = {
         id: Math.random().toString(36).substr(2, 9),
+        uid: crypto.randomUUID(),
         name,
         is_deleted: false,
         created_at: new Date().toISOString(),
@@ -170,7 +174,7 @@ export function useProjects(isGuest: boolean = false) {
           }
         }
 
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        setProjects(prev => prev.filter(p => p.id !== id));
         if (activeProjectId === id) setActiveProjectId(null);
         toast.success('Project and its items moved to local trash');
       }
@@ -180,7 +184,7 @@ export function useProjects(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setProjects(prev => prev.map(p => p.id === id ? { ...p, is_deleted: true } : p));
+        setProjects(prev => prev.filter(p => p.id !== id));
         if (activeProjectId === id) setActiveProjectId(null);
         toast.success('Project moved to trash');
         return true;
@@ -221,10 +225,12 @@ export function useProjects(isGuest: boolean = false) {
   const deleteProjectPermanent = async (id: number | string) => {
     if (isGuest) {
       await localPersistence.deleteResource(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
       toast.success('Project permanently deleted from local');
       return;
     }
     await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
+    setProjects(prev => prev.filter(p => p.id !== id));
   };
 
   return {

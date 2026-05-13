@@ -32,6 +32,10 @@ interface FileGroupProps {
   setIsDeleteConfirmOpen: (open: boolean) => void
 }
 
+function getFileIdentifier(file: any): number | string {
+  return file.uid ?? file.id;
+}
+
 export function FileGroup({
   sidebarView,
   view,
@@ -120,11 +124,11 @@ export function FileGroup({
             <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Shared</div>
             {displayedShared.length > 0 ? displayedShared.map(file => (
               <FileMenuItem 
-                key={file.id}
+                key={getFileIdentifier(file)}
                 item={file}
                 type={sidebarView as any}
                 icon={Icon}
-                isActive={activeFileId === file.id && view === sidebarView}
+                isActive={String(activeFileId) === String(getFileIdentifier(file)) && view === sidebarView}
                 isOnline={isOnline}
                 onSelect={onFileSelect}
                 setEditingFile={setEditingFile}
@@ -144,14 +148,14 @@ export function FileGroup({
               <>
                 <div className="px-2 pt-4 pb-1 text-[10px] uppercase font-semibold text-muted-foreground/70 tracking-wider">Private</div>
                 {displayedPrivate.map(file => (
-                  <FileMenuItem 
-                    key={file.id}
-                    item={file}
-                    type={sidebarView as any}
-                    icon={Icon}
-                    isActive={activeFileId === file.id && view === sidebarView}
-                    isOnline={isOnline}
-                    onSelect={onFileSelect}
+                <FileMenuItem 
+                  key={getFileIdentifier(file)}
+                  item={file}
+                  type={sidebarView as any}
+                  icon={Icon}
+                  isActive={String(activeFileId) === String(getFileIdentifier(file)) && view === sidebarView}
+                  isOnline={isOnline}
+                  onSelect={onFileSelect}
                     setEditingFile={setEditingFile}
                     setSelectedProjectId={setSelectedProjectId}
                     setIsEditFileDialogOpen={setIsEditFileDialogOpen}

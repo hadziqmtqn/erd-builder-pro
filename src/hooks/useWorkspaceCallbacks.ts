@@ -8,7 +8,7 @@ export interface UseWorkspaceCallbacksParams {
   setSelectedEdgeId: (id: string | null) => void;
   setIsTablePropertiesOpen: (open: boolean) => void;
   setIsImportModalOpen: (open: boolean) => void;
-  viewportRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
   publicData: any;
   diagrams: any[];
   activeDiagramId: any;
@@ -26,6 +26,8 @@ export interface UseWorkspaceCallbacksParams {
   isDrawingItemLoading: boolean;
   isFlowchartsLoading: boolean;
   isFlowchartItemLoading: boolean;
+  /** selectedNodeId from useERDSession — needed for selectedEntity derivation */
+  selectedNodeId: string | null;
 }
 
 export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
@@ -41,7 +43,16 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     isNotesLoading, isNoteItemLoading,
     isDrawingsLoading, isDrawingItemLoading,
     isFlowchartsLoading, isFlowchartItemLoading,
+    selectedNodeId,
   } = params;
+
+  // ── Derived: selectedEntity from selectedNodeId + nodes ──
+  // Extracted from App.tsx useMemo — co-located with other ERD workspace logic
+  const selectedEntity = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return node ? (node.data as Entity) : null;
+  }, [nodes, selectedNodeId]);
 
   const handleNodeClick = useCallback((e: React.MouseEvent, n: Node) => {
     if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) setSelectedNodeId(n.id);
@@ -91,12 +102,12 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
   }, [isPublicView, publicData, diagrams, activeDiagramId, handleExportImage]);
 
   const workspaceIsLoading = useMemo(() => {
-    if (view === 'erd') return isDiagramsLoading || isERDItemLoading;
-    if (view === 'notes') return isNotesLoading || isNoteItemLoading;
-    if (view === 'drawings') return isDrawingsLoading || isDrawingItemLoading;
-    if (view === 'flowchart') return isFlowchartsLoading || isFlowchartItemLoading;
+    if (view === 'erd') return isERDItemLoading;
+    if (view === 'notes') return isNoteItemLoading;
+    if (view === 'drawings') return isDrawingItemLoading;
+    if (view === 'flowchart') return isFlowchartItemLoading;
     return false;
-  }, [view, isDiagramsLoading, isERDItemLoading, isNotesLoading, isNoteItemLoading, isDrawingsLoading, isDrawingItemLoading, isFlowchartsLoading, isFlowchartItemLoading]);
+  }, [view, isERDItemLoading, isNoteItemLoading, isDrawingItemLoading, isFlowchartItemLoading]);
 
   return {
     handleNodeClick,
@@ -109,5 +120,6 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     handleWorkspaceExportPDF,
     handleWorkspaceExportImage,
     workspaceIsLoading,
+    selectedEntity,
   };
 }

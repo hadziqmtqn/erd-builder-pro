@@ -24,6 +24,7 @@ export function useERDSession(
     broadcastNodeMove?: (id: string, x: number, y: number) => void;
     broadcastNodeUpdate?: (id: string, data: Entity) => void;
     broadcastEdgesUpdate?: (edges: Edge[]) => void;
+    onEditEntity?: (entityId: string) => void;
   }
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
@@ -37,7 +38,7 @@ export function useERDSession(
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const { setViewport, getNodes, getEdges } = useReactFlow();
+  const { setViewport, fitView, getNodes, getEdges } = useReactFlow();
 
   // Wrapped onNodesChange to broadcast movement
   const onNodesChangeWrapped = useCallback((changes: any) => {
@@ -85,9 +86,20 @@ export function useERDSession(
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
-  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean }) => {
+  const isInitializingRef = useRef(false);
+
+  const loadingIdRef = useRef<string | number | null>(null);
+
+  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }) => {
+    // Prevent duplicate concurrent loads for the same ID
+    if (loadingIdRef.current === id) return;
+    loadingIdRef.current = id;
+
     if (!options?.silent) {
       setIsItemLoading(true);
+      isInitializingRef.current = true;
+      // Update active ID immediately to satisfy routing checks and prevent duplicate triggers from parent
+      setActiveDiagramId(id);
       // Clear current view to avoid showing stale data from previous diagram
       setNodes([]);
       setEdges([]);
@@ -97,8 +109,17 @@ export function useERDSession(
       let data: Diagram;
 
       if (isGuest) {
-        const localData = await localPersistence.getResource(id);
-        if (!localData) return;
+        let localData = await localPersistence.getResource(id);
+        // id bisa berupa uid (UUID) karena sidebar pass `item.uid ?? item.id`.
+        // IndexedDB store menggunakan `id` sebagai keyPath, jadi fallback cari by uid.
+        if (!localData) {
+          const allDiagrams = await localPersistence.getAllResources('erd');
+          localData = allDiagrams.find((d: any) => d.uid === id) || null;
+        }
+        if (!localData) {
+          loadingIdRef.current = null;
+          return;
+        }
         data = localData;
       } else {
         const res = await fetch(`/api/diagrams/${id}`);
@@ -106,6 +127,7 @@ export function useERDSession(
           const errText = await res.text();
           console.error(`Failed to fetch diagram ${id}:`, res.status, errText);
           toast.error("Failed to load diagram details");
+          loadingIdRef.current = null;
           return;
         }
         data = await res.json();
@@ -117,7 +139,6 @@ export function useERDSession(
       if (!data.entities) data.entities = [];
       if (!data.relationships) data.relationships = [];
 
-      setActiveDiagramId(id);
       setView('erd');
       clearHistory();
 
@@ -191,18 +212,43 @@ export function useERDSession(
         };
       });
 
+      // === STALE GUARD: If the user has navigated to a different diagram    ===
+      // === while this fetch was in-flight, discard to prevent stale data    ===
+      // === overwriting the correct diagram's canvas.                        ===
+      if (options?.isStale && options.isStale()) return;
+
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedNodeId(null);
 
-      if (finalData.viewport_x !== undefined && finalData.viewport_y !== undefined && finalData.viewport_zoom) {
-        setViewport({ x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom }, { duration: 800 });
-        viewportRef.current = { x: finalData.viewport_x, y: finalData.viewport_y, zoom: finalData.viewport_zoom };
-      } else {
-        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 800 }), 100);
+      // === Apply saved viewport BEFORE hiding loading overlay ===
+      // This prevents a visible snap/flash from (0,0) to the correct position
+      const vx = finalData.viewport_x;
+      const vy = finalData.viewport_y;
+      const vz = finalData.viewport_zoom;
+      const hasSavedViewport = vx !== undefined && vy !== undefined && vz && (vx !== 0 || vy !== 0);
+      if (hasSavedViewport) {
+        setViewport({ x: vx, y: vy, zoom: vz }, { duration: 0 });
+        viewportRef.current = { x: vx, y: vy, zoom: vz };
       }
-    } catch (err) {} finally {
+
+      // Now hide loading — viewport is already in the correct position
       setIsItemLoading(false);
+
+      if (!hasSavedViewport && flowNodes.length > 0) {
+        // No saved viewport — fit view after React Flow has rendered nodes
+        setTimeout(() => fitView({ padding: 0.2, duration: 0 }), 100);
+      }
+      if (!finalData.viewport_x && flowNodes.length === 0) {
+        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 0 }), 100);
+      }
+
+      // Allow auto-save only after everything is settled
+      setTimeout(() => {
+        isInitializingRef.current = false;
+      }, 2000);
+    } catch (err) {} finally {
+      loadingIdRef.current = null;
     }
   }, [isGuest, clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
 
@@ -480,6 +526,62 @@ export function useERDSession(
     takeSnapshot(currentNodes as Node<Entity>[], currentEdges);
   }, [setEdges, takeSnapshot, getNodes, getEdges]);
 
+  const handleMoveEnd = useCallback((_: any, v: Viewport) => {
+    // Only trigger save if user is not a public visitor AND not initializing
+    if (!isPublicView && !isInitializingRef.current) {
+      // Avoid saving if viewport hasn't significantly changed (prevents accidental saves on click)
+      const prev = viewportRef.current;
+      const hasChanged = 
+        Math.abs((prev.x || 0) - v.x) > 0.5 || 
+        Math.abs((prev.y || 0) - v.y) > 0.5 || 
+        Math.abs((prev.zoom || 1) - v.zoom) > 0.001;
+
+      if (hasChanged) {
+        viewportRef.current = v;
+        setSaveCounter(prevCounter => prevCounter + 1);
+      }
+    }
+  }, [isPublicView]);
+
+  // ── ERD Keyboard Shortcuts (undo/redo) ──
+  // Extracted from App.tsx global keydown handler — only active in erd view
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          if (canRedo) handleRedo();
+        } else {
+          if (canUndo) handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        if (canRedo) handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleUndo, handleRedo, canUndo, canRedo]);
+
+  // ── ERD Custom Event Listeners (editEntity / deleteEntity) ──
+  // Dispatched from EntityNode.tsx dropdown menu actions
+  // Extracted from App.tsx to keep ERD concerns co-located
+  useEffect(() => {
+    const onEditEntity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSelectedNodeId(detail);
+      options?.onEditEntity?.(detail);
+    };
+    const onDeleteEntity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      deleteEntity(detail);
+    };
+    window.addEventListener('editEntity', onEditEntity);
+    window.addEventListener('deleteEntity', onDeleteEntity);
+    return () => {
+      window.removeEventListener('editEntity', onEditEntity);
+      window.removeEventListener('deleteEntity', onDeleteEntity);
+    };
+  }, [setSelectedNodeId, deleteEntity, options?.onEditEntity]);
+
   return {
     nodes, setNodes, onNodesChange: onNodesChangeWrapped,
     edges, setEdges, onEdgesChange: onEdgesChangeWrapped,
@@ -500,6 +602,7 @@ export function useERDSession(
     takeSnapshot,
     isItemLoading,
     saveCounter,
-    onNodeDragStop
+    onNodeDragStop,
+    onMoveEnd: handleMoveEnd
   };
 }

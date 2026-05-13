@@ -1,5 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -42,11 +43,13 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ReactFlowProvider>
-      <TooltipProvider>
-        <App />
-        <Toaster position="top-center" />
-      </TooltipProvider>
-    </ReactFlowProvider>
+    <BrowserRouter>
+      <ReactFlowProvider>
+        <TooltipProvider>
+          <App />
+          <Toaster position="top-center" />
+        </TooltipProvider>
+      </ReactFlowProvider>
+    </BrowserRouter>
   </StrictMode>,
 );

@@ -35,11 +35,11 @@ interface TrashViewProps {
   restoreDrawing: (id: number) => Promise<void>;
   restoreFlowchart: (id: number) => Promise<void>;
   fetchTrash: () => void;
-  handleProjectPermanentDelete: (id: number) => void;
-  handleDiagramPermanentDelete: (id: number) => void;
-  handleNotePermanentDelete: (id: number) => void;
-  handleDrawingPermanentDelete: (id: number) => void;
-  handleFlowchartPermanentDelete: (id: number) => void;
+  handleProjectPermanentDelete: (file: any) => void;
+  handleDiagramPermanentDelete: (file: any) => void;
+  handleNotePermanentDelete: (file: any) => void;
+  handleDrawingPermanentDelete: (file: any) => void;
+  handleFlowchartPermanentDelete: (file: any) => void;
   isLoading?: boolean;
 }
 
@@ -113,7 +113,7 @@ export function TrashView({
                             <Button variant="outline" size="sm" onClick={async () => { await restoreProject(project.id); fetchTrash(); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>
@@ -163,10 +163,10 @@ export function TrashView({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreDiagram(file.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreDiagram(file); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDiagramPermanentDelete(file.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleDiagramPermanentDelete(file)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>
@@ -216,10 +216,10 @@ export function TrashView({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreNote(note.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreNote(note); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>
@@ -269,10 +269,10 @@ export function TrashView({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreDrawing(drawing.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreDrawing(drawing); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>
@@ -321,10 +321,10 @@ export function TrashView({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreFlowchart(flowchart.id); fetchTrash(); }}>
+                            <Button variant="outline" size="sm" onClick={async () => { await restoreFlowchart(flowchart); }}>
                               <RefreshCcw size={14} className="mr-1" /> Restore
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart.id)}>
+                            <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart)}>
                               <TrashIcon size={14} className="mr-1" /> Delete
                             </Button>
                           </div>

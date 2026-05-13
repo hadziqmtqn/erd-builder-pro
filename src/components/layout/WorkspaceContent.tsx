@@ -13,6 +13,10 @@ const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m
 
 // Lightweight views — eager loaded
 import { WelcomeView } from '@/components/views/WelcomeView';
+import { NotesTableView } from '@/components/views/NotesTableView';
+import { ErdTableView } from '@/components/views/ErdTableView';
+import { DrawingsTableView } from '@/components/views/DrawingsTableView';
+import { FlowchartTableView } from '@/components/views/FlowchartTableView';
 
 // Modals used inside workspace
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
@@ -27,6 +31,11 @@ export interface WorkspaceContentProps {
   isLoading: boolean;
   isReadOnly: boolean;
   hasActiveItem: boolean;
+  activeDiagram: any;
+  isNotesDocumentRoute?: boolean;
+  isERDDocumentRoute?: boolean;
+  isDrawingsDocumentRoute?: boolean;
+  isFlowchartDocumentRoute?: boolean;
 
   // ERDView callbacks (stabilized by parent)
   onNodesChange: OnNodesChange<Node<Entity>>;
@@ -40,6 +49,7 @@ export interface WorkspaceContentProps {
   canRedo?: boolean;
   takeSnapshot: (nodes: Node<Entity>[], edges: Edge[]) => void;
   onNodeDragStop?: () => void;
+  onMoveEnd?: (e: any, v: any) => void;
 
   // Stabilized inline callbacks
   onNodeClick: (e: React.MouseEvent, n: Node) => void;
@@ -61,19 +71,49 @@ export interface WorkspaceContentProps {
   triggerDebouncedSync: () => void;
   broadcastMessage: (type: any, draftType: any, id: any) => void;
   setIsLocalSaving: (val: boolean) => void;
-  viewportRef: React.MutableRefObject<any>;
-  lastLoadedDiagramIdRef: React.MutableRefObject<any>;
+  viewportRef: { current: any };
+  lastLoadedDiagramIdRef: { current: any };
 
   // Notes
   activeNote: any;
-  activeNoteId: any;
+  activeNoteUid: any;
   saveNote: (note: any) => Promise<boolean>;
   handleNoteChange: (content: string) => void;
   deleteNote: (id: any) => Promise<void>;
+  notes: any[];
+  notesTotal: number;
+  projects: any[];
+  onNoteCreate: () => void;
+  onNoteSelect: (uid: string) => void;
+  selectedWorkspaceUid: string | null;
+  tablePage: number;
+  onTablePageChange?: (page: number) => void;
+  onWorkspaceClick?: (uid: string | null) => void;
+  onOpenEditDocument?: (uid: string) => void;
+  onDeleteNote?: (uid: string) => void;
+
+  // ERD
+  diagrams: any[];
+  diagramsTotal: number;
+  onDiagramCreate: () => void;
+  onDiagramSelect: (uid: string) => void;
+  onDeleteDiagram: (uid: string) => void;
+
+  // Flowcharts
+  flowcharts: any[];
+  flowchartsTotal: number;
+  onFlowchartCreate: () => void;
+  onFlowchartSelect: (uid: string) => void;
+  onDeleteFlowchart: (uid: string) => void;
 
   // Drawings
   activeDrawing: any;
   activeDrawingId: any;
+  drawings: any[];
+  drawingsTotal: number;
+  onDrawingCreate: () => void;
+  onDrawingSelect: (uid: string) => void;
+  onDeleteDrawing: (uid: string) => void;
   saveDrawing: (drawing: any) => Promise<boolean>;
   handleDrawingChange: (data: string) => void;
   deleteDrawing: (id: any) => Promise<void>;
@@ -114,10 +154,95 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           </div>
         </div>
       }>
-      {!props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? <WelcomeView /> : (
+      {props.view === 'notes' && props.isNotesDocumentRoute && !props.activeNote ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading note...</p>
+        </div>
+      ) : props.view === 'erd' && props.isERDDocumentRoute && !props.activeDiagram ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
+        </div>
+      ) : props.view === 'flowchart' && props.isFlowchartDocumentRoute && !props.activeFlowchart ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+        </div>
+      ) : props.view === 'drawings' && props.isDrawingsDocumentRoute && !props.activeDrawing ? (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
+        </div>
+      ) : !props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && !props.isPublicView ? (
+        props.view === 'notes' ? (
+          <NotesTableView
+            notes={props.notes}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalNotes={props.notesTotal}
+            isLoading={false}
+            onSelectNote={props.onNoteSelect}
+            onCreateNote={props.onNoteCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteNote={(uid) => props.onDeleteNote?.(uid)}
+          />
+        ) : props.view === 'erd' ? (
+          <ErdTableView
+            diagrams={props.diagrams}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalDiagrams={props.diagramsTotal}
+            isLoading={false}
+            onSelectDiagram={props.onDiagramSelect}
+            onCreateDiagram={props.onDiagramCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteDiagram={props.onDeleteDiagram}
+          />
+        ) : props.view === 'flowchart' ? (
+          <FlowchartTableView
+            flowcharts={props.flowcharts}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalFlowcharts={props.flowchartsTotal}
+            isLoading={false}
+            onSelectFlowchart={props.onFlowchartSelect}
+            onCreateFlowchart={props.onFlowchartCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteFlowchart={props.onDeleteFlowchart}
+          />
+        ) : props.view === 'drawings' ? (
+          <DrawingsTableView
+            drawings={props.drawings}
+            projects={props.projects}
+            selectedWorkspace={props.selectedWorkspaceUid}
+            page={props.tablePage}
+            totalDrawings={props.drawingsTotal}
+            isLoading={false}
+            onSelectDrawing={props.onDrawingSelect}
+            onCreateDrawing={props.onDrawingCreate}
+            onPageChange={(p) => props.onTablePageChange?.(p)}
+            onWorkspaceClick={(uid) => props.onWorkspaceClick?.(uid)}
+            onOpenEditDocument={(uid) => props.onOpenEditDocument?.(uid)}
+            onDeleteDrawing={props.onDeleteDrawing}
+          />
+        ) : (
+          <WelcomeView />
+        )
+      ) : (
         <>
           {props.view === 'erd' && (props.isPublicView ? props.publicData : props.activeDiagramId) && (
             <ERDView 
+              key={props.isPublicView ? props.publicData?.id : props.activeDiagramId}
               isLoading={props.isLoading}
               nodes={props.nodes} edges={props.edges} onNodesChange={props.onNodesChange} onEdgesChange={props.onEdgesChange} onConnect={props.onConnect}
               onNodeClick={props.onNodeClick}
@@ -138,6 +263,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
               takeSnapshot={props.takeSnapshot}
               selectedNodeId={props.selectedNodeId}
               onNodeDragStop={props.onNodeDragStop}
+              onMoveEnd={props.onMoveEnd}
             />
           )}
           {props.view === 'backups' && (
@@ -161,7 +287,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
               lastLoadedDiagramIdRef={props.lastLoadedDiagramIdRef}
             />
           )}
-          {props.view === 'notes' && props.activeNote && <NotesView isLoading={props.isLoading} activeNoteId={props.isPublicView ? null : props.activeNoteId} activeNote={props.activeNote} saveNote={props.saveNote} handleNoteChange={props.handleNoteChange} deleteNote={props.deleteNote} isReadOnly={props.isReadOnly} />}
+          {props.view === 'notes' && props.activeNote && <NotesView isLoading={props.isLoading} activeNoteUid={props.isPublicView ? null : props.activeNoteUid} activeNote={props.activeNote} saveNote={props.saveNote} handleNoteChange={props.handleNoteChange} deleteNote={props.deleteNote} isReadOnly={props.isReadOnly} />}
           {props.view === 'drawings' && props.activeDrawing && <DrawingsView isLoading={props.isLoading} activeDrawingId={props.isPublicView ? null : props.activeDrawingId} activeDrawing={props.activeDrawing} saveDrawing={props.saveDrawing} handleDrawingChange={props.handleDrawingChange} deleteDrawing={props.deleteDrawing} isReadOnly={props.isReadOnly} />}
           {props.view === 'flowchart' && props.activeFlowchart && <FlowchartView isLoading={props.isLoading} activeFlowchartId={props.activeFlowchartId} activeFlowchart={props.activeFlowchart} handleFlowchartChange={props.handleFlowchartChange} isReadOnly={props.isReadOnly} />}
           {props.view === 'changelog' && <ChangelogView />}

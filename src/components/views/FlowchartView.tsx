@@ -8,6 +8,7 @@ import {
   useEdgesState,
   addEdge,
   Connection,
+  Edge,
   Node,
   BackgroundVariant,
   MarkerType,
@@ -44,25 +45,43 @@ export const FlowchartView = React.memo(({
   isReadOnly = false,
   isLoading = false 
 }: FlowchartViewProps) => {
-  // Only show full loader if we are loading AND don't have the flowchart data yet.
+  // ── Hooks FIRST (before any conditional return — Rule of Hooks) ──
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [isAddingNode, setIsAddingNode] = useState(false);
+  const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
+    label: 'New Symbol',
+    shape: 'rectangle',
+    color: '#8b5cf6',
+  });
+  const initialLoadRef = React.useRef(true);
+  const isParsingFromDataRef = React.useRef(false);
+
+  const parseFlowchartData = (raw: any) => {
+    if (!raw) return null;
+    if (typeof raw === 'object') return raw;
+    if (typeof raw !== 'string') return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  // ── Derived (guaranteed stable number of hooks) ──
   const showLoader = isLoading && (!activeFlowchart || !activeFlowchart.data);
 
-  if (showLoader) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
-        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
-      </div>
-    );
-  }
-
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
   // Initialize from db or use defaults
+  // Depend on activeFlowchain.data instead of just id,
+  // because data arrives async after selectFlowchart completes
   useEffect(() => {
+    isParsingFromDataRef.current = true;
+    initialLoadRef.current = true;
     try {
-      const parsed = JSON.parse(activeFlowchart.data || '{"nodes":[], "edges":[]}');
+      const parsed = parseFlowchartData(activeFlowchart.data) || { nodes: [], edges: [] };
       const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : initialNodes;
       const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : initialEdges;
       
@@ -74,35 +93,37 @@ export const FlowchartView = React.memo(({
       setNodes(initialNodes);
       setEdges(initialEdges);
     }
-  }, [activeFlowchartId]); // Only trigger when switching flowcharts
+
+    // Reset flag setelah render cycle selesai — ini biar auto-save trigger
+    // effect bisa detek bahwa perubahan nodes/edges berasal dari parsing data,
+    // bukan dari user edit.
+    const timer = setTimeout(() => {
+      isParsingFromDataRef.current = false;
+      initialLoadRef.current = false;
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      isParsingFromDataRef.current = false;
+    };
+  }, [activeFlowchartId, activeFlowchart.data]); // ← re-run when data loads asynchronously
 
   const handleFlowchartChangeRef = React.useRef(handleFlowchartChange);
   useEffect(() => {
     handleFlowchartChangeRef.current = handleFlowchartChange;
   }, [handleFlowchartChange]);
 
-  // Trigger autosave internally when local state changes
+  // Trigger autosave internally when local state changes (skip initial load & data parsing)
   useEffect(() => {
+    if (initialLoadRef.current || isParsingFromDataRef.current) {
+      return;
+    }
     if (nodes.length > 0 || edges.length > 0) {
       handleFlowchartChangeRef.current(nodes, edges);
     }
   }, [nodes, edges]);
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
-
-  // Add Node State
-  const [isAddingNode, setIsAddingNode] = useState(false);
-  const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
-    label: 'New Symbol',
-    shape: 'rectangle',
-    color: '#8b5cf6',
-  });
-
   const onConnect = useCallback(
-    (params: Connection | Edge) => setEdges((eds) => addEdge({
+    (params: Connection) => setEdges((eds) => addEdge({
       ...params,
       type: 'smoothstep',
       style: { stroke: '#b1b1b7' },
@@ -193,6 +214,17 @@ export const FlowchartView = React.memo(({
   };
 
   const memoizedNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId })), [nodes, selectedNodeId]);
+
+  const handleNodesChange = useCallback(
+    (changes: any[]) => {
+      // Ignore pure selection updates so a click that only opens the symbol modal
+      // does not count as a content edit and does not trigger autosave.
+      const dataChanges = changes.filter((change) => change.type !== 'select');
+      if (dataChanges.length === 0) return;
+      onNodesChange(dataChanges);
+    },
+    [onNodesChange],
+  );
   
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
@@ -218,6 +250,16 @@ export const FlowchartView = React.memo(({
     };
   }), [edges, hoveredEdgeId, selectedEdgeId]);
 
+  // ── EARLY RETURN (setelah semua hooks) ──
+  if (showLoader) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
+      </div>
+    );
+  }
+
   return (
     <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
       
@@ -225,7 +267,7 @@ export const FlowchartView = React.memo(({
       {!isReadOnly && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
-            <JumpToNode nodes={nodes} />
+            <JumpToNode nodes={nodes} label="Symbol" />
             <div className="w-px h-6 bg-border mx-0.5" />
             <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
               <Plus className="w-4 h-4 sm:mr-2" />
@@ -239,7 +281,7 @@ export const FlowchartView = React.memo(({
         <ReactFlow
           nodes={memoizedNodes}
           edges={memoizedEdges}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}

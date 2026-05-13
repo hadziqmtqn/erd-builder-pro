@@ -32,7 +32,10 @@ export const TablePropertiesModal: React.FC<TablePropertiesModalProps> = ({
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent 
+        className="sm:max-w-sm"
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <div className="flex items-center justify-between pr-8">
             <div className="space-y-1 text-left">
