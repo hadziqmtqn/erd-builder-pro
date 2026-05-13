@@ -1,5 +1,5 @@
 import React from 'react';
-import { Diagram, Project } from '@/types';
+import { Flowchart, Project } from '@/types';
 import {
   Table,
   TableBody,
@@ -16,52 +16,52 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Network, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface ErdTableViewProps {
-  diagrams: Diagram[];
+interface FlowchartTableViewProps {
+  flowcharts: Flowchart[];
   projects: Project[];
   selectedWorkspace: string | null;
   page: number;
-  totalDiagrams: number;
+  totalFlowcharts: number;
   isLoading: boolean;
-  onSelectDiagram: (uid: string) => void;
-  onCreateDiagram: () => void;
+  onSelectFlowchart: (uid: string) => void;
+  onCreateFlowchart: () => void;
   onPageChange: (page: number) => void;
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
-  onDeleteDiagram: (uid: string) => void;
+  onDeleteFlowchart: (uid: string) => void;
 }
 
 const ITEMS_PER_PAGE = 10;
 
-export const ErdTableView = React.memo(function ErdTableView({
-  diagrams,
+export const FlowchartTableView = React.memo(function FlowchartTableView({
+  flowcharts,
   projects,
   selectedWorkspace,
   page,
-  totalDiagrams,
+  totalFlowcharts,
   isLoading,
-  onSelectDiagram,
-  onCreateDiagram,
+  onSelectFlowchart,
+  onCreateFlowchart,
   onPageChange,
   onWorkspaceClick,
   onOpenEditDocument,
-  onDeleteDiagram,
-}: ErdTableViewProps) {
-  const totalPages = Math.max(1, Math.ceil(totalDiagrams / ITEMS_PER_PAGE));
+  onDeleteFlowchart,
+}: FlowchartTableViewProps) {
+  const totalPages = Math.max(1, Math.ceil(totalFlowcharts / ITEMS_PER_PAGE));
 
   const getProjectById = (projectId: number | string | null | undefined) => {
     if (projectId === null || projectId === undefined) return null;
     return projects.find(p => String(p.id) === String(projectId) || String(p.uid) === String(projectId)) || null;
   };
 
-  const getProjectName = (d: Diagram): string => {
-    return d.projects?.name || getProjectById(d.project_id)?.name || '—';
+  const getProjectName = (flowchart: Flowchart): string => {
+    return flowchart.projects?.name || getProjectById(flowchart.project_id)?.name || '—';
   };
 
-  const getProjectUid = (d: Diagram): string | null => {
-    return d.projects?.uid || getProjectById(d.project_id)?.uid || null;
+  const getProjectUid = (flowchart: Flowchart): string | null => {
+    return flowchart.projects?.uid || getProjectById(flowchart.project_id)?.uid || null;
   };
 
   const formatDate = (dateStr?: string) => {
@@ -89,11 +89,10 @@ export const ErdTableView = React.memo(function ErdTableView({
 
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <Columns3 className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-lg font-semibold">ERD Builder</h2>
+          <Network className="w-5 h-5 text-cyan-400" />
+          <h2 className="text-lg font-semibold">Flowcharts</h2>
           {selectedWorkspace && (
             <>
               <span className="text-muted-foreground">/</span>
@@ -106,16 +105,15 @@ export const ErdTableView = React.memo(function ErdTableView({
             </>
           )}
           <span className="text-xs text-muted-foreground ml-2">
-            ({totalDiagrams} diagrams)
+            ({totalFlowcharts} flowcharts)
           </span>
         </div>
-        <Button size="sm" onClick={onCreateDiagram}>
+        <Button size="sm" onClick={onCreateFlowchart}>
           <Plus className="w-4 h-4 mr-1.5" />
-          Create Diagram
+          Create Flowchart
         </Button>
       </div>
 
-      {/* Table */}
       <div className="overflow-auto rounded-t-xl border border-b-0">
         <Table>
           <TableHeader>
@@ -128,27 +126,27 @@ export const ErdTableView = React.memo(function ErdTableView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {diagrams.length === 0 ? (
+            {flowcharts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                  {totalDiagrams === 0
-                    ? 'No diagrams yet. Create your first ERD diagram to get started.'
-                    : 'No diagrams on this page.'}
+                  {totalFlowcharts === 0
+                    ? 'No flowcharts yet. Create your first flowchart to get started.'
+                    : 'No flowcharts on this page.'}
                 </TableCell>
               </TableRow>
             ) : (
-              diagrams.map(d => {
-                const uid = d.uid ?? String(d.id);
-                const currentProjectUid = getProjectUid(d);
+              flowcharts.map(flowchart => {
+                const uid = flowchart.uid ?? String(flowchart.id);
+                const currentProjectUid = getProjectUid(flowchart);
                 return (
                   <TableRow
                     key={uid}
                     className="cursor-pointer group"
-                    onClick={() => onSelectDiagram(uid)}
+                    onClick={() => onSelectFlowchart(uid)}
                   >
                     <TableCell className="font-medium">
                       <span className="truncate block max-w-[280px]">
-                        {d.name || 'Untitled'}
+                        {flowchart.title || 'Untitled'}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -159,14 +157,14 @@ export const ErdTableView = React.memo(function ErdTableView({
                           onWorkspaceClick(currentProjectUid);
                         }}
                       >
-                        {getProjectName(d)}
+                        {getProjectName(flowchart)}
                       </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(d.updated_at)}
+                      {formatDate(flowchart.updated_at)}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(d.created_at)}
+                      {formatDate(flowchart.created_at)}
                     </TableCell>
                     <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <DropdownMenu>
@@ -187,7 +185,7 @@ export const ErdTableView = React.memo(function ErdTableView({
                             Edit Document
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => onDeleteDiagram(uid)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => onDeleteFlowchart(uid)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
                           </DropdownMenuItem>
@@ -202,7 +200,6 @@ export const ErdTableView = React.memo(function ErdTableView({
         </Table>
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-x border-b bg-background px-4 py-2 shrink-0 rounded-b-xl">
           <span className="text-xs text-muted-foreground">

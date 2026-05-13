@@ -255,7 +255,7 @@ function AppContent() {
   } = useDrawings(isGuest);
 
   const {
-    flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent,
+    flowcharts, setFlowcharts, activeFlowchartId, setActiveFlowchartId, fetchFlowcharts, createFlowchart, updateFlowchart, deleteFlowchart, moveFlowchartToProject, saveFlowchart, restoreFlowchart, deleteFlowchartPermanent, flowchartsTotal,
     isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart
   } = useFlowcharts(isGuest);
 
@@ -646,9 +646,10 @@ function AppContent() {
   const handleHeaderRename = useCallback(() => {
     if (!activeDocument) return;
     setNewName(activeDocument.title || activeDocument.name || "");
-    setRenameProjectId(activeDocument.project_id?.toString() || activeDocument.projectId?.toString() || "none");
+    const currentProject = projects?.find((proj: any) => String(proj.id) === String(activeDocument.project_id) || String(proj.uid) === String(activeDocument.project_id) || String(proj.uid) === String(activeDocument.projects?.uid));
+    setRenameProjectId(currentProject ? String(currentProject.id) : "none");
     setIsRenameDialogOpen(true);
-  }, [activeDocument]);
+  }, [activeDocument, projects]);
 
   // Open RenameDocumentDialog for a document from table view (no activeDocument)
   const handleOpenEditDocument = useCallback((uid: string) => {
@@ -665,10 +666,10 @@ function AppContent() {
     if (!doc) return;
     setEditDialogNote(doc);
     setNewName(doc.title || doc.name || '');
-    const pid = doc.projects?.uid || doc.project_id?.toString() || '';
-    setRenameProjectId(pid === '' ? 'none' : pid);
+    const currentProject = projects?.find((proj: any) => String(proj.id) === String(doc.project_id) || String(proj.uid) === String(doc.project_id) || String(proj.uid) === String(doc.projects?.uid));
+    setRenameProjectId(currentProject ? String(currentProject.id) : 'none');
     setIsRenameDialogOpen(true);
-  }, [view, notes, diagrams, drawings, flowcharts]);
+  }, [view, notes, diagrams, drawings, flowcharts, projects]);
 
   // Open RenameDocumentDialog for creating a document from table view
   const handleOpenCreateDocument = useCallback((featureView: string) => {
@@ -925,6 +926,23 @@ function AppContent() {
     fetchDiagrams(false, projId, '', null, 10, pageNum);
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView]);
 
+  // 🗂 Server-side pagination: fetch flowcharts from dedicated endpoint when table params change
+  useEffect(() => {
+    const isTableMode = view === 'flowchart' && !hasActiveItem;
+    if (!isTableMode) return;
+    if (!isAuthenticated || isPublicView) return;
+
+    let projId: string | number | null = 'all';
+    if (selectedWorkspaceUid) {
+      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
+      projId = p ? p.id : null;
+    }
+
+    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
+
+    fetchFlowcharts(false, projId, '', null, 10, { page: pageNum });
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView]);
+
   // Handlers
 
   useEffect(() => {
@@ -987,7 +1005,7 @@ function AppContent() {
     if (!getSharePathInfo()) {
       let targetUrl: string | null = null;
       if (newView === 'notes' && activeNoteUid) targetUrl = '/notes/' + activeNoteUid;
-      else if (newView === 'flowchart' && activeFlowchartId) targetUrl = '/flowcharts/' + activeFlowchartId;
+      else if (newView === 'flowchart' && activeFlowchart) targetUrl = '/flowcharts/' + (activeFlowchart.uid || activeFlowchartId);
       else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
       else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
       else if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
@@ -1285,6 +1303,18 @@ function AppContent() {
             const diagram = diagrams?.find((d: any) => d.uid === uid || String(d.id) === uid);
             if (diagram) {
               setTableDeleteDoc(diagram);
+              setIsMoveToTrashAlertOpen(true);
+            }
+          }}
+
+          flowcharts={flowcharts}
+          flowchartsTotal={flowchartsTotal}
+          onFlowchartCreate={() => handleOpenCreateDocument('flowchart')}
+          onFlowchartSelect={handleFlowchartSelect}
+          onDeleteFlowchart={async (uid) => {
+            const flowchart = flowcharts?.find((f: any) => f.uid === uid || String(f.id) === uid);
+            if (flowchart) {
+              setTableDeleteDoc(flowchart);
               setIsMoveToTrashAlertOpen(true);
             }
           }}

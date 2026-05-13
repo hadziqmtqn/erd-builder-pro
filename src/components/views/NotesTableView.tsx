@@ -52,13 +52,18 @@ export const NotesTableView = React.memo(function NotesTableView({
   // Notes are already filtered and paginated server-side — display them directly
   const totalPages = Math.max(1, Math.ceil(totalNotes / ITEMS_PER_PAGE));
 
+  const getProjectById = (projectId: number | string | null | undefined) => {
+    if (projectId === null || projectId === undefined) return null;
+    return projects.find(p => String(p.id) === String(projectId) || String(p.uid) === String(projectId)) || null;
+  };
+
   // Get project name helper (uses eager-loaded join data from API)
   const getProjectName = (note: Note): string => {
-    return note.projects?.name || '—';
+    return note.projects?.name || getProjectById(note.project_id)?.name || '—';
   };
 
   const getProjectUid = (note: Note): string | null => {
-    return note.projects?.uid || null;
+    return note.projects?.uid || getProjectById(note.project_id)?.uid || null;
   };
 
   const formatDate = (dateStr?: string) => {

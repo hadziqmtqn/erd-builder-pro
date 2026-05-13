@@ -16,7 +16,18 @@ export function useFlowcharts(isGuest: boolean = false) {
   // Keep ref in sync
   flowchartsRef.current = flowcharts;
 
-  const fetchFlowcharts = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, options?: { silent?: boolean }) => {
+  const matchesFlowchartId = (flowchart: Flowchart, uid: string | number) => {
+    return String(flowchart.uid ?? flowchart.id) === String(uid);
+  };
+
+  const fetchFlowcharts = useCallback(async (
+    isLoadMore = false,
+    projectId: number | null | string = 'all',
+    searchQuery = '',
+    isPublic: boolean | null = null,
+    limit = 10,
+    options?: { silent?: boolean; page?: number },
+  ) => {
     if (isGuest) {
       const localFlowcharts = await localPersistence.getAllResources('flowchart');
       let filtered = localFlowcharts.filter(f => !f.is_deleted);
@@ -26,7 +37,17 @@ export function useFlowcharts(isGuest: boolean = false) {
       if (searchQuery) {
         filtered = filtered.filter(f => f.title.toLowerCase().includes(searchQuery.toLowerCase()));
       }
-      setFlowcharts(filtered);
+      filtered.sort((a: any, b: any) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return db - da;
+      });
+
+      const pageNum = options?.page ?? 1;
+      const startIdx = (pageNum - 1) * limit;
+      const paged = filtered.slice(startIdx, startIdx + limit);
+
+      setFlowcharts(paged);
       setFlowchartsTotal(filtered.length);
       setHasMoreFlowcharts(false);
       return;
@@ -34,7 +55,7 @@ export function useFlowcharts(isGuest: boolean = false) {
 
     if (!options?.silent) setIsLoading(true);
     try {
-      const offset = isLoadMore ? flowchartsRef.current.length : 0;
+      const offset = options?.page !== undefined ? (options.page - 1) * limit : (isLoadMore ? flowchartsRef.current.length : 0);
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
@@ -107,7 +128,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.title = title;
         flowchart.updated_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, title } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, title } : f));
         if (!options?.silent) toast.success('Flowchart renamed locally');
       }
       return;
@@ -120,7 +141,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, title } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, title } : f));
         if (!options?.silent) toast.success('Flowchart renamed successfully');
       }
     } catch (err) {}
@@ -133,9 +154,9 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.is_deleted = true;
         flowchart.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, is_deleted: true } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: true } : f));
         if (activeFlowchartId !== null) {
-          const fc = flowchartsRef.current.find(f => f.uid === uid);
+          const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
         }
         toast.success('Flowchart moved to local trash');
@@ -146,9 +167,9 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const res = await fetch(`/api/flowcharts/${uid}`, { method: 'DELETE' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, is_deleted: true } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: true } : f));
         if (activeFlowchartId !== null) {
-          const fc = flowchartsRef.current.find(f => f.uid === uid);
+          const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
         }
         toast.success('Flowchart moved to trash');
@@ -162,7 +183,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       if (flowchart) {
         flowchart.project_id = projectId;
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, project_id: projectId } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, project_id: projectId } : f));
         if (!options?.silent) toast.success('Flowchart moved to project locally');
       }
       return true;
@@ -175,7 +196,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         body: JSON.stringify({ project_id: projectId }),
       });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, project_id: projectId } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, project_id: projectId } : f));
         if (!options?.silent) toast.success('Flowchart moved to project');
         return true;
       }
