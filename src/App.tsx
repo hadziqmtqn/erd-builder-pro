@@ -74,6 +74,9 @@ import {
 function AppContent() {
   const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'>(() => {
     if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    // Check URL params first (e.g., ?view=trash survives reload)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('view') === 'trash') return 'trash';
     return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
   });
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>(() => {
@@ -1031,9 +1034,10 @@ function AppContent() {
       else if (newView === 'flowchart' && activeFlowchart) targetUrl = '/flowcharts/' + (activeFlowchart.uid || activeFlowchartId);
       else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
       else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
-      else if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
+      else if (newView === 'trash') targetUrl = '/?view=trash';
+      else if (newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
       
-      if (targetUrl && targetUrl !== location.pathname) {
+      if (targetUrl && targetUrl !== location.pathname + location.search) {
         navigate(targetUrl, { replace: true });
       }
     }
@@ -1043,8 +1047,8 @@ function AppContent() {
     if (itemToDelete) {
       const { id, type, uid } = itemToDelete;
       if (type === 'project') await deleteProjectPermanent(id);
-      else if (type === 'erd') await deleteDiagramPermanent(id);
-      else if (type === 'notes') await deleteNotePermanent(String(id));
+      else if (type === 'erd') await deleteDiagramPermanent(uid || String(id));
+      else if (type === 'notes') await deleteNotePermanent(uid || String(id));
       else if (type === 'drawings') await deleteDrawingPermanent(uid || String(id));
       else if (type === 'flowchart') await deleteFlowchartPermanent(uid || String(id));
       setIsPermanentDeleteConfirmOpen(false);
@@ -1135,6 +1139,7 @@ function AppContent() {
     fetchTrash, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
     debouncedSearchQuery,
     setItemToDelete, setIsPermanentDeleteConfirmOpen,
+    trashData,
   });
 
   if (isAuthenticated === null && !isPublicView) return <AppInitialization type="init" />;
