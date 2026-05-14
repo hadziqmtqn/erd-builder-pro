@@ -58,12 +58,12 @@ import {
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 
-import { Project } from "../types"
+import { Project, AppView } from "../types"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
-  view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups';
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups', showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
+  view: AppView;
+  onViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
   onNoteSelect: (uid: string) => void;
   onDrawingSelect: (uid: string) => void;
   onProjectCreate: (name: string) => void;

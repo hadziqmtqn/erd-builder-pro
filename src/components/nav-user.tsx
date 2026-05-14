@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/sidebar"
 import React from "react"
 import { DatabaseBackupModal } from "./modals/DatabaseBackupModal"
+import { AppView } from "../types"
 
 export function NavUser({
   user,
@@ -41,7 +42,7 @@ export function NavUser({
 }: {
   user: any
   onLogout: () => void
-  onViewChange: (view: 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups') => void
+  onViewChange: (view: AppView) => void
   isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
@@ -96,7 +97,22 @@ export function NavUser({
                   </DropdownMenuGroup>
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
+
               <DropdownMenuSeparator />
+
+              <DropdownMenuGroup>
+                <DropdownMenuItem 
+                  onClick={() => isOnline && onViewChange('ai-config')}
+                  className="cursor-pointer"
+                  disabled={!isOnline}
+                >
+                  <Sparkles className="mr-2 size-4 text-purple-400" />
+                  AI Configuration
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuSeparator />
+              
               <DropdownMenuGroup>
                 <DropdownMenuItem 
                   onClick={() => isOnline && onViewChange('backups')}
@@ -118,7 +134,9 @@ export function NavUser({
                   What's New
                 </DropdownMenuItem>
               </DropdownMenuGroup>
+
               <DropdownMenuSeparator />
+              
               <DropdownMenuGroup>
                 <DropdownMenuItem 
                   onClick={() => isOnline && onViewChange('trash')}
@@ -129,7 +147,9 @@ export function NavUser({
                   Trash
                 </DropdownMenuItem>
               </DropdownMenuGroup>
+              
               <DropdownMenuSeparator />
+
               <DropdownMenuItem 
                 onClick={() => isOnline && onLogout()} 
                 disabled={!isOnline}

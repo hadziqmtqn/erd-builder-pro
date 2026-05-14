@@ -67,7 +67,7 @@ import { useDocumentActions } from './hooks/useDocumentActions';
 // Lib & Types
 import { getSharePathInfo } from './lib/urlUtils';
 import { toast } from 'sonner';
-import { Entity, DraftType } from './types';
+import { Entity, DraftType, AppView } from './types';
 
 // UI
 import {
@@ -76,11 +76,12 @@ import {
 } from "@/components/ui/sidebar"
 
 function AppContent() {
-  const [view, setView] = useState<'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups'>(() => {
+  const [view, setView] = useState<AppView>(() => {
     if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
     // Check URL params first (e.g., ?view=trash survives reload)
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('view') === 'trash') return 'trash';
+    if (urlParams.get('view') === 'ai-config') return 'ai-config';
     return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
   });
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>(() => {
@@ -829,8 +830,8 @@ function AppContent() {
     }
 
     setView(newView);
-    if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups') {
-      setSidebarView(newView);
+    if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups' && newView !== 'ai-config') {
+      setSidebarView(newView as any);
     }
 
     // "Show Table" mode: clear active document and navigate to table view list
@@ -855,6 +856,7 @@ function AppContent() {
       else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
       else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
       else if (newView === 'trash') targetUrl = '/?view=trash';
+      else if (newView === 'ai-config') targetUrl = '/?view=ai-config';
       else if (newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
       
       if (targetUrl && targetUrl !== location.pathname + location.search) {
