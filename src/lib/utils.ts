@@ -11,6 +11,7 @@ export const COLUMN_TYPES = [
   "VARCHAR",
   "CHAR",
   "TEXT",
+  "LONGTEXT",
   "BOOLEAN",
   "DATE",
   "TIMESTAMP",
