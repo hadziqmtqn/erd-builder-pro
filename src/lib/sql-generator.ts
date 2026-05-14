@@ -12,6 +12,7 @@ function mapType(type: string, target: SQLType): string {
       case 'int': return 'INT';
       case 'bigint': return 'BIGINT';
       case 'text': return 'TEXT';
+      case 'longtext': return 'LONGTEXT';
       case 'boolean':
       case 'bool': return 'TINYINT(1)';
       case 'timestamp': return 'TIMESTAMP';
@@ -32,6 +33,7 @@ function mapType(type: string, target: SQLType): string {
       case 'int': return 'INTEGER';
       case 'bigint': return 'BIGINT';
       case 'text': return 'TEXT';
+      case 'longtext': return 'TEXT';
       case 'boolean':
       case 'bool': return 'BOOLEAN';
       case 'timestamp': return 'TIMESTAMP';
@@ -133,6 +135,7 @@ export function generateLaravelMigration(entity: Entity): string {
           method = (name.endsWith('_id') || col.is_pk) ? 'unsignedBigInteger' : 'bigInteger'; 
           break;
         case 'text': method = 'text'; break;
+        case 'longtext': method = 'longText'; break;
         case 'boolean':
         case 'bool': method = 'boolean'; break;
         case 'timestamp': method = 'timestamp'; break;

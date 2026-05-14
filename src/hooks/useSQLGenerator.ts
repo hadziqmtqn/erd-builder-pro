@@ -20,6 +20,7 @@ export function useSQLGenerator() {
 
         if (typeLower === 'varchar') resolvedType = 'VARCHAR(255)';
         else if (typeLower === 'char') resolvedType = 'CHAR(255)';
+        else if (typeLower === 'longtext' && dialect === 'postgresql') resolvedType = 'TEXT';
 
         sql += `  ${col.name} ${resolvedType}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${i === entity.columns.length - 1 ? '' : ','}\n`;
       });
