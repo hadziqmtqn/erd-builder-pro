@@ -18,11 +18,13 @@ import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
 import { format } from "date-fns";
 
+import { AppView } from '@/types';
+
 interface MainHeaderProps {
   featureLabel: string;
   activeProjectName: string | null | undefined;
   activeFileName: string | null | undefined;
-  view: 'erd' | 'notes' | 'drawings' | 'flowchart' | 'trash' | 'changelog' | 'backups';
+  view: AppView;
   hasActiveItem: boolean;
   syncError?: boolean;
   isSyncing?: boolean;

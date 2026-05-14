@@ -141,3 +141,54 @@ export interface EntityChange {
   change_type: 'create' | 'update' | 'delete';
   created_at: string;
 }
+
+// AI Integration Types
+export interface AIProvider {
+  id: number | string;
+  name: string;
+  code: string;
+  base_url?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface AIModel {
+  id: number | string;
+  provider_id: number | string;
+  model_identifier: string;
+  display_name: string;
+  context_window?: number;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface UserAIConfig {
+  id: number | string;
+  user_id: string;
+  provider_id: number | string;
+  selected_model_id?: number | string;
+  api_key: string;
+  is_enabled: boolean;
+  updated_at?: string;
+}
+
+export interface AIChatSession {
+  id: number | string;
+  uid: string;
+  user_id: string;
+  project_id?: number | string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIChatMessage {
+  id: number | string;
+  session_id: number | string;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  referenced_file_info?: any;
+  created_at: string;
+}
+
+export type AppView = 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups' | 'ai-config';
