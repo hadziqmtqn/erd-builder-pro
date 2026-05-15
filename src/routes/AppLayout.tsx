@@ -75,6 +75,7 @@ export function AppLayout() {
     tableDeleteDoc, setTableDeleteDoc,
     executeDuplicate, confirmPermanentDelete,
     handleEdgeUpdate: handleEdgeUpdate2,
+    breadcrumbLabel,
   } = useWorkspace();
 
   return (
@@ -138,6 +139,7 @@ export function AppLayout() {
           fileSearchQuery={fileSearchQuery}
           onFileSearchChange={setFileSearchQuery}
           hideFileSearch={location.pathname === '/'}
+          breadcrumbLabel={breadcrumbLabel}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>

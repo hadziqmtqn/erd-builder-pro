@@ -57,6 +57,7 @@ interface MainHeaderProps {
   fileSearchQuery?: string;
   onFileSearchChange?: (value: string) => void;
   hideFileSearch?: boolean;
+  breadcrumbLabel?: string | null;
 }
 
 export const MainHeader = React.memo(({
@@ -92,6 +93,7 @@ export const MainHeader = React.memo(({
   fileSearchQuery = '',
   onFileSearchChange,
   hideFileSearch,
+  breadcrumbLabel,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
@@ -111,16 +113,23 @@ export const MainHeader = React.memo(({
         )}
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
-            {!isPublicView && (
+            {/* Case 1: Page-specific breadcrumb (e.g. "Dashboard") — replaces featureLabel */}
+            {!isPublicView && !hasActiveItem && breadcrumbLabel && (
               <BreadcrumbItem className="shrink-0">
-                <BreadcrumbPage className="font-medium text-muted-foreground">
-                  {featureLabel}
+                <BreadcrumbPage className="font-semibold text-foreground">
+                  {breadcrumbLabel}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             )}
-            
+
+            {/* Case 2: Active document — featureLabel > projectName > fileName */}
             {!isPublicView && hasActiveItem && (
               <>
+                <BreadcrumbItem className="shrink-0">
+                  <BreadcrumbPage className="font-medium text-muted-foreground">
+                    {featureLabel}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
                 <BreadcrumbSeparator className="shrink-0" />
                 <BreadcrumbItem className="min-w-0 shrink">
                   <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName || "Uncategorized"}</BreadcrumbPage>
@@ -128,7 +137,7 @@ export const MainHeader = React.memo(({
               </>
             )}
 
-            {activeFileName && (
+            {hasActiveItem && activeFileName && (
               <>
                 {!isPublicView && <BreadcrumbSeparator className="shrink-0" />}
                 <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
@@ -153,6 +162,17 @@ export const MainHeader = React.memo(({
                 </BreadcrumbItem>
               </>
             )}
+
+            {/* Case 3: Table list — just featureLabel */}
+            {!isPublicView && !hasActiveItem && !breadcrumbLabel && (
+              <BreadcrumbItem className="shrink-0">
+                <BreadcrumbPage className="font-medium text-muted-foreground">
+                  {featureLabel}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            )}
+
+            {!isPublicView && hasActiveItem && isSyncing}
           </BreadcrumbList>
         </Breadcrumb>
       </div>
