@@ -3,22 +3,36 @@ import {
   Plus, 
   Trash, 
   Pencil, 
-  X, 
-  Save,
   Sparkles,
   MessageSquare,
   Brain,
   Zap,
   Copy,
-  Check
+  Check,
+  Settings2,
+  Terminal
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '../ui/switch';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import { Field, FieldLabel } from '@/components/ui/field';
 
 export interface PromptTemplate {
   id: string;
@@ -30,7 +44,6 @@ export interface PromptTemplate {
 }
 
 interface DefaultPromptsTabProps {
-  // For now, prompts are stored locally - will integrate with DB later
   initialPrompts?: PromptTemplate[];
   onSavePrompts?: (prompts: PromptTemplate[]) => void;
 }
@@ -52,11 +65,11 @@ const DEFAULT_PROMPTS: PromptTemplate[] = [
   },
 ];
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  system: { label: 'System Instruction', icon: <Brain className="w-4 h-4" />, color: 'text-purple-500' },
-  context: { label: 'Context', icon: <MessageSquare className="w-4 h-4" />, color: 'text-blue-500' },
-  format: { label: 'Format', icon: <Zap className="w-4 h-4" />, color: 'text-amber-500' },
-  custom: { label: 'Custom', icon: <Sparkles className="w-4 h-4" />, color: 'text-green-500' },
+const CATEGORY_MAP: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  system: { label: 'System Instruction', icon: <Brain className="size-3.5" />, color: 'text-purple-500' },
+  context: { label: 'Context', icon: <MessageSquare className="size-3.5" />, color: 'text-blue-500' },
+  format: { label: 'Format', icon: <Zap className="size-3.5" />, color: 'text-amber-500' },
+  custom: { label: 'Custom', icon: <Sparkles className="size-3.5" />, color: 'text-green-500' },
 };
 
 export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
@@ -64,380 +77,276 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
   onSavePrompts
 }) => {
   const [prompts, setPrompts] = useState<PromptTemplate[]>(initialPrompts || DEFAULT_PROMPTS);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [newPrompt, setNewPrompt] = useState<Partial<PromptTemplate>>({
+  const [formData, setFormData] = useState<Partial<PromptTemplate>>({
     name: '',
     content: '',
-    category: 'custom',
+    category: 'system',
     is_default: false,
   });
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const handleSaveNew = () => {
-    if (!newPrompt.name?.trim() || !newPrompt.content?.trim()) {
+  const handleOpenAdd = () => {
+    setEditingId(null);
+    setFormData({ name: '', content: '', category: 'system', is_default: false });
+    setIsDialogOpen(true);
+  };
+
+  const handleOpenEdit = (prompt: PromptTemplate) => {
+    setEditingId(prompt.id);
+    setFormData({ ...prompt });
+    setIsDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    if (!formData.name?.trim() || !formData.content?.trim()) {
       toast.error('Please fill in name and content');
       return;
     }
 
-    const prompt: PromptTemplate = {
-      id: `prompt-${Date.now()}`,
-      name: newPrompt.name!,
-      content: newPrompt.content!,
-      category: newPrompt.category || 'custom',
-      is_default: newPrompt.is_default || false,
-      created_at: new Date().toISOString(),
-    };
+    let updatedPrompts: PromptTemplate[];
+
+    if (editingId) {
+      // Update existing
+      updatedPrompts = prompts.map(p => 
+        p.id === editingId ? { ...p, ...formData as PromptTemplate } : p
+      );
+    } else {
+      // Create new
+      const newPrompt: PromptTemplate = {
+        id: `prompt-${Date.now()}`,
+        name: formData.name!,
+        content: formData.content!,
+        category: formData.category || 'custom',
+        is_default: formData.is_default || false,
+        created_at: new Date().toISOString(),
+      };
+      updatedPrompts = [...prompts, newPrompt];
+    }
 
     // If setting as default, unset others
-    if (prompt.is_default) {
-      setPrompts(prev => prev.map(p => ({ ...p, is_default: false })));
+    if (formData.is_default) {
+      updatedPrompts = updatedPrompts.map(p => ({
+        ...p,
+        is_default: p.id === (editingId || updatedPrompts[updatedPrompts.length-1].id)
+      }));
     }
 
-    setPrompts(prev => [...prev, prompt]);
-    setIsCreating(false);
-    setNewPrompt({ name: '', content: '', category: 'custom', is_default: false });
-    toast.success('Prompt created successfully');
-    
-    onSavePrompts?.(prompts);
+    setPrompts(updatedPrompts);
+    setIsDialogOpen(false);
+    toast.success(editingId ? 'Prompt updated' : 'Prompt created');
+    onSavePrompts?.(updatedPrompts);
   };
 
-  const handleUpdatePrompt = (id: string, updates: Partial<PromptTemplate>) => {
-    // If setting as default, unset others first
-    if (updates.is_default) {
-      setPrompts(prev => prev.map(p => ({ ...p, is_default: false })));
-    }
-    
-    setPrompts(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-    setEditingId(null);
-    toast.success('Prompt updated');
-    
-    onSavePrompts?.(prompts);
-  };
-
-  const handleDeletePrompt = (id: string) => {
-    if (!confirm('Delete this prompt?')) return;
-    setPrompts(prev => prev.filter(p => p.id !== id));
+  const handleDelete = (id: string) => {
+    if (!confirm('Are you sure you want to delete this prompt?')) return;
+    const updated = prompts.filter(p => p.id !== id);
+    setPrompts(updated);
     toast.success('Prompt deleted');
-    
-    onSavePrompts?.(prompts);
+    onSavePrompts?.(updated);
   };
 
-  const handleCopyContent = async (prompt: PromptTemplate) => {
+  const handleCopy = async (prompt: PromptTemplate) => {
     await navigator.clipboard.writeText(prompt.content);
     setCopiedId(prompt.id);
+    toast.success('Copied to clipboard');
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSetDefault = (id: string) => {
-    setPrompts(prev => prev.map(p => ({ 
-      ...p, 
-      is_default: p.id === id 
-    })));
-    toast.success('Default prompt updated');
-    
-    onSavePrompts?.(prompts);
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <Card className="border-border/50 bg-background/50 backdrop-blur-sm">
-        <CardHeader className="pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-500/10 rounded-lg">
-                <Brain className="w-5 h-5 text-purple-500" />
-              </div>
-              <div>
-                <CardTitle className="text-xl">Default Prompts</CardTitle>
-                <CardDescription>
-                  Configure how AI responds. Prompts are prepended to guide the AI's behavior.
-                </CardDescription>
-              </div>
-            </div>
-            <Button 
-              onClick={() => setIsCreating(true)}
-              className="gap-2"
-              disabled={isCreating}
-            >
-              <Plus className="w-4 h-4" />
-              New Prompt
-            </Button>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-500/10 rounded-lg">
+            <Terminal className="w-5 h-5 text-purple-500" />
           </div>
-        </CardHeader>
-      </Card>
-
-      {/* New Prompt Form */}
-      {isCreating && (
-        <Card className="border-purple-500/30 bg-purple-500/5 backdrop-blur-sm">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Create New Prompt</CardTitle>
-              <button
-                onClick={() => {
-                  setIsCreating(false);
-                  setNewPrompt({ name: '', content: '', category: 'custom', is_default: false });
-                }}
-                className="p-1 hover:bg-muted rounded transition-colors"
-              >
-                <X className="w-5 h-5 text-muted-foreground" />
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Prompt Name
-                </Label>
-                <Input 
-                  placeholder="e.g. Concise Mode, Technical Expert"
-                  value={newPrompt.name || ''}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
-                  className="h-11 bg-muted/10"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Category
-                </Label>
-                <select
-                  value={newPrompt.category || 'custom'}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, category: e.target.value as any }))}
-                  className="w-full h-11 px-3 rounded-md border border-border/50 bg-muted/10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                >
-                  <option value="system">System Instruction</option>
-                  <option value="context">Context</option>
-                  <option value="format">Format</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                Prompt Content
-              </Label>
-              <Textarea 
-                placeholder="Enter your prompt instructions..."
-                value={newPrompt.content || ''}
-                onChange={(e) => setNewPrompt(prev => ({ ...prev, content: e.target.value }))}
-                className="min-h-[120px] bg-muted/10 resize-y"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch 
-                id="new-prompt-default"
-                checked={newPrompt.is_default || false}
-                onCheckedChange={(val) => setNewPrompt(prev => ({ ...prev, is_default: val }))}
-              />
-              <Label htmlFor="new-prompt-default" className="text-sm cursor-pointer">
-                Set as default prompt
-              </Label>
-            </div>
-          </CardContent>
-          <CardFooter className="gap-3">
-            <Button 
-              variant="ghost"
-              onClick={() => {
-                setIsCreating(false);
-                setNewPrompt({ name: '', content: '', category: 'custom', is_default: false });
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSaveNew} className="gap-2">
-              <Save className="w-4 h-4" />
-              Save Prompt
-            </Button>
-          </CardFooter>
-        </Card>
-      )}
-
-      {/* Prompts List */}
-      <div className="space-y-4">
-        {prompts.length === 0 && !isCreating && (
-          <Card className="border-dashed border-border/50">
-            <CardContent className="py-12 text-center">
-              <Brain className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">No prompts configured yet.</p>
-              <p className="text-sm text-muted-foreground/60 mt-1">
-                Create your first prompt to guide AI behavior.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {prompts.map((prompt) => {
-          const categoryInfo = CATEGORY_LABELS[prompt.category] || CATEGORY_LABELS.custom;
-          const isEditing = editingId === prompt.id;
-
-          return (
-            <Card 
-              key={prompt.id} 
-              className={`border-border/50 bg-background/50 backdrop-blur-sm transition-all ${
-                prompt.is_default ? 'ring-2 ring-purple-500/30' : ''
-              }`}
-            >
-              {isEditing ? (
-                // Edit Mode
-                <>
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <Input 
-                        placeholder="Prompt name"
-                        value={prompt.name}
-                        onChange={(e) => setPrompts(prev => prev.map(p => 
-                          p.id === prompt.id ? { ...p, name: e.target.value } : p
-                        ))}
-                        className="h-10 bg-muted/10 text-lg font-semibold"
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        Category
-                      </Label>
-                      <select
-                        value={prompt.category}
-                        onChange={(e) => setPrompts(prev => prev.map(p => 
-                          p.id === prompt.id ? { ...p, category: e.target.value as any } : p
-                        ))}
-                        className="w-full h-10 px-3 rounded-md border border-border/50 bg-muted/10 text-sm"
-                      >
-                        <option value="system">System Instruction</option>
-                        <option value="context">Context</option>
-                        <option value="format">Format</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        Prompt Content
-                      </Label>
-                      <Textarea 
-                        value={prompt.content}
-                        onChange={(e) => setPrompts(prev => prev.map(p => 
-                          p.id === prompt.id ? { ...p, content: e.target.value } : p
-                        ))}
-                        className="min-h-[100px] bg-muted/10 resize-y"
-                      />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="gap-3">
-                    <Button 
-                      variant="ghost"
-                      onClick={() => setEditingId(null)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={() => {
-                        handleUpdatePrompt(prompt.id, {
-                          name: prompt.name,
-                          content: prompt.content,
-                          category: prompt.category
-                        });
-                      }}
-                      className="gap-2"
-                    >
-                      <Save className="w-4 h-4" />
-                      Save Changes
-                    </Button>
-                  </CardFooter>
-                </>
-              ) : (
-                // View Mode
-                <>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${categoryInfo.color} bg-current/10`}>
-                          {categoryInfo.icon}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="text-lg">{prompt.name}</CardTitle>
-                            {prompt.is_default && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-500 border border-purple-500/20">
-                                DEFAULT
-                              </span>
-                            )}
-                          </div>
-                          <CardDescription className="text-xs mt-0.5">
-                            {categoryInfo.label}
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleCopyContent(prompt)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title="Copy content"
-                        >
-                          {copiedId === prompt.id ? (
-                            <Check className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <Copy className="w-4 h-4 text-muted-foreground" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setEditingId(prompt.id)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleDeletePrompt(prompt.id)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                        </button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-muted/10 rounded-lg p-3 text-sm text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
-                      {prompt.content}
-                    </div>
-                  </CardContent>
-                  {!prompt.is_default && (
-                    <CardFooter className="pt-0">
-                      <button
-                        onClick={() => handleSetDefault(prompt.id)}
-                        className="text-xs text-purple-500 hover:text-purple-400 transition-colors"
-                      >
-                        Set as default prompt
-                      </button>
-                    </CardFooter>
-                  )}
-                </>
-              )}
-            </Card>
-          );
-        })}
+          <div>
+            <h2 className="text-lg font-semibold">System Prompts</h2>
+            <p className="text-xs text-muted-foreground">Define system instructions and context for AI behavior.</p>
+          </div>
+        </div>
+        <Button onClick={handleOpenAdd} size="sm" className="gap-2 h-9">
+          <Plus className="size-4" />
+          Create Prompt
+        </Button>
       </div>
 
-      {/* Tips */}
-      <Card className="border-dashed border-border/50 bg-muted/5">
-        <CardContent className="py-4">
-          <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-purple-500 shrink-0 mt-0.5" />
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p className="font-semibold text-foreground">Tips for effective prompts:</p>
-              <ul className="list-disc list-inside space-y-0.5 text-xs text-muted-foreground/80">
-                <li>System prompts define the AI's role and behavior</li>
-                <li>Context prompts provide background information</li>
-                <li>Format prompts control how responses are structured</li>
-                <li>Keep prompts concise but clear for best results</li>
-              </ul>
+      {/* Prompts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {prompts.length === 0 ? (
+          <div className="lg:col-span-2 py-20 text-center border border-dashed rounded-xl border-border/40 bg-muted/5">
+            <div className="flex flex-col items-center gap-3 opacity-20">
+              <Settings2 className="size-12 stroke-[1]" />
+              <p className="text-sm">No prompts configured yet</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        ) : (
+          prompts.map((prompt) => {
+            const cat = CATEGORY_MAP[prompt.category] || CATEGORY_MAP.custom;
+            return (
+              <div 
+                key={prompt.id}
+                className={`group relative flex flex-col justify-between p-3 rounded-xl border transition-all hover:shadow-lg hover:border-primary/30 ${
+                  prompt.is_default 
+                    ? 'bg-primary/5 border-primary/20 ring-1 ring-primary/10' 
+                    : 'bg-background/50 border-border/40'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`shrink-0 p-2.5 rounded-xl bg-background border border-border/40 shadow-sm ${cat.color}`}>
+                      {cat.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-sm truncate">{prompt.name}</h3>
+                        <span className="shrink-0 px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-muted text-muted-foreground/70 uppercase tracking-tighter">
+                          {prompt.category}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground/80 line-clamp-2 leading-relaxed">
+                        {prompt.content}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/10">
+                  <div className="flex items-center">
+                    {prompt.is_default ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background border border-border shadow-sm text-[11px] font-bold text-foreground">
+                        <div className="size-4 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="size-2.5 text-primary-foreground stroke-[4]" />
+                        </div>
+                        Active
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => {
+                          const updated = prompts.map(p => ({ ...p, is_default: p.id === prompt.id }));
+                          setPrompts(updated);
+                          onSavePrompts?.(updated);
+                          toast.success('System prompt activated');
+                        }}
+                        className="px-4 py-1.5 rounded-full bg-muted/50 hover:bg-muted border border-border/40 text-[11px] font-bold text-muted-foreground transition-colors"
+                      >
+                        Use prompt
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                    <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-background border border-transparent hover:border-border/40" onClick={() => handleCopy(prompt)}>
+                      {copiedId === prompt.id ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5 text-muted-foreground" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-background border border-transparent hover:border-border/40" onClick={() => handleOpenEdit(prompt)}>
+                      <Pencil className="size-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-destructive/10 border border-transparent hover:border-destructive/20" onClick={() => handleDelete(prompt.id)}>
+                      <Trash className="size-3.5 text-destructive/70" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Footer Info */}
+      <div className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-border/40 bg-muted/5">
+        <Sparkles className="size-5 text-purple-500 shrink-0" />
+        <div className="space-y-0.5">
+          <p className="text-xs font-semibold">Pro Tip: Structures AI Answers</p>
+          <p className="text-[11px] text-muted-foreground/70">
+            Use system prompts to enforce JSON output or concise technical explanations to save tokens and improve structure.
+          </p>
+        </div>
+      </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-border/40 shadow-2xl">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 bg-muted/5">
+            <DialogTitle className="text-lg font-bold tracking-tight">
+              {editingId ? 'Edit Prompt' : 'Create New Prompt'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Define how the AI should behave and structure its responses.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <Field>
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                  Name
+                </FieldLabel>
+                <Input 
+                  placeholder="e.g. Concise Mode"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </Field>
+              <Field>
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                  Category
+                </FieldLabel>
+                <Select 
+                  value={formData.category}
+                  onValueChange={(val) => setFormData(prev => ({ ...prev, category: val as any }))}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue>
+                      {formData.category ? CATEGORY_MAP[formData.category].label : "Select Category"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system">System Instruction</SelectItem>
+                    <SelectItem value="context">Context</SelectItem>
+                    <SelectItem value="format">Format</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                Instruction Content
+              </FieldLabel>
+              <Textarea 
+                placeholder="You are a helpful assistant..."
+                value={formData.content}
+                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+                className="min-h-[160px] text-sm resize-none"
+              />
+            </Field>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/5">
+              <div className="space-y-0.5">
+                <FieldLabel className="text-xs font-semibold m-0 p-0 text-foreground">Set as Global Default</FieldLabel>
+                <p className="text-[10px] text-muted-foreground">Use this prompt for all AI interactions.</p>
+              </div>
+              <Switch 
+                checked={formData.is_default}
+                onCheckedChange={(val) => setFormData(prev => ({ ...prev, is_default: val }))}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border/40 gap-3">
+            <Button variant="ghost" onClick={() => setIsDialogOpen(false)} className="h-9 px-4 font-medium text-sm">
+              Cancel
+            </Button>
+            <Button onClick={handleSave} className="h-9 px-6 font-semibold text-sm shadow-sm">
+              {editingId ? 'Save Changes' : 'Create Template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -95,7 +95,7 @@ export function SettingsModal() {
       items: [
         { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
         { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
-        { id: 'ai-prompts', label: 'Default Prompts', icon: <Brain className="size-4" /> },
+        { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
       ]
     },
     {
