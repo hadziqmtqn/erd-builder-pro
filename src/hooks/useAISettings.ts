@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { AIProvider, UserAIConfig, AIModel } from '@/types';
+import { AIProvider, UserAIConfig, AIModel, AISystemPrompt } from '@/types';
 import { toast } from 'sonner';
 
 export const useAISettings = () => {
@@ -9,6 +9,7 @@ export const useAISettings = () => {
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [configs, setConfigs] = useState<Record<string, UserAIConfig>>({});
   const [models, setModels] = useState<Record<string, AIModel[]>>({});
+  const [prompts, setPrompts] = useState<AISystemPrompt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
@@ -69,10 +70,18 @@ export const useAISettings = () => {
       });
       setModels(modelMap);
 
+      // 4. Fetch System Prompts
+      const { data: promptData, error: promptError } = await supabase
+        .from('ai_system_prompts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (promptError) throw promptError;
+      setPrompts(promptData || []);
+
     } catch (error: any) {
       toast.error('Failed to load AI settings: ' + error.message);
     } finally {
-      setIsLoading(true); // Wait, should be false
       setIsLoading(false);
     }
   };
@@ -225,7 +234,7 @@ export const useAISettings = () => {
       
       setNewModel({ provider_id: '', model_identifier: '', display_name: '' });
       setEditingModelId(null);
-      fetchData();
+      await fetchData();
     } catch (error: any) {
       toast.error('Failed to process model: ' + error.message);
     } finally {
@@ -234,14 +243,82 @@ export const useAISettings = () => {
   };
 
   const handleDeleteModel = async (id: number | string) => {
-    if (!confirm('Are you sure you want to delete this model?')) return;
+    setIsSaving(true);
     try {
       const { error } = await supabase.from('ai_models').delete().eq('id', id);
       if (error) throw error;
       toast.success('Model deleted');
-      fetchData();
+      await fetchData();
     } catch (error: any) {
       toast.error('Failed to delete model: ' + error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSavePrompt = async (formData: Partial<AISystemPrompt>, editingId: string | null) => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from('ai_system_prompts')
+          .update({
+            name: formData.name,
+            content: formData.content,
+            category: formData.category,
+            is_default: formData.is_default,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingId);
+        if (error) throw error;
+        toast.success('Prompt updated successfully');
+      } else {
+        const { error } = await supabase
+          .from('ai_system_prompts')
+          .insert([{
+            name: formData.name,
+            content: formData.content,
+            category: formData.category,
+            is_default: formData.is_default,
+            user_id: user.id
+          }]);
+        if (error) throw error;
+        toast.success('Prompt created successfully');
+      }
+      await fetchData();
+    } catch (error: any) {
+      toast.error('Failed to save prompt: ' + error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeletePrompt = async (id: string) => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('ai_system_prompts').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Prompt deleted');
+      await fetchData();
+    } catch (error: any) {
+      toast.error('Failed to delete prompt: ' + error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const togglePromptDefault = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('ai_system_prompts')
+        .update({ is_default: true })
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('System prompt activated');
+      await fetchData();
+    } catch (error: any) {
+      toast.error('Failed to activate prompt: ' + error.message);
     }
   };
 
@@ -310,6 +387,7 @@ export const useAISettings = () => {
     providers,
     configs,
     models,
+    prompts,
     isLoading,
     isSaving,
     isTesting,
@@ -323,6 +401,9 @@ export const useAISettings = () => {
     handleTestConnection,
     handleAddModel,
     handleDeleteModel,
+    handleSavePrompt,
+    handleDeletePrompt,
+    togglePromptDefault,
     handleInitializeProviders,
     updateProviderLocal,
     updateConfigLocal,

@@ -67,6 +67,7 @@ export function SettingsModal() {
     providers,
     configs,
     models,
+    prompts,
     isSaving,
     isTesting,
     newModel,
@@ -76,6 +77,9 @@ export function SettingsModal() {
     handleTestConnection,
     handleAddModel,
     handleDeleteModel,
+    handleSavePrompt,
+    handleDeletePrompt,
+    togglePromptDefault,
     updateProviderLocal,
     updateConfigLocal,
     startEditingModel,
@@ -248,7 +252,13 @@ export function SettingsModal() {
 
               {settingsTab === 'ai-prompts' && (
                 <div className="p-8">
-                  <DefaultPromptsTab />
+                  <DefaultPromptsTab 
+                    prompts={prompts}
+                    isSaving={isSaving}
+                    onSave={handleSavePrompt}
+                    onDelete={handleDeletePrompt}
+                    onToggleDefault={togglePromptDefault}
+                  />
                 </div>
               )}
 

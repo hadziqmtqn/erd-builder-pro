@@ -172,6 +172,18 @@ export interface UserAIConfig {
   updated_at?: string;
 }
 
+export interface AISystemPrompt {
+  id: string;
+  name: string;
+  content: string;
+  category: 'system' | 'context' | 'format' | 'custom';
+  is_default: boolean;
+  is_built_in: boolean;
+  user_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface AIChatSession {
   id: number | string;
   uid: string;

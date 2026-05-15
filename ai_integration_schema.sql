@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. System Prompts Table (NEW)
+CREATE TABLE IF NOT EXISTS ai_system_prompts (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'custom', -- 'system', 'context', 'format', 'custom'
+    is_default BOOLEAN DEFAULT false,
+    is_built_in BOOLEAN DEFAULT false,
+    user_id VARCHAR(255), -- Support custom auth IDs
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==========================================
 -- SECURITY: ROW LEVEL SECURITY (RLS)
 -- ==========================================
@@ -67,41 +80,48 @@ ALTER TABLE ai_models ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_ai_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_system_prompts ENABLE ROW LEVEL SECURITY;
 
 -- Policies for ai_providers & ai_models (Publicly readable by authenticated users)
-CREATE POLICY "Authenticated users can view active providers" 
-ON ai_providers FOR SELECT 
-TO authenticated 
+CREATE POLICY "Users can view active providers" 
+ON ai_providers
+FOR SELECT 
+TO public 
 USING (is_active = true);
 
-CREATE POLICY "Authenticated users can view active models" 
-ON ai_models FOR SELECT 
-TO authenticated 
+CREATE POLICY "Users can view active models" 
+ON ai_models
+FOR SELECT 
+TO public 
 USING (is_active = true);
 
 -- Allow users to manage the catalog (Optional: change to admin only if needed)
-CREATE POLICY "Authenticated users can manage models catalog" 
-ON ai_models FOR ALL 
-TO authenticated 
+CREATE POLICY "Users can manage models catalog" 
+ON ai_models
+FOR ALL 
+TO public 
 USING (true)
 WITH CHECK (true);
 
 -- Policies for user_ai_configs
 CREATE POLICY "Users can manage their own AI configs" 
-ON user_ai_configs FOR ALL 
-TO authenticated
+ON user_ai_configs
+FOR ALL 
+TO public
 USING (auth.uid() = user_id);
 
 -- Policies for ai_chat_sessions
 CREATE POLICY "Users can manage their own chat sessions" 
-ON ai_chat_sessions FOR ALL 
-TO authenticated
+ON ai_chat_sessions
+FOR ALL 
+TO public
 USING (auth.uid() = user_id);
 
 -- Policies for ai_chat_messages
 CREATE POLICY "Users can manage messages in their sessions" 
-ON ai_chat_messages FOR ALL 
-TO authenticated
+ON ai_chat_messages
+FOR ALL 
+TO public
 USING (
     EXISTS (
         SELECT 1 FROM ai_chat_sessions 
@@ -109,6 +129,36 @@ USING (
         AND ai_chat_sessions.user_id = auth.uid()
     )
 );
+
+-- Policies for ai_system_prompts (NEW - Optimized for Custom Auth)
+CREATE POLICY "Allow application access for ai_system_prompts" 
+ON ai_system_prompts
+FOR ALL
+TO public
+USING (true)
+WITH CHECK (true);
+
+-- ==========================================
+-- TRIGGERS
+-- ==========================================
+
+-- Trigger to manage 'is_default' (Only one active prompt per user)
+CREATE OR REPLACE FUNCTION handle_single_default_prompt()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_default = true THEN
+        UPDATE ai_system_prompts 
+        SET is_default = false 
+        WHERE id != NEW.id AND user_id = NEW.user_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS single_default_prompt_trigger ON ai_system_prompts;
+CREATE TRIGGER single_default_prompt_trigger
+BEFORE INSERT OR UPDATE ON ai_system_prompts
+FOR EACH ROW EXECUTE FUNCTION handle_single_default_prompt();
 
 -- ==========================================
 -- INITIAL DATA: SEEDING
