@@ -1,0 +1,301 @@
+import React from 'react';
+import { Outlet } from 'react-router-dom';
+
+// Components
+import { AppSidebar } from '@/components/app-sidebar';
+import { MainHeader } from '@/components/MainHeader';
+import { FeedbackDialog } from '@/components/FeedbackDialog';
+import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
+import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
+import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
+import { DuplicateDocumentDialog } from '@/components/modals/DuplicateDocumentDialog';
+import { TablePropertiesModal } from '@/components/modals/TablePropertiesModal';
+import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
+import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
+import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
+import { NoteExporter } from '@/lib/exporters/note-exporter';
+import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
+
+// UI
+import {
+  SidebarInset,
+  SidebarProvider,
+} from '@/components/ui/sidebar';
+
+// Hooks
+import { ERDImportModal } from '@/components/modals/ERDImportModal';
+
+import { useWorkspace } from '@/providers/WorkspaceProvider';
+
+export function AppLayout() {
+  const {
+    view, sidebarView,
+    isPublicView, isOnline,
+    projects, searchQuery, setSearchQuery, user,
+    isInstallable, installApp, isProjectsLoading,
+    handleLogout,
+    handleViewChange,
+    handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
+    handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
+    handleWorkspaceFilter, selectedWorkspaceUid,
+    handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
+    handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
+    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
+    handleDuplicate,
+    handleOpenEditDocument, handleOpenCreateDocument,
+    syncError, isSyncing, isLocalSaving, isRefreshing, hasPendingSyncs, syncDrafts,
+    activeFileUid, currentActiveId, initialShareSettings,
+    activeDocument, isGuest,
+    featureLabel, activeProjectName, activeFileName, hasActiveItem,
+    fileSearchRef, fileSearchQuery, setFileSearchQuery,
+    notes, activeNote, activeNoteUid, activeDiagram, activeDiagramId, activeDrawing, activeDrawingId,
+    activeFlowchart, activeFlowchartId,
+    nodes, edges,
+    notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal, workspaceIsLoading,
+    trashData, isTrashLoading,
+    fetchTrash,
+    handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
+    handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
+    handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
+    handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
+    handleTrashFlowchartPermanentDelete,
+    onNodesChange, onEdgesChange, onConnect,
+    selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
+    selectedEntity, canUndo, canRedo, addEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
+    undo, redo, takeSnapshot, onNodeDragStop, onMoveEnd,
+    handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
+    handleOpenImportModal, handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    saveDiagram, saveNote, saveDrawing, saveFlowchart,
+    updateDiagram, updateNote, updateDrawing, updateFlowchart,
+    moveDiagramToProject, moveNoteToProject, moveDrawingToProject, moveFlowchartToProject,
+    deleteDiagram, deleteNote, deleteDrawing, deleteFlowchart,
+    handleNoteChange, handleDrawingChange, handleFlowchartChange,
+    handleEntityUpdate,
+    handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate, handleSidebarFlowchartCreate,
+    isMoveToTrashAlertOpen, setIsMoveToTrashAlertOpen,
+    isDeleteAlertOpen, setIsDeleteAlertOpen,
+    isRenameDialogOpen, setIsRenameDialogOpen,
+    isDuplicateDialogOpen, setIsDuplicateDialogOpen,
+    isImportModalOpen, setIsImportModalOpen,
+    isTablePropertiesOpen, setIsTablePropertiesOpen,
+    isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen,
+    isImportNoteModalOpen, setIsImportNoteModalOpen,
+    isExportNoteModalOpen, setIsExportNoteModalOpen,
+    newName, setNewName, renameProjectId, setRenameProjectId,
+    duplicateName, setDuplicateName,
+    itemToDelete, setItemToDelete,
+    createDialogOpen, setCreateDialogOpen,
+    createDialogView, setCreateDialogView,
+    editDialogNote, setEditDialogNote,
+    tableDeleteDoc, setTableDeleteDoc,
+    executeDuplicate, confirmPermanentDelete,
+    handleEdgeUpdate: handleEdgeUpdate2,
+    viewportRef, lastLoadedDiagramIdRef,
+    triggerDebouncedSync, broadcastMessage, setIsLocalSaving,
+    projects: projects2,
+  } = useWorkspace();
+
+  return (
+    <SidebarProvider className="h-svh overflow-hidden">
+      {!isOnline && !isPublicView && <OfflineOverlay />}
+
+      {!isPublicView && (
+        <AppSidebar
+          view={sidebarView}
+          projects={projects}
+          onViewChange={handleViewChange}
+          onNoteSelect={handleNoteSelect}
+          onDrawingSelect={handleDrawingSelect}
+          onProjectCreate={handleSidebarProjectCreate}
+          onProjectUpdate={handleSidebarProjectUpdate}
+          onProjectDelete={handleSidebarProjectDelete}
+          onLogout={handleLogout}
+          onWorkspaceFilter={handleWorkspaceFilter}
+          selectedWorkspaceUid={selectedWorkspaceUid}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          user={user}
+          isOnline={isOnline}
+          isInstallable={isInstallable}
+          onInstall={installApp}
+          isProjectsLoading={isProjectsLoading}
+        />
+      )}
+
+      <SidebarInset className={isPublicView ? "w-full" : ""}>
+        <MainHeader
+          featureLabel={featureLabel}
+          activeProjectName={activeProjectName}
+          activeFileName={activeFileName}
+          view={view}
+          hasActiveItem={isPublicView ? true : hasActiveItem}
+          syncError={syncError}
+          isSyncing={isSyncing}
+          isLocalSaving={isLocalSaving}
+          isRefreshing={isRefreshing}
+          hasPendingSyncs={hasPendingSyncs}
+          onSave={syncDrafts}
+          activeFileUid={activeFileUid}
+          activeFileId={currentActiveId}
+          initialShareSettings={initialShareSettings}
+          isPublicView={isPublicView}
+          onSettingsSaved={handleHeaderSettingsSaved}
+          isOnline={isOnline}
+          updatedAt={activeDocument?.updated_at}
+          onDelete={handleHeaderDelete}
+          onRename={handleHeaderRename}
+          onExportSQL={handleHeaderExportSQL}
+          onExportPDF={handleHeaderExportPDF}
+          onExportImage={handleHeaderExportImage}
+          onExportMarkdown={handleExportMarkdown}
+          onCopyMarkdown={handleCopyMarkdown}
+          onImportMarkdown={handleImportMarkdown}
+          onDuplicate={handleDuplicate}
+          isGuest={isGuest}
+          fileSearchRef={fileSearchRef}
+          fileSearchQuery={fileSearchQuery}
+          onFileSearchChange={setFileSearchQuery}
+        />
+
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
+          <Outlet />
+        </div>
+
+        <ImportNoteModal
+          isOpen={isImportNoteModalOpen}
+          onClose={() => setIsImportNoteModalOpen(false)}
+          onImport={() => {}}
+        />
+
+        <ExportNoteModal
+          isOpen={isExportNoteModalOpen}
+          onClose={() => setIsExportNoteModalOpen(false)}
+          onExport={(format, options, pageSize) => {
+            if (activeNote) {
+              if (format === 'markdown') {
+                // executeExportMarkdown
+              } else if (format === 'pdf') {
+                NoteExporter.exportToPDF(activeNote as any, options, pageSize);
+              } else if (format === 'print') {
+                NoteExporter.printNote(activeNote as any, options);
+              } else if (format === 'word') {
+                NoteExporter.exportToWord(activeNote as any, options);
+              }
+            }
+          }}
+        />
+
+        <FeedbackDialog />
+
+        <MoveToTrashAlert
+          isOpen={isPermanentDeleteConfirmOpen}
+          onOpenChange={setIsPermanentDeleteConfirmOpen}
+          mode="permanent-delete"
+          itemType={itemToDelete?.type || ''}
+          onConfirm={confirmPermanentDelete}
+          onAfterDelete={undefined}
+        />
+
+        {!isPublicView && (
+          <TablePropertiesModal
+            isOpen={isTablePropertiesOpen && !!selectedNodeId}
+            onOpenChange={setIsTablePropertiesOpen}
+            selectedEntity={selectedEntity}
+            handleEntityUpdate={handleEntityUpdate}
+            deleteEntity={deleteEntity}
+            setSelectedNodeId={setSelectedNodeId}
+            setIsDeleteAlertOpen={setIsDeleteAlertOpen}
+          />
+        )}
+
+        {!isPublicView && (
+          <RenameDocumentDialog
+            isOpen={isRenameDialogOpen}
+            onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
+            view={view}
+            activeDocument={editDialogNote ?? activeDocument}
+            newName={newName}
+            setNewName={setNewName}
+            projects={projects}
+            selectedProjectId={renameProjectId}
+            setSelectedProjectId={setRenameProjectId}
+            updateDiagram={updateDiagram}
+            updateNote={updateNote}
+            updateDrawing={updateDrawing}
+            updateFlowchart={updateFlowchart}
+            onMoveDiagramToProject={moveDiagramToProject}
+            onMoveNoteToProject={moveNoteToProject}
+            onMoveDrawingToProject={moveDrawingToProject}
+            onMoveFlowchartToProject={moveFlowchartToProject}
+            onRenameSuccess={undefined}
+          />
+        )}
+
+        {!isPublicView && (
+          <RenameDocumentDialog
+            isOpen={createDialogOpen}
+            onOpenChange={(open) => { setCreateDialogOpen(open); }}
+            mode="create"
+            view={createDialogView}
+            activeDocument={null}
+            newName={newName}
+            setNewName={setNewName}
+            projects={projects}
+            selectedProjectId={renameProjectId}
+            setSelectedProjectId={setRenameProjectId}
+            onCreate={(title, projectId) => {
+              const viewCb = createDialogView;
+              if (viewCb === 'notes') handleSidebarNoteCreate(title, projectId);
+              else if (viewCb === 'erd') handleSidebarDiagramCreate(title, projectId);
+              else if (viewCb === 'drawings') handleSidebarDrawingCreate(title, projectId);
+              else if (viewCb === 'flowchart') handleSidebarFlowchartCreate(title, projectId);
+            }}
+            onRenameSuccess={undefined}
+          />
+        )}
+
+        <MoveToTrashAlert
+          isOpen={isMoveToTrashAlertOpen}
+          onOpenChange={(open) => { setIsMoveToTrashAlertOpen(open); if (!open) setTableDeleteDoc(null); }}
+          activeDocument={tableDeleteDoc ?? activeDocument}
+          view={view}
+          deleteDiagram={deleteDiagram}
+          deleteNote={deleteNote}
+          deleteDrawing={deleteDrawing}
+          deleteFlowchart={deleteFlowchart}
+          fetchTrash={fetchTrash}
+          onAfterDelete={() => { setTableDeleteDoc(null); handleViewChange(view, true); }}
+        />
+
+        {!isPublicView && (
+          <RelationshipPropertiesModal
+            isOpen={!!selectedEdgeId}
+            onOpenChange={(open) => { if (!open) setSelectedEdgeId(null); }}
+            selectedEdge={edges.find(e => e.id === selectedEdgeId) || null}
+            nodes={nodes}
+            handleEdgeUpdate={handleEdgeUpdate2}
+            deleteEdge={deleteEdge}
+          />
+        )}
+
+        <DeleteEntityAlert
+          isOpen={isDeleteAlertOpen}
+          onOpenChange={setIsDeleteAlertOpen}
+          selectedEntity={selectedEntity}
+          deleteEntity={deleteEntity}
+          setSelectedNodeId={setSelectedNodeId}
+        />
+
+        <DuplicateDocumentDialog
+          isOpen={isDuplicateDialogOpen}
+          onOpenChange={setIsDuplicateDialogOpen}
+          view={view}
+          duplicateName={duplicateName}
+          setDuplicateName={setDuplicateName}
+          executeDuplicate={executeDuplicate}
+          isRefreshing={isRefreshing}
+        />
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
