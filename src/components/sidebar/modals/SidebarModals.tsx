@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { AlertTriangle } from "lucide-react"
 import { Project } from "../../../types"
 
@@ -154,24 +155,25 @@ export function SidebarModals({
             <DialogTitle>Create New {sidebarView === 'erd' ? 'Diagram' : sidebarView === 'notes' ? 'Note' : sidebarView === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
           <DialogBody className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="filename">
+            <Field>
+              <FieldLabel htmlFor="filename">
                 Name
-              </Label>
+              </FieldLabel>
               <Input
                 id="filename"
                 value={fileName}
                 onChange={(e) => setFileName(e.target.value)}
                 placeholder="Enter name"
+                className="h-9"
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="project">
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="project">
                 Project
-              </Label>
-              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a project">
+              </FieldLabel>
+              <Select value={selectedProjectId} onValueChange={(val) => setSelectedProjectId(val ?? "")}>
+                <SelectTrigger className="w-full h-9">
+                  <SelectValue>
                     {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || "Select a project"}
                   </SelectValue>
                 </SelectTrigger>
@@ -182,7 +184,7 @@ export function SidebarModals({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFileDialogOpen(false)}>Cancel</Button>
@@ -198,24 +200,25 @@ export function SidebarModals({
             <DialogTitle>Edit {editingFile?.type === 'erd' ? 'Diagram' : editingFile?.type === 'notes' ? 'Note' : editingFile?.type === 'flowchart' ? 'Flowchart' : 'Drawing'}</DialogTitle>
           </DialogHeader>
           <DialogBody className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-filename">
+            <Field>
+              <FieldLabel htmlFor="edit-filename">
                 Name
-              </Label>
+              </FieldLabel>
               <Input
                 id="edit-filename"
                 value={editingFile?.name || ""}
                 onChange={(e) => setEditingFile((prev: any) => prev ? { ...prev, name: e.target.value } : null)}
                 placeholder="Enter name"
+                className="h-9"
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-project">
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-project">
                 Project
-              </Label>
-              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a project">
+              </FieldLabel>
+              <Select value={selectedProjectId} onValueChange={(val) => setSelectedProjectId(val ?? "")}>
+                <SelectTrigger className="w-full h-9">
+                  <SelectValue>
                     {selectedProjectId === "none" ? "No Project (Root)" : allProjects.find(p => p.id.toString() === selectedProjectId)?.name || selectedProjectId}
                   </SelectValue>
                 </SelectTrigger>
@@ -226,7 +229,7 @@ export function SidebarModals({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditFileDialogOpen(false)}>Cancel</Button>

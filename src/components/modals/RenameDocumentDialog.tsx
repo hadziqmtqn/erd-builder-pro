@@ -10,6 +10,8 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldLabel } from '@/components/ui/field';
 import {
   Select,
   SelectContent,
@@ -129,14 +131,13 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
         </DialogHeader>
         <DialogBody>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="rename-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <Field>
+              <FieldLabel htmlFor="rename-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 {isCreate ? 'Name' : 'New Name'}
-              </label>
-              <input
+              </FieldLabel>
+              <Input
                 id="rename-input"
                 type="text"
-                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
@@ -146,12 +147,12 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                 }}
                 autoFocus
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 Project
-              </label>
+              </FieldLabel>
               <Select value={selectedProjectId} onValueChange={(value) => value !== null && setSelectedProjectId(value)}>
                 <SelectTrigger className="h-9">
                   <SelectValue>
@@ -167,7 +168,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </div>
         </DialogBody>
         <DialogFooter>

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Globe, CloudOff, Cloud, Save, Check, Search } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
@@ -189,13 +190,13 @@ export const MainHeader = React.memo(({
         {!hideFileSearch && ['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
           <div className="relative flex items-center mr-1 sm:mr-2">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
-            <input
+            <Input
               ref={fileSearchRef}
               type="text"
               placeholder="Search files..."
               value={fileSearchQuery}
               onChange={(e) => onFileSearchChange?.(e.target.value)}
-              className="h-7 w-[120px] sm:w-[180px] md:w-[220px] rounded-md border border-input bg-background pl-7 pr-7 text-xs outline-none focus:border-primary/50 focus:ring-0"
+              className="h-8 w-[120px] sm:w-[180px] md:w-[220px] pl-8 pr-8 text-xs"
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-0.5 opacity-40">
               <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[9px] font-medium text-muted-foreground">

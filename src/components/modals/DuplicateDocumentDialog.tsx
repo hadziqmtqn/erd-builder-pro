@@ -9,6 +9,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Loader2 } from 'lucide-react';
 
 interface DuplicateDocumentDialogProps {
@@ -41,14 +43,13 @@ export const DuplicateDocumentDialog: React.FC<DuplicateDocumentDialogProps> = (
         </DialogHeader>
         <DialogBody>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="duplicate-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <Field>
+              <FieldLabel htmlFor="duplicate-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 New Name
-              </label>
-              <input
+              </FieldLabel>
+              <Input
                 id="duplicate-input"
                 type="text"
-                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
                 value={duplicateName}
                 onChange={(e) => setDuplicateName(e.target.value)}
                 onKeyDown={(e) => {
@@ -58,7 +59,7 @@ export const DuplicateDocumentDialog: React.FC<DuplicateDocumentDialogProps> = (
                 }}
                 autoFocus
               />
-            </div>
+            </Field>
           </div>
         </DialogBody>
         <DialogFooter className="gap-2 sm:gap-0">
