@@ -7,7 +7,8 @@ import {
   Bot,
   Hash,
   Type,
-  Settings2
+  Settings2,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,18 @@ import {
   DialogFooter,
   DialogDescription
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogMedia,
+  AlertDialogBody,
+} from '@/components/ui/alert-dialog';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { AIProvider, AIModel } from '@/types';
 
@@ -56,6 +69,8 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
   onCancelEdit
 }) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<number | string | null>(null);
 
   const handleOpenAdd = () => {
     onCancelEdit();
@@ -75,6 +90,19 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
   const handleClose = () => {
     setIsDialogOpen(false);
     onCancelEdit();
+  };
+
+  const confirmDelete = (id: number | string) => {
+    setItemToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const executeDelete = async () => {
+    if (itemToDelete) {
+      await onDeleteModel(itemToDelete);
+      setShowDeleteConfirm(false);
+      setItemToDelete(null);
+    }
   };
 
   return (
@@ -149,7 +177,7 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 hover:bg-destructive/10"
-                            onClick={() => onDeleteModel(m.id)}
+                            onClick={() => confirmDelete(m.id)}
                             disabled={isDialogOpen}
                           >
                             <Trash className="size-3.5 text-muted-foreground hover:text-destructive transition-colors" />
@@ -244,6 +272,32 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent size="sm" className="max-w-[400px] p-0 overflow-hidden border-border/40">
+          <AlertDialogHeader className="px-6 pt-6 pb-4">
+            <AlertDialogMedia className="bg-destructive/10 mb-4">
+              <AlertTriangle className="size-5 text-destructive" />
+            </AlertDialogMedia>
+            <AlertDialogTitle className="text-xl font-bold tracking-tight">Delete AI Model?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody className="px-6 pb-6">
+            <AlertDialogDescription className="text-sm leading-relaxed">
+              This action cannot be undone. This will permanently remove the model from your catalog and may affect existing AI configurations.
+            </AlertDialogDescription>
+          </AlertDialogBody>
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 border-t border-border/40 gap-3">
+            <AlertDialogCancel className="h-9 px-4 text-sm font-medium">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={executeDelete}
+              className="h-9 px-5 text-sm font-semibold bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm"
+            >
+              {isSaving ? 'Deleting...' : 'Delete Model'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
