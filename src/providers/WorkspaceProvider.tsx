@@ -1,5 +1,5 @@
 import React, {
-  useState, useCallback, useEffect, useMemo, useRef, createContext, useContext,
+  useState, useCallback, useEffect, useMemo, useRef,
 } from 'react';
 import {
   Node, Edge, OnNodesChange, OnEdgesChange, OnConnect,
@@ -9,6 +9,8 @@ import { copyMarkdownToClipboard } from '../lib/markdownUtils';
 
 // Components
 import { NotesPage } from '@/components/pages/NotesPage';
+import { DashboardPage } from '@/components/pages/DashboardPage';
+import { FlowchartPage } from '@/components/pages/FlowchartPage';
 
 // Hooks
 import { useAuth } from '../hooks/useAuth';
@@ -78,286 +80,10 @@ function deriveSidebarView(view: AppView): AppView {
   return sidebarFeatures.includes(view) ? view : 'notes';
 }
 
-// ──────────────────────────────────────────────────────
-// Context type
-// ──────────────────────────────────────────────────────
-export interface WorkspaceContextValue {
-  // Auth
-  user: any;
-  isGuest: boolean;
-  handleLogout: () => void;
-
-  // Derived view
-  view: AppView;
-  sidebarView: AppView;
-
-  // Public
-  isPublicView: boolean;
-  setIsPublicView: (v: boolean) => void;
-  publicData: any;
-  isPublicLoading: boolean;
-  forbiddenDoc: any;
-  fetchPublicDocument: any;
-
-  // Data
-  diagrams: any[];
-  notes: any[];
-  drawings: any[];
-  flowcharts: any[];
-  projects: any[];
-  trashData: { diagrams: any[]; notes: any[]; drawings: any[]; flowcharts: any[]; projects: any[] };
-  nodes: Node<Entity>[];
-  edges: Edge[];
-  setNodes: (nodes: Node<Entity>[] | ((prev: Node<Entity>[]) => Node<Entity>[])) => void;
-  setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
-
-  // Active IDs
-  activeDiagramId: any;
-  setActiveDiagramId: (id: any) => void;
-  activeNoteUid: string | null;
-  setActiveNoteUid: (uid: string | null) => void;
-  activeDrawingId: any;
-  setActiveDrawingId: (id: any) => void;
-  activeFlowchartId: any;
-  setActiveFlowchartId: (id: any) => void;
-  activeProjectId: any;
-  setActiveProjectId: (id: any) => void;
-
-  // Loading
-  isProjectsLoading: boolean;
-  isLoading: boolean;
-  isTrashLoading: boolean;
-  isLocalSaving: boolean;
-  isRefreshing: boolean;
-  isSyncing: boolean;
-  isOnline: boolean;
-
-  // Search
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
-  debouncedSearchQuery: string;
-  fileSearchQuery: string;
-  setFileSearchQuery: (q: string) => void;
-  debouncedFileSearchQuery: string;
-  fileSearchRef: React.RefObject<HTMLInputElement | null>;
-
-  // Pagination
-  selectedWorkspaceUid: string | null;
-  handleWorkspaceFilter: (uid: string | null) => void;
-
-  // Computed
-  activeDocument: any;
-  activeNote: any;
-  activeDiagram: any;
-  activeDrawing: any;
-  activeFlowchart: any;
-  hasActiveItem: boolean;
-  activeFileName: string;
-  activeFileUid: string;
-  activeProjectName: string;
-  featureLabel: string;
-  initialShareSettings: any;
-  currentActiveId: any;
-  isNotesDocumentRoute: boolean;
-  isERDDocumentRoute: boolean;
-  isDrawingsDocumentRoute: boolean;
-  isFlowchartDocumentRoute: boolean;
-
-  // Navigation
-  handleViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
-  handleNoteSelect: (uid: string) => Promise<void>;
-  handleDiagramSelect: (id: any) => Promise<void>;
-  handleDrawingSelect: (uid: string) => Promise<void>;
-  handleFlowchartSelect: (id: any) => Promise<void>;
-
-  // Content
-  handleNoteChange: (content: string) => void;
-  handleDrawingChange: (data: string) => void;
-  handleFlowchartChange: (nodes: any[], edges: any[]) => void;
-  handleEntityUpdate: (entity: Entity, options?: { immediate?: boolean }) => Promise<void>;
-
-  // Sidebar
-  handleSidebarDiagramCreate: (title: string, projectId?: string | null) => Promise<void>;
-  handleSidebarNoteCreate: (title: string, projectId?: string | null) => Promise<void>;
-  handleSidebarDrawingCreate: (title: string, projectId?: string | null) => Promise<void>;
-  handleSidebarFlowchartCreate: (title: string, projectId?: string | null) => Promise<void>;
-  handleSidebarProjectCreate: (name: string) => Promise<void>;
-  handleSidebarProjectUpdate: (id: any, data: any) => Promise<void>;
-  handleSidebarProjectDelete: (id: any) => Promise<void>;
-
-  // Modals
-  isMoveToTrashAlertOpen: boolean;
-  setIsMoveToTrashAlertOpen: (open: boolean) => void;
-  isDeleteAlertOpen: boolean;
-  setIsDeleteAlertOpen: (open: boolean) => void;
-  isRenameDialogOpen: boolean;
-  setIsRenameDialogOpen: (open: boolean) => void;
-  isDuplicateDialogOpen: boolean;
-  setIsDuplicateDialogOpen: (open: boolean) => void;
-  isImportModalOpen: boolean;
-  setIsImportModalOpen: (open: boolean) => void;
-  isTablePropertiesOpen: boolean;
-  setIsTablePropertiesOpen: (open: boolean) => void;
-  isPermanentDeleteConfirmOpen: boolean;
-  setIsPermanentDeleteConfirmOpen: (open: boolean) => void;
-  isImportNoteModalOpen: boolean;
-  setIsImportNoteModalOpen: (open: boolean) => void;
-  isExportNoteModalOpen: boolean;
-  setIsExportNoteModalOpen: (open: boolean) => void;
-  newName: string;
-  setNewName: (n: string) => void;
-  renameProjectId: string;
-  setRenameProjectId: (id: string) => void;
-  duplicateName: string;
-  setDuplicateName: (n: string) => void;
-  itemToDelete: any;
-  setItemToDelete: (item: any) => void;
-  createDialogOpen: boolean;
-  setCreateDialogOpen: (open: boolean) => void;
-  createDialogView: string;
-  setCreateDialogView: (v: string) => void;
-  editDialogNote: any;
-  setEditDialogNote: (n: any) => void;
-  tableDeleteDoc: any;
-  setTableDeleteDoc: (d: any) => void;
-
-  // Header
-  handleHeaderDelete: () => void;
-  handleHeaderRename: () => void;
-  handleHeaderSettingsSaved: () => void;
-  handleHeaderExportSQL: (dialect: 'postgresql' | 'mysql') => void;
-  handleHeaderExportPDF: () => void;
-  handleHeaderExportImage: () => void;
-  handleExportMarkdown: () => void;
-  handleCopyMarkdown: () => void;
-  handleImportMarkdown: () => void;
-  handleDuplicate: () => void;
-  executeDuplicate: () => Promise<void>;
-
-  // Document actions
-  handleOpenEditDocument: (uid: string) => void;
-  handleOpenCreateDocument: (v: string) => void;
-
-  // ERD
-  onNodesChange: OnNodesChange<Node<Entity>>;
-  onEdgesChange: OnEdgesChange;
-  onConnect: OnConnect;
-  selectedNodeId: string | null;
-  setSelectedNodeId: (id: string | null) => void;
-  selectedEdgeId: string | null;
-  setSelectedEdgeId: (id: string | null) => void;
-  selectedEntity: any;
-  canUndo: boolean;
-  canRedo: boolean;
-  undo: () => void;
-  redo: () => void;
-  addEntity: () => void;
-  deleteEntity: (id: string) => void;
-  deleteEdge: (id: string) => void;
-  handleEdgeUpdate: (edgeId: string, label: string) => void;
-  handleNodeClick: any;
-  handleNodeDoubleClick: any;
-  handleEdgeClick: any;
-  handlePaneClick: any;
-  handleMove: any;
-  handleOpenImportModal: () => void;
-  handleWorkspaceExportSQL: any;
-  handleWorkspaceExportPDF: any;
-  handleWorkspaceExportImage: any;
-  takeSnapshot: any;
-  onNodeDragStop: any;
-  onMoveEnd: any;
-
-  // Refs
-  viewportRef: any;
-  lastLoadedDiagramIdRef: React.MutableRefObject<any>;
-
-  // Sync
-  syncDrafts: () => Promise<void>;
-  triggerDebouncedSync: () => void;
-  broadcastMessage: (type: BroadcastMessageType, entityType: string, id: string | number) => void;
-  setIsLocalSaving: (v: boolean) => void;
-  hasPendingSyncs: boolean;
-  syncError: boolean;
-  isInstallable: boolean;
-  installApp: () => void;
-
-  // Trash
-  handleTrashRestoreProject: (id: any) => Promise<void>;
-  handleTrashRestoreDiagram: (id: any) => Promise<void>;
-  handleTrashRestoreNote: (id: any) => Promise<void>;
-  handleTrashRestoreDrawing: (id: any) => Promise<void>;
-  handleTrashRestoreFlowchart: (id: any) => Promise<void>;
-  handleTrashProjectPermanentDelete: (id: any) => void;
-  handleTrashDiagramPermanentDelete: (id: any) => void;
-  handleTrashNotePermanentDelete: (id: any) => void;
-  handleTrashDrawingPermanentDelete: (id: any) => void;
-  handleTrashFlowchartPermanentDelete: (id: any) => void;
-  fetchTrash: () => Promise<void>;
-
-  // Perm delete
-  confirmPermanentDelete: () => Promise<void>;
-
-  // CRUD
-  saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
-  saveNote: (note: any) => Promise<boolean>;
-  saveDrawing: (drawing: any) => Promise<boolean>;
-  saveFlowchart: (flowchart: any) => Promise<boolean>;
-  updateDiagram: any;
-  updateNote: any;
-  updateDrawing: any;
-  updateFlowchart: any;
-  moveDiagramToProject: (id: any, projectId: string | number | null) => Promise<boolean | undefined>;
-  moveNoteToProject: (id: any, projectId: string | number | null) => Promise<boolean | undefined>;
-  moveDrawingToProject: (id: any, projectId: string | number | null) => Promise<boolean | undefined>;
-  moveFlowchartToProject: (id: any, projectId: string | number | null) => Promise<boolean | undefined>;
-  deleteDiagram: any;
-  deleteNote: any;
-  deleteDrawing: any;
-  deleteFlowchart: any;
-  fetchProjects: any;
-  fetchDiagrams: any;
-  fetchNotes: any;
-  fetchDrawings: any;
-  fetchFlowcharts: any;
-
-  // Counts
-  notesTotal: number;
-  diagramsTotal: number;
-  drawingsTotal: number;
-  flowchartsTotal: number;
-  workspaceIsLoading: boolean;
-
-  // Pagination
-  tableSearchParams: URLSearchParams;
-  setTableSearchParams: any;
-  tablePage: number;
-
-  // NotesPage side-effect refs
-  notesSaveTimeout: React.MutableRefObject<any>;
-  drawingsSaveTimeoutRef: React.MutableRefObject<any>;
-  flowchartsSaveTimeoutRef: React.MutableRefObject<any>;
-
-  // Last loaded refs (for auto-save)
-  lastLoadedNoteIdRef: React.MutableRefObject<any>;
-  lastLoadedDrawingIdRef: React.MutableRefObject<any>;
-  lastLoadedFlowchartIdRef: React.MutableRefObject<any>;
-
-  // Stable refs
-  nodesRef: React.MutableRefObject<any[]>;
-  edgesRef: React.MutableRefObject<any[]>;
-  notesRef: React.MutableRefObject<any[]>;
-  drawingsRef: React.MutableRefObject<any[]>;
-  flowchartsRef: React.MutableRefObject<any[]>;
-}
-
-const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
+import { WorkspaceContext, WorkspaceContextValue, useWorkspace } from './WorkspaceContext';
 
 // ──────────────────────────────────────────────────────
 // Provider
-// ──────────────────────────────────────────────────────
-// ──────────────────────────────────────────────────────
-// Provider props
 // ──────────────────────────────────────────────────────
 interface WorkspaceProviderProps {
   children: React.ReactNode;
@@ -588,11 +314,13 @@ export function WorkspaceProvider({
   }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
 
   // Sync refs with latest state
-  useEffect(() => { notesRef.current = notes; }, [notes]);
-  useEffect(() => { drawingsRef.current = drawings; }, [drawings]);
-  useEffect(() => { flowchartsRef.current = flowcharts; }, [flowcharts]);
-  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
-  useEffect(() => { edgesRef.current = edges; }, [edges]);
+  useEffect(() => {
+    notesRef.current = notes;
+    drawingsRef.current = drawings;
+    flowchartsRef.current = flowcharts;
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+  }, [notes, drawings, flowcharts, nodes, edges]);
 
   // ── Computed values ──
   const {
@@ -618,10 +346,8 @@ export function WorkspaceProvider({
   // Last loaded refs
   useEffect(() => {
     if (activeDrawingId && !isDrawingItemLoading) lastLoadedDrawingIdRef.current = activeDrawingId;
-  }, [activeDrawingId, isDrawingItemLoading]);
-  useEffect(() => {
     if (activeFlowchartId && !isFlowchartItemLoading) lastLoadedFlowchartIdRef.current = activeFlowchartId;
-  }, [activeFlowchartId, isFlowchartItemLoading]);
+  }, [activeDrawingId, isDrawingItemLoading, activeFlowchartId, isFlowchartItemLoading]);
 
   // Active item guard
   useActiveItemGuard({
@@ -1097,6 +823,9 @@ export function WorkspaceProvider({
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
 
+  // ── Breadcrumb state (set by Page components) ──
+  const [breadcrumbLabel, setBreadcrumbLabel] = React.useState<string | null>(null);
+
   // ── Context value ──
   const ctx = useMemo<WorkspaceContextValue>(() => ({
     user,
@@ -1109,9 +838,6 @@ export function WorkspaceProvider({
     isPublicView,
     setIsPublicView,
     publicData,
-    isPublicLoading,
-    forbiddenDoc,
-    fetchPublicDocument,
 
     diagrams, notes, drawings, flowcharts, projects, trashData, nodes, edges, setNodes, setEdges,
 
@@ -1129,9 +855,7 @@ export function WorkspaceProvider({
     isOnline,
 
     searchQuery, setSearchQuery,
-    debouncedSearchQuery,
     fileSearchQuery, setFileSearchQuery,
-    debouncedFileSearchQuery,
     fileSearchRef,
 
     selectedWorkspaceUid: tableSearchParams.get('workspace'),
@@ -1140,7 +864,6 @@ export function WorkspaceProvider({
     activeDocument, activeNote, activeDiagram, activeDrawing, activeFlowchart,
     hasActiveItem, activeFileName, activeFileUid, activeProjectName,
     featureLabel, initialShareSettings, currentActiveId,
-    isNotesDocumentRoute, isERDDocumentRoute, isDrawingsDocumentRoute, isFlowchartDocumentRoute,
 
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
@@ -1201,29 +924,25 @@ export function WorkspaceProvider({
     fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
 
     notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal,
-    workspaceIsLoading,
 
     tableSearchParams, setTableSearchParams, tablePage,
 
-    notesSaveTimeout, drawingsSaveTimeoutRef, flowchartsSaveTimeoutRef,
-    lastLoadedNoteIdRef, lastLoadedDrawingIdRef, lastLoadedFlowchartIdRef,
-    nodesRef, edgesRef, notesRef, drawingsRef, flowchartsRef,
+    breadcrumbLabel, setBreadcrumbLabel,
   }), [
     user, isGuest, _handleLogout, view, sidebarView,
-    isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument,
+    isPublicView, setIsPublicView, publicData,
     diagrams, notes, drawings, flowcharts, projects, trashData, nodes, edges, setNodes, setEdges,
     activeDiagramId, setActiveDiagramId, activeNoteUid, setActiveNoteUid,
     activeDrawingId, setActiveDrawingId, activeFlowchartId, setActiveFlowchartId,
     activeProjectId, setActiveProjectId,
     isDiagramsLoading, isNotesLoading, isDrawingsLoading, isFlowchartsLoading, isProjectsLoading,
     isLocalSaving, isRefreshing, isSyncing, isOnline,
-    searchQuery, setSearchQuery, debouncedSearchQuery,
-    fileSearchQuery, setFileSearchQuery, debouncedFileSearchQuery, fileSearchRef,
+    searchQuery, setSearchQuery,
+    fileSearchQuery, setFileSearchQuery, fileSearchRef,
     tableSearchParams, handleWorkspaceFilter,
     activeDocument, activeNote, activeDiagram, activeDrawing, activeFlowchart,
     hasActiveItem, activeFileName, activeFileUid, activeProjectName,
     featureLabel, initialShareSettings, currentActiveId,
-    isNotesDocumentRoute, isERDDocumentRoute, isDrawingsDocumentRoute, isFlowchartDocumentRoute,
     // Navigation/Content/Entity handlers — stable enough via hooks
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
@@ -1273,11 +992,9 @@ export function WorkspaceProvider({
     deleteDiagram, deleteNote, deleteDrawing, deleteFlowchart,
     moveDiagramToProject, moveNoteToProject, moveDrawingToProject, moveFlowchartToProject,
     fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
-    notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal, workspaceIsLoading,
+    notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal,
     tablePage,
-    notesSaveTimeout, drawingsSaveTimeoutRef, flowchartsSaveTimeoutRef,
-    lastLoadedNoteIdRef, lastLoadedDrawingIdRef, lastLoadedFlowchartIdRef,
-    nodesRef, edgesRef, notesRef, drawingsRef, flowchartsRef,
+    breadcrumbLabel, setBreadcrumbLabel,
   ]);
 
   return (
@@ -1293,13 +1010,11 @@ export function WorkspaceProvider({
         setView={setViewCompat}
         setSidebarView={setSidebarViewCompat}
       />
+      <DashboardPage />
+      <FlowchartPage />
       {children}
     </WorkspaceContext.Provider>
   );
 }
 
-export function useWorkspace(): WorkspaceContextValue {
-  const ctx = useContext(WorkspaceContext);
-  if (!ctx) throw new Error('useWorkspace must be used within WorkspaceProvider');
-  return ctx;
-}
+export { useWorkspace };

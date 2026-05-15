@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  FileText,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -118,7 +119,7 @@ export const AppSidebar = React.memo(({
     {
       title: "Notes",
       url: "#",
-      icon: StickyNote,
+      icon: FileText,
       iconClassName: "text-yellow-400",
       isActive: view === 'notes',
       onClick: () => onViewChange('notes', true),

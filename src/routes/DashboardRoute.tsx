@@ -1,13 +1,13 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Table2,
   FileText,
-  Pen,
-  GitBranch,
   FolderKanban,
   Plus,
   Clock,
+  PenTool,
+  Network,
+  Database,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/WorkspaceProvider';
 
@@ -25,7 +25,7 @@ const typeConfig = [
   {
     key: 'diagrams',
     label: 'ERD Diagrams',
-    icon: Table2,
+    icon: Database,
     color: 'text-blue-500',
     bg: 'bg-blue-500/10',
     route: '/table/erd',
@@ -35,7 +35,7 @@ const typeConfig = [
   {
     key: 'drawings',
     label: 'Drawings',
-    icon: Pen,
+    icon: PenTool,
     color: 'text-violet-500',
     bg: 'bg-violet-500/10',
     route: '/table/drawings',
@@ -45,7 +45,7 @@ const typeConfig = [
   {
     key: 'flowcharts',
     label: 'Flowcharts',
-    icon: GitBranch,
+    icon: Network,
     color: 'text-emerald-500',
     bg: 'bg-emerald-500/10',
     route: '/table/flowcharts',
@@ -69,13 +69,13 @@ function formatTimeAgo(dateStr: string): string {
 function getDocIcon(type: string) {
   switch (type) {
     case 'diagrams':
-      return <Table2 className="h-4 w-4 text-blue-500" />;
+      return <Database className="h-4 w-4 text-blue-500" />;
     case 'notes':
       return <FileText className="h-4 w-4 text-amber-500" />;
     case 'drawings':
-      return <Pen className="h-4 w-4 text-violet-500" />;
+      return <PenTool className="h-4 w-4 text-violet-500" />;
     case 'flowcharts':
-      return <GitBranch className="h-4 w-4 text-emerald-500" />;
+      return <Network className="h-4 w-4 text-emerald-500" />;
     default:
       return null;
   }
