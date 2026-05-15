@@ -191,4 +191,4 @@ export interface AIChatMessage {
   created_at: string;
 }
 
-export type AppView = 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups' | 'ai-config';
+export type AppView = 'erd' | 'notes' | 'drawings' | 'trash' | 'flowchart' | 'changelog' | 'backups' | 'ai-settings';
