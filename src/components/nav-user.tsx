@@ -8,6 +8,7 @@ import {
   Github,
   Trash2,
   Database,
+  Settings,
 } from "lucide-react"
 
 import {
@@ -30,8 +31,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import React from "react"
-import { DatabaseBackupModal } from "./modals/DatabaseBackupModal"
+import { useWorkspace } from "../providers/WorkspaceContext"
 import { AppView } from "../types"
 
 export function NavUser({
@@ -46,6 +46,7 @@ export function NavUser({
   isOnline: boolean
 }) {
   const { isMobile } = useSidebar()
+  const { setIsSettingsOpen, setSettingsTab } = useWorkspace()
 
   if (!user) return null;
 
@@ -53,6 +54,11 @@ export function NavUser({
   const name = user.user_metadata?.full_name || email.split('@')[0] || "User";
   const avatar = user.user_metadata?.avatar_url || "";
   const initials = name.substring(0, 2).toUpperCase();
+
+  const handleOpenSettings = (tab: string) => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
+  };
 
   return (
     <>
@@ -102,36 +108,16 @@ export function NavUser({
 
               <DropdownMenuGroup>
                 <DropdownMenuItem 
-                  onClick={() => isOnline && onViewChange('ai-settings')}
+                  onClick={() => isOnline && handleOpenSettings('account')}
                   className="cursor-pointer"
                   disabled={!isOnline}
                 >
-                  <Sparkles className="mr-2 size-4 text-purple-400" />
-                  AI Configuration
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuGroup>
-                <DropdownMenuItem 
-                  onClick={() => isOnline && onViewChange('backups')}
-                  className="cursor-pointer"
-                  disabled={!isOnline}
-                >
-                  <Database className="mr-2 size-4" />
-                  Database Backup
+                  <Settings className="mr-2 size-4" />
+                  Settings
                 </DropdownMenuItem>
                 <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
                   <Github className="mr-2 size-4" />
                   Github
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => isOnline && onViewChange('changelog')}
-                  className="cursor-pointer"
-                >
-                  <Sparkles className="mr-2 size-4" />
-                  What's New
                 </DropdownMenuItem>
               </DropdownMenuGroup>
 

@@ -4,6 +4,7 @@ import { Routes, Route } from 'react-router-dom';
 import { Login } from './components/Login';
 import { ForbiddenView } from './components/views/ForbiddenView';
 import { AppInitialization } from './components/layout/AppInitialization';
+import { SettingsModal } from './components/modals/SettingsModal';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -90,9 +91,6 @@ function AppContent() {
 
           {/* Admin pages */}
           <Route path="trash" element={<AdminRoute />} />
-          <Route path="ai-settings" element={<AdminRoute />} />
-          <Route path="backups" element={<AdminRoute />} />
-          <Route path="changelog" element={<AdminRoute />} />
 
           {/* Default: Dashboard */}
           <Route index element={<DashboardRoute />} />
@@ -101,6 +99,7 @@ function AppContent() {
           <Route path="*" element={<NotFoundRoute />} />
         </Route>
       </Routes>
+      <SettingsModal />
     </WorkspaceProvider>
   );
 }

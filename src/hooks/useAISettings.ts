@@ -36,22 +36,9 @@ export const useAISettings = () => {
       if (provError) throw provError;
       setProviders(provData || []);
       
-      // Only set default tab if none is active and none in URL
+      // Set default tab if none is active
       if (provData && provData.length > 0 && !activeTab) {
-        const params = new URLSearchParams(window.location.search);
-        const currentView = params.get('view');
-        
-        if (currentView === 'ai-settings') {
-          const tabParam = params.get('tab');
-          if (!tabParam) {
-            setActiveTab(provData[0].code);
-          } else {
-            setActiveTab(tabParam);
-          }
-        } else {
-          // If not in ai-settings view, just use the first provider as default internal state
-          setActiveTab(provData[0].code);
-        }
+        setActiveTab('api-config');
       }
 
       // 2. Fetch User Configs
@@ -96,15 +83,6 @@ export const useAISettings = () => {
 
   const handleTabChange = (val: string) => {
     setActiveTab(val);
-    
-    // Only sync to URL if we are in the ai-settings view to avoid breaking other pages
-    const url = new URL(window.location.href);
-    const currentView = url.searchParams.get('view');
-    
-    if (currentView === 'ai-settings') {
-      url.searchParams.set('tab', val);
-      window.history.replaceState({}, '', url.toString());
-    }
   };
 
   const handleSaveConfig = async (providerCode: string) => {

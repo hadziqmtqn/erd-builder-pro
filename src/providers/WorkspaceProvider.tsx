@@ -147,6 +147,10 @@ export function WorkspaceProvider({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createDialogView, setCreateDialogView] = useState('notes');
 
+  // ── Settings Modal State ──
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('account');
+
   // ── Safety Gate & Persistence State ──
   const isLocalSavingRef = useRef(false);
   const [isLocalSaving, setIsLocalSavingState] = useState(false);
@@ -697,9 +701,9 @@ export function WorkspaceProvider({
       else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
       else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
       else if (newView === 'trash') targetUrl = '/trash';
-      else if (newView === 'ai-settings') targetUrl = '/ai-settings';
-      else if (newView === 'backups') targetUrl = '/backups';
-      else if (newView === 'changelog') targetUrl = '/changelog';
+      else if (newView === 'ai-settings') { setSettingsTab('account'); setIsSettingsOpen(true); }
+      else if (newView === 'backups') { setSettingsTab('backups'); setIsSettingsOpen(true); }
+      else if (newView === 'changelog') { setSettingsTab('changelog'); setIsSettingsOpen(true); }
       else targetUrl = '/';
       if (targetUrl && targetUrl !== location.pathname + location.search) {
         navigate(targetUrl, { replace: true });
@@ -875,6 +879,9 @@ export function WorkspaceProvider({
     createDialogView, setCreateDialogView,
     editDialogNote, setEditDialogNote,
     tableDeleteDoc, setTableDeleteDoc,
+
+    isSettingsOpen, setIsSettingsOpen,
+    settingsTab, setSettingsTab,
 
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
