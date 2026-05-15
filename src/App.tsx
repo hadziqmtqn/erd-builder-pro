@@ -78,14 +78,67 @@ import {
 function AppContent() {
   const [view, setView] = useState<AppView>(() => {
     if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
-    // Check URL params first (e.g., ?view=trash survives reload)
+    
+    const path = window.location.pathname;
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('view') === 'trash') return 'trash';
-    if (urlParams.get('view') === 'ai-config') return 'ai-config';
+    
+    // Check path-based routing first
+    if (path === '/trash') return 'trash';
+    if (path === '/ai-settings') return 'ai-settings';
+    if (path === '/backups') return 'backups';
+    if (path === '/changelog') return 'changelog';
+    
+    // Table view path: /table/:feature
+    const tableMatch = path.match(/^\/table\/([^/]+)$/);
+    if (tableMatch) {
+      const feature = tableMatch[1] as any;
+      const validFeatures = ['erd', 'notes', 'drawings', 'flowchart'];
+      if (validFeatures.includes(feature)) return feature;
+    }
+    
+    // Legacy support for URL params
+    const viewParam = urlParams.get('view') as any;
+    const validViews = ['erd', 'notes', 'drawings', 'trash', 'flowchart', 'changelog', 'backups', 'ai-settings'];
+    if (viewParam && validViews.includes(viewParam)) {
+      if (viewParam === 'table') {
+        const featureParam = urlParams.get('feature') as any;
+        if (featureParam && validViews.includes(featureParam)) return featureParam;
+        return 'notes';
+      }
+      return viewParam;
+    }
+    
     return (localStorage.getItem('erd-builder-last-view') as any) || 'notes';
   });
   const [sidebarView, setSidebarView] = useState<'erd' | 'notes' | 'drawings' | 'flowchart' | 'changelog'>(() => {
     if (typeof window === 'undefined' || getSharePathInfo()) return 'notes';
+    
+    const path = window.location.pathname;
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Check path-based routing first
+    let targetView: any = null;
+    if (path === '/trash') targetView = 'trash';
+    else if (path === '/ai-settings') targetView = 'ai-settings';
+    else if (path === '/backups') targetView = 'backups';
+    else if (path === '/changelog') targetView = 'changelog';
+    else {
+      const tableMatch = path.match(/^\/table\/([^/]+)$/);
+      if (tableMatch) targetView = tableMatch[1];
+    }
+    
+    // Legacy support for URL params if path is root
+    if (!targetView && path === '/') {
+      const viewParam = urlParams.get('view') as any;
+      const featureParam = urlParams.get('feature') as any;
+      targetView = viewParam === 'table' ? featureParam : viewParam;
+    }
+    
+    const validSidebarViews = ['erd', 'notes', 'drawings', 'flowchart', 'changelog'];
+    if (targetView && validSidebarViews.includes(targetView)) {
+      return targetView as any;
+    }
+    
     return (localStorage.getItem('erd-builder-last-sidebar-view') as any) || 'notes';
   });
 
@@ -97,7 +150,39 @@ function AppContent() {
   }, [sidebarView]);
 
   const navigate = useNavigate();
-  const location = useLocation();
+const location = useLocation();
+
+  // Sync view and sidebarView with URL changes
+  useEffect(() => {
+    const path = window.location.pathname;
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Determine view based on path, fallback to last view or default
+    let newView: AppView = (localStorage.getItem('erd-builder-last-view') as AppView) || 'notes';
+    if (path === '/trash') newView = 'trash';
+    else if (path === '/ai-settings') newView = 'ai-settings';
+    else if (path === '/backups') newView = 'backups';
+    else if (path === '/changelog') newView = 'changelog';
+    else if (path.startsWith('/table/')) {
+      const match = path.match(/^\/table\/([^/]+)$/);
+      if (match) newView = match[1] as any;
+    } else if (path.startsWith('/notes/')) newView = 'notes';
+    else if (path.startsWith('/diagrams/')) newView = 'erd';
+    else if (path.startsWith('/drawings/')) newView = 'drawings';
+    else if (path.startsWith('/flowcharts/')) newView = 'flowchart';
+    else if (path === '/' && urlParams.get('view') === 'table') {
+      const feature = urlParams.get('feature');
+      if (feature) newView = feature as any;
+    }
+
+    setView(newView);
+
+    // Derive sidebar view (only primary features)
+    const sidebarFeatures = ['erd', 'notes', 'drawings', 'flowchart', 'changelog'];
+    const newSidebar: typeof sidebarView = sidebarFeatures.includes(newView as any) ? (newView as any) : 'notes';
+    setSidebarView(newSidebar);
+  }, [location.pathname, location.search]);
+
   const isNotesDocumentRoute = /^\/notes\/[^/]+$/.test(location.pathname);
   const isERDDocumentRoute = /^\/diagrams\/[^/]+$/.test(location.pathname);
   const isDrawingsDocumentRoute = /^\/drawings\/[^/]+$/.test(location.pathname);
@@ -830,7 +915,7 @@ function AppContent() {
     }
 
     setView(newView);
-    if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups' && newView !== 'ai-config') {
+    if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups' && newView !== 'ai-settings') {
       setSidebarView(newView as any);
     }
 
@@ -840,8 +925,11 @@ function AppContent() {
       setActiveDrawingId(null);
       setActiveDiagramId(null);
       setActiveFlowchartId(null);
-      let tableUrl = '/?view=table&feature=' + newView;
-      if (workspaceUid) tableUrl += '&workspace=' + workspaceUid;
+      let tableUrl = '/table/' + newView;
+      const urlParams = new URLSearchParams();
+      if (workspaceUid) urlParams.set('workspace', workspaceUid);
+      const search = urlParams.toString();
+      if (search) tableUrl += '?' + search;
       if (tableUrl !== location.pathname + location.search) {
         navigate(tableUrl, { replace: true });
       }
@@ -855,9 +943,11 @@ function AppContent() {
       else if (newView === 'flowchart' && activeFlowchart) targetUrl = '/flowcharts/' + (activeFlowchart.uid || activeFlowchartId);
       else if (newView === 'erd' && activeDiagramId) targetUrl = '/diagrams/' + activeDiagramId;
       else if (newView === 'drawings' && activeDrawingId) targetUrl = '/drawings/' + activeDrawingId;
-      else if (newView === 'trash') targetUrl = '/?view=trash';
-      else if (newView === 'ai-config') targetUrl = '/?view=ai-config';
-      else if (newView !== 'changelog' && newView !== 'backups') targetUrl = '/';
+      else if (newView === 'trash') targetUrl = '/trash';
+      else if (newView === 'ai-settings') targetUrl = '/ai-settings';
+      else if (newView === 'backups') targetUrl = '/backups';
+      else if (newView === 'changelog') targetUrl = '/changelog';
+      else targetUrl = '/';
       
       if (targetUrl && targetUrl !== location.pathname + location.search) {
         navigate(targetUrl, { replace: true });

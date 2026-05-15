@@ -102,7 +102,7 @@ export function NavUser({
 
               <DropdownMenuGroup>
                 <DropdownMenuItem 
-                  onClick={() => isOnline && onViewChange('ai-config')}
+                  onClick={() => isOnline && onViewChange('ai-settings')}
                   className="cursor-pointer"
                   disabled={!isOnline}
                 >
