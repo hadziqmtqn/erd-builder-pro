@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingUid, setActiveDrawingUid] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isItemLoading, setIsItemLoading] = useState(false);
 
   const [drawingsTotal, setDrawingsTotal] = useState(0);

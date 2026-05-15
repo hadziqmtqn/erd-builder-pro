@@ -23,6 +23,7 @@ import { DiagramEditorRoute } from './routes/DiagramEditorRoute';
 import { DrawingEditorRoute } from './routes/DrawingEditorRoute';
 import { FlowchartEditorRoute } from './routes/FlowchartEditorRoute';
 import { AdminRoute } from './routes/AdminRoute';
+import { DashboardRoute } from './routes/DashboardRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 
 function AppContent() {
@@ -93,8 +94,8 @@ function AppContent() {
           <Route path="backups" element={<AdminRoute />} />
           <Route path="changelog" element={<AdminRoute />} />
 
-          {/* Default redirect */}
-          <Route index element={<TableRoute />} />
+          {/* Default: Dashboard */}
+          <Route index element={<DashboardRoute />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFoundRoute />} />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 
 // Components
 import { AppSidebar } from '@/components/app-sidebar';
@@ -28,6 +28,7 @@ import { ERDImportModal } from '@/components/modals/ERDImportModal';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 
 export function AppLayout() {
+  const location = useLocation();
   const {
     view, sidebarView,
     isPublicView, isOnline,
@@ -35,64 +36,45 @@ export function AppLayout() {
     isInstallable, installApp, isProjectsLoading,
     handleLogout,
     handleViewChange,
-    handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
+    handleNoteSelect, handleDrawingSelect, 
     handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
     handleWorkspaceFilter, selectedWorkspaceUid,
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
     handleDuplicate,
-    handleOpenEditDocument, handleOpenCreateDocument,
     syncError, isSyncing, isLocalSaving, isRefreshing, hasPendingSyncs, syncDrafts,
     activeFileUid, currentActiveId, initialShareSettings,
     activeDocument, isGuest,
     featureLabel, activeProjectName, activeFileName, hasActiveItem,
     fileSearchRef, fileSearchQuery, setFileSearchQuery,
-    notes, activeNote, activeNoteUid, activeDiagram, activeDiagramId, activeDrawing, activeDrawingId,
-    activeFlowchart, activeFlowchartId,
+    activeNote, 
     nodes, edges,
-    notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal, workspaceIsLoading,
-    trashData, isTrashLoading,
     fetchTrash,
-    handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
-    handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
-    handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
-    handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
-    handleTrashFlowchartPermanentDelete,
-    onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
-    selectedEntity, canUndo, canRedo, addEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
-    undo, redo, takeSnapshot, onNodeDragStop, onMoveEnd,
-    handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
-    handleOpenImportModal, handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
-    saveDiagram, saveNote, saveDrawing, saveFlowchart,
+    selectedEntity, deleteEntity, deleteEdge,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,
     moveDiagramToProject, moveNoteToProject, moveDrawingToProject, moveFlowchartToProject,
     deleteDiagram, deleteNote, deleteDrawing, deleteFlowchart,
-    handleNoteChange, handleDrawingChange, handleFlowchartChange,
     handleEntityUpdate,
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate, handleSidebarFlowchartCreate,
     isMoveToTrashAlertOpen, setIsMoveToTrashAlertOpen,
     isDeleteAlertOpen, setIsDeleteAlertOpen,
     isRenameDialogOpen, setIsRenameDialogOpen,
     isDuplicateDialogOpen, setIsDuplicateDialogOpen,
-    isImportModalOpen, setIsImportModalOpen,
     isTablePropertiesOpen, setIsTablePropertiesOpen,
     isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen,
     isImportNoteModalOpen, setIsImportNoteModalOpen,
     isExportNoteModalOpen, setIsExportNoteModalOpen,
     newName, setNewName, renameProjectId, setRenameProjectId,
     duplicateName, setDuplicateName,
-    itemToDelete, setItemToDelete,
+    itemToDelete, 
     createDialogOpen, setCreateDialogOpen,
-    createDialogView, setCreateDialogView,
+    createDialogView, 
     editDialogNote, setEditDialogNote,
     tableDeleteDoc, setTableDeleteDoc,
     executeDuplicate, confirmPermanentDelete,
     handleEdgeUpdate: handleEdgeUpdate2,
-    viewportRef, lastLoadedDiagramIdRef,
-    triggerDebouncedSync, broadcastMessage, setIsLocalSaving,
-    projects: projects2,
   } = useWorkspace();
 
   return (
@@ -155,6 +137,7 @@ export function AppLayout() {
           fileSearchRef={fileSearchRef}
           fileSearchQuery={fileSearchQuery}
           onFileSearchChange={setFileSearchQuery}
+          hideFileSearch={location.pathname === '/'}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { ChevronsUpDown, Plus } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 import {
   DropdownMenu,
@@ -27,6 +28,8 @@ export function TeamSwitcher({
     plan: string
   }[]
 }) {
+  const { isMobile } = useSidebar()
+  const navigate = useNavigate()
   const activeTeam = teams[0]
 
   return (
@@ -34,7 +37,8 @@ export function TeamSwitcher({
       <SidebarMenuItem>
         <SidebarMenuButton
           size="lg"
-          className="cursor-default hover:bg-transparent active:bg-transparent"
+          onClick={() => navigate('/')}
+          className="hover:bg-accent/50 active:bg-accent/70 transition-colors cursor-pointer"
         >
           <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
             <activeTeam.logo className="size-4" />

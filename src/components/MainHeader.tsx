@@ -56,6 +56,7 @@ interface MainHeaderProps {
   fileSearchRef?: React.RefObject<HTMLInputElement | null>;
   fileSearchQuery?: string;
   onFileSearchChange?: (value: string) => void;
+  hideFileSearch?: boolean;
 }
 
 export const MainHeader = React.memo(({
@@ -90,6 +91,7 @@ export const MainHeader = React.memo(({
   fileSearchRef,
   fileSearchQuery = '',
   onFileSearchChange,
+  hideFileSearch,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
@@ -164,7 +166,7 @@ export const MainHeader = React.memo(({
 
       <div className="ml-auto px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
         {/* File search — only in table list view (no active item) */}
-        {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
+        {!hideFileSearch && ['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
           <div className="relative flex items-center mr-1 sm:mr-2">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
             <input
