@@ -137,6 +137,12 @@ export interface WorkspaceContextValue {
   tableDeleteDoc: any;
   setTableDeleteDoc: (d: any) => void;
 
+  // Settings Modal
+  isSettingsOpen: boolean;
+  setIsSettingsOpen: (open: boolean) => void;
+  settingsTab: string;
+  setSettingsTab: (tab: string) => void;
+
   // Header
   handleHeaderDelete: () => void;
   handleHeaderRename: () => void;

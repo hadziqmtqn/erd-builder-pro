@@ -2,9 +2,6 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 
 const TrashView = React.lazy(() => import('@/components/views/TrashView').then(m => ({ default: m.TrashView })));
-const BackupsView = React.lazy(() => import('@/components/views/BackupsView').then(m => ({ default: m.BackupsView })));
-const ChangelogView = React.lazy(() => import('@/components/views/ChangelogView').then(m => ({ default: m.ChangelogView })));
-const AISettingsPage = React.lazy(() => import('@/components/pages/AISettingsPage'));
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 
@@ -12,9 +9,6 @@ export function AdminRoute() {
   const { pathname } = useLocation();
 
   if (pathname === '/trash') return <TrashRoute />;
-  if (pathname === '/backups') return <BackupsRoute />;
-  if (pathname === '/changelog') return <ChangelogRoute />;
-  if (pathname === '/ai-settings') return <AISettingsRoute />;
   return null;
 }
 
@@ -52,30 +46,6 @@ function TrashRoute() {
         handleFlowchartPermanentDelete={handleTrashFlowchartPermanentDelete}
         isLoading={isTrashLoading}
       />
-    </React.Suspense>
-  );
-}
-
-function BackupsRoute() {
-  return (
-    <React.Suspense fallback={null}>
-      <BackupsView />
-    </React.Suspense>
-  );
-}
-
-function ChangelogRoute() {
-  return (
-    <React.Suspense fallback={null}>
-      <ChangelogView />
-    </React.Suspense>
-  );
-}
-
-function AISettingsRoute() {
-  return (
-    <React.Suspense fallback={null}>
-      <AISettingsPage />
     </React.Suspense>
   );
 }
