@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useProjects(isGuest: boolean = false) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<number | string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(false);

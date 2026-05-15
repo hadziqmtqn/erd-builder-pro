@@ -11,7 +11,7 @@ export function useTrash(isGuest: boolean = false) {
     flowcharts: Flowchart[];
     projects: Project[];
   }>({ diagrams: [], notes: [], drawings: [], flowcharts: [], projects: [] });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchTrash = useCallback(async () => {
     if (isGuest) {

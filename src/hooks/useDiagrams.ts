@@ -14,7 +14,7 @@ import {
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [activeDiagramId, setActiveDiagramId] = useState<number | string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [diagramsTotal, setDiagramsTotal] = useState(0);

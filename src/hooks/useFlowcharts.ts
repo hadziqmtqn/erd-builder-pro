@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
   const [activeFlowchartId, setActiveFlowchartId] = useState<number | string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isItemLoading, setIsItemLoading] = useState(false);
 
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);

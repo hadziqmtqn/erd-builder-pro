@@ -7,7 +7,7 @@ import { saveTitleCache, saveContentCache } from '../utils/titleCache';
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteUid, setActiveNoteUid] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isItemLoading, setIsItemLoading] = useState(false);
 
   const [notesTotal, setNotesTotal] = useState(0);

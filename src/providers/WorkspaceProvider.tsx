@@ -869,7 +869,11 @@ export function WorkspaceProvider({
     if (!isAuthenticated || isPublicView) return;
     initialFetchDoneRef.current = true;
     fetchProjects(false, '');
-  }, [isAuthenticated, isPublicView, fetchProjects]);
+    fetchDiagrams();
+    fetchNotes();
+    fetchDrawings();
+    fetchFlowcharts();
+  }, [isAuthenticated, isPublicView, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts]);
 
   // Fetch trash on trash view
   useEffect(() => {
