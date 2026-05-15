@@ -175,7 +175,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
           <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
         </div>
-      ) : !props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && props.view !== 'ai-config' && !props.isPublicView ? (
+      ) : !props.hasActiveItem && props.view !== 'trash' && props.view !== 'changelog' && props.view !== 'backups' && props.view !== 'ai-settings' && !props.isPublicView ? (
         props.view === 'notes' ? (
           <NotesTableView
             notes={props.notes}
@@ -292,7 +292,7 @@ export const WorkspaceContent = React.memo(function WorkspaceContent(props: Work
           {props.view === 'drawings' && props.activeDrawing && <DrawingsView isLoading={props.isLoading} activeDrawingId={props.isPublicView ? null : props.activeDrawingId} activeDrawing={props.activeDrawing} saveDrawing={props.saveDrawing} handleDrawingChange={props.handleDrawingChange} deleteDrawing={props.deleteDrawing} isReadOnly={props.isReadOnly} />}
           {props.view === 'flowchart' && props.activeFlowchart && <FlowchartView isLoading={props.isLoading} activeFlowchartId={props.activeFlowchartId} activeFlowchart={props.activeFlowchart} handleFlowchartChange={props.handleFlowchartChange} isReadOnly={props.isReadOnly} />}
           {props.view === 'changelog' && <ChangelogView />}
-          {props.view === 'ai-config' && <AISettingsPage />}
+          {props.view === 'ai-settings' && <AISettingsPage />}
         </>
       )}
       {props.view === 'trash' && (

@@ -39,11 +39,18 @@ export const useAISettings = () => {
       // Only set default tab if none is active and none in URL
       if (provData && provData.length > 0 && !activeTab) {
         const params = new URLSearchParams(window.location.search);
-        const tabParam = params.get('tab');
-        if (!tabParam) {
-          setActiveTab(provData[0].code);
+        const currentView = params.get('view');
+        
+        if (currentView === 'ai-settings') {
+          const tabParam = params.get('tab');
+          if (!tabParam) {
+            setActiveTab(provData[0].code);
+          } else {
+            setActiveTab(tabParam);
+          }
         } else {
-          setActiveTab(tabParam);
+          // If not in ai-settings view, just use the first provider as default internal state
+          setActiveTab(provData[0].code);
         }
       }
 
@@ -89,9 +96,15 @@ export const useAISettings = () => {
 
   const handleTabChange = (val: string) => {
     setActiveTab(val);
+    
+    // Only sync to URL if we are in the ai-settings view to avoid breaking other pages
     const url = new URL(window.location.href);
-    url.searchParams.set('tab', val);
-    window.history.replaceState({}, '', url.toString());
+    const currentView = url.searchParams.get('view');
+    
+    if (currentView === 'ai-settings') {
+      url.searchParams.set('tab', val);
+      window.history.replaceState({}, '', url.toString());
+    }
   };
 
   const handleSaveConfig = async (providerCode: string) => {
