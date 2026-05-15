@@ -149,15 +149,24 @@ export const ProviderConfigCard: React.FC<ProviderConfigCardProps> = ({
       </CardContent>
 
       <CardFooter className="bg-muted/5 border-t border-border/30 p-4 md:px-6 md:py-4 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center">
-        <Button 
-          variant="outline" 
-          className="w-full sm:w-auto gap-2 border-border/50 hover:bg-muted/10 order-2 sm:order-1"
+        <button
+          type="button"
           onClick={() => onTest(provider.code)}
           disabled={isTesting}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium whitespace-nowrap transition-colors h-8 px-2.5 bg-background hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none order-2 sm:order-1"
         >
-          {isTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {isTesting ? 'Testing...' : 'Test Connection'}
-        </Button>
+          {isTesting ? (
+            <>
+              <RefreshCw className="w-4 h-4 shrink-0 animate-spin pointer-events-none" />
+              <span className="pointer-events-none">Testing...</span>
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">Test Connection</span>
+            </>
+          )}
+        </button>
         <Button 
           onClick={() => onSave(provider.code)}
           className="w-full sm:w-auto gap-2 px-6 order-1 sm:order-2"

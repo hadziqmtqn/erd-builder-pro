@@ -75,10 +75,6 @@ function deriveViewFromPath(pathname: string): AppView {
   return (localStorage.getItem('erd-builder-last-view') as AppView) || 'notes';
 }
 
-function deriveSidebarView(view: AppView): AppView {
-  const sidebarFeatures: AppView[] = ['erd', 'notes', 'drawings', 'flowchart'];
-  return sidebarFeatures.includes(view) ? view : 'notes';
-}
 
 import { WorkspaceContext, WorkspaceContextValue, useWorkspace } from './WorkspaceContext';
 
@@ -131,12 +127,6 @@ export function WorkspaceProvider({
       localStorage.setItem('erd-builder-last-view', view);
     }
   }, [view]);
-
-  // Route-type booleans
-  const isNotesDocumentRoute = /^\/notes\/[^/]+$/.test(location.pathname);
-  const isERDDocumentRoute = /^\/diagrams\/[^/]+$/.test(location.pathname);
-  const isDrawingsDocumentRoute = /^\/drawings\/[^/]+$/.test(location.pathname);
-  const isFlowchartDocumentRoute = /^\/flowcharts\/[^/]+$/.test(location.pathname);
 
   // ── Modal States ──
   const [isTablePropertiesOpen, setIsTablePropertiesOpen] = useState(false);
@@ -198,7 +188,7 @@ export function WorkspaceProvider({
   );
 
   // ── Hooks ──
-  const { isAuthenticated, isGuest, user, checkAuth, handleGuestLogin } = useAuth();
+  const { isAuthenticated, isGuest, user } = useAuth();
   const isOnline = useConnectionStatus();
   const { triggerDebouncedSync, isSyncing, syncError, syncDrafts, checkAndClearStaleDrafts, hasPendingSyncs } = useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
@@ -208,8 +198,6 @@ export function WorkspaceProvider({
   // Use props instead of local hook
   const isPublicView = _isPublicView;
   const publicData = _publicData;
-  const isPublicLoading = _isPublicLoading;
-  const forbiddenDoc = _forbiddenDoc;
   const fetchPublicDocument = _fetchPublicDocument;
   const setIsPublicView = _setIsPublicView;
 
@@ -455,7 +443,6 @@ export function WorkspaceProvider({
   // ── File operations ──
   const {
     handleExportMarkdown, handleImportMarkdown, handleCopyMarkdown,
-    executeExportMarkdown, executeImportMarkdown,
   } = useFileOperations({
     activeNote, activeNoteUid, activeProjectId, createNote, saveNote,
     setActiveNoteUid, handleNoteChange, setIsExportNoteModalOpen, setIsImportNoteModalOpen,
@@ -777,7 +764,7 @@ export function WorkspaceProvider({
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal, handleWorkspaceExportSQL,
     handleWorkspaceExportPDF, handleWorkspaceExportImage,
-    workspaceIsLoading, selectedEntity,
+    selectedEntity,
   } = useWorkspaceCallbacks({
     isPublicView, setSelectedNodeId, setSelectedEdgeId,
     setIsTablePropertiesOpen, setIsImportModalOpen,
