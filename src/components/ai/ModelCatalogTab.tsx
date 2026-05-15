@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -28,6 +27,7 @@ import {
   DialogFooter,
   DialogDescription
 } from '@/components/ui/dialog';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { AIProvider, AIModel } from '@/types';
 
 interface ModelCatalogTabProps {
@@ -98,14 +98,14 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
 
       {/* Table Section */}
       <div className="rounded-xl border border-border/40 bg-background/50 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-muted/30 text-muted-foreground/70 border-b border-border/40">
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px]">Provider</th>
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px]">Display Name</th>
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px]">Identifier</th>
-                <th className="px-6 py-3.5 text-right font-bold uppercase tracking-widest text-[10px]">Actions</th>
+                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Provider</th>
+                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Display Name</th>
+                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Identifier</th>
+                <th className="px-6 py-3.5 text-right font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">
@@ -123,18 +123,18 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
                   const provider = providers.find(p => p.id === m.provider_id);
                   return (
                     <tr key={m.id} className="group hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <Badge variant="outline" className="font-semibold text-[11px] px-2 py-0.5 bg-muted/20 border-border/50">
                           {provider?.name || 'Unknown'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 font-medium">{m.display_name}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 font-medium whitespace-nowrap">{m.display_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <code className="text-[11px] font-mono bg-muted/30 px-1.5 py-0.5 rounded text-muted-foreground border border-border/30">
                           {m.model_identifier}
                         </code>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
                             variant="ghost"
@@ -184,17 +184,17 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
           </DialogHeader>
 
           <div className="p-6 space-y-5">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Bot className="size-3" />
                 Provider
-              </Label>
-              <Select
-                value={newModel.provider_id}
+              </FieldLabel>
+              <Select 
+                value={newModel.provider_id} 
                 onValueChange={(val) => onSetNewModel({ ...newModel, provider_id: val || '' })}
               >
-                <SelectTrigger className="h-11 bg-muted/5 border-border/50 focus:ring-primary/20 text-sm">
-                  <SelectValue>
+                <SelectTrigger className="w-full h-9 text-sm">
+                  <SelectValue className="w-full">
                     {providers.find(p => String(p.id) === newModel.provider_id)?.name || "Select Provider"}
                   </SelectValue>
                 </SelectTrigger>
@@ -204,40 +204,40 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Hash className="size-3" />
                 Identifier
-              </Label>
-              <Input
+              </FieldLabel>
+              <Input 
                 placeholder="e.g. gpt-4o, claude-3"
                 value={newModel.model_identifier}
                 onChange={(e) => onSetNewModel({ ...newModel, model_identifier: e.target.value })}
-                className="h-11 bg-muted/5 border-border/50 focus-visible:ring-primary/20 text-sm"
+                className="h-9 text-sm"
               />
-            </div>
+            </Field>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Type className="size-3" />
                 Display Name
-              </Label>
-              <Input
+              </FieldLabel>
+              <Input 
                 placeholder="e.g. GPT-4 Omni"
                 value={newModel.display_name}
                 onChange={(e) => onSetNewModel({ ...newModel, display_name: e.target.value })}
-                className="h-11 bg-muted/5 border-border/50 focus-visible:ring-primary/20 text-sm"
+                className="h-9 text-sm"
               />
-            </div>
+            </Field>
           </div>
 
-          <DialogFooter className="px-6 py-4 bg-muted/5 border-t border-border/40 gap-3">
-            <Button variant="ghost" onClick={handleClose} disabled={isSaving} className="h-10 px-6 font-semibold text-xs">
+          <DialogFooter className="px-6 py-4 border-t border-border/40 gap-3">
+            <Button variant="ghost" onClick={handleClose} disabled={isSaving} className="h-9 px-4 font-medium text-sm">
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSaving} className="h-10 px-8 font-bold text-xs shadow-lg shadow-primary/10">
+            <Button onClick={handleSave} disabled={isSaving} className="h-9 px-5 font-semibold text-sm shadow-sm">
               {isSaving && <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />}
               {editingModelId ? 'Save Changes' : 'Register Model'}
             </Button>

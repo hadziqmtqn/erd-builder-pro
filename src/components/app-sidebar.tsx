@@ -2,7 +2,6 @@ import * as React from "react"
 import { useState, useEffect, useRef } from "react"
 import {
   Database,
-  StickyNote,
   PenTool,
   Search,
   Network,
@@ -19,6 +18,8 @@ import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { motion } from "framer-motion"
 import {
   Sidebar,
@@ -326,14 +327,14 @@ export const AppSidebar = React.memo(({
             <DialogTitle>Rename Workspace</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            <div className="space-y-2">
-              <label htmlFor="rename-project-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <Field>
+              <FieldLabel htmlFor="rename-project-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 Name
-              </label>
-              <input
+              </FieldLabel>
+              <Input
                 id="rename-project-input"
                 type="text"
-                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
+                className="h-10"
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -344,7 +345,7 @@ export const AppSidebar = React.memo(({
                 }}
                 autoFocus
               />
-            </div>
+            </Field>
           </DialogBody>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" className="h-9" />}>
@@ -373,14 +374,14 @@ export const AppSidebar = React.memo(({
             <DialogTitle>Create Workspace</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            <div className="space-y-2">
-              <label htmlFor="create-project-input" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <Field>
+              <FieldLabel htmlFor="create-project-input" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                 Name
-              </label>
-              <input
+              </FieldLabel>
+              <Input
                 id="create-project-input"
                 type="text"
-                className="w-full flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary placeholder:text-muted-foreground"
+                className="h-10"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 onKeyDown={(e) => {
@@ -392,7 +393,7 @@ export const AppSidebar = React.memo(({
                 }}
                 autoFocus
               />
-            </div>
+            </Field>
           </DialogBody>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" className="h-9" />}>
