@@ -17,6 +17,9 @@ import { Plus, Undo2, Redo2, Image as Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
 import { Entity } from '@/types';
+import { AIActionButton } from '@/components/ai/AIActionButton';
+import { useAIAction } from '@/contexts/AIActionContext';
+import { AIAction } from '@/components/ai/AIActions';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -80,6 +83,8 @@ const ERDViewComponent = ({
   isLoading,
 }: ERDViewProps) => {
 
+  const { sendAction } = useAIAction();
+
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
       const baseEdge = {
@@ -123,7 +128,14 @@ const ERDViewComponent = ({
               <span className="hidden sm:inline">Import SQL</span>
             </Button>
 
-
+            <AIActionButton
+              viewType="erd"
+              context={{ nodes, edges, selectedNode: nodes.find(n => n.id === selectedNodeId) }}
+              onAction={(action: AIAction, ctx: Record<string, any>) => {
+                const prompt = action.buildPrompt(ctx);
+                sendAction(prompt);
+              }}
+            />
 
             <div className="w-px h-6 bg-border mx-0.5" />
 

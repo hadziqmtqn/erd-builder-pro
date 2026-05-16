@@ -39,6 +39,10 @@ interface AIChatPanelProps {
   onClose: () => void;
   entityType?: string | null;
   entityUid?: string | null;
+  /** Pending prompt from AI action buttons — auto-fills input when set */
+  pendingPrompt?: string | null;
+  /** Called after prompt has been consumed */
+  onPromptUsed?: () => void;
 }
 
 // ─── Simple Markdown Parser (lightweight, no deps) ────
@@ -186,6 +190,8 @@ export const AIChatPanel = ({
   onClose,
   entityType,
   entityUid,
+  pendingPrompt,
+  onPromptUsed,
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
@@ -263,6 +269,15 @@ export const AIChatPanel = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [minimized]);
+
+  // ─── Auto-fill prompt from AI action buttons ──────
+  useEffect(() => {
+    if (pendingPrompt && pendingPrompt.trim()) {
+      setInput(pendingPrompt);
+      inputRef.current?.focus();
+      if (onPromptUsed) onPromptUsed();
+    }
+  }, [pendingPrompt]);
 
   // ─── Handle close (save draft, then close) ────────
   const handleClose = useCallback(() => {
