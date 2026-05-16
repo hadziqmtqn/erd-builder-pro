@@ -19,10 +19,12 @@ window.fetch = async (...args) => {
     : (args[0] instanceof Request ? args[0].url : typeof args[0] === 'object' && 'href' in (args[0] as any) ? (args[0] as any).href : '');
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
+  const isSupabaseRoute = url.includes('supabase.co');
+  const isSelfRoute = url.startsWith(window.location.origin) || url.startsWith('/');
   
   const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
   
-  if (response.status === 401 && !isAuthRoute && navigator.onLine && !isGuest) {
+  if (response.status === 401 && isSelfRoute && !isAuthRoute && !isSupabaseRoute && navigator.onLine && !isGuest) {
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   

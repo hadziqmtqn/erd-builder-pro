@@ -1,20 +1,22 @@
-import React, { useState } from "react";
-import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogBody } from "@/components/ui/dialog";
+import React from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogBody } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { MessageSquarePlus } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-export function FeedbackDialog() {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [content, setContent] = useState("");
-  const [category, setCategory] = useState("suggestion");
-  const [email, setEmail] = useState("");
+export function FeedbackDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [loading, setLoading] = React.useState(false);
+  const [content, setContent] = React.useState("");
+  const [category, setCategory] = React.useState("suggestion");
+  const [email, setEmail] = React.useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +38,7 @@ export function FeedbackDialog() {
 
       if (response.ok) {
         toast.success("Feedback terkirim! Terima kasih masukannya.");
-        setOpen(false);
+        onOpenChange(false);
         setContent("");
       } else {
         throw new Error();
@@ -49,35 +51,8 @@ export function FeedbackDialog() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999]">
-      <Dialog open={open} onOpenChange={setOpen}>
-        <Tooltip>
-          <TooltipTrigger 
-            render={
-              <DialogTrigger 
-                render={
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className={cn(
-                      "size-12 rounded-full shadow-2xl border-white/10 bg-background/80 backdrop-blur-md",
-                      "hover:bg-accent hover:border-primary/50 transition-all duration-300",
-                      "group relative overflow-hidden"
-                    )}
-                  >
-                    <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <MessageSquarePlus className="w-5 h-5 text-primary group-hover:scale-110 transition-transform duration-300" />
-                  </Button>
-                }
-              />
-            }
-          />
-          <TooltipContent side="left" className="font-medium">
-            Kirim Feedback
-          </TooltipContent>
-        </Tooltip>
-        
-        <DialogContent className="sm:max-w-[425px] border-white/10 bg-[#0f0f14]/95 backdrop-blur-xl shadow-2xl">
+    <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setContent(""); } }}>
+      <DialogContent className="sm:max-w-[425px] border-white/10 bg-[#0f0f14]/95 backdrop-blur-xl shadow-2xl">
           <form onSubmit={handleSubmit} className="flex flex-col max-h-[inherit]">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold">Kirim Masukan</DialogTitle>
@@ -88,7 +63,7 @@ export function FeedbackDialog() {
             <DialogBody className="space-y-5">
               <div className="grid gap-2">
                 <Label htmlFor="category" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipe Masukan</Label>
-                <Select value={category} onValueChange={setCategory}>
+                <Select value={category} onValueChange={(val) => val && setCategory(val)}>
                   <SelectTrigger id="category" className="bg-white/5 border-white/10 focus:ring-primary/50">
                     <SelectValue placeholder="Pilih tipe">
                       {category === "suggestion" ? "Saran Fitur" : 
@@ -132,7 +107,7 @@ export function FeedbackDialog() {
               <Button 
                 variant="ghost" 
                 type="button" 
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 className="hover:bg-white/5"
               >
                 Batal
@@ -144,6 +119,5 @@ export function FeedbackDialog() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
   );
 }

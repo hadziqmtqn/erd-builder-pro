@@ -1,14 +1,10 @@
 import {
-  BadgeCheck,
-  Bell,
   ChevronsUpDown,
-  CreditCard,
   LogOut,
-  Sparkles,
   Github,
   Trash2,
-  Database,
   Settings,
+  MessageSquarePlus,
 } from "lucide-react"
 
 import {
@@ -39,11 +35,13 @@ export function NavUser({
   onLogout,
   onViewChange,
   isOnline,
+  onOpenFeedback,
 }: {
   user: any
   onLogout: () => void
   onViewChange: (view: AppView) => void
   isOnline: boolean
+  onOpenFeedback: () => void
 }) {
   const { isMobile } = useSidebar()
   const { setIsSettingsOpen, setSettingsTab } = useWorkspace()
@@ -115,10 +113,17 @@ export function NavUser({
                   <Settings className="mr-2 size-4" />
                   Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
-                  <Github className="mr-2 size-4" />
-                  Github
-                </DropdownMenuItem>
+              <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
+                <Github className="mr-2 size-4" />
+                Github
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={onOpenFeedback}
+                className="cursor-pointer"
+              >
+                <MessageSquarePlus className="mr-2 size-4" />
+                Feedback
+              </DropdownMenuItem>
               </DropdownMenuGroup>
 
               <DropdownMenuSeparator />
