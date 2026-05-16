@@ -23,7 +23,7 @@ export const AIChatToggle: React.FC<AIChatToggleProps> = ({ isOpen, onClick }) =
           render={
             <Button
               onClick={onClick}
-              className="fixed right-4 bottom-4 z-50 size-12 rounded-full shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200 hover:scale-105 active:scale-95"
+              className="fixed right-6 bottom-4 z-50 size-12 rounded-full shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200 hover:scale-105 active:scale-95"
               size="icon"
             >
               <Sparkles className="size-5" />

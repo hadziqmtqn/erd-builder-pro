@@ -2,12 +2,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { AIChatSession, AIChatMessage } from '@/types';
+import { fetchEntityContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
 
-export interface EntityContext {
-  entityType: string; // 'note' | 'diagram' | 'flowchart' | 'drawing'
-  entityUid: string;
-}
+export type EntityContext = EntityCtxType;
 
 interface UseAIChatReturn {
   sessions: AIChatSession[];
@@ -307,6 +305,22 @@ export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn
       // System prompt first
       if (promptData && promptData.length > 0) {
         apiMessages.push({ role: 'system', content: promptData[0].content });
+      }
+
+      // Inject entity context so AI knows what file the user is on
+      if (entityContext) {
+        try {
+          const ctxResult = await fetchEntityContext(entityContext);
+          if (ctxResult) {
+            apiMessages.push({
+              role: 'system',
+              content: ctxResult.contextText,
+            });
+          }
+        } catch (err) {
+          // Graceful fallback: if context fetch fails, skip it
+          console.warn('Failed to fetch entity context:', err);
+        }
       }
 
       // Previous messages from this session (exclude temp)

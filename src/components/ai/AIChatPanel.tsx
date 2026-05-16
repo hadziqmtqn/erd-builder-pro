@@ -6,7 +6,7 @@ import {
   Send,
   StopCircle,
   PanelRightClose,
-  PanelRight,
+  Minimize2,
   Sparkles,
   ChevronDown,
   Bot,
@@ -23,6 +23,15 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
+
+// ─── Constants ─────────────────────────────────────────
+
+const DRAFT_KEY_PREFIX = 'ai-chat-draft';
+const DRAFT_DEBOUNCE_MS = 500;
+
+function getDraftKey(entityType?: string | null, entityUid?: string | null): string {
+  return `${DRAFT_KEY_PREFIX}-${entityType || 'global'}-${entityUid || 'none'}`;
+}
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -142,6 +151,35 @@ function SessionItem({
   );
 }
 
+// ─── Minimized Bar ────────────────────────────────────
+
+function MinimizedBar({
+  title,
+  onExpand,
+}: {
+  title: string;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="fixed right-6 bottom-4 z-50">
+      <button
+        onClick={onExpand}
+        className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-lg shadow-black/10 hover:bg-muted/50 transition-all cursor-pointer group"
+      >
+        <div className="p-1 rounded-md bg-primary/10">
+          <Sparkles className="size-3.5 text-primary" />
+        </div>
+        <span className="text-xs font-medium text-foreground/80 truncate max-w-[160px]">
+          {title}
+        </span>
+        <span className="text-[10px] text-muted-foreground/40 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          Click to expand
+        </span>
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Panel Component ─────────────────────────────
 
 export const AIChatPanel = ({
@@ -169,20 +207,88 @@ export const AIChatPanel = ({
 
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
+  const [minimized, setMinimized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const draftKey = getDraftKey(entityType, entityUid);
+
+  // ─── Restore draft from sessionStorage on mount ────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) setInput(saved);
+    } catch {
+      // sessionStorage might be unavailable
+    }
+  }, [draftKey]);
+
+  // ─── Save draft to sessionStorage (debounced) ──────
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        if (input) {
+          sessionStorage.setItem(draftKey, input);
+        } else {
+          sessionStorage.removeItem(draftKey);
+        }
+      } catch {
+        // sessionStorage might be unavailable
+      }
+    }, DRAFT_DEBOUNCE_MS);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [input, draftKey]);
 
   // ─── Auto-scroll to bottom on new messages ─────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
 
+  // ─── Auto-minimize on click outside panel ──────────
+  useEffect(() => {
+    if (minimized) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setMinimized(true);
+      }
+    };
+
+    // Use mousedown for faster response (fires before click/input events)
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [minimized]);
+
+  // ─── Handle close (save draft, then close) ────────
+  const handleClose = useCallback(() => {
+    // Save draft immediately before closing
+    try {
+      if (input) {
+        sessionStorage.setItem(draftKey, input);
+      }
+    } catch {
+      // ignore
+    }
+    onClose();
+  }, [input, draftKey, onClose]);
+
   // ─── Handle send ───────────────────────────────────
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
     sendMessage(input);
     setInput('');
-  }, [input, isStreaming, sendMessage]);
+    // Clear draft after send
+    try {
+      sessionStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
+  }, [input, isStreaming, sendMessage, draftKey]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -206,13 +312,23 @@ export const AIChatPanel = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // ─── Render minimized bar ──────────────────────────
+  if (minimized) {
+    return (
+      <MinimizedBar
+        title={currentSession?.title || 'AI Assistant'}
+        onExpand={() => setMinimized(false)}
+      />
+    );
+  }
+
   // ─── Render ────────────────────────────────────────
   const hasActiveSession = !!currentSession;
   const hasMessages = messages.length > 0;
 
   return (
     <TooltipProvider>
-      <div className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-2xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl shadow-black/10 overflow-hidden animate-in slide-in-from-right-2 duration-300">
+      <div ref={panelRef} className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-2xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl shadow-black/10 overflow-hidden animate-in slide-in-from-right-2 duration-300">
         
         {/* ── Header ─────────────────────────────────── */}
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/5">
@@ -250,7 +366,22 @@ export const AIChatPanel = ({
                     variant="ghost"
                     size="icon"
                     className="size-7 hover:bg-muted/50"
-                    onClick={onClose}
+                    onClick={() => setMinimized(true)}
+                  >
+                    <Minimize2 className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom">Minimize panel</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 hover:bg-muted/50"
+                    onClick={handleClose}
                   >
                     <PanelRightClose className="size-3.5" />
                   </Button>
@@ -421,9 +552,9 @@ export const AIChatPanel = ({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={isStreaming ? 'AI is responding...' : 'Ask anything about your workspace...'}
-                rows={1}
+                rows={3}
                 disabled={isStreaming}
-                className="flex-1 min-h-[36px] max-h-[120px] resize-none rounded-xl bg-muted/20 border border-border/40 px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/30 disabled:opacity-50"
+                className="flex-1 min-h-[72px] max-h-[200px] resize-none rounded-xl bg-muted/20 border border-border/40 px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/30 disabled:opacity-50"
               />
               {isStreaming ? (
                 <Button
