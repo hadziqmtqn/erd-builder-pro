@@ -25,6 +25,9 @@ import { AddSymbolModal } from '../flowchart/AddSymbolModal';
 import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 import { JumpToNode } from '../JumpToNode';
+import { AIActionButton } from '@/components/ai/AIActionButton';
+import { useAIAction } from '@/contexts/AIActionContext';
+import { AIAction } from '@/components/ai/AIActions';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -46,6 +49,7 @@ export const FlowchartView = React.memo(({
   isLoading = false 
 }: FlowchartViewProps) => {
   // ── Hooks FIRST (before any conditional return — Rule of Hooks) ──
+  const { sendAction } = useAIAction();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowchartNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -273,6 +277,18 @@ export const FlowchartView = React.memo(({
               <Plus className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Add Symbol</span>
             </Button>
+
+            <div className="w-px h-6 bg-border mx-0.5" />
+
+            <AIActionButton
+              viewType="flowchart"
+              context={{ nodes, edges }}
+              onAction={(action: AIAction, ctx: Record<string, any>) => {
+                const prompt = action.buildPrompt(ctx);
+                sendAction(prompt);
+              }}
+              iconOnly
+            />
           </div>
         </div>
       )}

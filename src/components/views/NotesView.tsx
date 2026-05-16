@@ -1,5 +1,8 @@
 import React from 'react';
 import NotesEditor from '../NotesEditor';
+import { AIActionButton } from '@/components/ai/AIActionButton';
+import { useAIAction } from '@/contexts/AIActionContext';
+import { AIAction } from '@/components/ai/AIActions';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -20,6 +23,7 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
+  const { sendAction } = useAIAction();
   // Show skeleton during initial load — covers both cached and uncached notes.
   // The guard (!activeNote || activeNote.content === undefined) was removed so the
   // spinner appears even when cached content is available, matching focus-sync behavior.
@@ -40,7 +44,24 @@ export const NotesView = React.memo(({
   if (!activeNote) return null;
   
   return (
-    <div className="flex-1 border rounded-xl overflow-hidden bg-background">
+    <div className="flex-1 border rounded-xl overflow-hidden bg-background relative">
+      {/* AI action button — floating above the editor */}
+      {!isReadOnly && (
+        <div className="absolute top-4 right-4 z-10">
+          <AIActionButton
+            viewType="notes"
+            context={{
+              title: activeNote?.title || '',
+              content: typeof activeNote?.content === 'string' ? activeNote.content : '',
+            }}
+            onAction={(action: AIAction, ctx: Record<string, any>) => {
+              const prompt = action.buildPrompt(ctx);
+              sendAction(prompt);
+            }}
+            iconOnly
+          />
+        </div>
+      )}
       <NotesEditor 
         key={activeNoteUid} 
         note={activeNote} 

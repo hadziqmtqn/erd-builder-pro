@@ -26,13 +26,16 @@ import {
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
-export function AppLayout() {
+// ── Inner component that uses AIAction context ──
+
+function AppLayoutInner() {
   const location = useLocation();
-  const [isAIOpen, setIsAIOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt } = useAIAction();
 
   // ─── Derive AI entity context from current route ─────
   const entityContext = useMemo(() => {
@@ -98,7 +101,7 @@ export function AppLayout() {
   } = useWorkspace();
 
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
+    <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
 
       {!isPublicView && (
@@ -304,21 +307,37 @@ export function AppLayout() {
           isRefreshing={isRefreshing}
         />
 
-        {/* AI Assistant — only on file feature pages (notes, diagrams, flowcharts, drawings) */}
+        {/* AI Assistant — only on file feature pages */}
         {showAIChat && isAIOpen && (
           <AIChatPanel
-            onClose={() => setIsAIOpen(false)}
+            onClose={() => setAIOpen(false)}
             entityType={entityContext!.entityType}
             entityUid={entityContext!.entityUid}
+            pendingPrompt={pendingPrompt}
+            onPromptUsed={clearPrompt}
           />
         )}
         {showAIChat && (
           <AIChatToggle
             isOpen={isAIOpen}
-            onClick={() => setIsAIOpen(true)}
+            onClick={() => setAIOpen(true)}
           />
         )}
       </SidebarInset>
+    </>
+  );
+}
+
+// ── Root layout: providers wrap inner content ──
+
+export function AppLayout() {
+  return (
+    <SidebarProvider className="h-svh overflow-hidden">
+      <AIActionProvider>
+        <AppLayoutInner />
+      </AIActionProvider>
     </SidebarProvider>
   );
 }
+
+export default AppLayout;
