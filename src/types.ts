@@ -189,6 +189,8 @@ export interface AIChatSession {
   uid: string;
   user_id: string;
   project_id?: number | string;
+  entity_type?: string | null;
+  entity_uid?: string | null;
   title: string;
   created_at: string;
   updated_at: string;

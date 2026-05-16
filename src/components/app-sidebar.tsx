@@ -65,7 +65,7 @@ import { Project, AppView } from "../types"
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
   view: AppView;
-  onViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
+  onViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => void;
   onNoteSelect: (uid: string) => void;
   onDrawingSelect: (uid: string) => void;
   onProjectCreate: (name: string) => void;
@@ -81,6 +81,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   isProjectsLoading?: boolean;
   user: any;
   isOnline: boolean;
+  onOpenFeedback: () => void;
 }
 
 export const AppSidebar = React.memo(({
@@ -102,6 +103,7 @@ export const AppSidebar = React.memo(({
   isProjectsLoading,
   user,
   isOnline,
+  onOpenFeedback,
   ...props
 }: AppSidebarProps) => {
   const { state, setOpen } = useSidebar();
@@ -316,6 +318,7 @@ export const AppSidebar = React.memo(({
           onLogout={onLogout}
           onViewChange={onViewChange}
           isOnline={isOnline}
+          onOpenFeedback={onOpenFeedback}
         />
       </SidebarFooter>
       <SidebarRail />

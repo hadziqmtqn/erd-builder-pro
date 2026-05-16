@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 // Components
@@ -26,9 +26,28 @@ import {
 import { ERDImportModal } from '@/components/modals/ERDImportModal';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { AIChatPanel } from '@/components/ai/AIChatPanel';
+import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 export function AppLayout() {
   const location = useLocation();
+  const [isAIOpen, setIsAIOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+
+  // ─── Derive AI entity context from current route ─────
+  const entityContext = useMemo(() => {
+    const m = location.pathname.match(/^\/(notes|diagrams|flowcharts|drawings)\/([^/]+)$/);
+    if (!m) return null;
+    const typeMap: Record<string, string> = {
+      notes: 'note',
+      diagrams: 'diagram',
+      flowcharts: 'flowchart',
+      drawings: 'drawing',
+    };
+    return { entityType: typeMap[m[1]], entityUid: m[2] };
+  }, [location.pathname]);
+
+  const showAIChat = entityContext !== null;
   const {
     view, sidebarView,
     isPublicView, isOnline,
@@ -102,6 +121,7 @@ export function AppLayout() {
           isInstallable={isInstallable}
           onInstall={installApp}
           isProjectsLoading={isProjectsLoading}
+          onOpenFeedback={() => setIsFeedbackOpen(true)}
         />
       )}
 
@@ -170,7 +190,10 @@ export function AppLayout() {
           }}
         />
 
-        <FeedbackDialog />
+        <FeedbackDialog
+          open={isFeedbackOpen}
+          onOpenChange={setIsFeedbackOpen}
+        />
 
         <MoveToTrashAlert
           isOpen={isPermanentDeleteConfirmOpen}
@@ -280,6 +303,21 @@ export function AppLayout() {
           executeDuplicate={executeDuplicate}
           isRefreshing={isRefreshing}
         />
+
+        {/* AI Assistant — only on file feature pages (notes, diagrams, flowcharts, drawings) */}
+        {showAIChat && isAIOpen && (
+          <AIChatPanel
+            onClose={() => setIsAIOpen(false)}
+            entityType={entityContext!.entityType}
+            entityUid={entityContext!.entityUid}
+          />
+        )}
+        {showAIChat && (
+          <AIChatToggle
+            isOpen={isAIOpen}
+            onClick={() => setIsAIOpen(true)}
+          />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );

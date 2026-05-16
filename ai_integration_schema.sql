@@ -40,8 +40,10 @@ CREATE TABLE IF NOT EXISTS user_ai_configs (
 CREATE TABLE IF NOT EXISTS ai_chat_sessions (
     id BIGSERIAL PRIMARY KEY,
     uid UUID DEFAULT gen_random_uuid() UNIQUE,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID, -- Removed FK to auth.users to support Custom Auth IDs and Guest sessions
     project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+    entity_type TEXT DEFAULT NULL, -- 'note', 'diagram', 'flowchart', 'drawing'
+    entity_uid TEXT DEFAULT NULL,  -- UUID of the active note/diagram/flowchart/drawing
     title TEXT DEFAULT 'New Conversation',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -110,24 +112,24 @@ FOR ALL
 TO public
 USING (auth.uid() = user_id);
 
--- Policies for ai_chat_sessions
-CREATE POLICY "Users can manage their own chat sessions" 
-ON ai_chat_sessions
-FOR ALL 
-TO public
-USING (auth.uid() = user_id);
+-- Policies for ai_chat_sessions (Public Access for Custom Auth)
+DROP POLICY IF EXISTS "policy_ai_chat_sessions_all" ON ai_chat_sessions;
+CREATE POLICY "allow_all_sessions_access" 
+ON ai_chat_sessions FOR ALL 
+TO public 
+USING (true) 
+WITH CHECK (true);
 
--- Policies for ai_chat_messages
-CREATE POLICY "Users can manage messages in their sessions" 
-ON ai_chat_messages
-FOR ALL 
-TO public
+-- Policies for ai_chat_messages (Public Access for Custom Auth)
+DROP POLICY IF EXISTS "policy_ai_chat_messages_all" ON ai_chat_messages;
+CREATE POLICY "allow_all_messages_access" 
+ON ai_chat_messages FOR ALL 
+TO public 
 USING (
-    EXISTS (
-        SELECT 1 FROM ai_chat_sessions 
-        WHERE ai_chat_sessions.id = ai_chat_messages.session_id 
-        AND ai_chat_sessions.user_id = auth.uid()
-    )
+    EXISTS (SELECT 1 FROM ai_chat_sessions WHERE ai_chat_sessions.id = ai_chat_messages.session_id)
+)
+WITH CHECK (
+    EXISTS (SELECT 1 FROM ai_chat_sessions WHERE ai_chat_sessions.id = ai_chat_messages.session_id)
 );
 
 -- Policies for ai_system_prompts (NEW - Optimized for Custom Auth)
