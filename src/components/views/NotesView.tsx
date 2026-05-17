@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import NotesEditor from '../NotesEditor';
+import { DiffPreviewModal } from '@/components/modals/DiffPreviewModal';
 
 import { useAIAction } from '@/contexts/AIActionContext';
 import { AIAction } from '@/components/ai/AIActions';
@@ -33,44 +34,43 @@ export const NotesView = React.memo(({
     () => htmlToAIText(typeof activeNote?.content === 'string' ? activeNote.content : ''),
     [activeNote?.content]
   );
+  
+  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append'} | null>(null);
 
-  // ─── Register Global Manual Content Handler ───
   useEffect(() => {
     if (!activeNote || isReadOnly) return;
 
     const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
-      let newContent = '';
-      
-      // Attempt to parse markdown to HTML since Tiptap expects HTML
-      let parsedContent = content;
-      try {
-        parsedContent = await marked.parse(content);
-      } catch (err) {
-        console.error('Failed to parse markdown', err);
-      }
-
-      if (strategy === 'replace') {
-        newContent = parsedContent;
-      } else if (strategy === 'append') {
-        const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
-        const separator = currentContent.trim() ? '<br><hr><br>' : '';
-        newContent = currentContent + separator + parsedContent;
-      }
-      
-      // Update locally to bypass save debouncing latency for this explicit user action
-      handleNoteChange(newContent);
-      saveNote({ ...activeNote, content: newContent });
+      setPendingChange({ content, strategy });
     });
 
     return cleanup;
-  }, [activeNote, isReadOnly, registerContentHandler, saveNote]);
+  }, [activeNote, isReadOnly, registerContentHandler]);
 
+  const handleConfirmChange = async () => {
+    if (!pendingChange) return;
+    const { content, strategy } = pendingChange;
+    
+    let newContent = '';
+    let parsedContent = content;
+    try {
+      parsedContent = await marked.parse(content);
+    } catch (err) {
+      console.error('Failed to parse markdown', err);
+    }
 
-
-  // Show skeleton during initial load — covers both cached and uncached notes.
-  // The guard (!activeNote || activeNote.content === undefined) was removed so the
-  // spinner appears even when cached content is available, matching focus-sync behavior.
-  const showSkeleton = isLoading;
+    if (strategy === 'replace') {
+      newContent = parsedContent;
+    } else if (strategy === 'append') {
+      const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+      const separator = currentContent.trim() ? '<br><hr><br>' : '';
+      newContent = currentContent + separator + parsedContent;
+    }
+    
+    handleNoteChange(newContent);
+    saveNote({ ...activeNote, content: newContent });
+    setPendingChange(null);
+  };
 
   if (showSkeleton) {
     return (
@@ -97,6 +97,16 @@ export const NotesView = React.memo(({
         onDelete={deleteNote} 
         isReadOnly={isReadOnly}
       />
+      
+      {pendingChange && (
+        <DiffPreviewModal
+          isOpen={!!pendingChange}
+          originalText={htmlToAIText(typeof activeNote.content === 'string' ? activeNote.content : '')}
+          newText={pendingChange.content}
+          onConfirm={handleConfirmChange}
+          onCancel={() => setPendingChange(null)}
+        />
+      )}
     </div>
   );
 });
