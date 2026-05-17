@@ -35,6 +35,9 @@ import {
   DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
 
@@ -372,26 +375,19 @@ export const AIChatPanel = ({
 
   return (
     <TooltipProvider>
-      <div ref={panelRef} className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-2xl border border-border/50 bg-background/95 backdrop-blur-xl shadow-2xl shadow-black/10 overflow-hidden animate-in slide-in-from-right-2 duration-300">
+      <div ref={panelRef} className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300">
         
         {/* ── Header ─────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/5">
+        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-muted/20">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-primary/10">
-              <Sparkles className="size-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold">AI Assistant</h3>
-              <p className="text-[10px] text-muted-foreground/60">
-                {isStreaming ? 'Generating...' : hasActiveSession ? 'Ready' : 'No session'}
-              </p>
-            </div>
+            <Sparkles className="size-4 text-primary" />
+            <h3 className="text-sm font-semibold tracking-tight">AI Assistant</h3>
           </div>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-muted/50"
+              className="size-8"
               onClick={() => setShowSessions(!showSessions)}
               title={showSessions ? "Hide sessions" : "Show sessions"}
             >
@@ -400,7 +396,7 @@ export const AIChatPanel = ({
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-muted/50"
+              className="size-8"
               onClick={() => setMinimized(true)}
               title="Minimize panel"
             >
@@ -409,7 +405,7 @@ export const AIChatPanel = ({
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 hover:bg-muted/50"
+              className="size-8"
               onClick={handleClose}
               title="Close panel"
             >
@@ -420,8 +416,8 @@ export const AIChatPanel = ({
 
         {/* ── Session List ─────────────────────────────── */}
         {showSessions && (
-          <div className="shrink-0 border-b border-border/20 bg-muted/3">
-            <div className="p-3 space-y-1 max-h-[240px] overflow-y-auto">
+          <div className="shrink-0 border-b bg-muted/10">
+            <div className="p-3 space-y-1 max-h-[240px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/10">
               <Button
                 variant="outline"
                 size="sm"
@@ -438,8 +434,7 @@ export const AIChatPanel = ({
                 </div>
               ) : sessions.length === 0 ? (
                 <div className="py-6 text-center">
-                  <p className="text-[11px] text-muted-foreground/50">No conversations yet</p>
-                  <p className="text-[10px] text-muted-foreground/30 mt-1">Start a new chat to begin</p>
+                  <p className="text-[11px] text-muted-foreground/50 font-medium">No conversations yet</p>
                 </div>
               ) : (
                 sessions.map((session) => (
@@ -460,23 +455,21 @@ export const AIChatPanel = ({
         )}
 
         {/* ── Messages Area ───────────────────────────── */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-3 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
           {!hasActiveSession ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-16">
-              <div className="p-4 rounded-full bg-primary/5 mb-4">
-                <MessageSquare className="size-8 text-primary/30" />
-              </div>
-              <h4 className="text-sm font-semibold text-muted-foreground/70">AI Assistant</h4>
-              <p className="text-[11px] text-muted-foreground/50 mt-1 max-w-[200px]">
+              <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
+              <h4 className="text-sm font-semibold">AI Assistant</h4>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
                 Select a conversation or start a new chat
               </p>
               <Button
                 variant="default"
                 size="sm"
-                className="mt-4 gap-2"
+                className="mt-4"
                 onClick={handleNewSession}
               >
-                <Plus className="size-3.5" />
+                <Plus className="size-4 mr-2" />
                 New Chat
               </Button>
             </div>
@@ -487,10 +480,7 @@ export const AIChatPanel = ({
           ) : !hasMessages ? (
             <div className="flex flex-col items-center justify-center text-center py-16">
               <Bot className="size-10 text-muted-foreground/20 mb-3" />
-              <h4 className="text-sm font-semibold text-muted-foreground/60">Empty conversation</h4>
-              <p className="text-[11px] text-muted-foreground/40 mt-1">
-                Send a message to start chatting
-              </p>
+              <p className="text-xs text-muted-foreground font-medium">Send a message to start chatting</p>
             </div>
           ) : (
             messages.map((msg, idx) => {
@@ -500,11 +490,11 @@ export const AIChatPanel = ({
               return (
                 <div
                   key={msg.id || idx}
-                  className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isStreamingMsg ? 'opacity-80' : ''}`}
+                  className={`flex gap-3 group/msg ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
                 >
                   {/* Avatar */}
                   <div
-                    className={`shrink-0 size-7 rounded-full flex items-center justify-center ${
+                    className={`shrink-0 size-7 rounded-full flex items-center justify-center transition-opacity ${
                       isUser
                         ? 'bg-primary/10 text-primary'
                         : 'bg-muted text-muted-foreground'
@@ -514,171 +504,159 @@ export const AIChatPanel = ({
                   </div>
 
                   <div className={`flex flex-col gap-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
-                    {/* Bubble */}
+                    {/* Message Bubble */}
                     <div
-                      className={`rounded-2xl px-3.5 py-2.5 ${
+                      className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
                         isUser
-                          ? 'bg-primary text-primary-foreground rounded-tr-md'
-                          : 'bg-muted/40 border border-border/30 rounded-tl-md'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted/50 border border-border/40'
                       }`}
                     >
                       {isUser ? (
-                        <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                          {msg.content}
-                        </p>
+                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                       ) : (
-                        <div className="text-[13px] leading-relaxed break-words">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-pre:bg-black/30">
                           {isStreamingMsg && !msg.content ? (
-                            <span className="inline-flex gap-1">
+                            <span className="inline-flex gap-1 py-1">
                               <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
                               <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
                               <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
                             </span>
                           ) : (
-                            <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed break-words prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent">
+                            <>
                               <ReactMarkdown>{msg.content}</ReactMarkdown>
                               {isStreamingMsg && (
                                 <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
                               )}
-                            </div>
+                            </>
                           )}
                         </div>
                       )}
                     </div>
-                    
-                    {/* Action Buttons Container (Outside bubble) */}
-                    {!isUser && !isStreamingMsg && msg.content && (
-                      <div className="flex items-center justify-start gap-1.5">
-                        {hasContentHandler && (
-                          <>
-                            <button
-                              onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
-                              className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all text-[11px] font-medium"
-                              title="Overwrite active content entirely"
-                            >
-                              <Replace className="size-3" />
-                              Replace All
-                            </button>
-                            <button
-                              onClick={() => applyContent(msg.content, 'append')}
-                              className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all text-[11px] font-medium"
-                              title="Add to the end of active content"
-                            >
-                              <ArrowDownToLine className="size-3" />
-                              Append
-                            </button>
-                            <div className="w-px h-3.5 bg-border mx-1" />
-                          </>
-                        )}
-                        
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(msg.content);
-                            setCopiedMsgId(msg.id?.toString() || idx.toString());
-                            setTimeout(() => setCopiedMsgId(null), 2000);
-                          }}
-                          className="flex items-center justify-center p-1.5 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
-                          title="Copy message"
-                        >
-                          {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
-                            <Check className="size-3.5 text-green-500" />
-                          ) : (
-                            <Copy className="size-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    )}
 
                     {/* Timestamp */}
                     {!isStreamingMsg && msg.created_at && (
-                      <p className={`text-[10px] ${isUser ? 'text-primary-foreground/50' : 'text-muted-foreground/40'}`}>
+                      <span className="text-[10px] text-muted-foreground/40 px-1 block">
                         {formatTime(msg.created_at)}
-                      </p>
+                      </span>
+                    )}
+
+                    {/* Action Buttons */}
+                    {!isUser && !isStreamingMsg && msg.content && (
+                      <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
+                        {hasContentHandler && (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <button
+                                  onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
+                                  className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
+                                  title="Replace All"
+                                >
+                                  <Replace className="size-4" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="text-[10px]">Replace All</TooltipContent>
+                            </Tooltip>
+                            
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <button
+                                  onClick={() => applyContent(msg.content, 'append')}
+                                  className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
+                                  title="Append"
+                                >
+                                  <ArrowDownToLine className="size-4" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="text-[10px]">Append</TooltipContent>
+                            </Tooltip>
+                            <div className="w-px h-6 bg-border mx-1" />
+                          </>
+                        )}
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(msg.content);
+                                setCopiedMsgId(msg.id?.toString() || idx.toString());
+                                setTimeout(() => setCopiedMsgId(null), 2000);
+                              }}
+                              className="flex items-center justify-center size-8 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
+                              title="Copy message"
+                            >
+                              {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
+                                <Check className="size-4 text-green-500" />
+                              ) : (
+                                <Copy className="size-4" />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="text-[10px]">Copy</TooltipContent>
+                        </Tooltip>
+                      </div>
                     )}
                   </div>
                 </div>
               );
             })
           )}
-
-          {/* Error message */}
-          {error && !isStreaming && (
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-destructive/5 border border-destructive/20 text-xs text-destructive">
-              <span className="shrink-0 size-1.5 rounded-full bg-destructive/60" />
-              {error}
-            </div>
-          )}
-
           <div ref={messagesEndRef} />
         </div>
 
         {/* ── Input Area ──────────────────────────────── */}
         {hasActiveSession && (
-          <div className="shrink-0 border-t border-border/50 bg-muted/5 p-3">
+          <div className="shrink-0 border-t bg-background p-4 space-y-3">
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isStreaming ? 'AI is responding...' : 'Ask anything about your workspace...'}
+                placeholder={isStreaming ? 'AI is responding...' : 'Ask anything...'}
+                className="flex-1 min-h-[80px] max-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
                 rows={3}
                 disabled={isStreaming}
-                className="flex-1 min-h-[72px] max-h-[200px] resize-none rounded-xl bg-muted/30 border border-border/60 px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-primary/30 focus:bg-background transition-all placeholder:text-muted-foreground/30 disabled:opacity-50"
               />
-              {isStreaming ? (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="size-9 shrink-0 rounded-xl border-destructive/30 hover:bg-destructive/10 hover:border-destructive/50"
-                  onClick={abortStream}
-                  title="Stop generating"
-                >
-                  <StopCircle className="size-4 text-destructive" />
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="icon"
-                  className="size-9 shrink-0 rounded-xl"
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  title="Send message"
-                >
-                  <Send className="size-4" />
-                </Button>
-              )}
+              <Button
+                variant={isStreaming ? "outline" : "default"}
+                size="icon"
+                className="shrink-0 size-9 rounded-md"
+                onClick={isStreaming ? abortStream : handleSend}
+                disabled={!input.trim() && !isStreaming}
+              >
+                {isStreaming ? <StopCircle className="size-4 text-destructive" /> : <Send className="size-4" />}
+              </Button>
             </div>
 
-            {/* AI Action Dropdown + Helper text */}
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground/30 mt-1.5">
+            <div className="flex items-center justify-between">
               {entityType === 'note' && !isStreaming && actions.length > 0 ? (
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="flex items-center gap-1.5 h-7 px-2 text-xs font-medium rounded-md border border-border/50 bg-muted/50 hover:bg-muted/80 hover:border-border/70 transition-colors cursor-default outline-none select-none text-white">
+                  <DropdownMenuTrigger className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-border bg-muted/50 hover:bg-muted/80 transition-colors text-white outline-none">
                     <Sparkles className="size-3.5 text-primary" />
                     AI Actions
-                    <ChevronDown className="size-3 ml-0.5" />
+                    <ChevronDown className="size-3 ml-0.5 opacity-50" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start" className="w-[200px]">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel>Notes Actions</DropdownMenuLabel>
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider opacity-50">Notes Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       {actions.map((action) => (
                         <DropdownMenuItem
                           key={action.id}
                           onClick={() => handleSelectAction(action)}
-                          className="gap-2 text-xs text-foreground"
+                          className="text-xs cursor-pointer"
                         >
                           {getActionIcon(action.id)}
-                          <span>{action.label}</span>
+                          <span className="ml-2">{action.label}</span>
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <span className="w-full text-center">
-                  {isStreaming ? 'Generating response...' : 'Enter to send · Shift+Enter for newline'}
+                <span className="text-[10px] text-muted-foreground/50 px-1 font-medium">
+                  {isStreaming ? 'Generating...' : 'Press Enter to send'}
                 </span>
               )}
             </div>
