@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect } from 'react';
 import NotesEditor from '../NotesEditor';
-import { AIActionButton } from '@/components/ai/AIActionButton';
+
 import { useAIAction } from '@/contexts/AIActionContext';
 import { AIAction } from '@/components/ai/AIActions';
 import { applyToNoteContent } from '@/components/ai/actions';
+import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 
 import { marked } from 'marked';
+import { useMemo } from 'react';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -26,7 +28,11 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
-  const { sendAction, registerContentHandler } = useAIAction();
+  const { registerContentHandler } = useAIAction();
+  const aiReadableNoteContent = useMemo(
+    () => htmlToAIText(typeof activeNote?.content === 'string' ? activeNote.content : ''),
+    [activeNote?.content]
+  );
 
   // ─── Register Global Manual Content Handler ───
   useEffect(() => {
@@ -59,28 +65,7 @@ export const NotesView = React.memo(({
     return cleanup;
   }, [activeNote, isReadOnly, registerContentHandler, saveNote]);
 
-  // ─── Handle AI action: build prompt and set up auto-apply callback ──
-  const handleAIAction = useCallback((action: AIAction, ctx: Record<string, any>) => {
-    const prompt = action.buildPrompt(ctx);
 
-    const onResult = async (response: string) => {
-      if (!activeNote) return;
-      
-      let parsedResponse = response;
-      try {
-        parsedResponse = await marked.parse(response);
-      } catch (err) {
-        console.error('Failed to parse markdown', err);
-      }
-      
-      const newContent = applyToNoteContent(activeNote.content || '', action.id, parsedResponse);
-      
-      handleNoteChange(newContent);
-      saveNote({ ...activeNote, content: newContent });
-    };
-
-    sendAction(prompt, action.id, onResult);
-  }, [activeNote, saveNote, sendAction, handleNoteChange]);
 
   // Show skeleton during initial load — covers both cached and uncached notes.
   // The guard (!activeNote || activeNote.content === undefined) was removed so the
@@ -103,20 +88,7 @@ export const NotesView = React.memo(({
   
   return (
     <div className="flex-1 border rounded-xl overflow-hidden bg-background relative">
-      {/* AI action button — floating above the editor */}
-      {!isReadOnly && (
-        <div className="absolute top-4 right-4 z-10">
-          <AIActionButton
-            viewType="notes"
-            context={{
-              title: activeNote?.title || '',
-              content: typeof activeNote?.content === 'string' ? activeNote.content : '',
-            }}
-            onAction={handleAIAction}
-            iconOnly
-          />
-        </div>
-      )}
+
       <NotesEditor 
         key={activeNoteUid} 
         note={activeNote} 
