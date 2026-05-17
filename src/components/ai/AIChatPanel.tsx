@@ -30,16 +30,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
   DropdownMenuSeparator,
   DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import {
-  Tooltip,
-  TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 
 // Map action IDs to lucide icons
 function getActionIcon(actionId: string) {
@@ -220,7 +217,13 @@ export const AIChatPanel = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const draftKey = getDraftKey(entityType, entityUid);
 
-  const actions = entityType ? getActionsForView(entityType as ViewType) : [];
+  const entityToViewMap: Record<string, ViewType> = {
+    note: 'notes',
+    diagram: 'erd',
+    flowchart: 'flowchart',
+  };
+  const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
+  const actions = currentViewType ? getActionsForView(currentViewType) : [];
 
   const handleSelectAction = useCallback((action: AIAction) => {
     if (!entityType || !entityContextText || !entityTitle) return;
@@ -284,6 +287,7 @@ export const AIChatPanel = ({
       if (
         target.closest('[role="alertdialog"]') || 
         target.closest('[role="dialog"]') ||
+        target.closest('[role="menu"]') ||
         target.closest('.fixed.inset-0')
       ) {
         return;
@@ -610,7 +614,7 @@ export const AIChatPanel = ({
 
         {/* ── Input Area ──────────────────────────────── */}
         {hasActiveSession && (
-          <div className="shrink-0 border-t border-border/40 bg-muted/3 p-3">
+          <div className="shrink-0 border-t border-border/50 bg-muted/5 p-3">
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
@@ -620,7 +624,7 @@ export const AIChatPanel = ({
                 placeholder={isStreaming ? 'AI is responding...' : 'Ask anything about your workspace...'}
                 rows={3}
                 disabled={isStreaming}
-                className="flex-1 min-h-[72px] max-h-[200px] resize-none rounded-xl bg-muted/20 border border-border/40 px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/30 disabled:opacity-50"
+                className="flex-1 min-h-[72px] max-h-[200px] resize-none rounded-xl bg-muted/30 border border-border/60 px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-primary/30 focus:bg-background transition-all placeholder:text-muted-foreground/30 disabled:opacity-50"
               />
               {isStreaming ? (
                 <Button
@@ -650,26 +654,26 @@ export const AIChatPanel = ({
             <div className="flex items-center justify-between text-[10px] text-muted-foreground/30 mt-1.5">
               {entityType === 'note' && !isStreaming && actions.length > 0 ? (
                 <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1.5">
-                      <Sparkles className="size-3.5 text-primary" />
-                      AI Actions
-                      <ChevronDown className="size-3 ml-0.5" />
-                    </Button>
+                  <DropdownMenuTrigger className="flex items-center gap-1.5 h-7 px-2 text-xs font-medium rounded-md border border-border/50 bg-muted/50 hover:bg-muted/80 hover:border-border/70 transition-colors cursor-default outline-none select-none text-white">
+                    <Sparkles className="size-3.5 text-primary" />
+                    AI Actions
+                    <ChevronDown className="size-3 ml-0.5" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start" className="w-[200px]">
-                    <DropdownMenuLabel>Notes Actions</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {actions.map((action) => (
-                      <DropdownMenuItem
-                        key={action.id}
-                        onClick={() => handleSelectAction(action)}
-                        className="gap-2 text-xs"
-                      >
-                        {getActionIcon(action.id)}
-                        <span>{action.label}</span>
-                      </DropdownMenuItem>
-                    ))}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Notes Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {actions.map((action) => (
+                        <DropdownMenuItem
+                          key={action.id}
+                          onClick={() => handleSelectAction(action)}
+                          className="gap-2 text-xs text-foreground"
+                        >
+                          {getActionIcon(action.id)}
+                          <span>{action.label}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
