@@ -8,15 +8,20 @@ import {
   PanelRightClose,
   Minimize2,
   Sparkles,
-  ChevronDown,
-  Bot,
   User,
+  Bot,
+  Copy,
+  Check,
+  ChevronDown,
   Loader2,
-  Settings2,
-} from 'lucide-react';
+  ArrowDownToLine,
+  Replace} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
+import { useAIAction } from '@/contexts/AIActionContext';
 import { AIChatSession } from '@/types';
 import { Button } from '@/components/ui/button';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   Tooltip,
   TooltipContent,
@@ -51,75 +56,7 @@ interface AIChatPanelProps {
   onClearPendingAction?: () => void;
 }
 
-// ─── Simple Markdown Parser (lightweight, no deps) ────
-
-function renderSimpleMarkdown(text: string): React.ReactNode {
-  if (!text) return null;
-
-  // Split by code blocks first
-  const blocks = text.split(/(```[\s\S]*?```)/g);
-  const elements: React.ReactNode[] = [];
-  let key = 0;
-
-  for (const block of blocks) {
-    if (block.startsWith('```') && block.endsWith('```')) {
-      // Code block
-      const inner = block.slice(3, -3).trim();
-      const langMatch = inner.match(/^(\w+)\n/);
-      const lang = langMatch ? langMatch[1] : '';
-      const code = langMatch ? inner.slice(lang.length + 1) : inner;
-
-      elements.push(
-        <pre key={key++} className="relative my-2 rounded-lg bg-muted/50 border border-border/40 overflow-x-auto">
-          {lang && (
-            <div className="absolute top-0 right-0 px-2 py-0.5 text-[10px] text-muted-foreground/50 bg-muted/30 rounded-bl-lg font-mono">
-              {lang}
-            </div>
-          )}
-          <code className="block p-3 text-[12px] leading-relaxed font-mono">{code}</code>
-        </pre>
-      );
-    } else {
-      // Inline content — parse bold, italic, inline code
-      const lines = block.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.trim()) {
-          elements.push(<br key={key++} />);
-          continue;
-        }
-
-        // Parse inline formatting
-        const parts = line.split(/(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_)/g);
-        const inlineElements: React.ReactNode[] = [];
-
-        for (const part of parts) {
-          if (part.startsWith('`') && part.endsWith('`')) {
-            inlineElements.push(
-              <code key={key++} className="px-1 py-0.5 rounded bg-muted/50 text-[11px] font-mono">
-                {part.slice(1, -1)}
-              </code>
-            );
-          } else if (part.startsWith('**') && part.endsWith('**')) {
-            inlineElements.push(<strong key={key++}>{part.slice(2, -2)}</strong>);
-          } else if (part.startsWith('_') && part.endsWith('_')) {
-            inlineElements.push(<em key={key++}>{part.slice(1, -1)}</em>);
-          } else {
-            inlineElements.push(<span key={key++}>{part}</span>);
-          }
-        }
-
-        elements.push(
-          <p key={key++} className="text-[13px] leading-relaxed">
-            {inlineElements}
-          </p>
-        );
-      }
-    }
-  }
-
-  return elements;
-}
+// ─── Component ──────────────────────────────────────────
 
 // ─── Session Item ─────────────────────────────────────
 
@@ -232,13 +169,15 @@ export const AIChatPanel = ({
     createSession,
     selectSession,
     deleteSession,
-    listSessions,
     sendMessage,
     abortStream,
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [confirmReplaceMsg, setConfirmReplaceMsg] = useState<{id: string, content: string} | null>(null);
+  const { applyContent, hasContentHandler } = useAIAction();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -282,9 +221,20 @@ export const AIChatPanel = ({
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
-    if (minimized) return;
+    if (minimized || confirmReplaceMsg) return;
 
     const handleClickOutside = (e: MouseEvent) => {
+      // Don't minimize if the click is on an alert dialog/modal overlay
+      // Radix/shadcn modals typically append to body and have specific roles or classes
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('[role="alertdialog"]') || 
+        target.closest('[role="dialog"]') ||
+        target.closest('.fixed.inset-0') // Overlay classes
+      ) {
+        return;
+      }
+
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setMinimized(true);
       }
@@ -293,7 +243,7 @@ export const AIChatPanel = ({
     // Use mousedown for faster response (fires before click/input events)
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [minimized]);
+  }, [minimized, confirmReplaceMsg]);
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -510,7 +460,6 @@ export const AIChatPanel = ({
             messages.map((msg, idx) => {
               const isUser = msg.role === 'user';
               const isStreamingMsg = msg.id === 'streaming';
-              const isLast = idx === messages.length - 1;
 
               return (
                 <div
@@ -528,40 +477,86 @@ export const AIChatPanel = ({
                     {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
                   </div>
 
-                  {/* Bubble */}
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 ${
-                      isUser
-                        ? 'bg-primary text-primary-foreground rounded-tr-md'
-                        : 'bg-muted/40 border border-border/30 rounded-tl-md'
-                    }`}
-                  >
-                    {isUser ? (
-                      <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                        {msg.content}
-                      </p>
-                    ) : (
-                      <div className="text-[13px] leading-relaxed break-words">
-                        {isStreamingMsg && !msg.content ? (
-                          <span className="inline-flex gap-1">
-                            <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                            <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                          </span>
-                        ) : (
+                  <div className={`flex flex-col gap-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+                    {/* Bubble */}
+                    <div
+                      className={`rounded-2xl px-3.5 py-2.5 ${
+                        isUser
+                          ? 'bg-primary text-primary-foreground rounded-tr-md'
+                          : 'bg-muted/40 border border-border/30 rounded-tl-md'
+                      }`}
+                    >
+                      {isUser ? (
+                        <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                          {msg.content}
+                        </p>
+                      ) : (
+                        <div className="text-[13px] leading-relaxed break-words">
+                          {isStreamingMsg && !msg.content ? (
+                            <span className="inline-flex gap-1">
+                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          ) : (
+                            <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed break-words prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent">
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                              {isStreamingMsg && (
+                                <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Action Buttons Container (Outside bubble) */}
+                    {!isUser && !isStreamingMsg && msg.content && (
+                      <div className="flex items-center justify-start gap-1.5">
+                        {/* Only show apply buttons if a view handler is registered (e.g. Notes view is active) */}
+                        {hasContentHandler && (
                           <>
-                            {renderSimpleMarkdown(msg.content)}
-                            {isStreamingMsg && (
-                              <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
-                            )}
+                            <button
+                              onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
+                              className="flex items-center gap-1.5 px-2 py-1 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all text-[11px] font-medium"
+                              title="Overwrite active content entirely"
+                            >
+                              <Replace className="size-3" />
+                              Replace All
+                            </button>
+                            <button
+                              onClick={() => applyContent(msg.content, 'append')}
+                              className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all text-[11px] font-medium"
+                              title="Add to the end of active content"
+                            >
+                              <ArrowDownToLine className="size-3" />
+                              Append
+                            </button>
+                            <div className="w-px h-3.5 bg-border mx-1" />
                           </>
                         )}
+                        
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.content);
+                            setCopiedMsgId(msg.id?.toString() || idx.toString());
+                            setTimeout(() => setCopiedMsgId(null), 2000);
+                          }}
+                          className="flex items-center justify-center p-1.5 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
+                          title="Copy message"
+                        >
+                          {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
+                            <Check className="size-3.5 text-green-500" />
+                          ) : (
+                            <Copy className="size-3.5" />
+                          )}
+                        </button>
                       </div>
                     )}
 
                     {/* Timestamp */}
                     {!isStreamingMsg && msg.created_at && (
-                      <p className={`text-[10px] mt-1.5 ${isUser ? 'text-primary-foreground/50' : 'text-muted-foreground/40'}`}>
+                      <p className={`text-[10px] ${isUser ? 'text-primary-foreground/50' : 'text-muted-foreground/40'}`}>
                         {formatTime(msg.created_at)}
                       </p>
                     )}
@@ -625,6 +620,22 @@ export const AIChatPanel = ({
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!confirmReplaceMsg}
+        title="Replace Content?"
+        message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
+        confirmText="Replace All"
+        cancelText="Cancel"
+        onConfirm={() => {
+          if (confirmReplaceMsg) {
+            applyContent(confirmReplaceMsg.content, 'replace');
+            setConfirmReplaceMsg(null);
+          }
+        }}
+        onCancel={() => setConfirmReplaceMsg(null)}
+        variant="danger"
+      />
     </TooltipProvider>
   );
 };

@@ -11,23 +11,9 @@ interface NotesEditorProps {
 }
 
 export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOnly = false }: NotesEditorProps) {
-  const [content, setContent] = useState(note.content ?? '');
-  // Guard: once user edits, don't overwrite from prop (prevents API/IndexedDB 
-  // responses from wiping out in-flight user edits during selectNote)
-  const hasUserEditedRef = useRef(false);
-
-  useEffect(() => {
-    // Only sync from prop if the user hasn't started editing. Once they type,
-    // their local state takes precedence — the async selectNote callback may
-    // still be resolving and would overwrite their changes.
-    if (!hasUserEditedRef.current) {
-      setContent(note.content ?? '');
-    }
-  }, [note.content]);
-
   const handleContentChange = (newContent: string) => {
-    setContent(newContent);
-    hasUserEditedRef.current = true;
+    // This is called by TiptapEditor whenever its internal content changes.
+    // We simply pass it up to the parent (NotesView) for saving.
     if (onChange) {
       onChange(newContent);
     }
@@ -38,7 +24,7 @@ export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOn
       {/* Block Editor Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <TiptapEditor 
-          content={content} 
+          content={note.content ?? ''} 
           onChange={handleContentChange} 
           isReadOnly={isReadOnly}
         />

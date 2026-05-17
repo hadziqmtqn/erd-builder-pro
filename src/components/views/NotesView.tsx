@@ -1,9 +1,11 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import NotesEditor from '../NotesEditor';
 import { AIActionButton } from '@/components/ai/AIActionButton';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { AIAction } from '@/components/ai/AIActions';
 import { applyToNoteContent } from '@/components/ai/actions';
+
+import { marked } from 'marked';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -24,20 +26,61 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
-  const { sendAction } = useAIAction();
+  const { sendAction, registerContentHandler } = useAIAction();
+
+  // ─── Register Global Manual Content Handler ───
+  useEffect(() => {
+    if (!activeNote || isReadOnly) return;
+
+    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
+      let newContent = '';
+      
+      // Attempt to parse markdown to HTML since Tiptap expects HTML
+      let parsedContent = content;
+      try {
+        parsedContent = await marked.parse(content);
+      } catch (err) {
+        console.error('Failed to parse markdown', err);
+      }
+
+      if (strategy === 'replace') {
+        newContent = parsedContent;
+      } else if (strategy === 'append') {
+        const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+        const separator = currentContent.trim() ? '<br><hr><br>' : '';
+        newContent = currentContent + separator + parsedContent;
+      }
+      
+      // Update locally to bypass save debouncing latency for this explicit user action
+      handleNoteChange(newContent);
+      saveNote({ ...activeNote, content: newContent });
+    });
+
+    return cleanup;
+  }, [activeNote, isReadOnly, registerContentHandler, saveNote]);
 
   // ─── Handle AI action: build prompt and set up auto-apply callback ──
   const handleAIAction = useCallback((action: AIAction, ctx: Record<string, any>) => {
     const prompt = action.buildPrompt(ctx);
 
-    const onResult = (response: string) => {
+    const onResult = async (response: string) => {
       if (!activeNote) return;
-      const newContent = applyToNoteContent(activeNote.content || '', action.id, response);
+      
+      let parsedResponse = response;
+      try {
+        parsedResponse = await marked.parse(response);
+      } catch (err) {
+        console.error('Failed to parse markdown', err);
+      }
+      
+      const newContent = applyToNoteContent(activeNote.content || '', action.id, parsedResponse);
+      
+      handleNoteChange(newContent);
       saveNote({ ...activeNote, content: newContent });
     };
 
     sendAction(prompt, action.id, onResult);
-  }, [activeNote, saveNote, sendAction]);
+  }, [activeNote, saveNote, sendAction, handleNoteChange]);
 
   // Show skeleton during initial load — covers both cached and uncached notes.
   // The guard (!activeNote || activeNote.content === undefined) was removed so the
