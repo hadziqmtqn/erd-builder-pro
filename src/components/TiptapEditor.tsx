@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { useAIAction } from '@/contexts/AIActionContext';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import ImageResize from 'tiptap-extension-resize-image';
@@ -43,6 +44,7 @@ interface TiptapEditorProps {
 }
 
 export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
+  const { setSelectionText } = useAIAction();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
@@ -167,20 +169,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
     extensions,
     content,
     editable: !isReadOnly,
-    onSelectionUpdate({ editor }) {
-      setSelectionVersion(v => v + 1);
-      // Close slash menu on selection change if cursor moved away
-      setSlashMenu(prev => {
-        if (prev.isOpen) return { ...prev, isOpen: false };
-        return prev;
-      });
-    },
-    onFocus() {
-      setSelectionVersion(v => v + 1);
-    },
-    onBlur() {
-      setSelectionVersion(v => v + 1);
-    },
     editorProps: {
       attributes: {
         className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[350px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
@@ -260,6 +248,49 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       }
     },
   });
+
+  // ─── Selection tracking ──────────────────────────────
+  const selectionTextRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const handleSelectionUpdate = () => {
+      setSelectionVersion(v => v + 1);
+
+      const { from, to, empty } = editor.state.selection;
+      if (!empty) {
+        const text = editor.state.doc.textBetween(from, to, ' ');
+        if (selectionTextRef.current !== text) {
+          selectionTextRef.current = text;
+          setSelectionText(text);
+        }
+      }
+
+      setSlashMenu(prev => {
+        if (prev.isOpen) return { ...prev, isOpen: false };
+        return prev;
+      });
+    };
+
+    const handleFocus = () => {
+      setSelectionVersion(v => v + 1);
+    };
+
+    const handleBlur = () => {
+      setSelectionVersion(v => v + 1);
+    };
+
+    editor.on('selectionUpdate', handleSelectionUpdate);
+    editor.on('focus', handleFocus);
+    editor.on('blur', handleBlur);
+
+    return () => {
+      editor.off('selectionUpdate', handleSelectionUpdate);
+      editor.off('focus', handleFocus);
+      editor.off('blur', handleBlur);
+    };
+  }, [editor, setSelectionText]);
 
   useEffect(() => {
     if (editor && typeof content === 'string' && editor.getHTML() !== content) {

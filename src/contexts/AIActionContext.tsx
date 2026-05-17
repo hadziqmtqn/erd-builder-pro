@@ -26,6 +26,10 @@ interface AIActionContextValue {
   applyContent: (content: string, strategy: 'replace' | 'append') => boolean;
   /** Whether a content handler is currently registered (e.g. Notes view is active) */
   hasContentHandler: boolean;
+  /** Current text selection from the active editor */
+  selectionText: string | null;
+  /** Update current selection text */
+  setSelectionText: (text: string | null) => void;
 }
 
 const AIActionContext = createContext<AIActionContextValue | null>(null);
@@ -35,6 +39,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
   const [isAIOpen, setAIOpen] = useState(false);
   const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append') => void) | null>(null);
+  const [selectionText, setSelectionText] = useState<string | null>(null);
 
   const sendAction = useCallback(
     (prompt: string, actionId?: string, onResult?: (response: string) => void) => {
@@ -84,6 +89,8 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         registerContentHandler,
         applyContent,
         hasContentHandler: !!contentHandler,
+        selectionText,
+        setSelectionText,
       }}
     >
       {children}
