@@ -199,6 +199,9 @@ export const AIChatPanel = ({
     deleteSession,
     sendMessage,
     abortStream,
+    hasMoreMessages,
+    isLoadingMore,
+    loadMoreMessages,
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
 
   const [input, setInput] = useState('');
@@ -480,7 +483,19 @@ export const AIChatPanel = ({
               <p className="text-xs text-muted-foreground font-medium">Send a message to start chatting</p>
             </div>
           ) : (
-            messages.map((msg, idx) => {
+            <>
+              {hasMoreMessages && (
+                <div className="flex justify-center py-2">
+                  <button
+                    onClick={loadMoreMessages}
+                    disabled={isLoadingMore}
+                    className="text-[10px] font-medium text-muted-foreground/50 hover:text-muted-foreground transition-colors disabled:opacity-30 cursor-pointer"
+                  >
+                    {isLoadingMore ? 'Loading...' : 'Load earlier messages'}
+                  </button>
+                </div>
+              )}
+              {messages.map((msg, idx) => {
               const isUser = msg.role === 'user';
               const isStreamingMsg = msg.id === 'streaming';
 
@@ -581,13 +596,13 @@ export const AIChatPanel = ({
                   </div>
                 </div>
               );
-            })
-          )}
+            })}
+          </>)}
           <div ref={messagesEndRef} />
         </div>
 
         {/* ── Active Selection ───────────────────────── */}
-        {selectionText && (
+        {hasActiveSession && selectionText && (
           <div className="shrink-0 border-t bg-background px-4 py-3 text-[11px] text-primary/80">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 opacity-70">

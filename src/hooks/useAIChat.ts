@@ -29,7 +29,14 @@ interface UseAIChatReturn {
 
   // Streaming
   abortStream: () => void;
+
+  // Lazy loading
+  hasMoreMessages: boolean;
+  isLoadingMore: boolean;
+  loadMoreMessages: () => Promise<void>;
 }
+
+const PAGE_SIZE = 30;
 
 export function useAIChat(
   entityContext?: EntityContext | null,
@@ -44,6 +51,10 @@ export function useAIChat(
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const messageOffsetRef = useRef(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionsRef = useRef<AIChatSession[]>(sessions);
@@ -159,16 +170,22 @@ export function useAIChat(
       if (!session) throw new Error('Session not found');
 
       setCurrentSession(session);
+      messageOffsetRef.current = 0;
 
-      // Fetch messages for this session (lazy loaded)
-      const { data, error: msgError } = await supabase
+      // Fetch messages with pagination (newest first, then reverse for display)
+      const { data, error: msgError, count } = await supabase
         .from('ai_chat_messages')
-        .select('*')
+        .select('*', { count: 'exact', head: false })
         .eq('session_id', session.id)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .range(0, PAGE_SIZE - 1);
 
       if (msgError) throw msgError;
-      setMessages(data || []);
+
+      const loadedMessages = (data || []).reverse();
+      setMessages(loadedMessages);
+      messageOffsetRef.current = loadedMessages.length;
+      setHasMoreMessages((count || 0) > loadedMessages.length);
     } catch (err: any) {
       setError(err.message);
       toast.error('Failed to load messages');
@@ -176,6 +193,36 @@ export function useAIChat(
       setIsMessagesLoading(false);
     }
   }, []);
+
+  const loadMoreMessages = useCallback(async () => {
+    if (!currentSession || isLoadingMore || !hasMoreMessages) return;
+    setIsLoadingMore(true);
+
+    try {
+      const offset = messageOffsetRef.current;
+      const { data, error: msgError } = await supabase
+        .from('ai_chat_messages')
+        .select('*')
+        .eq('session_id', currentSession.id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (msgError) throw msgError;
+
+      if (data && data.length > 0) {
+        const olderMessages = data.reverse();
+        setMessages(prev => [...olderMessages, ...prev]);
+        messageOffsetRef.current = offset + olderMessages.length;
+        setHasMoreMessages(data.length >= PAGE_SIZE);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (err: any) {
+      toast.error('Failed to load more messages');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [currentSession, isLoadingMore, hasMoreMessages]);
 
   const deleteSession = useCallback(async (sessionUid: string) => {
     setError(null);
@@ -542,5 +589,9 @@ export function useAIChat(
     clearMessages,
 
     abortStream,
+
+    hasMoreMessages,
+    isLoadingMore,
+    loadMoreMessages,
   };
 }
