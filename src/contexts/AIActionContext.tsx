@@ -20,6 +20,12 @@ interface AIActionContextValue {
   isAIOpen: boolean;
   /** Toggle the AI panel */
   setAIOpen: (open: boolean) => void;
+  /** Register a global handler for manually applying content to the active view */
+  registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append') => void) => () => void;
+  /** Apply content using the registered handler. Returns true if successful. */
+  applyContent: (content: string, strategy: 'replace' | 'append') => boolean;
+  /** Whether a content handler is currently registered (e.g. Notes view is active) */
+  hasContentHandler: boolean;
 }
 
 const AIActionContext = createContext<AIActionContextValue | null>(null);
@@ -28,6 +34,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
   const [isAIOpen, setAIOpen] = useState(false);
+  const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append') => void) | null>(null);
 
   const sendAction = useCallback(
     (prompt: string, actionId?: string, onResult?: (response: string) => void) => {
@@ -51,6 +58,19 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
     setPendingAction(null);
   }, []);
 
+  const registerContentHandler = useCallback((handler: (content: string, strategy: 'replace' | 'append') => void) => {
+    setContentHandler(() => handler);
+    return () => setContentHandler(null);
+  }, []);
+
+  const applyContent = useCallback((content: string, strategy: 'replace' | 'append') => {
+    if (contentHandler) {
+      contentHandler(content, strategy);
+      return true;
+    }
+    return false;
+  }, [contentHandler]);
+
   return (
     <AIActionContext.Provider
       value={{
@@ -61,6 +81,9 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         clearPendingAction,
         isAIOpen,
         setAIOpen,
+        registerContentHandler,
+        applyContent,
+        hasContentHandler: !!contentHandler,
       }}
     >
       {children}

@@ -473,7 +473,7 @@ export function useAIChat(
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
-      throw new Error(`AI API error (${response.status}): ${errBody || response.statusText}`);
+      throw new Error(`Connection to AI API failed (${response.status}).\n\nProvider URL: ${baseUrl}\nModel: ${model}\n\nPlease check your API key and URL in Settings > AI Config.\n\nDetails: ${errBody || response.statusText}`);
     }
 
     const reader = response.body?.getReader();
