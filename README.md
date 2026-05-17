@@ -101,6 +101,14 @@ npm run start
 
 ---
 
+## 💖 Support
+
+If you find ERD Builder Pro useful, consider supporting the developer:
+
+<a href="https://trakteer.id/khadziq_muttaqin/tip" target="_blank"><img src="https://edge-cdn.trakteer.id/images/embed/trbtn-red-1.png?v=14-05-2025" height="40" style="border:0;height:40px;" alt="Trakteer Saya"></a>
+
+---
+
 ## 📄 License
 
 This project is licensed under the **[PolyForm Noncommercial License 1.0.0](./LICENSE)**. 
