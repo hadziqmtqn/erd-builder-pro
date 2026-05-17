@@ -14,3 +14,4 @@ coverage/
 !.dev.vars.example
 .hermes/*
 .opencode/*
+opencode.json

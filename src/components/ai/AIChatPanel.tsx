@@ -186,23 +186,26 @@ export const AIChatPanel = ({
       onClearPendingAction?.();
     }
   }, [onClearPendingAction]);
-
-  const {
-    sessions,
-    currentSession,
-    messages,
-    isSessionsLoading,
-    isMessagesLoading,
-    isStreaming,
+  const { applyContent, hasContentHandler, selectionText, setSelectionText } = useAIAction();
+  const { 
+    sessions, 
+    currentSession, 
+    messages, 
+    isSessionsLoading, 
+    isMessagesLoading, 
+    isStreaming, 
+    error,
+    listSessions,
     createSession,
     selectSession,
     deleteSession,
     sendMessage,
+    clearMessages,
     abortStream,
     hasMoreMessages,
     isLoadingMore,
-    loadMoreMessages,
-  } = useAIChat(entityContext, entityContextText, onStreamComplete);
+    loadMoreMessages
+  } = useAIChat(entityContext, entityContextText, onStreamComplete, selectionText);
 
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
@@ -210,8 +213,6 @@ export const AIChatPanel = ({
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [confirmReplaceMsg, setConfirmReplaceMsg] = useState<{id: string, content: string} | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
-
-  const { applyContent, hasContentHandler, selectionText, setSelectionText } = useAIAction();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -275,8 +276,10 @@ export const AIChatPanel = ({
 
   // ─── Auto-scroll to bottom on new messages ─────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isStreaming]);
+    if (!minimized) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isStreaming, minimized]);
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
@@ -358,23 +361,17 @@ export const AIChatPanel = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // ─── Render minimized bar ──────────────────────────
-  if (minimized) {
-    return (
-      <MinimizedBar
-        title={currentSession?.title || 'AI Assistant'}
-        onExpand={() => setMinimized(false)}
-      />
-    );
-  }
-
   // ─── Render ────────────────────────────────────────
   const hasActiveSession = !!currentSession;
   const hasMessages = messages.length > 0;
 
   return (
     <Tooltip.Provider>
-      <div ref={panelRef} className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300">
+      <div
+        ref={panelRef}
+        style={{ display: minimized ? 'none' : undefined }}
+        className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300"
+      >
 
         
         {/* ── Header ─────────────────────────────────── */}
@@ -680,6 +677,13 @@ export const AIChatPanel = ({
           </div>
         )}
       </div>
+
+      {minimized && (
+        <MinimizedBar
+          title={currentSession?.title || 'AI Assistant'}
+          onExpand={() => setMinimized(false)}
+        />
+      )}
 
       <ConfirmModal
         isOpen={!!confirmOverwritePrompt}

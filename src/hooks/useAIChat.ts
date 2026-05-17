@@ -42,6 +42,7 @@ export function useAIChat(
   entityContext?: EntityContext | null,
   entityContextText?: string | null,
   onStreamComplete?: (response: string) => void,
+  selectionText?: string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
@@ -362,9 +363,16 @@ export function useAIChat(
         apiMessages.push({ role: 'system', content: promptData[0].content });
       }
 
-      // Inject entity context so AI knows what file the user is on
-      // Priority: pre-built context text > fetch from Supabase
-      if (entityContextText) {
+     // Inject entity context so AI knows what file the user is on
+     // Priority: pre-built context text > fetch from Supabase
+     if (selectionText) {
+       apiMessages.push({
+         role: 'system',
+         content: `User has selected the following text: "${selectionText}". Use this as context for your response.`,
+       });
+       console.log('[AI Context] Injected selection text:', selectionText.slice(0, 100));
+     }
+     if (entityContextText) {
         apiMessages.push({
           role: 'system',
           content: entityContextText,
