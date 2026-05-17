@@ -39,10 +39,16 @@ interface AIChatPanelProps {
   onClose: () => void;
   entityType?: string | null;
   entityUid?: string | null;
+  /** Pre-built entity context text (skips Supabase fetch) */
+  entityContextText?: string | null;
   /** Pending prompt from AI action buttons — auto-fills input when set */
   pendingPrompt?: string | null;
   /** Called after prompt has been consumed */
   onPromptUsed?: () => void;
+  /** Pending action result handler — called after AI response completes */
+  pendingAction?: { actionId: string; onResult: (response: string) => void } | null;
+  /** Clears pending action after stream completes */
+  onClearPendingAction?: () => void;
 }
 
 // ─── Simple Markdown Parser (lightweight, no deps) ────
@@ -129,8 +135,11 @@ function SessionItem({
   onDelete: () => void;
 }) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
       className={`
         w-full text-left px-3 py-2.5 rounded-lg transition-all duration-150 group
         flex items-center justify-between gap-2
@@ -151,7 +160,7 @@ function SessionItem({
       >
         <Trash2 className="size-3" />
       </button>
-    </button>
+    </div>
   );
 }
 
@@ -190,11 +199,27 @@ export const AIChatPanel = ({
   onClose,
   entityType,
   entityUid,
+  entityContextText,
   pendingPrompt,
   onPromptUsed,
+  pendingAction,
+  onClearPendingAction,
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
+
+  // ─── Stream complete callback: auto-apply AI action results ──
+  const [lastStreamResponse, setLastStreamResponse] = useState<string | null>(null);
+  const pendingActionRef = useRef(pendingAction);
+  pendingActionRef.current = pendingAction;
+
+  const onStreamComplete = useCallback((response: string) => {
+    setLastStreamResponse(response);
+    if (pendingActionRef.current) {
+      pendingActionRef.current.onResult(response);
+      onClearPendingAction?.();
+    }
+  }, [onClearPendingAction]);
 
   const {
     sessions,
@@ -207,10 +232,10 @@ export const AIChatPanel = ({
     createSession,
     selectSession,
     deleteSession,
+    listSessions,
     sendMessage,
     abortStream,
-  } = useAIChat(entityContext);
-
+  } = useAIChat(entityContext, entityContextText, onStreamComplete);
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);

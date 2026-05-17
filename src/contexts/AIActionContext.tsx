@@ -1,12 +1,21 @@
 import { createContext, useContext, useCallback, useState, ReactNode } from 'react';
 
+export interface PendingActionResult {
+  actionId: string;
+  onResult: (response: string) => void;
+}
+
 interface AIActionContextValue {
   /** Send an AI action prompt — opens chat panel and injects prompt */
-  sendAction: (prompt: string) => void;
+  sendAction: (prompt: string, actionId?: string, onResult?: (response: string) => void) => void;
   /** Current pending prompt (consumed by AIChatPanel) */
   pendingPrompt: string | null;
+  /** Pending action result handler (consumed by AIChatPanel after stream) */
+  pendingAction: PendingActionResult | null;
   /** Clear the pending prompt after use */
   clearPrompt: () => void;
+  /** Clear the pending action after stream completes */
+  clearPendingAction: () => void;
   /** Open/close state for the AI panel */
   isAIOpen: boolean;
   /** Toggle the AI panel */
@@ -17,19 +26,43 @@ const AIActionContext = createContext<AIActionContextValue | null>(null);
 
 export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
   const [isAIOpen, setAIOpen] = useState(false);
 
-  const sendAction = useCallback((prompt: string) => {
-    setPendingPrompt(prompt);
-    setAIOpen(true);
-  }, []);
+  const sendAction = useCallback(
+    (prompt: string, actionId?: string, onResult?: (response: string) => void) => {
+      setPendingPrompt(prompt);
+      if (actionId && onResult) {
+        setPendingAction({ actionId, onResult });
+      } else {
+        // Clear any stale action when sending plain prompts
+        setPendingAction(null);
+      }
+      setAIOpen(true);
+    },
+    [],
+  );
 
   const clearPrompt = useCallback(() => {
     setPendingPrompt(null);
   }, []);
 
+  const clearPendingAction = useCallback(() => {
+    setPendingAction(null);
+  }, []);
+
   return (
-    <AIActionContext.Provider value={{ sendAction, pendingPrompt, clearPrompt, isAIOpen, setAIOpen }}>
+    <AIActionContext.Provider
+      value={{
+        sendAction,
+        pendingPrompt,
+        pendingAction,
+        clearPrompt,
+        clearPendingAction,
+        isAIOpen,
+        setAIOpen,
+      }}
+    >
       {children}
     </AIActionContext.Provider>
   );
@@ -38,7 +71,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
 export function useAIAction(): AIActionContextValue {
   const ctx = useContext(AIActionContext);
   if (!ctx) {
-    throw new Error('useAIAction must be used within an AIActionProvider');
+    throw new Error('useAIAction must be used within AIActionProvider');
   }
   return ctx;
 }

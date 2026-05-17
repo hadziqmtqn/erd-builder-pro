@@ -22,9 +22,6 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar';
 
-// Hooks
-import { ERDImportModal } from '@/components/modals/ERDImportModal';
-
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
@@ -35,7 +32,7 @@ import { AIChatToggle } from '@/components/ai/AIChatToggle';
 function AppLayoutInner() {
   const location = useLocation();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt } = useAIAction();
+  const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
 
   // ─── Derive AI entity context from current route ─────
   const entityContext = useMemo(() => {
@@ -50,7 +47,6 @@ function AppLayoutInner() {
     return { entityType: typeMap[m[1]], entityUid: m[2] };
   }, [location.pathname]);
 
-  const showAIChat = entityContext !== null;
   const {
     view, sidebarView,
     isPublicView, isOnline,
@@ -70,7 +66,7 @@ function AppLayoutInner() {
     activeDocument, isGuest,
     featureLabel, activeProjectName, activeFileName, hasActiveItem,
     fileSearchRef, fileSearchQuery, setFileSearchQuery,
-    activeNote, 
+    activeNote, activeDrawing, activeFlowchart, activeDiagram,
     nodes, edges,
     fetchTrash,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
@@ -99,6 +95,47 @@ function AppLayoutInner() {
     handleEdgeUpdate: handleEdgeUpdate2,
     breadcrumbLabel,
   } = useWorkspace();
+
+  // ─── Build entity context text from workspace data (no Supabase fetch) ───
+  const entityContextText = useMemo(() => {
+    const ctx = entityContext;
+    if (!ctx) return null;
+
+    switch (ctx.entityType) {
+      case 'note':
+        if (!activeNote) return null;
+        return `[Current file info]
+You are currently viewing this note:
+Title: ${activeNote.title || '(untitled)'}
+Content:
+${String(activeNote.content || '').slice(0, 1500)}`;
+      case 'diagram': {
+        if (!activeDiagram) return null;
+        const tableCount = (nodes || []).filter((n: any) => n.type === 'entity').length;
+        const edgeCount = (edges || []).length;
+        return `[Current file info]
+You are currently viewing this diagram:
+Name: ${activeDiagram.name || '(untitled)'}
+Tables: ${tableCount}, Relationships: ${edgeCount}`;
+      }
+      case 'drawing':
+        if (!activeDrawing) return null;
+        return `[Current file info]
+You are currently viewing this drawing:
+Title: ${activeDrawing.title || '(untitled)'}`;
+      case 'flowchart':
+        if (!activeFlowchart) return null;
+        const nodeCount = (nodes || []).length;
+        return `[Current file info]
+You are currently viewing this flowchart:
+Title: ${activeFlowchart.title || '(untitled)'}
+Symbols: ${nodeCount}`;
+      default:
+        return null;
+    }
+  }, [entityContext, activeNote, activeDrawing, activeFlowchart, activeDiagram, nodes, edges]);
+
+  const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing';
 
   return (
     <>
@@ -313,8 +350,11 @@ function AppLayoutInner() {
             onClose={() => setAIOpen(false)}
             entityType={entityContext!.entityType}
             entityUid={entityContext!.entityUid}
+            entityContextText={entityContextText}
             pendingPrompt={pendingPrompt}
             onPromptUsed={clearPrompt}
+            pendingAction={pendingAction}
+            onClearPendingAction={clearPendingAction}
           />
         )}
         {showAIChat && (

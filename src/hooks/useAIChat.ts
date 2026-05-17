@@ -31,7 +31,11 @@ interface UseAIChatReturn {
   abortStream: () => void;
 }
 
-export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn {
+export function useAIChat(
+  entityContext?: EntityContext | null,
+  entityContextText?: string | null,
+  onStreamComplete?: (response: string) => void,
+): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<AIChatSession | null>(null);
@@ -50,6 +54,10 @@ export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn
   const isGuestRef = useRef(auth.isGuest);
   useEffect(() => { userRef.current = auth.user; }, [auth.user]);
   useEffect(() => { isGuestRef.current = auth.isGuest; }, [auth.isGuest]);
+
+  // ─── Stable ref for stream-complete callback (break dependency chains) ──
+  const onStreamCompleteRef = useRef<((response: string) => void) | undefined>(undefined);
+  useEffect(() => { onStreamCompleteRef.current = onStreamComplete; }, [onStreamComplete]);
 
   // Stable helper that reads from refs — no callback deps
   const getUserId = (): string | null => {
@@ -308,7 +316,14 @@ export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn
       }
 
       // Inject entity context so AI knows what file the user is on
-      if (entityContext) {
+      // Priority: pre-built context text > fetch from Supabase
+      if (entityContextText) {
+        apiMessages.push({
+          role: 'system',
+          content: entityContextText,
+        });
+        console.log('[AI Context] Using pre-built context text (from workspace)');
+      } else if (entityContext) {
         try {
           const ctxResult = await fetchEntityContext(entityContext);
           if (ctxResult) {
@@ -316,10 +331,13 @@ export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn
               role: 'system',
               content: ctxResult.contextText,
             });
+            console.log('[AI Context] Injected:', ctxResult.contextText.slice(0, 200));
+          } else {
+            console.warn('[AI Context] fetchEntityContext returned null for:', entityContext);
           }
         } catch (err) {
           // Graceful fallback: if context fetch fails, skip it
-          console.warn('Failed to fetch entity context:', err);
+          console.warn('[AI Context] Failed to fetch entity context:', err);
         }
       }
 
@@ -374,6 +392,11 @@ export function useAIChat(entityContext?: EntityContext | null): UseAIChatReturn
           created_at: new Date().toISOString(),
         }];
       });
+
+      // 8. Notify caller that streaming completed (for auto-apply to content)
+      if (onStreamCompleteRef.current) {
+        onStreamCompleteRef.current(accumulatedResponse);
+      }
 
       // Update session updated_at
       await supabase

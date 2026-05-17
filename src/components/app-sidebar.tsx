@@ -2,6 +2,7 @@ import * as React from "react"
 import { useState, useEffect, useRef } from "react"
 import {
   Database,
+  Heart,
   PenTool,
   Search,
   Network,
@@ -313,6 +314,29 @@ export const AppSidebar = React.memo(({
             </TooltipProvider>
           </div>
         )}
+        {/* Sponsor link — always visible */}
+        <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                className={cn(
+                  "inline-flex items-center justify-center rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                  "border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 transition-all duration-300",
+                  isCollapsed ? "size-9 p-0 justify-center" : "w-full justify-start gap-2 h-9 px-2.5"
+                )}
+                onClick={() => window.open('https://trakteer.id/khadziq_muttaqin/tip', '_blank', 'noopener,noreferrer')}
+              >
+                <Heart className="w-4 h-4" />
+                {!isCollapsed && <span>Sponsor</span>}
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right">
+                  Sponsor
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <NavUser 
           user={user} 
           onLogout={onLogout}
