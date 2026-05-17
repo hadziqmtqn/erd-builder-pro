@@ -15,19 +15,51 @@ import {
   ChevronDown,
   Loader2,
   ArrowDownToLine,
-  Replace} from 'lucide-react';
+  Replace,
+  SquareTerminal, CircleHelp, LayoutPanelLeft, Database, Lightbulb, StickyNote,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
+import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { AIChatSession } from '@/types';
 import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ConfirmModal';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
+} from '@/components/ui/dropdown-menu';
+import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
   TooltipProvider,
+  TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+
+// Map action IDs to lucide icons
+function getActionIcon(actionId: string) {
+  switch (actionId) {
+    case 'notes-summarize':
+      return <StickyNote className="size-3.5" />;
+    case 'notes-improve-grammar':
+      return <Lightbulb className="size-3.5" />;
+    case 'notes-generate-docs':
+      return <LayoutPanelLeft className="size-3.5" />;
+    case 'erd-generate-sql':
+      return <Database className="size-3.5" />;
+    case 'erd-explain-table':
+      return <CircleHelp className="size-3.5" />;
+    case 'erd-suggest-indexes':
+      return <SquareTerminal className="size-3.5" />;
+    default:
+      return <Sparkles className="size-3.5" />;
+  }
+}
 
 // ─── Constants ─────────────────────────────────────────
 
@@ -44,6 +76,7 @@ interface AIChatPanelProps {
   onClose: () => void;
   entityType?: string | null;
   entityUid?: string | null;
+  entityTitle?: string | null;
   /** Pre-built entity context text (skips Supabase fetch) */
   entityContextText?: string | null;
   /** Pending prompt from AI action buttons — auto-fills input when set */
@@ -136,6 +169,7 @@ export const AIChatPanel = ({
   onClose,
   entityType,
   entityUid,
+  entityTitle,
   entityContextText,
   pendingPrompt,
   onPromptUsed,
@@ -172,16 +206,38 @@ export const AIChatPanel = ({
     sendMessage,
     abortStream,
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
+
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [confirmReplaceMsg, setConfirmReplaceMsg] = useState<{id: string, content: string} | null>(null);
+  const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
+
   const { applyContent, hasContentHandler } = useAIAction();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const draftKey = getDraftKey(entityType, entityUid);
+
+  const actions = entityType ? getActionsForView(entityType as ViewType) : [];
+
+  const handleSelectAction = useCallback((action: AIAction) => {
+    if (!entityType || !entityContextText || !entityTitle) return;
+
+    const context = {
+      content: entityContextText,
+      title: entityTitle,
+    };
+    const newPrompt = action.buildPrompt(context);
+
+    if (input.trim() && input.trim() !== newPrompt.trim()) {
+      setConfirmOverwritePrompt(newPrompt);
+    } else {
+      setInput(newPrompt);
+      inputRef.current?.focus();
+    }
+  }, [input, entityType, entityContextText, entityTitle]);
 
   // ─── Restore draft from sessionStorage on mount ────
   useEffect(() => {
@@ -221,16 +277,14 @@ export const AIChatPanel = ({
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
-    if (minimized || confirmReplaceMsg) return;
+    if (minimized || confirmReplaceMsg || confirmOverwritePrompt) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      // Don't minimize if the click is on an alert dialog/modal overlay
-      // Radix/shadcn modals typically append to body and have specific roles or classes
       const target = e.target as HTMLElement;
       if (
         target.closest('[role="alertdialog"]') || 
         target.closest('[role="dialog"]') ||
-        target.closest('.fixed.inset-0') // Overlay classes
+        target.closest('.fixed.inset-0')
       ) {
         return;
       }
@@ -240,10 +294,9 @@ export const AIChatPanel = ({
       }
     };
 
-    // Use mousedown for faster response (fires before click/input events)
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [minimized, confirmReplaceMsg]);
+  }, [minimized, confirmReplaceMsg, confirmOverwritePrompt]);
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -252,11 +305,10 @@ export const AIChatPanel = ({
       inputRef.current?.focus();
       if (onPromptUsed) onPromptUsed();
     }
-  }, [pendingPrompt]);
+  }, [pendingPrompt, onPromptUsed]);
 
   // ─── Handle close (save draft, then close) ────────
   const handleClose = useCallback(() => {
-    // Save draft immediately before closing
     try {
       if (input) {
         sessionStorage.setItem(draftKey, input);
@@ -272,7 +324,6 @@ export const AIChatPanel = ({
     if (!input.trim() || isStreaming) return;
     sendMessage(input);
     setInput('');
-    // Clear draft after send
     try {
       sessionStorage.removeItem(draftKey);
     } catch {
@@ -290,7 +341,6 @@ export const AIChatPanel = ({
 
   // ─── Handle new session ────────────────────────────
   const handleNewSession = useCallback(async () => {
-    // Extract project ID from active context if available
     await createSession();
     setShowSessions(false);
   }, [createSession]);
@@ -334,51 +384,33 @@ export const AIChatPanel = ({
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 hover:bg-muted/50"
-                    onClick={() => setShowSessions(!showSessions)}
-                  >
-                    <ChevronDown className={`size-3.5 transition-transform ${showSessions ? 'rotate-180' : ''}`} />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom">Toggle sessions</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 hover:bg-muted/50"
-                    onClick={() => setMinimized(true)}
-                  >
-                    <Minimize2 className="size-3.5" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom">Minimize panel</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 hover:bg-muted/50"
-                    onClick={handleClose}
-                  >
-                    <PanelRightClose className="size-3.5" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom">Close panel</TooltipContent>
-            </Tooltip>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 hover:bg-muted/50"
+              onClick={() => setShowSessions(!showSessions)}
+              title={showSessions ? "Hide sessions" : "Show sessions"}
+            >
+              <ChevronDown className={`size-3.5 transition-transform ${showSessions ? 'rotate-180' : ''}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 hover:bg-muted/50"
+              onClick={() => setMinimized(true)}
+              title="Minimize panel"
+            >
+              <Minimize2 className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 hover:bg-muted/50"
+              onClick={handleClose}
+              title="Close panel"
+            >
+              <PanelRightClose className="size-3.5" />
+            </Button>
           </div>
         </div>
 
@@ -513,7 +545,6 @@ export const AIChatPanel = ({
                     {/* Action Buttons Container (Outside bubble) */}
                     {!isUser && !isStreamingMsg && msg.content && (
                       <div className="flex items-center justify-start gap-1.5">
-                        {/* Only show apply buttons if a view handler is registered (e.g. Notes view is active) */}
                         {hasContentHandler && (
                           <>
                             <button
@@ -614,26 +645,73 @@ export const AIChatPanel = ({
                 </Button>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground/30 mt-1.5 text-center">
-              Enter to send · Shift+Enter for newline
-            </p>
+
+            {/* AI Action Dropdown + Helper text */}
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground/30 mt-1.5">
+              {entityType === 'note' && !isStreaming && actions.length > 0 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1.5">
+                      <Sparkles className="size-3.5 text-primary" />
+                      AI Actions
+                      <ChevronDown className="size-3 ml-0.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start" className="w-[200px]">
+                    <DropdownMenuLabel>Notes Actions</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {actions.map((action) => (
+                      <DropdownMenuItem
+                        key={action.id}
+                        onClick={() => handleSelectAction(action)}
+                        className="gap-2 text-xs"
+                      >
+                        {getActionIcon(action.id)}
+                        <span>{action.label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <span className="w-full text-center">
+                  {isStreaming ? 'Generating response...' : 'Enter to send · Shift+Enter for newline'}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
 
       <ConfirmModal
+        isOpen={!!confirmOverwritePrompt}
+        onCancel={() => setConfirmOverwritePrompt(null)}
+        onConfirm={() => {
+          if (confirmOverwritePrompt) {
+            setInput(confirmOverwritePrompt);
+            inputRef.current?.focus();
+          }
+          setConfirmOverwritePrompt(null);
+        }}
+        title="Replace Draft?"
+        message="Your current message draft will be replaced with the AI-generated prompt. Do you want to continue?"
+        confirmText="Replace Draft"
+        cancelText="Keep Draft"
+        variant="info"
+      />
+
+      <ConfirmModal
         isOpen={!!confirmReplaceMsg}
-        title="Replace Content?"
-        message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
-        confirmText="Replace All"
-        cancelText="Cancel"
+        onCancel={() => setConfirmReplaceMsg(null)}
         onConfirm={() => {
           if (confirmReplaceMsg) {
             applyContent(confirmReplaceMsg.content, 'replace');
             setConfirmReplaceMsg(null);
           }
         }}
-        onCancel={() => setConfirmReplaceMsg(null)}
+        title="Replace Content?"
+        message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
+        confirmText="Replace All"
+        cancelText="Cancel"
         variant="danger"
       />
     </TooltipProvider>

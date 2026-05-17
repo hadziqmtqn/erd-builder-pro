@@ -14,6 +14,7 @@ import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPro
 import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
 import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
 import { NoteExporter } from '@/lib/exporters/note-exporter';
+import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 
 // UI
@@ -108,7 +109,7 @@ function AppLayoutInner() {
 You are currently viewing this note:
 Title: ${activeNote.title || '(untitled)'}
 Content:
-${String(activeNote.content || '').slice(0, 1500)}`;
+${htmlToAIText(String(activeNote.content || '')).slice(0, 4000)}`;
       case 'diagram': {
         if (!activeDiagram) return null;
         const tableCount = (nodes || []).filter((n: any) => n.type === 'entity').length;
@@ -350,6 +351,9 @@ Symbols: ${nodeCount}`;
             onClose={() => setAIOpen(false)}
             entityType={entityContext!.entityType}
             entityUid={entityContext!.entityUid}
+            entityTitle={entityContext.entityType === 'note' ? activeNote?.title : 
+                         entityContext.entityType === 'diagram' ? activeDiagram?.name : 
+                         entityContext.entityType === 'flowchart' ? activeFlowchart?.title : null}
             entityContextText={entityContextText}
             pendingPrompt={pendingPrompt}
             onPromptUsed={clearPrompt}
