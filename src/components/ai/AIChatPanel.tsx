@@ -34,12 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '@/components/ui/tooltip';
+import { Tooltip } from '@base-ui/react/tooltip';
 
 // Map action IDs to lucide icons
 function getActionIcon(actionId: string) {
@@ -199,7 +194,6 @@ export const AIChatPanel = ({
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
-    error,
     createSession,
     selectSession,
     deleteSession,
@@ -214,7 +208,7 @@ export const AIChatPanel = ({
   const [confirmReplaceMsg, setConfirmReplaceMsg] = useState<{id: string, content: string} | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
 
-  const { applyContent, hasContentHandler } = useAIAction();
+  const { applyContent, hasContentHandler, selectionText, setSelectionText } = useAIAction();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -291,7 +285,9 @@ export const AIChatPanel = ({
         target.closest('[role="alertdialog"]') || 
         target.closest('[role="dialog"]') ||
         target.closest('[role="menu"]') ||
-        target.closest('.fixed.inset-0')
+        target.closest('.fixed.inset-0') ||
+        target.closest('.ProseMirror') ||
+        target.closest('.tiptap-editor-content')
       ) {
         return;
       }
@@ -374,8 +370,9 @@ export const AIChatPanel = ({
   const hasMessages = messages.length > 0;
 
   return (
-    <TooltipProvider>
+    <Tooltip.Provider>
       <div ref={panelRef} className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300">
+
         
         {/* ── Header ─────────────────────────────────── */}
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-muted/20">
@@ -546,54 +543,39 @@ export const AIChatPanel = ({
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
                         {hasContentHandler && (
                           <>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <button
-                                  onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
-                                  className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
-                                  title="Replace All"
-                                >
-                                  <Replace className="size-4" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom" className="text-[10px]">Replace All</TooltipContent>
-                            </Tooltip>
+                            <button
+                              onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
+                              className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
+                              title="Replace All"
+                            >
+                              <Replace className="size-4" />
+                            </button>
                             
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <button
-                                  onClick={() => applyContent(msg.content, 'append')}
-                                  className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
-                                  title="Append"
-                                >
-                                  <ArrowDownToLine className="size-4" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom" className="text-[10px]">Append</TooltipContent>
-                            </Tooltip>
+                            <button
+                              onClick={() => applyContent(msg.content, 'append')}
+                              className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
+                              title="Append"
+                            >
+                              <ArrowDownToLine className="size-4" />
+                            </button>
                             <div className="w-px h-6 bg-border mx-1" />
                           </>
                         )}
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(msg.content);
-                                setCopiedMsgId(msg.id?.toString() || idx.toString());
-                                setTimeout(() => setCopiedMsgId(null), 2000);
-                              }}
-                              className="flex items-center justify-center size-8 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
-                              title="Copy message"
-                            >
-                              {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
-                                <Check className="size-4 text-green-500" />
-                              ) : (
-                                <Copy className="size-4" />
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom" className="text-[10px]">Copy</TooltipContent>
-                        </Tooltip>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.content);
+                            setCopiedMsgId(msg.id?.toString() || idx.toString());
+                            setTimeout(() => setCopiedMsgId(null), 2000);
+                          }}
+                          className="flex items-center justify-center size-8 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
+                          title="Copy message"
+                        >
+                          {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
+                            <Check className="size-4 text-green-500" />
+                          ) : (
+                            <Copy className="size-4" />
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -603,6 +585,26 @@ export const AIChatPanel = ({
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* ── Active Selection ───────────────────────── */}
+        {selectionText && (
+          <div className="shrink-0 border-t bg-background px-4 py-3 text-[11px] text-primary/80">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 opacity-70">
+                <Sparkles className="size-3" />
+                <span className="font-semibold uppercase tracking-wider">Active Selection</span>
+              </div>
+              <button
+                onClick={() => setSelectionText(null)}
+                className="size-4 flex items-center justify-center rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors"
+                title="Clear selection"
+              >
+                <span className="text-[10px] leading-none font-bold">&times;</span>
+              </button>
+            </div>
+            <p className="italic line-clamp-2 text-primary/60">"{selectionText}"</p>
+          </div>
+        )}
 
         {/* ── Input Area ──────────────────────────────── */}
         {hasActiveSession && (
@@ -681,21 +683,21 @@ export const AIChatPanel = ({
         variant="info"
       />
 
-      <ConfirmModal
-        isOpen={!!confirmReplaceMsg}
-        onCancel={() => setConfirmReplaceMsg(null)}
-        onConfirm={() => {
-          if (confirmReplaceMsg) {
-            applyContent(confirmReplaceMsg.content, 'replace');
-            setConfirmReplaceMsg(null);
-          }
-        }}
-        title="Replace Content?"
-        message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
-        confirmText="Replace All"
-        cancelText="Cancel"
-        variant="danger"
-      />
-    </TooltipProvider>
-  );
+     <ConfirmModal
+       isOpen={!!confirmReplaceMsg}
+       onCancel={() => setConfirmReplaceMsg(null)}
+       onConfirm={() => {
+         if (confirmReplaceMsg) {
+           applyContent(confirmReplaceMsg.content, 'replace');
+           setConfirmReplaceMsg(null);
+         }
+       }}
+       title="Replace Content?"
+       message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
+       confirmText="Replace All"
+       cancelText="Cancel"
+       variant="danger"
+     />
+    </Tooltip.Provider>
+ );
 };
