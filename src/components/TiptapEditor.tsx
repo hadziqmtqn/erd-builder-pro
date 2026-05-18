@@ -44,7 +44,7 @@ interface TiptapEditorProps {
 }
 
 export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
-  const { setSelectionText } = useAIAction();
+  const { setSelectionText, selectionRange, setSelectionRange, registerReplaceSelected } = useAIAction();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
@@ -264,6 +264,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
         if (selectionTextRef.current !== text) {
           selectionTextRef.current = text;
           setSelectionText(text);
+          setSelectionRange({ from, to });
         }
       }
 
@@ -290,13 +291,38 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       editor.off('focus', handleFocus);
       editor.off('blur', handleBlur);
     };
-  }, [editor, setSelectionText]);
+  }, [editor, setSelectionText, setSelectionRange]);
 
   useEffect(() => {
     if (editor && typeof content === 'string' && editor.getHTML() !== content) {
       editor.commands.setContent(content);
     }
   }, [editor, content]);
+
+  // ─── Register replace-selection handler ──────────────
+  const selectionRangeRef = useRef<{ from: number; to: number } | null>(null);
+  useEffect(() => {
+    if (!editor || isReadOnly) return;
+
+    const unregister = registerReplaceSelected((newContent: string) => {
+      const range = selectionRangeRef.current;
+      if (!range || range.from >= range.to) return;
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent(newContent)
+        .run();
+      return editor.getHTML();
+    });
+
+    return unregister;
+  }, [editor, registerReplaceSelected, isReadOnly]);
+
+  // Keep ref in sync with context
+  useEffect(() => {
+    selectionRangeRef.current = selectionRange;
+  }, [selectionRange]);
 
   useEffect(() => {
     if (!editor) return;

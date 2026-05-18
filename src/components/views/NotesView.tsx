@@ -29,18 +29,18 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
-  const { registerContentHandler } = useAIAction();
+  const { registerContentHandler, replaceSelectedText, selectionText } = useAIAction();
   const aiReadableNoteContent = useMemo(
     () => htmlToAIText(typeof activeNote?.content === 'string' ? activeNote.content : ''),
     [activeNote?.content]
   );
   
-  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append'} | null>(null);
+  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append' | 'replace-selection'} | null>(null);
 
   useEffect(() => {
     if (!activeNote || isReadOnly) return;
 
-    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
+    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append' | 'replace-selection') => {
       setPendingChange({ content, strategy });
     });
 
@@ -65,6 +65,14 @@ export const NotesView = React.memo(({
       const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
       const separator = currentContent.trim() ? '<br><hr><br>' : '';
       newContent = currentContent + separator + parsedContent;
+    } else if (strategy === 'replace-selection') {
+      const updatedHtml = replaceSelectedText?.(parsedContent);
+      if (updatedHtml) {
+        handleNoteChange(updatedHtml);
+        saveNote({ ...activeNote, content: updatedHtml });
+      }
+      setPendingChange(null);
+      return;
     }
     
     handleNoteChange(newContent);
@@ -98,15 +106,30 @@ export const NotesView = React.memo(({
         isReadOnly={isReadOnly}
       />
       
-      {pendingChange && (
-        <DiffPreviewModal
-          isOpen={!!pendingChange}
-          originalText={htmlToAIText(typeof activeNote.content === 'string' ? activeNote.content : '')}
-          newText={pendingChange.content}
-          onConfirm={handleConfirmChange}
-          onCancel={() => setPendingChange(null)}
-        />
-      )}
+      {pendingChange && (() => {
+        const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+        const plainTextContent = htmlToAIText(currentContent);
+        const label: Record<string, string> = {
+          replace: 'Replace All',
+          append: 'Append',
+          'replace-selection': 'Replace Selected',
+        };
+        const finalText = pendingChange.strategy === 'append'
+          ? plainTextContent + '\n\n---\n\n' + pendingChange.content
+          : pendingChange.strategy === 'replace-selection' && selectionText
+            ? plainTextContent.replace(selectionText, pendingChange.content)
+            : pendingChange.content;
+        return (
+          <DiffPreviewModal
+            isOpen={!!pendingChange}
+            strategyLabel={label[pendingChange.strategy] || ''}
+            originalText={plainTextContent}
+            newText={finalText}
+            onConfirm={handleConfirmChange}
+            onCancel={() => setPendingChange(null)}
+          />
+        );
+      })()}
     </div>
   );
 });

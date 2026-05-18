@@ -16,7 +16,7 @@ import {
   Loader2,
   ArrowDownToLine,
   Replace,
-  SquareTerminal, CircleHelp, LayoutPanelLeft, Database, Lightbulb, StickyNote,
+  SquareTerminal, CircleHelp, LayoutPanelLeft, Database, Lightbulb, StickyNote, Scissors,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
@@ -205,13 +205,12 @@ export const AIChatPanel = ({
     hasMoreMessages,
     isLoadingMore,
     loadMoreMessages
-  } = useAIChat(entityContext, entityContextText, onStreamComplete, selectionText);
+  } = useAIChat(entityContext, entityContextText, onStreamComplete);
 
   const [input, setInput] = useState('');
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
-  const [confirmReplaceMsg, setConfirmReplaceMsg] = useState<{id: string, content: string} | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -283,7 +282,7 @@ export const AIChatPanel = ({
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
-    if (minimized || confirmReplaceMsg || confirmOverwritePrompt) return;
+    if (minimized || confirmOverwritePrompt) return;
 
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -305,7 +304,7 @@ export const AIChatPanel = ({
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [minimized, confirmReplaceMsg, confirmOverwritePrompt]);
+  }, [minimized, confirmOverwritePrompt]);
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -331,14 +330,14 @@ export const AIChatPanel = ({
   // ─── Handle send ───────────────────────────────────
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
-    sendMessage(input);
+    sendMessage(input, selectionText);
     setInput('');
     try {
       sessionStorage.removeItem(draftKey);
     } catch {
       // ignore
     }
-  }, [input, isStreaming, sendMessage, draftKey]);
+  }, [input, isStreaming, sendMessage, draftKey, selectionText]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -555,13 +554,23 @@ export const AIChatPanel = ({
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
                         {hasContentHandler && (
                           <>
-                            <button
-                              onClick={() => setConfirmReplaceMsg({ id: msg.id?.toString() || idx.toString(), content: msg.content })}
+                              <button
+                              onClick={() => applyContent(msg.content, 'replace')}
                               className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
                               title="Replace All"
                             >
                               <Replace className="size-4" />
                             </button>
+
+                            {selectionText && (
+                              <button
+                                onClick={() => applyContent(msg.content, 'replace-selection')}
+                                className="flex items-center justify-center size-8 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/20 rounded-md shadow-sm transition-all"
+                                title="Replace Selected"
+                              >
+                                <Scissors className="size-4" />
+                              </button>
+                            )}
                             
                             <button
                               onClick={() => applyContent(msg.content, 'append')}
@@ -702,21 +711,6 @@ export const AIChatPanel = ({
         variant="info"
       />
 
-     <ConfirmModal
-       isOpen={!!confirmReplaceMsg}
-       onCancel={() => setConfirmReplaceMsg(null)}
-       onConfirm={() => {
-         if (confirmReplaceMsg) {
-           applyContent(confirmReplaceMsg.content, 'replace');
-           setConfirmReplaceMsg(null);
-         }
-       }}
-       title="Replace Content?"
-       message="Are you sure you want to completely overwrite your active note with this AI response? This action cannot be undone."
-       confirmText="Replace All"
-       cancelText="Cancel"
-       variant="danger"
-     />
     </Tooltip.Provider>
  );
 };
