@@ -3,11 +3,12 @@ import NotesEditor from '../NotesEditor';
 import { DiffPreviewModal } from '@/components/modals/DiffPreviewModal';
 
 import { useAIAction } from '@/contexts/AIActionContext';
-import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { toast } from 'sonner';
+import { getMarkdownFromHtml } from '@/lib/markdownUtils';
+import { applyToNoteContent } from '@/components/ai/actions/notesActions';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -30,20 +31,30 @@ export const NotesView = React.memo(({
 }: NotesViewProps) => {
   const { registerContentHandler } = useAIAction();
   const confirmLockRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const showSkeleton = isLoading;
   const [pendingChange, setPendingChange] = useState<{
     content: string;
     strategy: 'replace' | 'append';
     originalContent: string;
+    originalHtml: string;
+    newHtml: string;
+    actionId?: string;
   } | null>(null);
 
   useEffect(() => {
     if (!activeNote || isReadOnly) return;
 
-    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
+    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append', actionId?: string) => {
       const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
-      setPendingChange({ content, strategy, originalContent: currentContent });
+
+      let parsedHtml = content;
+      try {
+        parsedHtml = await marked.parse(content);
+      } catch {}
+
+      setPendingChange({ content, strategy, originalContent: currentContent, originalHtml: currentContent, newHtml: parsedHtml, actionId });
     });
 
     return cleanup;
@@ -53,12 +64,19 @@ export const NotesView = React.memo(({
     if (!pendingChange) return;
     if (confirmLockRef.current) return;
     confirmLockRef.current = true;
+    setIsSaving(true);
 
-    const { content, strategy, originalContent } = pendingChange;
+    const { content, strategy, originalContent, actionId } = pendingChange;
 
     let parsedContent = content;
     try {
-      parsedContent = await marked.parse(content);
+      if (actionId) {
+        const markdownContent = getMarkdownFromHtml(originalContent);
+        const merged = applyToNoteContent(markdownContent, actionId, content);
+        parsedContent = await marked.parse(merged);
+      } else {
+        parsedContent = await marked.parse(content);
+      }
     } catch (err) {
       console.error('Failed to parse markdown', err);
     }
@@ -66,7 +84,9 @@ export const NotesView = React.memo(({
     parsedContent = DOMPurify.sanitize(parsedContent);
 
     let newContent = '';
-    if (strategy === 'replace') {
+    if (actionId) {
+      newContent = parsedContent;
+    } else if (strategy === 'replace') {
       newContent = parsedContent;
     } else {
       const separator = originalContent.trim() ? '<br><hr><br>' : '';
@@ -85,6 +105,7 @@ export const NotesView = React.memo(({
     } catch {
       toast.error('Failed to save AI content. Please try again.');
     } finally {
+      setIsSaving(false);
       confirmLockRef.current = false;
     }
   };
@@ -116,22 +137,19 @@ export const NotesView = React.memo(({
       />
       
       {pendingChange && (() => {
-        const plainTextContent = htmlToAIText(pendingChange.originalContent);
         const label: Record<string, string> = {
           replace: 'Replace All',
           append: 'Append',
         };
-        const finalText = pendingChange.strategy === 'append'
-          ? plainTextContent + '\n\n---\n\n' + pendingChange.content
-          : pendingChange.content;
         return (
           <DiffPreviewModal
             isOpen={!!pendingChange}
             strategyLabel={label[pendingChange.strategy] || ''}
-            originalText={plainTextContent}
-            newText={finalText}
+            originalHtml={pendingChange.originalHtml}
+            newHtml={pendingChange.newHtml}
             onConfirm={handleConfirmChange}
             onCancel={() => setPendingChange(null)}
+            isSaving={isSaving}
           />
         );
       })()}

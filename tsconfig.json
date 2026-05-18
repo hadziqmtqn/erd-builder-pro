@@ -21,6 +21,8 @@
       ]
     },
     "allowImportingTsExtensions": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo",
     "noEmit": true,
     "types": ["vite/client"]
   }
