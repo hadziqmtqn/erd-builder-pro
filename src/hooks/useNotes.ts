@@ -63,6 +63,7 @@ export function useNotes(isGuest: boolean = false) {
       setNotes(paged);
       setNotesTotal(enriched.length);
       setHasMoreNotes(false);
+      setIsLoading(false);
       return;
     }
 

@@ -65,6 +65,7 @@ export function useDrawings(isGuest: boolean = false) {
       setDrawings(paged);
       setDrawingsTotal(filtered.length);
       setHasMoreFiles(false);
+      setIsLoading(false);
       return;
     }
 

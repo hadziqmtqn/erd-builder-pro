@@ -36,6 +36,7 @@ export function useTrash(isGuest: boolean = false) {
       } catch (err) {
         console.error('Error fetching guest trash:', err);
       }
+      setIsLoading(false);
       return;
     }
 

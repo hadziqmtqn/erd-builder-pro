@@ -125,3 +125,22 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - Confirm button shows spinner + "Saving..." while `saveNote` is in progress
 - Cancel button disabled during save
 - Prevents double-click and gives visual feedback
+
+## Guest Mode
+
+- Guest user: `user = { id: 'guest', email: 'guest@local', name: 'Guest User' }`, `isGuest = true`
+- Guest data sourced from **IndexedDB** (`localPersistence`), not from API/Supabase
+- All `fetch*` functions in hooks have an `if (isGuest)` branch that reads from `localPersistence` and returns early
+- **Critical pattern**: every guest early return MUST call `setIsLoading(false)` before `return;` — otherwise loading spinner hangs forever
+- Settings menu (`NavUser`) hidden when `isGuest === true` (checked in `nav-user.tsx` via `WorkspaceContext.isGuest`)
+- AI settings not loaded for guest (`useAISettings.ts` skips `fetchData` entirely)
+- AI Chat still functional in Guest Mode (routed to local persistence)
+- Hooks fixed for guest loading (all follow same pattern — `setIsLoading(false)` before guest return):
+  - `useNotes.ts:66`
+  - `useDiagrams.ts:67`
+  - `useDrawings.ts:68`
+  - `useFlowcharts.ts:74`
+  - `useProjects.ts:60`
+  - `useTrash.ts:40`
+  - `useAISettings.ts:28-29`
+- Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
