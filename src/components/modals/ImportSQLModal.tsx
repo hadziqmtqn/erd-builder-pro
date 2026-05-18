@@ -9,22 +9,71 @@ import {
   DialogBody
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import TextareaCodeEditor from '@uiw/react-textarea-code-editor';
+import '@uiw/react-textarea-code-editor/dist.css';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import { toast } from 'sonner';
-import { FileCode, Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { FileCode, Upload, AlertCircle, Loader2, Plus, ArrowRight, ArrowUpDown } from 'lucide-react';
+import { DraftType } from '@/types';
+import { BroadcastMessageType } from '@/hooks/useBroadcastChannel';
+import type { Node, Edge } from '@xyflow/react';
+import type { Entity, Column } from '@/types';
+
+interface ColumnChange {
+  type: 'add' | 'modify';
+  column: Column;
+  existing?: Column;
+}
+
+interface TableChange {
+  tableName: string;
+  existingNode: Node<Entity>;
+  columnChanges: ColumnChange[];
+}
 
 interface ImportSQLModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (nodes: any[], edges: any[]) => void;
+  onImport?: (nodes: any[], edges: any[]) => void;
+  nodes?: any[];
+  edges?: any[];
+  setNodes?: (nodes: any[]) => void;
+  setEdges?: (edges: any[]) => void;
+  activeDiagramId?: number | string | null;
+  takeSnapshot?: (nodes: any[], edges: any[]) => void;
+  saveDiagram?: (nodes: any[], edges: any[], viewport: any) => Promise<void>;
+  triggerDebouncedSync?: () => void;
+  broadcastMessage?: (type: BroadcastMessageType, draftType: DraftType, id: number | string) => void;
+  setIsLocalSaving?: (loading: boolean) => void;
+  viewportRef?: { current: any };
+  lastLoadedDiagramIdRef?: { current: number | string | null };
 }
 
-export function ImportSQLModal({ isOpen, onOpenChange, onImport }: ImportSQLModalProps) {
+export function ImportSQLModal({
+  isOpen,
+  onOpenChange,
+  onImport,
+  nodes,
+  edges,
+  setNodes,
+  setEdges,
+  activeDiagramId,
+  takeSnapshot,
+  saveDiagram,
+  triggerDebouncedSync,
+  broadcastMessage,
+  setIsLocalSaving,
+  viewportRef,
+  lastLoadedDiagramIdRef,
+}: ImportSQLModalProps) {
   const [sql, setSql] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [step, setStep] = useState<'input' | 'review'>('input');
+  const [tableChanges, setTableChanges] = useState<TableChange[]>([]);
+  const [parsedResult, setParsedResult] = useState<{ nodes: Node<Entity>[]; edges: Edge[]; allParsedNodes: Node<Entity>[] } | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -43,122 +92,423 @@ export function ImportSQLModal({ isOpen, onOpenChange, onImport }: ImportSQLModa
       toast.success(`Successfully loaded ${file.name}`);
     };
     reader.readAsText(file);
-    
-    // Reset input value so the same file can be uploaded again if needed
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const handleImport = () => {
+  function computeDiff(existingCols: Column[], parsedCols: Column[]): ColumnChange[] {
+    const changes: ColumnChange[] = [];
+
+    for (const parsedCol of parsedCols) {
+      const match = existingCols.find(
+        c => c.name.toLowerCase() === parsedCol.name.toLowerCase()
+      );
+
+      if (!match) {
+        changes.push({ type: 'add', column: { ...parsedCol } });
+      } else if (
+        match.type !== parsedCol.type ||
+        match.is_pk !== parsedCol.is_pk ||
+        match.is_nullable !== parsedCol.is_nullable
+      ) {
+        changes.push({ type: 'modify', column: { ...parsedCol }, existing: { ...match } });
+      }
+    }
+
+    return changes;
+  }
+
+  function getExistingNodeByName(name: string): Node<Entity> | undefined {
+    return (nodes as Node<Entity>[] | undefined)?.find(
+      n => n.data.name.toLowerCase() === name.toLowerCase()
+    );
+  }
+
+  const handleParse = () => {
     if (!sql.trim()) return;
-    
+
     setIsImporting(true);
-    
-    // Use setTimeout to allow UI to render the loading state before heavy parsing starts
+    setError(null);
+
     setTimeout(() => {
       try {
-        const { nodes, edges } = parseSQLToERD(sql);
-        if (nodes.length === 0) {
+        const result = parseSQLToERD(sql);
+        if (result.nodes.length === 0) {
           toast.error("No valid CREATE TABLE statements found.");
           setIsImporting(false);
           return;
         }
-        
-        onImport(nodes, edges);
-        toast.success(`Successfully imported ${nodes.length} tables!`);
-        setSql('');
-        setError(null);
+
+        if (nodes && nodes.length > 0) {
+          const allResultNodes = result.nodes;
+          const changes: TableChange[] = [];
+          const uniqueNewNodes: Node<Entity>[] = [];
+
+          for (const parsedNode of allResultNodes) {
+            const existingNode = getExistingNodeByName(parsedNode.data.name);
+            if (existingNode) {
+              const columnChanges = computeDiff(
+                existingNode.data.columns,
+                parsedNode.data.columns
+              );
+              if (columnChanges.length > 0) {
+                changes.push({
+                  tableName: parsedNode.data.name,
+                  existingNode,
+                  columnChanges,
+                });
+              }
+            } else {
+              uniqueNewNodes.push(parsedNode);
+            }
+          }
+
+          if (changes.length > 0) {
+            setTableChanges(changes);
+            setParsedResult({ nodes: uniqueNewNodes, edges: result.edges, allParsedNodes: allResultNodes });
+            setStep('review');
+            setIsImporting(false);
+            return;
+          }
+        }
+
+        applyImport(result.nodes, result.edges, undefined, result.nodes);
         setIsImporting(false);
-        onOpenChange(false);
       } catch (err) {
         console.error(err);
-        toast.error("Failed to parse SQL. Check your syntax.");
+        setError("Failed to parse SQL. Check your syntax.");
         setIsImporting(false);
       }
     }, 100);
   };
 
+  function applyImport(
+    newNodes: Node<Entity>[],
+    newEdges: Edge[],
+    existingChanges?: TableChange[],
+    allParsedNodes?: Node<Entity>[]
+  ) {
+    if (nodes && edges && setNodes && setEdges && takeSnapshot) {
+      takeSnapshot(nodes, edges);
+
+      let updatedNodes = [...nodes];
+      const updatedEdges = [...edges];
+
+      const idMapping: Record<string, string> = {};
+
+      if (existingChanges) {
+        for (const change of existingChanges) {
+          idMapping[change.existingNode.id] = change.existingNode.id;
+
+          const idx = updatedNodes.findIndex(
+            n => n.id === change.existingNode.id
+          );
+          if (idx === -1) continue;
+
+          const node = { ...updatedNodes[idx] };
+          const mergedCols = [...node.data.columns];
+
+          for (const colChange of change.columnChanges) {
+            if (colChange.type === 'add') {
+              mergedCols.push({
+                ...colChange.column,
+                id: `col-${Math.random().toString(36).substr(2, 9)}`,
+                sort_order: mergedCols.length,
+              });
+            } else if (colChange.type === 'modify') {
+              const colIdx = mergedCols.findIndex(
+                c => c.name.toLowerCase() === colChange.column.name.toLowerCase()
+              );
+              if (colIdx !== -1) {
+                mergedCols[colIdx] = {
+                  ...mergedCols[colIdx],
+                  type: colChange.column.type,
+                  is_pk: colChange.column.is_pk,
+                  is_nullable: colChange.column.is_nullable,
+                };
+              }
+            }
+          }
+
+          updatedNodes[idx] = {
+            ...node,
+            data: { ...node.data, columns: mergedCols },
+          };
+        }
+      }
+
+      const existingNames = updatedNodes.map(n => n.data.name.toLowerCase());
+
+      if (allParsedNodes) {
+        for (const parsedNode of allParsedNodes) {
+          const match = updatedNodes.find(
+            n => n.data.name.toLowerCase() === parsedNode.data.name.toLowerCase()
+          );
+          if (match) {
+            idMapping[parsedNode.id] = match.id;
+          }
+        }
+      }
+
+      for (const newNode of newNodes) {
+        let name = newNode.data.name;
+        let counter = 1;
+        while (existingNames.includes(name.toLowerCase())) {
+          name = `${newNode.data.name}_imported_${counter}`;
+          counter++;
+        }
+        if (name !== newNode.data.name) {
+          newNode.data.name = name;
+        }
+        const newId = `node-${Math.random().toString(36).substr(2, 9)}`;
+        idMapping[newNode.id] = newId;
+        newNode.id = newId;
+        newNode.data.id = newId;
+        updatedNodes.push(newNode);
+      }
+
+      for (const edge of newEdges) {
+        const sourceId = idMapping[edge.source] || edge.source;
+        const targetId = idMapping[edge.target] || edge.target;
+        updatedEdges.push({
+          ...edge,
+          id: `e-${Math.random().toString(36).substr(2, 9)}`,
+          source: sourceId,
+          target: targetId,
+        });
+      }
+
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+
+      if (activeDiagramId && saveDiagram && triggerDebouncedSync && broadcastMessage && setIsLocalSaving && viewportRef && lastLoadedDiagramIdRef) {
+        lastLoadedDiagramIdRef.current = activeDiagramId;
+        setIsLocalSaving(true);
+        saveDiagram(updatedNodes, updatedEdges, viewportRef.current).then(() => {
+          setIsLocalSaving(false);
+          triggerDebouncedSync();
+          broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.ERD, activeDiagramId);
+        });
+      }
+
+      const updatedCount = existingChanges?.length || 0;
+      const newCount = newNodes.length;
+      const parts: string[] = [];
+      if (updatedCount > 0) parts.push(`${updatedCount} table(s) updated`);
+      if (newCount > 0) parts.push(`${newCount} table(s) added`);
+      toast.success(`Success! ${parts.join(', ')}.`);
+    } else {
+      onImport?.(
+        newNodes,
+        newEdges
+      );
+      toast.success(`Successfully imported ${newNodes.length} tables!`);
+    }
+
+    setSql('');
+    setError(null);
+    setStep('input');
+    setTableChanges([]);
+    setParsedResult(null);
+    onOpenChange(false);
+  }
+
+  const handleApplyChanges = () => {
+    if (!parsedResult) return;
+    applyImport(parsedResult.nodes, parsedResult.edges, tableChanges, parsedResult.allParsedNodes);
+  };
+
+  const handleCancelReview = () => {
+    setStep('input');
+    setTableChanges([]);
+    setParsedResult(null);
+    setIsImporting(false);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        setStep('input');
+        setTableChanges([]);
+        setParsedResult(null);
+        setError(null);
+      }
+      onOpenChange(open);
+    }}>
+      <DialogContent className={step === 'review' ? 'sm:max-w-[700px]' : 'sm:max-w-[600px]'}>
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <DialogTitle>Import SQL (Reverse Engineering)</DialogTitle>
-              <DialogDescription>
-                Paste your SQL or upload a <code className="text-[10px] bg-muted px-1 rounded">.sql</code> file below.
-              </DialogDescription>
+              {step === 'input' ? (
+                <>
+                  <DialogTitle>Import SQL (Reverse Engineering)</DialogTitle>
+                  <DialogDescription>
+                    Paste your SQL or upload a <code className="text-[10px] bg-muted px-1 rounded">.sql</code> file below.
+                  </DialogDescription>
+                </>
+              ) : (
+                <>
+                  <DialogTitle>Review Table Changes</DialogTitle>
+                  <DialogDescription>
+                    {tableChanges.length} existing table(s) will be updated with new or modified columns.
+                  </DialogDescription>
+                </>
+              )}
             </div>
           </div>
         </DialogHeader>
         <DialogBody>
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">SQL Schema Editor</label>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-8 text-xs font-bold border-dashed border-primary/50 hover:border-primary hover:bg-primary/5"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="w-3 h-3 mr-2" />
-                  Upload .sql File
-                </Button>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept=".sql" 
-                  onChange={handleFileChange} 
-                />
-              </div>
+          {step === 'input' ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">SQL Schema Editor</label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs font-bold border-dashed border-primary/50 hover:border-primary hover:bg-primary/5"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-3 h-3 mr-2" />
+                    Upload .sql File
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept=".sql"
+                    onChange={handleFileChange}
+                  />
+                </div>
 
-              <Textarea 
-                placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL&#10;);" 
-                className="min-h-[300px] font-mono text-xs leading-relaxed focus-visible:ring-primary shadow-inner"
+              <TextareaCodeEditor
                 value={sql}
+                language="sql"
+                data-color-mode="dark"
+                placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL&#10;);"
+                className="min-h-[300px] font-mono text-xs leading-relaxed shadow-inner"
+                padding={16}
+                minHeight={300}
                 onChange={(e) => {
                   setSql(e.target.value);
                   if (error) setError(null);
                 }}
               />
 
-              {error && (
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] animate-in fade-in slide-in-from-top-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {error}
+                {error && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {error}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[10px] text-muted-foreground italic bg-muted/30 p-2 rounded-md border border-border/50">
+                * Supports PostgreSQL and MySQL syntax. Ensure each statement ends with a semicolon (;).
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+              {tableChanges.map((change, idx) => (
+                <div key={idx} className="bg-muted/20 border border-border/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="size-2 rounded-full bg-amber-500" />
+                    <span className="text-xs font-semibold">{change.tableName}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      — {change.columnChanges.length} column change(s)
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {change.columnChanges.map((colChange, ci) => (
+                      <div key={ci} className="flex items-start gap-2.5 text-xs bg-background/60 rounded-md px-3 py-2 border border-border/30">
+                        {colChange.type === 'add' ? (
+                          <Plus className="size-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                        ) : (
+                          <ArrowUpDown className="size-3.5 text-amber-500 mt-0.5 shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{colChange.column.name}</div>
+                          {colChange.type === 'add' ? (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {colChange.column.type}{colChange.column.is_nullable ? ' NULL' : ' NOT NULL'}{colChange.column.is_pk ? ' PK' : ''}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
+                              <span className="line-through text-destructive/60">
+                                {colChange.existing?.type}{colChange.existing?.is_nullable ? ' NULL' : ' NOT NULL'}{colChange.existing?.is_pk ? ' PK' : ''}
+                              </span>
+                              <ArrowRight className="size-3 text-muted-foreground/40" />
+                              <span className="text-emerald-600 dark:text-emerald-400">
+                                {colChange.column.type}{colChange.column.is_nullable ? ' NULL' : ' NOT NULL'}{colChange.column.is_pk ? ' PK' : ''}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {parsedResult && parsedResult.nodes.length > 0 && (
+                <div className="bg-muted/20 border border-border/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="size-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-semibold">New Tables</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      — {parsedResult.nodes.length} brand new table(s)
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedResult.nodes.map((n, ni) => (
+                      <span key={ni} className="text-[11px] bg-background/60 border border-border/30 rounded-md px-2 py-1">
+                        {n.data.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-
-            <p className="text-[10px] text-muted-foreground italic bg-muted/30 p-2 rounded-md border border-border/50">
-              * Supports PostgreSQL and MySQL syntax. Ensure each statement ends with a semicolon (;).
-            </p>
-          </div>
+          )}
         </DialogBody>
         <DialogFooter className="border-t pt-4">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isImporting}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleImport} 
-            disabled={!sql.trim() || isImporting}
-            className="font-bold min-w-[120px]"
-          >
-            {isImporting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
+          {step === 'input' ? (
+            <>
+              <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isImporting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleParse}
+                disabled={!sql.trim() || isImporting}
+                className="font-bold min-w-[120px]"
+              >
+                {isImporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Parsing...
+                  </>
+                ) : (
+                  <>
+                    <FileCode className="w-4 h-4 mr-2" />
+                    Import SQL
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={handleCancelReview}>
+                Cancel
+              </Button>
+              <Button onClick={handleApplyChanges} className="font-bold min-w-[120px]">
                 <FileCode className="w-4 h-4 mr-2" />
-                Import SQL
-              </>
-            )}
-          </Button>
+                Apply Changes
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

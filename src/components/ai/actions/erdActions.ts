@@ -1,5 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
-import { Entity } from '@/types';
+import { Entity, Column } from '@/types';
 import { parseSQLToERD } from '@/lib/sqlParser';
 
 /**
@@ -146,6 +146,113 @@ function mergeIntoDiagram(
   return { nodes: mergedNodes, edges: mergedEdges };
 }
 
+function extractJSONFromMarkdown(text: string): string {
+  const jsonBlockRegex = /```(?:json)?\n?([\s\S]*?)```/g;
+  const blocks: string[] = [];
+  let match;
+  while ((match = jsonBlockRegex.exec(text)) !== null) {
+    const content = match[1].trim();
+    if (content.length > 0) blocks.push(content);
+  }
+  if (blocks.length > 0) return blocks.join('\n');
+  return text.trim();
+}
+
+interface ColumnMutation {
+  type: 'add_column' | 'drop_column' | 'modify_column';
+  column?: any;
+  changes?: any;
+}
+
+interface MutationsPayload {
+  mutations: ColumnMutation[];
+}
+
+/**
+ * Applies column mutations parsed from AI response to a single entity node.
+ */
+function applyColumnChanges(
+  currentNodes: Node<Entity>[],
+  selectedNodeId: string,
+  aiResponse: string,
+): { nodes: Node<Entity>[] } | null {
+  const json = extractJSONFromMarkdown(aiResponse);
+  let payload: MutationsPayload;
+  try {
+    payload = JSON.parse(json);
+  } catch {
+    // Try to find JSON object in text
+    const objMatch = json.match(/\{[\s\S]*"mutations"[\s\S]*\}/);
+    if (!objMatch) return null;
+    try {
+      payload = JSON.parse(objMatch[0]);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!payload.mutations || !Array.isArray(payload.mutations) || payload.mutations.length === 0) {
+    return null;
+  }
+
+  const nodeIndex = currentNodes.findIndex(n => n.id === selectedNodeId);
+  if (nodeIndex === -1) return null;
+
+  const targetNode = currentNodes[nodeIndex];
+  let columns = [...(targetNode.data.columns || [])];
+
+  for (const mutation of payload.mutations) {
+    switch (mutation.type) {
+      case 'add_column': {
+        if (!mutation.column || !mutation.column.name || !mutation.column.type) continue;
+        const newColumn: Column = {
+          id: `col_${Date.now()}_${columns.length}`,
+          name: mutation.column.name,
+          type: mutation.column.type,
+          is_pk: mutation.column.is_pk || false,
+          is_nullable: mutation.column.is_nullable || false,
+          sort_order: columns.length,
+        };
+        columns.push(newColumn);
+        break;
+      }
+
+      case 'drop_column': {
+        const colName = typeof mutation.column === 'string' ? mutation.column : mutation.column?.name;
+        if (!colName) continue;
+        columns = columns.filter(c => c.name.toLowerCase() !== colName.toLowerCase());
+        break;
+      }
+
+      case 'modify_column': {
+        const colName = mutation.column?.name;
+        if (!colName || !mutation.changes) continue;
+        const idx = columns.findIndex(c => c.name.toLowerCase() === colName.toLowerCase());
+        if (idx === -1) continue;
+        columns[idx] = {
+          ...columns[idx],
+          ...(mutation.changes.type !== undefined && { type: mutation.changes.type }),
+          ...(mutation.changes.is_nullable !== undefined && { is_nullable: mutation.changes.is_nullable }),
+          ...(mutation.changes.is_pk !== undefined && { is_pk: mutation.changes.is_pk }),
+          ...(mutation.changes.name !== undefined && { name: mutation.changes.name }),
+        };
+        break;
+      }
+    }
+  }
+
+  const updatedNodes = [...currentNodes];
+  updatedNodes[nodeIndex] = {
+    ...targetNode,
+    data: {
+      ...targetNode.data,
+      columns,
+    },
+  };
+
+  return { nodes: updatedNodes };
+}
+
 export interface ErdApplyResult {
   nodes: Node<Entity>[];
   edges: Edge[];
@@ -168,6 +275,7 @@ export function applyToErdContent(
   currentEdges: Edge[],
   actionId: string,
   aiResponse: string,
+  extra?: { selectedNodeId?: string | null },
 ): ErdApplyResult | null {
   switch (actionId) {
     case 'erd-generate-sql': {
@@ -183,6 +291,13 @@ export function applyToErdContent(
 
       const { nodes, edges } = mergeIntoDiagram(currentNodes, currentEdges, parsed.nodes, parsed.edges);
       return { nodes, edges, action: 'erd-generate-sql' };
+    }
+
+    case 'erd-edit-column': {
+      if (!extra?.selectedNodeId) return null;
+      const result = applyColumnChanges(currentNodes, extra.selectedNodeId, aiResponse);
+      if (!result) return null;
+      return { nodes: result.nodes, edges: currentEdges, action: 'erd-edit-column' };
     }
 
     // Read-only actions — no diagram mutations

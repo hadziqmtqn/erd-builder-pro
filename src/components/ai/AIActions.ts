@@ -49,6 +49,45 @@ const erdActions: AIAction[] = [
     },
   },
   {
+    id: 'erd-edit-column',
+    label: 'Edit Columns',
+    description: 'Add/edit/delete columns via chat',
+    icon: 'Columns',
+    buildPrompt: (ctx) => {
+      const selectedNode = ctx.selectedNode;
+      if (!selectedNode) return 'Select a table first to edit its columns.';
+      const data = selectedNode.data || {};
+      const cols = (data.columns || []).map((c: any) => {
+        const pk = c.primaryKey || c.is_pk ? ' 🔑' : '';
+        const nullable = c.is_nullable ? ' NULL' : ' NOT NULL';
+        return `  - ${c.name}: ${c.type || c.columnType || 'unknown'}${nullable}${pk}`;
+      }).join('\n');
+      return `You are editing the table "${data.name || data.label || 'unnamed'}".
+
+Current columns:
+${cols || '  (no columns defined)'}
+
+The user will tell you what column changes to make. Respond with a JSON code block ONLY:
+
+\`\`\`json
+{
+  "mutations": [
+    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR(255)", "is_nullable": false, "is_pk": false}},
+    {"type": "drop_column", "column": "old_field"},
+    {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true}}
+  ]
+}
+\`\`\`
+
+Rules:
+- For add_column: all fields required (name, type, is_nullable, is_pk)
+- For drop_column: only column name
+- For modify_column: only include fields that changed (type, is_nullable, is_pk)
+- Keep existing columns that aren't mentioned
+- Respond with ONLY the JSON code block, no explanation`;
+    },
+  },
+  {
     id: 'erd-explain-table',
     label: 'Explain Table',
     description: 'Natural language description of selected table',
@@ -189,6 +228,7 @@ export function getActionsForView(view: ViewType): AIAction[] {
 
 export const actionIcons: Record<string, string> = {
   'erd-generate-sql': 'database',
+  'erd-edit-column': 'columns',
   'erd-explain-table': 'info',
   'erd-suggest-indexes': 'zap',
   'erd-seed-data': 'file',

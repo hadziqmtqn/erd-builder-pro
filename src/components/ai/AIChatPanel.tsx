@@ -94,6 +94,8 @@ function getActionIcon(actionId: string) {
       return <LayoutPanelLeft className="size-3.5" />;
     case 'erd-generate-sql':
       return <Database className="size-3.5" />;
+    case 'erd-edit-column':
+      return <SquareTerminal className="size-3.5" />;
     case 'erd-explain-table':
       return <CircleHelp className="size-3.5" />;
     case 'erd-suggest-indexes':

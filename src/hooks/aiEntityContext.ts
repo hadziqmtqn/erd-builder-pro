@@ -326,6 +326,22 @@ Tables:\n${tableLines || '  (none)'}`;
         context += `\n\nRelationships:\n${relLines}`;
       }
 
+      context += `\n\n[Response format]
+When asked to add or modify columns, always respond with a complete valid SQL CREATE TABLE statement for the affected table(s) including all existing columns plus your additions. Use MySQL syntax. This allows the system to parse your response and update the diagram automatically. Example:
+
+\`\`\`sql
+CREATE TABLE admins (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name VARCHAR(255),
+    email VARCHAR(255),
+    role VARCHAR(50),
+    status TINYINT,
+    last_login_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+\`\`\``;
+
       return context;
     }
 

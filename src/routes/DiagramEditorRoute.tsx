@@ -3,7 +3,7 @@ import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 
 const ERDView = React.lazy(() => import('@/components/views/ERDView').then(m => ({ default: m.ERDView })));
-const ERDImportModal = React.lazy(() => import('@/components/modals/ERDImportModal').then(m => ({ default: m.ERDImportModal })));
+const ImportSQLModal = React.lazy(() => import('@/components/modals/ImportSQLModal').then(m => ({ default: m.ImportSQLModal })));
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
@@ -73,7 +73,7 @@ export function DiagramEditorRoute() {
         onMoveEnd={onMoveEnd}
       />
       {!isPublicView && (
-        <ERDImportModal
+        <ImportSQLModal
           isOpen={isImportModalOpen}
           onOpenChange={setIsImportModalOpen}
           nodes={nodes}

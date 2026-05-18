@@ -37,10 +37,8 @@ export function AIActionButton({ viewType, onAction, context, iconOnly = false }
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const actions = getActionsForView(viewType);
-  const isComingSoon = viewType !== 'notes';
 
   const handleSelect = (action: AIAction) => {
-    if (isComingSoon) return;
     onAction(action, context);
     setIsOpen(false);
   };
@@ -49,20 +47,18 @@ export function AIActionButton({ viewType, onAction, context, iconOnly = false }
     <div className="relative" ref={menuRef}>
       <Button
         variant="outline"
-        disabled={isComingSoon}
         size="sm"
-        className={`h-9 px-3 font-bold text-muted-foreground border-border/50 hover:bg-muted/50 ${isComingSoon ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} relative ${iconOnly ? 'px-2.5' : ''}`}
+        className="h-9 px-3 font-bold text-muted-foreground border-border/50 hover:bg-muted/50 cursor-pointer relative"
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={(e) => {
-          // Close if leaving the button area (handled by timeout)
           setTimeout(() => {
             if (menuRef.current && !menuRef.current.matches(':hover')) {
               setIsOpen(false);
             }
           }, 200);
         }}
-        title={isComingSoon ? "Coming Soon..." : "AI Actions"}
+        title="AI Actions"
       >
         <Sparkles className={`size-4 ${iconOnly ? '' : 'sm:mr-1.5'}`} />
         <span className={`hidden sm:inline text-xs ${iconOnly ? 'hidden' : ''}`}>AI</span>

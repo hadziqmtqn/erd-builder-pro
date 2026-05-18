@@ -83,7 +83,6 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - Strategy type: `'replace' | 'append'`
 - `selectionText` is single source of truth — passed as argument to `sendMessage()` (not closed over)
 - React.memo on NotesView
-- `npx tsc --noEmit` **never run automatically** — only run when user explicitly commands
 
 ## AI Context for Notes (markdown-aware)
 
