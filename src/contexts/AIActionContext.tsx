@@ -21,11 +21,13 @@ interface AIActionContextValue {
   /** Toggle the AI panel */
   setAIOpen: (open: boolean) => void;
   /** Register a global handler for manually applying content to the active view */
-  registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void) => () => void;
+  registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void, strategies?: ('replace' | 'append')[]) => () => void;
   /** Apply content using the registered handler. Returns true if successful. */
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => boolean;
   /** Whether a content handler is currently registered (e.g. Notes view is active) */
   hasContentHandler: boolean;
+  /** Strategies supported by the active content handler */
+  contentHandlerStrategies: ('replace' | 'append')[];
   /** Current text selection from the active editor */
   selectionText: string | null;
   /** Update current selection text */
@@ -39,6 +41,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
   const [isAIOpen, setAIOpen] = useState(false);
   const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append', actionId?: string) => void) | null>(null);
+  const [contentHandlerStrategies, setContentHandlerStrategies] = useState<('replace' | 'append')[]>(['replace', 'append']);
   const [selectionText, setSelectionText] = useState<string | null>(null);
 
   const sendAction = useCallback(
@@ -63,9 +66,13 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
     setPendingAction(null);
   }, []);
 
-  const registerContentHandler = useCallback((handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void) => {
+  const registerContentHandler = useCallback((handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void, strategies?: ('replace' | 'append')[]) => {
     setContentHandler(() => handler);
-    return () => setContentHandler(null);
+    setContentHandlerStrategies(strategies ?? ['replace', 'append']);
+    return () => {
+      setContentHandler(null);
+      setContentHandlerStrategies(['replace', 'append']);
+    };
   }, []);
 
   const applyContent = useCallback((content: string, strategy: 'replace' | 'append', actionId?: string) => {
@@ -89,6 +96,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         registerContentHandler,
         applyContent,
         hasContentHandler: !!contentHandler,
+        contentHandlerStrategies,
         selectionText,
         setSelectionText,
       }}
