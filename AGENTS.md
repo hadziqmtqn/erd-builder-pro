@@ -36,7 +36,19 @@ Editor onUpdate → onChange (NotesEditor.handleContentChange, INLINE no useCall
 
 - `TiptapEditor` fires `setSelectionText(text)` on `selectionUpdate`
 - `selectionText` persisted in context (NOT cleared on blur, only on empty selection)
-- Used in `AIChatPanel` for "Active Selection" display and `sendMessage(input, selectionText)` inline context
+- When user sends message with active selection:
+  - `sendMessage(content, selectionText)` stores `selection_text` on `AIChatMessage`
+  - Persisted to DB via `selection_text` column (TEXT) di `ai_chat_messages`
+  - API payload masih inline: `[Selected text: "..."]\nUser request: ...`
+  - UI tampilkan quote `selection_text` (max 50 chars) di **bawah** bubble user message, terpisah
+- `referenced_file_info` (JSONB) disediakan untuk relasi ke Notes/ERD/flowchart — BUKAN untuk teks seleksi
+
+### Referenced File Info (JSONB)
+
+- `ai_chat_sessions.entity_type + entity_uid` = entry point (file tempat chat dimulai)
+- `ai_chat_sessions.referenced_file_info` = array of related files dalam satu workspace (cross-feature: Notes + ERD + Flowchart)
+- Contoh: chat dimulai dari Notes di project EMPLOYMENT, AI butuh lihat ERD yang juga di project EMPLOYMENT → ERD tercatat di `referenced_file_info`
+- Format: `[{ entity_type: "note"|"diagram"|"flowchart", entity_uid: "uuid" }]`
 
 ### Editor Architecture
 

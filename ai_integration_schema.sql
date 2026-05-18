@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS ai_chat_sessions (
     project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
     entity_type TEXT DEFAULT NULL, -- 'note', 'diagram', 'flowchart', 'drawing'
     entity_uid TEXT DEFAULT NULL,  -- UUID of the active note/diagram/flowchart/drawing
+    referenced_file_info JSONB DEFAULT NULL, -- Related files in workspace (cross-feature: Notes/ERD/flowchart)
     title TEXT DEFAULT 'New Conversation',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
     session_id BIGINT REFERENCES ai_chat_sessions(id) ON DELETE CASCADE NOT NULL,
     role TEXT CHECK (role IN ('system', 'user', 'assistant')) NOT NULL,
     content TEXT NOT NULL,
-    referenced_file_info JSONB DEFAULT NULL, -- Info about related Notes/ERD
+    selection_text TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
