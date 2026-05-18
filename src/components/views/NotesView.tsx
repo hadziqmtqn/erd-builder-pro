@@ -1,14 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import NotesEditor from '../NotesEditor';
 import { DiffPreviewModal } from '@/components/modals/DiffPreviewModal';
 
 import { useAIAction } from '@/contexts/AIActionContext';
-import { AIAction } from '@/components/ai/AIActions';
-import { applyToNoteContent } from '@/components/ai/actions';
 import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 
 import { marked } from 'marked';
-import { useMemo } from 'react';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -29,18 +26,14 @@ export const NotesView = React.memo(({
   isReadOnly = false,
   isLoading = false
 }: NotesViewProps) => {
-  const { registerContentHandler, replaceSelectedText, selectionText } = useAIAction();
-  const aiReadableNoteContent = useMemo(
-    () => htmlToAIText(typeof activeNote?.content === 'string' ? activeNote.content : ''),
-    [activeNote?.content]
-  );
+  const { registerContentHandler } = useAIAction();
   
-  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append' | 'replace-selection'} | null>(null);
+  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append'} | null>(null);
 
   useEffect(() => {
     if (!activeNote || isReadOnly) return;
 
-    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append' | 'replace-selection') => {
+    const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
       setPendingChange({ content, strategy });
     });
 
@@ -59,20 +52,13 @@ export const NotesView = React.memo(({
       console.error('Failed to parse markdown', err);
     }
 
+    const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+
     if (strategy === 'replace') {
       newContent = parsedContent;
-    } else if (strategy === 'append') {
-      const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+    } else {
       const separator = currentContent.trim() ? '<br><hr><br>' : '';
       newContent = currentContent + separator + parsedContent;
-    } else if (strategy === 'replace-selection') {
-      const updatedHtml = replaceSelectedText?.(parsedContent);
-      if (updatedHtml) {
-        handleNoteChange(updatedHtml);
-        saveNote({ ...activeNote, content: updatedHtml });
-      }
-      setPendingChange(null);
-      return;
     }
     
     handleNoteChange(newContent);
@@ -112,13 +98,10 @@ export const NotesView = React.memo(({
         const label: Record<string, string> = {
           replace: 'Replace All',
           append: 'Append',
-          'replace-selection': 'Replace Selected',
         };
         const finalText = pendingChange.strategy === 'append'
           ? plainTextContent + '\n\n---\n\n' + pendingChange.content
-          : pendingChange.strategy === 'replace-selection' && selectionText
-            ? plainTextContent.replace(selectionText, pendingChange.content)
-            : pendingChange.content;
+          : pendingChange.content;
         return (
           <DiffPreviewModal
             isOpen={!!pendingChange}
