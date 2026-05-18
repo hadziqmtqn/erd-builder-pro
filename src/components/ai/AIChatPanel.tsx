@@ -208,11 +208,15 @@ export const AIChatPanel = ({
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
 
   const [input, setInput] = useState('');
+  const [expandedMessages, setExpandedMessages] = useState<Set<string | number>>(new Set());
+  const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const draftKey = getDraftKey(entityType, entityUid);
@@ -227,6 +231,8 @@ export const AIChatPanel = ({
 
   const handleSelectAction = useCallback((action: AIAction) => {
     if (!entityType || !entityContextText || !entityTitle) return;
+
+    setLastActionId(action.id);
 
     const context = {
       content: entityContextText,
@@ -275,10 +281,25 @@ export const AIChatPanel = ({
 
   // ─── Auto-scroll to bottom on new messages ─────────
   useEffect(() => {
-    if (!minimized) {
+    if (!minimized && !userScrolledUpRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isStreaming, minimized]);
+
+  // ─── Track manual scroll ────────────────────────────
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const threshold = 50;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+      userScrolledUpRef.current = !isNearBottom;
+    };
+
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
@@ -332,6 +353,7 @@ export const AIChatPanel = ({
     if (!input.trim() || isStreaming) return;
     sendMessage(input, selectionText);
     setInput('');
+    setLastActionId(null);
     try {
       sessionStorage.removeItem(draftKey);
     } catch {
@@ -451,7 +473,7 @@ export const AIChatPanel = ({
         )}
 
         {/* ── Messages Area ───────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
           {!hasActiveSession ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-16">
               <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
@@ -522,7 +544,28 @@ export const AIChatPanel = ({
                     >
                       {isUser ? (
                         <>
-                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          {(() => {
+                            const isLong = msg.content.length > 300;
+                            const isExpanded = expandedMessages.has(msg.id ?? idx);
+                            return (
+                              <>
+                                <p className={`whitespace-pre-wrap break-words ${isLong && !isExpanded ? 'line-clamp-6' : ''}`}>{msg.content}</p>
+                                {isLong && (
+                                  <button
+                                    onClick={() => setExpandedMessages(prev => {
+                                      const next = new Set(prev);
+                                      if (isExpanded) next.delete(msg.id ?? idx);
+                                      else next.add(msg.id ?? idx);
+                                      return next;
+                                    })}
+                                    className="text-[10px] text-primary-foreground/60 hover:text-primary-foreground/80 mt-1 opacity-60 hover:opacity-100 transition-all"
+                                  >
+                                    {isExpanded ? 'Show less' : 'Show more'}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                           {msg.selection_text && (
                             <div className="mt-1.5 pt-1.5 border-t border-primary-foreground/20 text-[10px] text-primary-foreground/60 leading-tight line-clamp-1">
                               <span className="opacity-50 mr-1">&#8617;</span>
@@ -559,13 +602,24 @@ export const AIChatPanel = ({
                       </span>
                     )}
 
+                    {/* Retry button for failed messages */}
+                    {isUser && !isStreaming && idx === messages.length - 1 && !isStreamingMsg && (
+                      <button
+                        onClick={() => sendMessage(msg.content, msg.selection_text)}
+                        className="flex items-center gap-1 text-[10px] text-destructive/60 hover:text-destructive/80 mt-0.5 px-1 transition-colors"
+                      >
+                        <span className="size-3">&#8635;</span>
+                        Resend
+                      </button>
+                    )}
+
                     {/* Action Buttons */}
                     {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
                         {hasContentHandler && (
                           <>
                               <button
-                              onClick={() => applyContent(msg.content, 'replace')}
+                              onClick={() => applyContent(msg.content, 'replace', lastActionId || undefined)}
                               className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
                               title="Replace All"
                             >
@@ -573,7 +627,7 @@ export const AIChatPanel = ({
                             </button>
 
                             <button
-                              onClick={() => applyContent(msg.content, 'append')}
+                              onClick={() => applyContent(msg.content, 'append', lastActionId || undefined)}
                               className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
                               title="Append"
                             >

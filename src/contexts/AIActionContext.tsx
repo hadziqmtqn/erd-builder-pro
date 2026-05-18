@@ -21,9 +21,9 @@ interface AIActionContextValue {
   /** Toggle the AI panel */
   setAIOpen: (open: boolean) => void;
   /** Register a global handler for manually applying content to the active view */
-  registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append') => void) => () => void;
+  registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void) => () => void;
   /** Apply content using the registered handler. Returns true if successful. */
-  applyContent: (content: string, strategy: 'replace' | 'append') => boolean;
+  applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => boolean;
   /** Whether a content handler is currently registered (e.g. Notes view is active) */
   hasContentHandler: boolean;
   /** Current text selection from the active editor */
@@ -38,7 +38,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
   const [isAIOpen, setAIOpen] = useState(false);
-  const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append') => void) | null>(null);
+  const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append', actionId?: string) => void) | null>(null);
   const [selectionText, setSelectionText] = useState<string | null>(null);
 
   const sendAction = useCallback(
@@ -63,14 +63,14 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
     setPendingAction(null);
   }, []);
 
-  const registerContentHandler = useCallback((handler: (content: string, strategy: 'replace' | 'append') => void) => {
+  const registerContentHandler = useCallback((handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void) => {
     setContentHandler(() => handler);
     return () => setContentHandler(null);
   }, []);
 
-  const applyContent = useCallback((content: string, strategy: 'replace' | 'append') => {
+  const applyContent = useCallback((content: string, strategy: 'replace' | 'append', actionId?: string) => {
     if (contentHandler) {
-      contentHandler(content, strategy);
+      contentHandler(content, strategy, actionId);
       return true;
     }
     return false;

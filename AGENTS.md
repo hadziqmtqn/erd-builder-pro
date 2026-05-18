@@ -19,21 +19,22 @@ ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v
 4. `NotesView` stores `pendingChange` with `originalContent` snapshot → opens `DiffPreviewModal`
 5. User confirms → `handleConfirmChange`:
    - `marked.parse(content)` → HTML
-   - `DOMPurify.sanitize(parsedContent)` → aman dari XSS
-   - **Replace**: HTML langsung jadi newContent
+   - `DOMPurify.sanitize(parsedContent)` → XSS-safe
+   - **Replace**: HTML becomes newContent directly
    - **Append**: originalContent + `<br><hr><br>` + HTML
-   - `await saveNote({...activeNote, content: newContent})` — **hanya 1 save**, tanpa `handleNoteChange`
-   - Jika gagal → modal tetap terbuka, toast error
-   - `confirmLockRef` mencegah double-click
+   - `handleNoteChange(newContent)` → debounced save + state update
+   - `await saveNote({...activeNote, content: newContent})` — **immediate persist** + `setNotes` state sync
+   - If it fails → modal stays open, error toast shown
+   - `confirmLockRef` prevents double-click
 6. Modal closes via `setPendingChange(null)`
 
 ### Safeguards (Applied Content)
 
-- **`confirmLockRef`**: ref boolean mencegah double-click saat `saveNote` berjalan
-- **`originalContent` snapshot**: diff preview dan logika append/use **content yang ditangkap saat modal dibuka**, bukan `activeNote.content` yang bisa berubah
-- **`DOMPurify.sanitize`**: `marked.parse()` output disanitasi sebelum disimpan (cegah XSS)
-- **Error toast**: jika `saveNote` return `false` atau throw, modal tetap terbuka + toast error
-- **No streaming apply**: tombol Replace/Append tersembunyi saat `isStreaming` aktif
+- **`confirmLockRef`**: boolean ref prevents double-click while `saveNote` is in progress
+- **`originalContent` snapshot**: diff preview and append logic use **content captured when modal opened**, not live `activeNote.content` (which may change)
+- **`DOMPurify.sanitize`**: `marked.parse()` output is sanitized before saving (prevents XSS)
+- **Error toast**: if `saveNote` returns `false` or throws, modal stays open + toast error
+- **No streaming apply**: Replace/Append buttons hidden while `isStreaming` is active
 
 ### Save Chain (Notes)
 
@@ -51,16 +52,16 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - `selectionText` persisted in context (NOT cleared on blur, only on empty selection)
 - When user sends message with active selection:
   - `sendMessage(content, selectionText)` stores `selection_text` on `AIChatMessage`
-  - Persisted to DB via `selection_text` column (TEXT) di `ai_chat_messages`
-  - API payload masih inline: `[Selected text: "..."]\nUser request: ...`
-  - UI tampilkan quote `selection_text` (max 50 chars) di **bawah** bubble user message, terpisah
-- `referenced_file_info` (JSONB) disediakan untuk relasi ke Notes/ERD/flowchart — BUKAN untuk teks seleksi
+  - Persisted to DB via `selection_text` column (TEXT) on `ai_chat_messages`
+  - API payload still inline: `[Selected text: "..."]\nUser request: ...`
+  - UI shows `selection_text` quote (max 50 chars) **below** user message bubble, visually separated
+- `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
 ### Referenced File Info (JSONB)
 
-- `ai_chat_sessions.entity_type + entity_uid` = entry point (file tempat chat dimulai)
-- `ai_chat_sessions.referenced_file_info` = array of related files dalam satu workspace (cross-feature: Notes + ERD + Flowchart)
-- Contoh: chat dimulai dari Notes di project EMPLOYMENT, AI butuh lihat ERD yang juga di project EMPLOYMENT → ERD tercatat di `referenced_file_info`
+- `ai_chat_sessions.entity_type + entity_uid` = entry point (file where chat was started)
+- `ai_chat_sessions.referenced_file_info` = array of related files within one workspace (cross-feature: Notes + ERD + Flowchart)
+- Example: chat started from a Note in EMPLOYMENT project, AI needs to see ERD also in EMPLOYMENT → ERD recorded in `referenced_file_info`
 - Format: `[{ entity_type: "note"|"diagram"|"flowchart", entity_uid: "uuid" }]`
 
 ### Editor Architecture
@@ -80,3 +81,47 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - Strategy type: `'replace' | 'append'`
 - `selectionText` is single source of truth — passed as argument to `sendMessage()` (not closed over)
 - React.memo on NotesView
+- `npx tsc --noEmit` **never run automatically** — only run when user explicitly commands
+
+## AI Context for Notes (markdown-aware)
+
+- `entityContextText` for Notes is sent to AI in **markdown format**, not plain text
+- Uses `getMarkdownFromHtml()` from `src/lib/markdownUtils.ts` (TurndownService)
+- `<h2>Heading</h2>` → `## Heading`, AI sees heading structure → responds in markdown → `marked.parse()` produces correct `<h2>`
+- Applies to all AI actions (Improve Grammar, Summarize, etc.) and direct chat
+
+## User Message Collapse
+
+- User messages longer than **>300 characters** are auto-collapsed (line-clamp-6)
+- **"Show more"** / **"Show less"** button toggles per-message
+- State tracked via `expandedMessages: Set<string | number>` in AIChatPanel
+
+## Auto-scroll Behavior
+
+- Auto-scroll to bottom on new messages only if user hasn't manually scrolled up
+- `userScrolledUpRef` tracks manual scroll with 50px threshold from bottom
+- `scrollContainerRef` added to messages area for scroll event listener
+
+## Retry on Failed AI Call
+
+- **"Resend"** button appears below the last user message when AI response fails
+- Condition: last message is a user message, `isStreaming` is false, and no assistant message follows
+- Clicking Resend re-sends the same content with the original `selection_text`
+
+## AI Action Content Strategy
+
+- `applyContent()` and `registerContentHandler()` now accept optional `actionId` parameter
+- `NotesView.handleConfirmChange` uses `applyToNoteContent()` from `notesActions.ts` when `actionId` is present:
+  - `notes-improve-grammar` → replace full content
+  - `notes-summarize` → append with `## Summary` header
+  - `notes-generate-docs` → append with `## Documentation` header
+- Generic strategy (`replace`/`append` buttons) is used when no `actionId`
+- `lastActionId` tracked in AIChatPanel, cleared on each message send
+- Context: `src/contexts/AIActionContext.tsx`, `src/components/ai/actions/notesActions.ts`
+
+## Confirm Save Loading State
+
+- `isSaving` state in NotesView, passed to DiffPreviewModal
+- Confirm button shows spinner + "Saving..." while `saveNote` is in progress
+- Cancel button disabled during save
+- Prevents double-click and gives visual feedback
