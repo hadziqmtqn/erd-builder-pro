@@ -63,6 +63,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       setDiagrams(paged);
       setDiagramsTotal(enriched.length);
       setHasMoreDiagrams(false);
+      setIsLoading(false);
       return;
     }
 

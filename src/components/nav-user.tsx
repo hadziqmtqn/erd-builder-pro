@@ -44,7 +44,7 @@ export function NavUser({
   onOpenFeedback: () => void
 }) {
   const { isMobile } = useSidebar()
-  const { setIsSettingsOpen, setSettingsTab } = useWorkspace()
+  const { isGuest, setIsSettingsOpen, setSettingsTab } = useWorkspace()
 
   if (!user) return null;
 
@@ -105,14 +105,16 @@ export function NavUser({
               <DropdownMenuSeparator />
 
               <DropdownMenuGroup>
-                <DropdownMenuItem 
-                  onClick={() => isOnline && handleOpenSettings('account')}
-                  className="cursor-pointer"
-                  disabled={!isOnline}
-                >
-                  <Settings className="mr-2 size-4" />
-                  Settings
-                </DropdownMenuItem>
+                {!isGuest && (
+                  <DropdownMenuItem 
+                    onClick={() => isOnline && handleOpenSettings('account')}
+                    className="cursor-pointer"
+                    disabled={!isOnline}
+                  >
+                    <Settings className="mr-2 size-4" />
+                    Settings
+                  </DropdownMenuItem>
+                )}
               <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
                 <Github className="mr-2 size-4" />
                 Github

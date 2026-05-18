@@ -5,7 +5,7 @@ import { AIProvider, UserAIConfig, AIModel, AISystemPrompt } from '@/types';
 import { toast } from 'sonner';
 
 export const useAISettings = () => {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [configs, setConfigs] = useState<Record<string, UserAIConfig>>({});
   const [models, setModels] = useState<Record<string, AIModel[]>>({});
@@ -25,6 +25,10 @@ export const useAISettings = () => {
 
   const fetchData = async () => {
     if (!user) return;
+    if (isGuest) {
+      setIsLoading(false);
+      return; // Guest: no DB settings to load
+    }
     setIsLoading(true);
     try {
       // 1. Fetch Providers
@@ -42,19 +46,21 @@ export const useAISettings = () => {
         setActiveTab('api-config');
       }
 
-      // 2. Fetch User Configs
-      const { data: configData, error: configError } = await supabase
-        .from('user_ai_configs')
-        .select('*')
-        .eq('user_id', user.id);
-      
-      if (configError) throw configError;
-      const configMap: Record<string, UserAIConfig> = {};
-      configData?.forEach(c => {
-        const provider = provData?.find(p => p.id === c.provider_id);
-        if (provider) configMap[provider.code] = c;
-      });
-      setConfigs(configMap);
+      // 2. Fetch User Configs (skip for guests - no DB config)
+      if (!isGuest) {
+        const { data: configData, error: configError } = await supabase
+          .from('user_ai_configs')
+          .select('*')
+          .eq('user_id', user.id);
+        
+        if (configError) throw configError;
+        const configMap: Record<string, UserAIConfig> = {};
+        configData?.forEach(c => {
+          const provider = provData?.find(p => p.id === c.provider_id);
+          if (provider) configMap[provider.code] = c;
+        });
+        setConfigs(configMap);
+      }
 
       // 3. Fetch Models
       const { data: modelData, error: modelError } = await supabase

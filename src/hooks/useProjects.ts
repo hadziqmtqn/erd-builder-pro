@@ -57,6 +57,7 @@ export function useProjects(isGuest: boolean = false) {
       });
       setProjectsTotal(filteredProjects.length);
       setHasMoreProjects(false);
+      setIsLoading(false);
       return;
     }
 

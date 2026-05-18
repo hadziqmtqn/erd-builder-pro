@@ -71,6 +71,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       setFlowcharts(paged);
       setFlowchartsTotal(filtered.length);
       setHasMoreFlowcharts(false);
+      setIsLoading(false);
       return;
     }
 
