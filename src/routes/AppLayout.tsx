@@ -14,8 +14,8 @@ import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPro
 import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
 import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
 import { NoteExporter } from '@/lib/exporters/note-exporter';
-import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 import { getMarkdownFromHtml } from '@/lib/markdownUtils';
+import { buildEntityContextText } from '@/hooks/aiEntityContext';
 import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 
 // UI
@@ -98,7 +98,7 @@ function AppLayoutInner() {
     breadcrumbLabel,
   } = useWorkspace();
 
-  // ─── Build entity context text from workspace data (no Supabase fetch) ───
+  // ─── Build entity context text from workspace data ───
   const entityContextText = useMemo(() => {
     const ctx = entityContext;
     if (!ctx) return null;
@@ -106,36 +106,36 @@ function AppLayoutInner() {
     switch (ctx.entityType) {
       case 'note':
         if (!activeNote) return null;
-        return `[Current file info]
-You are currently viewing this note:
-Title: ${activeNote.title || '(untitled)'}
-Content:
-${getMarkdownFromHtml(String(activeNote.content || '')).slice(0, 4000)}`;
-      case 'diagram': {
+        return buildEntityContextText('note', {
+          title: activeNote.title,
+          content: getMarkdownFromHtml(String(activeNote.content || '')),
+        });
+
+      case 'diagram':
         if (!activeDiagram) return null;
-        const tableCount = (nodes || []).filter((n: any) => n.type === 'entity').length;
-        const edgeCount = (edges || []).length;
-        return `[Current file info]
-You are currently viewing this diagram:
-Name: ${activeDiagram.name || '(untitled)'}
-Tables: ${tableCount}, Relationships: ${edgeCount}`;
-      }
-      case 'drawing':
-        if (!activeDrawing) return null;
-        return `[Current file info]
-You are currently viewing this drawing:
-Title: ${activeDrawing.title || '(untitled)'}`;
+        return buildEntityContextText('diagram', {
+          title: activeDiagram.name,
+          nodes: nodes as any[],
+          edges: edges as any[],
+        });
+
       case 'flowchart':
         if (!activeFlowchart) return null;
-        const nodeCount = (nodes || []).length;
-        return `[Current file info]
-You are currently viewing this flowchart:
-Title: ${activeFlowchart.title || '(untitled)'}
-Symbols: ${nodeCount}`;
+        return buildEntityContextText('flowchart', {
+          title: activeFlowchart.title,
+          nodes: nodes as any[],
+        });
+
+      case 'drawing':
+        if (!activeDrawing) return null;
+        return buildEntityContextText('drawing', {
+          title: activeDrawing.title,
+        });
+
       default:
         return null;
     }
-  }, [entityContext, activeNote, activeDrawing, activeFlowchart, activeDiagram, nodes, edges]);
+  }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges]);
 
   const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing';
 

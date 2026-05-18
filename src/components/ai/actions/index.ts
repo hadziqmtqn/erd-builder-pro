@@ -3,5 +3,5 @@
 // back to the document content.
 
 export { applyToNoteContent } from './notesActions';
-// Future: export { applyToErdContent } from './erdActions';
+export { applyToErdContent } from './erdActions';
 // Future: export { applyToFlowchartContent } from './flowchartActions';

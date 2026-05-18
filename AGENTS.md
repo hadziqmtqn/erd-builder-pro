@@ -78,6 +78,8 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 
 - `onChange` handler in `NotesEditor` defined **inline** (no `useCallback`), causing TiptapEditor's `handleUpdate` effect to re-register every render. This is intentional but fragile.
 - `handleNoteChange` stable via `useCallback` in `useNoteChangeHandler`
+- `registerContentHandler(handler, strategies?)` — second param is supported `('replace' | 'append')[]`, defaults to `['replace', 'append']`
+- `contentHandlerStrategies` exposed via `useAIAction()` — AIChatPanel checks this to show/hide Replace vs Append buttons
 - Strategy type: `'replace' | 'append'`
 - `selectionText` is single source of truth — passed as argument to `sendMessage()` (not closed over)
 - React.memo on NotesView
@@ -101,6 +103,16 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - Auto-scroll to bottom on new messages only if user hasn't manually scrolled up
 - `userScrolledUpRef` tracks manual scroll with 50px threshold from bottom
 - `scrollContainerRef` added to messages area for scroll event listener
+
+## Code Blocks (Prism)
+
+- AI chat responses use `ReactMarkdown` with custom `CodeBlock` component for fenced code blocks
+- Syntax highlighting via `prismjs` + `prism-themes/themes/prism-dracula.css` (imported in `index.css:8`)
+- Supported languages: sql, javascript, typescript, bash, json (imported in `AIChatPanel.tsx:24-28`)
+- Code blocks render with dark background (`#0d1117`), language label bar, copy button on hover
+- **No horizontal scroll** — `white-space: pre-wrap` + `word-break: break-word` wraps long lines
+- Inline code (backticks) uses `bg-black/30 px-1 py-0.5 rounded text-[11px]` styling
+- Code block wrapper has `overflow-x-auto` + `custom-scrollbar` as fallback for extremely long unbreakable content
 
 ## Retry on Failed AI Call
 
@@ -144,3 +156,31 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
   - `useTrash.ts:40`
   - `useAISettings.ts:28-29`
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
+
+## ERD Architecture
+
+### Data Structures
+- **Entity**: `{ id, name, x, y, color, columns: Column[] }` — node data stored in React Flow `Node<Entity>`
+- **Column**: `{ id, name, type, is_pk, is_nullable, enum_values?, sort_order?, _is_fk? }`
+- **Relationship**: `{ id, source_entity_id, target_entity_id, source_column_id?, target_column_id?, source_handle?, target_handle?, type, label? }` — stored as React Flow `Edge` with `type: 'smoothstep'`
+
+### Key Hooks
+- **`useERDSession`** (`src/hooks/useERDSession.ts`): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
+- **`useDiagrams`** (`src/hooks/useDiagrams.ts`): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
+
+### ERD → AI Flow
+1. `ERDView` passes `{ nodes, edges, selectedNode }` context to `AIActionButton`
+2. `AIActions.ts` builds prompt via `erdTableList()` + `erdRelationships()` → text representation
+3. `sendAction(prompt, actionId, onResult)` opens chat panel — `actionId` + `onResult` for auto-apply on stream complete
+4. AI responds, then auto-applied via `onResult` → `applyToErdContent` → `setNodes`/`setEdges`
+5. Manual Append button also works (auto-detects SQL in response), Replace is hidden for ERD
+6. Content handler registered with `['append']` strategy only — `contentHandlerStrategies` hides Replace button in AIChatPanel
+7. ERD actions: `erd-generate-sql`, `erd-explain-table`, `erd-suggest-indexes`, `erd-seed-data`
+
+### AI → ERD Content Application
+- `applyToErdContent()` in `src/components/ai/actions/erdActions.ts` — parses SQL DDL (`extractSQLFromMarkdown` + `parseSQLToERD`), merges via `mergeIntoDiagram`
+- Pattern: `registerContentHandler` → `AIChatPanel` calls `onStreamComplete` → `pendingAction.onResult` → apply mutations
+- Auto-apply via `sendAction` `actionId` + `onResult` callback; manual append works for non-action chat responses
+- `extractSQLFromMarkdown` handles ` ```sql ``` ` fences and raw SQL
+- `mergeIntoDiagram` matches entities by name (not ID) — handles AI-generated IDs vs existing IDs
+- Uses full replace approach (`setNodes`/`setEdges`) with `takeSnapshot` for undo

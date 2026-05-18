@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -20,6 +20,8 @@ import { Entity } from '@/types';
 import { AIActionButton } from '@/components/ai/AIActionButton';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { AIAction } from '@/components/ai/AIActions';
+import { applyToErdContent } from '@/components/ai/actions';
+import { toast } from 'sonner';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -28,6 +30,8 @@ const nodeTypes = {
 interface ERDViewProps {
   nodes: Node<Entity>[];
   edges: Edge[];
+  setNodes: React.Dispatch<React.SetStateAction<Node<Entity>[]>>;
+  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
   onNodesChange: OnNodesChange<Node<Entity>>;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -61,6 +65,8 @@ import { JumpToNode } from '../JumpToNode';
 const ERDViewComponent = ({
   nodes,
   edges,
+  setNodes,
+  setEdges,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -77,13 +83,14 @@ const ERDViewComponent = ({
   redo,
   canUndo,
   canRedo,
+  takeSnapshot,
   selectedNodeId,
   onNodeDragStop,
   onMoveEnd,
   isLoading,
 }: ERDViewProps) => {
 
-  const { sendAction } = useAIAction();
+  const { sendAction, registerContentHandler } = useAIAction();
 
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
@@ -106,6 +113,30 @@ const ERDViewComponent = ({
       return baseEdge;
     });
   }, [edges, selectedNodeId]);
+
+  // ─── AI Content Handler: apply AI responses back to ERD diagram ──
+  const nodesRef = React.useRef(nodes);
+  const edgesRef = React.useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+  const takeSnapshotRef = React.useRef(takeSnapshot);
+  takeSnapshotRef.current = takeSnapshot;
+
+  React.useEffect(() => {
+    const unregister = registerContentHandler((_content: string, _strategy: 'replace' | 'append', actionId?: string) => {
+      const response = _content;
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-generate-sql', response);
+      if (result) {
+        takeSnapshotRef.current?.(result.nodes, result.edges);
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        toast.success('SQL applied to diagram');
+      } else {
+        toast.error('No valid SQL found in response');
+      }
+    }, ['append']);
+    return unregister;
+  }, [registerContentHandler, setNodes, setEdges]);
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
@@ -133,7 +164,15 @@ const ERDViewComponent = ({
               context={{ nodes, edges, selectedNode: nodes.find(n => n.id === selectedNodeId) }}
               onAction={(action: AIAction, ctx: Record<string, any>) => {
                 const prompt = action.buildPrompt(ctx);
-                sendAction(prompt);
+                sendAction(prompt, action.id, (response: string) => {
+                  const result = applyToErdContent(nodesRef.current, edgesRef.current, action.id, response);
+                  if (result) {
+                    takeSnapshotRef.current?.(result.nodes, result.edges);
+                    setNodes(result.nodes);
+                    setEdges(result.edges);
+                    toast.success('SQL applied to diagram');
+                  }
+                });
               }}
             />
 

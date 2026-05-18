@@ -269,6 +269,85 @@ function formatContextText(
 // ─── Public API ──────────────────────────────────────
 
 /**
+ * Build entity context text from live workspace state (no DB fetch).
+ * Used by AppLayout for providing current file info to AI assistant.
+ * Handles notes, diagrams, flowcharts, and drawings.
+ */
+export function buildEntityContextText(
+  entityType: string,
+  data: {
+    title?: string;
+    content?: string;
+    nodes?: any[];
+    edges?: any[];
+  },
+): string | null {
+  switch (entityType) {
+    case 'note': {
+      if (!data.content && !data.title) return null;
+      const content = String(data.content || '').slice(0, 4000);
+      return `[Current file info]
+You are currently viewing this note:
+Title: ${data.title || '(untitled)'}
+Content:
+${content}`; // markdown — AI responds in markdown, UI renders via marked.parse
+    }
+
+    case 'diagram': {
+      const entityNodes = (data.nodes || []).filter((n: any) => n.type === 'entity');
+      const tableCount = entityNodes.length;
+      const edgeCount = (data.edges || []).length;
+
+      const tableLines = entityNodes.map((node: any) => {
+        const d = node.data || {};
+        const cols = (d.columns || []).map((c: any) => {
+          const pk = c.is_pk ? ' PK' : '';
+          const nullable = c.is_nullable ? ' NULL' : '';
+          return `${c.name}: ${c.type}${pk}${nullable}`;
+        }).join(', ');
+        return `  - ${d.name} (${cols})`;
+      }).join('\n');
+
+      const relLines = (data.edges || []).map((e: any) => {
+        const sNode = entityNodes.find((n: any) => n.id === e.source);
+        const tNode = entityNodes.find((n: any) => n.id === e.target);
+        if (!sNode || !tNode) return '';
+        return `  - ${sNode.data.name} → ${tNode.data.name} (${e.label || '1:N'})`;
+      }).filter(Boolean).join('\n');
+
+      let context = `[Current file info]
+You are currently viewing this diagram:
+Name: ${data.title || '(untitled)'}
+Tables: ${tableCount}, Relationships: ${edgeCount}
+
+Tables:\n${tableLines || '  (none)'}`;
+
+      if (relLines) {
+        context += `\n\nRelationships:\n${relLines}`;
+      }
+
+      return context;
+    }
+
+    case 'flowchart': {
+      const nodes = data.nodes || [];
+      return `[Current file info]
+You are currently viewing this flowchart:
+Title: ${data.title || '(untitled)'}
+Symbols: ${nodes.length}`;
+    }
+
+    case 'drawing':
+      return `[Current file info]
+You are currently viewing this drawing:
+Title: ${data.title || '(untitled)'}`;
+
+    default:
+      return null;
+  }
+}
+
+/**
  * Fetch entity context and build a system message string
  * that describes the current file and related project files.
  */

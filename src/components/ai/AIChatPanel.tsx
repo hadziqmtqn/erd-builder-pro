@@ -35,6 +35,53 @@ import {
   DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import { Tooltip } from '@base-ui/react/tooltip';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-json';
+
+function CodeBlock({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const match = /language-(\w+)/.exec(className || '');
+  const lang = match ? match[1] : '';
+  const code = String(children).replace(/\n$/, '');
+  const highlighted = lang && Prism.languages[lang]
+    ? Prism.highlight(code, Prism.languages[lang], lang)
+    : null;
+
+  return (
+    <div className="relative group/code my-2 rounded-lg overflow-hidden border border-border/50 bg-[#0d1117]">
+      {lang && (
+        <div className="flex items-center justify-between px-3 py-1 text-[10px] text-muted-foreground/50 bg-white/[0.03] border-b border-border/30">
+          <span>{lang}</span>
+          <button
+            onClick={() => navigator.clipboard.writeText(code)}
+            className="opacity-0 group-hover/code:opacity-100 transition-opacity hover:text-foreground"
+          >
+            <Copy className="size-3" />
+          </button>
+        </div>
+      )}
+      <div className="overflow-x-auto custom-scrollbar">
+        {highlighted ? (
+          <pre
+            className="p-3 text-xs leading-relaxed m-0 bg-transparent"
+            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', tabSize: 2 }}
+            dangerouslySetInnerHTML={{ __html: highlighted }}
+          />
+        ) : (
+          <pre
+            className="p-3 text-xs leading-relaxed m-0 bg-transparent"
+            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', tabSize: 2 }}
+          >
+            <code>{code}</code>
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Map action IDs to lucide icons
 function getActionIcon(actionId: string) {
@@ -186,7 +233,7 @@ export const AIChatPanel = ({
       onClearPendingAction?.();
     }
   }, [onClearPendingAction]);
-  const { applyContent, hasContentHandler, selectionText, setSelectionText } = useAIAction();
+  const { applyContent, hasContentHandler, contentHandlerStrategies, selectionText, setSelectionText } = useAIAction();
   const { 
     sessions, 
     currentSession, 
@@ -576,7 +623,7 @@ export const AIChatPanel = ({
                           )}
                         </>
                       ) : (
-                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-pre:bg-black/30">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs">
                           {isStreamingMsg && !msg.content ? (
                             <span className="inline-flex gap-1 py-1">
                               <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -585,7 +632,16 @@ export const AIChatPanel = ({
                             </span>
                           ) : (
                             <>
-                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                              <ReactMarkdown
+                                components={{
+                                  code({ className, children, ...props }) {
+                                    if (className) {
+                                      return <CodeBlock className={className} children={children} />;
+                                    }
+                                    return <code className="bg-black/30 px-1 py-0.5 rounded text-[11px]" {...props}>{children}</code>;
+                                  }
+                                }}
+                              >{msg.content}</ReactMarkdown>
                               {isStreamingMsg && (
                                 <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
                               )}
@@ -618,22 +674,29 @@ export const AIChatPanel = ({
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
                         {hasContentHandler && (
                           <>
+                            {contentHandlerStrategies.includes('replace') && (
                               <button
-                              onClick={() => applyContent(msg.content, 'replace', lastActionId || undefined)}
-                              className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
-                              title="Replace All"
-                            >
-                              <Replace className="size-4" />
-                            </button>
+                                onClick={() => applyContent(msg.content, 'replace', lastActionId || undefined)}
+                                className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
+                                title="Replace All"
+                              >
+                                <Replace className="size-4" />
+                              </button>
+                            )}
 
-                            <button
-                              onClick={() => applyContent(msg.content, 'append', lastActionId || undefined)}
-                              className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
-                              title="Append"
-                            >
-                              <ArrowDownToLine className="size-4" />
-                            </button>
-                            <div className="w-px h-6 bg-border mx-1" />
+                            {contentHandlerStrategies.includes('append') && (
+                              <button
+                                onClick={() => applyContent(msg.content, 'append', lastActionId || undefined)}
+                                className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
+                                title="Append"
+                              >
+                                <ArrowDownToLine className="size-4" />
+                              </button>
+                            )}
+
+                            {(contentHandlerStrategies.includes('replace') && contentHandlerStrategies.includes('append')) && (
+                              <div className="w-px h-6 bg-border mx-1" />
+                            )}
                           </>
                         )}
                         <button
