@@ -90,7 +90,7 @@ const ERDViewComponent = ({
   isLoading,
 }: ERDViewProps) => {
 
-  const { sendAction, registerContentHandler } = useAIAction();
+  const { sendAction, registerContentHandler, setSelectionText } = useAIAction();
 
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
@@ -117,22 +117,31 @@ const ERDViewComponent = ({
   // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
+  const selectedNodeIdRef = React.useRef(selectedNodeId);
   nodesRef.current = nodes;
   edgesRef.current = edges;
+  selectedNodeIdRef.current = selectedNodeId;
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
 
   React.useEffect(() => {
+    const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
+    setSelectionText(selectedNode ? `Table: ${selectedNode.data.name || selectedNode.data.label || selectedNodeId}` : null);
+  }, [selectedNodeId, nodes, setSelectionText]);
+
+  React.useEffect(() => {
     const unregister = registerContentHandler((_content: string, _strategy: 'replace' | 'append', actionId?: string) => {
       const response = _content;
-      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-generate-sql', response);
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-generate-sql', response, {
+        selectedNodeId: selectedNodeIdRef.current,
+      });
       if (result) {
         takeSnapshotRef.current?.(result.nodes, result.edges);
         setNodes(result.nodes);
         setEdges(result.edges);
-        toast.success('SQL applied to diagram');
+        toast.success('Applied to diagram');
       } else {
-        toast.error('No valid SQL found in response');
+        toast.error('No valid changes found in response');
       }
     }, ['append']);
     return unregister;
@@ -165,12 +174,14 @@ const ERDViewComponent = ({
               onAction={(action: AIAction, ctx: Record<string, any>) => {
                 const prompt = action.buildPrompt(ctx);
                 sendAction(prompt, action.id, (response: string) => {
-                  const result = applyToErdContent(nodesRef.current, edgesRef.current, action.id, response);
+                  const result = applyToErdContent(nodesRef.current, edgesRef.current, action.id, response, {
+                    selectedNodeId: selectedNodeIdRef.current,
+                  });
                   if (result) {
                     takeSnapshotRef.current?.(result.nodes, result.edges);
                     setNodes(result.nodes);
                     setEdges(result.edges);
-                    toast.success('SQL applied to diagram');
+                    toast.success('Applied to diagram');
                   }
                 });
               }}

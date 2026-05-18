@@ -11,6 +11,7 @@ export interface Column {
   type: string;
   is_pk: boolean;
   is_nullable: boolean;
+  _is_fk?: boolean;
   enum_values?: string;
   sort_order?: number;
 }

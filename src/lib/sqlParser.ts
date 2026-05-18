@@ -152,16 +152,9 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       const trimmedLine = line.trim();
       const upperLine = trimmedLine.toUpperCase();
       
-      // Skip table-level constraints/indexes
-      // Improved logic: skip if it starts with these but is clearly a constraint (contains parens or keyword sequence)
-      if (/^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine)) {
-          // If it doesn't look like a column definition (e.g., contains a '(' for a list of columns), it's a constraint
-          if (trimmedLine.includes('(') || upperLine.includes('FOREIGN KEY')) return;
-          
-          // Exception: If the identifier is quoted, it might be a column named "KEY"
-          if (!trimmedLine.startsWith('`') && !trimmedLine.startsWith('"')) {
-              // Standard reserved word check: if it's just "KEY INT", we might want to check further
-          }
+      // Skip table-level constraints/indexes including FOREIGN KEY
+      if (/^(CONSTRAINT|PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine)) {
+          if (trimmedLine.includes('(')) return;
       }
 
       const parts = trimmedLine.split(/\s+/);
@@ -267,6 +260,17 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/i);
         if (fkMatch) {
             processRel(tableDef.name, cleanIdentifier(fkMatch[1]), cleanIdentifier(fkMatch[3]), cleanIdentifier(fkMatch[4]));
+            // Mark FK column on source node (if it exists among parsed columns)
+            const fkColName = cleanIdentifier(fkMatch[1]);
+            for (const node of nodes) {
+              if (node.data.name.toLowerCase() === tableDef.name.toLowerCase()) {
+                const col = node.data.columns.find(c => c.name.toLowerCase() === fkColName.toLowerCase());
+                if (col) {
+                  col._is_fk = true;
+                  col.is_nullable = false;
+                }
+              }
+            }
         }
         
         // inline column REFERENCES: col_name type REFERENCES target_table(col)

@@ -36,6 +36,7 @@
     "@tiptap/extension-underline": "^3.22.5",
     "@tiptap/react": "^3.22.0",
     "@tiptap/starter-kit": "^3.22.0",
+    "@uiw/react-textarea-code-editor": "^3.1.1",
     "@whatwg-node/server": "^0.10.18",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
