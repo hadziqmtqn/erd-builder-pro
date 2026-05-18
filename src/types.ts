@@ -191,6 +191,7 @@ export interface AIChatSession {
   project_id?: number | string;
   entity_type?: string | null;
   entity_uid?: string | null;
+  referenced_file_info?: any;
   title: string;
   created_at: string;
   updated_at: string;
@@ -201,7 +202,7 @@ export interface AIChatMessage {
   session_id: number | string;
   role: 'system' | 'user' | 'assistant';
   content: string;
-  referenced_file_info?: any;
+  selection_text?: string | null;
   created_at: string;
 }
 

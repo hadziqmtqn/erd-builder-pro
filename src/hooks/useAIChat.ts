@@ -181,7 +181,10 @@ export function useAIChat(
 
       if (msgError) throw msgError;
 
-      const loadedMessages = (data || []).reverse();
+      const loadedMessages: AIChatMessage[] = (data || []).reverse().map(m => ({
+        ...m,
+        selection_text: m.selection_text ?? null,
+      }));
       setMessages(loadedMessages);
       messageOffsetRef.current = loadedMessages.length;
       setHasMoreMessages((count || 0) > loadedMessages.length);
@@ -209,7 +212,10 @@ export function useAIChat(
       if (msgError) throw msgError;
 
       if (data && data.length > 0) {
-        const olderMessages = data.reverse();
+        const olderMessages: AIChatMessage[] = data.reverse().map(m => ({
+          ...m,
+          selection_text: m.selection_text ?? null,
+        }));
         setMessages(prev => [...olderMessages, ...prev]);
         messageOffsetRef.current = offset + olderMessages.length;
         setHasMoreMessages(data.length >= PAGE_SIZE);
@@ -272,19 +278,22 @@ export function useAIChat(
       session_id: currentSession.id,
       role: 'user',
       content: trimmed,
+      selection_text: selectionText || null,
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, tempUserMsg]);
 
     // Save user message to DB
     try {
+      const dbPayload: any = {
+        session_id: currentSession.id,
+        role: 'user',
+        content: trimmed,
+        selection_text: selectionText || null,
+      };
       const { error: saveUserError } = await supabase
         .from('ai_chat_messages')
-        .insert([{
-          session_id: currentSession.id,
-          role: 'user',
-          content: trimmed,
-        }]);
+        .insert([dbPayload]);
 
       if (saveUserError) throw saveUserError;
 

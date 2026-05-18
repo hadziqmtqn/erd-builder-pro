@@ -521,7 +521,17 @@ export const AIChatPanel = ({
                       }`}
                     >
                       {isUser ? (
-                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                        <>
+                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          {msg.selection_text && (
+                            <div className="mt-1.5 pt-1.5 border-t border-primary-foreground/20 text-[10px] text-primary-foreground/60 leading-tight line-clamp-1">
+                              <span className="opacity-50 mr-1">&#8617;</span>
+                              {msg.selection_text.length > 50
+                                ? msg.selection_text.slice(0, 47) + '...'
+                                : msg.selection_text}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-pre:bg-black/30">
                           {isStreamingMsg && !msg.content ? (
