@@ -560,7 +560,7 @@ export const AIChatPanel = ({
                     )}
 
                     {/* Action Buttons */}
-                    {!isUser && !isStreamingMsg && msg.content && (
+                    {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
                         {hasContentHandler && (
                           <>
