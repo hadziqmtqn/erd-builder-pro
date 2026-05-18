@@ -16,7 +16,7 @@ import {
   Loader2,
   ArrowDownToLine,
   Replace,
-  SquareTerminal, CircleHelp, LayoutPanelLeft, Database, Lightbulb, StickyNote, Scissors,
+  SquareTerminal, CircleHelp, LayoutPanelLeft, Database, Lightbulb, StickyNote,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
@@ -562,16 +562,6 @@ export const AIChatPanel = ({
                               <Replace className="size-4" />
                             </button>
 
-                            {selectionText && (
-                              <button
-                                onClick={() => applyContent(msg.content, 'replace-selection')}
-                                className="flex items-center justify-center size-8 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/20 rounded-md shadow-sm transition-all"
-                                title="Replace Selected"
-                              >
-                                <Scissors className="size-4" />
-                              </button>
-                            )}
-                            
                             <button
                               onClick={() => applyContent(msg.content, 'append')}
                               className="flex items-center justify-center size-8 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-md shadow-sm transition-all"
