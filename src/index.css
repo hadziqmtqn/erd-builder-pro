@@ -701,3 +701,46 @@ ul[data-type="taskList"] li[data-checked="true"] > div > p {
 .ProseMirror-focused .ProseMirror-gapcursor {
   display: block;
 }
+
+/* Diff Viewer Styles */
+.diff-added {
+  background-color: #dcfce7;
+  color: #166534;
+}
+.diff-removed {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+.diff-hunk-header {
+  background-color: #f3f4f6;
+  font-weight: bold;
+}
+/* Diff Viewer Styles - GitHub-like Dark/Light Mode */
+.diff-added {
+  background-color: #1e3a29; /* Dark green */
+  color: #a3e635; /* Light green text */
+}
+.diff-removed {
+  background-color: #450a0a; /* Dark red */
+  color: #f87171; /* Light red text */
+}
+.diff-hunk-header {
+  background-color: #1f2937;
+  color: #d1d5db;
+  font-weight: bold;
+}
+
+@media (prefers-color-scheme: light) {
+  .diff-added {
+    background-color: #dcfce7;
+    color: #166534;
+  }
+  .diff-removed {
+    background-color: #fee2e2;
+    color: #991b1b;
+  }
+  .diff-hunk-header {
+    background-color: #f3f4f6;
+    color: #374151;
+  }
+}

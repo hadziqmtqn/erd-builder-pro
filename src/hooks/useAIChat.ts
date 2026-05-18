@@ -24,7 +24,7 @@ interface UseAIChatReturn {
   clearSessions: () => void;
 
   // Messaging
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, selectionText?: string | null) => Promise<void>;
   clearMessages: () => void;
 
   // Streaming
@@ -42,7 +42,6 @@ export function useAIChat(
   entityContext?: EntityContext | null,
   entityContextText?: string | null,
   onStreamComplete?: (response: string) => void,
-  selectionText?: string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
@@ -61,13 +60,12 @@ export function useAIChat(
   const sessionsRef = useRef<AIChatSession[]>(sessions);
   sessionsRef.current = sessions;
 
-  // ─── Stable refs for auth state (break dependency chains) ──
+  // ─── Stable refs (break dependency chains) ──
   const userRef = useRef(auth.user);
   const isGuestRef = useRef(auth.isGuest);
   useEffect(() => { userRef.current = auth.user; }, [auth.user]);
   useEffect(() => { isGuestRef.current = auth.isGuest; }, [auth.isGuest]);
 
-  // ─── Stable ref for stream-complete callback (break dependency chains) ──
   const onStreamCompleteRef = useRef<((response: string) => void) | undefined>(undefined);
   useEffect(() => { onStreamCompleteRef.current = onStreamComplete; }, [onStreamComplete]);
 
@@ -261,7 +259,7 @@ export function useAIChat(
 
   // ─── Messaging ────────────────────────────────────────
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, selectionText?: string | null) => {
     if (!currentSession || !content.trim()) return;
 
     const trimmed = content.trim();
@@ -365,13 +363,6 @@ export function useAIChat(
 
      // Inject entity context so AI knows what file the user is on
      // Priority: pre-built context text > fetch from Supabase
-     if (selectionText) {
-       apiMessages.push({
-         role: 'system',
-         content: `User has selected the following text: "${selectionText}". Use this as context for your response.`,
-       });
-       console.log('[AI Context] Injected selection text:', selectionText.slice(0, 100));
-     }
      if (entityContextText) {
         apiMessages.push({
           role: 'system',
@@ -403,8 +394,11 @@ export function useAIChat(
         apiMessages.push({ role: msg.role, content: msg.content });
       }
 
-      // Current user message
-      apiMessages.push({ role: 'user', content: trimmed });
+      // Current user message (with selection context injected inline)
+      const apiUserContent = selectionText
+        ? `[Selected text: "${selectionText}"]\nUser request: ${trimmed}`
+        : trimmed;
+      apiMessages.push({ role: 'user', content: apiUserContent });
 
       // 5. Call AI API with streaming
       abortControllerRef.current = new AbortController();
