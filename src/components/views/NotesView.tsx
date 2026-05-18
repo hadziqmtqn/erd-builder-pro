@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import NotesEditor from '../NotesEditor';
 import { DiffPreviewModal } from '@/components/modals/DiffPreviewModal';
 
@@ -6,6 +6,8 @@ import { useAIAction } from '@/contexts/AIActionContext';
 import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
 
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { toast } from 'sonner';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -27,14 +29,21 @@ export const NotesView = React.memo(({
   isLoading = false
 }: NotesViewProps) => {
   const { registerContentHandler } = useAIAction();
+  const confirmLockRef = useRef(false);
   
-  const showSkeleton = isLoading;  const [pendingChange, setPendingChange] = useState<{content: string, strategy: 'replace' | 'append'} | null>(null);
+  const showSkeleton = isLoading;
+  const [pendingChange, setPendingChange] = useState<{
+    content: string;
+    strategy: 'replace' | 'append';
+    originalContent: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!activeNote || isReadOnly) return;
 
     const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append') => {
-      setPendingChange({ content, strategy });
+      const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+      setPendingChange({ content, strategy, originalContent: currentContent });
     });
 
     return cleanup;
@@ -42,9 +51,11 @@ export const NotesView = React.memo(({
 
   const handleConfirmChange = async () => {
     if (!pendingChange) return;
-    const { content, strategy } = pendingChange;
-    
-    let newContent = '';
+    if (confirmLockRef.current) return;
+    confirmLockRef.current = true;
+
+    const { content, strategy, originalContent } = pendingChange;
+
     let parsedContent = content;
     try {
       parsedContent = await marked.parse(content);
@@ -52,18 +63,30 @@ export const NotesView = React.memo(({
       console.error('Failed to parse markdown', err);
     }
 
-    const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+    parsedContent = DOMPurify.sanitize(parsedContent);
 
+    let newContent = '';
     if (strategy === 'replace') {
       newContent = parsedContent;
     } else {
-      const separator = currentContent.trim() ? '<br><hr><br>' : '';
-      newContent = currentContent + separator + parsedContent;
+      const separator = originalContent.trim() ? '<br><hr><br>' : '';
+      newContent = originalContent + separator + parsedContent;
     }
-    
+
     handleNoteChange(newContent);
-    saveNote({ ...activeNote, content: newContent });
-    setPendingChange(null);
+
+    try {
+      const result = await saveNote({ ...activeNote, content: newContent });
+      if (result !== false) {
+        setPendingChange(null);
+      } else {
+        toast.error('Failed to save AI content. Please try again.');
+      }
+    } catch {
+      toast.error('Failed to save AI content. Please try again.');
+    } finally {
+      confirmLockRef.current = false;
+    }
   };
 
   if (showSkeleton) {
@@ -93,8 +116,7 @@ export const NotesView = React.memo(({
       />
       
       {pendingChange && (() => {
-        const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
-        const plainTextContent = htmlToAIText(currentContent);
+        const plainTextContent = htmlToAIText(pendingChange.originalContent);
         const label: Record<string, string> = {
           replace: 'Replace All',
           append: 'Append',

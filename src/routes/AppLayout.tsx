@@ -15,6 +15,7 @@ import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
 import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
 import { NoteExporter } from '@/lib/exporters/note-exporter';
 import { htmlToAIText } from '@/lib/notes/html-to-ai-text';
+import { getMarkdownFromHtml } from '@/lib/markdownUtils';
 import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 
 // UI
@@ -109,7 +110,7 @@ function AppLayoutInner() {
 You are currently viewing this note:
 Title: ${activeNote.title || '(untitled)'}
 Content:
-${htmlToAIText(String(activeNote.content || '')).slice(0, 4000)}`;
+${getMarkdownFromHtml(String(activeNote.content || '')).slice(0, 4000)}`;
       case 'diagram': {
         if (!activeDiagram) return null;
         const tableCount = (nodes || []).filter((n: any) => n.type === 'entity').length;

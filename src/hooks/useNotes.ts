@@ -256,6 +256,8 @@ export function useNotes(isGuest: boolean = false) {
       }
 
       await localPersistence.saveDraft(DraftType.NOTES, note.uid || note.id, dataToSave, isSyncPending);
+
+      setNotes(prev => prev.map(n => String(n.uid ?? n.id) === String(note.uid ?? note.id) ? { ...n, content: note.content } : n));
       return true;
     } catch (err) {
       console.error('Error in local saveNote:', err);
