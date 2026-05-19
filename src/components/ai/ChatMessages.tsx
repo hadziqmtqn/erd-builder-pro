@@ -209,14 +209,33 @@ export const ChatMessages = memo(function ChatMessages({
                   </span>
                 )}
 
-                {isUser && !isStreaming && idx === messages.length - 1 && !isStreamingMsg && (
-                  <button
-                    onClick={() => sendMessage(msg.content, msg.selection_text)}
-                    className="flex items-center gap-1 text-[10px] text-destructive/60 hover:text-destructive/80 mt-0.5 px-1 transition-colors"
-                  >
-                    <span className="size-3">&#8635;</span>
-                    Resend
-                  </button>
+                {isUser && !isStreamingMsg && msg.id !== 'streaming' && (
+                  <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto">
+                    {idx === messages.length - 1 && (
+                      <button
+                        onClick={() => sendMessage(msg.content, msg.selection_text)}
+                        className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
+                        title="Resend"
+                      >
+                        <span className="text-sm leading-none">&#8635;</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content);
+                        setCopiedMsgId(msg.id?.toString() || idx.toString());
+                        setTimeout(() => setCopiedMsgId(null), 2000);
+                      }}
+                      className="flex items-center justify-center size-8 bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md shadow-sm transition-all"
+                      title="Copy message"
+                    >
+                      {copiedMsgId === (msg.id?.toString() || idx.toString()) ? (
+                        <Check className="size-4 text-green-500" />
+                      ) : (
+                        <Copy className="size-4" />
+                      )}
+                    </button>
+                  </div>
                 )}
 
                 {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
