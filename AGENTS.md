@@ -55,6 +55,8 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
   - Persisted to DB via `selection_text` column (TEXT) on `ai_chat_messages`
   - API payload still inline: `[Selected text: "..."]\nUser request: ...`
   - UI shows `selection_text` quote (max 50 chars) **below** user message bubble, visually separated
+- **ERD multi-select**: `selectionText` includes full column details (name, type, PK, nullable) for each table, e.g. `Tables: users (id: BIGINT PK, name: VARCHAR(255)); admins (id: BIGINT, user_id: BIGINT, role: VARCHAR(255), name: VARCHAR(255) NOT NULL)` — AI sees live column data directly in user message, not just system context
+- SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
 ### Referenced File Info (JSONB)
@@ -91,23 +93,55 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - `<h2>Heading</h2>` → `## Heading`, AI sees heading structure → responds in markdown → `marked.parse()` produces correct `<h2>`
 - Applies to all AI actions (Improve Grammar, Summarize, etc.) and direct chat
 
+## AIChatPanel Component Architecture
+
+`AIChatPanel.tsx` (~358 lines) was refactored from a monolithic 833-line component into an orchestrator that delegates to extracted sub-components:
+
+```
+src/components/ai/
+├── AIChatPanel.tsx      (358 loc) — orchestrator: state, effects, layout
+├── ChatMessages.tsx     (277 loc) — message list + scroll effects + expand/copy
+├── ChatInput.tsx        (124 loc) — textarea + send + AI Actions dropdown
+├── CodeBlock.tsx         (48 loc) — Prism syntax highlighting + copy button
+├── SessionItem.tsx       (32 loc) — session row in sidebar
+├── SelectionBar.tsx      (28 loc) — active selection indicator bar
+└── MinimizedBar.tsx      (22 loc) — floating pill when panel is minimized
+```
+
+### Component Responsibilities
+
+- **AIChatPanel**: owns sessions/input state, draft save/restore, click-outside minimize, auto-fill prompt from AI actions, pendingAction stream callback. Renders header + sub-components.
+- **ChatMessages**: fully self-contained — owns `scrollContainerRef`, `messagesEndRef`, `userScrolledUpRef` for auto-scroll, `expandedMessages` (Set<string | number>) for collapse/expand, `copiedMsgId` for copy feedback. Receives messages/isStreaming as props. No scroll state lifted to parent.
+- **ChatInput**: receives `input`, `isStreaming`, ref, actions list. Renders textarea + send + AI Actions dropdown + stop button. `getActionIcon` helper maps action IDs to Lucide icons.
+- **CodeBlock**: receives `language`, `value`, `copyToClipboard`. Renders Prism-highlighted code with language label and copy button.
+- **SessionItem**: receives `session`, `isActive`, `onClick`, `onDelete`. Renders session title row with delete button.
+- **SelectionBar**: receives `hasActiveSession`, `selectionText`, `onClear`. Renders active selection chip with X button.
+- **MinimizedBar**: receives `title`, `onExpand`. Renders floating sparkle pill.
+
+### Key Changes
+
+- `DRAFT_KEY_PREFIX` and `getDraftKey()` remain in `AIChatPanel.tsx` — draft is saved only on close via `handleClose` (no more per-keystroke `useEffect`). Restore on mount preserved.
+- `error` variable from `useAIChat` no longer destructured in AIChatPanel (unused).
+- All imported from `src/components/ai/` subdirectory; Prism imports (`prismjs/components/prism-sql`, etc.) moved into `ChatMessages.tsx` where `ReactMarkdown` + `CodeBlock` are used.
+- `chatContainerRef` / `scrollContainerRef` naming: `ChatMessages` uses `scrollContainerRef` internally (same DOM element, renamed for clarity).
+
 ## User Message Collapse
 
 - User messages longer than **>300 characters** are auto-collapsed (line-clamp-6)
 - **"Show more"** / **"Show less"** button toggles per-message
-- State tracked via `expandedMessages: Set<string | number>` in AIChatPanel
+- State tracked via `expandedMessages: Set<string | number>` in `ChatMessages.tsx` (internal state)
 
 ## Auto-scroll Behavior
 
 - Auto-scroll to bottom on new messages only if user hasn't manually scrolled up
 - `userScrolledUpRef` tracks manual scroll with 50px threshold from bottom
-- `scrollContainerRef` added to messages area for scroll event listener
+- `scrollContainerRef` in `ChatMessages.tsx` for scroll event listener
 
 ## Code Blocks (Prism)
 
 - AI chat responses use `ReactMarkdown` with custom `CodeBlock` component for fenced code blocks
 - Syntax highlighting via `prismjs` + `prism-themes/themes/prism-dracula.css` (imported in `index.css:8`)
-- Supported languages: sql, javascript, typescript, bash, json (imported in `AIChatPanel.tsx:24-28`)
+- Supported languages: sql, javascript, typescript, bash, json (imported in `ChatMessages.tsx`)
 - Code blocks render with dark background (`#0d1117`), language label bar, copy button on hover
 - **No horizontal scroll** — `white-space: pre-wrap` + `word-break: break-word` wraps long lines
 - Inline code (backticks) uses `bg-black/30 px-1 py-0.5 rounded text-[11px]` styling
@@ -127,7 +161,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
   - `notes-summarize` → append with `## Summary` header
   - `notes-generate-docs` → append with `## Documentation` header
 - Generic strategy (`replace`/`append` buttons) is used when no `actionId`
-- `lastActionId` tracked in AIChatPanel, cleared on each message send
+- `lastActionId` tracked in AIChatPanel (local state), cleared on each message send
 - Context: `src/contexts/AIActionContext.tsx`, `src/components/ai/actions/notesActions.ts`
 
 ## Confirm Save Loading State

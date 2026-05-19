@@ -316,15 +316,27 @@ export const useAISettings = () => {
 
   const togglePromptDefault = async (id: string) => {
     try {
+      const current = prompts.find(p => p.id === id);
+      const willBeActive = current ? !current.is_default : true;
+
+      if (willBeActive) {
+        const { error: resetError } = await supabase
+          .from('ai_system_prompts')
+          .update({ is_default: false })
+          .neq('id', id);
+        if (resetError) throw resetError;
+      }
+
       const { error } = await supabase
         .from('ai_system_prompts')
-        .update({ is_default: true })
+        .update({ is_default: willBeActive })
         .eq('id', id);
       if (error) throw error;
-      toast.success('System prompt activated');
+
+      toast.success(willBeActive ? 'System prompt activated' : 'System prompt deactivated');
       await fetchData();
     } catch (error: any) {
-      toast.error('Failed to activate prompt: ' + error.message);
+      toast.error('Failed to update prompt: ' + error.message);
     }
   };
 
