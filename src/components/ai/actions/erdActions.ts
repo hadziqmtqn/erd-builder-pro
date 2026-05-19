@@ -47,12 +47,18 @@ function mergeIntoDiagram(
     const existing = nameToNode.get(key);
 
     if (existing) {
-      // Update existing node's columns (AI response is authoritative for columns)
+      // Update existing node's columns — preserve existing column IDs so edge handles stay valid
+      const mergedColumns = parsedNode.data.columns.map((parsedCol: Column) => {
+        const existingCol = existing.data.columns.find(
+          (c: Column) => c.name.toLowerCase() === parsedCol.name.toLowerCase()
+        );
+        return existingCol ? { ...parsedCol, id: existingCol.id } : parsedCol;
+      });
       mergedNodes[mergedNodes.indexOf(existing)] = {
         ...existing,
         data: {
           ...existing.data,
-          columns: parsedNode.data.columns,
+          columns: mergedColumns,
         },
       };
     } else {
@@ -357,12 +363,89 @@ function applySingleColumnChanges(
 }
 
 /**
+ * Parses ALTER TABLE ... ADD COLUMN statements from SQL text.
+ * Returns columns to add to existing nodes, keyed by table name.
+ */
+function parseAlterTableAddColumn(sql: string): Map<string, Column[]> {
+  const result = new Map<string, Column[]>();
+
+  // Find ALTER TABLE blocks (may contain multiple ADD COLUMN comma-separated)
+  const alterRegex = /ALTER\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60;()]+)["`\x60]?\s*(.*?)(?=(?:ALTER\s+TABLE|$))/gi;
+  let alterMatch;
+  while ((alterMatch = alterRegex.exec(sql)) !== null) {
+    const tableName = cleanIdentifier(alterMatch[2]);
+    const rest = alterMatch[3];
+    if (!tableName || !rest) continue;
+
+    // Split remainder by top-level commas to isolate each ADD operation
+    const parts = splitTopLevel(rest);
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      // Skip FOREIGN KEY / CONSTRAINT additions — handled by parseSQLToERD
+      if (/FOREIGN\s+KEY|CONSTRAINT/i.test(trimmed)) continue;
+
+      // Match ADD [COLUMN] col_name type [constraints]
+      const addMatch = trimmed.match(
+        /ADD\s+(?:COLUMN\s+)?["`\x60]?([^"`\s\x60,;(]+)["`\x60]?\s+([A-Za-z][A-Za-z0-9]*(?:\s*\([^)]*\))?(?:\s+UNSIGNED|\s+ZEROFILL)?)/i
+      );
+      if (!addMatch) continue;
+
+      const colName = cleanIdentifier(addMatch[1]);
+      let rawType = addMatch[2].toUpperCase().replace(/\(.*\)/, '').trim();
+      if (!COLUMN_TYPES.includes(rawType)) rawType = 'VARCHAR';
+
+      const afterType = trimmed.substring(addMatch[0].length).toUpperCase();
+      const isNullable = !/\bNOT\s+NULL\b/.test(afterType);
+      const isPK = /\bPRIMARY\s+KEY\b/.test(afterType);
+
+      const cols = result.get(tableName.toLowerCase()) || [];
+      cols.push({
+        id: `col_${Date.now()}_${cols.length}`,
+        name: colName,
+        type: rawType,
+        is_pk: isPK,
+        is_nullable: isNullable,
+        sort_order: 0,
+      });
+      result.set(tableName.toLowerCase(), cols);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Splits a SQL clause string by top-level commas (ignoring commas inside parentheses).
+ */
+function splitTopLevel(str: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of str) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+/**
  * Applies AI response to ERD diagram based on action type.
  * Returns the new nodes and edges state for the caller to apply.
  *
  * For `erd-generate-sql`:
  *   - Extracts SQL from markdown, parses with parseSQLToERD
  *   - Merges new tables/relationships into current diagram
+ *   - Also handles ALTER TABLE ADD COLUMN to existing tables
  *   - Re-scans SQL for FK references to existing tables and creates missing edges
  *
  * Other ERD actions (explain-table, suggest-indexes, seed-data)
@@ -380,13 +463,47 @@ export function applyToErdContent(
       const sql = extractSQLFromMarkdown(aiResponse);
       if (!sql) return null;
 
-      const hasDDL = /CREATE\s+TABLE/i.test(sql);
+      const hasDDL = /(?:CREATE|ALTER)\s+TABLE/i.test(sql);
       if (!hasDDL) return null;
 
       const parsed = parseSQLToERD(sql);
-      if (parsed.nodes.length === 0) return null;
+      const alterColumns = parseAlterTableAddColumn(sql);
 
-      const { nodes: mergedNodes, edges: mergedEdges } = mergeIntoDiagram(currentNodes, currentEdges, parsed.nodes, parsed.edges);
+      // Nothing to apply if no CREATE TABLE nodes, no ALTER COLUMNs, and no edges
+      if (parsed.nodes.length === 0 && alterColumns.size === 0 && parsed.edges.length === 0) return null;
+
+      let mergedNodes = [...currentNodes];
+      let mergedEdges = [...currentEdges];
+
+      // Phase 1: merge CREATE TABLE nodes/edges
+      if (parsed.nodes.length > 0) {
+        const merged = mergeIntoDiagram(currentNodes, currentEdges, parsed.nodes, parsed.edges);
+        mergedNodes = merged.nodes;
+        mergedEdges = merged.edges;
+      }
+
+      // Phase 2: apply ALTER TABLE ADD COLUMN to existing nodes
+      if (alterColumns.size > 0) {
+        for (const [tableNameKey, newCols] of alterColumns) {
+          const idx = mergedNodes.findIndex(n => n.data.name.toLowerCase() === tableNameKey);
+          if (idx === -1) continue;
+          const node = mergedNodes[idx];
+          const existingNames = new Set(node.data.columns.map(c => c.name.toLowerCase()));
+          const colsToAdd = newCols.filter(c => !existingNames.has(c.name.toLowerCase()));
+          if (colsToAdd.length === 0) continue;
+          const maxSort = node.data.columns.reduce((max, c) => Math.max(max, c.sort_order || 0), 0);
+          mergedNodes[idx] = {
+            ...node,
+            data: {
+              ...node.data,
+              columns: [
+                ...node.data.columns,
+                ...colsToAdd.map((c, i) => ({ ...c, sort_order: maxSort + i + 1 })),
+              ],
+            },
+          };
+        }
+      }
 
       // Second pass: find FK references to tables not in parsed SQL (e.g., existing diagram tables)
       // and ALTER TABLE FK constraints that mention tables created in the same SQL.

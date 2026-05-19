@@ -137,7 +137,12 @@ export function ImportSQLModal({
       try {
         const result = parseSQLToERD(sql);
         if (result.nodes.length === 0) {
-          toast.error("No valid CREATE TABLE statements found.");
+          const hasAlter = /ALTER\s+TABLE\s+/i.test(sql);
+          if (hasAlter) {
+            toast.error("ALTER TABLE requires an existing table in the diagram. Only CREATE TABLE can create new tables.");
+          } else {
+            toast.error("No valid CREATE TABLE statements found.");
+          }
           setIsImporting(false);
           return;
         }

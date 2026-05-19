@@ -223,6 +223,8 @@ src/components/ai/
 - `extractSQLFromMarkdown` handles ` ```sql ``` ` fences and raw SQL
 - `mergeIntoDiagram` matches entities by name (not ID) — handles AI-generated IDs vs existing IDs
 - Uses full replace approach (`setNodes`/`setEdges`) with `takeSnapshot` for undo
+- **Column ID preservation**: when updating existing nodes, `mergeIntoDiagram` preserves existing column IDs for columns matching by name — this keeps edge `sourceHandle`/`targetHandle` references valid across multiple append calls. Without this, re-appending the same SQL regenerates column IDs and breaks FK edge column connections.
+- **ALTER TABLE ADD COLUMN**: `applyToErdContent` now handles `ALTER TABLE ... ADD COLUMN` statements (in addition to `CREATE TABLE`). Parsed via `parseAlterTableAddColumn()` which extracts column name, type, nullability, and PK from each ADD COLUMN clause. Columns are added to existing nodes by table name match. Skips `FOREIGN KEY` / `CONSTRAINT` additions (handled by `parseSQLToERD`).
 - **Two-pass FK edge generation**:
   - **Pass 1** (`parseSQLToERD.processRel`): creates edges only between nodes parsed from the same SQL block — skips FK references to tables outside the SQL (e.g., existing diagram tables like `users`)
   - **Pass 2** (in `applyToErdContent`, after `mergeIntoDiagram`): re-scans the full SQL text for FK references and creates edges by matching source/target against the **merged** node set (existing + newly parsed nodes)
