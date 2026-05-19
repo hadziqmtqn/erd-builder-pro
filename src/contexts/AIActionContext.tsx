@@ -32,6 +32,10 @@ interface AIActionContextValue {
   selectionText: string | null;
   /** Update current selection text */
   setSelectionText: (text: string | null) => void;
+  /** Extra context data for AI action prompt building (set by active view, e.g. ERD nodes/edges) */
+  actionContextData: Record<string, any> | null;
+  /** Set extra context data for AI action prompt building */
+  setActionContextData: (data: Record<string, any> | null) => void;
 }
 
 const AIActionContext = createContext<AIActionContextValue | null>(null);
@@ -43,6 +47,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append', actionId?: string) => void) | null>(null);
   const [contentHandlerStrategies, setContentHandlerStrategies] = useState<('replace' | 'append')[]>(['replace', 'append']);
   const [selectionText, setSelectionText] = useState<string | null>(null);
+  const [actionContextData, setActionContextData] = useState<Record<string, any> | null>(null);
 
   const sendAction = useCallback(
     (prompt: string, actionId?: string, onResult?: (response: string) => void) => {
@@ -99,6 +104,8 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         contentHandlerStrategies,
         selectionText,
         setSelectionText,
+        actionContextData,
+        setActionContextData,
       }}
     >
       {children}

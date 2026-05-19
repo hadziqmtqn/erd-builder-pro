@@ -9,8 +9,9 @@ import {
   DialogBody
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import TextareaCodeEditor from '@uiw/react-textarea-code-editor';
-import '@uiw/react-textarea-code-editor/dist.css';
+import CodeMirror from '@uiw/react-codemirror';
+import { sql as sqlLang } from '@codemirror/lang-sql';
+import { oneDark } from '@codemirror/theme-one-dark';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import { toast } from 'sonner';
 import { FileCode, Upload, AlertCircle, Loader2, Plus, ArrowRight, ArrowUpDown } from 'lucide-react';
@@ -383,16 +384,23 @@ export function ImportSQLModal({
                   />
                 </div>
 
-              <TextareaCodeEditor
+              <CodeMirror
                 value={sql}
-                language="sql"
-                data-color-mode="dark"
+                height="300px"
+                theme={oneDark}
+                extensions={[sqlLang()]}
                 placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL&#10;);"
-                className="min-h-[300px] font-mono text-xs leading-relaxed shadow-inner"
-                padding={16}
-                minHeight={300}
-                onChange={(e) => {
-                  setSql(e.target.value);
+                className="border border-border/50 rounded-lg overflow-hidden text-xs"
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: false,
+                  highlightActiveLine: false,
+                  bracketMatching: true,
+                  closeBrackets: true,
+                  indentOnInput: true,
+                }}
+                onChange={(value) => {
+                  setSql(value);
                   if (error) setError(null);
                 }}
               />

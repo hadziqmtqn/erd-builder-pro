@@ -1,9 +1,8 @@
 import React, { memo, useState, useEffect, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
-import { Key, Hash, MoreHorizontal, Edit2, Trash2, Database, AlertCircle, AlertTriangle } from 'lucide-react';
+import { MoreHorizontal, Edit2, Trash2, Database, AlertTriangle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,

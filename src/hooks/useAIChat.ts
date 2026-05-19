@@ -396,6 +396,12 @@ export function useAIChat(
         }
       }
 
+      // Language instruction: respond in user's language
+      apiMessages.push({
+        role: 'system',
+        content: 'Always respond in the same language the user is communicating in.',
+      });
+
       // Previous messages from this session (exclude temp)
       const previousMessages = messages.filter(m => !m.id.toString().startsWith('temp-'));
       for (const msg of previousMessages) {

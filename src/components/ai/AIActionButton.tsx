@@ -67,6 +67,7 @@ export function AIActionButton({ viewType, onAction, context, iconOnly = false }
       {/* Dropdown menu */}
       {isOpen && (
         <div
+          role="menu"
           className="absolute top-full right-0 mt-1.5 min-w-[200px] bg-background/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/10 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150"
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
