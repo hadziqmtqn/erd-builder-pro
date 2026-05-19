@@ -18,20 +18,7 @@ function extractJSONFromMarkdown(text: string): string {
   return text.trim();
 }
 
-/**
- * Applies AI response to flowchart.
- * 
- * Expected JSON format:
- * {
- *   "nodes": [ { "label": "Start", "shape": "oval", "color": "#..." }, ... ],
- *   "edges": [ { "sourceLabel": "Start", "targetLabel": "Process", "label": "Yes" }, ... ]
- * }
- */
-export function applyToFlowchartContent(
-  currentNodes: Node<FlowchartNodeData>[],
-  currentEdges: Edge[],
-  aiResponse: string
-): FlowchartApplyResult | null {
+function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToId: Map<string, string>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[] } | null {
   const jsonStr = extractJSONFromMarkdown(aiResponse);
   let parsed: any;
   try {
@@ -44,19 +31,14 @@ export function applyToFlowchartContent(
 
   if (!parsed || !Array.isArray(parsed.nodes)) return null;
 
-  const newNodes: Node<FlowchartNodeData>[] = [];
-  const newEdges: Edge[] = [];
-
-  // Map to track label -> node ID for edge creation
   const labelToId = new Map<string, string>();
   const idToNode = new Map<string | number, string>();
-  
-  // 1. Process Nodes (with placeholder positions)
+  const newNodes: Node<FlowchartNodeData>[] = [];
+
   parsed.nodes.forEach((nodeData: any, index: number) => {
     const id = `ai_node_${Date.now()}_${index}`;
     labelToId.set(nodeData.label.toLowerCase(), id);
     if (nodeData.id != null) idToNode.set(nodeData.id, id);
-
     newNodes.push({
       id,
       type: 'custom',
@@ -69,7 +51,18 @@ export function applyToFlowchartContent(
     });
   });
 
-  // 2. Build directed graph for layout calculation
+  return { parsed, labelToId, idToNode, newNodes };
+}
+
+function buildFlowchartLayout(
+  newNodes: Node<FlowchartNodeData>[],
+  parsed: any,
+  labelToId: Map<string, string>,
+  idToNode: Map<string | number, string>,
+): { positionedNodes: Node<FlowchartNodeData>[]; newEdges: Edge[] } {
+  const newEdges: Edge[] = [];
+
+  // Build graph for layout
   const outgoing: Record<string, string[]> = {};
   const incomingCount: Record<string, number> = {};
 
@@ -100,13 +93,12 @@ export function applyToFlowchartContent(
     }
   }
 
-  // 3. Hierarchical layout using longest-path layering (Sugiyama-style)
+  // Hierarchical layout (Sugiyama-style)
   const VERTICAL_SPACING = 160;
   const HORIZONTAL_SPACING = 280;
   const START_X = 60;
   const START_Y = 40;
 
-  // Find start nodes: no incoming edges or oval-shaped
   const layers: Record<string, number> = {};
   const queue: string[] = [];
 
@@ -117,13 +109,11 @@ export function applyToFlowchartContent(
     }
   }
 
-  // Fallback: if no start found, use first node
   if (queue.length === 0 && newNodes.length > 0) {
     layers[newNodes[0].id] = 0;
     queue.push(newNodes[0].id);
   }
 
-  // BFS longest-path layering
   while (queue.length > 0) {
     const current = queue.shift()!;
     const currentLayer = layers[current] ?? 0;
@@ -136,12 +126,10 @@ export function applyToFlowchartContent(
     }
   }
 
-  // Assign unlayered nodes to layer 0
   for (const n of newNodes) {
     if (layers[n.id] === undefined) layers[n.id] = 0;
   }
 
-  // Group by layer and calculate positions (centered per layer)
   const layerGroups: Record<number, string[]> = {};
   for (const [id, layer] of Object.entries(layers)) {
     if (!layerGroups[layer]) layerGroups[layer] = [];
@@ -166,43 +154,15 @@ export function applyToFlowchartContent(
     });
   }
 
-  // Apply positions with offset below existing nodes
-  const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 160), 50);
-  for (const n of newNodes) {
+  const positionedNodes = newNodes.map(n => {
     const pos = positions[n.id];
-    if (pos) {
-      n.position = { x: pos.x + 50, y: pos.y + maxY };
-    }
-  }
+    return pos ? { ...n, position: { ...pos } } : n;
+  });
 
-  // 4. Process Edges
+  // Process edges
   if (Array.isArray(parsed.edges)) {
     parsed.edges.forEach((edgeData: any, index: number) => {
-      let sourceId: string | undefined;
-      let targetId: string | undefined;
-
-      if (edgeData.sourceLabel || edgeData.targetLabel) {
-        sourceId = labelToId.get(edgeData.sourceLabel?.toLowerCase());
-        targetId = labelToId.get(edgeData.targetLabel?.toLowerCase());
-      }
-
-      if (!sourceId || !targetId) {
-        const srcKey = edgeData.source ?? edgeData.from;
-        const tgtKey = edgeData.target ?? edgeData.to;
-        if (srcKey != null && tgtKey != null) {
-          sourceId = idToNode.get(srcKey);
-          targetId = idToNode.get(tgtKey);
-        }
-      }
-
-      if (!sourceId || !targetId) {
-        const srcKey = (edgeData.source ?? edgeData.from ?? '');
-        const tgtKey = (edgeData.target ?? edgeData.to ?? '');
-        if (srcKey && tgtKey) {
-          sourceId = labelToId.get(String(srcKey).toLowerCase());
-          targetId = labelToId.get(String(tgtKey).toLowerCase());
-        }
-      }
+      const [sourceId, targetId] = resolveEdgeIds(edgeData);
 
       if (sourceId && targetId) {
         newEdges.push({
@@ -220,8 +180,39 @@ export function applyToFlowchartContent(
     });
   }
 
+  return { positionedNodes, newEdges };
+}
+
+export function applyToFlowchartContent(
+  currentNodes: Node<FlowchartNodeData>[],
+  currentEdges: Edge[],
+  aiResponse: string
+): FlowchartApplyResult | null {
+  const result = parseNodesAndEdges(aiResponse);
+  if (!result) return null;
+
+  const { parsed, labelToId, idToNode, newNodes } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToId, idToNode);
+
+  // Offset new nodes below existing ones
+  const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 160), 50);
+  const offsetNodes = positionedNodes.map(n => ({
+    ...n,
+    position: { x: n.position.x + 50, y: n.position.y + maxY },
+  }));
+
   return {
-    nodes: [...currentNodes, ...newNodes],
+    nodes: [...currentNodes, ...offsetNodes],
     edges: [...currentEdges, ...newEdges],
   };
+}
+
+export function previewFlowchartContent(aiResponse: string): FlowchartApplyResult | null {
+  const result = parseNodesAndEdges(aiResponse);
+  if (!result) return null;
+
+  const { parsed, labelToId, idToNode, newNodes } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToId, idToNode);
+
+  return { nodes: positionedNodes, edges: newEdges };
 }
