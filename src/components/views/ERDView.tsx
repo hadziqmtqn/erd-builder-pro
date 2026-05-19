@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useState } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -90,19 +90,64 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
 
+  // ─── Multi-table selection ───────────────────────────
+  const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
+
+  const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.stopPropagation();
+      setMultiSelectedIds(prev => {
+        const exists = prev.includes(n.id);
+        return exists ? prev.filter(id => id !== n.id) : [...prev, n.id];
+      });
+      return;
+    }
+    setMultiSelectedIds([]);
+    onNodeClick(e, n);
+  }, [onNodeClick]);
+
+  const handlePaneClickLocal = useCallback(() => {
+    setMultiSelectedIds([]);
+    onPaneClick();
+  }, [onPaneClick]);
+
+  // Collect all visually-selected node IDs (multi-select + primary)
+  const allSelectedIds = React.useMemo(() => {
+    if (multiSelectedIds.length > 0) return multiSelectedIds;
+    if (selectedNodeId) return [selectedNodeId];
+    return [];
+  }, [multiSelectedIds, selectedNodeId]);
+
+  const allSelectedNodes = React.useMemo(() => {
+    return allSelectedIds
+      .map(id => nodes.find(n => n.id === id))
+      .filter((n): n is Node<Entity> => !!n);
+  }, [allSelectedIds, nodes]);
+
+  const styledNodes = React.useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      selected: allSelectedIds.includes(node.id),
+    }));
+  }, [nodes, allSelectedIds]);
+
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
       const baseEdge = {
         ...edge,
-        type: 'smoothstep', // Force curved bezier style
+        type: 'smoothstep',
         markerEnd: {
           type: MarkerType.Arrow,
           width: 15,
           height: 15,
         },
       };
+
+      const isConnectedToSelected = allSelectedIds.some(
+        id => edge.source === id || edge.target === id
+      );
       
-      if (selectedNodeId && (edge.source === selectedNodeId || edge.target === selectedNodeId)) {
+      if (allSelectedIds.length > 0 && isConnectedToSelected) {
         return {
           ...baseEdge,
           className: `${edge.className || ''} edge-animated-active`,
@@ -110,9 +155,24 @@ const ERDViewComponent = ({
       }
       return baseEdge;
     });
-  }, [edges, selectedNodeId]);
+  }, [edges, allSelectedIds]);
 
-  // ─── AI Content Handler: apply AI responses back to ERD diagram ──
+  // ─── Send selected tables context to AI ──────────────
+  React.useEffect(() => {
+    if (allSelectedNodes.length > 0) {
+      const names = allSelectedNodes.map(n => n.data.name || n.data.label || n.id).join(', ');
+      setSelectionText(`Tables: ${names}`);
+    } else {
+      setSelectionText(null);
+    }
+  }, [allSelectedNodes, setSelectionText]);
+
+  React.useEffect(() => {
+    const primaryNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) ?? null : null;
+    setActionContextData({ nodes, edges, selectedNode: primaryNode, multiSelectedNodes: allSelectedNodes });
+  }, [nodes, edges, selectedNodeId, allSelectedNodes, setActionContextData]);
+
+  // ─── Refs for callback stability ──────────────────────
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
   const selectedNodeIdRef = React.useRef(selectedNodeId);
@@ -122,20 +182,10 @@ const ERDViewComponent = ({
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
 
+  // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   React.useEffect(() => {
-    const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
-    setSelectionText(selectedNode ? `Table: ${selectedNode.data.name || selectedNode.data.label || selectedNodeId}` : null);
-  }, [selectedNodeId, nodes, setSelectionText]);
-
-  React.useEffect(() => {
-    const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
-    setActionContextData({ nodes, edges, selectedNode });
-  }, [nodes, edges, selectedNodeId, setActionContextData]);
-
-  React.useEffect(() => {
-    const unregister = registerContentHandler((_content: string, _strategy: 'replace' | 'append', actionId?: string) => {
-      const response = _content;
-      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-edit-column', response, {
+    const unregister = registerContentHandler((content: string, _strategy: 'replace' | 'append', actionId?: string) => {
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-edit-column', content, {
         selectedNodeId: selectedNodeIdRef.current,
       });
       if (result) {
@@ -205,16 +255,16 @@ const ERDViewComponent = ({
       )}
       <div className="flex-1">
         <ReactFlow
-          nodes={nodes}
+          nodes={styledNodes}
           edges={styledEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
+          onNodeClick={handleNodeClickLocal}
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeClick={onEdgeClick}
-          onPaneClick={onPaneClick}
+          onPaneClick={handlePaneClickLocal}
           onMove={onMove}
           colorMode="dark"
           onlyRenderVisibleElements={true}

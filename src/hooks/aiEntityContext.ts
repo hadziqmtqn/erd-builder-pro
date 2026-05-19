@@ -308,15 +308,35 @@ ${content}`; // markdown — AI responds in markdown, UI renders via marked.pars
         return `  - ${d.name} (${cols})`;
       }).join('\n');
 
+      const extractHandleId = (handle: string | null | undefined): string | null => {
+        if (!handle) return null;
+        return handle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') || null;
+      };
+
       const relLines = (data.edges || []).map((e: any) => {
         const sNode = entityNodes.find((n: any) => n.id === e.source);
         const tNode = entityNodes.find((n: any) => n.id === e.target);
         if (!sNode || !tNode) return '';
-        return `  - ${sNode.data.name} → ${tNode.data.name} (${e.label || '1:N'})`;
+
+        const sourceColId = extractHandleId(e.sourceHandle);
+        const targetColId = extractHandleId(e.targetHandle);
+        const sourceCol = sourceColId ? (sNode.data.columns || []).find((c: any) => c.id === sourceColId) : null;
+        const targetCol = targetColId ? (tNode.data.columns || []).find((c: any) => c.id === targetColId) : null;
+
+        const colInfo = sourceCol && targetCol
+          ? ` (${sNode.data.name}.${sourceCol.name} → ${tNode.data.name}.${targetCol.name})`
+          : '';
+        return `  - ${sNode.data.name} → ${tNode.data.name}${colInfo} (${e.label || '1:N'})`;
       }).filter(Boolean).join('\n');
 
-      let context = `[Current file info]
-You are currently viewing this diagram:
+      let context = `[Database schema context]
+The diagram below is the ACTUAL database schema the user is working on. Use it as the single source of truth when answering questions about table columns, relationships, and structure.
+
+IMPORTANT rules when recommending columns for a table:
+- Check ALL existing tables' columns first — avoid recommending columns that already exist in other tables
+- If another table has authentication/user columns (email, password, role), prefer a foreign key reference instead of duplicating them
+- Always reference existing columns from related tables when possible
+
 Name: ${data.title || '(untitled)'}
 Tables: ${tableCount}, Relationships: ${edgeCount}
 
