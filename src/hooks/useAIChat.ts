@@ -488,7 +488,7 @@ export function useAIChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [currentSession, messages]);
+  }, [currentSession, messages, entityContextText, entityContext]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
