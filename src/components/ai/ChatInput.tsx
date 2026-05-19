@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { memo } from 'react';
 import { Sparkles, Send, StopCircle, ChevronDown, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
@@ -35,26 +35,22 @@ function getActionIcon(actionId: string) {
 
 export interface ChatInputProps {
   hasActiveSession: boolean;
-  input: string;
   isStreaming: boolean;
   entityType?: string | null;
   actions: AIAction[];
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
-  onInputChange: (value: string) => void;
   onSend: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSelectAction: (action: AIAction) => void;
   onAbort: () => void;
 }
 
-export function ChatInput({
+export const ChatInput = memo(function ChatInput({
   hasActiveSession,
-  input,
   isStreaming,
   entityType,
   actions,
   inputRef,
-  onInputChange,
   onSend,
   onKeyDown,
   onSelectAction,
@@ -67,8 +63,7 @@ export function ChatInput({
       <div className="flex items-end gap-2">
         <textarea
           ref={inputRef}
-          value={input}
-          onChange={(e) => onInputChange(e.target.value)}
+          defaultValue=""
           onKeyDown={onKeyDown}
           placeholder={isStreaming ? 'AI is responding...' : 'Ask anything...'}
           className="flex-1 min-h-[80px] max-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
@@ -80,7 +75,6 @@ export function ChatInput({
           size="icon"
           className="shrink-0 size-9 rounded-md"
           onClick={isStreaming ? onAbort : onSend}
-          disabled={!input.trim() && !isStreaming}
         >
           {isStreaming ? <StopCircle className="size-4 text-destructive" /> : <Send className="size-4" />}
         </Button>
@@ -121,4 +115,4 @@ export function ChatInput({
       </div>
     </div>
   );
-}
+});

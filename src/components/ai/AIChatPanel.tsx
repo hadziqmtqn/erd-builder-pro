@@ -12,12 +12,6 @@ import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
 
-const DRAFT_KEY_PREFIX = 'ai-chat-draft';
-
-function getDraftKey(entityType?: string | null, entityUid?: string | null): string {
-  return `${DRAFT_KEY_PREFIX}-${entityType || 'global'}-${entityUid || 'none'}`;
-}
-
 interface AIChatPanelProps {
   onClose: () => void;
   entityType?: string | null;
@@ -75,7 +69,6 @@ export const AIChatPanel = ({
     loadMoreMessages,
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
 
-  const [input, setInput] = useState('');
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
@@ -83,7 +76,6 @@ export const AIChatPanel = ({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const draftKey = getDraftKey(entityType, entityUid);
 
   const entityToViewMap: Record<string, ViewType> = {
     note: 'notes',
@@ -93,17 +85,15 @@ export const AIChatPanel = ({
   const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
   const actions = currentViewType ? getActionsForView(currentViewType) : [];
 
-  // ─── Restore draft from sessionStorage on mount ────
+  // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(draftKey);
-      if (saved && inputRef.current) {
-        setInput(saved);
-      }
-    } catch {
-      // sessionStorage might be unavailable
+    if (pendingPrompt && pendingPrompt.trim()) {
+      if (inputRef.current) inputRef.current.value = pendingPrompt;
+      setMinimized(false);
+      setTimeout(() => inputRef.current?.focus(), 100);
+      if (onPromptUsed) onPromptUsed();
     }
-  }, [draftKey]);
+  }, [pendingPrompt, onPromptUsed]);
 
   const handleSelectAction = useCallback((action: AIAction) => {
     if (!entityType || !entityContextText || !entityTitle) return;
@@ -116,14 +106,15 @@ export const AIChatPanel = ({
       ...(actionContextData || {}),
     };
     const newPrompt = action.buildPrompt(context);
+    const currentVal = (inputRef.current?.value || '').trim();
 
-    if (input.trim() && input.trim() !== newPrompt.trim()) {
+    if (currentVal && currentVal !== newPrompt.trim()) {
       setConfirmOverwritePrompt(newPrompt);
     } else {
-      setInput(newPrompt);
+      if (inputRef.current) inputRef.current.value = newPrompt;
       inputRef.current?.focus();
     }
-  }, [input, entityType, entityContextText, entityTitle, actionContextData]);
+  }, [entityType, entityContextText, entityTitle, actionContextData]);
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
@@ -150,40 +141,19 @@ export const AIChatPanel = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [minimized, confirmOverwritePrompt]);
 
-  // ─── Auto-fill prompt from AI action buttons ──────
-  useEffect(() => {
-    if (pendingPrompt && pendingPrompt.trim()) {
-      setInput(pendingPrompt);
-      setMinimized(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
-      if (onPromptUsed) onPromptUsed();
-    }
-  }, [pendingPrompt, onPromptUsed]);
-
-  // ─── Handle close (save draft, then close) ────────
+  // ─── Handle close ──────────────────────────────────
   const handleClose = useCallback(() => {
-    try {
-      if (input) {
-        sessionStorage.setItem(draftKey, input);
-      }
-    } catch {
-      // ignore
-    }
     onClose();
-  }, [input, draftKey, onClose]);
+  }, [onClose]);
 
-  // ─── Handle send ───────────────────────────────────
+  // ─── Handle send (reads from uncontrolled textarea) ─
   const handleSend = useCallback(() => {
-    if (!input.trim() || isStreaming) return;
-    sendMessage(input, selectionText);
-    setInput('');
+    const text = (inputRef.current?.value || '').trim();
+    if (!text || isStreaming) return;
+    sendMessage(text, selectionText);
+    if (inputRef.current) inputRef.current.value = '';
     setLastActionId(null);
-    try {
-      sessionStorage.removeItem(draftKey);
-    } catch {
-      // ignore
-    }
-  }, [input, isStreaming, sendMessage, draftKey, selectionText]);
+  }, [isStreaming, sendMessage, selectionText]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -198,6 +168,10 @@ export const AIChatPanel = ({
     await createSession();
     setShowSessions(false);
   }, [createSession]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectionText(null);
+  }, [setSelectionText]);
 
   const hasActiveSession = !!currentSession;
   const hasMessages = messages.length > 0;
@@ -309,18 +283,16 @@ export const AIChatPanel = ({
         <SelectionBar
           hasActiveSession={hasActiveSession}
           selectionText={selectionText}
-          onClear={() => setSelectionText(null)}
+          onClear={handleClearSelection}
         />
 
         {/* ── Input Area ──────────────────────────────── */}
         <ChatInput
           hasActiveSession={hasActiveSession}
-          input={input}
           isStreaming={isStreaming}
           entityType={entityType}
           actions={actions}
           inputRef={inputRef}
-          onInputChange={setInput}
           onSend={handleSend}
           onKeyDown={handleKeyDown}
           onSelectAction={handleSelectAction}
@@ -340,7 +312,7 @@ export const AIChatPanel = ({
         onCancel={() => setConfirmOverwritePrompt(null)}
         onConfirm={() => {
           if (confirmOverwritePrompt) {
-            setInput(confirmOverwritePrompt);
+            if (inputRef.current) inputRef.current.value = confirmOverwritePrompt;
             inputRef.current?.focus();
           }
           setConfirmOverwritePrompt(null);

@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { toast } from 'sonner';
 import { getMarkdownFromHtml } from '@/lib/markdownUtils';
+import { NoteImporter } from '@/lib/importers/note-importer';
 import { applyToNoteContent } from '@/components/ai/actions/notesActions';
 
 interface NotesViewProps {
@@ -52,6 +53,7 @@ export const NotesView = React.memo(({
       let parsedHtml = content;
       try {
         parsedHtml = await marked.parse(content);
+        parsedHtml = await NoteImporter.processHtmlForEditor(parsedHtml);
       } catch {}
 
       setPendingChange({ content, strategy, originalContent: currentContent, originalHtml: currentContent, newHtml: parsedHtml, actionId });
@@ -77,11 +79,14 @@ export const NotesView = React.memo(({
       } else {
         parsedContent = await marked.parse(content);
       }
+      parsedContent = await NoteImporter.processHtmlForEditor(parsedContent);
     } catch (err) {
       console.error('Failed to parse markdown', err);
     }
 
-    parsedContent = DOMPurify.sanitize(parsedContent);
+    parsedContent = DOMPurify.sanitize(parsedContent, {
+      ADD_ATTR: ['data-type', 'data-checked'],
+    });
 
     let newContent = '';
     if (actionId) {

@@ -347,17 +347,22 @@ Tables:\n${tableLines || '  (none)'}`;
       }
 
       context += `\n\n[Response format]
-When asked to add or modify columns, always respond with a complete valid SQL CREATE TABLE statement for the affected table(s) including all existing columns plus your additions. Use MySQL syntax. However, if the user explicitly requests a JSON mutations format (e.g. in an 'Edit Columns' action), follow their requested format instead. Example:
+When the user asks for table suggestions or schema changes, ALWAYS include a complete valid SQL CREATE TABLE statement for every suggested table. Also include ALTER TABLE statements when modifying existing tables. Use MySQL syntax. The SQL will be parsed and applied to the diagram automatically, so it must be syntactically valid.
+
+However, if the user explicitly requests a JSON mutations format (e.g. in an 'Edit Columns' action), follow their requested format instead. Example:
 
 \`\`\`sql
-CREATE TABLE admins (
+CREATE TABLE employments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    name VARCHAR(255),
-    email VARCHAR(255),
-    role VARCHAR(50),
-    status TINYINT,
-    last_login_at TIMESTAMP NULL,
+    company_name VARCHAR(255) NOT NULL,
+    position VARCHAR(255) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NULL,
+    is_current TINYINT(1) DEFAULT 0,
+    description TEXT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 \`\`\``;
