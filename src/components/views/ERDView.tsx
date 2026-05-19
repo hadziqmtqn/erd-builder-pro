@@ -155,9 +155,11 @@ const ERDViewComponent = ({
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
   const selectedNodeIdRef = React.useRef(selectedNodeId);
+  const allSelectedIdsRef = React.useRef(allSelectedIds);
   nodesRef.current = nodes;
   edgesRef.current = edges;
   selectedNodeIdRef.current = selectedNodeId;
+  allSelectedIdsRef.current = allSelectedIds;
 
   // ─── Send selected tables context to AI ──────────────
   // Only fires when selection (set of IDs) changes — NOT on position changes during drag
@@ -201,19 +203,18 @@ const ERDViewComponent = ({
 
       let result: ErdApplyResult | null = null;
 
+      const extra = {
+        selectedNodeId: selectedNodeIdRef.current,
+        selectedNodeIds: allSelectedIdsRef.current,
+      };
+
       if (actionId) {
-        result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, {
-          selectedNodeId: selectedNodeIdRef.current,
-        });
+        result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, extra);
       } else {
         // Manual chat: try SQL DDL first, then column mutations
-        result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, {
-          selectedNodeId: selectedNodeIdRef.current,
-        });
+        result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, extra);
         if (!result) {
-          result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, {
-            selectedNodeId: selectedNodeIdRef.current,
-          });
+          result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, extra);
         }
       }
 

@@ -169,65 +169,156 @@ interface ColumnMutation {
   changes?: any;
 }
 
-interface MutationsPayload {
-  mutations: ColumnMutation[];
+export interface ErdApplyResult {
+  nodes: Node<Entity>[];
+  edges: Edge[];
+  action: string;
 }
 
 /**
- * Applies column mutations parsed from AI response to a single entity node.
+ * Attempts to parse AI response as multi-table or single-table column mutations.
+ *
+ * Multi-table format:
+ * ```json
+ * { "table_name_1": { "mutations": [...] }, "table_name_2": { "mutations": [...] } }
+ * ```
+ *
+ * Single-table format (fallback):
+ * ```json
+ * { "mutations": [...] }
+ * ```
+ *
+ * Returns null if parsing fails.
  */
-function applyColumnChanges(
+function tryParseMultiColumnChanges(
   currentNodes: Node<Entity>[],
-  selectedNodeId: string,
+  selectedNodeIds: string[],
+  primaryNodeId: string | null,
   aiResponse: string,
-): { nodes: Node<Entity>[] } | null {
-  const json = extractJSONFromMarkdown(aiResponse);
-  let payload: MutationsPayload;
+): Node<Entity>[] | null {
+  const jsonStr = extractJSONFromMarkdown(aiResponse);
+  let parsed: Record<string, any>;
   try {
-    payload = JSON.parse(json);
+    parsed = JSON.parse(jsonStr);
   } catch {
-    // Try to find JSON object in text
-    const objMatch = json.match(/\{[\s\S]*"mutations"[\s\S]*\}/);
+    const objMatch = jsonStr.match(/\{[\s\S]*\}/);
     if (!objMatch) return null;
-    try {
-      payload = JSON.parse(objMatch[0]);
-    } catch {
-      return null;
+    try { parsed = JSON.parse(objMatch[0]); } catch { return null; }
+  }
+
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  // Detect format: if first key maps to an object with "mutations" array → multi-table
+  const topKeys = Object.keys(parsed);
+  const isMultiTable = topKeys.length > 0 && topKeys.some(k => {
+    const v = parsed[k];
+    return v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(v.mutations);
+  });
+
+  let updatedNodes = [...currentNodes];
+
+  if (isMultiTable) {
+    // Multi-table: {"table_name": { "mutations": [...] }}
+    const nameToNode = new Map<string, { index: number; node: Node<Entity> }>();
+    updatedNodes.forEach((n, i) => nameToNode.set(n.data.name.toLowerCase(), { index: i, node: n }));
+
+    for (const [tableName, payload] of Object.entries(parsed)) {
+      if (!payload || typeof payload !== 'object' || !Array.isArray(payload.mutations)) continue;
+      const entry = nameToNode.get(tableName.toLowerCase());
+      if (!entry) continue;
+
+      const result = applySingleColumnChanges(entry.node, payload.mutations);
+      if (result) {
+        updatedNodes[entry.index] = result;
+      }
     }
+  } else {
+    // Single-table: {"mutations": [...]}
+    // Try to infer which selected node this mutation targets.
+    // Strategy: extract referenced column names from mutations, find which selected node has those columns.
+    const mutations = (parsed.mutations || []) as ColumnMutation[];
+    if (mutations.length === 0) return null;
+
+    // Collect column names mentioned in mutations
+    const mentionedColNames = new Set<string>();
+    for (const m of mutations) {
+      if (m.type === 'drop_column') {
+        const name = typeof m.column === 'string' ? m.column : m.column?.name;
+        if (name) mentionedColNames.add(name.toLowerCase());
+      } else if (m.type === 'add_column') {
+        // add_column doesn't reference existing columns; skip
+      } else if (m.type === 'modify_column') {
+        if (m.column?.name) mentionedColNames.add(m.column.name.toLowerCase());
+      }
+    }
+
+    // If we have column references, find the node among selected that has the most matches
+    let targetId = primaryNodeId || selectedNodeIds[0] || '';
+    if (mentionedColNames.size > 0 && selectedNodeIds.length > 1) {
+      let bestMatchId = targetId;
+      let bestMatchCount = -1;
+      for (const nid of selectedNodeIds) {
+        const node = updatedNodes.find(n => n.id === nid);
+        if (!node) continue;
+        const matchCount = (node.data.columns || []).filter(
+          c => mentionedColNames.has(c.name.toLowerCase())
+        ).length;
+        if (matchCount > bestMatchCount) {
+          bestMatchCount = matchCount;
+          bestMatchId = nid;
+        }
+      }
+      if (bestMatchCount >= 0) targetId = bestMatchId;
+    }
+
+    const nodeIndex = updatedNodes.findIndex(n => n.id === targetId);
+    if (nodeIndex === -1) return null;
+
+    const result = applySingleColumnChanges(updatedNodes[nodeIndex], mutations);
+    if (!result) return null;
+    updatedNodes[nodeIndex] = result;
   }
 
-  if (!payload.mutations || !Array.isArray(payload.mutations) || payload.mutations.length === 0) {
-    return null;
-  }
+  return updatedNodes;
+}
 
-  const nodeIndex = currentNodes.findIndex(n => n.id === selectedNodeId);
-  if (nodeIndex === -1) return null;
+/**
+ * Applies column mutations to a single entity node.
+ * Returns updated node or null if no changes made.
+ */
+function applySingleColumnChanges(
+  node: Node<Entity>,
+  mutations: ColumnMutation[],
+): Node<Entity> | null {
+  if (!mutations || !Array.isArray(mutations) || mutations.length === 0) return null;
 
-  const targetNode = currentNodes[nodeIndex];
-  let columns = [...(targetNode.data.columns || [])];
+  let columns = [...(node.data.columns || [])];
+  let changed = false;
 
-  for (const mutation of payload.mutations) {
+  for (const mutation of mutations) {
     switch (mutation.type) {
       case 'add_column': {
         if (!mutation.column || !mutation.column.name || !mutation.column.type) continue;
         const rawType = mutation.column.type.toUpperCase().replace(/\(.*\)/, '');
         const normalizedType = COLUMN_TYPES.includes(rawType) ? rawType : 'VARCHAR';
-        const newColumn: Column = {
+        columns.push({
           id: `col_${Date.now()}_${columns.length}`,
           name: mutation.column.name,
           type: normalizedType,
           is_pk: mutation.column.is_pk || false,
           is_nullable: mutation.column.is_nullable || false,
           sort_order: columns.length,
-        };
-        columns.push(newColumn);
+        });
+        changed = true;
         break;
       }
 
       case 'drop_column': {
         const colName = typeof mutation.column === 'string' ? mutation.column : mutation.column?.name;
         if (!colName) continue;
+        const before = columns.length;
         columns = columns.filter(c => c.name.toLowerCase() !== colName.toLowerCase());
+        if (columns.length !== before) changed = true;
         break;
       }
 
@@ -248,27 +339,21 @@ function applyColumnChanges(
           ...(mutation.changes.is_pk !== undefined && { is_pk: mutation.changes.is_pk }),
           ...(mutation.changes.name !== undefined && { name: mutation.changes.name }),
         };
+        changed = true;
         break;
       }
     }
   }
 
-  const updatedNodes = [...currentNodes];
-  updatedNodes[nodeIndex] = {
-    ...targetNode,
+  if (!changed) return null;
+
+  return {
+    ...node,
     data: {
-      ...targetNode.data,
+      ...node.data,
       columns,
     },
   };
-
-  return { nodes: updatedNodes };
-}
-
-export interface ErdApplyResult {
-  nodes: Node<Entity>[];
-  edges: Edge[];
-  action: string;
 }
 
 /**
@@ -288,7 +373,7 @@ export function applyToErdContent(
   currentEdges: Edge[],
   actionId: string,
   aiResponse: string,
-  extra?: { selectedNodeId?: string | null },
+  extra?: { selectedNodeId?: string | null; selectedNodeIds?: string[] },
 ): ErdApplyResult | null {
   switch (actionId) {
     case 'erd-generate-sql': {
@@ -371,10 +456,15 @@ export function applyToErdContent(
     }
 
     case 'erd-edit-column': {
-      if (!extra?.selectedNodeId) return null;
-      const result = applyColumnChanges(currentNodes, extra.selectedNodeId, aiResponse);
-      if (!result) return null;
-      return { nodes: result.nodes, edges: currentEdges, action: 'erd-edit-column' };
+      const nodeIds = extra?.selectedNodeIds?.length
+        ? extra.selectedNodeIds
+        : (extra?.selectedNodeId ? [extra.selectedNodeId] : []);
+      if (nodeIds.length === 0) return null;
+
+      const updatedNodes = tryParseMultiColumnChanges(currentNodes, nodeIds, extra?.selectedNodeId ?? null, aiResponse);
+      if (!updatedNodes) return null;
+
+      return { nodes: updatedNodes, edges: currentEdges, action: 'erd-edit-column' };
     }
 
     // Read-only actions — no diagram mutations
