@@ -1,7 +1,13 @@
-// ─── AI Action Handler Registry ─────────────────────────
-// Each view type registers its own handler for applying AI responses
-// back to the document content.
+// ─── Types ─────────────────────────────────
+export type { AIAction } from './types';
+export { actionIcons } from './types';
 
+// ─── Action Definition Configs ──────────────
+export { erdActions } from './erdActionConfigs';
+export { notesActions } from './notesActionConfigs';
+export { flowchartActions } from './flowchartActionConfigs';
+
+// ─── AI Content Apply Handlers ──────────────
 export { applyToNoteContent } from './notesActions';
 export { applyToErdContent } from './erdActions';
-// Future: export { applyToFlowchartContent } from './flowchartActions';
+export { applyToFlowchartContent } from './flowchartActions';
