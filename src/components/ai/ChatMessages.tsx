@@ -1,6 +1,7 @@
 import { memo, useRef, useState, useEffect, useMemo } from 'react';
 import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { AIChatMessage } from '@/types';
 import { Button } from '@/components/ui/button';
 import { CodeBlock } from './CodeBlock';
@@ -185,6 +186,7 @@ export const ChatMessages = memo(function ChatMessages({
                       ) : (
                         <>
                           <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
                             components={{
                               code({ className, children, ...props }) {
                                 if (className) {
