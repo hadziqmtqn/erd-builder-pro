@@ -1,17 +1,6 @@
 import * as React from "react"
-import { ChevronsUpDown, Plus } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
   SidebarMenuButton,

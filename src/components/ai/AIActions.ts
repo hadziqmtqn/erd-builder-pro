@@ -39,16 +39,6 @@ function erdRelationships(context: Record<string, any>): string {
 
 const erdActions: AIAction[] = [
   {
-    id: 'erd-generate-sql',
-    label: 'Generate SQL',
-    description: 'DDL statements for visible tables',
-    icon: 'SQL',
-    buildPrompt: (ctx) => {
-      const tables = erdTableList(ctx);
-      return `Generate PostgreSQL DDL for these tables:\n\n${tables}\n\nInclude primary keys, foreign keys, and indexes based on the relationships shown.`;
-    },
-  },
-  {
     id: 'erd-edit-column',
     label: 'Edit Columns',
     description: 'Add/edit/delete columns via chat',
@@ -67,12 +57,14 @@ const erdActions: AIAction[] = [
 Current columns:
 ${cols || '  (no columns defined)'}
 
-The user will tell you what column changes to make. Respond with a JSON code block ONLY:
+The user will tell you what column changes to make.
+
+If the user specifies column changes, respond with a JSON code block ONLY:
 
 \`\`\`json
 {
   "mutations": [
-    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR(255)", "is_nullable": false, "is_pk": false}},
+    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},
     {"type": "drop_column", "column": "old_field"},
     {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true}}
   ]
@@ -84,7 +76,9 @@ Rules:
 - For drop_column: only column name
 - For modify_column: only include fields that changed (type, is_nullable, is_pk)
 - Keep existing columns that aren't mentioned
-- Respond with ONLY the JSON code block, no explanation`;
+- Use plain type names only: INT, BIGINT, VARCHAR, CHAR, TEXT, LONGTEXT, BOOLEAN, DATE, TIMESTAMP, FLOAT, DOUBLE, DECIMAL, UUID, JSON, ENUM (no size parameters like VARCHAR(255))
+
+If the user does NOT specify any column changes, ask them what columns they want to add, remove, or modify instead.`;
     },
   },
   {
@@ -227,7 +221,6 @@ export function getActionsForView(view: ViewType): AIAction[] {
 // a string marker that AIActionButton renders with appropriate icons.
 
 export const actionIcons: Record<string, string> = {
-  'erd-generate-sql': 'database',
   'erd-edit-column': 'columns',
   'erd-explain-table': 'info',
   'erd-suggest-indexes': 'zap',

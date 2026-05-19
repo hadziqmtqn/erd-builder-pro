@@ -17,9 +17,7 @@ import { Plus, Undo2, Redo2, Image as Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
 import { Entity } from '@/types';
-import { AIActionButton } from '@/components/ai/AIActionButton';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { AIAction } from '@/components/ai/AIActions';
 import { applyToErdContent } from '@/components/ai/actions';
 import { toast } from 'sonner';
 
@@ -90,7 +88,7 @@ const ERDViewComponent = ({
   isLoading,
 }: ERDViewProps) => {
 
-  const { sendAction, registerContentHandler, setSelectionText } = useAIAction();
+  const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
 
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
@@ -130,13 +128,18 @@ const ERDViewComponent = ({
   }, [selectedNodeId, nodes, setSelectionText]);
 
   React.useEffect(() => {
+    const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
+    setActionContextData({ nodes, edges, selectedNode });
+  }, [nodes, edges, selectedNodeId, setActionContextData]);
+
+  React.useEffect(() => {
     const unregister = registerContentHandler((_content: string, _strategy: 'replace' | 'append', actionId?: string) => {
       const response = _content;
-      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-generate-sql', response, {
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-edit-column', response, {
         selectedNodeId: selectedNodeIdRef.current,
       });
       if (result) {
-        takeSnapshotRef.current?.(result.nodes, result.edges);
+        takeSnapshotRef.current?.(nodesRef.current, edgesRef.current);
         setNodes(result.nodes);
         setEdges(result.edges);
         toast.success('Applied to diagram');
@@ -167,25 +170,6 @@ const ERDViewComponent = ({
               <Upload className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Import SQL</span>
             </Button>
-
-            <AIActionButton
-              viewType="erd"
-              context={{ nodes, edges, selectedNode: nodes.find(n => n.id === selectedNodeId) }}
-              onAction={(action: AIAction, ctx: Record<string, any>) => {
-                const prompt = action.buildPrompt(ctx);
-                sendAction(prompt, action.id, (response: string) => {
-                  const result = applyToErdContent(nodesRef.current, edgesRef.current, action.id, response, {
-                    selectedNodeId: selectedNodeIdRef.current,
-                  });
-                  if (result) {
-                    takeSnapshotRef.current?.(result.nodes, result.edges);
-                    setNodes(result.nodes);
-                    setEdges(result.edges);
-                    toast.success('Applied to diagram');
-                  }
-                });
-              }}
-            />
 
             <div className="w-px h-6 bg-border mx-0.5" />
 

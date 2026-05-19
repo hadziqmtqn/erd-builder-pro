@@ -327,7 +327,7 @@ Tables:\n${tableLines || '  (none)'}`;
       }
 
       context += `\n\n[Response format]
-When asked to add or modify columns, always respond with a complete valid SQL CREATE TABLE statement for the affected table(s) including all existing columns plus your additions. Use MySQL syntax. This allows the system to parse your response and update the diagram automatically. Example:
+When asked to add or modify columns, always respond with a complete valid SQL CREATE TABLE statement for the affected table(s) including all existing columns plus your additions. Use MySQL syntax. However, if the user explicitly requests a JSON mutations format (e.g. in an 'Edit Columns' action), follow their requested format instead. Example:
 
 \`\`\`sql
 CREATE TABLE admins (

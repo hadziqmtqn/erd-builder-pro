@@ -1,6 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { Entity, Column } from '@/types';
 import { parseSQLToERD } from '@/lib/sqlParser';
+import { COLUMN_TYPES } from '@/lib/utils';
 
 /**
  * Extracts SQL from an AI response that may contain markdown fences.
@@ -205,10 +206,12 @@ function applyColumnChanges(
     switch (mutation.type) {
       case 'add_column': {
         if (!mutation.column || !mutation.column.name || !mutation.column.type) continue;
+        const rawType = mutation.column.type.toUpperCase().replace(/\(.*\)/, '');
+        const normalizedType = COLUMN_TYPES.includes(rawType) ? rawType : 'VARCHAR';
         const newColumn: Column = {
           id: `col_${Date.now()}_${columns.length}`,
           name: mutation.column.name,
-          type: mutation.column.type,
+          type: normalizedType,
           is_pk: mutation.column.is_pk || false,
           is_nullable: mutation.column.is_nullable || false,
           sort_order: columns.length,
@@ -231,7 +234,12 @@ function applyColumnChanges(
         if (idx === -1) continue;
         columns[idx] = {
           ...columns[idx],
-          ...(mutation.changes.type !== undefined && { type: mutation.changes.type }),
+          ...(mutation.changes.type !== undefined && {
+            type: (() => {
+              const rt = mutation.changes.type.toUpperCase().replace(/\(.*\)/, '');
+              return COLUMN_TYPES.includes(rt) ? rt : 'VARCHAR';
+            })(),
+          }),
           ...(mutation.changes.is_nullable !== undefined && { is_nullable: mutation.changes.is_nullable }),
           ...(mutation.changes.is_pk !== undefined && { is_pk: mutation.changes.is_pk }),
           ...(mutation.changes.name !== undefined && { name: mutation.changes.name }),
