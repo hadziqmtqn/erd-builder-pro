@@ -160,8 +160,12 @@ const ERDViewComponent = ({
   // ─── Send selected tables context to AI ──────────────
   React.useEffect(() => {
     if (allSelectedNodes.length > 0) {
-      const names = allSelectedNodes.map(n => n.data.name || n.data.label || n.id).join(', ');
-      setSelectionText(`Tables: ${names}`);
+      const tableDetails = allSelectedNodes.map(n => {
+        const name = n.data.name || n.data.label || n.id;
+        const cols = (n.data.columns || []).map((c: any) => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}${c.is_nullable ? ' NULL' : ''}`);
+        return `${name} (${cols.join(', ')})`;
+      }).join('; ');
+      setSelectionText(`Tables: ${tableDetails}`);
     } else {
       setSelectionText(null);
     }

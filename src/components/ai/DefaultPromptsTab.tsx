@@ -83,10 +83,16 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredPrompts = prompts.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPrompts = prompts
+    .filter(p => 
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.content.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
 
   const handleOpenAdd = () => {
     setEditingId(null);
