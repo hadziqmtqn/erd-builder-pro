@@ -60,7 +60,7 @@ export function AddSymbolModal({
             <Label>Shape Type</Label>
             <Select 
               value={nodeData.shape} 
-              onValueChange={(val: FlowchartShape) => onNodeDataChange({ ...nodeData, shape: val })}
+              onValueChange={(val) => onNodeDataChange({ ...nodeData, shape: (val as FlowchartShape) || nodeData.shape })}
             >
               <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
                 <SelectValue placeholder="Select a shape">

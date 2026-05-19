@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Sparkles, Send, StopCircle, ChevronDown, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft } from 'lucide-react';
+import { Sparkles, Send, StopCircle, ChevronDown, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,12 @@ function getActionIcon(actionId: string) {
       return <CircleHelp className="size-3.5" />;
     case 'erd-suggest-indexes':
       return <SquareTerminal className="size-3.5" />;
+    case 'flowchart-generate':
+      return <Wand2 className="size-3.5" />;
+    case 'flowchart-explain':
+      return <FileText className="size-3.5" />;
+    case 'flowchart-pseudocode':
+      return <Code className="size-3.5" />;
     default:
       return <Sparkles className="size-3.5" />;
   }
@@ -81,7 +87,7 @@ export const ChatInput = memo(function ChatInput({
       </div>
 
       <div className="flex items-center justify-between">
-        {['note', 'diagram'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
+        {['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-border bg-muted/50 hover:bg-muted/80 transition-colors text-white outline-none">
               <Sparkles className="size-3.5 text-primary" />
@@ -91,7 +97,7 @@ export const ChatInput = memo(function ChatInput({
             <DropdownMenuContent side="top" align="start" className="w-[200px]">
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-wider opacity-50">
-                  {entityType === 'note' ? 'Notes Actions' : entityType === 'diagram' ? 'ERD Actions' : 'Actions'}
+                  {entityType === 'note' ? 'Notes Actions' : entityType === 'diagram' ? 'ERD Actions' : 'Flowchart Actions'}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {actions.map((action) => (

@@ -61,21 +61,27 @@ User Request: Generate a flowchart for [USER TOPIC].
 Instruction:
 1. Respond with a JSON code block containing "nodes" and "edges".
 2. Multi-case support: You can create multiple independent process flows (each with its own Start and End) within the same file if the user describes multiple scenarios.
-3. Node shapes: oval (Start/End), rectangle (Process), diamond (Decision), parallelogram (Input/Output), database (storage), document (report), cloud (external system), circle (connector).
+3. Node shapes (use ONLY these exact values — do not use descriptions like "Start/End"): "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
 4. Colors: Use hex codes (e.g., #8b5cf6 for purple, #10b981 for green, #ef4444 for red).
-5. For edges, use "sourceLabel" and "targetLabel" matching the node labels exactly.
+5. For edges, use "sourceLabel" and "targetLabel" matching the node labels exactly. Do NOT use "from"/"to" or numeric ids.
+6. For diamond (decision) nodes, ALWAYS label the outgoing edges: "Yes" for the true/positive branch, "No" for the false/negative branch.
 
-Example:
+Example with decision branching:
 \`\`\`json
 {
   "nodes": [
     { "label": "Start", "shape": "oval", "color": "#10b981" },
-    { "label": "Process", "shape": "rectangle", "color": "#8b5cf6" },
-    { "label": "End", "shape": "oval", "color": "#ef4444" }
+    { "label": "Check Stock", "shape": "diamond", "color": "#f59e0b" },
+    { "label": "Process Payment", "shape": "rectangle", "color": "#8b5cf6" },
+    { "label": "Show Error", "shape": "rectangle", "color": "#ef4444" },
+    { "label": "End", "shape": "oval", "color": "#10b981" }
   ],
   "edges": [
-    { "sourceLabel": "Start", "targetLabel": "Process" },
-    { "sourceLabel": "Process", "targetLabel": "End" }
+    { "sourceLabel": "Start", "targetLabel": "Check Stock" },
+    { "sourceLabel": "Check Stock", "targetLabel": "Process Payment", "label": "Yes" },
+    { "sourceLabel": "Check Stock", "targetLabel": "Show Error", "label": "No" },
+    { "sourceLabel": "Process Payment", "targetLabel": "End" },
+    { "sourceLabel": "Show Error", "targetLabel": "End" }
   ]
 }
 \`\`\`

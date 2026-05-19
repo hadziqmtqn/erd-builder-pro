@@ -61,6 +61,7 @@ export const FlowchartView = React.memo(({
   });
   const initialLoadRef = React.useRef(true);
   const isParsingFromDataRef = React.useRef(false);
+  const isDraggingRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
   nodesRef.current = nodes;
@@ -118,15 +119,26 @@ export const FlowchartView = React.memo(({
     handleFlowchartChangeRef.current = handleFlowchartChange;
   }, [handleFlowchartChange]);
 
-  // Trigger autosave internally when local state changes (skip initial load & data parsing)
+  // Trigger autosave internally when local state changes (skip initial load, data parsing, and dragging)
   useEffect(() => {
-    if (initialLoadRef.current || isParsingFromDataRef.current) {
+    if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current) {
       return;
     }
     if (nodes.length > 0 || edges.length > 0) {
       handleFlowchartChangeRef.current(nodes, edges);
     }
   }, [nodes, edges]);
+
+  const onNodeDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
+  const onNodeDragStop = useCallback(() => {
+    isDraggingRef.current = false;
+    if (nodesRef.current.length > 0 || edgesRef.current.length > 0) {
+      handleFlowchartChangeRef.current(nodesRef.current, edgesRef.current);
+    }
+  }, []);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({
@@ -175,11 +187,31 @@ export const FlowchartView = React.memo(({
     );
   };
 
+  const deleteNode = () => {
+    if (!selectedNodeId) return;
+    setNodes((nds) => nds.filter(n => n.id !== selectedNodeId));
+    setEdges((eds) => eds.filter(e => e.source !== selectedNodeId && e.target !== selectedNodeId));
+    setSelectedNodeId(null);
+  };
+
   const deleteEdge = () => {
     if (!selectedEdgeId) return;
     setEdges((eds) => eds.filter(e => e.id !== selectedEdgeId));
     setSelectedEdgeId(null);
   };
+
+  // Keyboard shortcut: Delete/Backspace to remove selected node or edge
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isReadOnly) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNodeId) { deleteNode(); return; }
+        if (selectedEdgeId) { deleteEdge(); return; }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNodeId, selectedEdgeId, isReadOnly]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
@@ -223,13 +255,20 @@ export const FlowchartView = React.memo(({
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
-      // Ignore pure selection updates so a click that only opens the symbol modal
-      // does not count as a content edit and does not trigger autosave.
-      const dataChanges = changes.filter((change) => change.type !== 'select');
+      const dataChanges = changes.filter((change: any) => change.type !== 'select');
       if (dataChanges.length === 0) return;
       onNodesChange(dataChanges);
     },
     [onNodesChange],
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: any[]) => {
+      const dataChanges = changes.filter((change: any) => change.type !== 'select');
+      if (dataChanges.length === 0) return;
+      onEdgesChange(dataChanges);
+    },
+    [onEdgesChange],
   );
 
   // Sync AI action context (for ChatInput dropdown actions)
@@ -313,8 +352,10 @@ export const FlowchartView = React.memo(({
           nodes={memoizedNodes}
           edges={memoizedEdges}
           onNodesChange={handleNodesChange}
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
           onNodeClick={(e, node) => setSelectedNodeId(node.id)}
           onEdgeClick={(e, edge) => setSelectedEdgeId(edge.id)}
@@ -350,6 +391,7 @@ export const FlowchartView = React.memo(({
             onClose={() => setSelectedNodeId(null)}
             selectedNode={selectedNode}
             onUpdateNodeData={updateNodeData}
+            onDeleteNode={deleteNode}
           />
 
           <ConnectorPropertiesModal

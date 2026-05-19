@@ -46,5 +46,4 @@ if (R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY) {
     },
     forcePathStyle: false, 
   });
-  console.log(`Cloudflare R2 client initialized for account: ${accountId}`);
 }
