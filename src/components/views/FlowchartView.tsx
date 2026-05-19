@@ -25,7 +25,8 @@ import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { applyToFlowchartContent } from '@/components/ai/actions/flowchartActions';
+import { applyToFlowchartContent, previewFlowchartContent, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
+import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -54,6 +55,7 @@ export const FlowchartView = React.memo(({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [isAddingNode, setIsAddingNode] = useState(false);
+  const [pendingPreview, setPendingPreview] = useState<FlowchartApplyResult | null>(null);
   const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
     label: 'New Symbol',
     shape: 'rectangle',
@@ -279,22 +281,34 @@ export const FlowchartView = React.memo(({
     });
   }, [nodes, edges, setActionContextData]);
 
-  // AI Content Handler
+  // AI Content Handler (show preview before applying)
+  const pendingContentRef = React.useRef<string | null>(null);
   useEffect(() => {
     const unregister = registerContentHandler((content, strategy) => {
       if (strategy === 'append') {
-        const result = applyToFlowchartContent(nodes, edges, content);
-        if (result) {
-          setNodes(result.nodes);
-          setEdges(result.edges);
-          return true;
+        const preview = previewFlowchartContent(content);
+        if (preview && preview.nodes.length > 0) {
+          pendingContentRef.current = content;
+          setPendingPreview(preview);
+          return;
         }
       }
-      return false;
     }, ['append']);
 
     return unregister;
-  }, [registerContentHandler, nodes, edges, setNodes, setEdges]);
+  }, [registerContentHandler]);
+
+  const handleConfirmAppend = useCallback(() => {
+    const content = pendingContentRef.current;
+    if (!content) return;
+    const result = applyToFlowchartContent(nodesRef.current, edgesRef.current, content);
+    if (result) {
+      setNodes(result.nodes);
+      setEdges(result.edges);
+    }
+    setPendingPreview(null);
+    pendingContentRef.current = null;
+  }, [setNodes, setEdges]);
   
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
@@ -406,6 +420,15 @@ export const FlowchartView = React.memo(({
             onDeleteEdge={deleteEdge}
           />
         </>
+      )}
+
+      {pendingPreview && (
+        <FlowchartPreviewModal
+          nodes={pendingPreview.nodes}
+          edges={pendingPreview.edges}
+          onConfirm={handleConfirmAppend}
+          onCancel={() => { setPendingPreview(null); pendingContentRef.current = null; }}
+        />
       )}
     </Card>
   );
