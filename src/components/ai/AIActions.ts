@@ -45,38 +45,52 @@ const erdActions: AIAction[] = [
     icon: 'Columns',
     buildPrompt: (ctx) => {
       const selectedNode = ctx.selectedNode;
-      if (!selectedNode) return 'Select a table first to edit its columns.';
-      const data = selectedNode.data || {};
-      const cols = (data.columns || []).map((c: any) => {
-        const pk = c.primaryKey || c.is_pk ? ' 🔑' : '';
-        const nullable = c.is_nullable ? ' NULL' : ' NOT NULL';
-        return `  - ${c.name}: ${c.type || c.columnType || 'unknown'}${nullable}${pk}`;
-      }).join('\n');
-      return `You are editing the table "${data.name || data.label || 'unnamed'}".
+      const multiSelectedNodes = ctx.multiSelectedNodes || [];
 
-Current columns:
-${cols || '  (no columns defined)'}
+      if (!selectedNode && multiSelectedNodes.length === 0) {
+        return 'Select a table first to edit its columns.';
+      }
+
+      const targetNodes = multiSelectedNodes.length > 1
+        ? multiSelectedNodes
+        : (selectedNode ? [selectedNode] : []);
+
+      if (targetNodes.length === 0) return 'Select a table first to edit its columns.';
+
+      const isMulti = targetNodes.length > 1;
+
+      const tablesText = targetNodes.map((node: any) => {
+        const data = node.data || {};
+        const cols = (data.columns || []).map((c: any) => {
+          const pk = c.primaryKey || c.is_pk ? ' 🔑' : '';
+          const nullable = c.is_nullable ? ' NULL' : ' NOT NULL';
+          return `  - ${c.name}: ${c.type || c.columnType || 'unknown'}${nullable}${pk}`;
+        }).join('\n');
+        return `Table: ${data.name || data.label || 'unnamed'}\n${cols || '  (no columns defined)'}`;
+      }).join('\n\n');
+
+      const tableNames = targetNodes.map((n: any) => n.data?.name || n.data?.label || 'unnamed');
+      const tableList = tableNames.join(', ');
+
+      return `You are editing ${targetNodes.length} table(s):
+
+${tablesText}
 
 The user will tell you what column changes to make.
 
-If the user specifies column changes, respond with a JSON code block ONLY:
+If the user specifies column changes, respond with a JSON code block ONLY, followed by a brief user-facing message on the next line telling the user they can click the Append button to apply the changes. Example:
 
-\`\`\`json
-{
-  "mutations": [
-    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},
-    {"type": "drop_column", "column": "old_field"},
-    {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true}}
-  ]
-}
-\`\`\`
+${isMulti
+  ? '```json\n{\n  "users": {\n    "mutations": [\n      {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},\n      {"type": "drop_column", "column": "old_field"}\n    ]\n  },\n  "admins": {\n    "mutations": [\n      {"type": "modify_column", "column": "role", "changes": {"type": "VARCHAR", "is_nullable": true}}\n    ]\n  }\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel users dan admins.'
+  : '```json\n{\n  "mutations": [\n    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},\n    {"type": "drop_column", "column": "old_field"},\n    {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true}}\n  ]\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel ' + tableList + '.'}
 
 Rules:
 - For add_column: all fields required (name, type, is_nullable, is_pk)
 - For drop_column: only column name
-- For modify_column: only include fields that changed (type, is_nullable, is_pk)
+- For modify_column: only include fields that changed
 - Keep existing columns that aren't mentioned
 - Use plain type names only: INT, BIGINT, VARCHAR, CHAR, TEXT, LONGTEXT, BOOLEAN, DATE, TIMESTAMP, FLOAT, DOUBLE, DECIMAL, UUID, JSON, ENUM (no size parameters like VARCHAR(255))
+${isMulti ? '- Use the multi-table format with table names as keys. Edit ONLY the tables listed above.' : ''}
 
 If the user does NOT specify any column changes, ask them what columns they want to add, remove, or modify instead.`;
     },

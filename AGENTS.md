@@ -138,6 +138,11 @@ src/components/ai/
 - `userScrolledUpRef` tracks manual scroll with 50px threshold from bottom
 - `scrollContainerRef` in `ChatMessages.tsx` for scroll event listener
 
+## Markdown Tables in Chat
+
+- AI chat messages use `ReactMarkdown` with `remarkGfm` plugin for GFM support (tables, strikethrough, etc.)
+- Tables render as standard HTML `<table>`, styled with Tailwind border/dark classes
+
 ## Code Blocks (Prism)
 
 - AI chat responses use `ReactMarkdown` with custom `CodeBlock` component for fenced code blocks
@@ -234,7 +239,7 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 
 | Action | ID | Auto-apply | Behavior |
 |--------|----|------------|----------|
-| **Edit Columns** | `erd-edit-column` | ✅ Yes | AI responds with JSON mutations (`add_column`/`drop_column`/`modify_column`). Parsed by `erdActions.applyColumnChanges()` → updates selected node's columns. Requires a selected table node. |
+| **Edit Columns** | `erd-edit-column` | ✅ Yes | AI responds with JSON mutations (`add_column`/`drop_column`/`modify_column`). Parsed by `erdActions.applyColumnChanges()` → updates selected node's columns. Supports multi-table selection (Ctrl/Cmd+click). |
 | **Explain Table** | `erd-explain-table` | ❌ No (read-only) | AI describes selected table in plain language — what it stores, column meanings, use cases. Output rendered as chat message text. Requires a selected table node. |
 | **Suggest Indexes** | `erd-suggest-indexes` | ❌ No (read-only) | AI analyzes all tables and recommends B-tree indexes per column. Includes `ALTER TABLE ... ADD INDEX` SQL. Prompt explicitly prohibits hallucinating non-existent FK columns. |
 | **Seed Data** | `erd-seed-data` | ❌ No (read-only) | AI generates `INSERT` statements with 3-5 rows per table, FK-referenced consistently. Output as chat-only SQL blocks — user must copy manually to DB tool. |
@@ -242,9 +247,13 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 **Auto-apply mechanism for Edit Columns:**
 1. Chat panel sends prompt → AI streams response
 2. On stream complete, `pendingAction.onResult` fires → `applyToErdContent(..., 'erd-edit-column')`
-3. `extractJSONFromMarkdown` extracts ````json { "mutations": [...] } ```` from AI response
-4. `applyColumnChanges` parses mutations, updates target node's columns array
+3. `extractJSONFromMarkdown` extracts JSON from AI response
+4. `tryParseMultiColumnChanges` detects format:
+   - **Multi-table**: `{ "table_name": { "mutations": [...] } }` — matches by table name, applies per-node
+   - **Single-table**: `{ "mutations": [...] }` — column-aware fallback: extracts column names from mutations (e.g. `drop_column: "name"`), finds selected node with most matching columns; if no match (e.g. `add_column` only), falls back to `primaryNodeId` (last regular-clicked node), not `selectedNodeIds[0]`
 5. Returns `{ nodes, edges }` → ERDView calls `setNodes` + `takeSnapshot` for undo
+6. Multi-table: snapshot taken once before ALL mutations (atomic undo)
+7. AI prompt instructs AI to append a user-facing message after the JSON code block, e.g. "Klik tombol **Append** untuk menerapkan perubahan ke tabel admins."
 
 ### Notes Actions (`AIActions.ts:124-157`)
 
@@ -277,7 +286,7 @@ Both flowchart actions are read-only — output appears as chat message text onl
 
 ### How `buildPrompt` Works
 Each action's `buildPrompt(context)` receives the current view context:
-- **ERD**: `{ nodes: Node<Entity>[], edges: Edge[], selectedNode: Node<Entity> | null }`
+- **ERD**: `{ nodes: Node<Entity>[], edges: Edge[], selectedNode: Node<Entity> | null, multiSelectedNodes?: Node<Entity>[], primaryNodeId?: string }`
 - **Notes**: `{ content: string, title: string }`
 - **Flowchart**: `{ nodes: Node[], edges: Edge[] }`
 
@@ -285,6 +294,12 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - `erdTableList(context)` — formats all tables as `name:\n  - col: TYPE 🔑`
 - `erdRelationships(context)` — formats edges as `  source → target`
 - `flowchartNodeList(context)` — formats symbols as `"label" (shape)`
+
+**Special instructions for Edit Columns prompt:**
+- When multiple tables selected, prompt shows ALL selected tables with column structures
+- Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Klik tombol **Append** untuk menerapkan perubahan ke tabel admins.")
+- Multi-table JSON format: `{"table_name": {"mutations": [...]}}` — per-table key, not an array of sets
+- Single-table format: `{"mutations": [...]}` — used when only 1 table selected
 
 ### Context Prominence Strategy
 
