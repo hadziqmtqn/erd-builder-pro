@@ -16,6 +16,7 @@ import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
 import { NoteExporter } from '@/lib/exporters/note-exporter';
 import { getMarkdownFromHtml } from '@/lib/markdownUtils';
 import { buildEntityContextText } from '@/hooks/aiEntityContext';
+import { initialNodes as flowchartInitialNodes, initialEdges as flowchartInitialEdges } from '@/components/flowchart/flowchartConstants';
 import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 
 // UI
@@ -121,9 +122,20 @@ function AppLayoutInner() {
 
       case 'flowchart':
         if (!activeFlowchart) return null;
+        let flowchartNodes: any[] = [];
+        let flowchartEdges: any[] = [];
+        try {
+          const parsed = JSON.parse(activeFlowchart.data || '{}');
+          flowchartNodes = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : flowchartInitialNodes;
+          flowchartEdges = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : flowchartInitialEdges;
+        } catch {
+          flowchartNodes = flowchartInitialNodes;
+          flowchartEdges = flowchartInitialEdges;
+        }
         return buildEntityContextText('flowchart', {
           title: activeFlowchart.title,
-          nodes: nodes as any[],
+          nodes: flowchartNodes,
+          edges: flowchartEdges,
         });
 
       case 'drawing':
