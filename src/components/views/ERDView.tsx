@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { applyToErdContent } from '@/components/ai/actions';
+import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
 import { toast } from 'sonner';
 
 const nodeTypes = {
@@ -118,12 +118,6 @@ const ERDViewComponent = ({
     return [];
   }, [multiSelectedIds, selectedNodeId]);
 
-  const allSelectedNodes = React.useMemo(() => {
-    return allSelectedIds
-      .map(id => nodes.find(n => n.id === id))
-      .filter((n): n is Node<Entity> => !!n);
-  }, [allSelectedIds, nodes]);
-
   const styledNodes = React.useMemo(() => {
     return nodes.map(node => ({
       ...node,
@@ -157,10 +151,24 @@ const ERDViewComponent = ({
     });
   }, [edges, allSelectedIds]);
 
+  // ─── Refs for callback stability ──────────────────────
+  const nodesRef = React.useRef(nodes);
+  const edgesRef = React.useRef(edges);
+  const selectedNodeIdRef = React.useRef(selectedNodeId);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+  selectedNodeIdRef.current = selectedNodeId;
+
   // ─── Send selected tables context to AI ──────────────
+  // Only fires when selection (set of IDs) changes — NOT on position changes during drag
   React.useEffect(() => {
-    if (allSelectedNodes.length > 0) {
-      const tableDetails = allSelectedNodes.map(n => {
+    if (allSelectedIds.length > 0) {
+      const selectedNodes = allSelectedIds
+        .map(id => nodesRef.current.find(n => n.id === id))
+        .filter((n): n is Node<Entity> => !!n);
+      if (selectedNodes.length === 0) return;
+
+      const tableDetails = selectedNodes.map(n => {
         const name = n.data.name || n.data.label || n.id;
         const cols = (n.data.columns || []).map((c: any) => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}${c.is_nullable ? ' NULL' : ''}`);
         return `${name} (${cols.join(', ')})`;
@@ -169,29 +177,46 @@ const ERDViewComponent = ({
     } else {
       setSelectionText(null);
     }
-  }, [allSelectedNodes, setSelectionText]);
+  }, [allSelectedIds, setSelectionText]);
 
   React.useEffect(() => {
-    const primaryNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) ?? null : null;
-    setActionContextData({ nodes, edges, selectedNode: primaryNode, multiSelectedNodes: allSelectedNodes });
-  }, [nodes, edges, selectedNodeId, allSelectedNodes, setActionContextData]);
-
-  // ─── Refs for callback stability ──────────────────────
-  const nodesRef = React.useRef(nodes);
-  const edgesRef = React.useRef(edges);
-  const selectedNodeIdRef = React.useRef(selectedNodeId);
-  nodesRef.current = nodes;
-  edgesRef.current = edges;
-  selectedNodeIdRef.current = selectedNodeId;
+    const primaryNode = selectedNodeId ? nodesRef.current.find(n => n.id === selectedNodeId) ?? null : null;
+    const multiSelected = allSelectedIds
+      .map(id => nodesRef.current.find(n => n.id === id))
+      .filter((n): n is Node<Entity> => !!n);
+    setActionContextData({
+      nodes: nodesRef.current,
+      edges: edgesRef.current,
+      selectedNode: primaryNode,
+      multiSelectedNodes: multiSelected,
+    });
+  }, [selectedNodeId, allSelectedIds, setActionContextData]);
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
 
   // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   React.useEffect(() => {
     const unregister = registerContentHandler((content: string, _strategy: 'replace' | 'append', actionId?: string) => {
-      const result = applyToErdContent(nodesRef.current, edgesRef.current, actionId || 'erd-edit-column', content, {
-        selectedNodeId: selectedNodeIdRef.current,
-      });
+      if (!content) return;
+
+      let result: ErdApplyResult | null = null;
+
+      if (actionId) {
+        result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, {
+          selectedNodeId: selectedNodeIdRef.current,
+        });
+      } else {
+        // Manual chat: try SQL DDL first, then column mutations
+        result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, {
+          selectedNodeId: selectedNodeIdRef.current,
+        });
+        if (!result) {
+          result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, {
+            selectedNodeId: selectedNodeIdRef.current,
+          });
+        }
+      }
+
       if (result) {
         takeSnapshotRef.current?.(nodesRef.current, edgesRef.current);
         setNodes(result.nodes);

@@ -217,3 +217,11 @@ src/components/ai/
 - `extractSQLFromMarkdown` handles ` ```sql ``` ` fences and raw SQL
 - `mergeIntoDiagram` matches entities by name (not ID) — handles AI-generated IDs vs existing IDs
 - Uses full replace approach (`setNodes`/`setEdges`) with `takeSnapshot` for undo
+
+### Context Prominence Strategy
+
+- `entityContextText` (schema/note content) injected as **prefix of user message**, not system message
+- Some models (fine-tuned instruct models) give lower weight to system messages; user message gets higher prominence
+- Order: `[entity context]` → `[Selected text]` → `User request: ...`
+- Fallback: if `entityContextText` is null, calls `fetchEntityContext()` to fetch from Supabase (used when chat panel is opened outside a specific entity page)
+- `fetchEntityContext` result also injected as user message prefix (same prominence treatment)

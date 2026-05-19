@@ -370,32 +370,6 @@ export function useAIChat(
         apiMessages.push({ role: 'system', content: promptData[0].content });
       }
 
-     // Inject entity context so AI knows what file the user is on
-     // Priority: pre-built context text > fetch from Supabase
-     if (entityContextText) {
-        apiMessages.push({
-          role: 'system',
-          content: entityContextText,
-        });
-        console.log('[AI Context] Using pre-built context text (from workspace)');
-      } else if (entityContext) {
-        try {
-          const ctxResult = await fetchEntityContext(entityContext);
-          if (ctxResult) {
-            apiMessages.push({
-              role: 'system',
-              content: ctxResult.contextText,
-            });
-            console.log('[AI Context] Injected:', ctxResult.contextText.slice(0, 200));
-          } else {
-            console.warn('[AI Context] fetchEntityContext returned null for:', entityContext);
-          }
-        } catch (err) {
-          // Graceful fallback: if context fetch fails, skip it
-          console.warn('[AI Context] Failed to fetch entity context:', err);
-        }
-      }
-
       // Language instruction: respond in user's language
       apiMessages.push({
         role: 'system',
@@ -409,10 +383,29 @@ export function useAIChat(
         apiMessages.push({ role: msg.role, content: msg.content });
       }
 
-      // Current user message (with selection context injected inline)
-      const apiUserContent = selectionText
-        ? `[Selected text: "${selectionText}"]\nUser request: ${trimmed}`
-        : trimmed;
+      // Build user message: context as prefix (higher prominence than system message) + selection + question
+      let apiUserContent = '';
+
+      // Priority: pre-built context text > fetch from Supabase
+      if (entityContextText) {
+        apiUserContent += `${entityContextText}\n\n`;
+        console.log('[AI Context] Using pre-built context text (from workspace)');
+      } else if (entityContext) {
+        try {
+          const ctxResult = await fetchEntityContext(entityContext);
+          if (ctxResult) {
+            apiUserContent += `${ctxResult.contextText}\n\n`;
+            console.log('[AI Context] Injected:', ctxResult.contextText.slice(0, 200));
+          }
+        } catch (err) {
+          console.warn('[AI Context] Failed to fetch entity context:', err);
+        }
+      }
+
+      if (selectionText) {
+        apiUserContent += `[Selected text: "${selectionText}"]\n`;
+      }
+      apiUserContent += `User request: ${trimmed}`;
       apiMessages.push({ role: 'user', content: apiUserContent });
 
       // 5. Call AI API with streaming

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { memo, useRef, useState, useEffect, useMemo } from 'react';
 import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { AIChatMessage } from '@/types';
@@ -28,7 +28,7 @@ export interface ChatMessagesProps {
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => void;
 }
 
-export function ChatMessages({
+export const ChatMessages = memo(function ChatMessages({
   hasActiveSession,
   isMessagesLoading,
   hasMessages,
@@ -274,4 +274,4 @@ export function ChatMessages({
       <div ref={messagesEndRef} />
     </div>
   );
-}
+});

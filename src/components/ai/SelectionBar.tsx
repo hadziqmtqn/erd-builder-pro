@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Sparkles, X } from 'lucide-react';
 
 function extractTableCount(text: string): number | null {
@@ -5,7 +6,7 @@ function extractTableCount(text: string): number | null {
   return text.split('); ').length;
 }
 
-export function SelectionBar({
+export const SelectionBar = memo(function SelectionBar({
   hasActiveSession,
   selectionText,
   onClear,
@@ -41,4 +42,4 @@ export function SelectionBar({
       <p className="italic line-clamp-2 text-primary/60">"{selectionText}"</p>
     </div>
   );
-}
+});
