@@ -226,6 +226,66 @@ src/components/ai/
   - Helper `tryAddEdge(sName, sourceColName, targetTableName, targetColName)` checks both sides exist in merged nodes, deduplicates via `existingEdgeKeys`, creates a `smoothstep` Edge with `col-{id}-source`/`col-{id}-target` handles
   - Located in `src/components/ai/actions/erdActions.ts` (inline after `mergeIntoDiagram`)
 
+## AI Action Dropdown Reference
+
+Every AI action lives in `src/components/ai/AIActions.ts` and is registered under one of three views: `erd`, `notes`, or `flowchart`. Each action has a `buildPrompt(context)` that constructs the prompt dynamically from current view context (selected table, columns, edges, note content, etc.).
+
+### ERD Actions (`AIActions.ts:40-120`)
+
+| Action | ID | Auto-apply | Behavior |
+|--------|----|------------|----------|
+| **Edit Columns** | `erd-edit-column` | ✅ Yes | AI responds with JSON mutations (`add_column`/`drop_column`/`modify_column`). Parsed by `erdActions.applyColumnChanges()` → updates selected node's columns. Requires a selected table node. |
+| **Explain Table** | `erd-explain-table` | ❌ No (read-only) | AI describes selected table in plain language — what it stores, column meanings, use cases. Output rendered as chat message text. Requires a selected table node. |
+| **Suggest Indexes** | `erd-suggest-indexes` | ❌ No (read-only) | AI analyzes all tables and recommends B-tree indexes per column. Includes `ALTER TABLE ... ADD INDEX` SQL. Prompt explicitly prohibits hallucinating non-existent FK columns. |
+| **Seed Data** | `erd-seed-data` | ❌ No (read-only) | AI generates `INSERT` statements with 3-5 rows per table, FK-referenced consistently. Output as chat-only SQL blocks — user must copy manually to DB tool. |
+
+**Auto-apply mechanism for Edit Columns:**
+1. Chat panel sends prompt → AI streams response
+2. On stream complete, `pendingAction.onResult` fires → `applyToErdContent(..., 'erd-edit-column')`
+3. `extractJSONFromMarkdown` extracts ````json { "mutations": [...] } ```` from AI response
+4. `applyColumnChanges` parses mutations, updates target node's columns array
+5. Returns `{ nodes, edges }` → ERDView calls `setNodes` + `takeSnapshot` for undo
+
+### Notes Actions (`AIActions.ts:124-157`)
+
+| Action | ID | Apply strategy | Behavior |
+|--------|----|----------------|----------|
+| **Summarize** | `notes-summarize` | Append with `## Summary` header | AI returns a concise summary (default 3 sentences). Applied via `applyToNoteContent` which appends after `<hr>` with `## Summary` heading. |
+| **Improve Grammar** | `notes-improve-grammar` | Replace entire content | AI returns corrected text. Applied as full replacement — original content is overwritten. |
+| **Generate Docs** | `notes-generate-docs` | Append with `## Documentation` header | AI reformats note as technical documentation (markdown headings, code blocks, tables). Appended after `<hr>` with `## Documentation` heading. |
+
+**Apply flow for Notes:**
+1. User clicks action → chat opens with pre-built prompt (`buildPrompt` includes note content as markdown)
+2. AI streams response → user clicks Replace/Append button (or auto-applies if `actionId` matches)
+3. `NotesView.handleConfirmChange`:
+   - `marked.parse(content)` → HTML
+   - `DOMPurify.sanitize` → XSS-safe
+   - Append: original + `<br><hr><br>` + HTML
+   - Replace: HTML as new content
+   - `applyToNoteContent()` handles action-specific formatting (e.g., `## Summary` header for summarize)
+   - `saveNote()` → immediate persist + state sync
+4. DiffPreviewModal shows changes before confirm
+
+### Flowchart Actions (`AIActions.ts:172-203`)
+
+| Action | ID | Auto-apply | Behavior |
+|--------|----|------------|----------|
+| **Explain Flow** | `flowchart-explain` | ❌ No (read-only) | AI describes flowchart as step-by-step process in plain language. Reads all node labels, shapes, and connections. |
+| **Generate Pseudocode** | `flowchart-pseudocode` | ❌ No (read-only) | AI generates pseudocode representing the flowchart logic. Reads all symbols and connections. |
+
+Both flowchart actions are read-only — output appears as chat message text only.
+
+### How `buildPrompt` Works
+Each action's `buildPrompt(context)` receives the current view context:
+- **ERD**: `{ nodes: Node<Entity>[], edges: Edge[], selectedNode: Node<Entity> | null }`
+- **Notes**: `{ content: string, title: string }`
+- **Flowchart**: `{ nodes: Node[], edges: Edge[] }`
+
+The prompt is built as a **prefix of the user message** (not system message) — this gives it higher prominence with fine-tuned models. Helper functions:
+- `erdTableList(context)` — formats all tables as `name:\n  - col: TYPE 🔑`
+- `erdRelationships(context)` — formats edges as `  source → target`
+- `flowchartNodeList(context)` — formats symbols as `"label" (shape)`
+
 ### Context Prominence Strategy
 
 - `entityContextText` (schema/note content) injected as **prefix of user message**, not system message
