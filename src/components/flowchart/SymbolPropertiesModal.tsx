@@ -5,10 +5,11 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription,
-  DialogBody
+  DialogBody,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Trash2 } from 'lucide-react';
 import { FlowchartNodeData, FlowchartShape } from '../FlowchartNode';
 import { COLOR_PALETTE, SHAPE_LABELS } from './flowchartConstants';
 
@@ -24,13 +26,15 @@ interface SymbolPropertiesModalProps {
   onClose: () => void;
   selectedNode?: Node<FlowchartNodeData>;
   onUpdateNodeData: (updates: Partial<FlowchartNodeData>) => void;
+  onDeleteNode: () => void;
 }
 
 export function SymbolPropertiesModal({
   selectedNodeId,
   onClose,
   selectedNode,
-  onUpdateNodeData
+  onUpdateNodeData,
+  onDeleteNode,
 }: SymbolPropertiesModalProps) {
   return (
     <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -90,6 +94,18 @@ export function SymbolPropertiesModal({
                   />
                 ))}
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/10">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => { onDeleteNode(); onClose(); }}
+              >
+                <Trash2 className="size-4" />
+                Delete Symbol
+              </Button>
             </div>
           </DialogBody>
         )}
