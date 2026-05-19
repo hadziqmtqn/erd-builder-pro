@@ -84,6 +84,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - `contentHandlerStrategies` exposed via `useAIAction()` — AIChatPanel checks this to show/hide Replace vs Append buttons
 - Strategy type: `'replace' | 'append'`
 - `selectionText` is single source of truth — passed as argument to `sendMessage()` (not closed over)
+- `cleanIdentifier()` (local to `erdActions.ts`): strips backticks/quotes/brackets from SQL identifiers, e.g. `` `users` `` → `users`
 - React.memo on NotesView
 
 ## AI Context for Notes (markdown-aware)
@@ -210,13 +211,20 @@ src/components/ai/
 6. Content handler registered with `['append']` strategy only — `contentHandlerStrategies` hides Replace button in AIChatPanel
 7. ERD actions: `erd-generate-sql`, `erd-explain-table`, `erd-suggest-indexes`, `erd-seed-data`
 
-### AI → ERD Content Application
+### AI → ERD Content Application (Two-Pass FK Edge Generation)
 - `applyToErdContent()` in `src/components/ai/actions/erdActions.ts` — parses SQL DDL (`extractSQLFromMarkdown` + `parseSQLToERD`), merges via `mergeIntoDiagram`
 - Pattern: `registerContentHandler` → `AIChatPanel` calls `onStreamComplete` → `pendingAction.onResult` → apply mutations
 - Auto-apply via `sendAction` `actionId` + `onResult` callback; manual append works for non-action chat responses
 - `extractSQLFromMarkdown` handles ` ```sql ``` ` fences and raw SQL
 - `mergeIntoDiagram` matches entities by name (not ID) — handles AI-generated IDs vs existing IDs
 - Uses full replace approach (`setNodes`/`setEdges`) with `takeSnapshot` for undo
+- **Two-pass FK edge generation**:
+  - **Pass 1** (`parseSQLToERD.processRel`): creates edges only between nodes parsed from the same SQL block — skips FK references to tables outside the SQL (e.g., existing diagram tables like `users`)
+  - **Pass 2** (in `applyToErdContent`, after `mergeIntoDiagram`): re-scans the full SQL text for FK references and creates edges by matching source/target against the **merged** node set (existing + newly parsed nodes)
+  - **Inline FK regex**: `/FOREIGN KEY (...) REFERENCES table(...)/g` — finds source table by scanning backwards from match position for `CREATE TABLE <name>`
+  - **ALTER TABLE FK regex**: `/ALTER TABLE <name> ADD FOREIGN KEY (...) REFERENCES table(...)/g` — extracts source table directly from the ALTER TABLE statement (avoids backward-scan ambiguity)
+  - Helper `tryAddEdge(sName, sourceColName, targetTableName, targetColName)` checks both sides exist in merged nodes, deduplicates via `existingEdgeKeys`, creates a `smoothstep` Edge with `col-{id}-source`/`col-{id}-target` handles
+  - Located in `src/components/ai/actions/erdActions.ts` (inline after `mergeIntoDiagram`)
 
 ### Context Prominence Strategy
 

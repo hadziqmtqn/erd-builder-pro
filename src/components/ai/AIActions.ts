@@ -104,7 +104,7 @@ If the user does NOT specify any column changes, ask them what columns they want
     icon: 'Index',
     buildPrompt: (ctx) => {
       const tables = erdTableList(ctx);
-      return `Analyze these tables and suggest appropriate database indexes:\n\n${tables}${erdRelationships(ctx)}\n\nFor each table, recommend which columns should be indexed (primary keys, foreign keys, frequently queried columns) and what type of index (B-tree, Hash, etc.).`;
+      return `Analyze these tables and suggest appropriate database indexes:\n\n${tables}${erdRelationships(ctx)}\n\nFor each table, recommend which columns should be indexed (primary keys, foreign keys, frequently queried columns) and what type of index (B-tree, Hash, etc.).\n\nCRITICAL: Only recommend indexes on columns that actually exist in the schema above. Do NOT invent or assume foreign key columns (e.g., company_id) that are not listed. Base every recommendation strictly on the columns and relationships provided. If a table has a name-based column (e.g., company_name) instead of a foreign key ID, recommend based on what actually exists. Do not suggest adding new columns.`;
     },
   },
   {
