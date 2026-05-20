@@ -151,6 +151,16 @@ const ERDViewComponent = ({
     });
   }, [edges, allSelectedIds]);
 
+  // Filter out selection-only changes to avoid unnecessary re-renders from React Flow
+  const handleNodesChangeLocal = useCallback(
+    (changes: any[]) => {
+      const dataChanges = changes.filter((change: any) => change.type !== 'select');
+      if (dataChanges.length === 0) return;
+      onNodesChange(dataChanges);
+    },
+    [onNodesChange],
+  );
+
   // ─── Refs for callback stability ──────────────────────
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
@@ -287,7 +297,7 @@ const ERDViewComponent = ({
         <ReactFlow
           nodes={styledNodes}
           edges={styledEdges}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
@@ -327,36 +337,56 @@ const ERDViewComponent = ({
 // Custom comparator: skip function props to prevent unnecessary re-renders
 // from App.tsx's inline callbacks (save/sync cycle triggers re-render but
 // shouldn't cause ReactFlow to re-initialize)
+function nodesEqual(a: Node<Entity>[], b: Node<Entity>[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const na = a[i], nb = b[i];
+    if (na.id !== nb.id || na.position?.x !== nb.position?.x || na.position?.y !== nb.position?.y) return false;
+    if (na.selected !== nb.selected) return false;
+    if (na.data?.name !== nb.data?.name || na.data?.color !== nb.data?.color) return false;
+    const ca = na.data?.columns, cb = nb.data?.columns;
+    if (!ca !== !cb) return false;
+    if (ca && cb && ca.length !== cb.length) return false;
+    if (ca && cb) {
+      for (let j = 0; j < ca.length; j++) {
+        const ca2 = ca[j], cb2 = cb[j];
+        if (ca2.id !== cb2.id || ca2.name !== cb2.name || ca2.type !== cb2.type ||
+            ca2.sort_order !== cb2.sort_order || ca2.is_pk !== cb2.is_pk || ca2.is_nullable !== cb2.is_nullable) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function edgesEqual(a: Edge[], b: Edge[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ea = a[i], eb = b[i];
+    if (ea.id !== eb.id || ea.source !== eb.source || ea.target !== eb.target ||
+        ea.sourceHandle !== eb.sourceHandle || ea.targetHandle !== eb.targetHandle ||
+        ea.label !== eb.label || ea.selected !== eb.selected) return false;
+  }
+  return true;
+}
+
 export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
-  // Optimization: If we already have nodes, don't re-render just because isLoading flickers
-  // (e.g. during a background sync). This prevents the ReactFlow canvas from "blinking".
-  // NOTE: When switching diagrams (prev.nodes was empty / fresh load), we MUST allow the
-  // isLoading→false transition to render — otherwise spinner never disappears (#2).
+  // If we already have nodes, don't re-render just because isLoading flickers
   const loadingFlickered = prev.isLoading !== next.isLoading;
   const hasData = next.nodes.length > 0;
   const wasEmptyBefore = prev.nodes.length === 0;
   const shouldIgnoreLoading = loadingFlickered && hasData && !wasEmptyBefore;
 
-  // Structural check for nodes and edges to handle reference changes during sync
-  const nodesChanged = prev.nodes !== next.nodes && (
-    prev.nodes.length !== next.nodes.length ||
-    JSON.stringify(prev.nodes.map(n => ({ id: n.id, data: n.data, pos: n.position }))) !== 
-    JSON.stringify(next.nodes.map(n => ({ id: n.id, data: n.data, pos: n.position })))
-  );
-
-  const edgesChanged = prev.edges !== next.edges && (
-    prev.edges.length !== next.edges.length ||
-    JSON.stringify(prev.edges) !== JSON.stringify(next.edges)
-  );
-
   return (
-    !nodesChanged &&
-    !edgesChanged &&
+    nodesEqual(prev.nodes, next.nodes) &&
+    edgesEqual(prev.edges, next.edges) &&
     (shouldIgnoreLoading || prev.isLoading === next.isLoading) &&
     prev.isReadOnly === next.isReadOnly &&
     prev.selectedNodeId === next.selectedNodeId &&
     prev.canUndo === next.canUndo &&
-    prev.canRedo === next.canRedo
+    prev.canRedo === next.canRedo &&
+    prev.onMoveEnd === next.onMoveEnd
   );
 });
 

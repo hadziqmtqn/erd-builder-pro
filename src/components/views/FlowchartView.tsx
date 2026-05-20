@@ -64,6 +64,8 @@ export const FlowchartView = React.memo(({
   const initialLoadRef = React.useRef(true);
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
+  const lastFlowchartIdRef = React.useRef(activeFlowchartId);
+  const isEditingEdgeRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
   nodesRef.current = nodes;
@@ -96,8 +98,14 @@ export const FlowchartView = React.memo(({
       
       setNodes(nodesData);
       setEdges(edgesData);
-      setSelectedNodeId(null);
-      setSelectedEdgeId(null);
+
+      // Only reset selection when switching to a different flowchart, not on data refresh (auto-save cycle)
+      const flowchartChanged = lastFlowchartIdRef.current !== activeFlowchartId;
+      if (flowchartChanged) {
+        lastFlowchartIdRef.current = activeFlowchartId;
+        setSelectedNodeId(null);
+        setSelectedEdgeId(null);
+      }
     } catch {
       setNodes(initialNodes);
       setEdges(initialEdges);
@@ -123,7 +131,7 @@ export const FlowchartView = React.memo(({
 
   // Trigger autosave internally when local state changes (skip initial load, data parsing, and dragging)
   useEffect(() => {
-    if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current) {
+    if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current || isEditingEdgeRef.current) {
       return;
     }
     if (nodes.length > 0 || edges.length > 0) {
@@ -201,6 +209,22 @@ export const FlowchartView = React.memo(({
     setEdges((eds) => eds.filter(e => e.id !== selectedEdgeId));
     setSelectedEdgeId(null);
   };
+
+  // Track edge editing state to prevent auto-save during connector property edits
+  const prevSelectedEdgeIdRef = React.useRef(selectedEdgeId);
+  useEffect(() => {
+    const wasEditing = prevSelectedEdgeIdRef.current !== null;
+    const nowEditing = selectedEdgeId !== null;
+    prevSelectedEdgeIdRef.current = selectedEdgeId;
+    isEditingEdgeRef.current = nowEditing;
+
+    // Flush pending save when edge editor closes
+    if (wasEditing && !nowEditing && !initialLoadRef.current && !isParsingFromDataRef.current) {
+      if (nodes.length > 0 || edges.length > 0) {
+        handleFlowchartChangeRef.current(nodes, edges);
+      }
+    }
+  }, [selectedEdgeId, nodes, edges]);
 
   // Keyboard shortcut: Delete/Backspace to remove selected node or edge
   useEffect(() => {

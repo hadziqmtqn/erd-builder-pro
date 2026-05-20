@@ -86,6 +86,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - `selectionText` is single source of truth — passed as argument to `sendMessage()` (not closed over)
 - `cleanIdentifier()` (local to `erdActions.ts`): strips backticks/quotes/brackets from SQL identifiers, e.g. `` `users` `` → `users`
 - React.memo on NotesView
+- **Auto-update AGENTS.md**: after completing any feature/improvement/fix, proactively update this file with relevant new patterns, components, and mechanisms — no need to wait for user to ask
 
 ## AI Context for Notes (markdown-aware)
 
@@ -352,8 +353,10 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Delete button in `SymbolPropertiesModal`
 
 #### Auto-Save Guards (FlowchartView)
-- Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef`
+- Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef` → `isEditingEdgeRef`
 - `isDraggingRef` (ref, not state) skips auto-save during node drag; `onNodeDragStop` triggers single save at final position
+- `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
+- Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
 - `handleEdgesChange` + `handleNodesChange` both filter out `type: 'select'` — selection changes never trigger auto-save or content-modified flag
 - `useFlowchartChangeHandler` debounces save at 1.5s, updates `activeFlowchart.data` in workspace state
 
@@ -362,6 +365,28 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Action ID routing: `flowchart-import` → `applyReplaceAll`, `flowchart-insert` → `applyInsertBetween`, generic → `previewFlowchartContent` + modal
 - `pendingPreview` in FlowchartView stores parsed preview result; modal renders as SVG (no ReactFlow); main canvas state unaffected
 - `pendingContentRef` stores raw AI response text; `handleConfirmAppend` re-parses via `applyToFlowchartContent` then sets state
+
+## Lazy Render Optimizations
+
+### ERD Canvas (`EntityNode.tsx`, `ERDView.tsx`, `useERDSession.ts`)
+
+- **Memoized ColumnRow** (`EntityColumnRow`): extracted column rows into a separate `React.memo` component with stable inline style objects (`useMemo`) — prevents re-creating 4N Handle components per node on every re-render
+- **Memoized column sort**: `sortedColumns` derived via `useMemo` keyed on `columnOrderHash` — no re-sort on unrelated data changes
+- **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
+- **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
+- **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
+
+### Flowchart Canvas (`FlowchartNode.tsx`)
+
+- `isHovered` local state is scoped per-node — only the hovered node re-renders, not the entire canvas
+- `shapeBackground` memoized on `[data.color, data.shape, selected]` — SVG paths recompute only on actual property changes
+
+### Shared patterns
+
+- `onlyRenderVisibleElements={true}` on both ERD and Flowchart ReactFlow instances — off-screen nodes are not rendered
+- `colorMode="dark"` avoids runtime theme switch recalculation
+- Both custom node components wrapped in `React.memo`
+- Auto-save guards (`isDraggingRef`, `isParsingFromDataRef`) prevent serialization/save cycles during interaction
 
 ### How `buildPrompt` Works
 Each action's `buildPrompt(context)` receives the current view context:
