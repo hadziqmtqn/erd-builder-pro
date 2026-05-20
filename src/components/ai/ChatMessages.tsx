@@ -154,11 +154,37 @@ export const ChatMessages = memo(function ChatMessages({
                   {isUser ? (
                     <>
                       {(() => {
-                        const isLong = msg.content.length > 300;
+                        const SYSTEM_MARKER = '\n\n---SYSTEM_PROMPT---\n';
+                        const markerIdx = msg.content.indexOf(SYSTEM_MARKER);
+                        const hasSystemPart = markerIdx !== -1;
+                        const displayText = hasSystemPart ? msg.content.slice(0, markerIdx) : msg.content;
+                        const systemText = hasSystemPart ? msg.content.slice(markerIdx + SYSTEM_MARKER.length) : '';
+
+                        const isLong = displayText.length > 300;
                         const isExpanded = expandedMessages.has(msg.id ?? idx);
+                        const sysExpanded = expandedMessages.has(`sys_${msg.id ?? idx}`);
                         return (
                           <>
-                            <p className={`whitespace-pre-wrap break-words ${isLong && !isExpanded ? 'line-clamp-6' : ''}`}>{msg.content}</p>
+                            <p className={`whitespace-pre-wrap break-words ${isLong && !isExpanded ? 'line-clamp-6' : ''}`}>{displayText}</p>
+                            {hasSystemPart && (
+                              <button
+                                onClick={() => setExpandedMessages(prev => {
+                                  const next = new Set(prev);
+                                  if (sysExpanded) next.delete(`sys_${msg.id ?? idx}`);
+                                  else next.add(`sys_${msg.id ?? idx}`);
+                                  return next;
+                                })}
+                                className="text-[10px] text-primary-foreground/50 hover:text-primary-foreground/80 mt-1.5 opacity-60 hover:opacity-100 transition-all flex items-center gap-1"
+                              >
+                                <span className="text-[8px] leading-none">{sysExpanded ? '▼' : '▶'}</span>
+                                {sysExpanded ? 'Hide context' : 'Show context'}
+                              </button>
+                            )}
+                            {hasSystemPart && sysExpanded && (
+                              <pre className="mt-1.5 pt-1.5 border-t border-primary-foreground/15 text-[9px] text-primary-foreground/40 whitespace-pre-wrap break-words leading-relaxed max-h-[200px] overflow-y-auto scrollbar-thin">
+                                {systemText}
+                              </pre>
+                            )}
                             {isLong && (
                               <button
                                 onClick={() => setExpandedMessages(prev => {

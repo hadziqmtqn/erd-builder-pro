@@ -70,6 +70,8 @@ export const AIChatPanel = ({
   } = useAIChat(entityContext, entityContextText, onStreamComplete);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
+  const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  const [activeActionPrompt, setActiveActionPrompt] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
@@ -98,23 +100,26 @@ export const AIChatPanel = ({
   const handleSelectAction = useCallback((action: AIAction) => {
     if (!entityType || !entityContextText || !entityTitle) return;
 
-    setLastActionId(action.id);
-
     const context = {
       content: entityContextText,
       title: entityTitle,
       ...(actionContextData || {}),
     };
     const newPrompt = action.buildPrompt(context);
-    const currentVal = (inputRef.current?.value || '').trim();
 
-    if (currentVal && currentVal !== newPrompt.trim()) {
-      setConfirmOverwritePrompt(newPrompt);
-    } else {
-      if (inputRef.current) inputRef.current.value = newPrompt;
-      inputRef.current?.focus();
+    // Toggle off if same action clicked again
+    if (activeActionId === action.id) {
+      setActiveActionId(null);
+      setActiveActionPrompt(null);
+      setLastActionId(null);
+      return;
     }
-  }, [entityType, entityContextText, entityTitle, actionContextData]);
+
+    setActiveActionId(action.id);
+    setActiveActionPrompt(newPrompt);
+    setLastActionId(action.id);
+    inputRef.current?.focus();
+  }, [entityType, entityContextText, entityTitle, actionContextData, activeActionId]);
 
   // ─── Auto-minimize on click outside panel ──────────
   useEffect(() => {
@@ -150,10 +155,17 @@ export const AIChatPanel = ({
   const handleSend = useCallback(() => {
     const text = (inputRef.current?.value || '').trim();
     if (!text || isStreaming) return;
-    sendMessage(text, selectionText);
+
+    const finalMessage = activeActionPrompt
+      ? `${text}\n\n---SYSTEM_PROMPT---\n${activeActionPrompt}`
+      : text;
+
+    sendMessage(finalMessage, selectionText);
     if (inputRef.current) inputRef.current.value = '';
-    setLastActionId(null);
-  }, [isStreaming, sendMessage, selectionText]);
+    setLastActionId(activeActionId);
+    setActiveActionId(null);
+    setActiveActionPrompt(null);
+  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -292,6 +304,7 @@ export const AIChatPanel = ({
           isStreaming={isStreaming}
           entityType={entityType}
           actions={actions}
+          activeActionId={activeActionId}
           inputRef={inputRef}
           onSend={handleSend}
           onKeyDown={handleKeyDown}

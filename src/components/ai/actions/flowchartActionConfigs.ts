@@ -11,17 +11,6 @@ const SHAPE_MEANINGS: Record<string, string> = {
   circle: 'Connector/Junction',
 };
 
-const COLOR_PALETTE = [
-  { name: 'Emerald', hex: '#10b981' },
-  { name: 'Violet', hex: '#8b5cf6' },
-  { name: 'Amber', hex: '#f59e0b' },
-  { name: 'Rose', hex: '#f43f5e' },
-  { name: 'Sky', hex: '#0ea5e9' },
-  { name: 'Teal', hex: '#14b8a6' },
-  { name: 'Orange', hex: '#f97316' },
-  { name: 'Slate', hex: '#64748b' },
-];
-
 function flowchartSymbolDetail(context: Record<string, any>): string {
   const nodes: any[] = context.nodes || [];
   const edges: any[] = context.edges || [];
@@ -160,45 +149,6 @@ Example:
 
 3. Use ONLY these shape values: "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
 4. After the JSON block, add a brief message: "Klik tombol **Append** untuk menyisipkan simbol ini."`;
-    },
-  },
-  {
-    id: 'flowchart-colorize',
-    label: 'Auto Color Scheme',
-    description: 'Suggest consistent colors for all symbols',
-    icon: 'Palette',
-    buildPrompt: (ctx) => {
-      const symbols = flowchartSymbolDetail(ctx);
-      const paletteStr = COLOR_PALETTE.map(c => `  ${c.name}: ${c.hex}`).join('\n');
-      return `You are a flowchart designer. Analyze the flowchart and suggest a consistent color scheme.
-
-Current symbols with their current colors:\n${symbols}
-
-Available color palette:\n${paletteStr}
-
-Instructions:
-1. Assign appropriate colors to each symbol based on its role:
-   - Start/End (oval) → use Emerald (#10b981) or a consistent color for all
-   - Decisions (diamond) → use Amber (#f59e0b) consistently for all decisions
-   - Error paths → use Rose (#f43f5e)
-   - I/O (parallelogram) → use Sky (#0ea5e9)
-   - Processes (rectangle) → use Violet (#8b5cf6) or Teal (#14b8a6)
-   - External systems (cloud) → use Orange (#f97316)
-   - Data (database) → use Teal (#14b8a6)
-2. Use a MAXIMUM of 3-4 distinct colors across the entire diagram — don't use every color in the palette.
-3. Same shape types should share the same color.
-
-Respond with a JSON code block:
-\`\`\`json
-{
-  "colors": {
-    "Node Label 1": "#10b981",
-    "Node Label 2": "#8b5cf6"
-  }
-}
-\`\`\`
-
-After the JSON block, add a brief message: "Klik tombol **Append** untuk menerapkan skema warna ini."`;
     },
   },
   {
