@@ -25,7 +25,7 @@ import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { applyToFlowchartContent, previewFlowchartContent, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
+import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyColorScheme, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 
 const nodeTypes = {
@@ -283,8 +283,41 @@ export const FlowchartView = React.memo(({
 
   // AI Content Handler (show preview before applying)
   const pendingContentRef = React.useRef<string | null>(null);
+  const pendingActionIdRef = React.useRef<string | null>(null);
   useEffect(() => {
-    const unregister = registerContentHandler((content, strategy) => {
+    const unregister = registerContentHandler((content, strategy, actionId) => {
+      pendingActionIdRef.current = actionId || null;
+
+      // Insert symbol between existing nodes
+      if (actionId === 'flowchart-insert') {
+        const result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
+        if (result && result.nodes.length > 0) {
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          return;
+        }
+      }
+
+      // Auto color scheme
+      if (actionId === 'flowchart-colorize') {
+        const result = applyColorScheme(nodesRef.current, content);
+        if (result && result.nodes.length > 0) {
+          setNodes(result.nodes);
+          return;
+        }
+      }
+
+      // Import — replace all
+      if (actionId === 'flowchart-import' && strategy === 'replace') {
+        const result = applyReplaceAll(content);
+        if (result && result.nodes.length > 0) {
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          return;
+        }
+      }
+
+      // Generate — default append with preview
       if (strategy === 'append') {
         const preview = previewFlowchartContent(content);
         if (preview && preview.nodes.length > 0) {
@@ -293,10 +326,10 @@ export const FlowchartView = React.memo(({
           return;
         }
       }
-    }, ['append']);
+    }, ['append', 'replace']);
 
     return unregister;
-  }, [registerContentHandler]);
+  }, [registerContentHandler, setNodes, setEdges]);
 
   const handleConfirmAppend = useCallback(() => {
     const content = pendingContentRef.current;

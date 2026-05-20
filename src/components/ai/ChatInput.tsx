@@ -1,7 +1,8 @@
 import { memo } from 'react';
-import { Sparkles, Send, StopCircle, ChevronDown, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code } from 'lucide-react';
+import { Sparkles, Send, StopCircle, ChevronDown, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, Palette, FileDown } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +35,12 @@ function getActionIcon(actionId: string) {
       return <FileText className="size-3.5" />;
     case 'flowchart-pseudocode':
       return <Code className="size-3.5" />;
+    case 'flowchart-insert':
+      return <GitBranch className="size-3.5" />;
+    case 'flowchart-colorize':
+      return <Palette className="size-3.5" />;
+    case 'flowchart-import':
+      return <FileDown className="size-3.5" />;
     default:
       return <Sparkles className="size-3.5" />;
   }
@@ -88,6 +95,7 @@ export const ChatInput = memo(function ChatInput({
 
       <div className="flex items-center justify-between">
         {['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
+          <div className="flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-border bg-muted/50 hover:bg-muted/80 transition-colors text-white outline-none">
               <Sparkles className="size-3.5 text-primary" />
@@ -113,6 +121,32 @@ export const ChatInput = memo(function ChatInput({
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+            <HoverCard openDelay={200} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                <button
+                  className="size-8 rounded-md flex items-center justify-center text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-all cursor-pointer"
+                >
+                  <CircleHelp className="size-3.5" />
+                </button>
+              </HoverCardTrigger>
+              <HoverCardContent side="top" align="start" className="w-64 p-3">
+                <div className="space-y-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">AI Actions</p>
+                  {actions.map((action) => (
+                    <div key={action.id} className="flex items-start gap-2.5">
+                      <div className="shrink-0 mt-0.5 size-6 rounded flex items-center justify-center bg-muted/30 text-muted-foreground">
+                        {getActionIcon(action.id)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">{action.label}</p>
+                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">{action.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </HoverCardContent>
+            </HoverCard>
+          </div>
         ) : (
           <span className="text-[10px] text-muted-foreground/50 px-1 font-medium">
             {isStreaming ? 'Generating...' : 'Press Enter to send'}
