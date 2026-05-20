@@ -459,7 +459,7 @@ export function useERDSession(
       return isChanged ? newEds : eds;
     });
 
-    // Centralized FK Detection
+    // Centralized FK Detection (optimized — avoids JSON.stringify)
     if (edgeHash !== lastEdgesHash.current) {
       lastEdgesHash.current = edgeHash;
       
@@ -474,14 +474,14 @@ export function useERDSession(
         let anyNodeDataChanged = false;
         const nextNodes = nds.map(node => {
           const nodeFks = fkMap[node.id] || new Set();
-          const newColumns = node.data.columns.map(col => ({
-            ...col,
-            _is_fk: nodeFks.has(col.id)
-          }));
+          let nodeChanged = false;
+          const newColumns = node.data.columns.map(col => {
+            const isFk = nodeFks.has(col.id);
+            if (col._is_fk !== isFk) nodeChanged = true;
+            return { ...col, _is_fk: isFk };
+          });
 
-          // Check if FK status actually changed for this node
-          const hasChanged = JSON.stringify(newColumns) !== JSON.stringify(node.data.columns);
-          if (hasChanged) {
+          if (nodeChanged) {
             anyNodeDataChanged = true;
             return { ...node, data: { ...node.data, columns: newColumns } };
           }
