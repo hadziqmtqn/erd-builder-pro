@@ -1,5 +1,5 @@
-import { memo, useRef, useState, useEffect, useMemo } from 'react';
-import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check } from 'lucide-react';
+import { memo, useRef, useState, useEffect, useCallback } from 'react';
+import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AIChatMessage } from '@/types';
@@ -49,6 +49,7 @@ export const ChatMessages = memo(function ChatMessages({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const [expandedMessages, setExpandedMessages] = useState<Set<string | number>>(new Set());
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
@@ -65,17 +66,25 @@ export const ChatMessages = memo(function ChatMessages({
     if (!el) return;
 
     const handleScroll = () => {
-      const threshold = 50;
+      const threshold = 60;
       const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
       userScrolledUpRef.current = !isNearBottom;
+      setShowScrollButton(!isNearBottom);
     };
 
     el.addEventListener('scroll', handleScroll, { passive: true });
     return () => el.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    userScrolledUpRef.current = false;
+    setShowScrollButton(false);
+  }, []);
+
   return (
-    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
+    <div className="flex-1 relative min-h-0">
+      <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
       {!hasActiveSession ? (
         <div className="h-full flex flex-col items-center justify-center text-center py-16">
           <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
@@ -293,6 +302,16 @@ export const ChatMessages = memo(function ChatMessages({
         </>
       )}
       <div ref={messagesEndRef} />
+    </div>
+    {showScrollButton && (
+      <button
+        onClick={scrollToBottom}
+        className="absolute bottom-2 left-1/2 -translate-x-1/2 size-9 rounded-full bg-background/70 backdrop-blur-sm border border-border/40 flex items-center justify-center shadow-lg hover:bg-background/90 hover:border-border/60 transition-all cursor-pointer z-10"
+        title="Scroll to bottom"
+      >
+        <ChevronDown className="size-4 text-muted-foreground/70" />
+      </button>
+    )}
     </div>
   );
 });

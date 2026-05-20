@@ -159,16 +159,63 @@ function buildFlowchartLayout(
     return pos ? { ...n, position: { ...pos } } : n;
   });
 
+  // Pick closest handle pair for smart connection
+  function pickClosestHandles(sourceId: string, targetId: string): { sourceHandle: string; targetHandle: string } {
+    const NODE_W = 160;
+    const NODE_H = 60;
+    const srcNode = positionedNodes.find(n => n.id === sourceId);
+    const tgtNode = positionedNodes.find(n => n.id === targetId);
+    if (!srcNode || !tgtNode) return { sourceHandle: 'bottom', targetHandle: 'top' };
+
+    const sx = srcNode.position.x;
+    const sy = srcNode.position.y;
+    const tx = tgtNode.position.x;
+    const ty = tgtNode.position.y;
+
+    const handlePositions = {
+      top:    (x: number, y: number) => ({ x: x + NODE_W / 2, y }),
+      bottom: (x: number, y: number) => ({ x: x + NODE_W / 2, y: y + NODE_H }),
+      left:   (x: number, y: number) => ({ x, y: y + NODE_H / 2 }),
+      right:  (x: number, y: number) => ({ x: x + NODE_W, y: y + NODE_H / 2 }),
+    } as const;
+
+    const handles = ['top', 'bottom', 'left', 'right'] as const;
+
+    let bestDist = Infinity;
+    let bestSrc: string = 'bottom';
+    let bestTgt: string = 'top';
+
+    for (const sh of handles) {
+      const sp = handlePositions[sh](sx, sy);
+      for (const th of handles) {
+        const tp = handlePositions[th](tx, ty);
+        const dx = sp.x - tp.x;
+        const dy = sp.y - tp.y;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestSrc = sh;
+          bestTgt = th;
+        }
+      }
+    }
+
+    return { sourceHandle: bestSrc, targetHandle: bestTgt };
+  }
+
   // Process edges
   if (Array.isArray(parsed.edges)) {
     parsed.edges.forEach((edgeData: any, index: number) => {
       const [sourceId, targetId] = resolveEdgeIds(edgeData);
 
       if (sourceId && targetId) {
+        const { sourceHandle, targetHandle } = pickClosestHandles(sourceId, targetId);
         newEdges.push({
           id: `ai_edge_${Date.now()}_${index}`,
           source: sourceId,
           target: targetId,
+          sourceHandle,
+          targetHandle,
           label: edgeData.label,
           type: 'smoothstep',
           style: { stroke: '#b1b1b7' },
