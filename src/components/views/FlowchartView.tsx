@@ -25,7 +25,7 @@ import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyColorScheme, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
+import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 
 const nodeTypes = {
@@ -294,15 +294,6 @@ export const FlowchartView = React.memo(({
         if (result && result.nodes.length > 0) {
           setNodes(result.nodes);
           setEdges(result.edges);
-          return;
-        }
-      }
-
-      // Auto color scheme
-      if (actionId === 'flowchart-colorize') {
-        const result = applyColorScheme(nodesRef.current, content);
-        if (result && result.nodes.length > 0) {
-          setNodes(result.nodes);
           return;
         }
       }
