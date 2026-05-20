@@ -84,7 +84,7 @@ export const ChatMessages = memo(function ChatMessages({
 
   return (
     <div className="flex-1 relative min-h-0">
-      <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
+      <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 scrollbar-thin scrollbar-thumb-muted-foreground/10">
       {!hasActiveSession ? (
         <div className="h-full flex flex-col items-center justify-center text-center py-16">
           <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
@@ -143,7 +143,7 @@ export const ChatMessages = memo(function ChatMessages({
                 {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
               </div>
 
-              <div className={`flex flex-col gap-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+              <div className={`flex flex-col gap-1.5 max-w-[85%] min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
                 <div
                   className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed overflow-x-auto ${
                     isUser
@@ -223,6 +223,15 @@ export const ChatMessages = memo(function ChatMessages({
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
+                              // table({ children }) {
+                              //   return <div className="overflow-x-auto"><table className="min-w-full text-xs border-collapse">{children}</table></div>;
+                              // },
+                              // th({ children }) {
+                              //   return <th className="border border-border/40 px-2.5 py-1.5 text-left font-semibold bg-muted/30 whitespace-nowrap">{children}</th>;
+                              // },
+                              // td({ children }) {
+                              //   return <td className="border border-border/40 px-2.5 py-1.5 whitespace-nowrap">{children}</td>;
+                              // },
                               code({ className, children, ...props }) {
                                 if (className) {
                                   return <CodeBlock className={className} children={children} />;

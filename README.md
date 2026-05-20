@@ -22,6 +22,7 @@
 - **📁 Smart Organization**:
   - **Project Management**: Group related assets into distinct projects for better workspace management.
   - **Comprehensive Trash System**: Safety-first soft-delete system for all projects and files.
+- **🤖 AI-Powered Assistant**: Context-aware chat integrated per view — ask about diagrams, generate SQL/seed data, summarize notes, or describe flowcharts. Streaming responses with auto-apply (Replace/Append). Supports multi-table selection, markdown-aware notes context. AI can reference multiple file types within the same workspace (e.g., chat about a Note while AI also sees the ERD diagram and Flowchart), enabling cross-feature analysis.
 - **🔐 Enterprise-Grade Security**:
   - **Supabase Authentication**: Secure Email/Password login system with persistent session management.
   - **Cloud Hybrid Storage**: Real-time persistence using **Supabase Database** and **Cloudflare R2**.
