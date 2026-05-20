@@ -2,7 +2,7 @@ import { Edge, Node, MarkerType } from '@xyflow/react';
 import { FlowchartNodeData } from '../FlowchartNode';
 
 export const initialNodes: Node<FlowchartNodeData>[] = [
-  { id: '1', type: 'custom', data: { label: 'Start Setup', shape: 'oval', color: '#6366f1' }, position: { x: 271, y: 50 } },
+  { id: '1', type: 'custom', data: { label: 'Start', shape: 'oval', color: '#6366f1', section: 'Quick Start', groupId: 'grp_quickstart' }, position: { x: 271, y: 50 } },
   { id: '2', type: 'custom', data: { label: 'Initialize App', shape: 'rectangle', color: '#8b5cf6' }, position: { x: 275, y: 200 } },
   { id: '3', type: 'custom', data: { label: 'Database Connected?', shape: 'diamond', color: '#eab308' }, position: { x: 244, y: 350 } },
   { id: '4', type: 'custom', data: { label: 'Fetch Data', shape: 'parallelogram', color: '#8b5cf6' }, position: { x: 65, y: 550 } },

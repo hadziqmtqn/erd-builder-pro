@@ -145,7 +145,7 @@ export const ChatMessages = memo(function ChatMessages({
 
               <div className={`flex flex-col gap-1.5 max-w-[85%] min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
                 <div
-                  className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed overflow-x-auto ${
+                  className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed overflow-x-auto w-full ${
                     isUser
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/50 border border-border/40'
@@ -223,18 +223,13 @@ export const ChatMessages = memo(function ChatMessages({
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              // table({ children }) {
-                              //   return <div className="overflow-x-auto"><table className="min-w-full text-xs border-collapse">{children}</table></div>;
-                              // },
-                              // th({ children }) {
-                              //   return <th className="border border-border/40 px-2.5 py-1.5 text-left font-semibold bg-muted/30 whitespace-nowrap">{children}</th>;
-                              // },
-                              // td({ children }) {
-                              //   return <td className="border border-border/40 px-2.5 py-1.5 whitespace-nowrap">{children}</td>;
-                              // },
                               code({ className, children, ...props }) {
                                 if (className) {
                                   return <CodeBlock className={className} children={children} />;
+                                }
+                                const codeStr = String(children);
+                                if (codeStr.includes('\n')) {
+                                  return <CodeBlock children={children} />;
                                 }
                                 return <code className="bg-black/30 px-1 py-0.5 rounded text-[11px]" {...props}>{children}</code>;
                               }

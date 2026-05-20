@@ -631,12 +631,15 @@ export function WorkspaceProvider({
   });
 
   // Table view pagination
+  const [tableRefreshKey, setTableRefreshKey] = useState(0);
+  const triggerTableRefresh = useCallback(() => setTableRefreshKey(k => k + 1), []);
   useTableViewPagination({
     view, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid: tableSearchParams.get('workspace'),
     tableSearchParams, projects,
     fileSearchQuery: debouncedFileSearchQuery,
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
+    tableRefreshKey,
   });
 
   // Keyboard shortcuts
@@ -920,6 +923,7 @@ export function WorkspaceProvider({
     notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal,
 
     tableSearchParams, setTableSearchParams, tablePage,
+    triggerTableRefresh,
 
     breadcrumbLabel, setBreadcrumbLabel,
   }), [

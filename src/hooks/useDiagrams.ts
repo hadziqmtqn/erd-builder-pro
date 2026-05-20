@@ -189,6 +189,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         diagram.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(diagram);
         setDiagrams(prev => prev.filter(f => f.id !== id));
+        setDiagramsTotal(prev => Math.max(0, prev - 1));
         if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to local trash');
       }
@@ -201,6 +202,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const res = await fetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setDiagrams(prev => prev.filter(f => f.id !== id));
+        setDiagramsTotal(prev => Math.max(0, prev - 1));
         if (activeDiagramId === id) setActiveDiagramId(null);
         toast.success('Diagram moved to trash');
       } else {

@@ -66,6 +66,7 @@ export const FlowchartView = React.memo(({
   const isDraggingRef = React.useRef(false);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
+  const isEditingNodeRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
   nodesRef.current = nodes;
@@ -131,7 +132,7 @@ export const FlowchartView = React.memo(({
 
   // Trigger autosave internally when local state changes (skip initial load, data parsing, and dragging)
   useEffect(() => {
-    if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current || isEditingEdgeRef.current) {
+    if (initialLoadRef.current || isParsingFromDataRef.current || isDraggingRef.current || isEditingEdgeRef.current || isEditingNodeRef.current) {
       return;
     }
     if (nodes.length > 0 || edges.length > 0) {
@@ -163,11 +164,16 @@ export const FlowchartView = React.memo(({
 
   const confirmAddSymbol = () => {
     const id = Math.random().toString(36).substr(2, 9);
+    const data = { ...newNodeData };
+    // Auto-generate groupId for Start nodes
+    if (data.label.trim().toLowerCase() === 'start' && !data.groupId) {
+      data.groupId = `grp_${Math.random().toString(36).substr(2, 6)}`;
+    }
     const newNode: Node<FlowchartNodeData> = {
       id,
       type: 'custom',
       position: { x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 100 },
-      data: { ...newNodeData },
+      data,
     };
     setNodes((nds) => nds.concat(newNode));
     setIsAddingNode(false);
@@ -199,6 +205,8 @@ export const FlowchartView = React.memo(({
 
   const deleteNode = () => {
     if (!selectedNodeId) return;
+    const node = nodes.find(n => n.id === selectedNodeId);
+    if (node && ['start', 'end'].includes(node.data.label?.trim().toLowerCase())) return;
     setNodes((nds) => nds.filter(n => n.id !== selectedNodeId));
     setEdges((eds) => eds.filter(e => e.source !== selectedNodeId && e.target !== selectedNodeId));
     setSelectedNodeId(null);
@@ -210,21 +218,25 @@ export const FlowchartView = React.memo(({
     setSelectedEdgeId(null);
   };
 
-  // Track edge editing state to prevent auto-save during connector property edits
+  // Track modal editing state to prevent auto-save while a property dialog is open
   const prevSelectedEdgeIdRef = React.useRef(selectedEdgeId);
+  const prevSelectedNodeIdRef = React.useRef(selectedNodeId);
   useEffect(() => {
-    const wasEditing = prevSelectedEdgeIdRef.current !== null;
-    const nowEditing = selectedEdgeId !== null;
-    prevSelectedEdgeIdRef.current = selectedEdgeId;
-    isEditingEdgeRef.current = nowEditing;
+    isEditingEdgeRef.current = selectedEdgeId !== null;
+    isEditingNodeRef.current = selectedNodeId !== null;
 
-    // Flush pending save when edge editor closes
-    if (wasEditing && !nowEditing && !initialLoadRef.current && !isParsingFromDataRef.current) {
+    // Flush pending save when any editor modal closes
+    const edgeClosed = prevSelectedEdgeIdRef.current !== null && selectedEdgeId === null;
+    const nodeClosed = prevSelectedNodeIdRef.current !== null && selectedNodeId === null;
+    prevSelectedEdgeIdRef.current = selectedEdgeId;
+    prevSelectedNodeIdRef.current = selectedNodeId;
+
+    if ((edgeClosed || nodeClosed) && !initialLoadRef.current && !isParsingFromDataRef.current) {
       if (nodes.length > 0 || edges.length > 0) {
         handleFlowchartChangeRef.current(nodes, edges);
       }
     }
-  }, [selectedEdgeId, nodes, edges]);
+  }, [selectedEdgeId, selectedNodeId]); // Intentionally omit nodes/edges — closure captures latest values on modal close
 
   // Keyboard shortcut: Delete/Backspace to remove selected node or edge
   useEffect(() => {

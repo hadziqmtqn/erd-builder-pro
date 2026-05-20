@@ -31,20 +31,94 @@ function flowchartSymbolDetail(context: Record<string, any>): string {
     incoming[e.target].push(`${sLabel}${e.label ? ` [${e.label}]` : ''}`);
   }
 
-  return nodes
-    .map((n: any) => {
-      const d = n.data || {};
-      const shape = d.shape || 'rectangle';
-      const meaning = SHAPE_MEANINGS[shape] || shape;
-      const outStr = (outgoing[n.id] || []).join(', ');
-      const inStr = (incoming[n.id] || []).join(', ');
-      const connParts: string[] = [];
-      if (outStr) connParts.push(`→ ${outStr}`);
-      if (inStr) connParts.push(`← ${inStr}`);
-      const connStr = connParts.length > 0 ? ` [${connParts.join('; ')}]` : ' [isolated]';
-      return `  "${d.label || 'unnamed'}" (${meaning}, color: ${d.color || '#8b5cf6'})${connStr}`;
-    })
-    .join('\n');
+  // Helper: format a single node
+  function formatNode(n: any, idx: number): string {
+    const d = n.data || {};
+    const shape = d.shape || 'rectangle';
+    const meaning = SHAPE_MEANINGS[shape] || shape;
+    const outStr = (outgoing[n.id] || []).join(', ');
+    const inStr = (incoming[n.id] || []).join(', ');
+    const connParts: string[] = [];
+    if (outStr) connParts.push(`→ ${outStr}`);
+    if (inStr) connParts.push(`← ${inStr}`);
+    const connStr = connParts.length > 0 ? ` [${connParts.join('; ')}]` : ' [isolated]';
+    const groupRef = d.groupId ? ` [id:${d.groupId}]` : '';
+    return `  [#${idx + 1}] "${d.label || 'unnamed'}" (${meaning}, color: ${d.color || '#8b5cf6'})${groupRef}${connStr}`;
+  }
+
+  // Find all start nodes
+  const startNodes = nodes.filter(
+    (n: any) => n.data?.label?.trim().toLowerCase() === 'start'
+  );
+
+  // If no start nodes, show flat list (backward compatible)
+  if (startNodes.length === 0) {
+    return nodes.map((n: any, idx: number) => formatNode(n, idx)).join('\n');
+  }
+
+  // BFS from a start node to collect reachable nodes
+  function collectGroup(startId: string): Set<string> {
+    const visited = new Set<string>();
+    const queue = [startId];
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      for (const e of edges) {
+        if (e.source === id && !visited.has(e.target)) {
+          queue.push(e.target);
+        }
+      }
+    }
+    return visited;
+  }
+
+  // Build groups per section
+  const grouped = new Map<string, { startNode: any; nodeIds: Set<string> }>();
+  const ungroupedNodes = new Set(nodes.map((n: any) => n.id));
+
+  for (const start of startNodes) {
+    const section = start.data?.section || '(no title)';
+    const nodeIds = collectGroup(start.id);
+    // Merge with existing group if same section
+    if (grouped.has(section)) {
+      const existing = grouped.get(section)!;
+      for (const id of nodeIds) existing.nodeIds.add(id);
+    } else {
+      grouped.set(section, { startNode: start, nodeIds });
+    }
+    // Remove from ungrouped
+    for (const id of nodeIds) ungroupedNodes.delete(id);
+  }
+
+  const parts: string[] = [];
+
+  // Render per-section groups
+  for (const [section, { startNode, nodeIds }] of grouped) {
+    const groupNodes = nodes.filter((n: any) => nodeIds.has(n.id));
+    if (groupNodes.length === 0) continue;
+    // Map to 0-based original index for consistent numbering
+    const globalIdx = (n: any) => nodes.indexOf(n);
+    const groupId = startNode.data?.groupId;
+    const groupTag = groupId ? ` [id:${groupId}]` : '';
+    parts.push(`=== ${section}${groupTag} ===`);
+    for (const n of groupNodes) {
+      parts.push(formatNode(n, globalIdx(n)));
+    }
+  }
+
+  // Remaining nodes not reachable from any Start
+  if (ungroupedNodes.size > 0) {
+    const remaining = nodes.filter((n: any) => ungroupedNodes.has(n.id));
+    if (remaining.length > 0) {
+      parts.push('=== Ungrouped ===');
+      for (const n of remaining) {
+        parts.push(formatNode(n, nodes.indexOf(n)));
+      }
+    }
+  }
+
+  return parts.join('\n');
 }
 
 export const flowchartActions: AIAction[] = [
@@ -131,6 +205,8 @@ Instructions:
    - "newNode": object with "label", "shape", and "color" for the new symbol
    - "insertEdgeLabel1" (optional): label for the edge from source to new node
    - "insertEdgeLabel2" (optional): label for the edge from new node to target
+   - If two symbols have the same label, use "sourceIndex" and "targetIndex" (the [#] number from the symbols list above) instead of sourceLabel/targetLabel to disambiguate
+   - If you need to reference a specific group, use "sourceGroupId" or "targetGroupId" (the [id:...] value from the context above) — this takes highest priority
 
 Example:
 \`\`\`json
