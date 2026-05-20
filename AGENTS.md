@@ -102,7 +102,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 src/components/ai/
 ├── AIChatPanel.tsx      (358 loc) — orchestrator: state, effects, layout
 ├── ChatMessages.tsx     (277 loc) — message list + scroll effects + expand/copy
-├── ChatInput.tsx        (124 loc) — textarea + send + AI Actions dropdown
+├── ChatInput.tsx        (124 loc) — textarea + send + AI Actions radio toggle pills
 ├── CodeBlock.tsx         (48 loc) — Prism syntax highlighting + copy button
 ├── SessionItem.tsx       (32 loc) — session row in sidebar
 ├── SelectionBar.tsx      (28 loc) — active selection indicator bar
@@ -111,9 +111,9 @@ src/components/ai/
 
 ### Component Responsibilities
 
-- **AIChatPanel**: owns sessions/input state, draft save/restore, click-outside minimize, auto-fill prompt from AI actions, pendingAction stream callback. Renders header + sub-components.
-- **ChatMessages**: fully self-contained — owns `scrollContainerRef`, `messagesEndRef`, `userScrolledUpRef` for auto-scroll, `expandedMessages` (Set<string | number>) for collapse/expand, `copiedMsgId` for copy feedback. Receives messages/isStreaming as props. No scroll state lifted to parent.
-- **ChatInput**: receives `input`, `isStreaming`, ref, actions list. Renders textarea + send + AI Actions dropdown + stop button. `getActionIcon` helper maps action IDs to Lucide icons.
+- **AIChatPanel**: owns sessions/input state, `activeActionId`/`activeActionPrompt` for hidden system prompt, draft save/restore, click-outside minimize, auto-fill prompt from AI actions, pendingAction stream callback. Prepends system prompt with `---SYSTEM_PROMPT---` marker on send. Renders header + sub-components.
+- **ChatMessages**: fully self-contained — owns `scrollContainerRef`, `messagesEndRef`, `userScrolledUpRef` for auto-scroll, `expandedMessages` (Set<string | number>) for collapse/expand, `copiedMsgId` for copy feedback, `isSystemExpanded` for collapsible system prompt. Detects `---SYSTEM_PROMPT---` marker to show/hide context. Floating scroll-to-bottom FAB (appears when >60px from bottom). Exposes `scrollToBottom` via `forwardRef` + `useImperativeHandle`.
+- **ChatInput**: receives `input`, `isStreaming`, `activeActionId`, `activeAction` config, ref. Renders textarea + send + **radio toggle pills** for action modes (one active at a time, like radio buttons) + stop button. Each pill has a `HoverCard` showing action description. Dynamic placeholder changes per active action. `getActionIcon` helper maps action IDs to Lucide icons.
 - **CodeBlock**: receives `language`, `value`, `copyToClipboard`. Renders Prism-highlighted code with language label and copy button.
 - **SessionItem**: receives `session`, `isActive`, `onClick`, `onDelete`. Renders session title row with delete button.
 - **SelectionBar**: receives `hasActiveSession`, `selectionText`, `onClear`. Renders active selection chip with X button.
@@ -131,6 +131,12 @@ src/components/ai/
 - User messages longer than **>300 characters** are auto-collapsed (line-clamp-6)
 - **"Show more"** / **"Show less"** button toggles per-message
 - State tracked via `expandedMessages: Set<string | number>` in `ChatMessages.tsx` (internal state)
+
+## Message Overflow Handling
+
+- Message bubble (`ChatMessages.tsx:148`) has `overflow-x-auto` to prevent wide content (ASCII art, wide tables) from creating panel-level horizontal scroll
+- Bubble width constrained by parent `max-w-[85%]` — overflow scrollbar appears inside the bubble only, not on the panel
+- Applies to both user and assistant messages (no scrollbar unless content actually overflows)
 
 ## Auto-scroll Behavior
 
@@ -152,6 +158,41 @@ src/components/ai/
 - **No horizontal scroll** — `white-space: pre-wrap` + `word-break: break-word` wraps long lines
 - Inline code (backticks) uses `bg-black/30 px-1 py-0.5 rounded text-[11px]` styling
 - Code block wrapper has `overflow-x-auto` + `custom-scrollbar` as fallback for extremely long unbreakable content
+
+## Action Mode (Radio Buttons + Hidden System Prompt)
+
+### Radio-style Action Buttons
+- ChatInput uses **radio toggle pills** instead of dropdown — each action is a pill button with Lucide icon
+- Clicking a pill activates it (one active at a time, like radio buttons)
+- Each pill has a `HoverCard` showing action description on hover
+- `getActionIcon` maps action IDs to icons: `Wand2` (generate), `FileText` (explain), `Code` (pseudocode), `GitBranch` (insert), `FileDown` (import)
+
+### Hidden System Prompt
+- `activeActionId` + `activeActionPrompt` state in AIChatPanel (local state)
+- System prompt stored in background — user only sees/edits their own instruction
+- On send, combined message format: `{userText}\n\n---SYSTEM_PROMPT---\n{systemPrompt}`
+- `activeActionId` cleared after send; `lastActionId` passed to view content handler for action-specific processing
+- No more system prompt indicator bar in the UI
+
+### Collapsible System Prompt in Chat Bubble
+- `ChatMessages` detects `---SYSTEM_PROMPT---` marker in message content
+- Shows user text normally + `▶ Show context` toggle button
+- Clicking expands to show the hidden system prompt portion
+- State tracked via `isSystemExpanded` (internal state in ChatMessages)
+
+### Dynamic Placeholder
+- Textarea placeholder changes per active action:
+  - Generic/ask: "Ask anything..."
+  - Explain: "Ask about this flowchart..."
+  - Pseudocode: "Describe what to generate..."
+  - Insert: "Describe where to insert a symbol..."
+  - Import: "Describe the flowchart to create..."
+
+### Floating Scroll-to-Bottom Button
+- Absolute-positioned FAB outside scroll container
+- Semi-transparent, appears when user scrolls >60px from bottom
+- Clicking scrolls to bottom smoothly
+- Hidden when already at bottom
 
 ## Retry on Failed AI Call
 
@@ -279,12 +320,48 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 
 ### Flowchart Actions (`AIActions.ts:172-203`)
 
-| Action | ID | Auto-apply | Behavior |
-|--------|----|------------|----------|
-| **Explain Flow** | `flowchart-explain` | ❌ No (read-only) | AI describes flowchart as step-by-step process in plain language. Reads all node labels, shapes, and connections. |
-| **Generate Pseudocode** | `flowchart-pseudocode` | ❌ No (read-only) | AI generates pseudocode representing the flowchart logic. Reads all symbols and connections. |
+| Action | ID | Auto-apply | Strategy | Behavior |
+|--------|----|------------|----------|----------|
+| **Generate Diagram** | `flowchart-generate` | ❌ No (Append) | Append | AI generates full flowchart from description in JSON. Append to add to existing diagram. |
+| **Explain Flow** | `flowchart-explain` | ❌ No (read-only) | — | AI describes flowchart as step-by-step process in plain language. Reads all node labels, shapes, and connections. |
+| **Generate Pseudocode** | `flowchart-pseudocode` | ❌ No (read-only) | — | AI generates pseudocode representing the flowchart logic. Reads all symbols and connections. |
+| **Insert Between** | `flowchart-insert` | ❌ No (Append) | Append | AI inserts a new symbol between two connected symbols. User selects source and target nodes, AI generates the intermediate step. |
+| **Import from Description** | `flowchart-import` | ❌ No (Replace) | Replace | AI generates full flowchart from description. Replace wipes the canvas and replaces with AI output. |
 
-Both flowchart actions are read-only — output appears as chat message text only.
+### Flowchart Architecture
+
+#### Shared Helpers (`src/components/ai/actions/flowchartActions.ts`)
+- `buildFlowchartLayout(nodes, edges, options?)` — positions nodes using a layered top-down layout engine with smart decision branch detection
+- **Smart decision branch layout**: detects diamond nodes, shifts Yes-branch descendants right (+180px) and No-branch left (-180px) to prevent overlap
+- `pickClosestHandles(sourceNode, targetNode)` — finds closest edge midpoints for clean connection routing
+- `previewFlowchartContent(nodes, edges, content)` — parses AI response JSON into preview nodes/edges without mutating the canvas
+- `applyInsertBetween(nodes, edges, content, sourceLabel, targetLabel)` — inserts a new node between two connected nodes, rewiring edges
+- `applyReplaceAll(content)` — replaces entire flowchart with AI-generated JSON (for Import from Description)
+- `collectDescendants(nodes, edges, nodeId, excludeNodeIds?)` — BFS descendant traversal for smart layout
+- Edge parser supports multi-format: `sourceLabel/targetLabel`, `source/target`, `from/to`, label-as-fallback
+
+#### SVG Preview Modal (`src/components/flowchart/FlowchartPreviewModal.tsx`)
+- Pure SVG rendering (no ReactFlow) — eliminates XYFlow dual-instance conflict
+- Zoom/pan controls (`scale`, `translate` state via mouse wheel + drag)
+- Smart connection handles via `pickClosestHandles`; smoothstep-style paths between closest edge midpoints
+- Connection dots rendered per node for visual clarity
+
+#### Delete Symbol
+- `deleteNode(nodeId)` in FlowchartView — cascading edge delete
+- Keyboard Delete/Backspace shortcut
+- Delete button in `SymbolPropertiesModal`
+
+#### Auto-Save Guards (FlowchartView)
+- Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef`
+- `isDraggingRef` (ref, not state) skips auto-save during node drag; `onNodeDragStop` triggers single save at final position
+- `handleEdgesChange` + `handleNodesChange` both filter out `type: 'select'` — selection changes never trigger auto-save or content-modified flag
+- `useFlowchartChangeHandler` debounces save at 1.5s, updates `activeFlowchart.data` in workspace state
+
+#### Content Handler Routing
+- FlowchartView registers content handler with `['append', 'replace']` strategies
+- Action ID routing: `flowchart-import` → `applyReplaceAll`, `flowchart-insert` → `applyInsertBetween`, generic → `previewFlowchartContent` + modal
+- `pendingPreview` in FlowchartView stores parsed preview result; modal renders as SVG (no ReactFlow); main canvas state unaffected
+- `pendingContentRef` stores raw AI response text; `handleConfirmAppend` re-parses via `applyToFlowchartContent` then sets state
 
 ### How `buildPrompt` Works
 Each action's `buildPrompt(context)` receives the current view context:

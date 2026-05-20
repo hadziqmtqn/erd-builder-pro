@@ -145,7 +145,7 @@ export const ChatMessages = memo(function ChatMessages({
 
               <div className={`flex flex-col gap-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
                 <div
-                  className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                  className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed overflow-x-auto ${
                     isUser
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/50 border border-border/40'
