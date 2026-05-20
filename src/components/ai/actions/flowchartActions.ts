@@ -29,17 +29,22 @@ function parseJSON(text: string): any {
   }
 }
 
-function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToId: Map<string, string>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[] } | null {
+function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<string, string[]>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[] } | null {
   const parsed = parseJSON(aiResponse);
   if (!parsed || !Array.isArray(parsed.nodes)) return null;
 
-  const labelToId = new Map<string, string>();
+  const labelToIds = new Map<string, string[]>();
   const idToNode = new Map<string | number, string>();
   const newNodes: Node<FlowchartNodeData>[] = [];
 
   parsed.nodes.forEach((nodeData: any, index: number) => {
     const id = `ai_node_${Date.now()}_${index}`;
-    labelToId.set(nodeData.label.toLowerCase(), id);
+    const lower = nodeData.label?.toLowerCase();
+    if (lower) {
+      const existing = labelToIds.get(lower) || [];
+      existing.push(id);
+      labelToIds.set(lower, existing);
+    }
     if (nodeData.id != null) idToNode.set(nodeData.id, id);
     newNodes.push({
       id,
@@ -53,7 +58,7 @@ function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToId: Map<s
     });
   });
 
-  return { parsed, labelToId, idToNode, newNodes };
+  return { parsed, labelToIds, idToNode, newNodes };
 }
 
 // ─── Smart decision branch layout ────────────────────────────
@@ -75,7 +80,7 @@ function collectDescendants(id: string, outgoing: Record<string, string[]>, excl
 function buildFlowchartLayout(
   newNodes: Node<FlowchartNodeData>[],
   parsed: any,
-  labelToId: Map<string, string>,
+  labelToIds: Map<string, string[]>,
   idToNode: Map<string | number, string>,
 ): { positionedNodes: Node<FlowchartNodeData>[]; newEdges: Edge[] } {
   const newEdges: Edge[] = [];
@@ -90,17 +95,38 @@ function buildFlowchartLayout(
   }
 
   function resolveEdgeIds(edgeData: any): [string | undefined, string | undefined] {
-    if (edgeData.sourceLabel || edgeData.targetLabel) {
-      return [labelToId.get(edgeData.sourceLabel?.toLowerCase()), labelToId.get(edgeData.targetLabel?.toLowerCase())];
+    function resolveByLabel(label: string | undefined): string | undefined {
+      if (!label) return undefined;
+      const ids = labelToIds.get(label.toLowerCase());
+      if (ids?.length === 1) return ids[0];
+      if (ids?.length && ids.length > 1) return ids[0];
+      return undefined;
     }
-    const srcKey = edgeData.source ?? edgeData.from;
-    const tgtKey = edgeData.target ?? edgeData.to;
-    if (srcKey != null && tgtKey != null) {
-      const fromId = idToNode.get(srcKey) || labelToId.get(String(srcKey).toLowerCase());
-      const toId = idToNode.get(tgtKey) || labelToId.get(String(tgtKey).toLowerCase());
-      if (fromId && toId) return [fromId, toId];
+
+    function resolveNode(key: 'source' | 'target'): string | undefined {
+      const idxKey = key === 'source' ? 'sourceIndex' : 'targetIndex';
+      const labelKey = key === 'source' ? 'sourceLabel' : 'targetLabel';
+
+      if (edgeData[idxKey] != null) {
+        const idx = Number(edgeData[idxKey]) - 1;
+        if (idx >= 0 && idx < newNodes.length) return newNodes[idx].id;
+      }
+
+      const label = edgeData[labelKey];
+      if (label) {
+        const id = resolveByLabel(label);
+        if (id) return id;
+      }
+
+      const legacyKey = key === 'source' ? (edgeData.source ?? edgeData.from) : (edgeData.target ?? edgeData.to);
+      if (legacyKey != null) {
+        return idToNode.get(legacyKey) || resolveByLabel(String(legacyKey));
+      }
+
+      return undefined;
     }
-    return [undefined, undefined];
+
+    return [resolveNode('source'), resolveNode('target')];
   }
 
   const allEdgeLabels: Record<string, Record<string, string>> = {};
@@ -333,8 +359,8 @@ export function applyToFlowchartContent(
   const result = parseNodesAndEdges(aiResponse);
   if (!result) return null;
 
-  const { parsed, labelToId, idToNode, newNodes } = result;
-  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToId, idToNode);
+  const { parsed, labelToIds, idToNode, newNodes } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode);
 
   // Offset new nodes below existing ones
   const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 160), 50);
@@ -353,8 +379,8 @@ export function previewFlowchartContent(aiResponse: string): FlowchartApplyResul
   const result = parseNodesAndEdges(aiResponse);
   if (!result) return null;
 
-  const { parsed, labelToId, idToNode, newNodes } = result;
-  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToId, idToNode);
+  const { parsed, labelToIds, idToNode, newNodes } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode);
 
   return { nodes: positionedNodes, edges: newEdges };
 }
@@ -464,33 +490,6 @@ export function applyInsertBetween(
     nodes: [...currentNodes, newNode],
     edges: [...updatedEdges, newEdge1, newEdge2],
   };
-}
-
-// ─── Apply color scheme to existing nodes ────────────────────
-export function applyColorScheme(
-  currentNodes: Node<FlowchartNodeData>[],
-  aiResponse: string,
-): { nodes: Node<FlowchartNodeData>[] } | null {
-  const parsed = parseJSON(aiResponse);
-  if (!parsed || !parsed.colors) return null;
-
-  const colors = parsed.colors as Record<string, string>;
-
-  const updatedNodes = currentNodes.map(n => {
-    const matchLabel = colors[n.data.label];
-    if (matchLabel) {
-      return { ...n, data: { ...n.data, color: matchLabel } };
-    }
-    // Also check case-insensitive
-    for (const [key, val] of Object.entries(colors)) {
-      if (key.toLowerCase() === n.data.label.toLowerCase()) {
-        return { ...n, data: { ...n.data, color: val } };
-      }
-    }
-    return n;
-  });
-
-  return { nodes: updatedNodes };
 }
 
 // ─── Replace all nodes/edges with AI-generated content ───────

@@ -85,6 +85,7 @@ export const AIChatPanel = ({
     flowchart: 'flowchart',
   };
   const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
+  const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
   const actions = currentViewType ? getActionsForView(currentViewType) : [];
 
   // ─── Auto-fill prompt from AI action buttons ──────
@@ -289,6 +290,7 @@ export const AIChatPanel = ({
           contentHandlerStrategies={contentHandlerStrategies}
           lastActionId={lastActionId}
           applyContent={applyContent}
+          contentCheckType={contentCheckType}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}

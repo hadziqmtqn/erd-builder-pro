@@ -27,6 +27,7 @@ import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
+import { useUndoRedo } from '@/hooks/useUndoRedo';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -69,6 +70,8 @@ export const FlowchartView = React.memo(({
   const isEditingNodeRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
+  const { takeSnapshot } = useUndoRedo();
+  const pendingApplyModeRef = React.useRef<'append' | 'insert' | 'replace'>('append');
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
@@ -324,31 +327,45 @@ export const FlowchartView = React.memo(({
     const unregister = registerContentHandler((content, strategy, actionId) => {
       pendingActionIdRef.current = actionId || null;
 
-      // Insert symbol between existing nodes
+      // Insert — show preview (ignores strategy)
       if (actionId === 'flowchart-insert') {
         const result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
         if (result && result.nodes.length > 0) {
-          setNodes(result.nodes);
-          setEdges(result.edges);
+          pendingContentRef.current = content;
+          pendingApplyModeRef.current = 'insert';
+          setPendingPreview(result);
           return;
         }
       }
 
-      // Import — replace all
-      if (actionId === 'flowchart-import' && strategy === 'replace') {
-        const result = applyReplaceAll(content);
-        if (result && result.nodes.length > 0) {
-          setNodes(result.nodes);
-          setEdges(result.edges);
+      // Import — show preview in replace mode (ignores strategy)
+      if (actionId === 'flowchart-import') {
+        const preview = previewFlowchartContent(content);
+        if (preview && preview.nodes.length > 0) {
+          pendingContentRef.current = content;
+          pendingApplyModeRef.current = 'replace';
+          setPendingPreview(preview);
           return;
         }
       }
 
-      // Generate — default append with preview
+      // Append — preview with append mode
       if (strategy === 'append') {
         const preview = previewFlowchartContent(content);
         if (preview && preview.nodes.length > 0) {
           pendingContentRef.current = content;
+          pendingApplyModeRef.current = 'append';
+          setPendingPreview(preview);
+          return;
+        }
+      }
+
+      // Replace — preview with replace mode (generic, no actionId)
+      if (strategy === 'replace') {
+        const preview = previewFlowchartContent(content);
+        if (preview && preview.nodes.length > 0) {
+          pendingContentRef.current = content;
+          pendingApplyModeRef.current = 'replace';
           setPendingPreview(preview);
           return;
         }
@@ -356,19 +373,30 @@ export const FlowchartView = React.memo(({
     }, ['append', 'replace']);
 
     return unregister;
-  }, [registerContentHandler, setNodes, setEdges]);
+  }, [registerContentHandler, setNodes, setEdges, takeSnapshot]);
 
   const handleConfirmAppend = useCallback(() => {
     const content = pendingContentRef.current;
     if (!content) return;
-    const result = applyToFlowchartContent(nodesRef.current, edgesRef.current, content);
+
+    takeSnapshot(nodesRef.current, edgesRef.current);
+
+    let result: FlowchartApplyResult | null = null;
+    if (pendingApplyModeRef.current === 'insert') {
+      result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
+    } else if (pendingApplyModeRef.current === 'replace') {
+      result = applyReplaceAll(content);
+    } else {
+      result = applyToFlowchartContent(nodesRef.current, edgesRef.current, content);
+    }
+
     if (result) {
       setNodes(result.nodes);
       setEdges(result.edges);
     }
     setPendingPreview(null);
     pendingContentRef.current = null;
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, takeSnapshot]);
   
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
@@ -488,6 +516,7 @@ export const FlowchartView = React.memo(({
           edges={pendingPreview.edges}
           onConfirm={handleConfirmAppend}
           onCancel={() => { setPendingPreview(null); pendingContentRef.current = null; }}
+          confirmLabel={pendingApplyModeRef.current === 'insert' ? 'Confirm Insert' : pendingApplyModeRef.current === 'replace' ? 'Confirm Replace' : 'Confirm Append'}
         />
       )}
     </Card>
