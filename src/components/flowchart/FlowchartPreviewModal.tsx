@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { Node, Edge } from '@xyflow/react';
 import {
   Dialog,
@@ -16,6 +16,70 @@ interface FlowchartPreviewModalProps {
   edges: Edge[];
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+const NODE_W = 160;
+const NODE_H = 60;
+const ICON_SIZE = 32;
+
+type HandleSide = 'top' | 'bottom' | 'left' | 'right';
+
+function getHandlePos(x: number, y: number, side: HandleSide) {
+  switch (side) {
+    case 'top':    return { x: x + NODE_W / 2, y };
+    case 'bottom': return { x: x + NODE_W / 2, y: y + NODE_H };
+    case 'left':   return { x, y: y + NODE_H / 2 };
+    case 'right':  return { x: x + NODE_W, y: y + NODE_H / 2 };
+  }
+}
+
+function pickClosestHandles(srcNode: Node, tgtNode: Node): { sourceHandle: HandleSide; targetHandle: HandleSide } {
+  const sx = srcNode.position.x;
+  const sy = srcNode.position.y;
+  const tx = tgtNode.position.x;
+  const ty = tgtNode.position.y;
+
+  const handles: HandleSide[] = ['top', 'bottom', 'left', 'right'];
+  let bestDist = Infinity;
+  let bestSrc: HandleSide = 'bottom';
+  let bestTgt: HandleSide = 'top';
+
+  for (const sh of handles) {
+    const sp = getHandlePos(sx, sy, sh);
+    for (const th of handles) {
+      const tp = getHandlePos(tx, ty, th);
+      const dx = sp.x - tp.x;
+      const dy = sp.y - tp.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSrc = sh;
+        bestTgt = th;
+      }
+    }
+  }
+
+  return { sourceHandle: bestSrc, targetHandle: bestTgt };
+}
+
+function buildSmartEdgePath(
+  srcPos: { x: number; y: number },
+  srcSide: HandleSide,
+  tgtPos: { x: number; y: number },
+  tgtSide: HandleSide,
+): string {
+  const verticalPool = srcSide === 'bottom' || srcSide === 'top' || tgtSide === 'bottom' || tgtSide === 'top';
+  const horizontalPool = srcSide === 'left' || srcSide === 'right' || tgtSide === 'left' || tgtSide === 'right';
+
+  if (verticalPool) {
+    const midY = (srcPos.y + tgtPos.y) / 2;
+    return `M${srcPos.x},${srcPos.y} L${srcPos.x},${midY} L${tgtPos.x},${midY} L${tgtPos.x},${tgtPos.y}`;
+  }
+  if (horizontalPool) {
+    const midX = (srcPos.x + tgtPos.x) / 2;
+    return `M${srcPos.x},${srcPos.y} L${midX},${srcPos.y} L${midX},${tgtPos.y} L${tgtPos.x},${tgtPos.y}`;
+  }
+  return `M${srcPos.x},${srcPos.y} L${tgtPos.x},${tgtPos.y}`;
 }
 
 function renderShape(shape: string, color: string, size: number) {
@@ -63,11 +127,35 @@ export function FlowchartPreviewModal({
   const panOffset = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  if (nodes.length === 0) return null;
+  const nodeMap = useMemo(() => {
+    const m = new Map<string, Node<FlowchartNodeData>>();
+    for (const n of nodes) m.set(n.id, n);
+    return m;
+  }, [nodes]);
 
-  const NODE_W = 160;
-  const NODE_H = 60;
-  const ICON_SIZE = 32;
+  const edgePaths = useMemo(() => {
+    return edges.map((edge) => {
+      const srcNode = nodeMap.get(edge.source);
+      const tgtNode = nodeMap.get(edge.target);
+      if (!srcNode || !tgtNode) return null;
+
+      const srcSide = (edge.sourceHandle as HandleSide) || pickClosestHandles(srcNode, tgtNode).sourceHandle;
+      const tgtSide = (edge.targetHandle as HandleSide) || pickClosestHandles(srcNode, tgtNode).targetHandle;
+
+      const srcPos = getHandlePos(srcNode.position.x, srcNode.position.y, srcSide);
+      const tgtPos = getHandlePos(tgtNode.position.x, tgtNode.position.y, tgtSide);
+
+      return {
+        id: edge.id,
+        d: buildSmartEdgePath(srcPos, srcSide, tgtPos, tgtSide),
+        label: edge.label,
+        srcPos,
+        tgtPos,
+      };
+    }).filter(Boolean);
+  }, [edges, nodeMap]);
+
+  if (nodes.length === 0) return null;
 
   const xs = nodes.map(n => n.position.x);
   const ys = nodes.map(n => n.position.y);
@@ -142,73 +230,89 @@ export function FlowchartPreviewModal({
                   </marker>
                 </defs>
 
-                {edges.map((edge) => {
-                  const source = nodes.find(n => n.id === edge.source);
-                  const target = nodes.find(n => n.id === edge.target);
-                  if (!source || !target) return null;
-
-                  const sx = source.position.x + NODE_W / 2;
-                  const sy = source.position.y + NODE_H;
-                  const tx = target.position.x + NODE_W / 2;
-                  const ty = target.position.y;
-                  const cy = (sy + ty) / 2;
-
+                {edgePaths.map((ep) => {
+                  if (!ep) return null;
                   return (
-                    <g key={edge.id}>
+                    <g key={ep.id}>
                       <path
-                        d={`M${sx},${sy} C${sx},${cy} ${tx},${cy} ${tx},${ty}`}
+                        d={ep.d}
                         fill="none"
                         stroke="#b1b1b7"
                         strokeWidth={2}
                         markerEnd="url(#arrow-preview)"
                       />
-                      {edge.label && (
+                      {ep.label && (
                         <text
-                          x={(sx + tx) / 2}
-                          y={cy - 8}
+                          x={(ep.srcPos.x + ep.tgtPos.x) / 2}
+                          y={(ep.srcPos.y + ep.tgtPos.y) / 2 - 8}
                           textAnchor="middle"
                           fill="#fff"
                           fontSize={11}
                           className="select-none"
                         >
-                          {edge.label}
+                          {ep.label}
                         </text>
                       )}
                     </g>
                   );
                 })}
 
-                {nodes.map((node) => (
-                  <g key={node.id}>
-                    <rect
-                      x={node.position.x}
-                      y={node.position.y}
-                      width={NODE_W}
-                      height={NODE_H}
-                      rx={8}
-                      ry={8}
-                      fill={node.data.color || '#8b5cf6'}
-                      fillOpacity={0.15}
-                      stroke={node.data.color || '#8b5cf6'}
-                      strokeWidth={2}
-                      strokeOpacity={0.6}
-                    />
-                    <g transform={`translate(${node.position.x + 8}, ${node.position.y + (NODE_H - ICON_SIZE) / 2})`}>
-                      {renderShape(node.data.shape || 'rectangle', node.data.color || '#8b5cf6', ICON_SIZE)}
+                {nodes.map((node) => {
+                  const sx = node.position.x;
+                  const sy = node.position.y;
+                  const color = node.data.color || '#8b5cf6';
+
+                  return (
+                    <g key={node.id}>
+                      {/* Connection handle dots */}
+                      {(['top', 'bottom', 'left', 'right'] as HandleSide[]).map((side) => {
+                        const hp = getHandlePos(sx, sy, side);
+                        const isConnected = edges.some(
+                          e => (e.source === node.id && (e.sourceHandle === side || !e.sourceHandle)) ||
+                               (e.target === node.id && (e.targetHandle === side || !e.targetHandle))
+                        );
+                        return (
+                          <circle
+                            key={side}
+                            cx={hp.x}
+                            cy={hp.y}
+                            r={isConnected ? 3 : 2}
+                            fill={isConnected ? color : '#555'}
+                            opacity={isConnected ? 0.9 : 0.4}
+                          />
+                        );
+                      })}
+
+                      <rect
+                        x={sx}
+                        y={sy}
+                        width={NODE_W}
+                        height={NODE_H}
+                        rx={8}
+                        ry={8}
+                        fill={color}
+                        fillOpacity={0.15}
+                        stroke={color}
+                        strokeWidth={2}
+                        strokeOpacity={0.6}
+                      />
+                      <g transform={`translate(${sx + 8}, ${sy + (NODE_H - ICON_SIZE) / 2})`}>
+                        {renderShape(node.data.shape || 'rectangle', color, ICON_SIZE)}
+                      </g>
+                      <text
+                        x={sx + ICON_SIZE + 16}
+                        y={sy + NODE_H / 2}
+                        dominantBaseline="central"
+                        fill="#fff"
+                        fontSize={12}
+                        fontWeight={500}
+                        className="select-none"
+                      >
+                        {node.data.label}
+                      </text>
                     </g>
-                    <text
-                      x={node.position.x + ICON_SIZE + 16}
-                      y={node.position.y + NODE_H / 2}
-                      dominantBaseline="central"
-                      fill="#fff"
-                      fontSize={12}
-                      fontWeight={500}
-                      className="select-none"
-                    >
-                      {node.data.label}
-                    </text>
-                  </g>
-                ))}
+                  );
+                })}
               </svg>
             </div>
           </div>
