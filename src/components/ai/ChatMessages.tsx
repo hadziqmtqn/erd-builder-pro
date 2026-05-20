@@ -3,6 +3,35 @@ import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AIChatMessage } from '@/types';
+
+function hasFlowchartJSON(content: string): boolean {
+  const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed && Array.isArray(parsed.nodes)) return true;
+    } catch { /* ignore */ }
+  }
+  try {
+    const parsed = JSON.parse(content.trim());
+    if (parsed && Array.isArray(parsed.nodes)) return true;
+  } catch { /* ignore */ }
+  return false;
+}
+
+function hasSQLContent(content: string): boolean {
+  // Check for SQL DDL statements (CREATE TABLE, ALTER TABLE) inside or outside code blocks
+  const sqlKeywords = /\b(CREATE\s+TABLE|ALTER\s+TABLE|INSERT\s+INTO)\b/i;
+  const blockRegex = /```(?:\w*)\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    if (sqlKeywords.test(match[1])) return true;
+  }
+  // Also check raw text outside code blocks
+  if (sqlKeywords.test(content)) return true;
+  return false;
+}
 import { Button } from '@/components/ui/button';
 import { CodeBlock } from './CodeBlock';
 
@@ -27,6 +56,7 @@ export interface ChatMessagesProps {
   contentHandlerStrategies: string[];
   lastActionId: string | null;
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => void;
+  contentCheckType?: 'flowchart' | 'erd' | 'none';
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -45,6 +75,7 @@ export const ChatMessages = memo(function ChatMessages({
   contentHandlerStrategies,
   lastActionId,
   applyContent,
+  contentCheckType = 'none',
 }: ChatMessagesProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -281,7 +312,7 @@ export const ChatMessages = memo(function ChatMessages({
 
                 {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                   <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
-                    {hasContentHandler && (
+                    {hasContentHandler && (contentCheckType === 'none' || (contentCheckType === 'flowchart' && hasFlowchartJSON(msg.content)) || (contentCheckType === 'erd' && hasSQLContent(msg.content))) && (
                       <>
                         {contentHandlerStrategies.includes('replace') && (
                           <button

@@ -16,6 +16,7 @@ interface FlowchartPreviewModalProps {
   edges: Edge[];
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
 }
 
 const NODE_W = 160;
@@ -119,6 +120,7 @@ export function FlowchartPreviewModal({
   edges,
   onConfirm,
   onCancel,
+  confirmLabel = 'Confirm Append',
 }: FlowchartPreviewModalProps) {
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -172,7 +174,7 @@ export function FlowchartPreviewModal({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (scale <= 1) return;
+    if (scale <= 0.5) return;
     isPanning.current = true;
     panStart.current = { x: e.clientX, y: e.clientY };
     panOffset.current = { x: pan.x, y: pan.y };
@@ -209,7 +211,7 @@ export function FlowchartPreviewModal({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{ cursor: scale > 1 ? (isPanning.current ? 'grabbing' : 'grab') : 'default' }}
+            style={{ cursor: scale > 0.5 ? (isPanning.current ? 'grabbing' : 'grab') : 'default' }}
           >
             <div
               style={{
@@ -336,7 +338,7 @@ export function FlowchartPreviewModal({
               </Button>
               <Button onClick={onConfirm} className="gap-2">
                 <Check className="size-4" />
-                Confirm Append
+                {confirmLabel}
               </Button>
             </div>
           </div>

@@ -141,7 +141,8 @@ Instruction:
 3. Node shapes (use ONLY these exact values — do not use descriptions like "Start/End"): "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
 4. Colors: Use hex codes from this palette — Emerald (#10b981) for start/end, Violet (#8b5cf6) for processes, Amber (#f59e0b) for decisions, Rose (#f43f5e) for errors, Sky (#0ea5e9) for I/O, Teal (#14b8a6) for data, Orange (#f97316) for external systems.
 5. For edges, use "sourceLabel" and "targetLabel" matching the node labels exactly. Do NOT use "from"/"to" or numeric ids.
-6. For diamond (decision) nodes, ALWAYS label the outgoing edges: "Yes" for the true/positive branch, "No" for the false/negative branch.
+6. Use UNIQUE labels for every node — do not create two nodes with the same label. If duplicate labels are unavoidable, use "sourceIndex" and "targetIndex" (1‑based, matching the [#N] numbers from the existing symbols context) instead of "sourceLabel"/"targetLabel" to disambiguate.
+7. For diamond (decision) nodes, ALWAYS label the outgoing edges: "Yes" for the true/positive branch, "No" for the false/negative branch.
 
 Example with decision branching:
 \`\`\`json
@@ -205,8 +206,9 @@ Instructions:
    - "newNode": object with "label", "shape", and "color" for the new symbol
    - "insertEdgeLabel1" (optional): label for the edge from source to new node
    - "insertEdgeLabel2" (optional): label for the edge from new node to target
+   - Resolution priority (highest → lowest): "sourceGroupId"/"targetGroupId" → "sourceIndex"/"targetIndex" → "sourceLabel"/"targetLabel"
    - If two symbols have the same label, use "sourceIndex" and "targetIndex" (the [#] number from the symbols list above) instead of sourceLabel/targetLabel to disambiguate
-   - If you need to reference a specific group, use "sourceGroupId" or "targetGroupId" (the [id:...] value from the context above) — this takes highest priority
+   - If you need to reference a specific group, use "sourceGroupId" or "targetGroupId" (the [id:...] value from the context above)
 
 Example:
 \`\`\`json
@@ -241,8 +243,9 @@ Instructions:
 3. Node shapes (use ONLY these exact values): "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
 4. Colors: Use hex codes from this palette — Emerald (#10b981) for start/end, Violet (#8b5cf6) for processes, Amber (#f59e0b) for decisions, Rose (#f43f5e) for errors/paths, Sky (#0ea5e9) for I/O.
 5. For edges, use "sourceLabel" and "targetLabel" matching the node labels exactly.
-6. For diamond (decision) nodes, ALWAYS label the outgoing edges: "Yes" for the true/positive branch, "No" for the false/negative branch.
-7. You MUST always include a Start (oval) and End (oval) node.
+6. Use UNIQUE labels for every node — do not create two nodes with the same label. If duplicate labels are unavoidable, use "sourceIndex" and "targetIndex" (1‑based) instead of "sourceLabel"/"targetLabel" to disambiguate.
+7. For diamond (decision) nodes, ALWAYS label the outgoing edges: "Yes" for the true/positive branch, "No" for the false/negative branch.
+8. You MUST always include a Start (oval) and End (oval) node.
 
 Example:
 \`\`\`json

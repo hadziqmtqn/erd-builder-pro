@@ -75,6 +75,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 ## Removed Features
 
 - **Replace Selected** — removed entirely (context: `selectionRange`, `setSelectionRange`, `replaceSelectedText`, `registerReplaceSelected`; UI: Scissors button in AIChatPanel; handler in TiptapEditor/NotesView). The `insertContentAt` + `marked.parse` combo failed because `marked.parse` wraps in `<p>` (block) which can't be inserted inline — schema rejects nested paragraphs.
+- **`applyColorScheme`** — removed from `flowchartActions.ts`. Fungsi mapping label → hex color tidak pernah di-wire ke action apapun dan dianggap tidak sesuai best practice (warna tidak boleh dipaksakan per label oleh AI).
 
 ## Notable Conventions
 
@@ -126,10 +127,12 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 3. `useTableViewPagination` has `tableRefreshKey` in all 4 `useEffect` dependency arrays — whenever it changes, the current page is re-fetched from the server
 4. This ensures the correct data fills the gap left by the deletion
 
+**Sidebar blink fix**: The original `tableRefreshKey` re-fetch called `fetchFlowchains(false, ...)` tanpa `silent: true`, which set `setIsFlowchartsLoading(true)`. This propagated to `FileGroup` (`nav-projects.tsx:350` → `isFilesLoading`), yang menampilkan **skeleton loader** alih-alih daftar file sidebar (semua data "hilang") lalu muncul lagi setelah fetch selesai. Fix: semua panggilan `fetch*` di `useTableViewPagination` sekarang pakai `{ silent: true }` — data di-refresh tanpa mengubah loading state, sidebar tidak berkedip.
+
 **Files involved**:
 - `src/providers/WorkspaceContext.tsx`: added `triggerTableRefresh: () => void` to interface
 - `src/providers/WorkspaceProvider.tsx`: added `tableRefreshKey` state + `triggerTableRefresh` callback, passed to context value and `useTableViewPagination`
-- `src/hooks/useTableViewPagination.ts`: added `tableRefreshKey` to params interface + all 4 `useEffect` dep arrays
+- `src/hooks/useTableViewPagination.ts`: added `tableRefreshKey` to params interface + all 4 `useEffect` dep arrays, added `{ silent: true }` to all fetch calls
 - `src/routes/AppLayout.tsx`: added `triggerTableRefresh` call in `onAfterDelete`
 
 ## AI Context for Notes (markdown-aware)
@@ -170,6 +173,14 @@ src/components/ai/
 - `error` variable from `useAIChat` no longer destructured in AIChatPanel (unused).
 - All imported from `src/components/ai/` subdirectory; Prism imports (`prismjs/components/prism-sql`, etc.) moved into `ChatMessages.tsx` where `ReactMarkdown` + `CodeBlock` are used.
 - `chatContainerRef` / `scrollContainerRef` naming: `ChatMessages` uses `scrollContainerRef` internally (same DOM element, renamed for clarity).
+
+### Auto-hide Apply Buttons
+
+- `contentCheckType` prop on `ChatMessages`: `'flowchart'` | `'erd'` | `'none'` (computed from `entityType` in AIChatPanel)
+- When `contentCheckType === 'flowchart'`, Replace/Append buttons only render if `hasFlowchartJSON(content)` returns true (message contains JSON with `nodes` array)
+- When `contentCheckType === 'erd'`, Replace/Append buttons only render if `hasSQLContent(content)` returns true (message contains SQL DDL — `CREATE TABLE`, `ALTER TABLE`, `INSERT INTO`)
+- When `contentCheckType === 'none'` (notes, etc.), buttons always render
+- **Copy button always visible** — rendered outside the content-check conditional, so it appears on every message regardless of content type
 
 ## User Message Collapse
 
@@ -380,7 +391,7 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 ### Flowchart Architecture
 
 #### Shared Helpers (`src/components/ai/actions/flowchartActions.ts`)
-- `buildFlowchartLayout(nodes, edges, options?)` — positions nodes using a layered top-down layout engine with smart decision branch detection
+- `buildFlowchartLayout(nodes, parsed, labelToIds, idToNode)` — positions nodes using a layered top-down layout engine with smart decision branch detection
 - **Smart decision branch layout**: detects diamond nodes, shifts Yes-branch descendants right (+180px) and No-branch left (-180px) to prevent overlap
 - `pickClosestHandles(sourceNode, targetNode)` — finds closest edge midpoints for clean connection routing
 - `previewFlowchartContent(nodes, edges, content)` — parses AI response JSON into preview nodes/edges without mutating the canvas
@@ -388,12 +399,15 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - `applyReplaceAll(content)` — replaces entire flowchart with AI-generated JSON (for Import from Description)
 - `collectDescendants(nodes, edges, nodeId, excludeNodeIds?)` — BFS descendant traversal for smart layout
 - Edge parser supports multi-format: `sourceLabel/targetLabel`, `source/target`, `from/to`, label-as-fallback
+- **`labelToIds`** (`Map<string, string[]>`): array-based label mapping (supports duplicate labels). `resolveEdgeIds` uses `sourceIndex`/`targetIndex` (1‑based) as highest priority, then `sourceLabel`/`targetLabel`, then legacy `source`/`from`. If label lookup finds >1 match, resolves to the first entry.
 
 #### SVG Preview Modal (`src/components/flowchart/FlowchartPreviewModal.tsx`)
 - Pure SVG rendering (no ReactFlow) — eliminates XYFlow dual-instance conflict
 - Zoom/pan controls (`scale`, `translate` state via mouse wheel + drag)
+- Grab cursor (`grab`/`grabbing`) activates when scale > 0.5 (50% zoom) — panning enabled at that threshold
 - Smart connection handles via `pickClosestHandles`; smoothstep-style paths between closest edge midpoints
 - Connection dots rendered per node for visual clarity
+- `confirmLabel` optional prop (default `"Confirm Append"`) — FlowchartView passes `"Confirm Insert"` for Insert Between mode
 
 #### Delete Symbol
 - `deleteNode(nodeId)` in FlowchartView — cascading edge delete
@@ -414,6 +428,8 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Action ID routing: `flowchart-import` → `applyReplaceAll`, `flowchart-insert` → `applyInsertBetween`, generic → `previewFlowchartContent` + modal
 - `pendingPreview` in FlowchartView stores parsed preview result; modal renders as SVG (no ReactFlow); main canvas state unaffected
 - `pendingContentRef` stores raw AI response text; `handleConfirmAppend` re-parses via `applyToFlowchartContent` then sets state
+- **Insert Between now shows preview** via `FlowchartPreviewModal` (was direct apply). `pendingApplyModeRef` tracks `'insert'` vs `'append'`; `handleConfirmAppend` calls `applyInsertBetween()` in insert mode.
+- **Undo for AI changes**: `useUndoRedo().takeSnapshot()` called before every AI mutation (import replace, handleConfirmAppend). Same hook as ERD — saves node/edge state snapshots. No undo/redo UI yet (future work).
 
 ## Lazy Render Optimizations
 
