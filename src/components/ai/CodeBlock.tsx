@@ -31,13 +31,13 @@ export function CodeBlock({ className, children }: { className?: string; childre
         {highlighted ? (
           <pre
             className="p-3 text-xs leading-relaxed m-0 bg-transparent"
-            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', tabSize: 2 }}
+            style={{ whiteSpace: lang ? 'pre-wrap' : 'pre', wordBreak: lang ? 'break-word' : 'normal', tabSize: 2 }}
             dangerouslySetInnerHTML={{ __html: highlighted }}
           />
         ) : (
           <pre
             className="p-3 text-xs leading-relaxed m-0 bg-transparent"
-            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', tabSize: 2 }}
+            style={{ whiteSpace: lang ? 'pre-wrap' : 'pre', wordBreak: lang ? 'break-word' : 'normal', tabSize: 2 }}
           >
             <code>{code}</code>
           </pre>

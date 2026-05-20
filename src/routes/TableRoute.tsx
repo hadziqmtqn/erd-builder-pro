@@ -19,6 +19,7 @@ export function TableRoute() {
     handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
     handleOpenEditDocument, handleOpenCreateDocument,
     setItemToDelete, setIsMoveToTrashAlertOpen,
+    setTableDeleteDoc,
   } = useWorkspace();
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
@@ -44,6 +45,7 @@ export function TableRoute() {
     const item = items?.find((n: any) => n.uid === uid || String(n.id) === uid || n.key === uid);
     if (!item) return;
     setItemToDelete({ id: item.id || item.uid, type: item.type, uid: item.uid });
+    setTableDeleteDoc(item);
     setIsMoveToTrashAlertOpen(true);
   };
 

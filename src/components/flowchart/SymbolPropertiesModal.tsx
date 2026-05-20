@@ -29,6 +29,16 @@ interface SymbolPropertiesModalProps {
   onDeleteNode: () => void;
 }
 
+const RESERVED_LABELS = ['start', 'end'];
+
+function isReservedLabel(label: string): boolean {
+  return RESERVED_LABELS.includes(label.trim().toLowerCase());
+}
+
+function isStartNode(node: Node<FlowchartNodeData>): boolean {
+  return node.data.label.trim().toLowerCase() === 'start';
+}
+
 export function SymbolPropertiesModal({
   selectedNodeId,
   onClose,
@@ -36,6 +46,9 @@ export function SymbolPropertiesModal({
   onUpdateNodeData,
   onDeleteNode,
 }: SymbolPropertiesModalProps) {
+  const reserved = selectedNode ? isReservedLabel(selectedNode.data.label) : false;
+  const isStart = selectedNode ? isStartNode(selectedNode) : false;
+
   return (
     <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-sm">
@@ -55,14 +68,32 @@ export function SymbolPropertiesModal({
                 onChange={(e) => onUpdateNodeData({ label: e.target.value })}
                 placeholder="Enter symbol label"
                 className="bg-black/50 border-white/10 text-white"
+                disabled={reserved}
               />
+              {reserved && (
+                <p className="text-[10px] text-muted-foreground/50">Label ini absolut dan tidak bisa diubah.</p>
+              )}
             </div>
+
+            {isStart && (
+              <div className="space-y-2">
+                <Label>Group Title</Label>
+                <Input 
+                  value={selectedNode.data.section || ''}
+                  onChange={(e) => onUpdateNodeData({ section: e.target.value || undefined })}
+                  placeholder="e.g. Pengajuan Cuti"
+                  className="bg-black/50 border-white/10 text-white"
+                />
+                <p className="text-[10px] text-muted-foreground/50">Nama grup untuk alur yang dimulai dari sini.</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Shape Type</Label>
               <Select 
                 value={selectedNode.data.shape} 
-                onValueChange={(val: FlowchartShape) => onUpdateNodeData({ shape: val })}
+                onValueChange={(val: FlowchartShape | null) => val && onUpdateNodeData({ shape: val })}
+                disabled={reserved}
               >
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
                   <SelectValue placeholder="Select a shape">
@@ -80,6 +111,9 @@ export function SymbolPropertiesModal({
                   <SelectItem value="circle">Circle (Connector)</SelectItem>
                 </SelectContent>
               </Select>
+              {reserved && (
+                <p className="text-[10px] text-muted-foreground/50">Shape tidak bisa diubah untuk Start/End.</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -102,10 +136,14 @@ export function SymbolPropertiesModal({
                 size="sm"
                 className="w-full gap-2"
                 onClick={() => { onDeleteNode(); onClose(); }}
+                disabled={reserved}
               >
                 <Trash2 className="size-4" />
                 Delete Symbol
               </Button>
+              {reserved && (
+                <p className="text-[10px] text-muted-foreground/50 text-center mt-1">Start/End tidak bisa dihapus.</p>
+              )}
             </div>
           </DialogBody>
         )}

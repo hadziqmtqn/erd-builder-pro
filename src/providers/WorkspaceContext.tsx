@@ -253,6 +253,7 @@ export interface WorkspaceContextValue {
   tableSearchParams: URLSearchParams;
   setTableSearchParams: any;
   tablePage: number;
+  triggerTableRefresh: () => void;
 
   // Page-specific breadcrumb (set by Page components like DashboardPage, NotesPage, etc.)
   breadcrumbLabel: string | null;

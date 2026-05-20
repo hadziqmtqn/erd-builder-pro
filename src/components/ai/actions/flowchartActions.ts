@@ -372,15 +372,41 @@ export function applyInsertBetween(
   const targetLabel = parsed.targetLabel || parsed.target;
   const newNodeData = parsed.newNode;
 
-  if (!sourceLabel || !targetLabel || !newNodeData) return null;
+  if (!newNodeData) return null;
 
-  // Find source and target nodes by label (case-insensitive)
-  const sourceNode = currentNodes.find(
-    n => n.data.label.toLowerCase() === sourceLabel.toLowerCase()
-  );
-  const targetNode = currentNodes.find(
-    n => n.data.label.toLowerCase() === targetLabel.toLowerCase()
-  );
+  // Resolve source: prefer groupId, then index (1-based), then label (case-insensitive)
+  let sourceNode: Node<FlowchartNodeData> | undefined;
+  if (parsed.sourceGroupId) {
+    sourceNode = currentNodes.find(
+      n => n.data.groupId === parsed.sourceGroupId
+    );
+  }
+  if (!sourceNode && parsed.sourceIndex != null) {
+    const idx = Number(parsed.sourceIndex) - 1;
+    sourceNode = currentNodes[idx];
+  }
+  if (!sourceNode && sourceLabel) {
+    sourceNode = currentNodes.find(
+      n => n.data.label.toLowerCase() === sourceLabel.toLowerCase()
+    );
+  }
+
+  // Resolve target: prefer groupId, then index, then label
+  let targetNode: Node<FlowchartNodeData> | undefined;
+  if (parsed.targetGroupId) {
+    targetNode = currentNodes.find(
+      n => n.data.groupId === parsed.targetGroupId
+    );
+  }
+  if (!targetNode && parsed.targetIndex != null) {
+    const idx = Number(parsed.targetIndex) - 1;
+    targetNode = currentNodes[idx];
+  }
+  if (!targetNode && targetLabel) {
+    targetNode = currentNodes.find(
+      n => n.data.label.toLowerCase() === targetLabel.toLowerCase()
+    );
+  }
 
   if (!sourceNode || !targetNode) return null;
 

@@ -186,6 +186,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(flowchart);
         setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
+        setFlowchartsTotal(prev => Math.max(0, prev - 1));
         if (activeFlowchartId !== null) {
           const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
@@ -196,9 +197,12 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${uid}`, { method: 'DELETE' });
+      const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
+      const identifier = flowchart?.uid || uid;
+      const res = await fetch(`/api/flowcharts/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
+        setFlowchartsTotal(prev => Math.max(0, prev - 1));
         if (activeFlowchartId !== null) {
           const fc = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
           if (fc && String(activeFlowchartId) === String(fc.id)) setActiveFlowchartId(null);
@@ -281,7 +285,9 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${uid}/restore`, { method: 'POST' });
+      const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
+      const identifier = flowchart?.uid || uid;
+      const res = await fetch(`/api/flowcharts/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored successfully');
@@ -299,7 +305,9 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${uid}/permanent`, { method: 'DELETE' });
+      const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
+      const identifier = flowchart?.uid || uid;
+      const res = await fetch(`/api/flowcharts/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         toast.success('Flowchart permanently deleted');

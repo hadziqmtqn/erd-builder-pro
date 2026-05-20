@@ -72,6 +72,7 @@ function AppLayoutInner() {
     activeNote, activeDrawing, activeFlowchart, activeDiagram,
     nodes, edges,
     fetchTrash,
+    triggerTableRefresh,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
     selectedEntity, deleteEntity, deleteEdge,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,
@@ -326,7 +327,7 @@ function AppLayoutInner() {
           deleteDrawing={deleteDrawing}
           deleteFlowchart={deleteFlowchart}
           fetchTrash={fetchTrash}
-          onAfterDelete={() => { setTableDeleteDoc(null); handleViewChange(view, true); }}
+          onAfterDelete={() => { setTableDeleteDoc(null); handleViewChange(view, true); triggerTableRefresh(); }}
         />
 
         {!isPublicView && (

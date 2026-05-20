@@ -7,6 +7,8 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   label: string;
   shape: FlowchartShape;
   color: string;
+  section?: string;
+  groupId?: string;
 }
 
 const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) => {
@@ -199,6 +201,13 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       <div className="relative z-10 text-center text-sm font-semibold text-white break-words whitespace-pre-wrap max-w-full flex-1">
         {data.label}
       </div>
+
+      {/* Section/Group title badge for Start nodes */}
+      {data.section && (
+        <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-20 whitespace-nowrap text-[9px] font-medium text-muted-foreground/60 tracking-wider uppercase px-2 py-0.5 rounded-full bg-background/50 backdrop-blur-sm border border-border/30">
+          {data.section}
+        </div>
+      )}
     </div>
   );
 };

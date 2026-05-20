@@ -196,6 +196,7 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
         setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        setDrawingsTotal(prev => Math.max(0, prev - 1));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to local trash');
       }
@@ -203,9 +204,12 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/drawings/${uid}`, { method: 'DELETE' });
+      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const identifier = drawing?.uid || uid;
+      const res = await fetch(`/api/drawings/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        setDrawingsTotal(prev => Math.max(0, prev - 1));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to trash');
       }
@@ -284,7 +288,9 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/drawings/${uid}/restore`, { method: 'POST' });
+      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const identifier = drawing?.uid || uid;
+      const res = await fetch(`/api/drawings/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored successfully');
@@ -302,7 +308,9 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/drawings/${uid}/permanent`, { method: 'DELETE' });
+      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const identifier = drawing?.uid || uid;
+      const res = await fetch(`/api/drawings/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
         toast.success('Drawing permanently deleted');

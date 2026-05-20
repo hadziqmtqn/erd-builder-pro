@@ -16,6 +16,7 @@ export interface UseTableViewPaginationParams {
   fetchDiagrams: (...args: any[]) => void;
   fetchFlowcharts: (...args: any[]) => void;
   fetchDrawings: (...args: any[]) => void;
+  tableRefreshKey: number;
 }
 
 // ──────────────────────────────────────────
@@ -57,6 +58,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     selectedWorkspaceUid, tableSearchParams, projects,
     fileSearchQuery = '',
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
+    tableRefreshKey,
   } = params;
 
   const handles = { notes: fetchNotes, erd: fetchDiagrams, flowchart: fetchFlowcharts, drawings: fetchDrawings };
@@ -73,8 +75,8 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    h(false, projId, fileSearchQuery, null, 10, pageNum);
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery]);
+    h(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch erd
   useEffect(() => {
@@ -87,8 +89,8 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchDiagrams(false, projId, fileSearchQuery, null, 10, pageNum);
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery]);
+    fetchDiagrams(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch flowcharts
   useEffect(() => {
@@ -101,8 +103,8 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchFlowcharts(false, projId, fileSearchQuery, null, 10, { page: pageNum });
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery]);
+    fetchFlowcharts(false, projId, fileSearchQuery, null, 10, { silent: true, page: pageNum });
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch drawings
   useEffect(() => {
@@ -116,5 +118,5 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     fetchDrawings(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery]);
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 }

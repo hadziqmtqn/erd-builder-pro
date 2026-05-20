@@ -88,6 +88,50 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - React.memo on NotesView
 - **Auto-update AGENTS.md**: after completing any feature/improvement/fix, proactively update this file with relevant new patterns, components, and mechanisms — no need to wait for user to ask
 
+## UUID vs Numeric ID (Delete/Restore)
+
+All document types (flowchart, notes, drawings, erd/diagram) have hooks with `delete*`, `restore*`, and `delete*Permanent` functions that accept a `uid: string` parameter.
+
+### The Bug Pattern
+- `MoveToTrashAlert.handleConfirm` in `src/routes/TableRoute.tsx` passes `activeDocument?.uid ?? activeDocument?.id` for flowchart/drawings, but **only `activeDocument?.id`** for notes (numeric).
+- API endpoints (`/api/notes/{id}/restore`, etc.) expect UUID strings, not numeric IDs.
+- PostgreSQL rejects `invalid input syntax for type uuid: "3"`.
+
+### The Fix Pattern
+Every `delete*`/`restore*`/`delete*Permanent` function now:
+1. Looks up the resource in `*Ref.current.find(d => String(d.uid ?? d.id) === String(uid))` to resolve canonical UUID
+2. Uses `identifier = resource?.uid || uid` for the API URL
+3. Falls back to the raw `uid` parameter if lookup fails (graceful degeneration)
+
+### Consistent filter pattern
+State filters use `String(n.uid ?? n.id) !== uid` (or `===`) instead of `n.uid !== uid` — handles both UUID and numeric id inputs.
+
+### Total decrement
+Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in both guest and API branches. This fixes the stale count bug after deletion.
+
+### Files with this fix
+- `src/hooks/useFlowcharts.ts`: `deleteFlowchart`, `restoreFlowchart`, `deleteFlowchartPermanent`
+- `src/hooks/useDiagrams.ts`: `deleteDiagram` (total decrement only; already had UUID resolution)
+- `src/hooks/useNotes.ts`: `deleteNote`, `restoreNote`, `deleteNotePermanent`
+- `src/hooks/useDrawings.ts`: `deleteDrawing`, `restoreDrawing`, `deleteDrawingPermanent`
+- `src/routes/TableRoute.tsx`: `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
+- `src/hooks/useTrashHandlers.ts`: uses `file.uid ?? file.id` for restore/permanent-delete calls
+
+### Stale Table List After Delete (Pagination Refresh)
+After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
+
+**Fix**: `tableRefreshKey` — a counter in `WorkspaceContext` that increments after delete, triggering `useTableViewPagination` effects to re-fetch:
+1. `onAfterDelete` in `AppLayout.tsx` calls `triggerTableRefresh()` after `handleViewChange`
+2. `triggerTableRefresh` increments `tableRefreshKey` in `WorkspaceProvider`
+3. `useTableViewPagination` has `tableRefreshKey` in all 4 `useEffect` dependency arrays — whenever it changes, the current page is re-fetched from the server
+4. This ensures the correct data fills the gap left by the deletion
+
+**Files involved**:
+- `src/providers/WorkspaceContext.tsx`: added `triggerTableRefresh: () => void` to interface
+- `src/providers/WorkspaceProvider.tsx`: added `tableRefreshKey` state + `triggerTableRefresh` callback, passed to context value and `useTableViewPagination`
+- `src/hooks/useTableViewPagination.ts`: added `tableRefreshKey` to params interface + all 4 `useEffect` dep arrays
+- `src/routes/AppLayout.tsx`: added `triggerTableRefresh` call in `onAfterDelete`
+
 ## AI Context for Notes (markdown-aware)
 
 - `entityContextText` for Notes is sent to AI in **markdown format**, not plain text
@@ -135,10 +179,10 @@ src/components/ai/
 
 ## Message Overflow Handling
 
-- Message bubble (`ChatMessages.tsx:148`) has `overflow-x-auto` to contain wide content (ASCII art, wide tables) within the bubble
+- Message bubble (`ChatMessages.tsx:148`) has `overflow-x-auto` + **`w-full`** — `items-start`/`items-end` parent otherwise sizes bubble to content width, causing wide content to overflow the 85% cap and get clipped by `overflow-x-hidden`; `w-full` forces bubble to fill container width, so `overflow-x-auto` properly activates
 - Bubble parent (`ChatMessages.tsx:146`) has `max-w-[85%]` + **`min-w-0`** — critical flexbox fix allowing the flex item to shrink below its intrinsic content width, so `max-w-[85%]` is respected
 - Scroll container (`ChatMessages.tsx:87`) has `overflow-x-hidden` as a safety measure to prevent any element from creating a page-level horizontal scrollbar
-- Code blocks (`CodeBlock.tsx`) have their own `overflow-x-auto` wrapper with `white-space: pre-wrap` and `word-break: break-word`
+- Code blocks (`CodeBlock.tsx`) have their own `overflow-x-auto` wrapper; language-labeled blocks use `white-space: pre-wrap` (wrap), unlabeled blocks (ASCII art) use `white-space: pre` (no wrap + scrollbar)
 - Applies to both user and assistant messages
 
 ## Auto-scroll Behavior
@@ -158,7 +202,9 @@ src/components/ai/
 - Syntax highlighting via `prismjs` + `prism-themes/themes/prism-dracula.css` (imported in `index.css:8`)
 - Supported languages: sql, javascript, typescript, bash, json (imported in `ChatMessages.tsx`)
 - Code blocks render with dark background (`#0d1117`), language label bar, copy button on hover
-- **No horizontal scroll** — `white-space: pre-wrap` + `word-break: break-word` wraps long lines
+- **Fenced code blocks without language** (e.g. ` ``` ` with no specifier for ASCII art) now also render as `CodeBlock` — previously fell through to inline `<code>`, causing horizontal overflow
+- **Language-labeled blocks** (` ```sql `, ` ```js `, etc.) → `white-space: pre-wrap` + `word-break: break-word` (wrap text normally)
+- **Unlabeled blocks** (plain ` ``` `, ASCII art) → `white-space: pre` (no wrap, formatting preserved, horizontal scrollbar via wrapper's `overflow-x-auto`)
 - Inline code (backticks) uses `bg-black/30 px-1 py-0.5 rounded text-[11px]` styling
 - Code block wrapper has `overflow-x-auto` + `custom-scrollbar` as fallback for extremely long unbreakable content
 
@@ -355,9 +401,10 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Delete button in `SymbolPropertiesModal`
 
 #### Auto-Save Guards (FlowchartView)
-- Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef` → `isEditingEdgeRef`
+- Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef` → `isEditingEdgeRef` → `isEditingNodeRef`
 - `isDraggingRef` (ref, not state) skips auto-save during node drag; `onNodeDragStop` triggers single save at final position
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
+- `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
 - Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
 - `handleEdgesChange` + `handleNodesChange` both filter out `type: 'select'` — selection changes never trigger auto-save or content-modified flag
 - `useFlowchartChangeHandler` debounces save at 1.5s, updates `activeFlowchart.data` in workspace state
@@ -399,7 +446,15 @@ Each action's `buildPrompt(context)` receives the current view context:
 The prompt is built as a **prefix of the user message** (not system message) — this gives it higher prominence with fine-tuned models. Helper functions:
 - `erdTableList(context)` — formats all tables as `name:\n  - col: TYPE 🔑`
 - `erdRelationships(context)` — formats edges as `  source → target`
-- `flowchartNodeList(context)` — formats symbols as `"label" (shape)`
+- `flowchartSymbolDetail(context)` — formats symbols grouped by **section** (Group Title from Start node). Detects `Start` nodes, BFS-traverses each flow, and renders groups under `=== Section Title ===` headers. Nodes not reachable from any Start go to `=== Ungrouped ===`. Falls back to flat list if no Start nodes exist.
+
+## Flowchart Section / Group Feature
+
+- **Start/End labels are reserved/absolute** — label field disabled in SymbolPropertiesModal, shape locked, delete disabled
+- **Start nodes** have a "Group Title" input field in properties modal — stored as `section` in `FlowchartNodeData`
+- **`groupId`**: setiap Start node punya unique key (e.g. `grp_quickstart`) — auto-generated saat node dibuat, tampil di AI context sebagai `[id:grp_xxx]`. AI bisa referensi via `sourceGroupId`/`targetGroupId` di JSON response.
+- **AI grouping**: `flowchartSymbolDetail()` groups symbols by section using BFS from each Start node. Each group rendered under `=== {section} [id:grp_xxx] ===` header. Supports overlapping groups (user can have multiple Start nodes sharing the same End).
+- **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (prioritas tertinggi ke terendah).
 
 **Special instructions for Edit Columns prompt:**
 - When multiple tables selected, prompt shows ALL selected tables with column structures

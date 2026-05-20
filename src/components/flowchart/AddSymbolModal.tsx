@@ -28,6 +28,8 @@ interface AddSymbolModalProps {
   onConfirm: () => void;
 }
 
+const isStartLabel = (label: string) => label.trim().toLowerCase() === 'start';
+
 export function AddSymbolModal({ 
   isOpen, 
   onOpenChange, 
@@ -35,6 +37,7 @@ export function AddSymbolModal({
   onNodeDataChange, 
   onConfirm 
 }: AddSymbolModalProps) {
+  const isStart = isStartLabel(nodeData.label);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -55,6 +58,19 @@ export function AddSymbolModal({
               className="bg-black/50 border-white/10 text-white"
             />
           </div>
+
+          {isStart && (
+            <div className="space-y-2">
+              <Label>Group Title</Label>
+              <Input 
+                value={nodeData.section || ''}
+                onChange={(e) => onNodeDataChange({ ...nodeData, section: e.target.value || undefined })}
+                placeholder="e.g. Pengajuan Cuti"
+                className="bg-black/50 border-white/10 text-white"
+              />
+              <p className="text-[10px] text-muted-foreground/50">Nama grup untuk alur yang dimulai dari sini.</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Shape Type</Label>
