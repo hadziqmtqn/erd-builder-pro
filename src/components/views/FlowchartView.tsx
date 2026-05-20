@@ -292,7 +292,13 @@ export const FlowchartView = React.memo(({
     }
   };
 
-  const memoizedNodes = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selectedNodeId })), [nodes, selectedNodeId]);
+  const memoizedNodes = useMemo(() => {
+    return nodes.map((n) => {
+      const selected = n.id === selectedNodeId;
+      if (n.selected === selected) return n;
+      return { ...n, selected };
+    });
+  }, [nodes, selectedNodeId]);
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
@@ -313,7 +319,9 @@ export const FlowchartView = React.memo(({
   );
 
   // Sync AI action context (for ChatInput dropdown actions)
+  // NOTE: skip during drag — prevents cascading re-render on every drag frame
   useEffect(() => {
+    if (isDraggingRef.current) return;
     setActionContextData({
       nodes: nodesRef.current,
       edges: edgesRef.current,
