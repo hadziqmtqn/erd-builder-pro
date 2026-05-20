@@ -135,9 +135,11 @@ src/components/ai/
 
 ## Message Overflow Handling
 
-- Message bubble (`ChatMessages.tsx:148`) has `overflow-x-auto` to prevent wide content (ASCII art, wide tables) from creating panel-level horizontal scroll
-- Bubble width constrained by parent `max-w-[85%]` — overflow scrollbar appears inside the bubble only, not on the panel
-- Applies to both user and assistant messages (no scrollbar unless content actually overflows)
+- Message bubble (`ChatMessages.tsx:148`) has `overflow-x-auto` to contain wide content (ASCII art, wide tables) within the bubble
+- Bubble parent (`ChatMessages.tsx:146`) has `max-w-[85%]` + **`min-w-0`** — critical flexbox fix allowing the flex item to shrink below its intrinsic content width, so `max-w-[85%]` is respected
+- Scroll container (`ChatMessages.tsx:87`) has `overflow-x-hidden` as a safety measure to prevent any element from creating a page-level horizontal scrollbar
+- Code blocks (`CodeBlock.tsx`) have their own `overflow-x-auto` wrapper with `white-space: pre-wrap` and `word-break: break-word`
+- Applies to both user and assistant messages
 
 ## Auto-scroll Behavior
 
