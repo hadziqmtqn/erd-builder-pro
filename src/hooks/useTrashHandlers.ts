@@ -57,7 +57,7 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
 
   /** Restore a diagram, warning if its project is also deleted. Accepts file object or numeric ID. */
   const handleTrashRestoreDiagram = useCallback(async (file: any) => {
-    const id = typeof file === 'object' ? file.id : file;
+    const id = typeof file === 'object' ? (file.uid ?? file.id) : file;
     if (warnIfProjectDeleted(file, deletedProjects)) return;
     await restoreDiagram(id);
     await fetchTrash();

@@ -79,7 +79,7 @@ export function useDrawingChangeHandler(params: UseDrawingChangeHandlerParams): 
     if (data === lastDrawingDataRef.current) return;
     lastDrawingDataRef.current = data;
 
-    setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === String(drawingId) ? { ...d, data } : d));
+    setDrawings(prev => prev.map(d => String(d.id) === String(drawingId) || (d.uid && String(d.uid) === String(drawingId)) ? { ...d, data } : d));
 
     // 2️⃣ Max save interval: force save at most once per 3s even during continuous editing
     const now = Date.now();
@@ -94,7 +94,7 @@ export function useDrawingChangeHandler(params: UseDrawingChangeHandlerParams): 
         if (isRefreshing || isDrawingItemLoading) { setIsLocalSaving(false); return; }
         if (drawingIsSavingRef.current) { setIsLocalSaving(false); return; }
 
-        const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
+        const currentDrawing = drawingsRef.current.find(d => String(d.id) === String(drawingId) || (d.uid && String(d.uid) === String(drawingId)));
         if (!currentDrawing) { setIsLocalSaving(false); return; }
 
         drawingIsSavingRef.current = true;
@@ -124,7 +124,7 @@ export function useDrawingChangeHandler(params: UseDrawingChangeHandlerParams): 
       if (isRefreshing || isDrawingItemLoading) return;
       if (drawingIsSavingRef.current) return;
 
-      const currentDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(drawingId));
+      const currentDrawing = drawingsRef.current.find(d => String(d.id) === String(drawingId) || (d.uid && String(d.uid) === String(drawingId)));
       if (!currentDrawing) return;
 
       drawingIsSavingRef.current = true;

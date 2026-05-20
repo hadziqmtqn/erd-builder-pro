@@ -43,20 +43,20 @@ export const useAppMetadata = ({
   const activeDocument = useMemo(() => {
     if (isPublicView) return publicData;
     const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
-    return docArr.find(d => String(d.uid ?? d.id) === String(currentActiveId));
+    return docArr.find(d => String(d.id) === String(currentActiveId) || (d.uid && String(d.uid) === String(currentActiveId)));
   }, [view, currentActiveId, diagrams, notes, drawings, flowcharts, isPublicView, publicData]);
 
   const initialShareSettings = useMemo(() => {
     if (isPublicView) return publicData ? { is_public: !!publicData.is_public, share_token: publicData.share_token, expiry_date: publicData.expiry_date } : undefined;
     const docArr = view === 'erd' ? diagrams : view === 'notes' ? notes : view === 'drawings' ? drawings : flowcharts;
     const id = currentActiveId;
-    const doc = docArr.find(d => String(d.uid ?? d.id) === String(id));
+    const doc = docArr.find(d => String(d.id) === String(id) || (d.uid && String(d.uid) === String(id)));
     if (!doc) return undefined;
     return { is_public: !!doc.is_public, share_token: doc.share_token, expiry_date: doc.expiry_date };
   }, [view, isPublicView, publicData, diagrams, notes, drawings, flowcharts, currentActiveId]);
 
   const activeNote = isPublicView ? publicData : notes.find(n => n.uid === activeNoteUid);
-  const activeDrawing = isPublicView ? publicData : drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId));
+  const activeDrawing = isPublicView ? publicData : drawings.find(d => String(d.id) === String(activeDrawingId) || (d.uid && String(d.uid) === String(activeDrawingId)));
   const activeFlowchart = isPublicView ? publicData : flowcharts.find(f => (f.uid && String(f.uid) === String(activeFlowchartId)) || String(f.id) === String(activeFlowchartId));
   const activeDiagram = isPublicView ? publicData : diagrams.find(f => String(f.id) === String(activeDiagramId) || (f.uid && f.uid === activeDiagramId));
 

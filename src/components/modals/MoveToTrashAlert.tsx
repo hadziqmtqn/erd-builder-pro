@@ -68,7 +68,7 @@ export const MoveToTrashAlert: React.FC<MoveToTrashAlertProps> = ({
       return;
     }
 
-    const currentId = view === 'flowchart' || view === 'drawings'
+    const currentId = view === 'erd' || view === 'notes' || view === 'flowchart' || view === 'drawings'
       ? (activeDocument?.uid ?? activeDocument?.id)
       : activeDocument?.id;
     if (!currentId) return;

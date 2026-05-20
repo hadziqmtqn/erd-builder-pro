@@ -122,7 +122,7 @@ export function useFocusSync(params: UseFocusSyncParams) {
         } else if (view === 'drawings') {
           if (activeDrawingId) {
             const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
-            const cloudItem = drawings.find(d => String(d.uid ?? d.id) === String(activeDrawingId));
+            const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId) || (d.uid && String(d.uid) === String(activeDrawingId)));
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
 
             if (isStale) {
@@ -135,7 +135,7 @@ export function useFocusSync(params: UseFocusSyncParams) {
         } else if (view === 'flowchart') {
           if (activeFlowchartId) {
             const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
-            const cloudItem = flowcharts.find(f => String(f.uid ?? f.id) === String(activeFlowchartId));
+            const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId) || (f.uid && String(f.uid) === String(activeFlowchartId)));
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
 
             if (isStale) {

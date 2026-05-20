@@ -17,7 +17,7 @@ export function useDrawings(isGuest: boolean = false) {
   drawingsRef.current = drawings;
 
   const matchesDrawingId = (drawing: Drawing, uid: string | number) => {
-    return String(drawing.uid ?? drawing.id) === String(uid);
+    return String(drawing.id) === String(uid) || String(drawing.uid) === String(uid);
   };
 
   const mergeDrawingRecord = (existing: Drawing | undefined, incoming: Drawing) => {
@@ -144,7 +144,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const duplicateDrawing = async (uid: string, newTitle: string) => {
-    const sourceDrawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === uid);
+    const sourceDrawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
     if (!sourceDrawing) {
       toast.error('Source drawing not found');
       return null;
@@ -169,7 +169,7 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.title = title;
         drawing.updated_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, title } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, title } : d));
         if (!options?.silent) toast.success('Drawing renamed locally');
       }
       return;
@@ -182,7 +182,7 @@ export function useDrawings(isGuest: boolean = false) {
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, title } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, title } : d));
         if (!options?.silent) toast.success('Drawing renamed successfully');
       }
     } catch (err) {}
@@ -195,7 +195,7 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.is_deleted = true;
         drawing.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
         setDrawingsTotal(prev => Math.max(0, prev - 1));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to local trash');
@@ -204,11 +204,11 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
       const res = await fetch(`/api/drawings/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
-        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
         setDrawingsTotal(prev => Math.max(0, prev - 1));
         if (activeDrawingUid === uid) setActiveDrawingUid(null);
         toast.success('Drawing moved to trash');
@@ -222,7 +222,7 @@ export function useDrawings(isGuest: boolean = false) {
       if (drawing) {
         drawing.project_id = projectId;
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, project_id: projectId, projects: undefined } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, project_id: projectId, projects: undefined } : d));
         if (!options?.silent) toast.success('Drawing moved to project locally');
       }
       return true;
@@ -235,7 +235,7 @@ export function useDrawings(isGuest: boolean = false) {
         body: JSON.stringify({ project_id: projectId }),
       });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, project_id: projectId, projects: undefined } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, project_id: projectId, projects: undefined } : d));
         if (!options?.silent) toast.success('Drawing moved to project');
         return true;
       }
@@ -281,18 +281,18 @@ export function useDrawings(isGuest: boolean = false) {
         drawing.is_deleted = false;
         drawing.deleted_at = undefined;
         await localPersistence.saveResource(drawing);
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: false } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored locally');
       }
       return;
     }
 
     try {
-      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
       const res = await fetch(`/api/drawings/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
-        setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, is_deleted: false } : d));
+        setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored successfully');
       }
     } catch (err) {}
@@ -302,17 +302,17 @@ export function useDrawings(isGuest: boolean = false) {
     if (isGuest) {
       await localPersistence.deleteResource(uid);
       await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
-      setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+      setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
       toast.success('Drawing permanently deleted from local');
       return;
     }
 
     try {
-      const drawing = drawingsRef.current.find(d => String(d.uid ?? d.id) === String(uid));
+      const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
       const res = await fetch(`/api/drawings/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
-        setDrawings(prev => prev.filter(d => String(d.uid ?? d.id) !== uid));
+        setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
         toast.success('Drawing permanently deleted');
       }
     } catch (err) {}

@@ -162,7 +162,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const diagram = diagramsRef.current.find(d => d.id === id);
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}`, {
         method: 'PUT',
@@ -197,7 +197,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const diagram = diagramsRef.current.find(d => d.id === id);
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
@@ -228,7 +228,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const diagram = diagramsRef.current.find(d => String(d.id) === String(id));
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
@@ -253,7 +253,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const diagram = diagramsRef.current.find(d => String(d.id) === String(id));
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
       const res = await fetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
@@ -283,7 +283,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const diagram = diagramsRef.current.find(d => d.id === diagramId);
+      const diagram = diagramsRef.current.find(d => String(d.id) === String(diagramId) || String(d.uid) === String(diagramId));
       const identifier = diagram?.uid || diagramId;
       const res = await fetch(`/api/diagrams/${identifier}/project`, {
         method: 'PUT',

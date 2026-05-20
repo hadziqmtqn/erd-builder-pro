@@ -70,9 +70,9 @@ export function useFlowchartChangeHandler(params: UseFlowchartChangeHandlerParam
 
     // Skip if data hasn't actually changed (prevents re-render loop)
     setFlowcharts(prev => {
-      const existing = prev.find(f => String(f.uid ?? f.id) === String(flowchartId));
+      const existing = prev.find(f => String(f.id) === String(flowchartId) || (f.uid && String(f.uid) === String(flowchartId)));
       if (existing && existing.data === dataString) return prev;
-      return prev.map(f => String(f.uid ?? f.id) === String(flowchartId) ? { ...f, data: dataString } : f);
+      return prev.map(f => String(f.id) === String(flowchartId) || (f.uid && String(f.uid) === String(flowchartId)) ? { ...f, data: dataString } : f);
     });
 
     setIsLocalSaving(true);
@@ -85,7 +85,7 @@ export function useFlowchartChangeHandler(params: UseFlowchartChangeHandlerParam
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isFlowchartItemLoading) return;
 
-      const currentFlowchart = flowchartsRef.current.find(f => String(f.uid ?? f.id) === String(flowchartId));
+      const currentFlowchart = flowchartsRef.current.find(f => String(f.id) === String(flowchartId) || (f.uid && String(f.uid) === String(flowchartId)));
       if (!currentFlowchart) return;
 
       await saveFlowchart({
