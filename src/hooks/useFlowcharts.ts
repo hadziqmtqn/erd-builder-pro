@@ -17,7 +17,7 @@ export function useFlowcharts(isGuest: boolean = false) {
   flowchartsRef.current = flowcharts;
 
   const matchesFlowchartId = (flowchart: Flowchart, uid: string | number) => {
-    return String(flowchart.uid ?? flowchart.id) === String(uid);
+    return String(flowchart.id) === String(uid) || String(flowchart.uid) === String(uid);
   };
 
   const mergeFlowchartRecord = (existing: Flowchart | undefined, incoming: Flowchart) => {
@@ -278,7 +278,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         flowchart.is_deleted = false;
         flowchart.deleted_at = undefined;
         await localPersistence.saveResource(flowchart);
-        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored locally');
       }
       return;
@@ -289,7 +289,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       const identifier = flowchart?.uid || uid;
       const res = await fetch(`/api/flowcharts/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
-        setFlowcharts(prev => prev.map(f => String(f.uid ?? f.id) === uid ? { ...f, is_deleted: false } : f));
+        setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored successfully');
       }
     } catch (err) {}

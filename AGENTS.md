@@ -94,29 +94,32 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 All document types (flowchart, notes, drawings, erd/diagram) have hooks with `delete*`, `restore*`, and `delete*Permanent` functions that accept a `uid: string` parameter.
 
 ### The Bug Pattern
-- `MoveToTrashAlert.handleConfirm` in `src/routes/TableRoute.tsx` passes `activeDocument?.uid ?? activeDocument?.id` for flowchart/drawings, but **only `activeDocument?.id`** for notes (numeric).
+- `MoveToTrashAlert.handleConfirm` passes `activeDocument?.uid ?? activeDocument?.id` for flowchart/drawings, but **only `activeDocument?.id`** for erd and notes (numeric).
 - API endpoints (`/api/notes/{id}/restore`, etc.) expect UUID strings, not numeric IDs.
 - PostgreSQL rejects `invalid input syntax for type uuid: "3"`.
 
 ### The Fix Pattern
 Every `delete*`/`restore*`/`delete*Permanent` function now:
-1. Looks up the resource in `*Ref.current.find(d => String(d.uid ?? d.id) === String(uid))` to resolve canonical UUID
+1. Looks up the resource using **dual-field matching**: `*Ref.current.find(d => String(d.id) === String(uid) || String(d.uid) === String(uid))` — checks both `id` and `uid` to handle numeric callers, unlike the old `String(d.uid ?? d.id) === String(uid)` which fails when `uid` exists (UUID) but `id` parameter is numeric
 2. Uses `identifier = resource?.uid || uid` for the API URL
 3. Falls back to the raw `uid` parameter if lookup fails (graceful degeneration)
 
 ### Consistent filter pattern
-State filters use `String(n.uid ?? n.id) !== uid` (or `===`) instead of `n.uid !== uid` — handles both UUID and numeric id inputs.
+State filters use dual-field matching: `String(n.id) !== String(uid) && String(n.uid) !== String(uid)` instead of `String(n.uid ?? n.id) !== uid` — the old pattern fails when `uid` is numeric but `n.uid` exists.
 
 ### Total decrement
 Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in both guest and API branches. This fixes the stale count bug after deletion.
 
 ### Files with this fix
-- `src/hooks/useFlowcharts.ts`: `deleteFlowchart`, `restoreFlowchart`, `deleteFlowchartPermanent`
-- `src/hooks/useDiagrams.ts`: `deleteDiagram` (total decrement only; already had UUID resolution)
-- `src/hooks/useNotes.ts`: `deleteNote`, `restoreNote`, `deleteNotePermanent`
-- `src/hooks/useDrawings.ts`: `deleteDrawing`, `restoreDrawing`, `deleteDrawingPermanent`
+- `src/hooks/useFlowcharts.ts`: `matchesFlowchartId` helper — `String(f.uid ?? f.id)` → `String(f.id) || String(f.uid)` dual check
+- `src/hooks/useDiagrams.ts`: all `diagramsRef.find` lookups — `String(d.id) || String(d.uid)` dual check (was `d.id` only or `String(d.uid ?? d.id)`)
+- `src/hooks/useNotes.ts`: all lookups and state filters — `String(n.id) || String(n.uid)` dual check
+- `src/hooks/useDrawings.ts`: `matchesDrawingId` helper + all inline lookups/filters — `String(d.id) || String(d.uid)` dual check
+- `src/hooks/useAppMetadata.ts`: `activeDocument`, `initialShareSettings`, `activeDrawing` lookups — dual check
+- `src/hooks/useAutoSave.ts`, `useFlowchartChangeHandler.ts`, `useDrawingChangeHandler.ts`, `useFocusSync.ts`: all `String(d.uid ?? d.id)` → dual check
 - `src/routes/TableRoute.tsx`: `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
-- `src/hooks/useTrashHandlers.ts`: uses `file.uid ?? file.id` for restore/permanent-delete calls
+- `src/hooks/useTrashHandlers.ts`: `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
+- `src/components/modals/MoveToTrashAlert.tsx`: `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
