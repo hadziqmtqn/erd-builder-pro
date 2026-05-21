@@ -20,6 +20,7 @@ export function TableRoute() {
     handleOpenEditDocument, handleOpenCreateDocument,
     setItemToDelete, setIsMoveToTrashAlertOpen,
     setTableDeleteDoc,
+    isNotesLoading, isDiagramsLoading, isDrawingsLoading, isFlowchartsLoading,
   } = useWorkspace();
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
@@ -58,7 +59,7 @@ export function TableRoute() {
           selectedWorkspace={selectedWorkspaceUid}
           page={tablePage}
           totalNotes={notesTotal}
-          isLoading={false}
+          isLoading={isNotesLoading}
           onSelectNote={handleNoteSelect}
           onCreateNote={() => handleOpenCreateDocument('notes')}
           onPageChange={handlePageChange}
@@ -75,7 +76,7 @@ export function TableRoute() {
           selectedWorkspace={selectedWorkspaceUid}
           page={tablePage}
           totalDiagrams={diagramsTotal}
-          isLoading={false}
+          isLoading={isDiagramsLoading}
           onSelectDiagram={handleDiagramSelect}
           onCreateDiagram={() => handleOpenCreateDocument('erd')}
           onPageChange={handlePageChange}
@@ -92,7 +93,7 @@ export function TableRoute() {
           selectedWorkspace={selectedWorkspaceUid}
           page={tablePage}
           totalDrawings={drawingsTotal}
-          isLoading={false}
+          isLoading={isDrawingsLoading}
           onSelectDrawing={handleDrawingSelect}
           onCreateDrawing={() => handleOpenCreateDocument('drawings')}
           onPageChange={handlePageChange}
@@ -109,7 +110,7 @@ export function TableRoute() {
           selectedWorkspace={selectedWorkspaceUid}
           page={tablePage}
           totalFlowcharts={flowchartsTotal}
-          isLoading={false}
+          isLoading={isFlowchartsLoading}
           onSelectFlowchart={handleFlowchartSelect}
           onCreateFlowchart={() => handleOpenCreateDocument('flowchart')}
           onPageChange={handlePageChange}

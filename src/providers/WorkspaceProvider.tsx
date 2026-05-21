@@ -841,6 +841,10 @@ export function WorkspaceProvider({
     activeFlowchartId, setActiveFlowchartId,
     activeProjectId, setActiveProjectId,
 
+    isDiagramsLoading,
+    isNotesLoading,
+    isDrawingsLoading,
+    isFlowchartsLoading,
     isLoading: isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading,
     isProjectsLoading,
     isLocalSaving,
