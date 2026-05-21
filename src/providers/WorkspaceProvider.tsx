@@ -633,6 +633,7 @@ export function WorkspaceProvider({
   // Table view pagination
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const triggerTableRefresh = useCallback(() => setTableRefreshKey(k => k + 1), []);
+  const [tableLoadingState, setTableLoadingState] = useState<'idle' | 'loading'>('idle');
   useTableViewPagination({
     view, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid: tableSearchParams.get('workspace'),
@@ -640,6 +641,8 @@ export function WorkspaceProvider({
     fileSearchQuery: debouncedFileSearchQuery,
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
     tableRefreshKey,
+    tableLoadingState,
+    setTableLoadingState,
   });
 
   // Keyboard shortcuts
@@ -927,7 +930,7 @@ export function WorkspaceProvider({
     notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal,
 
     tableSearchParams, setTableSearchParams, tablePage,
-    triggerTableRefresh,
+    triggerTableRefresh, tableLoadingState, setTableLoadingState,
 
     breadcrumbLabel, setBreadcrumbLabel,
   }), [

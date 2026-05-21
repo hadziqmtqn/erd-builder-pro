@@ -17,28 +17,9 @@ export interface UseTableViewPaginationParams {
   fetchFlowcharts: (...args: any[]) => void;
   fetchDrawings: (...args: any[]) => void;
   tableRefreshKey: number;
+  tableLoadingState: 'idle' | 'loading';
+  setTableLoadingState: (state: 'idle' | 'loading') => void;
 }
-
-// ──────────────────────────────────────────
-// View-to-fetch mapping
-// ──────────────────────────────────────────
-interface PaginationConfig {
-  viewName: string;
-  fetchFn: (...args: any[]) => void;
-  /** 
-   * Some fetch functions take different param structures.
-   * If true, uses { page } as last param for fetchFlowcharts.
-   * If false, uses pageNum as last param.
-   */
-  usesPageOption?: boolean;
-}
-
-const paginationConfigs: PaginationConfig[] = [
-  { viewName: 'notes', fetchFn: undefined as any }, // resolved in hook
-  { viewName: 'erd', fetchFn: undefined as any },
-  { viewName: 'flowchart', fetchFn: undefined as any, usesPageOption: true },
-  { viewName: 'drawings', fetchFn: undefined as any },
-];
 
 // ──────────────────────────────────────────
 // Hook
@@ -50,7 +31,9 @@ const paginationConfigs: PaginationConfig[] = [
  * when table params change. Each effect checks: is the current view == this feature?
  * Are we in table mode (no active item)? Is the user authenticated?
  *
- * Extracted from App.tsx to eliminate 4 repetitive useEffect blocks (~52 lines).
+ * Loading spinner shows only when tableLoadingState='loading' (user-initiated actions
+ * like delete, page change, workspace filter). Passive changes (search debounce, auth,
+ * initial mount) use silent fetch to avoid flicker.
  */
 export function useTableViewPagination(params: UseTableViewPaginationParams) {
   const {
@@ -59,9 +42,29 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     fileSearchQuery = '',
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
     tableRefreshKey,
+    tableLoadingState, setTableLoadingState,
   } = params;
 
   const handles = { notes: fetchNotes, erd: fetchDiagrams, flowchart: fetchFlowcharts, drawings: fetchDrawings };
+
+  function computeOpts(silent: boolean, pageNum?: number) {
+    if (silent) return pageNum !== undefined ? { silent: true, page: pageNum } : { silent: true };
+    return pageNum !== undefined ? { page: pageNum } : {};
+  }
+
+  function triggerFetch(
+    h: (...args: any[]) => any,
+    projId: string | number | null,
+    pageNum: number,
+    opts: Record<string, any>
+  ) {
+    const isUserAction = tableLoadingState === 'loading';
+    const options = isUserAction ? computeOpts(false, opts.page) : computeOpts(true, opts.page);
+    const result = h(false, projId, fileSearchQuery, null, 10, pageNum, options);
+    if (isUserAction && result?.then) {
+      result.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
+    }
+  }
 
   // 🗂 Server-side pagination: fetch notes
   useEffect(() => {
@@ -75,7 +78,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    h(false, projId, fileSearchQuery, null, 10, pageNum);
+    triggerFetch(h, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch erd
@@ -89,7 +92,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchDiagrams(false, projId, fileSearchQuery, null, 10, pageNum);
+    triggerFetch(fetchDiagrams, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch flowcharts
@@ -103,7 +106,12 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchFlowcharts(false, projId, fileSearchQuery, null, 10, { page: pageNum });
+    const isUserAction = tableLoadingState === 'loading';
+    const options = isUserAction ? { page: pageNum } : { silent: true, page: pageNum };
+    const promise = (fetchFlowcharts as any)(false, projId, fileSearchQuery, null, 10, options) as Promise<any> | undefined;
+    if (isUserAction && promise?.then) {
+      promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
+    }
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch drawings
@@ -117,6 +125,6 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchDrawings(false, projId, fileSearchQuery, null, 10, pageNum);
+    triggerFetch(fetchDrawings, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 }

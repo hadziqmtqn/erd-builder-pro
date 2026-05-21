@@ -130,14 +130,17 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 3. `useTableViewPagination` has `tableRefreshKey` in all 4 `useEffect` dependency arrays — whenever it changes, the current page is re-fetched from the server
 4. This ensures the correct data fills the gap left by the deletion
 
-**Loading spinner on table**: Setelah `{ silent: true }` dihapus dari `useTableViewPagination`, fetch di table view sekarang memanggil `setIsNotesLoading(true)` dll. — table menampilkan spinner loading selama re-fetch setelah delete/pagination. Tidak ada sidebar blink karena sidebar (`AppSidebar`) tidak merender file tree — `NavProjects` dan `FileGroup` adalah orphan components.
+**Loading spinner optimization**: Default fetch tetap `{ silent: true }` (tidak ada loading spinner untuk passive changes: search debounce, auth change, project list change, dll). User-initiated actions (delete, page change, workspace filter) set `tableLoadingState='loading'` di context, membuat `useTableViewPagination` panggil fetch tanpa `silent` — table show spinner, setelah fetch selesai `tableLoadingState` di-reset ke `'idle'`.
+- `delete`: via `onAfterDelete` di `AppLayout.tsx` → `setTableLoadingState('loading')` + `triggerTableRefresh()`
+- `page change`: via `handlePageChange` di `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
+- `workspace filter`: via `handleWorkspaceClick` di `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
 
 **Files involved**:
-- `src/providers/WorkspaceContext.tsx`: added `triggerTableRefresh: () => void` to interface; added `isDiagramsLoading`, `isNotesLoading`, `isDrawingsLoading`, `isFlowchartsLoading` to interface
-- `src/providers/WorkspaceProvider.tsx`: added `tableRefreshKey` state + `triggerTableRefresh` callback, passed to context value and `useTableViewPagination`; exposed per-feature loading states in context value
-- `src/hooks/useTableViewPagination.ts`: added `tableRefreshKey` to params interface + all 4 `useEffect` dep arrays; removed `{ silent: true }` from all fetch calls
-- `src/routes/AppLayout.tsx`: added `triggerTableRefresh` call in `onAfterDelete`
-- `src/routes/TableRoute.tsx`: passes loading state (`isNotesLoading` etc.) as `isLoading` prop to table views instead of hardcoded `false`
+- `src/providers/WorkspaceContext.tsx`: added `triggerTableRefresh: () => void`, `tableLoadingState`, `setTableLoadingState` to interface; added `isDiagramsLoading`, `isNotesLoading`, `isDrawingsLoading`, `isFlowchartsLoading` to interface
+- `src/providers/WorkspaceProvider.tsx`: added `tableRefreshKey` state + `triggerTableRefresh` callback; added `tableLoadingState` state + `setTableLoadingState`; passed to context value and `useTableViewPagination`; exposed per-feature loading states in context value
+- `src/hooks/useTableViewPagination.ts`: uses `tableLoadingState` to decide silent vs non-silent fetch; resets to `'idle'` after fetch completes
+- `src/routes/AppLayout.tsx`: added `setTableLoadingState('loading')` call in `onAfterDelete`
+- `src/routes/TableRoute.tsx`: added `setTableLoadingState('loading')` on page/workspace change; passes loading state as `isLoading` prop
 
 ## AI Context for Notes (markdown-aware)
 

@@ -21,17 +21,20 @@ export function TableRoute() {
     setItemToDelete, setIsMoveToTrashAlertOpen,
     setTableDeleteDoc,
     isNotesLoading, isDiagramsLoading, isDrawingsLoading, isFlowchartsLoading,
+    setTableLoadingState,
   } = useWorkspace();
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
 
   const handlePageChange = (p: number) => {
+    setTableLoadingState('loading');
     const params = new URLSearchParams(tableSearchParams);
     params.set('page', String(p));
     setTableSearchParams(params, { replace: true });
   };
 
   const handleWorkspaceClick = (uid: string | null) => {
+    setTableLoadingState('loading');
     const params = new URLSearchParams(tableSearchParams);
     if (uid) {
       params.set('workspace', uid);
