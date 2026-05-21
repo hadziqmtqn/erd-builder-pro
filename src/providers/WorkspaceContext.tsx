@@ -258,6 +258,8 @@ export interface WorkspaceContextValue {
   setTableSearchParams: any;
   tablePage: number;
   triggerTableRefresh: () => void;
+  tableLoadingState: 'idle' | 'loading';
+  setTableLoadingState: (state: 'idle' | 'loading') => void;
 
   // Page-specific breadcrumb (set by Page components like DashboardPage, NotesPage, etc.)
   breadcrumbLabel: string | null;
