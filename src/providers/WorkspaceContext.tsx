@@ -47,6 +47,10 @@ export interface WorkspaceContextValue {
 
   // Loading
   isProjectsLoading: boolean;
+  isDiagramsLoading: boolean;
+  isNotesLoading: boolean;
+  isDrawingsLoading: boolean;
+  isFlowchartsLoading: boolean;
   isLoading: boolean;
   isTrashLoading: boolean;
   isLocalSaving: boolean;

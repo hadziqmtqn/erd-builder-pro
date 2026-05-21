@@ -75,7 +75,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    h(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
+    h(false, projId, fileSearchQuery, null, 10, pageNum);
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch erd
@@ -89,7 +89,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchDiagrams(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
+    fetchDiagrams(false, projId, fileSearchQuery, null, 10, pageNum);
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch flowcharts
@@ -103,7 +103,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchFlowcharts(false, projId, fileSearchQuery, null, 10, { silent: true, page: pageNum });
+    fetchFlowcharts(false, projId, fileSearchQuery, null, 10, { page: pageNum });
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch drawings
@@ -117,6 +117,6 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
       projId = p ? p.id : null;
     }
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    fetchDrawings(false, projId, fileSearchQuery, null, 10, pageNum, { silent: true });
+    fetchDrawings(false, projId, fileSearchQuery, null, 10, pageNum);
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 }
