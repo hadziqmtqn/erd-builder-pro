@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
+import { QuickJump } from "./QuickJump";
 import { format } from "date-fns";
 
 import { AppView } from '@/types';
@@ -105,7 +106,7 @@ export const MainHeader = React.memo(({
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
-      <div className="flex items-center gap-2 px-4 min-w-0 flex-1">
+      <div className="flex items-center gap-2 px-4 min-w-0 flex-none">
         {!isPublicView && (
           <>
             <SidebarTrigger className="-ml-1 shrink-0" />
@@ -178,14 +179,18 @@ export const MainHeader = React.memo(({
         </Breadcrumb>
       </div>
 
-      {!isOnline && !isPublicView && (
-        <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in slide-in-from-top-1 duration-500">
-          <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Offline Mode: Navigation Disabled</span>
-        </div>
-      )}
+      <div className="flex-1 flex items-center justify-center px-2">
+        {!isOnline && !isPublicView ? (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive animate-in fade-in slide-in-from-top-1 duration-500">
+            <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Offline Mode: Navigation Disabled</span>
+          </div>
+        ) : (
+          <QuickJump />
+        )}
+      </div>
 
-      <div className="ml-auto px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
+      <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
         {/* File search — only in table list view (no active item) */}
         {!hideFileSearch && ['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
           <div className="relative flex items-center mr-1 sm:mr-2">
