@@ -153,6 +153,12 @@ function AppLayoutInner() {
 
   const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing';
 
+  // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
+  const activeProjectId = useMemo<string | number | null>(() => {
+    const ent = activeNote || activeDiagram || activeFlowchart || activeDrawing;
+    return ent?.project_id ?? null;
+  }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
@@ -370,6 +376,7 @@ function AppLayoutInner() {
                          entityContext.entityType === 'diagram' ? activeDiagram?.name : 
                          entityContext.entityType === 'flowchart' ? activeFlowchart?.title : null}
             entityContextText={entityContextText}
+            projectId={activeProjectId}
             pendingPrompt={pendingPrompt}
             onPromptUsed={clearPrompt}
             pendingAction={pendingAction}

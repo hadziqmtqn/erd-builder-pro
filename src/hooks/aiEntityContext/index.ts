@@ -3,7 +3,7 @@ import { fetchNote, buildNoteContext } from './note';
 import { fetchDiagram, buildDiagramContext } from './diagram';
 import { fetchFlowchart, buildFlowchartContext } from './flowchart';
 import { fetchDrawing, buildDrawingContext } from './drawing';
-import { fetchSiblings } from './siblings';
+import { fetchSiblings, buildSiblingContext } from './siblings';
 import { formatContextText } from './format';
 
 async function fetchCurrentEntity(ctx: EntityContext) {
@@ -60,3 +60,4 @@ export async function fetchEntityContext(
 }
 
 export type { EntityContext, EntityContextResult, EntityContextData };
+export { buildSiblingContext };

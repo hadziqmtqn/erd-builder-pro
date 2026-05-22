@@ -192,7 +192,7 @@ export interface AIChatSession {
   project_id?: number | string;
   entity_type?: string | null;
   entity_uid?: string | null;
-  referenced_file_info?: any;
+  // referenced_file_info?: any; // DEPRECATED — use project_id + dynamic query instead
   title: string;
   created_at: string;
   updated_at: string;

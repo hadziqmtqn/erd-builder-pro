@@ -59,12 +59,14 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
-### Referenced File Info (JSONB)
+### Cross-Feature Context: `project_id` (Relasi, Bukan `referenced_file_info`)
 
-- `ai_chat_sessions.entity_type + entity_uid` = entry point (file where chat was started)
-- `ai_chat_sessions.referenced_file_info` = array of related files within one workspace (cross-feature: Notes + ERD + Flowchart)
-- Example: chat started from a Note in EMPLOYMENT project, AI needs to see ERD also in EMPLOYMENT → ERD recorded in `referenced_file_info`
-- Format: `[{ entity_type: "note"|"diagram"|"flowchart", entity_uid: "uuid" }]`
+- **Keputusan arsitektur**: Gunakan `project_id` (FK ke `projects`) di `ai_chat_sessions` sebagai sumber kebenaran, **bukan** `referenced_file_info` (JSONB).
+- **Kenapa**: `referenced_file_info` adalah cache yang cepat stale (file dihapus/dipindah → referensi tidak valid). Dengan `project_id`, query dinamis semua file (`notes`, `diagrams`, `flowcharts`, `drawings`) per project dilakukan setiap `sendMessage()` — selalu fresh, zero maintenance.
+- **Saat ini**: `createSession()` di `useAIChat.ts` **belum** menyertakan `project_id`. Implementasi plan ada di `.opencode/tasks/ai-cross-feature-integration.md`
+- **Workspace safety**: `project_id` diisi dari active entity saat session dibuat. Saat user pindah project, `entityContext` berubah → session baru mendapat `project_id` baru. Session lama tetap di project_id lama.
+- **Dynamic sibling query**: `buildCrossFeatureContext()` (belum ada) query parallel 4 tabel → format rich context → inject ke user message prefix. Lihat plan untuk detail.
+- **Format**: `referenced_file_info` deprecated. Tidak perlu diisi/dibaca lagi.
 
 ### Editor Architecture
 

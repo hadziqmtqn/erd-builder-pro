@@ -7,14 +7,11 @@ import {
   Image as ImageIcon, Smile, 
   Minus, Type, Search, ChevronRight,
   ChevronLeft, Undo, Redo, Columns,
-  Table as TableHeader, AlertCircle,
-  Hash, Layout, Trash2, ChevronDown, Tag,
-  Calendar as CalendarIcon, Clock
-} from 'lucide-react';
-import { format, addDays, subDays } from 'date-fns';
+  Layout, Trash2, ChevronDown, Tag,
+  Calendar as CalendarIcon} from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface SlashMenuItem {
   title: string;
@@ -48,7 +45,7 @@ const MAIN_ITEMS: SlashMenuItem[] = [
   
   // Lists
   { title: 'Bulleted list', icon: <List className="w-4 h-4" />, shortcut: '⌘ ⇧ 8', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBulletList().run() },
-  { title: 'Numbered list', icon: <ListOrdered className="w-4 h-4" />, shortcut: '⌘ ⇧ 7', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run() },
+  { title: 'Ordered list', icon: <ListOrdered className="w-4 h-4" />, shortcut: '⌘ ⇧ 7', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleOrderedList().run() },
   { title: 'To-do list', icon: <CheckSquare className="w-4 h-4" />, shortcut: '⌘ ⇧ 9', category: 'Lists', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleTaskList().run() },
   
   // Media

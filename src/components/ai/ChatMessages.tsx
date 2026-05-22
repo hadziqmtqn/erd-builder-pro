@@ -1,8 +1,8 @@
-import { memo, useRef, useState, useEffect, useCallback } from 'react';
-import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check, ChevronDown } from 'lucide-react';
+import { memo, useRef, useState, useEffect, useCallback, createElement, ComponentType } from 'react';
+import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check, ChevronDown, FileText, Database, GitBranch, Image } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AIChatMessage } from '@/types';
+import { AIChatMessage, AIChatSession } from '@/types';
 
 function hasFlowchartJSON(content: string): boolean {
   const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
@@ -57,6 +57,9 @@ export interface ChatMessagesProps {
   lastActionId: string | null;
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => void;
   contentCheckType?: 'flowchart' | 'erd' | 'none';
+  isCrossEntity?: boolean;
+  currentSession?: AIChatSession | null;
+  entityTypeMeta?: Record<string, { label: string; icon: ComponentType<{ className?: string }> }>;
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -76,6 +79,9 @@ export const ChatMessages = memo(function ChatMessages({
   lastActionId,
   applyContent,
   contentCheckType = 'none',
+  isCrossEntity = false,
+  currentSession,
+  entityTypeMeta,
 }: ChatMessagesProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -144,6 +150,20 @@ export const ChatMessages = memo(function ChatMessages({
         </div>
       ) : (
         <>
+          {isCrossEntity && currentSession?.entity_type && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-3">
+              <span className="shrink-0 text-sm leading-none mt-0.5">💬</span>
+              <p className="text-[11px] text-amber-700 dark:text-amber-300/80 leading-relaxed">
+                This conversation was started from{' '}
+                <span className="font-semibold inline-flex items-center gap-1">
+                  {entityTypeMeta?.[currentSession.entity_type]?.icon &&
+                    createElement(entityTypeMeta[currentSession.entity_type].icon as ComponentType<{ className?: string }>, { className: 'size-3.5' })}
+                  {entityTypeMeta?.[currentSession.entity_type]?.label ?? currentSession.entity_type}
+                </span>
+                . You can continue chatting here — the AI sees context from the current file together with related project files.
+              </p>
+            </div>
+          )}
           {hasMoreMessages && (
             <div className="flex justify-center py-2">
               <button
@@ -312,7 +332,7 @@ export const ChatMessages = memo(function ChatMessages({
 
                 {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                   <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
-                    {hasContentHandler && (contentCheckType === 'none' || (contentCheckType === 'flowchart' && hasFlowchartJSON(msg.content)) || (contentCheckType === 'erd' && hasSQLContent(msg.content))) && (
+                    {!isCrossEntity && hasContentHandler && (contentCheckType === 'none' || (contentCheckType === 'flowchart' && hasFlowchartJSON(msg.content)) || (contentCheckType === 'erd' && hasSQLContent(msg.content))) && (
                       <>
                         {contentHandlerStrategies.includes('replace') && (
                           <button
