@@ -41,9 +41,11 @@ interface TiptapEditorProps {
   content: string;
   onChange?: (content: string) => void;
   isReadOnly?: boolean;
+  /** When true, selection text is NOT synced to AI context (e.g. Notes — selection is for editing, not AI) */
+  disableAISelection?: boolean;
 }
 
-export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEditorProps) {
+export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
@@ -252,6 +254,14 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
   // ─── Selection tracking ──────────────────────────────
   const selectionTextRef = useRef<string | null>(null);
 
+  // Clear AI selection context when this editor is in a non-AI context (e.g. Notes)
+  useEffect(() => {
+    if (disableAISelection) {
+      setSelectionText(null);
+      selectionTextRef.current = null;
+    }
+  }, [disableAISelection, setSelectionText]);
+
   useEffect(() => {
     if (!editor) return;
 
@@ -259,7 +269,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       setSelectionVersion(v => v + 1);
 
       const { from, to, empty } = editor.state.selection;
-      if (!empty) {
+      if (!empty && !disableAISelection) {
         const text = editor.state.doc.textBetween(from, to, ' ');
         if (selectionTextRef.current !== text) {
           selectionTextRef.current = text;
@@ -290,7 +300,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
       editor.off('focus', handleFocus);
       editor.off('blur', handleBlur);
     };
-  }, [editor, setSelectionText]);
+  }, [editor, setSelectionText, disableAISelection]);
 
   useEffect(() => {
     if (editor && typeof content === 'string' && editor.getHTML() !== content) {
@@ -409,7 +419,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false }: TiptapEd
 
           {editor && !isReadOnly && (
             <>
-              <TextBubbleMenu editor={editor} openLinkDialog={openLinkDialog} />
+              <TextBubbleMenu editor={editor} openLinkDialog={openLinkDialog} showSendToAIButton={disableAISelection} />
               <TableBubbleMenu editor={editor} />
             </>
           )}

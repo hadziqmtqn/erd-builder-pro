@@ -65,6 +65,7 @@ export interface ChatInputProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSelectAction: (action: AIAction) => void;
   onAbort: () => void;
+  isCrossEntity?: boolean;
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -78,6 +79,7 @@ export const ChatInput = memo(function ChatInput({
   onKeyDown,
   onSelectAction,
   onAbort,
+  isCrossEntity = false,
 }: ChatInputProps) {
   if (!hasActiveSession) return null;
 
@@ -104,7 +106,7 @@ export const ChatInput = memo(function ChatInput({
       </div>
 
       <div className="flex items-center justify-between min-h-[28px]">
-        {['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
+        {!isCrossEntity && ['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
           <div className="flex items-center gap-1 flex-wrap">
             {actions.map((action) => {
               const isActive = activeActionId === action.id;

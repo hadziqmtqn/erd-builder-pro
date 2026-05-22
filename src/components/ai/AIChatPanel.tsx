@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, ChevronDown, Minimize2, PanelRightClose, Plus, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Sparkles, ChevronDown, Minimize2, PanelRightClose, Plus, Loader2, FileText, Database, GitBranch, Image } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -18,6 +18,7 @@ interface AIChatPanelProps {
   entityUid?: string | null;
   entityTitle?: string | null;
   entityContextText?: string | null;
+  projectId?: number | string | null;
   pendingPrompt?: string | null;
   onPromptUsed?: () => void;
   pendingAction?: { actionId: string; onResult: (response: string) => void } | null;
@@ -30,6 +31,7 @@ export const AIChatPanel = ({
   entityUid,
   entityTitle,
   entityContextText,
+  projectId,
   pendingPrompt,
   onPromptUsed,
   pendingAction,
@@ -67,7 +69,7 @@ export const AIChatPanel = ({
     hasMoreMessages,
     isLoadingMore,
     loadMoreMessages,
-  } = useAIChat(entityContext, entityContextText, onStreamComplete);
+  } = useAIChat(entityContext, entityContextText, onStreamComplete, projectId);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -188,6 +190,14 @@ export const AIChatPanel = ({
 
   const hasActiveSession = !!currentSession;
   const hasMessages = messages.length > 0;
+  const isCrossEntity = hasActiveSession && !!entityType && currentSession!.entity_type !== entityType;
+
+  const entityTypeMeta: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = useMemo(() => ({
+    note: { label: 'Note', icon: FileText },
+    diagram: { label: 'ERD', icon: Database },
+    flowchart: { label: 'Flowchart', icon: GitBranch },
+    drawing: { label: 'Drawing', icon: Image },
+  }), []);
 
   return (
     <Tooltip.Provider>
@@ -260,6 +270,7 @@ export const AIChatPanel = ({
                   <SessionItem
                     key={session.uid}
                     session={session}
+                    entityTypeMeta={entityTypeMeta}
                     isActive={currentSession?.uid === session.uid}
                     onClick={() => {
                       selectSession(session.uid);
@@ -291,6 +302,9 @@ export const AIChatPanel = ({
           lastActionId={lastActionId}
           applyContent={applyContent}
           contentCheckType={contentCheckType}
+          isCrossEntity={isCrossEntity}
+          currentSession={currentSession}
+          entityTypeMeta={entityTypeMeta}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}
@@ -312,6 +326,7 @@ export const AIChatPanel = ({
           onKeyDown={handleKeyDown}
           onSelectAction={handleSelectAction}
           onAbort={abortStream}
+          isCrossEntity={isCrossEntity}
         />
       </div>
 

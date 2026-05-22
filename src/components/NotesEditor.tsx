@@ -27,6 +27,7 @@ export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOn
           content={note.content ?? ''} 
           onChange={handleContentChange} 
           isReadOnly={isReadOnly}
+          disableAISelection
         />
       </div>
     </div>

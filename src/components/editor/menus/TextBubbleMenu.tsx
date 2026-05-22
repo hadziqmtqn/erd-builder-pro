@@ -2,6 +2,7 @@ import React from 'react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { useAIAction } from '@/contexts/AIActionContext';
 import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link, Palette, Check } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Editor } from '@tiptap/react';
@@ -9,9 +10,20 @@ import { Editor } from '@tiptap/react';
 interface TextBubbleMenuProps {
   editor: Editor;
   openLinkDialog: () => void;
+  showSendToAIButton?: boolean;
 }
 
-export function TextBubbleMenu({ editor, openLinkDialog }: TextBubbleMenuProps) {
+export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = false }: TextBubbleMenuProps) {
+  const { setSelectionText, setAIOpen } = useAIAction();
+
+  const handleSendSelectionToAI = () => {
+    const { from, to, empty } = editor.state.selection;
+    if (!empty) {
+      const text = editor.state.doc.textBetween(from, to, ' ');
+      setSelectionText(text);
+      setAIOpen(true);
+    }
+  };
   return (
     <BubbleMenu
       editor={editor}
@@ -23,97 +35,56 @@ export function TextBubbleMenu({ editor, openLinkDialog }: TextBubbleMenuProps) 
       className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
     >
       <TooltipProvider delay={200}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleBold().run()}
-                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('bold') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
+        <DropdownMenu.Root modal={false}>
+          <Tooltip>
+            <TooltipTrigger 
+              render={
+                <DropdownMenu.Trigger asChild>
+                  <button 
+                    className="h-8 min-w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground outline-none px-1"
+                  >
+                    {editor.isActive('bold') ? (
+                      <Bold className="w-4 h-4" />
+                    ) : editor.isActive('italic') ? (
+                      <Italic className="w-4 h-4" />
+                    ) : editor.isActive('underline') ? (
+                      <UnderlineIcon className="w-4 h-4" />
+                    ) : editor.isActive('strike') ? (
+                      <Strikethrough className="w-4 h-4" />
+                    ) : editor.isActive('code') ? (
+                      <Code className="w-4 h-4" />
+                    ) : (
+                      <LucideIcons.Type className="w-4 h-4" />
+                    )}
+                  </button>
+                </DropdownMenu.Trigger>
+              }
+            />
+            <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
+              Text Style
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[140px] flex flex-col" sideOffset={5} align="start">
+            {[
+              { name: 'Bold', icon: Bold, shortcut: '⌘B', action: () => editor.chain().focus().toggleBold().run(), isActive: editor.isActive('bold') },
+              { name: 'Italic', icon: Italic, shortcut: '⌘I', action: () => editor.chain().focus().toggleItalic().run(), isActive: editor.isActive('italic') },
+              { name: 'Underline', icon: UnderlineIcon, shortcut: '⌘U', action: () => editor.chain().focus().toggleUnderline().run(), isActive: editor.isActive('underline') },
+              { name: 'Strikethrough', icon: Strikethrough, shortcut: '⌘⇧X', action: () => editor.chain().focus().toggleStrike().run(), isActive: editor.isActive('strike') },
+              { name: 'Code', icon: Code, shortcut: '⌘E', action: () => editor.chain().focus().toggleCode().run(), isActive: editor.isActive('code') },
+            ].map(({ name, icon: Icon, shortcut, action, isActive }) => (
+              <DropdownMenu.Item
+                key={name}
+                onSelect={action}
+                className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
               >
-                <Bold className="w-4 h-4" />
-              </button>
-            }
-          />
-          <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Bold (⌘ B)
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleItalic().run()}
-                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('italic') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                <Italic className="w-4 h-4" />
-              </button>
-            }
-          />
-          <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Italic (⌘ I)
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleUnderline().run()}
-                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('underline') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                <UnderlineIcon className="w-4 h-4" />
-              </button>
-            }
-          />
-          <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Underline (⌘ U)
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleStrike().run()}
-                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('strike') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                <Strikethrough className="w-4 h-4" />
-              </button>
-            }
-          />
-          <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Strikethrough (⌘ ⇧ X)
-          </TooltipContent>
-        </Tooltip>
-
-        <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={() => editor.chain().focus().toggleCode().run()}
-                className={`h-8 w-8 flex items-center justify-center rounded-sm transition-colors ${editor.isActive('code') ? 'bg-primary text-primary-foreground' : 'hover:bg-accent text-popover-foreground'}`}
-              >
-                <Code className="w-4 h-4" />
-              </button>
-            }
-          />
-          <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
-            Code (⌘ E)
-          </TooltipContent>
-        </Tooltip>
+                <Icon className="w-4 h-4" />
+                <span className="flex-1">{name}</span>
+                <span className="text-[10px] text-muted-foreground">{shortcut}</span>
+                {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
 
         <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
 
@@ -134,6 +105,50 @@ export function TextBubbleMenu({ editor, openLinkDialog }: TextBubbleMenuProps) 
             Link (⌘ K)
           </TooltipContent>
         </Tooltip>
+
+        <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
+
+        <DropdownMenu.Root modal={false}>
+          <Tooltip>
+            <TooltipTrigger 
+              render={
+                <DropdownMenu.Trigger asChild>
+                  <button 
+                    className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground outline-none"
+                  >
+                    {editor.isActive('taskList') ? (
+                      <LucideIcons.ListTodo className="w-4 h-4" />
+                    ) : editor.isActive('orderedList') ? (
+                      <LucideIcons.ListOrdered className="w-4 h-4" />
+                    ) : (
+                      <LucideIcons.List className="w-4 h-4" />
+                    )}
+                  </button>
+                </DropdownMenu.Trigger>
+              }
+            />
+            <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
+              List
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenu.Content className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10000] min-w-[160px] flex flex-col" sideOffset={5} align="start">
+            {[
+              { name: 'Bullet List', icon: LucideIcons.List, action: () => editor.chain().focus().toggleBulletList().run(), isActive: editor.isActive('bulletList') },
+              { name: 'Ordered List', icon: LucideIcons.ListOrdered, action: () => editor.chain().focus().toggleOrderedList().run(), isActive: editor.isActive('orderedList') },
+              { name: 'Task List', icon: LucideIcons.ListTodo, action: () => editor.chain().focus().toggleTaskList().run(), isActive: editor.isActive('taskList') },
+            ].map(({ name, icon: Icon, action, isActive }) => (
+              <DropdownMenu.Item
+                key={name}
+                onSelect={action}
+                className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none ${isActive ? 'bg-accent/50' : ''}`}
+              >
+                <Icon className="w-4 h-4" />
+                <span className="flex-1">{name}</span>
+                {isActive && <Check className="w-3.5 h-3.5 opacity-70" />}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
 
         <DropdownMenu.Root modal={false}>
           <Tooltip>
@@ -239,6 +254,29 @@ export function TextBubbleMenu({ editor, openLinkDialog }: TextBubbleMenuProps) 
             ))}
           </DropdownMenu.Content>
         </DropdownMenu.Root>
+
+        {showSendToAIButton && (
+          <>
+            <div className="w-[1px] h-4 bg-border mx-0.5 self-center" />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={handleSendSelectionToAI}
+                    className="h-8 w-8 flex items-center justify-center rounded-sm transition-colors hover:bg-accent text-popover-foreground"
+                  >
+                    <LucideIcons.Sparkles className="w-4 h-4" />
+                  </button>
+                }
+              />
+              <TooltipContent side="top" className="text-[10px] py-1 px-2 font-medium">
+                Send to AI
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </TooltipProvider>
     </BubbleMenu>
   );

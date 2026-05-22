@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { AIChatSession, AIChatMessage } from '@/types';
-import { fetchEntityContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
+import { fetchEntityContext, buildSiblingContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
 
 export type EntityContext = EntityCtxType;
@@ -42,6 +42,7 @@ export function useAIChat(
   entityContext?: EntityContext | null,
   entityContextText?: string | null,
   onStreamComplete?: (response: string) => void,
+  projectId?: number | string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
@@ -94,8 +95,10 @@ export function useAIChat(
       let query = buildBaseQuery()
         .order('updated_at', { ascending: false });
 
-      // Filter by entity context
-      if (entityContext) {
+      // Filter sessions by project (cross-feature) or fallback to entity
+      if (projectId) {
+        query = query.eq('project_id', projectId);
+      } else if (entityContext) {
         query = query
           .eq('entity_type', entityContext.entityType)
           .eq('entity_uid', entityContext.entityUid);
@@ -111,7 +114,7 @@ export function useAIChat(
     } finally {
       setIsSessionsLoading(false);
     }
-  }, [entityContext?.entityType, entityContext?.entityUid]);
+  }, [entityContext?.entityType, entityContext?.entityUid, projectId]);
 
   const createSession = useCallback(async (): Promise<string | null> => {
     setError(null);
@@ -125,6 +128,9 @@ export function useAIChat(
       if (entityContext) {
         payload.entity_type = entityContext.entityType;
         payload.entity_uid = entityContext.entityUid;
+      }
+      if (projectId) {
+        payload.project_id = projectId;
       }
 
       const { data, error: insertError } = await supabase
@@ -146,7 +152,7 @@ export function useAIChat(
       toast.error('Failed to create chat session');
       return null;
     }
-  }, [entityContext?.entityType, entityContext?.entityUid]);
+  }, [entityContext?.entityType, entityContext?.entityUid, projectId]);
 
   const selectSession = useCallback(async (sessionUid: string) => {
     setIsMessagesLoading(true);
@@ -405,6 +411,26 @@ export function useAIChat(
       if (selectionText) {
         apiUserContent += `[Selected text: "${selectionText}"]\n`;
       }
+
+      // Cross-feature sibling context from the same project.
+      // Exclude the CURRENT active entity (not the session origin) — entityContextText
+      // already provides full context for the active file.
+      // Always fresh: queries Supabase every sendMessage with up to 6000 chars budget.
+      if (currentSession?.project_id && entityContext) {
+        try {
+          const siblingCtx = await buildSiblingContext(
+            entityContext.entityType,
+            entityContext.entityUid,
+            currentSession.project_id,
+          );
+          if (siblingCtx) {
+            apiUserContent += `\n${siblingCtx}\n`;
+          }
+        } catch (err) {
+          console.warn('[AI Context] Failed to fetch sibling context:', err);
+        }
+      }
+
       apiUserContent += `User request: ${trimmed}`;
       apiMessages.push({ role: 'user', content: apiUserContent });
 

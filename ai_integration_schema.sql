@@ -37,14 +37,17 @@ CREATE TABLE IF NOT EXISTS user_ai_configs (
 );
 
 -- 4. AI Chat Sessions Table
+-- project_id (FK to projects) is the single source of truth for cross-feature AI context.
+-- Instead of storing cached file references in JSONB, we dynamically query
+-- all notes/diagrams/flowcharts/drawings WHERE project_id = session.project_id
+-- at sendMessage() time. This ensures context is always fresh.
 CREATE TABLE IF NOT EXISTS ai_chat_sessions (
     id BIGSERIAL PRIMARY KEY,
     uid UUID DEFAULT gen_random_uuid() UNIQUE,
     user_id UUID, -- Removed FK to auth.users to support Custom Auth IDs and Guest sessions
-    project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,
+    project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL, -- FK to projects — query siblings via this
     entity_type TEXT DEFAULT NULL, -- 'note', 'diagram', 'flowchart', 'drawing'
     entity_uid TEXT DEFAULT NULL,  -- UUID of the active note/diagram/flowchart/drawing
-    referenced_file_info JSONB DEFAULT NULL, -- Related files in workspace (cross-feature: Notes/ERD/flowchart)
     title TEXT DEFAULT 'New Conversation',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
