@@ -22,26 +22,13 @@ const typeConfig = {
 export function QuickJump() {
   const {
     view, notes, diagrams, flowcharts, drawings,
-    activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
+    activeDocument,
     handleNoteSelect, handleDiagramSelect,
     handleDrawingSelect, handleFlowchartSelect,
   } = useWorkspace();
 
-  // Derive project_id from the currently active document
-  const projectId = useMemo(() => {
-    let activeItem: Note | Diagram | Flowchart | Drawing | null = null;
-    if (view === 'erd' && activeDiagramId)
-      activeItem = (diagrams ?? []).find((d: Diagram) => String(d.id) === String(activeDiagramId)) ?? null;
-    else if (view === 'notes' && activeNoteUid)
-      activeItem = (notes ?? []).find((n: Note) => String(n.uid) === String(activeNoteUid)) ?? null;
-    else if (view === 'drawings' && activeDrawingId)
-      activeItem = (drawings ?? []).find((d: Drawing) => String(d.id) === String(activeDrawingId)) ?? null;
-    else if (view === 'flowchart' && activeFlowchartId)
-      activeItem = (flowcharts ?? []).find((f: Flowchart) => String(f.id) === String(activeFlowchartId)) ?? null;
-    return activeItem?.project_id ?? null;
-  }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, notes, diagrams, flowcharts, drawings]);
-
   // Only show when viewing a document that belongs to a project
+  const projectId = activeDocument?.project_id ?? null;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);

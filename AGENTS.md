@@ -87,6 +87,22 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - Wrapped by `NotesEditor` (thin pass-through) → used in `NotesView`
 - `NotesView` connects editor to parent `WorkspaceProvider` via `handleNoteChange` prop
 
+## RenameDocumentDialog Project Sync
+
+- `RenameDocumentDialog` uses `selectedProjectId` (from parent `renameProjectId`) for the `<Select>` value
+- **Bug**: `selectedProjectId` and `activeDocument` can desync — parent computes `renameProjectId` separately from the document lookup used for `activeDocument` prop
+- **Fix**: `useEffect` in `RenameDocumentDialog.tsx:77` syncs `selectedProjectId` from `activeDocument` when `isOpen` becomes `true`:
+  ```tsx
+  useEffect(() => {
+    if (isOpen && !isCreate && activeDocument) {
+      const pid = activeDocument?.project_id ?? activeDocument?.projectId;
+      setSelectedProjectId(pid != null ? String(pid) : 'none');
+    }
+  }, [isOpen]);
+  ```
+- Deps = `[isOpen]` intentionally — effect only fires on dialog open/close, not on `activeDocument` changes while open (preserves user selection mid-edit)
+- Both Edit and Create dialog instances in `AppLayout.tsx` share the same `renameProjectId`/`setRenameProjectId` state
+
 ## Removed Features
 
 - **Replace Selected** — removed entirely (context: `selectionRange`, `setSelectionRange`, `replaceSelectedText`, `registerReplaceSelected`; UI: Scissors button in AIChatPanel; handler in TiptapEditor/NotesView). The `insertContentAt` + `marked.parse` combo failed because `marked.parse` wraps in `<p>` (block) which can't be inserted inline — schema rejects nested paragraphs.

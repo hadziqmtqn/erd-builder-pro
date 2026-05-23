@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
@@ -99,8 +100,11 @@ export const MainHeader = React.memo(({
   breadcrumbLabel,
   noteContent,
 }: MainHeaderProps) => {
+  const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
+
+  const isTableView = location.pathname.startsWith('/table/');
 
   React.useEffect(() => {
     setIsMac(window.navigator.userAgent.toLowerCase().includes('mac'));
@@ -193,8 +197,8 @@ export const MainHeader = React.memo(({
       </div>
 
       <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
-        {/* File search — only in table list view (no active item) */}
-        {!hideFileSearch && ['erd', 'notes', 'drawings', 'flowchart'].includes(view) && !hasActiveItem && !isPublicView && (
+        {/* File search — only in table list view */}
+        {!isPublicView && isTableView && !hideFileSearch && (
           <div className="relative flex items-center mr-1 sm:mr-2">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
             <Input
