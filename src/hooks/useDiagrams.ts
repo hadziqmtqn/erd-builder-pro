@@ -275,7 +275,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       if (diagram) {
         diagram.project_id = effectiveProjectId;
         await localPersistence.saveResource(diagram);
-        setDiagrams(prev => prev.map(f => f.id === diagramId ? { ...f, project_id: effectiveProjectId } : f));
+        setDiagrams(prev => prev.map(f => String(f.id) === String(diagramId) || String(f.uid) === String(diagramId) ? { ...f, project_id: effectiveProjectId } : f));
         if (!options?.silent) toast.success('Diagram moved to project locally');
         return true;
       }
@@ -291,7 +291,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         body: JSON.stringify({ project_id: effectiveProjectId }),
       });
       if (res.ok) {
-        setDiagrams(prev => prev.map(f => f.id === diagramId ? { ...f, project_id: effectiveProjectId } : f));
+        setDiagrams(prev => prev.map(f => String(f.id) === String(diagramId) || String(f.uid) === String(diagramId) ? { ...f, project_id: effectiveProjectId } : f));
         if (!options?.silent) toast.success('Diagram moved to project');
         return true;
       } else {

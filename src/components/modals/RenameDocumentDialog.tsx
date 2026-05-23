@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -73,6 +73,13 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   onRenameSuccess,
 }) => {
   const isCreate = mode === 'create';
+
+  useEffect(() => {
+    if (isOpen && !isCreate && activeDocument) {
+      const pid = activeDocument?.project_id ?? activeDocument?.projectId;
+      setSelectedProjectId(pid != null ? String(pid) : 'none');
+    }
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!newName.trim()) return;
