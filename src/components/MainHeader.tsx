@@ -191,12 +191,11 @@ export const MainHeader = React.memo(({
             <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
             <span className="text-[10px] font-bold uppercase tracking-wider">Offline Mode: Navigation Disabled</span>
           </div>
-        ) : (
-          <QuickJump />
-        )}
+        ) : null}
       </div>
 
       <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
+        <QuickJump />
         {/* File search — only in table list view */}
         {!isPublicView && isTableView && !hideFileSearch && (
           <div className="relative flex items-center mr-1 sm:mr-2">
