@@ -117,6 +117,7 @@ export function useERDSession(
           localData = allDiagrams.find((d: any) => d.uid === id) || null;
         }
         if (!localData) {
+          setIsItemLoading(false);
           loadingIdRef.current = null;
           return;
         }
@@ -127,13 +128,17 @@ export function useERDSession(
           const errText = await res.text();
           console.error(`Failed to fetch diagram ${id}:`, res.status, errText);
           toast.error("Failed to load diagram details");
+          setIsItemLoading(false);
           loadingIdRef.current = null;
           return;
         }
         data = await res.json();
       }
       
-      if (!data || data.is_deleted) return;
+      if (!data || data.is_deleted) {
+        setIsItemLoading(false);
+        return;
+      }
 
       // Ensure entities and relationships are at least empty arrays
       if (!data.entities) data.entities = [];
@@ -247,7 +252,9 @@ export function useERDSession(
       setTimeout(() => {
         isInitializingRef.current = false;
       }, 2000);
-    } catch (err) {} finally {
+    } catch (err) {
+      setIsItemLoading(false);
+    } finally {
       loadingIdRef.current = null;
     }
   }, [isGuest, clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);

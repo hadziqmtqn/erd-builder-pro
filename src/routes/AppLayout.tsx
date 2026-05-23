@@ -70,6 +70,7 @@ function AppLayoutInner() {
     featureLabel, activeProjectName, activeFileName, hasActiveItem,
     fileSearchRef, fileSearchQuery, setFileSearchQuery,
     activeNote, activeDrawing, activeFlowchart, activeDiagram,
+    notes, diagrams, flowcharts, drawings,
     nodes, edges,
     fetchTrash,
     triggerTableRefresh,
@@ -222,6 +223,7 @@ function AppLayoutInner() {
           onFileSearchChange={setFileSearchQuery}
           hideFileSearch={location.pathname === '/'}
           breadcrumbLabel={breadcrumbLabel}
+          noteContent={activeNote?.content}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
@@ -381,6 +383,10 @@ function AppLayoutInner() {
             onPromptUsed={clearPrompt}
             pendingAction={pendingAction}
             onClearPendingAction={clearPendingAction}
+            notes={notes}
+            diagrams={diagrams}
+            flowcharts={flowcharts}
+            drawings={drawings}
           />
         )}
         {showAIChat && (

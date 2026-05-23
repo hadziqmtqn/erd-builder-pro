@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
+import { GitBranch } from 'lucide-react';
 
 const FlowchartView = React.lazy(() => import('@/components/views/FlowchartView').then(m => ({ default: m.FlowchartView })));
 
@@ -10,13 +11,23 @@ export function FlowchartEditorRoute() {
 
   const {
     activeFlowchart, activeFlowchartId, handleFlowchartChange,
-    isPublicView, isLoading,
+    isPublicView, isLoading, isFlowchartItemLoading,
   } = ctx;
 
   if (!isPublicView && !activeFlowchartId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a flowchart to view</p>
+      </div>
+    );
+  }
+
+  if (!activeFlowchart && !isFlowchartItemLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <GitBranch className="w-12 h-12 text-muted-foreground/40 mb-4" />
+        <p className="text-sm font-medium text-muted-foreground">Flowchart not found</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">This flowchart may have been deleted or is no longer available.</p>
       </div>
     );
   }

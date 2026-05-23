@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, ChevronDown, Minimize2, PanelRightClose, Plus, Loader2, FileText, Database, GitBranch, Image } from 'lucide-react';
+import { Sparkles, ChevronDown, Minimize2, PanelRightClose, Plus, Loader2, FileText, Database, GitBranch, Image, File } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -11,6 +11,13 @@ import { MinimizedBar } from './MinimizedBar';
 import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
+import { supabase } from '@/lib/supabase';
+
+interface MentionFile {
+  name: string;
+  type: 'note' | 'diagram' | 'flowchart' | 'drawing';
+  uid: string;
+}
 
 interface AIChatPanelProps {
   onClose: () => void;
@@ -23,6 +30,10 @@ interface AIChatPanelProps {
   onPromptUsed?: () => void;
   pendingAction?: { actionId: string; onResult: (response: string) => void } | null;
   onClearPendingAction?: () => void;
+  notes?: any[];
+  diagrams?: any[];
+  flowcharts?: any[];
+  drawings?: any[];
 }
 
 export const AIChatPanel = ({
@@ -36,6 +47,10 @@ export const AIChatPanel = ({
   onPromptUsed,
   pendingAction,
   onClearPendingAction,
+  notes = [],
+  diagrams = [],
+  flowcharts = [],
+  drawings = [],
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
@@ -154,21 +169,123 @@ export const AIChatPanel = ({
     onClose();
   }, [onClose]);
 
+  // ─── Build mention file list from workspace file arrays ──
+  const mentionFiles = useMemo<MentionFile[]>(() => {
+    // Derive projectId from active entity (activeProjectId prop is always null)
+    let pid: string | number | null | undefined = projectId;
+    if (!pid && entityType && entityUid) {
+      if (entityType === 'note') {
+        const n = notes.find((x: any) => String(x.id) === String(entityUid) || String(x.uid) === String(entityUid));
+        pid = n?.project_id;
+      } else if (entityType === 'diagram') {
+        const d = diagrams.find((x: any) => String(x.id) === String(entityUid) || String(x.uid) === String(entityUid));
+        pid = d?.project_id;
+      } else if (entityType === 'flowchart') {
+        const f = flowcharts.find((x: any) => String(x.id) === String(entityUid) || String(x.uid) === String(entityUid));
+        pid = f?.project_id;
+      } else if (entityType === 'drawing') {
+        const d = drawings.find((x: any) => String(x.id) === String(entityUid) || String(x.uid) === String(entityUid));
+        pid = d?.project_id;
+      }
+    }
+    if (!pid) return [];
+    const files: MentionFile[] = [];
+
+    for (const n of notes) {
+      if (String(n.project_id) === String(pid) && !n.is_deleted) {
+        files.push({ name: n.title || 'Untitled', type: 'note', uid: n.uid ?? String(n.id) });
+      }
+    }
+    for (const d of diagrams) {
+      if (String(d.project_id) === String(pid) && !d.is_deleted) {
+        files.push({ name: d.name || 'Untitled', type: 'diagram', uid: d.uid ?? String(d.id) });
+      }
+    }
+    for (const f of flowcharts) {
+      if (String(f.project_id) === String(pid) && !f.is_deleted) {
+        files.push({ name: f.title || 'Untitled', type: 'flowchart', uid: f.uid ?? String(f.id) });
+      }
+    }
+    for (const d of drawings) {
+      if (String(d.project_id) === String(pid) && !d.is_deleted) {
+        files.push({ name: d.title || 'Untitled', type: 'drawing', uid: d.uid ?? String(d.id) });
+      }
+    }
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    return files;
+  }, [projectId, notes, diagrams, flowcharts, drawings, entityType, entityUid]);
+
+  // ─── Resolve @mentions to file content for AI context ──
+  const resolveMentions = useCallback(async (text: string): Promise<{ context: string; seenUids: Set<string> }> => {
+    const mentionRegex = /@([^\s\n]+)/g;
+    const matches = text.matchAll(mentionRegex);
+    const seenUids = new Set<string>();
+    let context = '';
+
+    for (const match of matches) {
+      const name = match[1];
+      const file = mentionFiles.find(f => f.name.toLowerCase() === name.toLowerCase());
+      if (!file || seenUids.has(file.uid)) continue;
+      seenUids.add(file.uid);
+
+      try {
+        let content = '';
+        if (file.type === 'note') {
+          const note = notes.find(n => String(n.id) === String(file.uid) || String(n.uid) === String(file.uid));
+          if (note?.content) {
+            content = note.content;
+          } else {
+            const { data } = await supabase
+              .from('notes')
+              .select('content')
+              .eq('uid', file.uid)
+              .single();
+            content = (data as any)?.content || '';
+          }
+        } else if (file.type === 'flowchart') {
+          const fc = flowcharts.find(f => String(f.id) === String(file.uid) || String(f.uid) === String(file.uid));
+          content = fc?.data || '';
+        } else if (file.type === 'diagram') {
+          content = `Referenced ERD diagram: ${file.name}`;
+        } else if (file.type === 'drawing') {
+          const dw = drawings.find(d => String(d.id) === String(file.uid) || String(d.uid) === String(file.uid));
+          content = dw?.data || '';
+        }
+
+        const MAX_CHARS = 2000;
+        const stripped = content ? content.replace(/<[^>]+>/g, '').trim() : '';
+        const preview = stripped.length > MAX_CHARS ? stripped.slice(0, MAX_CHARS) + '…' : stripped;
+        if (preview) {
+          context += `[Referenced file "${file.name}" (${file.type})]:\n${preview}\n\n`;
+        } else {
+          context += `[Referenced file "${file.name}" (${file.type})]\n\n`;
+        }
+      } catch {
+        context += `[Referenced file "${file.name}" (${file.type})]\n\n`;
+      }
+    }
+    return { context: context.trim() ? context : '', seenUids };
+  }, [mentionFiles, notes, flowcharts, drawings]);
+
   // ─── Handle send (reads from uncontrolled textarea) ─
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = (inputRef.current?.value || '').trim();
     if (!text || isStreaming) return;
 
+    const { context: mentionContext } = await resolveMentions(text);
+
     const finalMessage = activeActionPrompt
-      ? `${text}\n\n---SYSTEM_PROMPT---\n${activeActionPrompt}`
-      : text;
+      ? `${mentionContext}${text}\n\n---SYSTEM_PROMPT---\n${activeActionPrompt}`
+      : mentionContext
+        ? `${mentionContext}${text}`
+        : text;
 
     sendMessage(finalMessage, selectionText);
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
     setActiveActionId(null);
     setActiveActionPrompt(null);
-  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId]);
+  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, resolveMentions]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -327,6 +444,7 @@ export const AIChatPanel = ({
           onSelectAction={handleSelectAction}
           onAbort={abortStream}
           isCrossEntity={isCrossEntity}
+          mentionFiles={mentionFiles}
         />
       </div>
 

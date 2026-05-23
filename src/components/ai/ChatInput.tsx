@@ -1,8 +1,14 @@
-import { memo } from 'react';
-import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown } from 'lucide-react';
+import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+
+interface MentionFile {
+  name: string;
+  type: 'note' | 'diagram' | 'flowchart' | 'drawing';
+  uid: string;
+}
 
 function getActionIcon(actionId: string) {
   switch (actionId) {
@@ -37,7 +43,7 @@ function getActionIcon(actionId: string) {
 
 function getPlaceholder(actionId: string | null | undefined): string {
   switch (actionId) {
-    case 'notes-summarize':      return 'Describe what to summarize...';
+    case 'notes-summarize':       return 'Describe what to summarize...';
     case 'notes-improve-grammar': return 'Describe which part to improve...';
     case 'notes-generate-docs':   return 'Describe what documentation to generate...';
     case 'erd-generate-sql':      return 'Describe the SQL to generate...';
@@ -50,9 +56,16 @@ function getPlaceholder(actionId: string | null | undefined): string {
     case 'flowchart-pseudocode':  return 'Describe pseudocode needs...';
     case 'flowchart-insert':      return 'Describe where to insert a symbol...';
     case 'flowchart-import':      return 'Describe the process to diagram...';
-    default:                      return 'Ask anything...';
+    default:                      return 'Ask anything... Type @ to reference a file';
   }
 }
+
+const MENTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  note: FileText,
+  diagram: Database,
+  flowchart: GitBranch,
+  drawing: File,
+};
 
 export interface ChatInputProps {
   hasActiveSession: boolean;
@@ -66,6 +79,7 @@ export interface ChatInputProps {
   onSelectAction: (action: AIAction) => void;
   onAbort: () => void;
   isCrossEntity?: boolean;
+  mentionFiles?: MentionFile[];
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -80,21 +94,156 @@ export const ChatInput = memo(function ChatInput({
   onSelectAction,
   onAbort,
   isCrossEntity = false,
+  mentionFiles = [],
 }: ChatInputProps) {
+  // ── Hooks must be before any early return (Rules of Hooks) ──
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionStart, setMentionStart] = useState(-1);
+  const mentionRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useState(0);
+
+  const filtered = useMemo(() => {
+    if (!mentionQuery.trim()) return mentionFiles;
+    const q = mentionQuery.toLowerCase();
+    return mentionFiles.filter(f => f.name.toLowerCase().includes(q));
+  }, [mentionFiles, mentionQuery]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mentionQuery]);
+
+  const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
+    const textarea = e.currentTarget;
+    const pos = textarea.selectionStart;
+    const text = textarea.value;
+
+    let atPos = -1;
+    for (let i = pos - 1; i >= 0; i--) {
+      const ch = text[i];
+      if (ch === '@') { atPos = i; break; }
+      if (ch === ' ' || ch === '\n') break;
+    }
+
+    if (atPos >= 0) {
+      const query = text.slice(atPos + 1, pos);
+      setMentionQuery(query);
+      setMentionStart(atPos);
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+    }
+  }, []);
+
+  const insertMention = useCallback((file: MentionFile) => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    const start = mentionStart;
+    if (start < 0) return;
+    const end = ta.selectionStart;
+    const before = ta.value.slice(0, start);
+    const after = ta.value.slice(end);
+    const mention = `@${file.name} `;
+    ta.value = before + mention + after;
+    const newPos = start + mention.length;
+    ta.setSelectionRange(newPos, newPos);
+    ta.focus();
+    setMentionOpen(false);
+    forceUpdate(n => n + 1);
+  }, [mentionStart, inputRef, forceUpdate]);
+
+  const handleMentionKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(i => Math.min(i + 1, filtered.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(i => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (filtered[mentionIndex]) {
+          e.preventDefault();
+          insertMention(filtered[mentionIndex]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionOpen(false);
+        return;
+      }
+    }
+    onKeyDown(e);
+  }, [mentionOpen, filtered, mentionIndex, insertMention, onKeyDown]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+        if ((e.target as HTMLElement).tagName === 'TEXTAREA') return;
+        setMentionOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [mentionOpen]);
+
+  const showActions = !isCrossEntity && ['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0;
+
   if (!hasActiveSession) return null;
 
   return (
     <div className="shrink-0 border-t bg-background p-4 space-y-2.5">
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-2 relative">
         <textarea
           ref={inputRef}
           defaultValue=""
-          onKeyDown={onKeyDown}
+          onInput={handleInput}
+          onKeyDown={handleMentionKeyDown}
           placeholder={isStreaming ? 'AI is responding...' : getPlaceholder(activeActionId)}
           className="flex-1 min-h-[80px] max-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
           rows={3}
           disabled={isStreaming}
         />
+
+        {/* Mention dropdown */}
+        {mentionOpen && filtered.length > 0 && (
+          <div
+            ref={mentionRef}
+            className="absolute z-[100] w-[240px] rounded-lg border border-border bg-popover shadow-xl overflow-hidden"
+            style={{
+              bottom: 'calc(100% + 4px)',
+              left: '0px',
+            }}
+          >
+            <div className="max-h-[180px] overflow-y-auto py-1">
+              {filtered.map((file, idx) => {
+                const Icon = MENTION_ICONS[file.type] || FileText;
+                const isActive = idx === mentionIndex;
+                return (
+                  <button
+                    key={`${file.type}-${file.uid}`}
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); insertMention(file); }}
+                    onMouseEnter={() => setMentionIndex(idx)}
+                    className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors ${
+                      isActive ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate">{file.name}</span>
+                    <span className="text-[9px] uppercase text-muted-foreground/50 font-medium shrink-0">{file.type}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <Button
           variant={isStreaming ? "outline" : "default"}
           size="icon"
@@ -106,7 +255,7 @@ export const ChatInput = memo(function ChatInput({
       </div>
 
       <div className="flex items-center justify-between min-h-[28px]">
-        {!isCrossEntity && ['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0 ? (
+        {showActions ? (
           <div className="flex items-center gap-1 flex-wrap">
             {actions.map((action) => {
               const isActive = activeActionId === action.id;
