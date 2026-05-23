@@ -426,6 +426,13 @@ Every AI action lives in [`src/components/ai/AIActions.ts`](file:///Users/meowpu
 | **Insert Between** | `flowchart-insert` | ❌ No (Append) | Append | AI inserts a new symbol between two connected symbols. User selects source and target nodes, AI generates the intermediate step. |
 | **Import from Description** | `flowchart-import` | ❌ No (Replace) | Replace | AI generates full flowchart from description. Replace wipes the canvas and replaces with AI output. |
 
+### Flowchart AI Context (JSON Format Instruction)
+
+- `buildFlowchartContext()` in [`src/hooks/aiEntityContext/flowchart.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/aiEntityContext/flowchart.ts) now appends `[Flowchart Editor Format]` instructions describing the JSON schema (`{ nodes, edges }`), supported shapes, and colors
+- AI is instructed to ask the user whether they prefer **Flowchart Editor JSON** (for visual editing), **Mermaid** (for documentation), or **plain text explanation**
+- This ensures the AI can respond with parseable JSON when the user wants to create/modify a diagram, making the Append/Replace button appear
+- `hasFlowchartJSON()` in `ChatMessages.tsx` detects `{ nodes: [...] }` inside ` ```json ` blocks or raw JSON
+
 ### Flowchart Architecture
 
 #### Shared Helpers ([`src/components/ai/actions/flowchartActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/actions/flowchartActions.ts))
@@ -468,6 +475,7 @@ Three fixes prevent cascading re-renders on every drag frame:
 1. **`memoizedNodes` preserves references** (line 295): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (n.selected === selected) return n`). During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
 2. **`setActionContextData` skips during drag** (line 323): the `useEffect` that syncs nodes/edges to AIActionContext now returns early when `isDraggingRef.current` is true. This prevents a cascading second re-render: without this guard, every drag frame triggered `setActionContextData` → `AIActionProvider` re-render → `FlowchartView` (as `useAIAction` consumer) re-renders again → `memoizedNodes` recomputes → React Flow reconciles all nodes twice per frame.
 3. **`useEdgesState` edges reference is stable during drag** — edges don't change when nodes move, so `memoizedEdges` doesn't recompute mid-drag. The only drag-triggered re-render comes from `nodes` changes, which now only recreate the dragged node's object.
+4. **`memoizedEdges` preserves references** (line 409): non-active edges (not hovered/selected) return the original edge reference — only edges that are actively hovered or selected get new objects with white stroke/width overrides. React Flow skips reconciliation for unchanged edges.
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
 - Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
@@ -491,6 +499,14 @@ Three fixes prevent cascading re-renders on every drag frame:
 - **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
+
+### Flowchart AI Content Safety Guards
+
+- **`MAX_AI_NODES = 60`**, **`MAX_AI_EDGES = 120`**, **`MAX_AI_TEXT_BYTES = 512_000`** in `flowchartActions.ts` — hard limits that prevent parsing/rendering huge AI responses
+- `parseJSON()` returns `null` if `text.length > MAX_AI_TEXT_BYTES`
+- `parseNodesAndEdges()` returns `null` if `parsed.nodes.length > MAX_AI_NODES` or `parsed.edges.length > MAX_AI_EDGES`
+- Content handler in `FlowchartView` wraps the entire callback in `try/catch` with `toast.error` fallback — prevents unhandled errors from crashing the page
+- If parsing fails (nodes empty, exceeded limits, or malformed JSON), a toast warns the user the data couldn't be parsed
 
 ### Flowchart Canvas (`FlowchartNode.tsx`)
 
