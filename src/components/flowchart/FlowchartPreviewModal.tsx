@@ -25,42 +25,50 @@ const ICON_SIZE = 32;
 
 type HandleSide = 'top' | 'bottom' | 'left' | 'right';
 
-function getHandlePos(x: number, y: number, side: HandleSide) {
+function computeHandlePoints(pos: { x: number; y: number }): Array<{ x: number; y: number }> {
+  return [
+    { x: pos.x + NODE_W / 2, y: pos.y },                          // top
+    { x: pos.x + NODE_W / 2, y: pos.y + NODE_H },                 // bottom
+    { x: pos.x, y: pos.y + NODE_H / 2 },                          // left
+    { x: pos.x + NODE_W, y: pos.y + NODE_H / 2 },                 // right
+  ];
+}
+
+function getHandlePos(pos: { x: number; y: number }, side: HandleSide) {
+  const pts = computeHandlePoints(pos);
   switch (side) {
-    case 'top':    return { x: x + NODE_W / 2, y };
-    case 'bottom': return { x: x + NODE_W / 2, y: y + NODE_H };
-    case 'left':   return { x, y: y + NODE_H / 2 };
-    case 'right':  return { x: x + NODE_W, y: y + NODE_H / 2 };
+    case 'top': return pts[0];
+    case 'bottom': return pts[1];
+    case 'left': return pts[2];
+    case 'right': return pts[3];
   }
 }
 
 function pickClosestHandles(srcNode: Node, tgtNode: Node): { sourceHandle: HandleSide; targetHandle: HandleSide } {
-  const sx = srcNode.position.x;
-  const sy = srcNode.position.y;
-  const tx = tgtNode.position.x;
-  const ty = tgtNode.position.y;
+  const HANDLE_SIDES: HandleSide[] = ['top', 'bottom', 'left', 'right'];
+  const srcPts = computeHandlePoints(srcNode.position);
+  const tgtPts = computeHandlePoints(tgtNode.position);
 
-  const handles: HandleSide[] = ['top', 'bottom', 'left', 'right'];
   let bestDist = Infinity;
-  let bestSrc: HandleSide = 'bottom';
-  let bestTgt: HandleSide = 'top';
+  let bestSrc = 0;
+  let bestTgt = 0;
 
-  for (const sh of handles) {
-    const sp = getHandlePos(sx, sy, sh);
-    for (const th of handles) {
-      const tp = getHandlePos(tx, ty, th);
+  for (let si = 0; si < 4; si++) {
+    const sp = srcPts[si];
+    for (let ti = 0; ti < 4; ti++) {
+      const tp = tgtPts[ti];
       const dx = sp.x - tp.x;
       const dy = sp.y - tp.y;
       const dist = dx * dx + dy * dy;
       if (dist < bestDist) {
         bestDist = dist;
-        bestSrc = sh;
-        bestTgt = th;
+        bestSrc = si;
+        bestTgt = ti;
       }
     }
   }
 
-  return { sourceHandle: bestSrc, targetHandle: bestTgt };
+  return { sourceHandle: HANDLE_SIDES[bestSrc], targetHandle: HANDLE_SIDES[bestTgt] };
 }
 
 function buildSmartEdgePath(
@@ -154,8 +162,8 @@ export function FlowchartPreviewModal({
         ? { sourceHandle: edge.sourceHandle as HandleSide, targetHandle: edge.targetHandle as HandleSide }
         : pickClosestHandles(srcNode, tgtNode);
 
-      const srcPos = getHandlePos(srcNode.position.x, srcNode.position.y, closest.sourceHandle);
-      const tgtPos = getHandlePos(tgtNode.position.x, tgtNode.position.y, closest.targetHandle);
+      const srcPos = getHandlePos(srcNode.position, closest.sourceHandle);
+      const tgtPos = getHandlePos(tgtNode.position, closest.targetHandle);
 
       return {
         id: edge.id,
@@ -278,7 +286,7 @@ export function FlowchartPreviewModal({
                     <g key={node.id}>
                       {/* Connection handle dots */}
                       {(['top', 'bottom', 'left', 'right'] as HandleSide[]).map((side) => {
-                        const hp = getHandlePos(sx, sy, side);
+                        const hp = getHandlePos({ x: sx, y: sy }, side);
                         const isConnected = connectedHandles.has(`${node.id}:${side}`);
                         return (
                           <circle

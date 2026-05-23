@@ -26,7 +26,7 @@ import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal'
 import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { toast } from 'sonner';
-import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
+import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, clearParseCache, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 
@@ -155,6 +155,13 @@ export const FlowchartView = React.memo(({
     }
   }, []);
 
+  const defaultEdgeOptions = useMemo(() => ({
+    type: 'smoothstep' as const,
+    reconnectable: true,
+    style: { stroke: '#b1b1b7' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
+  }), []);
+
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({
       ...params,
@@ -164,6 +171,17 @@ export const FlowchartView = React.memo(({
       animated: false,
     } as Edge, eds)),
     [setEdges],
+  );
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      setEdges((eds) => eds.map((e) => e.id === oldEdge.id
+        ? { ...e, source: newConnection.source, target: newConnection.target, sourceHandle: newConnection.sourceHandle, targetHandle: newConnection.targetHandle }
+        : e
+      ));
+      takeSnapshot(nodesRef.current, edgesRef.current);
+    },
+    [setEdges, takeSnapshot],
   );
 
   const confirmAddSymbol = () => {
@@ -209,10 +227,20 @@ export const FlowchartView = React.memo(({
 
   const deleteNode = () => {
     if (!selectedNodeId) return;
+    const targetIds = [selectedNodeId];
+    setNodes((nds) => nds.filter(n => !targetIds.includes(n.id)));
+    setEdges((eds) => eds.filter(e => !targetIds.includes(e.source) && !targetIds.includes(e.target)));
+    setSelectedNodeId(null);
+  };
+
+  const deleteGroup = () => {
     const node = nodes.find(n => n.id === selectedNodeId);
-    if (node && ['start', 'end'].includes(node.data.label?.trim().toLowerCase())) return;
-    setNodes((nds) => nds.filter(n => n.id !== selectedNodeId));
-    setEdges((eds) => eds.filter(e => e.source !== selectedNodeId && e.target !== selectedNodeId));
+    if (!node || !node.data.section) return;
+    const section = node.data.section;
+    const groupIds = nodes.filter(n => n.data.section === section).map(n => n.id);
+    if (groupIds.length === 0) return;
+    setNodes((nds) => nds.filter(n => !groupIds.includes(n.id)));
+    setEdges((eds) => eds.filter(e => !groupIds.includes(e.source) && !groupIds.includes(e.target)));
     setSelectedNodeId(null);
   };
 
@@ -246,6 +274,8 @@ export const FlowchartView = React.memo(({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isReadOnly) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNodeId) { deleteNode(); return; }
         if (selectedEdgeId) { deleteEdge(); return; }
@@ -415,6 +445,7 @@ export const FlowchartView = React.memo(({
     }
     setPendingPreview(null);
     pendingContentRef.current = null;
+    clearParseCache();
   }, [setNodes, setEdges, takeSnapshot]);
   
   const memoizedEdges = useMemo(() => edges.map(e => {
@@ -473,6 +504,8 @@ export const FlowchartView = React.memo(({
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
+          onReconnect={onReconnect}
+          defaultEdgeOptions={defaultEdgeOptions}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
@@ -511,6 +544,7 @@ export const FlowchartView = React.memo(({
             selectedNode={selectedNode}
             onUpdateNodeData={updateNodeData}
             onDeleteNode={deleteNode}
+            onDeleteGroup={deleteGroup}
           />
 
           <ConnectorPropertiesModal

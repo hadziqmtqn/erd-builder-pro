@@ -5,6 +5,14 @@ const MAX_AI_NODES = 60;
 const MAX_AI_TEXT_BYTES = 512_000;
 const MAX_AI_EDGES = 120;
 
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
 export interface FlowchartApplyResult {
   nodes: Node<FlowchartNodeData>[];
   edges: Edge[];
@@ -34,7 +42,7 @@ function parseJSON(text: string): any {
   }
 }
 
-function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<string, string[]>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[] } | null {
+function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<string, string[]>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[]; idSeed: string } | null {
   const parsed = parseJSON(aiResponse);
   if (!parsed || !Array.isArray(parsed.nodes)) return null;
   if (parsed.nodes.length > MAX_AI_NODES) return null;
@@ -44,9 +52,12 @@ function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<
   const idToNode = new Map<string | number, string>();
   const newNodes: Node<FlowchartNodeData>[] = [];
 
+  const idSeed = String(Math.abs(hashStr(JSON.stringify(parsed))));
   parsed.nodes.forEach((nodeData: any, index: number) => {
-    const id = `ai_node_${Date.now()}_${index}`;
-    const lower = nodeData.label?.toLowerCase();
+    const id = `ai_node_${idSeed}_${index}`;
+    const data = nodeData.data || nodeData;
+    const label = data.label || '';
+    const lower = label.toLowerCase();
     if (lower) {
       const existing = labelToIds.get(lower) || [];
       existing.push(id);
@@ -58,22 +69,23 @@ function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<
       type: 'custom',
       position: { x: 0, y: 0 },
       data: {
-        label: nodeData.label || 'New Step',
-        shape: nodeData.shape || 'rectangle',
-        color: nodeData.color || '#8b5cf6',
+        label: data.label || 'New Step',
+        shape: data.shape || 'rectangle',
+        color: data.color || '#8b5cf6',
       },
     });
   });
 
-  return { parsed, labelToIds, idToNode, newNodes };
+  return { parsed, labelToIds, idToNode, newNodes, idSeed };
 }
 
 // ─── Smart decision branch layout ────────────────────────────
-function collectDescendants(id: string, outgoing: Record<string, string[]>, exclude: Set<string>): Set<string> {
+function collectDescendants(id: string, outgoing: Record<string, string[]>, exclude: Set<string>, maxIter = 200): Set<string> {
   const result = new Set<string>();
   const q = [id];
-  while (q.length > 0) {
-    const cur = q.shift()!;
+  let idx = 0;
+  while (idx < q.length && idx < maxIter) {
+    const cur = q[idx++];
     for (const next of outgoing[cur] || []) {
       if (!result.has(next) && !exclude.has(next)) {
         result.add(next);
@@ -89,6 +101,7 @@ function buildFlowchartLayout(
   parsed: any,
   labelToIds: Map<string, string[]>,
   idToNode: Map<string | number, string>,
+  idSeed: string,
 ): { positionedNodes: Node<FlowchartNodeData>[]; newEdges: Edge[] } {
   const newEdges: Edge[] = [];
 
@@ -148,70 +161,100 @@ function buildFlowchartLayout(
   }
 
   // ── Layer assignment (Sugiyama) ──
+  // Fast-path: if AI provides all positions, skip layout entirely
+  const hasPositions = parsed.nodes.every((nd: any) =>
+    nd.position && typeof nd.position.x === 'number' && typeof nd.position.y === 'number'
+  );
+
   const VERTICAL_SPACING = 160;
   const HORIZONTAL_SPACING = 280;
   const START_X = 60;
   const START_Y = 40;
 
-  const layers: Record<string, number> = {};
-  const queue: string[] = [];
+  const positions: Record<string, { x: number; y: number }> = {};
 
-  for (const n of newNodes) {
-    if (incomingCount[n.id] === 0 || n.data.shape === 'oval') {
-      layers[n.id] = 0;
-      queue.push(n.id);
-    }
-  }
+  if (hasPositions) {
+    // Use AI-provided positions directly
+    parsed.nodes.forEach((nd: any, idx: number) => {
+      const nodeId = newNodes[idx]?.id;
+      if (nodeId && nd.position) {
+        positions[nodeId] = { x: nd.position.x, y: nd.position.y };
+      }
+    });
+  } else {
+    // Sugiyama layer assignment — capped at nodes.length * 3 to prevent infinite loop on cycles
+    const layers: Record<string, number> = {};
+    const q: string[] = [];
 
-  if (queue.length === 0 && newNodes.length > 0) {
-    layers[newNodes[0].id] = 0;
-    queue.push(newNodes[0].id);
-  }
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const currentLayer = layers[current] ?? 0;
-    for (const next of outgoing[current] || []) {
-      const candidate = currentLayer + 1;
-      if ((layers[next] ?? -1) < candidate) {
-        layers[next] = candidate;
-        queue.push(next);
+    for (const n of newNodes) {
+      if (incomingCount[n.id] === 0 || n.data.shape === 'oval') {
+        layers[n.id] = 0;
+        q.push(n.id);
       }
     }
-  }
 
-  for (const n of newNodes) {
-    if (layers[n.id] === undefined) layers[n.id] = 0;
-  }
+    if (q.length === 0 && newNodes.length > 0) {
+      layers[newNodes[0].id] = 0;
+      q.push(newNodes[0].id);
+    }
 
-  const layerGroups: Record<number, string[]> = {};
-  for (const [id, layer] of Object.entries(layers)) {
-    if (!layerGroups[layer]) layerGroups[layer] = [];
-    layerGroups[layer].push(id);
-  }
+    const maxBFSIter = newNodes.length * 3;
+    let qi = 0;
+    let bfsIter = 0;
+    while (qi < q.length && bfsIter < maxBFSIter) {
+      bfsIter++;
+      const current = q[qi++];
+      const currentLayer = layers[current] ?? 0;
+      for (const next of outgoing[current] || []) {
+        const candidate = currentLayer + 1;
+        if ((layers[next] ?? -1) < candidate) {
+          layers[next] = candidate;
+          q.push(next);
+        }
+      }
+    }
 
-  const sortedLayers = Object.keys(layerGroups).map(Number).sort((a, b) => a - b);
-  const maxLayerCount = Math.max(...sortedLayers.map(l => layerGroups[l].length));
+    for (const n of newNodes) {
+      if (layers[n.id] === undefined) layers[n.id] = 0;
+    }
 
-  const positions: Record<string, { x: number; y: number }> = {};
-  for (const layer of sortedLayers) {
-    const ids = layerGroups[layer];
-    const layerWidth = (ids.length - 1) * HORIZONTAL_SPACING;
-    const maxWidth = (maxLayerCount - 1) * HORIZONTAL_SPACING;
-    const layerStartX = START_X + (maxWidth - layerWidth) / 2;
+    const layerGroups: Record<number, string[]> = {};
+    for (const [id, layer] of Object.entries(layers)) {
+      if (!layerGroups[layer]) layerGroups[layer] = [];
+      layerGroups[layer].push(id);
+    }
 
-    ids.forEach((id, idx) => {
-      positions[id] = {
-        x: layerStartX + idx * HORIZONTAL_SPACING,
-        y: START_Y + layer * VERTICAL_SPACING,
-      };
-    });
+    const sortedLayers = Object.keys(layerGroups).map(Number).sort((a, b) => a - b);
+    const maxLayerCount = Math.max(...sortedLayers.map(l => layerGroups[l].length));
+
+    for (const layer of sortedLayers) {
+      const ids = layerGroups[layer];
+      const layerWidth = (ids.length - 1) * HORIZONTAL_SPACING;
+      const maxWidth = (maxLayerCount - 1) * HORIZONTAL_SPACING;
+      const layerStartX = START_X + (maxWidth - layerWidth) / 2;
+
+      ids.forEach((id, idx) => {
+        positions[id] = {
+          x: layerStartX + idx * HORIZONTAL_SPACING,
+          y: START_Y + layer * VERTICAL_SPACING,
+        };
+      });
+    }
   }
 
   // ── Smart decision branch layout ──
   // For diamond nodes, spread Yes/No branches left/right
   const BRANCH_OFFSET = 180;
   const shiftedNodes = new Set<string>();
+
+  function shiftPos(id: string, dx: number) {
+    if (shiftedNodes.has(id)) return;
+    positions[id] = {
+      x: (positions[id]?.x || 0) + dx,
+      y: positions[id]?.y || 0,
+    };
+    shiftedNodes.add(id);
+  }
 
   for (const n of newNodes) {
     if (n.data.shape !== 'diamond') continue;
@@ -239,47 +282,26 @@ function buildFlowchartLayout(
       if (!noChild && children.length > 1) noChild = children[1];
     }
 
+    // Skip BFS if both children already shifted
+    if (yesChild && noChild && shiftedNodes.has(yesChild) && shiftedNodes.has(noChild)) continue;
+
     // Collect descendants, excluding the other branch
-    const noDescendants = noChild ? collectDescendants(noChild, outgoing, yesChild ? new Set([yesChild]) : new Set()) : new Set<string>();
-    const yesDescendants = yesChild ? collectDescendants(yesChild, outgoing, noChild ? new Set([noChild]) : new Set()) : new Set<string>();
+    const noDescendants = noChild
+      ? collectDescendants(noChild, outgoing, yesChild ? new Set([yesChild]) : new Set())
+      : new Set<string>();
+    const yesDescendants = yesChild
+      ? collectDescendants(yesChild, outgoing, noChild ? new Set([noChild]) : new Set())
+      : new Set<string>();
 
     // Apply Yes offset (right)
-    for (const descId of yesDescendants) {
-      if (!shiftedNodes.has(descId)) {
-        positions[descId] = {
-          x: (positions[descId]?.x || 0) + BRANCH_OFFSET,
-          y: positions[descId]?.y || 0,
-        };
-        shiftedNodes.add(descId);
-      }
-    }
+    for (const descId of yesDescendants) shiftPos(descId, BRANCH_OFFSET);
 
     // Apply No offset (left)
-    for (const descId of noDescendants) {
-      if (!shiftedNodes.has(descId)) {
-        positions[descId] = {
-          x: (positions[descId]?.x || 0) - BRANCH_OFFSET,
-          y: positions[descId]?.y || 0,
-        };
-        shiftedNodes.add(descId);
-      }
-    }
+    for (const descId of noDescendants) shiftPos(descId, -BRANCH_OFFSET);
 
     // Also shift the immediate children
-    if (yesChild && !shiftedNodes.has(yesChild)) {
-      positions[yesChild] = {
-        x: (positions[yesChild]?.x || 0) + BRANCH_OFFSET,
-        y: positions[yesChild]?.y || 0,
-      };
-      shiftedNodes.add(yesChild);
-    }
-    if (noChild && !shiftedNodes.has(noChild)) {
-      positions[noChild] = {
-        x: (positions[noChild]?.x || 0) - BRANCH_OFFSET,
-        y: positions[noChild]?.y || 0,
-      };
-      shiftedNodes.add(noChild);
-    }
+    if (yesChild) shiftPos(yesChild, BRANCH_OFFSET);
+    if (noChild) shiftPos(noChild, -BRANCH_OFFSET);
   }
 
   const positionedNodes = newNodes.map(n => {
@@ -293,48 +315,57 @@ function buildFlowchartLayout(
     nodePosMap.set(n.id, n.position);
   }
 
-  // Pick closest handle pair for smart connection
-  function pickClosestHandles(sourceId: string, targetId: string): { sourceHandle: string; targetHandle: string } {
+  // Precompute all handle positions for O(1) lookup
+  const ALL_HANDLES = ['top', 'bottom', 'left', 'right'] as const;
+  const srcHandleCache = new Map<string, Array<{ x: number; y: number }>>();
+  const tgtHandleCache = new Map<string, Array<{ x: number; y: number }>>();
+
+  function computeHandles(pos: { x: number; y: number }): Array<{ x: number; y: number }> {
     const NODE_W = 160;
     const NODE_H = 60;
-    const srcPos = nodePosMap.get(sourceId);
-    const tgtPos = nodePosMap.get(targetId);
-    if (!srcPos || !tgtPos) return { sourceHandle: 'bottom', targetHandle: 'top' };
+    return [
+      { x: pos.x + NODE_W / 2, y: pos.y },                          // top
+      { x: pos.x + NODE_W / 2, y: pos.y + NODE_H },                 // bottom
+      { x: pos.x, y: pos.y + NODE_H / 2 },                          // left
+      { x: pos.x + NODE_W, y: pos.y + NODE_H / 2 },                 // right
+    ];
+  }
 
-    const sx = srcPos.x;
-    const sy = srcPos.y;
-    const tx = tgtPos.x;
-    const ty = tgtPos.y;
+  function getHandlePoints(id: string, cache: Map<string, Array<{ x: number; y: number }>>): Array<{ x: number; y: number }> {
+    let pts = cache.get(id);
+    if (!pts) {
+      const pos = nodePosMap.get(id);
+      pts = pos ? computeHandles(pos) : [];
+      cache.set(id, pts);
+    }
+    return pts;
+  }
 
-    const handlePositions = {
-      top:    (x: number, y: number) => ({ x: x + NODE_W / 2, y }),
-      bottom: (x: number, y: number) => ({ x: x + NODE_W / 2, y: y + NODE_H }),
-      left:   (x: number, y: number) => ({ x, y: y + NODE_H / 2 }),
-      right:  (x: number, y: number) => ({ x: x + NODE_W, y: y + NODE_H / 2 }),
-    } as const;
-
-    const handles = ['top', 'bottom', 'left', 'right'] as const;
+  function pickClosestHandles(sourceId: string, targetId: string): { sourceHandle: string; targetHandle: string } {
+    const srcPts = getHandlePoints(sourceId, srcHandleCache);
+    const tgtPts = getHandlePoints(targetId, tgtHandleCache);
+    if (srcPts.length === 0 || tgtPts.length === 0) return { sourceHandle: 'bottom', targetHandle: 'top' };
 
     let bestDist = Infinity;
-    let bestSrc: string = 'bottom';
-    let bestTgt: string = 'top';
+    let bestSrc = 0;
+    let bestTgt = 0;
 
-    for (const sh of handles) {
-      const sp = handlePositions[sh](sx, sy);
-      for (const th of handles) {
-        const tp = handlePositions[th](tx, ty);
+    for (let si = 0; si < 4; si++) {
+      const sp = srcPts[si];
+      for (let ti = 0; ti < 4; ti++) {
+        const tp = tgtPts[ti];
         const dx = sp.x - tp.x;
         const dy = sp.y - tp.y;
         const dist = dx * dx + dy * dy;
         if (dist < bestDist) {
           bestDist = dist;
-          bestSrc = sh;
-          bestTgt = th;
+          bestSrc = si;
+          bestTgt = ti;
         }
       }
     }
 
-    return { sourceHandle: bestSrc, targetHandle: bestTgt };
+    return { sourceHandle: ALL_HANDLES[bestSrc], targetHandle: ALL_HANDLES[bestTgt] };
   }
 
   // Process edges
@@ -345,7 +376,7 @@ function buildFlowchartLayout(
       if (sourceId && targetId) {
         const { sourceHandle, targetHandle } = pickClosestHandles(sourceId, targetId);
         newEdges.push({
-          id: `ai_edge_${Date.now()}_${index}`,
+          id: `ai_edge_${idSeed}_${index}`,
           source: sourceId,
           target: targetId,
           sourceHandle,
@@ -369,11 +400,11 @@ export function applyToFlowchartContent(
   currentEdges: Edge[],
   aiResponse: string
 ): FlowchartApplyResult | null {
-  const result = parseNodesAndEdges(aiResponse);
+  const result = getCachedOrParse(aiResponse);
   if (!result) return null;
 
-  const { parsed, labelToIds, idToNode, newNodes } = result;
-  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode);
+  const { parsed, labelToIds, idToNode, newNodes, idSeed } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode, idSeed);
 
   // Offset new nodes below existing ones
   const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 160), 50);
@@ -388,14 +419,36 @@ export function applyToFlowchartContent(
   };
 }
 
-export function previewFlowchartContent(aiResponse: string): FlowchartApplyResult | null {
+// Cache parsed result between preview and confirm to avoid double parsing
+let cachedParse: { aiResponse: string; result: NonNullable<ReturnType<typeof parseNodesAndEdges>> } | null = null;
+
+function getCachedOrParse(aiResponse: string): ReturnType<typeof parseNodesAndEdges> {
+  if (cachedParse?.aiResponse === aiResponse) {
+    return cachedParse.result;
+  }
   const result = parseNodesAndEdges(aiResponse);
+  if (result) cachedParse = { aiResponse, result };
+  return result;
+}
+
+/** Clears the cached parse result (call after confirm to free memory) */
+export function clearParseCache() {
+  cachedParse = null;
+}
+
+export function previewFlowchartContent(aiResponse: string): FlowchartApplyResult | null {
+  const result = getCachedOrParse(aiResponse);
   if (!result) return null;
 
-  const { parsed, labelToIds, idToNode, newNodes } = result;
-  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode);
+  const { parsed, labelToIds, idToNode, newNodes, idSeed } = result;
+  const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode, idSeed);
 
   return { nodes: positionedNodes, edges: newEdges };
+}
+
+// Re-export for use in FlowchartView confirm (reuses cached parse)
+export function parseFlowchartContent(aiResponse: string): ReturnType<typeof parseNodesAndEdges> {
+  return getCachedOrParse(aiResponse);
 }
 
 // ─── Insert a symbol between two existing nodes ──────────────
@@ -450,7 +503,8 @@ export function applyInsertBetween(
   if (!sourceNode || !targetNode) return null;
 
   // Create new node at midpoint with slight downward offset
-  const newId = `inserted_${Date.now()}`;
+  const insertSeed = String(Math.abs(hashStr(aiResponse)));
+  const newId = `inserted_${insertSeed}`;
   const newNode: Node<FlowchartNodeData> = {
     id: newId,
     type: 'custom',
@@ -476,7 +530,7 @@ export function applyInsertBetween(
 
   // Add new edges: source → newNode → target
   const newEdge1: Edge = {
-    id: `inserted_edge_1_${Date.now()}`,
+    id: `inserted_edge_1_${insertSeed}`,
     source: sourceNode.id,
     target: newId,
     sourceHandle: 'bottom',
@@ -488,7 +542,7 @@ export function applyInsertBetween(
   };
 
   const newEdge2: Edge = {
-    id: `inserted_edge_2_${Date.now()}`,
+    id: `inserted_edge_2_${insertSeed}`,
     source: newId,
     target: targetNode.id,
     sourceHandle: 'bottom',
@@ -511,3 +565,5 @@ export function applyReplaceAll(
 ): FlowchartApplyResult | null {
   return previewFlowchartContent(aiResponse);
 }
+
+

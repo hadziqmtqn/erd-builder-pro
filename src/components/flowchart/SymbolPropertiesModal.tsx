@@ -27,12 +27,7 @@ interface SymbolPropertiesModalProps {
   selectedNode?: Node<FlowchartNodeData>;
   onUpdateNodeData: (updates: Partial<FlowchartNodeData>) => void;
   onDeleteNode: () => void;
-}
-
-const RESERVED_LABELS = ['start', 'end'];
-
-function isReservedLabel(label: string): boolean {
-  return RESERVED_LABELS.includes(label.trim().toLowerCase());
+  onDeleteGroup?: () => void;
 }
 
 function isStartNode(node: Node<FlowchartNodeData>): boolean {
@@ -45,8 +40,8 @@ export function SymbolPropertiesModal({
   selectedNode,
   onUpdateNodeData,
   onDeleteNode,
+  onDeleteGroup,
 }: SymbolPropertiesModalProps) {
-  const reserved = selectedNode ? isReservedLabel(selectedNode.data.label) : false;
   const isStart = selectedNode ? isStartNode(selectedNode) : false;
 
   return (
@@ -68,11 +63,7 @@ export function SymbolPropertiesModal({
                 onChange={(e) => onUpdateNodeData({ label: e.target.value })}
                 placeholder="Enter symbol label"
                 className="bg-black/50 border-white/10 text-white"
-                disabled={reserved}
               />
-              {reserved && (
-                <p className="text-[10px] text-muted-foreground/50">Label ini absolut dan tidak bisa diubah.</p>
-              )}
             </div>
 
             {isStart && (
@@ -93,7 +84,6 @@ export function SymbolPropertiesModal({
               <Select 
                 value={selectedNode.data.shape} 
                 onValueChange={(val: FlowchartShape | null) => val && onUpdateNodeData({ shape: val })}
-                disabled={reserved}
               >
                 <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
                   <SelectValue placeholder="Select a shape">
@@ -111,9 +101,6 @@ export function SymbolPropertiesModal({
                   <SelectItem value="circle">Circle (Connector)</SelectItem>
                 </SelectContent>
               </Select>
-              {reserved && (
-                <p className="text-[10px] text-muted-foreground/50">Shape tidak bisa diubah untuk Start/End.</p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -130,19 +117,26 @@ export function SymbolPropertiesModal({
               </div>
             </div>
 
-            <div className="pt-2 border-t border-white/10">
+            <div className="pt-2 border-t border-white/10 space-y-2">
               <Button
                 variant="destructive"
                 size="sm"
                 className="w-full gap-2"
                 onClick={() => { onDeleteNode(); onClose(); }}
-                disabled={reserved}
               >
                 <Trash2 className="size-4" />
-                Delete Symbol
+                Hapus Simbol
               </Button>
-              {reserved && (
-                <p className="text-[10px] text-muted-foreground/50 text-center mt-1">Start/End tidak bisa dihapus.</p>
+              {isStart && selectedNode.data.section && onDeleteGroup && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => { onDeleteGroup(); onClose(); }}
+                >
+                  <Trash2 className="size-4" />
+                  Hapus Grup "{selectedNode.data.section}"
+                </Button>
               )}
             </div>
           </DialogBody>
