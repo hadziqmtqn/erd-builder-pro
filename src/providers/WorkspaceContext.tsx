@@ -51,6 +51,10 @@ export interface WorkspaceContextValue {
   isNotesLoading: boolean;
   isDrawingsLoading: boolean;
   isFlowchartsLoading: boolean;
+  isNoteItemLoading: boolean;
+  isDrawingItemLoading: boolean;
+  isFlowchartItemLoading: boolean;
+  isERDItemLoading: boolean;
   isLoading: boolean;
   isTrashLoading: boolean;
   isLocalSaving: boolean;

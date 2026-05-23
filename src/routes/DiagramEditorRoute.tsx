@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
+import { Database } from 'lucide-react';
 
 const ERDView = React.lazy(() => import('@/components/views/ERDView').then(m => ({ default: m.ERDView })));
 const ImportSQLModal = React.lazy(() => import('@/components/modals/ImportSQLModal').then(m => ({ default: m.ImportSQLModal })));
@@ -18,6 +19,7 @@ export function DiagramEditorRoute() {
     handleOpenImportModal, handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
     setIsLocalSaving, lastLoadedDiagramIdRef, setIsImportModalOpen, isImportModalOpen,
+    isERDItemLoading,
   } = ctx;
 
   if (!isPublicView && !activeDiagramId) {
@@ -29,6 +31,16 @@ export function DiagramEditorRoute() {
   }
 
   const showDiagram = isPublicView ? publicData : activeDiagram;
+
+  if (!showDiagram && !isPublicView && !isERDItemLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Database className="w-12 h-12 text-muted-foreground/40 mb-4" />
+        <p className="text-sm font-medium text-muted-foreground">Diagram not found</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">This diagram may have been deleted or is no longer available.</p>
+      </div>
+    );
+  }
 
   if (!showDiagram && !isPublicView) {
     return (

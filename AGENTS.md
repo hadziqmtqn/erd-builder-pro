@@ -65,8 +65,21 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - **Kenapa**: `referenced_file_info` adalah cache yang cepat stale (file dihapus/dipindah → referensi tidak valid). Dengan `project_id`, query dinamis semua file (`notes`, `diagrams`, `flowcharts`, `drawings`) per project dilakukan setiap `sendMessage()` — selalu fresh, zero maintenance.
 - **Saat ini**: `createSession()` di `useAIChat.ts` **belum** menyertakan `project_id`. Implementasi plan ada di `.opencode/tasks/ai-cross-feature-integration.md`
 - **Workspace safety**: `project_id` diisi dari active entity saat session dibuat. Saat user pindah project, `entityContext` berubah → session baru mendapat `project_id` baru. Session lama tetap di project_id lama.
-- **Dynamic sibling query**: `buildCrossFeatureContext()` (belum ada) query parallel 4 tabel → format rich context → inject ke user message prefix. Lihat plan untuk detail.
-- **Format**: `referenced_file_info` deprecated. Tidak perlu diisi/dibaca lagi.
+- Dynamic sibling query: `buildSiblingContext()` parallel 4 tabel, greedy budget 6000 chars.
+
+### AI Chat @Mentions (File Referencing)
+
+- User types `@` in ChatInput textarea → dropdown shows files from same project (notes, diagrams, flowcharts, drawings)
+- Dropdown filterable by typing after `@`; keyboard navigable (↑↓ Enter Tab Escape)
+- On mention select, `@FileName` text inserted at cursor position via textarea ref manipulation
+- On send (`AIChatPanel.handleSend`), message text scanned for `@FileName` patterns via `/@([^\s\n]+)/g`
+- File lookup by case-insensitive name match in `mentionFiles` (built from workspace arrays filtered by `projectId`)
+- Content resolved per type: **Note** from local state or Supabase fetch, **Flowchart** from `fc.data`, **Diagram** title-only, **Drawing** from `dw.data`
+- Content truncated to 2000 chars per file; HTML stripped; injected as `[Referenced file "{name}" ({type})]:\n{content}\n\n` prefix to user message
+- `@FileName` stays visible in chat message text (raw mention preserved in DB)
+- Cursor position for dropdown measured by cloning textarea styles into a temporary div
+- Dropdown positioned absolutely relative to textarea; auto-closes on ESC or blur
+- **Key files**: `ChatInput.tsx` (mention UI), `AIChatPanel.tsx` (resolveMentions + mentionFiles), `AppLayout.tsx` (passes `notes`/`diagrams`/`flowcharts`/`drawings` as props)
 
 ### Editor Architecture
 

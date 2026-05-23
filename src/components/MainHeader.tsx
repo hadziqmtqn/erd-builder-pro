@@ -60,6 +60,7 @@ interface MainHeaderProps {
   onFileSearchChange?: (value: string) => void;
   hideFileSearch?: boolean;
   breadcrumbLabel?: string | null;
+  noteContent?: string;
 }
 
 export const MainHeader = React.memo(({
@@ -96,6 +97,7 @@ export const MainHeader = React.memo(({
   onFileSearchChange,
   hideFileSearch,
   breadcrumbLabel,
+  noteContent,
 }: MainHeaderProps) => {
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
@@ -328,6 +330,7 @@ export const MainHeader = React.memo(({
               isPublic={initialShareSettings?.is_public}
               activeFileUid={activeFileUid}
               documentType={view}
+              noteContent={noteContent}
             />
 
             {activeFileUid && activeFileId && isOnline && (

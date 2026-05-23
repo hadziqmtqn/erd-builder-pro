@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
+import { FileQuestion } from 'lucide-react';
 
 const NotesView = React.lazy(() => import('@/components/views/NotesView').then(m => ({ default: m.NotesView })));
 
@@ -10,13 +11,23 @@ export function NoteEditorRoute() {
 
   const {
     activeNote, activeNoteUid, saveNote, handleNoteChange, deleteNote,
-    isPublicView, isLoading,
+    isPublicView, isLoading, isNoteItemLoading,
   } = ctx;
 
   if (!isPublicView && !activeNoteUid) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a note to view</p>
+      </div>
+    );
+  }
+
+  if (!activeNote && !isNoteItemLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <FileQuestion className="w-12 h-12 text-muted-foreground/40 mb-4" />
+        <p className="text-sm font-medium text-muted-foreground">Note not found</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">This note may have been deleted or is no longer available.</p>
       </div>
     );
   }

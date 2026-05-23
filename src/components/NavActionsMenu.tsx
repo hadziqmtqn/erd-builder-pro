@@ -9,7 +9,8 @@ import {
   Upload,
   Database,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  BarChart3
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -25,7 +26,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface NavActionsMenuProps {
   onShare: () => void;
@@ -43,6 +43,7 @@ interface NavActionsMenuProps {
   isPublic?: boolean;
   activeFileUid?: string;
   documentType: 'erd' | 'notes' | 'drawings' | 'flowchart' | string;
+  noteContent?: string;
 }
 
 export const NavActionsMenu = ({
@@ -60,8 +61,23 @@ export const NavActionsMenu = ({
   isPublicView = false,
   isPublic = false,
   activeFileUid,
-  documentType
+  documentType,
+  noteContent
 }: NavActionsMenuProps) => {
+
+  const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&[^;]+;/g, ' ').trim();
+
+  const getTextStats = (html?: string) => {
+    const text = html ? stripHtml(html) : '';
+    if (!text) return { words: 0, sentences: 0, paragraphs: 0, characters: 0 };
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const sentences = text.split(/[.!?]+(?:\s|$)/).filter(s => s.trim().length > 0).length;
+    const paragraphs = html ? (html.match(/<p[^>]*>[\s\S]*?<\/p>/g) || []).length || text.split(/\n\s*\n/).filter(Boolean).length : text.split(/\n\s*\n/).filter(Boolean).length;
+    const characters = text.replace(/\s/g, '').length;
+    return { words, sentences, paragraphs, characters };
+  };
+
+  const stats = getTextStats(noteContent);
 
   const handleCopyLink = () => {
     if (!activeFileUid) {
@@ -257,6 +273,36 @@ export const NavActionsMenu = ({
                   <span className="text-[15px] font-mono font-bold mt-0.5">E</span>
                 </div>
               </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <span>Text Stats</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-52 p-1">
+                  <div className="px-3 py-1.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Words</span>
+                      <span className="font-medium tabular-nums">{stats.words.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Sentences</span>
+                      <span className="font-medium tabular-nums">{stats.sentences.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Paragraphs</span>
+                      <span className="font-medium tabular-nums">{stats.paragraphs.toLocaleString()}</span>
+                    </div>
+                    <DropdownMenuSeparator className="my-1.5" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Characters</span>
+                      <span className="font-medium tabular-nums">{stats.characters.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </>
           )}
         </DropdownMenuContent>

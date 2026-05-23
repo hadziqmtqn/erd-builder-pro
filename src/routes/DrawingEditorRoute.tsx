@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
+import { Image } from 'lucide-react';
 
 const DrawingsView = React.lazy(() => import('@/components/views/DrawingsView').then(m => ({ default: m.DrawingsView })));
 
@@ -10,13 +11,23 @@ export function DrawingEditorRoute() {
 
   const {
     activeDrawing, activeDrawingId, saveDrawing, handleDrawingChange, deleteDrawing,
-    isPublicView, isLoading,
+    isPublicView, isLoading, isDrawingItemLoading,
   } = ctx;
 
   if (!isPublicView && !activeDrawingId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a drawing to view</p>
+      </div>
+    );
+  }
+
+  if (!activeDrawing && !isDrawingItemLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+        <Image className="w-12 h-12 text-muted-foreground/40 mb-4" />
+        <p className="text-sm font-medium text-muted-foreground">Drawing not found</p>
+        <p className="text-xs text-muted-foreground/60 mt-1">This drawing may have been deleted or is no longer available.</p>
       </div>
     );
   }
