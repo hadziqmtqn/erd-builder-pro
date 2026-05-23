@@ -135,21 +135,31 @@ export function FlowchartPreviewModal({
     return m;
   }, [nodes]);
 
+  const connectedHandles = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of edges) {
+      if (e.source && e.sourceHandle) s.add(`${e.source}:${e.sourceHandle}`);
+      if (e.target && e.targetHandle) s.add(`${e.target}:${e.targetHandle}`);
+    }
+    return s;
+  }, [edges]);
+
   const edgePaths = useMemo(() => {
     return edges.map((edge) => {
       const srcNode = nodeMap.get(edge.source);
       const tgtNode = nodeMap.get(edge.target);
       if (!srcNode || !tgtNode) return null;
 
-      const srcSide = (edge.sourceHandle as HandleSide) || pickClosestHandles(srcNode, tgtNode).sourceHandle;
-      const tgtSide = (edge.targetHandle as HandleSide) || pickClosestHandles(srcNode, tgtNode).targetHandle;
+      const closest = (edge.sourceHandle && edge.targetHandle)
+        ? { sourceHandle: edge.sourceHandle as HandleSide, targetHandle: edge.targetHandle as HandleSide }
+        : pickClosestHandles(srcNode, tgtNode);
 
-      const srcPos = getHandlePos(srcNode.position.x, srcNode.position.y, srcSide);
-      const tgtPos = getHandlePos(tgtNode.position.x, tgtNode.position.y, tgtSide);
+      const srcPos = getHandlePos(srcNode.position.x, srcNode.position.y, closest.sourceHandle);
+      const tgtPos = getHandlePos(tgtNode.position.x, tgtNode.position.y, closest.targetHandle);
 
       return {
         id: edge.id,
-        d: buildSmartEdgePath(srcPos, srcSide, tgtPos, tgtSide),
+        d: buildSmartEdgePath(srcPos, closest.sourceHandle, tgtPos, closest.targetHandle),
         label: edge.label,
         srcPos,
         tgtPos,
@@ -269,10 +279,7 @@ export function FlowchartPreviewModal({
                       {/* Connection handle dots */}
                       {(['top', 'bottom', 'left', 'right'] as HandleSide[]).map((side) => {
                         const hp = getHandlePos(sx, sy, side);
-                        const isConnected = edges.some(
-                          e => (e.source === node.id && (e.sourceHandle === side || !e.sourceHandle)) ||
-                               (e.target === node.id && (e.targetHandle === side || !e.targetHandle))
-                        );
+                        const isConnected = connectedHandles.has(`${node.id}:${side}`);
                         return (
                           <circle
                             key={side}

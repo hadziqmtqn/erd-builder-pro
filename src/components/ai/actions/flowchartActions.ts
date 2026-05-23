@@ -1,6 +1,10 @@
 import { Node, Edge, MarkerType } from '@xyflow/react';
 import { FlowchartNodeData } from '../../FlowchartNode';
 
+const MAX_AI_NODES = 60;
+const MAX_AI_TEXT_BYTES = 512_000;
+const MAX_AI_EDGES = 120;
+
 export interface FlowchartApplyResult {
   nodes: Node<FlowchartNodeData>[];
   edges: Edge[];
@@ -19,6 +23,7 @@ function extractJSONFromMarkdown(text: string): string {
 }
 
 function parseJSON(text: string): any {
+  if (text.length > MAX_AI_TEXT_BYTES) return null;
   const jsonStr = extractJSONFromMarkdown(text);
   try {
     return JSON.parse(jsonStr);
@@ -32,6 +37,8 @@ function parseJSON(text: string): any {
 function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<string, string[]>; idToNode: Map<string | number, string>; newNodes: Node<FlowchartNodeData>[] } | null {
   const parsed = parseJSON(aiResponse);
   if (!parsed || !Array.isArray(parsed.nodes)) return null;
+  if (parsed.nodes.length > MAX_AI_NODES) return null;
+  if (Array.isArray(parsed.edges) && parsed.edges.length > MAX_AI_EDGES) return null;
 
   const labelToIds = new Map<string, string[]>();
   const idToNode = new Map<string | number, string>();
@@ -280,18 +287,24 @@ function buildFlowchartLayout(
     return pos ? { ...n, position: { ...pos } } : n;
   });
 
+  // Build node position lookup map for O(1) access
+  const nodePosMap = new Map<string, { x: number; y: number }>();
+  for (const n of positionedNodes) {
+    nodePosMap.set(n.id, n.position);
+  }
+
   // Pick closest handle pair for smart connection
   function pickClosestHandles(sourceId: string, targetId: string): { sourceHandle: string; targetHandle: string } {
     const NODE_W = 160;
     const NODE_H = 60;
-    const srcNode = positionedNodes.find(n => n.id === sourceId);
-    const tgtNode = positionedNodes.find(n => n.id === targetId);
-    if (!srcNode || !tgtNode) return { sourceHandle: 'bottom', targetHandle: 'top' };
+    const srcPos = nodePosMap.get(sourceId);
+    const tgtPos = nodePosMap.get(targetId);
+    if (!srcPos || !tgtPos) return { sourceHandle: 'bottom', targetHandle: 'top' };
 
-    const sx = srcNode.position.x;
-    const sy = srcNode.position.y;
-    const tx = tgtNode.position.x;
-    const ty = tgtNode.position.y;
+    const sx = srcPos.x;
+    const sy = srcPos.y;
+    const tx = tgtPos.x;
+    const ty = tgtPos.y;
 
     const handlePositions = {
       top:    (x: number, y: number) => ({ x: x + NODE_W / 2, y }),

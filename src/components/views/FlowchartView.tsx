@@ -25,6 +25,7 @@ import { SymbolPropertiesModal } from '../flowchart/SymbolPropertiesModal';
 import { ConnectorPropertiesModal } from '../flowchart/ConnectorPropertiesModal';
 import { JumpToNode } from '../JumpToNode';
 import { useAIAction } from '@/contexts/AIActionContext';
+import { toast } from 'sonner';
 import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
@@ -333,50 +334,60 @@ export const FlowchartView = React.memo(({
   const pendingActionIdRef = React.useRef<string | null>(null);
   useEffect(() => {
     const unregister = registerContentHandler((content, strategy, actionId) => {
-      pendingActionIdRef.current = actionId || null;
+      try {
+        pendingActionIdRef.current = actionId || null;
 
-      // Insert — show preview (ignores strategy)
-      if (actionId === 'flowchart-insert') {
-        const result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
-        if (result && result.nodes.length > 0) {
-          pendingContentRef.current = content;
-          pendingApplyModeRef.current = 'insert';
-          setPendingPreview(result);
-          return;
+        // Insert — show preview (ignores strategy)
+        if (actionId === 'flowchart-insert') {
+          const result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
+          if (result && result.nodes.length > 0) {
+            pendingContentRef.current = content;
+            pendingApplyModeRef.current = 'insert';
+            setPendingPreview(result);
+            return;
+          }
         }
-      }
 
-      // Import — show preview in replace mode (ignores strategy)
-      if (actionId === 'flowchart-import') {
-        const preview = previewFlowchartContent(content);
-        if (preview && preview.nodes.length > 0) {
-          pendingContentRef.current = content;
-          pendingApplyModeRef.current = 'replace';
-          setPendingPreview(preview);
-          return;
+        // Import — show preview in replace mode (ignores strategy)
+        if (actionId === 'flowchart-import') {
+          const preview = previewFlowchartContent(content);
+          if (preview && preview.nodes.length > 0) {
+            pendingContentRef.current = content;
+            pendingApplyModeRef.current = 'replace';
+            setPendingPreview(preview);
+            return;
+          }
         }
-      }
 
-      // Append — preview with append mode
-      if (strategy === 'append') {
-        const preview = previewFlowchartContent(content);
-        if (preview && preview.nodes.length > 0) {
-          pendingContentRef.current = content;
-          pendingApplyModeRef.current = 'append';
-          setPendingPreview(preview);
-          return;
+        // Append — preview with append mode
+        if (strategy === 'append') {
+          const preview = previewFlowchartContent(content);
+          if (preview && preview.nodes.length > 0) {
+            pendingContentRef.current = content;
+            pendingApplyModeRef.current = 'append';
+            setPendingPreview(preview);
+            return;
+          }
         }
-      }
 
-      // Replace — preview with replace mode (generic, no actionId)
-      if (strategy === 'replace') {
-        const preview = previewFlowchartContent(content);
-        if (preview && preview.nodes.length > 0) {
-          pendingContentRef.current = content;
-          pendingApplyModeRef.current = 'replace';
-          setPendingPreview(preview);
-          return;
+        // Replace — preview with replace mode (generic, no actionId)
+        if (strategy === 'replace') {
+          const preview = previewFlowchartContent(content);
+          if (preview && preview.nodes.length > 0) {
+            pendingContentRef.current = content;
+            pendingApplyModeRef.current = 'replace';
+            setPendingPreview(preview);
+            return;
+          }
         }
+
+        // Parsing failed (nodes empty or exceeded limits)
+        if (!pendingContentRef.current) {
+          toast.error('Could not parse flowchart data. The response may be too large or in an unsupported format.');
+        }
+      } catch (err) {
+        console.error('Flowchart content handler error:', err);
+        toast.error('Failed to apply AI content to flowchart');
       }
     }, ['append', 'replace']);
 
@@ -409,22 +420,20 @@ export const FlowchartView = React.memo(({
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
     const isSelected = e.id === selectedEdgeId;
-    const active = isHovered || isSelected;
 
-    const baseColor = (e.style?.stroke as string) || '#b1b1b7';
-    const interactiveColor = active ? '#ffffff' : baseColor;
-    const interactiveWidth = active ? 2.5 : 1.5;
+    // Preserve reference for non-active edges
+    if (!isHovered && !isSelected) return e;
 
     const overrideMarker = (marker: any) => {
       if (!marker) return undefined;
       if (typeof marker === 'string') return marker;
-      return { ...marker, color: interactiveColor, width: 14, height: 14 };
+      return { ...marker, color: '#ffffff', width: 14, height: 14 };
     };
 
     return {
       ...e,
       selected: isSelected,
-      style: { ...e.style, stroke: interactiveColor, strokeWidth: interactiveWidth, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
+      style: { ...e.style, stroke: '#ffffff', strokeWidth: 2.5, cursor: 'pointer', transition: 'stroke 0.2s, stroke-width 0.2s' },
       markerEnd: overrideMarker(e.markerEnd),
       markerStart: overrideMarker(e.markerStart),
     };

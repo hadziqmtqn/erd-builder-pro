@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Search, FileText, Database, GitBranch, Image, ArrowRight } from 'lucide-react';
+import { Search, FileText, Database, ArrowRight, Network, PenTool } from 'lucide-react';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
@@ -15,8 +15,8 @@ interface FlatFile {
 const typeConfig = {
   note: { icon: FileText, label: 'Notes' },
   diagram: { icon: Database, label: 'ERD' },
-  flowchart: { icon: GitBranch, label: 'Flowchart' },
-  drawing: { icon: Image, label: 'Drawing' },
+  flowchart: { icon: Network, label: 'Flowchart' },
+  drawing: { icon: PenTool, label: 'Drawing' },
 } as const;
 
 export function QuickJump() {
