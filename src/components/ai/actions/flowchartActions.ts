@@ -166,7 +166,7 @@ function buildFlowchartLayout(
     nd.position && typeof nd.position.x === 'number' && typeof nd.position.y === 'number'
   );
 
-  const VERTICAL_SPACING = 160;
+  const VERTICAL_SPACING = 220;
   const HORIZONTAL_SPACING = 280;
   const START_X = 60;
   const START_Y = 40;

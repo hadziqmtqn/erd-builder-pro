@@ -98,7 +98,7 @@ export function QuickJump() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'p' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey) {
         e.preventDefault();
         setOpen(prev => !prev);
       }
@@ -139,13 +139,13 @@ export function QuickJump() {
       <PopoverTrigger
         render={
           <button
-            className="hidden md:flex items-center gap-2 h-8 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors text-xs min-w-[180px] max-w-[260px] w-full"
+            className="hidden md:flex items-center gap-2 h-8 px-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors text-xs min-w-[180px] max-w-[260px]"
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 text-left truncate">Quick jump to file...</span>
-            <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-background px-1 font-mono text-[9px] font-medium text-muted-foreground shrink-0">
-              <span className="text-[10px]">⌘</span>P
-            </kbd>
+              <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-background px-1 font-mono text-[9px] font-medium text-muted-foreground shrink-0">
+                <span className="text-[10px]">⌘</span>K
+              </kbd>
           </button>
         }
       />
