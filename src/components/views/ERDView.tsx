@@ -119,10 +119,13 @@ const ERDViewComponent = ({
   }, [multiSelectedIds, selectedNodeId]);
 
   const styledNodes = React.useMemo(() => {
-    return nodes.map(node => ({
-      ...node,
-      selected: allSelectedIds.includes(node.id),
-    }));
+    return nodes.map(node => {
+      const selected = allSelectedIds.includes(node.id);
+      // Use !! to normalize undefined/null to boolean — avoids creating wrappers
+      // for all nodes on the first drag after setNodes() (which may lack `selected`)
+      if (!!node.selected === selected) return node;
+      return { ...node, selected };
+    });
   }, [nodes, allSelectedIds]);
 
   const styledEdges = React.useMemo(() => {
@@ -141,13 +144,13 @@ const ERDViewComponent = ({
         id => edge.source === id || edge.target === id
       );
       
-      if (allSelectedIds.length > 0 && isConnectedToSelected) {
-        return {
-          ...baseEdge,
-          className: `${edge.className || ''} edge-animated-active`,
-        };
-      }
-      return baseEdge;
+      const shouldAnimate = isConnectedToSelected && allSelectedIds.length > 0;
+      const newClassName = shouldAnimate
+        ? `${edge.className || ''} edge-animated-active`.trim()
+        : (edge.className || '');
+      // Avoid creating a new object when className hasn't changed
+      if (baseEdge.className === newClassName) return baseEdge;
+      return { ...baseEdge, className: newClassName };
     });
   }, [edges, allSelectedIds]);
 
@@ -205,6 +208,16 @@ const ERDViewComponent = ({
   }, [selectedNodeId, allSelectedIds, setActionContextData]);
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
+
+  const defaultEdgeOptions = React.useMemo(() => ({
+    type: 'smoothstep' as const,
+    animated: false,
+    markerEnd: {
+      type: MarkerType.Arrow,
+      width: 15,
+      height: 15,
+    },
+  }), []);
 
   // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   React.useEffect(() => {
@@ -315,15 +328,7 @@ const ERDViewComponent = ({
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
           maxZoom={2.5}
-          defaultEdgeOptions={{
-            type: 'smoothstep',
-            animated: false,
-            markerEnd: {
-              type: MarkerType.Arrow,
-              width: 15,
-              height: 15,
-            },
-          }}
+          defaultEdgeOptions={defaultEdgeOptions}
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />

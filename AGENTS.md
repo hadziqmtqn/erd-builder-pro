@@ -6,8 +6,8 @@ ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v
 
 ## State Management
 
-- **WorkspaceContext** (`src/providers/WorkspaceContext.tsx`): global app state (auth, documents, active IDs, XYFlow, undo/redo, panels)
-- **AIActionContext** (`src/contexts/AIActionContext.tsx`): AI assistant actions, `selectionText`, `registerContentHandler`/`applyContent` for `replace`/`append` strategies
+- **WorkspaceContext** ([`src/providers/WorkspaceContext.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/providers/WorkspaceContext.tsx)): global app state (auth, documents, active IDs, XYFlow, undo/redo, panels)
+- **AIActionContext** ([`src/contexts/AIActionContext.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/contexts/AIActionContext.tsx)): AI assistant actions, `selectionText`, `registerContentHandler`/`applyContent` for `replace`/`append` strategies
 
 ## Key Patterns
 
@@ -44,7 +44,7 @@ Editor onUpdate → onChange (NotesEditor.handleContentChange, INLINE no useCall
 → saveNote → setNotes (immediate state sync) → IndexedDB (800ms) + cloud sync (1600ms)
 ```
 
-Note: `saveNote` now directly calls `setNotes` to sync React state immediately after persist (src/hooks/useNotes.ts:258). The debounced `handleNoteChange` also calls `saveNote` — the state update is redundant but harmless.
+Note: `saveNote` now directly calls `setNotes` to sync React state immediately after persist ([`src/hooks/useNotes.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useNotes.ts):258). The debounced `handleNoteChange` also calls `saveNote` — the state update is redundant but harmless.
 
 ### Selection Context for AI
 
@@ -83,7 +83,7 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 
 ### Editor Architecture
 
-- `TiptapEditor` (`src/components/TiptapEditor.tsx`) — core rich text editor with StarterKit, tables, images, task lists, links, slash menu
+- `TiptapEditor` ([`src/components/TiptapEditor.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/TiptapEditor.tsx)) — core rich text editor with StarterKit, tables, images, task lists, links, slash menu
 - Wrapped by `NotesEditor` (thin pass-through) → used in `NotesView`
 - `NotesView` connects editor to parent `WorkspaceProvider` via `handleNoteChange` prop
 
@@ -126,15 +126,15 @@ State filters use dual-field matching: `String(n.id) !== String(uid) && String(n
 Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in both guest and API branches. This fixes the stale count bug after deletion.
 
 ### Files with this fix
-- `src/hooks/useFlowcharts.ts`: `matchesFlowchartId` helper — `String(f.uid ?? f.id)` → `String(f.id) || String(f.uid)` dual check
-- `src/hooks/useDiagrams.ts`: all `diagramsRef.find` lookups — `String(d.id) || String(d.uid)` dual check (was `d.id` only or `String(d.uid ?? d.id)`)
-- `src/hooks/useNotes.ts`: all lookups and state filters — `String(n.id) || String(n.uid)` dual check
-- `src/hooks/useDrawings.ts`: `matchesDrawingId` helper + all inline lookups/filters — `String(d.id) || String(d.uid)` dual check
-- `src/hooks/useAppMetadata.ts`: `activeDocument`, `initialShareSettings`, `activeDrawing` lookups — dual check
-- `src/hooks/useAutoSave.ts`, `useFlowchartChangeHandler.ts`, `useDrawingChangeHandler.ts`, `useFocusSync.ts`: all `String(d.uid ?? d.id)` → dual check
-- `src/routes/TableRoute.tsx`: `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
-- `src/hooks/useTrashHandlers.ts`: `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
-- `src/components/modals/MoveToTrashAlert.tsx`: `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
+- [`src/hooks/useFlowcharts.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useFlowcharts.ts): `matchesFlowchartId` helper — `String(f.uid ?? f.id)` → `String(f.id) || String(f.uid)` dual check
+- [`src/hooks/useDiagrams.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useDiagrams.ts): all `diagramsRef.find` lookups — `String(d.id) || String(d.uid)` dual check (was `d.id` only or `String(d.uid ?? d.id)`)
+- [`src/hooks/useNotes.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useNotes.ts): all lookups and state filters — `String(n.id) || String(n.uid)` dual check
+- [`src/hooks/useDrawings.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useDrawings.ts): `matchesDrawingId` helper + all inline lookups/filters — `String(d.id) || String(d.uid)` dual check
+- [`src/hooks/useAppMetadata.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useAppMetadata.ts): `activeDocument`, `initialShareSettings`, `activeDrawing` lookups — dual check
+- [`src/hooks/useAutoSave.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useAutoSave.ts), `useFlowchartChangeHandler.ts`, `useDrawingChangeHandler.ts`, `useFocusSync.ts`: all `String(d.uid ?? d.id)` → dual check
+- [`src/routes/TableRoute.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/routes/TableRoute.tsx): `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
+- [`src/hooks/useTrashHandlers.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useTrashHandlers.ts): `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
+- [`src/components/modals/MoveToTrashAlert.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/modals/MoveToTrashAlert.tsx): `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
@@ -151,16 +151,16 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 - `workspace filter`: via `handleWorkspaceClick` di `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
 
 **Files involved**:
-- `src/providers/WorkspaceContext.tsx`: added `triggerTableRefresh: () => void`, `tableLoadingState`, `setTableLoadingState` to interface; added `isDiagramsLoading`, `isNotesLoading`, `isDrawingsLoading`, `isFlowchartsLoading` to interface
-- `src/providers/WorkspaceProvider.tsx`: added `tableRefreshKey` state + `triggerTableRefresh` callback; added `tableLoadingState` state + `setTableLoadingState`; passed to context value and `useTableViewPagination`; exposed per-feature loading states in context value
-- `src/hooks/useTableViewPagination.ts`: uses `tableLoadingState` to decide silent vs non-silent fetch; resets to `'idle'` after fetch completes
-- `src/routes/AppLayout.tsx`: added `setTableLoadingState('loading')` call in `onAfterDelete`
-- `src/routes/TableRoute.tsx`: added `setTableLoadingState('loading')` on page/workspace change; passes loading state as `isLoading` prop
+- [`src/providers/WorkspaceContext.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/providers/WorkspaceContext.tsx): added `triggerTableRefresh: () => void`, `tableLoadingState`, `setTableLoadingState` to interface; added `isDiagramsLoading`, `isNotesLoading`, `isDrawingsLoading`, `isFlowchartsLoading` to interface
+- [`src/providers/WorkspaceProvider.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/providers/WorkspaceProvider.tsx): added `tableRefreshKey` state + `triggerTableRefresh` callback; added `tableLoadingState` state + `setTableLoadingState`; passed to context value and `useTableViewPagination`; exposed per-feature loading states in context value
+- [`src/hooks/useTableViewPagination.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useTableViewPagination.ts): uses `tableLoadingState` to decide silent vs non-silent fetch; resets to `'idle'` after fetch completes
+- [`src/routes/AppLayout.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/routes/AppLayout.tsx): added `setTableLoadingState('loading')` call in `onAfterDelete`
+- [`src/routes/TableRoute.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/routes/TableRoute.tsx): added `setTableLoadingState('loading')` on page/workspace change; passes loading state as `isLoading` prop
 
 ## AI Context for Notes (markdown-aware)
 
 - `entityContextText` for Notes is sent to AI in **markdown format**, not plain text
-- Uses `getMarkdownFromHtml()` from `src/lib/markdownUtils.ts` (TurndownService)
+- Uses `getMarkdownFromHtml()` from [`src/lib/markdownUtils.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/lib/markdownUtils.ts) (TurndownService)
 - `<h2>Heading</h2>` → `## Heading`, AI sees heading structure → responds in markdown → `marked.parse()` produces correct `<h2>`
 - Applies to all AI actions (Improve Grammar, Summarize, etc.) and direct chat
 
@@ -193,7 +193,7 @@ src/components/ai/
 
 - `DRAFT_KEY_PREFIX` and `getDraftKey()` remain in `AIChatPanel.tsx` — draft is saved only on close via `handleClose` (no more per-keystroke `useEffect`). Restore on mount preserved.
 - `error` variable from `useAIChat` no longer destructured in AIChatPanel (unused).
-- All imported from `src/components/ai/` subdirectory; Prism imports (`prismjs/components/prism-sql`, etc.) moved into `ChatMessages.tsx` where `ReactMarkdown` + `CodeBlock` are used.
+- All imported from [`src/components/ai/`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/) subdirectory; Prism imports (`prismjs/components/prism-sql`, etc.) moved into `ChatMessages.tsx` where `ReactMarkdown` + `CodeBlock` are used.
 - `chatContainerRef` / `scrollContainerRef` naming: `ChatMessages` uses `scrollContainerRef` internally (same DOM element, renamed for clarity).
 
 ### Auto-hide Apply Buttons
@@ -291,7 +291,7 @@ src/components/ai/
   - `notes-generate-docs` → append with `## Documentation` header
 - Generic strategy (`replace`/`append` buttons) is used when no `actionId`
 - `lastActionId` tracked in AIChatPanel (local state), cleared on each message send
-- Context: `src/contexts/AIActionContext.tsx`, `src/components/ai/actions/notesActions.ts`
+- Context: [`src/contexts/AIActionContext.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/contexts/AIActionContext.tsx), [`src/components/ai/actions/notesActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/actions/notesActions.ts)
 
 ## Confirm Save Loading State
 
@@ -327,8 +327,8 @@ src/components/ai/
 - **Relationship**: `{ id, source_entity_id, target_entity_id, source_column_id?, target_column_id?, source_handle?, target_handle?, type, label? }` — stored as React Flow `Edge` with `type: 'smoothstep'`
 
 ### Key Hooks
-- **`useERDSession`** (`src/hooks/useERDSession.ts`): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
-- **`useDiagrams`** (`src/hooks/useDiagrams.ts`): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
+- **`useERDSession`** ([`src/hooks/useERDSession.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useERDSession.ts)): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
+- **`useDiagrams`** ([`src/hooks/useDiagrams.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useDiagrams.ts)): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
 
 ### ERD → AI Flow
 1. `ERDView` passes `{ nodes, edges, selectedNode }` context to `AIActionButton`
@@ -340,7 +340,7 @@ src/components/ai/
 7. ERD actions: `erd-generate-sql`, `erd-explain-table`, `erd-suggest-indexes`, `erd-seed-data`
 
 ### AI → ERD Content Application (Two-Pass FK Edge Generation)
-- `applyToErdContent()` in `src/components/ai/actions/erdActions.ts` — parses SQL DDL (`extractSQLFromMarkdown` + `parseSQLToERD`), merges via `mergeIntoDiagram`
+- `applyToErdContent()` in [`src/components/ai/actions/erdActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/actions/erdActions.ts) — parses SQL DDL (`extractSQLFromMarkdown` + `parseSQLToERD`), merges via `mergeIntoDiagram`
 - Pattern: `registerContentHandler` → `AIChatPanel` calls `onStreamComplete` → `pendingAction.onResult` → apply mutations
 - Auto-apply via `sendAction` `actionId` + `onResult` callback; manual append works for non-action chat responses
 - `extractSQLFromMarkdown` handles ` ```sql ``` ` fences and raw SQL
@@ -354,11 +354,11 @@ src/components/ai/
   - **Inline FK regex**: `/FOREIGN KEY (...) REFERENCES table(...)/g` — finds source table by scanning backwards from match position for `CREATE TABLE <name>`
   - **ALTER TABLE FK regex**: `/ALTER TABLE <name> ADD FOREIGN KEY (...) REFERENCES table(...)/g` — extracts source table directly from the ALTER TABLE statement (avoids backward-scan ambiguity)
   - Helper `tryAddEdge(sName, sourceColName, targetTableName, targetColName)` checks both sides exist in merged nodes, deduplicates via `existingEdgeKeys`, creates a `smoothstep` Edge with `col-{id}-source`/`col-{id}-target` handles
-  - Located in `src/components/ai/actions/erdActions.ts` (inline after `mergeIntoDiagram`)
+  - Located in [`src/components/ai/actions/erdActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/actions/erdActions.ts) (inline after `mergeIntoDiagram`)
 
 ## AI Action Dropdown Reference
 
-Every AI action lives in `src/components/ai/AIActions.ts` and is registered under one of three views: `erd`, `notes`, or `flowchart`. Each action has a `buildPrompt(context)` that constructs the prompt dynamically from current view context (selected table, columns, edges, note content, etc.).
+Every AI action lives in [`src/components/ai/AIActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/AIActions.ts) and is registered under one of three views: `erd`, `notes`, or `flowchart`. Each action has a `buildPrompt(context)` that constructs the prompt dynamically from current view context (selected table, columns, edges, note content, etc.).
 
 ### ERD Actions (`AIActions.ts:40-120`)
 
@@ -412,7 +412,7 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 
 ### Flowchart Architecture
 
-#### Shared Helpers (`src/components/ai/actions/flowchartActions.ts`)
+#### Shared Helpers ([`src/components/ai/actions/flowchartActions.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/ai/actions/flowchartActions.ts))
 - `buildFlowchartLayout(nodes, parsed, labelToIds, idToNode)` — positions nodes using a layered top-down layout engine with smart decision branch detection
 - **Smart decision branch layout**: detects diamond nodes, shifts Yes-branch descendants right (+180px) and No-branch left (-180px) to prevent overlap
 - `pickClosestHandles(sourceNode, targetNode)` — finds closest edge midpoints for clean connection routing
@@ -423,7 +423,7 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Edge parser supports multi-format: `sourceLabel/targetLabel`, `source/target`, `from/to`, label-as-fallback
 - **`labelToIds`** (`Map<string, string[]>`): array-based label mapping (supports duplicate labels). `resolveEdgeIds` uses `sourceIndex`/`targetIndex` (1‑based) as highest priority, then `sourceLabel`/`targetLabel`, then legacy `source`/`from`. If label lookup finds >1 match, resolves to the first entry.
 
-#### SVG Preview Modal (`src/components/flowchart/FlowchartPreviewModal.tsx`)
+#### SVG Preview Modal ([`src/components/flowchart/FlowchartPreviewModal.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/flowchart/FlowchartPreviewModal.tsx))
 - Pure SVG rendering (no ReactFlow) — eliminates XYFlow dual-instance conflict
 - Zoom/pan controls (`scale`, `translate` state via mouse wheel + drag)
 - Grab cursor (`grab`/`grabbing`) activates when scale > 0.5 (50% zoom) — panning enabled at that threshold
@@ -440,7 +440,14 @@ Every AI action lives in `src/components/ai/AIActions.ts` and is registered unde
 - Guards checked in order: `initialLoadRef` → `isParsingFromDataRef` → `isDraggingRef` → `isEditingEdgeRef` → `isEditingNodeRef`
 - `isDraggingRef` (ref, not state) skips auto-save during node drag; `onNodeDragStop` triggers single save at final position
 
-#### Drag Performance Optimizations (FlowchartView)
+#### Drag Performance Optimizations (ERDView)
+
+Three fixes prevent cascading re-renders on every drag frame:
+1. **`styledNodes` preserves references** (line 121): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (!!n.selected === selected) return n`). The `!!` coerce normalizes `undefined`/`null` (common after `setNodes()` from AI append) to `false`, preventing unnecessary wrappers on first post-append drag. During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
+2. **`styledEdges` preserves references**: same identity-preserving pattern for edges — only creates new objects for edges whose `className` (animation state) actually changed.
+3. **`defaultEdgeOptions` memoized**: stable reference prevents React Flow from re-processing default edge options on every render.
+
+### Drag Performance Optimizations (FlowchartView)
 Three fixes prevent cascading re-renders on every drag frame:
 1. **`memoizedNodes` preserves references** (line 295): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (n.selected === selected) return n`). During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
 2. **`setActionContextData` skips during drag** (line 323): the `useEffect` that syncs nodes/edges to AIActionContext now returns early when `isDraggingRef.current` is true. This prevents a cascading second re-render: without this guard, every drag frame triggered `setActionContextData` → `AIActionProvider` re-render → `FlowchartView` (as `useAIAction` consumer) re-renders again → `memoizedNodes` recomputes → React Flow reconciles all nodes twice per frame.
@@ -513,3 +520,31 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Order: `[entity context]` → `[Selected text]` → `User request: ...`
 - Fallback: if `entityContextText` is null, calls `fetchEntityContext()` to fetch from Supabase (used when chat panel is opened outside a specific entity page)
 - `fetchEntityContext` result also injected as user message prefix (same prominence treatment)
+
+## Text Stats for Notes (NavActionsMenu)
+
+- **Submenu "Text Stats"** added after Export in `NavActionsMenu` — only visible for Notes (`documentType === 'notes'`)
+- Shows Words, Sentences, Paragraphs, and Characters (separated by divider) in a `DropdownMenuSubContent` panel
+- Stats computed from `noteContent` prop (HTML string from `activeNote.content`) passed via chain: `AppLayout` → `MainHeader` → `NavActionsMenu`
+- `stripHtml()` helper strips all HTML tags before counting; characters excludes whitespace
+- Paragraphs counted via `<p>` tag regex first, falls back to double-newline split (for non-HTML content)
+- Chain: `AppLayout` (`activeNote?.content`) → `MainHeader` (`noteContent` prop) → `NavActionsMenu` (`getTextStats()`)
+- All values formatted with `toLocaleString()` for readability
+- [`src/components/NavActionsMenu.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/NavActionsMenu.tsx): `noteContent` prop, `getTextStats` + `stripHtml` helpers
+- [`src/components/MainHeader.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/MainHeader.tsx): `noteContent` prop forwarded to `NavActionsMenu`
+- [`src/routes/AppLayout.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/routes/AppLayout.tsx): passes `activeNote?.content` as `noteContent`
+
+## AGENTS.md File References Convention
+
+- All `src/` file paths in AGENTS.md use clickable `file://` links with backtick formatting: `` [`src/path/file.ts`](file:///abs/path/src/path/file.ts) ``
+- Links open files locally when clicked in supporting terminals
+- Relative sibling paths (without `src/` prefix, e.g. after a comma) are NOT linked
+
+## @Mentions as Clickable Links in Chat
+
+- User messages in `ChatMessages.tsx` parse `@FileName` patterns via the same regex as `resolveMentions` (`/@([^\s\n]+)/g`)
+- Matching mentions render as cyan-colored `<Link>` elements (underline on hover) that navigate to the referenced file
+- Route lookup: note → `/notes/{uid}`, diagram → `/erd/{uid}`, flowchart → `/flowchart/{uid}`, drawing → `/drawing/{uid}`
+- `mentionFiles` prop passed from `AIChatPanel` to `ChatMessages` (same data used for ChatInput dropdown)
+- Unmatched `@text` (no file found) remains as plain text — unchanged
+- Uses `renderMentionText(text)` function called inside the user message `<p>` element, replacing raw `{displayText}`

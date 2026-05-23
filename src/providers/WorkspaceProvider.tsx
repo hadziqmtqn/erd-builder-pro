@@ -216,13 +216,15 @@ export function WorkspaceProvider({
     move: (id: string, x: number, y: number) => void;
     update: (id: string, data: Entity) => void;
     edges: (edges: Edge[]) => void;
-  }>({ move: () => {}, update: () => {}, edges: () => {} });
+    delete: (id: string) => void;
+  }>({ move: () => {}, update: () => {}, edges: () => {}, delete: () => {} });
 
   const erdOptions = useMemo(() => ({
     broadcastNodeMove: (id: string, x: number, y: number) => broadcastRef.current.move(id, x, y),
     broadcastNodeUpdate: (id: string, data: Entity) => broadcastRef.current.update(id, data),
     broadcastEdgesUpdate: (edges: Edge[]) => broadcastRef.current.edges(edges),
     onEditEntity: () => { setIsTablePropertiesOpen(true); },
+    onDeleteEntity: (id: string) => broadcastRef.current.delete(id),
   }), []);
 
   const {
@@ -243,13 +245,22 @@ export function WorkspaceProvider({
     effectiveDiagramId, setNodes, setEdges,
   );
 
+  const handleEntityDelete = useCallback(async (id: string) => {
+    const nextNodes = nodesRef.current.filter(node => node.id !== id);
+    const nextEdges = edgesRef.current.filter(edge => edge.source !== id && edge.target !== id);
+    await saveDiagram(nextNodes, nextEdges, viewportRef.current);
+    lastSaveCallRef.current = Date.now();
+    syncDrafts();
+  }, [saveDiagram, viewportRef, syncDrafts]);
+
   useEffect(() => {
     broadcastRef.current = {
       move: broadcastNodeMove,
       update: broadcastNodeUpdate,
       edges: broadcastEdgesUpdate,
+      delete: handleEntityDelete,
     };
-  }, [broadcastNodeMove, broadcastNodeUpdate, broadcastEdgesUpdate]);
+  }, [broadcastNodeMove, broadcastNodeUpdate, broadcastEdgesUpdate, handleEntityDelete]);
 
   const {
     notes, setNotes, activeNoteUid, setActiveNoteUid, bumpContentVersion, getContentVersion,

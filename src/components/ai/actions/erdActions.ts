@@ -56,6 +56,7 @@ function mergeIntoDiagram(
       });
       mergedNodes[mergedNodes.indexOf(existing)] = {
         ...existing,
+        selected: undefined,
         data: {
           ...existing.data,
           columns: mergedColumns,
@@ -67,6 +68,7 @@ function mergeIntoDiagram(
       const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y), 50);
       mergedNodes.push({
         ...parsedNode,
+        selected: undefined,
         position: {
           x: maxX > 1200 ? 50 : maxX,
           y: maxX > 1200 ? maxY + 400 : maxY,
@@ -355,6 +357,7 @@ function applySingleColumnChanges(
 
   return {
     ...node,
+    selected: undefined,
     data: {
       ...node.data,
       columns,
@@ -494,6 +497,7 @@ export function applyToErdContent(
           const maxSort = node.data.columns.reduce((max, c) => Math.max(max, c.sort_order || 0), 0);
           mergedNodes[idx] = {
             ...node,
+            selected: undefined,
             data: {
               ...node.data,
               columns: [
