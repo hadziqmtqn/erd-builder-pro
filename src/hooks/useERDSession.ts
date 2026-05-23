@@ -25,6 +25,7 @@ export function useERDSession(
     broadcastNodeUpdate?: (id: string, data: Entity) => void;
     broadcastEdgesUpdate?: (edges: Edge[]) => void;
     onEditEntity?: (entityId: string) => void;
+    onDeleteEntity?: (entityId: string) => void;
   }
 ) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
@@ -399,7 +400,8 @@ export function useERDSession(
     setEdges(nextEdges);
     options?.broadcastEdgesUpdate?.(nextEdges);
     setSelectedNodeId(null);
-  }, [setNodes, setEdges, takeSnapshot, nodes, edges, options?.broadcastEdgesUpdate]);
+    options?.onDeleteEntity?.(id);
+  }, [setNodes, setEdges, takeSnapshot, nodes, edges, options?.broadcastEdgesUpdate, options?.onDeleteEntity]);
 
   const handleEdgeUpdate = (edgeId: string, label: string) => {
     takeSnapshot(nodes, edges);

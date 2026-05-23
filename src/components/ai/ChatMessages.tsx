@@ -2,7 +2,14 @@ import { memo, useRef, useState, useEffect, useCallback, createElement, Componen
 import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check, ChevronDown, FileText, Database, GitBranch, Image } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Link } from 'react-router-dom';
 import { AIChatMessage, AIChatSession } from '@/types';
+
+interface MentionFile {
+  name: string;
+  type: 'note' | 'diagram' | 'flowchart' | 'drawing';
+  uid: string;
+}
 
 function hasFlowchartJSON(content: string): boolean {
   const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
@@ -60,6 +67,7 @@ export interface ChatMessagesProps {
   isCrossEntity?: boolean;
   currentSession?: AIChatSession | null;
   entityTypeMeta?: Record<string, { label: string; icon: ComponentType<{ className?: string }> }>;
+  mentionFiles?: MentionFile[];
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -82,6 +90,7 @@ export const ChatMessages = memo(function ChatMessages({
   isCrossEntity = false,
   currentSession,
   entityTypeMeta,
+  mentionFiles = [],
 }: ChatMessagesProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -118,6 +127,50 @@ export const ChatMessages = memo(function ChatMessages({
     userScrolledUpRef.current = false;
     setShowScrollButton(false);
   }, []);
+
+  function renderMentionText(text: string) {
+    const mentionRegex = /@([^\s\n]+)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = mentionRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+
+      const name = match[1];
+      const file = mentionFiles.find(f => f.name.toLowerCase() === name.toLowerCase());
+
+      if (file) {
+        const path = file.type === 'note' ? `/notes/${file.uid}`
+          : file.type === 'diagram' ? `/erd/${file.uid}`
+          : file.type === 'flowchart' ? `/flowchart/${file.uid}`
+          : `/drawing/${file.uid}`;
+
+        parts.push(
+          <Link
+            key={match.index}
+            to={path}
+            className="inline-flex items-center gap-0.5 font-medium text-cyan-400 hover:text-cyan-300 underline decoration-cyan-400/30 hover:decoration-cyan-300/60 transition-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            @{file.name}
+          </Link>
+        );
+      } else {
+        parts.push(match[0]);
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+  }
 
   return (
     <div className="flex-1 relative min-h-0">
@@ -216,7 +269,7 @@ export const ChatMessages = memo(function ChatMessages({
                         const sysExpanded = expandedMessages.has(`sys_${msg.id ?? idx}`);
                         return (
                           <>
-                            <p className={`whitespace-pre-wrap break-words ${isLong && !isExpanded ? 'line-clamp-6' : ''}`}>{displayText}</p>
+                            <p className={`whitespace-pre-wrap break-words ${isLong && !isExpanded ? 'line-clamp-6' : ''}`}>{renderMentionText(displayText)}</p>
                             {hasSystemPart && (
                               <button
                                 onClick={() => setExpandedMessages(prev => {

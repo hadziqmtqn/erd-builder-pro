@@ -422,6 +422,7 @@ export const AIChatPanel = ({
           isCrossEntity={isCrossEntity}
           currentSession={currentSession}
           entityTypeMeta={entityTypeMeta}
+          mentionFiles={mentionFiles}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}
