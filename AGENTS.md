@@ -456,7 +456,8 @@ Every AI action lives in [`src/components/ai/AIActions.ts`](file:///Users/meowpu
 
 #### Delete Symbol
 - `deleteNode(nodeId)` in FlowchartView — cascading edge delete
-- Keyboard Delete/Backspace shortcut
+- Keyboard Delete/Backspace shortcut (registered via `window.addEventListener('keydown', ...)`)
+- **Guard**: handler skips if `e.target` is `INPUT`, `TEXTAREA`, or `isContentEditable` — prevents accidental deletion when typing in modal fields (e.g., Group Title)
 - Delete button in `SymbolPropertiesModal`
 
 #### Auto-Save Guards (FlowchartView)
@@ -500,6 +501,18 @@ Three fixes prevent cascading re-renders on every drag frame:
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
 
+### Flowchart AI Content Parsing Performance
+
+- **`Array.shift()` → index pointer**: both `collectDescendants()` and the Sugiyama layer-assignment BFS used `q.shift()` which is O(n²). Both now use `q[idx++]` pointer pattern — O(n).
+- **`pickClosestHandles` precompute**: handle positions are precomputed per-node via `computeHandlePoints()` + `nodePosMap`, then stored in `srcHandleCache`/`tgtHandleCache` for O(1) reuse across all edges. Old code recomputed `handlePositions[side](sx, sy)` inside a 16-iteration double loop for every edge.
+- **Diamond BFS early-exit**: if both yes/no children are already shifted (by a previous diamond), the function skips BFS entirely.
+- **`shiftPos` helper**: extracted position mutation + `shiftedNodes.add()` into a single `shiftPos(id, dx)` function — no code duplication between yes/no/child branches.
+- **Parse cache**: `getCachedOrParse(aiResponse)` caches `parseNodesAndEdges` result between `previewFlowchartContent` and `applyToFlowchartContent`/`applyReplaceAll`. `clearParseCache()` frees memory after confirm. `applyInsertBetween` does not use the cache (different schema).
+- **Stable IDs**: all AI-generated node/edge IDs use `hashStr(JSON.stringify(parsed))` instead of `Date.now()`, ensuring identical AI responses produce identical IDs. `hashStr` is a simple 32-bit FNV-1a-like hash.
+- **`maxIter` guard**: `collectDescendants(id, outgoing, exclude, maxIter=200)` prevents infinite BFS loops from malformed graphs.
+- **Sugiyama BFS capped**: `maxBFSIter = newNodes.length * 3` prevents infinite loop on cyclic graphs (back-edges). The original `while (queue.length > 0)` never terminates when the graph has cycles (e.g. `n4→n2→n3→n4` loop) because each cycle pass re-queues all cycle nodes with higher layers, growing the queue unboundedly.
+- **Fast-path positions**: if ALL AI-provided nodes have `position` with `x`/`y` numbers, `buildFlowchartLayout` uses them directly and skips the Sugiyama layout entirely — eliminates the layout bottleneck for AI responses that include positions.
+
 ### Flowchart AI Content Safety Guards
 
 - **`MAX_AI_NODES = 60`**, **`MAX_AI_EDGES = 120`**, **`MAX_AI_TEXT_BYTES = 512_000`** in `flowchartActions.ts` — hard limits that prevent parsing/rendering huge AI responses
@@ -512,6 +525,7 @@ Three fixes prevent cascading re-renders on every drag frame:
 
 - `isHovered` local state is scoped per-node — only the hovered node re-renders, not the entire canvas
 - `shapeBackground` memoized on `[data.color, data.shape, selected]` — SVG paths recompute only on actual property changes
+- **Handle visibility**: `handleClasses` = `opacity-0 group-hover:opacity-100` — handles (bulatan edge) hanya muncul saat cursor menyorot node. Parent div punya `group` class.
 
 ### Shared patterns
 
@@ -533,8 +547,9 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## Flowchart Section / Group Feature
 
-- **Start/End labels are reserved/absolute** — label field disabled in SymbolPropertiesModal, shape locked, delete disabled
+- Semua simbol (termasuk Start/End) bisa dihapus bebas — `deleteNode` tidak lagi memiliki guard Start/End
 - **Start nodes** have a "Group Title" input field in properties modal — stored as `section` in `FlowchartNodeData`
+- **Delete Group**: `deleteGroup` di FlowchartView — hapus semua node yang punya `section` (grup) yang sama. Tombol "Hapus Grup" muncul di `SymbolPropertiesModal` untuk Start node yang punya Group Title.
 - **`groupId`**: setiap Start node punya unique key (e.g. `grp_quickstart`) — auto-generated saat node dibuat, tampil di AI context sebagai `[id:grp_xxx]`. AI bisa referensi via `sourceGroupId`/`targetGroupId` di JSON response.
 - **AI grouping**: `flowchartSymbolDetail()` groups symbols by section using BFS from each Start node. Each group rendered under `=== {section} [id:grp_xxx] ===` header. Supports overlapping groups (user can have multiple Start nodes sharing the same End).
 - **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (prioritas tertinggi ke terendah).

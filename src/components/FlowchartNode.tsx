@@ -14,7 +14,7 @@ export interface FlowchartNodeData extends Record<string, unknown> {
 const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) => {
   const [isHovered, setIsHovered] = useState(false);
   
-  const handleClasses = "!w-1.5 !h-1.5 !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity z-20";
+  const handleClasses = "!w-1.5 !h-1.5 !bg-white !border-none opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-crosshair";
 
   // Different padding/width based on shape to ensure text doesn't overflow
   const containerClasses = useMemo(() => {
