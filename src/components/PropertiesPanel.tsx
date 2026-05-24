@@ -269,7 +269,7 @@ export default function PropertiesPanel({
         </div>
       </div>
 
-      <section className="space-y-3">
+      <section className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
         <div className="space-y-3">
           {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col, index, arr) => (
             <Card key={col.id} className="p-3 bg-muted/10 space-y-3 border border-border/30 shadow-none hover:border-primary/30 transition-all">

@@ -15,7 +15,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Undo2, Redo2 } from 'lucide-react';
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
@@ -71,8 +71,24 @@ export const FlowchartView = React.memo(({
   const isEditingNodeRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
-  const { takeSnapshot } = useUndoRedo();
+  const { takeSnapshot, undo, redo, canUndo, canRedo } = useUndoRedo();
   const pendingApplyModeRef = React.useRef<'append' | 'insert' | 'replace'>('append');
+
+  const handleUndo = useCallback(() => {
+    const previousState = undo(nodesRef.current, edgesRef.current);
+    if (previousState) {
+      setNodes(previousState.nodes);
+      setEdges(previousState.edges);
+    }
+  }, [undo, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    const nextState = redo(nodesRef.current, edgesRef.current);
+    if (nextState) {
+      setNodes(nextState.nodes);
+      setEdges(nextState.edges);
+    }
+  }, [redo, setNodes, setEdges]);
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
@@ -163,14 +179,17 @@ export const FlowchartView = React.memo(({
   }), []);
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({
-      ...params,
-      type: 'smoothstep',
-      style: { stroke: '#b1b1b7' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
-      animated: false,
-    } as Edge, eds)),
-    [setEdges],
+    (params: Connection) => {
+      takeSnapshot(nodesRef.current, edgesRef.current);
+      setEdges((eds) => addEdge({
+        ...params,
+        type: 'smoothstep',
+        style: { stroke: '#b1b1b7' },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' },
+        animated: false,
+      } as Edge, eds));
+    },
+    [setEdges, takeSnapshot],
   );
 
   const onReconnect = useCallback(
@@ -185,6 +204,7 @@ export const FlowchartView = React.memo(({
   );
 
   const confirmAddSymbol = () => {
+    takeSnapshot(nodesRef.current, edgesRef.current);
     const id = Math.random().toString(36).substr(2, 9);
     const data = { ...newNodeData };
     // Auto-generate groupId for Start nodes
@@ -203,6 +223,7 @@ export const FlowchartView = React.memo(({
 
   const updateNodeData = (updates: Partial<FlowchartNodeData>) => {
     if (!selectedNodeId) return;
+    takeSnapshot(nodesRef.current, edgesRef.current);
     setNodes((nds) =>
       nds.map((n) => {
         if (n.id === selectedNodeId) {
@@ -215,6 +236,7 @@ export const FlowchartView = React.memo(({
 
   const updateEdgeData = (updates: Partial<Edge>) => {
     if (!selectedEdgeId) return;
+    takeSnapshot(nodesRef.current, edgesRef.current);
     setEdges((eds) =>
       eds.map((e) => {
         if (e.id === selectedEdgeId) {
@@ -227,6 +249,7 @@ export const FlowchartView = React.memo(({
 
   const deleteNode = () => {
     if (!selectedNodeId) return;
+    takeSnapshot(nodesRef.current, edgesRef.current);
     const targetIds = [selectedNodeId];
     setNodes((nds) => nds.filter(n => !targetIds.includes(n.id)));
     setEdges((eds) => eds.filter(e => !targetIds.includes(e.source) && !targetIds.includes(e.target)));
@@ -236,6 +259,7 @@ export const FlowchartView = React.memo(({
   const deleteGroup = () => {
     const node = nodes.find(n => n.id === selectedNodeId);
     if (!node || !node.data.section) return;
+    takeSnapshot(nodesRef.current, edgesRef.current);
     const section = node.data.section;
     const groupIds = nodes.filter(n => n.data.section === section).map(n => n.id);
     if (groupIds.length === 0) return;
@@ -246,6 +270,7 @@ export const FlowchartView = React.memo(({
 
   const deleteEdge = () => {
     if (!selectedEdgeId) return;
+    takeSnapshot(nodesRef.current, edgesRef.current);
     setEdges((eds) => eds.filter(e => e.id !== selectedEdgeId));
     setSelectedEdgeId(null);
   };
@@ -492,6 +517,13 @@ export const FlowchartView = React.memo(({
             <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
               <Plus className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Add Symbol</span>
+            </Button>
+            <div className="w-px h-6 bg-border mx-0.5" />
+            <Button onClick={handleUndo} disabled={!canUndo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Undo">
+              <Undo2 className="w-4 h-4" />
+            </Button>
+            <Button onClick={handleRedo} disabled={!canRedo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Redo">
+              <Redo2 className="w-4 h-4" />
             </Button>
           </div>
         </div>

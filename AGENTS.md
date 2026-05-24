@@ -496,10 +496,24 @@ Three fixes prevent cascading re-renders on every drag frame:
 ### ERD Canvas (`EntityNode.tsx`, `ERDView.tsx`, `useERDSession.ts`)
 
 - **Memoized ColumnRow** (`EntityColumnRow`): extracted column rows into a separate `React.memo` component with stable inline style objects (`useMemo`) — prevents re-creating 4N Handle components per node on every re-render
-- **Memoized column sort**: `sortedColumns` derived via `useMemo` keyed on `columnOrderHash` — no re-sort on unrelated data changes
+- **Memoized column sort**: `sortedColumns` derived via `useMemo` keyed on `data.columns` (direct reference) — re-sorts whenever any column property changes (name, type, nullable, PK, etc.). Previously was keyed on `columnOrderHash` (id+sort_order only) which caused stale canvas renders when only name/type changed — **bug fixed**.
+- **`columnOrderHash`**: separate `useMemo` keyed on `data.columns` used only for `updateNodeInternals` effect (Handle positions depend on column IDs/sort_order, not other properties).
 - **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
+
+### Per-Table Dialog: `TableDialog`
+
+- **`TableDialog`** ([`src/components/modals/TableDialog.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/modals/TableDialog.tsx)): single dialog with two tabs — **Properties** (embeds `PropertiesPanel` for name/color/columns editing) and **Schema** (MySQL, PostgreSQL, Laravel Migration/Model, TypeScript, Prisma, Zod sub-tabs). Replaces two separate dropdown items in `EntityNode` ("Edit Table" + "Generate Schema") with one "Edit" item.
+- Rendered locally inside `EntityNode.tsx` (not via global `CustomEvent` or WorkspaceProvider modal), matching the existing `GeneratedCodeModal` pattern.
+- Uses `useWorkspace()` directly for `handleEntityUpdate`, `deleteEntity`, `setSelectedNodeId`, `setIsDeleteAlertOpen`.
+- `defaultTab` prop controls which tab opens (`'properties'` from `handleEdit`, `'schema'` from `handleGenerate`).
+- `EntityNode.tsx` dropdown reduced from 3 items (Edit Table, Generate Schema, Delete Table) to 2 items (Edit, Delete Table). Both `TablePropertiesModal` and `GeneratedCodeModal` remain as standalone components (backward compat, body double-click still opens global `TablePropertiesModal`).
+
+### PropertiesPanel Column Scroll & Stale Canvas Fixes
+
+- **Column scroll**: `PropertiesPanel.tsx` column list section has `max-h-[300px] overflow-y-auto custom-scrollbar` — vertical scrollbar only on column cards, Add Column button stays in sticky header outside scroll area.
+- **Stale canvas on column edit**: `sortedColumns` useMemo dependency changed from `columnOrderHash` (id+sort_order only, missing name/type) to `data.columns` (full reference) — ensures any column property change triggers canvas re-render.
 
 ### Flowchart AI Content Parsing Performance
 

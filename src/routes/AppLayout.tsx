@@ -8,6 +8,7 @@ import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
 import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
 import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
+import { ERDSettingsDialog } from '@/components/modals/ERDSettingsDialog';
 import { DuplicateDocumentDialog } from '@/components/modals/DuplicateDocumentDialog';
 import { TablePropertiesModal } from '@/components/modals/TablePropertiesModal';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
@@ -71,7 +72,10 @@ function AppLayoutInner() {
     fileSearchRef, fileSearchQuery, setFileSearchQuery,
     activeNote, activeDrawing, activeFlowchart, activeDiagram,
     notes, diagrams, flowcharts, drawings,
-    nodes, edges,
+    nodes, edges, setNodes, setEdges,
+    activeDiagramId, takeSnapshot, saveDiagram,
+    triggerDebouncedSync, broadcastMessage,
+    setIsLocalSaving, viewportRef, lastLoadedDiagramIdRef,
     fetchTrash,
     triggerTableRefresh,
     setTableLoadingState,
@@ -280,7 +284,33 @@ function AppLayoutInner() {
           />
         )}
 
-        {!isPublicView && (
+        {!isPublicView && view === 'erd' ? (
+          <ERDSettingsDialog
+            isOpen={isRenameDialogOpen}
+            onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
+            activeDocument={editDialogNote ?? activeDocument}
+            newName={newName}
+            setNewName={setNewName}
+            projects={projects}
+            selectedProjectId={renameProjectId}
+            setSelectedProjectId={setRenameProjectId}
+            updateDiagram={updateDiagram}
+            onMoveDiagramToProject={moveDiagramToProject}
+            onRenameSuccess={undefined}
+            nodes={nodes}
+            edges={edges}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            activeDiagramId={activeDiagramId}
+            takeSnapshot={takeSnapshot}
+            saveDiagram={saveDiagram}
+            triggerDebouncedSync={triggerDebouncedSync}
+            broadcastMessage={broadcastMessage}
+            setIsLocalSaving={setIsLocalSaving}
+            viewportRef={viewportRef}
+            lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
+          />
+        ) : !isPublicView && (
           <RenameDocumentDialog
             isOpen={isRenameDialogOpen}
             onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
