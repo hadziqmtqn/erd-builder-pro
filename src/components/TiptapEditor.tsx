@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { useAIAction } from '@/contexts/AIActionContext';
+import { apiFetch } from '@/lib/api';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import ImageResize from 'tiptap-extension-resize-image';
@@ -63,7 +64,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         formData.append('image', compressedFile);
         formData.append('feature', 'notes');
 
-        const response = await fetch('/api/upload', {
+        const response = await apiFetch('/api/upload', {
           method: 'POST',
           body: formData,
           credentials: 'include',

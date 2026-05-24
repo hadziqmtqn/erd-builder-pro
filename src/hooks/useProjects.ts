@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Project } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { apiFetch } from '../lib/api';
 
 export function useProjects(isGuest: boolean = false) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -65,7 +66,7 @@ export function useProjects(isGuest: boolean = false) {
     try {
       const offset = isLoadMore ? projectsRef.current.length : 0;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/projects?limit=100&offset=${offset}${qParam}`); // Increased limit for better tree view
+      const res = await apiFetch(`/api/projects?limit=100&offset=${offset}${qParam}`); // Increased limit for better tree view
       if (res.ok) {
         const json = await res.json();
         const projectsList = Array.isArray(json.data) ? json.data : [];
@@ -114,7 +115,7 @@ export function useProjects(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch('/api/projects', {
+      const res = await apiFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -142,7 +143,7 @@ export function useProjects(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await apiFetch(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -183,7 +184,7 @@ export function useProjects(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProjects(prev => prev.filter(p => p.id !== id));
         if (activeProjectId === id) setActiveProjectId(null);
@@ -219,7 +220,7 @@ export function useProjects(isGuest: boolean = false) {
       }
       return;
     }
-    await fetch(`/api/projects/${id}/restore`, { method: 'POST' });
+    await apiFetch(`/api/projects/${id}/restore`, { method: 'POST' });
     fetchProjects();
   };
 
@@ -230,7 +231,7 @@ export function useProjects(isGuest: boolean = false) {
       toast.success('Project permanently deleted from local');
       return;
     }
-    await fetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
+    await apiFetch(`/api/projects/${id}/permanent`, { method: 'DELETE' });
     setProjects(prev => prev.filter(p => p.id !== id));
   };
 

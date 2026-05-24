@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { saveTitleCache, saveContentCache } from '../utils/titleCache';
+import { apiFetch } from '../lib/api';
 
 export function useNotes(isGuest: boolean = false) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -73,7 +74,7 @@ export function useNotes(isGuest: boolean = false) {
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
-      const res = await fetch(`/api/notes?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
+      const res = await apiFetch(`/api/notes?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
@@ -122,7 +123,7 @@ export function useNotes(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch('/api/notes', {
+      const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, project_id: effectiveProjectId, content: content || "" }),
@@ -175,7 +176,7 @@ export function useNotes(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/notes/${uid}`, {
+      const res = await apiFetch(`/api/notes/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
@@ -205,7 +206,7 @@ export function useNotes(isGuest: boolean = false) {
     try {
       const note = notesRef.current.find(n => String(n.id) === String(uid) || String(n.uid) === String(uid));
       const identifier = note?.uid || uid;
-      const res = await fetch(`/api/notes/${identifier}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/notes/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setNotes(prev => prev.filter(n => String(n.id) !== String(uid) && String(n.uid) !== String(uid)));
         setNotesTotal(prev => Math.max(0, prev - 1));
@@ -230,7 +231,7 @@ export function useNotes(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/notes/${uid}`, {
+      const res = await apiFetch(`/api/notes/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: effectiveProjectId }),
@@ -286,7 +287,7 @@ export function useNotes(isGuest: boolean = false) {
     try {
       const note = notesRef.current.find(n => String(n.id) === String(uid) || String(n.uid) === String(uid));
       const identifier = note?.uid || uid;
-      const res = await fetch(`/api/notes/${identifier}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/notes/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         setNotes(prev => prev.map(n => String(n.id) === String(uid) || String(n.uid) === String(uid) ? { ...n, is_deleted: false } : n));
         toast.success('Note restored successfully');
@@ -309,7 +310,7 @@ export function useNotes(isGuest: boolean = false) {
     try {
       const note = notesRef.current.find(n => String(n.id) === String(uid) || String(n.uid) === String(uid));
       const identifier = note?.uid || uid;
-      const res = await fetch(`/api/notes/${identifier}/permanent`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/notes/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setNotes(prev => prev.filter(n => String(n.id) !== String(uid) && String(n.uid) !== String(uid)));
         toast.success('Note permanently deleted');
@@ -340,7 +341,7 @@ export function useNotes(isGuest: boolean = false) {
       // Step 1: Start API fetch immediately (fire in background, don't block)
       const apiPromise = !isGuest ? (async () => {
         try {
-          const res = await fetch(`/api/notes/${uid}`);
+          const res = await apiFetch(`/api/notes/${uid}`);
           if (!res.ok) return null;
           const fullNote = await res.json();
           // Cache for instant display on next page load

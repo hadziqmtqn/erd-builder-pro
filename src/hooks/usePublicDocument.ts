@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Node, Edge, useReactFlow } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Entity } from '../types';
+import { apiFetch } from '../lib/api';
 
 export interface ForbiddenDoc {
   title: string;
@@ -26,7 +27,7 @@ export function usePublicDocument(
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['x-share-token'] = token;
       
-      const res = await fetch(`/api/${endpoint}/public/${uid}`, { 
+      const res = await apiFetch(`/api/${endpoint}/public/${uid}`, { 
         headers,
         credentials: 'include'
       });

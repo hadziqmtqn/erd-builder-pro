@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { apiFetch } from '../lib/api';
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -15,7 +16,7 @@ export function useAuth() {
     }
 
     try {
-      const res = await fetch('/api/me');
+      const res = await apiFetch('/api/me');
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated) {
@@ -80,7 +81,7 @@ export function useAuth() {
     }
 
     try {
-      const res = await fetch('/api/logout', { method: 'POST' });
+      const res = await apiFetch('/api/logout', { method: 'POST' });
       if (res.ok) {
         setIsAuthenticated(false);
         setIsGuest(false);

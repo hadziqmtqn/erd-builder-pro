@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { apiFetch } from '../lib/api';
 import { 
   useNodesState, 
   useEdgesState, 
@@ -124,7 +125,7 @@ export function useERDSession(
         }
         data = localData;
       } else {
-        const res = await fetch(`/api/diagrams/${id}`);
+        const res = await apiFetch(`/api/diagrams/${id}`);
         if (!res.ok) {
           const errText = await res.text();
           console.error(`Failed to fetch diagram ${id}:`, res.status, errText);

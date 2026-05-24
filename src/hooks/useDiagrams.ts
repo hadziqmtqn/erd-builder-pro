@@ -4,6 +4,7 @@ import { Node, Edge, Viewport } from '@xyflow/react';
 import { Diagram, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
+import { apiFetch } from '../lib/api';
 import { 
   getCachedDiagramVersion, 
   updateCachedDiagramVersion,
@@ -73,7 +74,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
-      const res = await fetch(`/api/diagrams?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
+      const res = await apiFetch(`/api/diagrams?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         let json;
         try {
@@ -128,7 +129,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
-      const res = await fetch('/api/diagrams', {
+      const res = await apiFetch('/api/diagrams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, project_id: effectiveProjectId }),
@@ -164,7 +165,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
-      const res = await fetch(`/api/diagrams/${identifier}`, {
+      const res = await apiFetch(`/api/diagrams/${identifier}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -199,7 +200,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
-      const res = await fetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setDiagrams(prev => prev.filter(f => f.id !== id));
         setDiagramsTotal(prev => Math.max(0, prev - 1));
@@ -230,7 +231,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
-      const res = await fetch(`/api/diagrams/${identifier}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/diagrams/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         // Optimistically update the state instead of full fetch to avoid losing other project data
         setDiagrams(prev => prev.map(d => String(d.id) === String(id) ? { ...d, is_deleted: false } : d));
@@ -255,7 +256,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       const diagram = diagramsRef.current.find(d => String(d.id) === String(id) || String(d.uid) === String(id));
       const identifier = diagram?.uid || id;
-      const res = await fetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setDiagrams(prev => prev.filter(f => f.id !== id));
         toast.success('Diagram permanently deleted');
@@ -285,7 +286,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       const diagram = diagramsRef.current.find(d => String(d.id) === String(diagramId) || String(d.uid) === String(diagramId));
       const identifier = diagram?.uid || diagramId;
-      const res = await fetch(`/api/diagrams/${identifier}/project`, {
+      const res = await apiFetch(`/api/diagrams/${identifier}/project`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: effectiveProjectId }),

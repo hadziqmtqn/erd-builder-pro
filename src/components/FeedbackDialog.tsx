@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
 
 export function FeedbackDialog({
   open,
@@ -24,7 +25,7 @@ export function FeedbackDialog({
 
     setLoading(true);
     try {
-      const response = await fetch("/api/feedback", {
+      const response = await apiFetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

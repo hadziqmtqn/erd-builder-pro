@@ -4,6 +4,7 @@
  */
 
 import { compressImage } from '../image-compression';
+import { apiFetch } from '../api';
 
 // CDN URLs
 const MAMMOTH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
@@ -133,7 +134,7 @@ export class NoteImporter {
               formData.append('image', processedFile);
               formData.append('feature', 'notes');
 
-              const response = await fetch('/api/upload', {
+              const response = await apiFetch('/api/upload', {
                 method: 'POST',
                 body: formData,
                 credentials: 'include',
@@ -229,7 +230,7 @@ export class NoteImporter {
             formData.append("image", processedFile);
             formData.append("feature", "notes");
 
-            const uploadRes = await fetch("/api/upload", {
+            const uploadRes = await apiFetch("/api/upload", {
               method: "POST",
               body: formData,
               credentials: "include",

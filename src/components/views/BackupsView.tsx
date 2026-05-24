@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { apiFetch } from "@/lib/api";
 import { 
   Database, 
   Download, 
   Plus, 
-  Clock, 
   CheckCircle2, 
   XCircle, 
   Loader2,
@@ -52,7 +52,7 @@ export const BackupsView = () => {
       setLoading(true);
       
       const offset = page * ITEMS_PER_PAGE;
-      const res = await fetch(`/api/backups?limit=${ITEMS_PER_PAGE}&offset=${offset}`);
+      const res = await apiFetch(`/api/backups?limit=${ITEMS_PER_PAGE}&offset=${offset}`);
       
       if (res.ok) {
         const json = await res.json();
@@ -92,7 +92,7 @@ export const BackupsView = () => {
     try {
       const name = `Backup_${format(new Date(), 'yyyyMMdd_HHmm')}`;
       
-      const res = await fetch('/api/backups', {
+      const res = await apiFetch('/api/backups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
