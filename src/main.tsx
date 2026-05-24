@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import App from './App.tsx';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
+import { API_BASE_URL } from './lib/api';
 
 // Global Fetch Interceptor to handle 401 Unauthorized globally
 const originalFetch = window.fetch;
@@ -20,11 +21,11 @@ window.fetch = async (...args) => {
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
   const isSupabaseRoute = url.includes('supabase.co');
-  const isSelfRoute = url.startsWith(window.location.origin) || url.startsWith('/');
+  const isApiRoute = (url.startsWith('/api/') || (API_BASE_URL && url.startsWith(API_BASE_URL))) && !url.includes('supabase.co');
   
   const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
   
-  if (response.status === 401 && isSelfRoute && !isAuthRoute && !isSupabaseRoute && navigator.onLine && !isGuest) {
+  if (response.status === 401 && isApiRoute && !isAuthRoute && navigator.onLine && !isGuest) {
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   

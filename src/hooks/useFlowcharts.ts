@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Flowchart, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { apiFetch } from '../lib/api';
 
 export function useFlowcharts(isGuest: boolean = false) {
   const [flowcharts, setFlowcharts] = useState<Flowchart[]>([]);
@@ -81,7 +82,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
-      const res = await fetch(`/api/flowcharts?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
+      const res = await apiFetch(`/api/flowcharts?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json;
@@ -134,7 +135,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch('/api/flowcharts', {
+      const res = await apiFetch('/api/flowcharts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "" }),
@@ -166,7 +167,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${uid}`, {
+      const res = await apiFetch(`/api/flowcharts/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
@@ -199,7 +200,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
       const identifier = flowchart?.uid || uid;
-      const res = await fetch(`/api/flowcharts/${identifier}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/flowcharts/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         setFlowchartsTotal(prev => Math.max(0, prev - 1));
@@ -225,7 +226,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/flowcharts/${uid}`, {
+      const res = await apiFetch(`/api/flowcharts/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
@@ -287,7 +288,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
       const identifier = flowchart?.uid || uid;
-      const res = await fetch(`/api/flowcharts/${identifier}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/flowcharts/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         setFlowcharts(prev => prev.map(f => matchesFlowchartId(f, uid) ? { ...f, is_deleted: false } : f));
         toast.success('Flowchart restored successfully');
@@ -307,7 +308,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     try {
       const flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid));
       const identifier = flowchart?.uid || uid;
-      const res = await fetch(`/api/flowcharts/${identifier}/permanent`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/flowcharts/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
         toast.success('Flowchart permanently deleted');
@@ -341,7 +342,7 @@ export function useFlowcharts(isGuest: boolean = false) {
         });
         setActiveFlowchartId(localData.uid ?? uid);
       } else {
-        const res = await fetch(`/api/flowcharts/${uid}`);
+        const res = await apiFetch(`/api/flowcharts/${uid}`);
         if (res.ok) {
           const f = await res.json();
           if (!f.is_deleted) {

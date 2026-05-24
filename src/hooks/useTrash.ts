@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Diagram, Note, Drawing, Flowchart, Project } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { apiFetch } from '../lib/api';
 
 export function useTrash(isGuest: boolean = false) {
   const [trashData, setTrashData] = useState<{
@@ -42,7 +43,7 @@ export function useTrash(isGuest: boolean = false) {
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/trash');
+      const res = await apiFetch('/api/trash');
       if (res.ok) {
         const data = await res.json();
         const sortedData = {
@@ -80,7 +81,7 @@ export function useTrash(isGuest: boolean = false) {
   const restoreNote = async (id: number | string) => {
     if (isGuest) return restoreResource(id);
     try {
-      const res = await fetch(`/api/notes/${id}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/notes/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchTrash();
         toast.success('Note restored successfully');
@@ -95,7 +96,7 @@ export function useTrash(isGuest: boolean = false) {
   const restoreDrawing = async (id: number | string) => {
     if (isGuest) return restoreResource(id);
     try {
-      const res = await fetch(`/api/drawings/${id}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/drawings/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchTrash();
         toast.success('Drawing restored successfully');
@@ -110,7 +111,7 @@ export function useTrash(isGuest: boolean = false) {
   const restoreFlowchart = async (id: number | string) => {
     if (isGuest) return restoreResource(id);
     try {
-      const res = await fetch(`/api/flowcharts/${id}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/flowcharts/${id}/restore`, { method: 'POST' });
       if (res.ok) {
         fetchTrash();
         toast.success('Flowchart restored successfully');

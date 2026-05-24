@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import { Drawing } from '../types';
 import { compressImage } from '../lib/image-compression';
+import { apiFetch } from '../lib/api';
 
 interface ExcalidrawEditorProps {
   drawing: Drawing;
@@ -152,7 +153,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         formData.append('image', compressedFile);
         formData.append('feature', 'drawings');
 
-        const uploadRes = await fetch('/api/upload', {
+        const uploadRes = await apiFetch('/api/upload', {
           method: 'POST',
           body: formData,
           credentials: 'include',

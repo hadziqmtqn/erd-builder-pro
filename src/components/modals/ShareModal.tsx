@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogBody
 } from "@/components/ui/dialog";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,7 +98,7 @@ export function ShareModal({
         expiry_date = d.toISOString();
       }
 
-      const res = await fetch(`/api/${endpoint}/${documentId}/share`, {
+      const res = await apiFetch(`/api/${endpoint}/${documentId}/share`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

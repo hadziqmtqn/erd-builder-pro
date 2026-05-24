@@ -1,5 +1,5 @@
-import { Diagram, DraftType } from '../types';
-import { localPersistence } from './localPersistence';
+import { Diagram } from '../types';
+import { apiFetch } from './api';
 
 /**
  * Diagram version management for optimistic locking
@@ -89,7 +89,7 @@ export async function clearCachedDiagramVersion(diagramId: number | string): Pro
  */
 export async function refreshDiagramVersion(diagramId: number | string): Promise<Diagram | null> {
   try {
-    const res = await fetch(`/api/diagrams/${diagramId}`);
+    const res = await apiFetch(`/api/diagrams/${diagramId}`);
     if (!res.ok) return null;
     
     const diagram: Diagram = await res.json();

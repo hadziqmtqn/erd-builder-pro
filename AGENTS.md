@@ -581,6 +581,38 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - [`src/components/MainHeader.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/components/MainHeader.tsx): `noteContent` prop forwarded to `NavActionsMenu`
 - [`src/routes/AppLayout.tsx`](file:///Users/meowpush/Projects/erd-builder-pro/src/routes/AppLayout.tsx): passes `activeNote?.content` as `noteContent`
 
+## API Client (Migration Ready)
+
+- **`src/lib/api.ts`**: Centralized API helper with `API_BASE_URL` (from `VITE_API_URL` env var) and `apiFetch()` wrapper
+  ```ts
+  export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${API_BASE_URL}${input}`, { credentials: 'include', ...init });
+  }
+  ```
+- All `fetch('/api/...')` calls replaced with `apiFetch('/api/...')` — when repos split, set `VITE_API_URL=https://api.server.com` and all calls redirect
+- **Global 401 interceptor** (`main.tsx:12`): patched to detect API calls by checking `API_BASE_URL` prefix in addition to relative `/api/` paths
+- **Vite proxy** (`vite.config.ts:20`): `/api` proxied to `VITE_API_URL || http://localhost:3000` for standalone dev
+- **No `Content-Type` auto-setting** — upload calls (FormData) work without override
+
+## Server Architecture (Standalone)
+
+- **`server/index.ts`**: Pure Express app setup (middleware + routes) — no listen, no Vite. Exports `app`
+- **`server/run.ts`**: Standalone entry — imports app, listens on `PORT`, serves static `dist/` in production
+- **`server/dev.ts`**: Dev entry — imports app, attaches Vite middleware, listens (old monolith workflow)
+- **`api/index.ts`**: Vercel entry — imports app, exports default for `vercel.json` routing
+- **Scripts**:
+  - `npm run dev` → old monolith (Express + Vite middleware via `server/dev.ts`)
+  - `npm run dev:api` → standalone backend only (`server/run.ts`)
+  - `npm run dev:client` → Vite frontend only (proxies `/api` to backend)
+  - `npm run start` → production standalone (`server/run.ts`)
+
+## Shared Types
+
+- **`shared/types.ts`**: All TypeScript interfaces (Column, Entity, Diagram, Note, etc.) — single source of truth
+- **`src/types.ts`**: Re-exports everything from `../shared/types` — all existing imports continue to work
+- Backend can import directly from `shared/types` when it gets its own repo
+- Covers: ERD entities, documents (Diagram/Note/Drawing/Flowchart), AI integration (Provider/Model/Config/Chat), projects, audit
+
 ## AGENTS.md File References Convention
 
 - All `src/` file paths in AGENTS.md use clickable `file://` links with backtick formatting: `` [`src/path/file.ts`](file:///abs/path/src/path/file.ts) ``

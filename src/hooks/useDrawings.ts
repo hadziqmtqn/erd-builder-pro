@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Drawing, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
+import { apiFetch } from '../lib/api';
 
 export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -75,7 +76,7 @@ export function useDrawings(isGuest: boolean = false) {
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
-      const res = await fetch(`/api/drawings?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
+      const res = await apiFetch(`/api/drawings?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
       if (res.ok) {
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json;
@@ -128,7 +129,7 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch('/api/drawings', {
+      const res = await apiFetch('/api/drawings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "" }),
@@ -176,7 +177,7 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/drawings/${uid}`, {
+      const res = await apiFetch(`/api/drawings/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
@@ -206,7 +207,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
-      const res = await fetch(`/api/drawings/${identifier}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/drawings/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
         setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
         setDrawingsTotal(prev => Math.max(0, prev - 1));
@@ -229,7 +230,7 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
-      const res = await fetch(`/api/drawings/${uid}`, {
+      const res = await apiFetch(`/api/drawings/${uid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
@@ -290,7 +291,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
-      const res = await fetch(`/api/drawings/${identifier}/restore`, { method: 'POST' });
+      const res = await apiFetch(`/api/drawings/${identifier}/restore`, { method: 'POST' });
       if (res.ok) {
         setDrawings(prev => prev.map(d => matchesDrawingId(d, uid) ? { ...d, is_deleted: false } : d));
         toast.success('Drawing restored successfully');
@@ -310,7 +311,7 @@ export function useDrawings(isGuest: boolean = false) {
     try {
       const drawing = drawingsRef.current.find(d => matchesDrawingId(d, uid));
       const identifier = drawing?.uid || uid;
-      const res = await fetch(`/api/drawings/${identifier}/permanent`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/drawings/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
         setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
         toast.success('Drawing permanently deleted');
@@ -352,7 +353,7 @@ export function useDrawings(isGuest: boolean = false) {
         let serverDrawing: any = null;
 
         try {
-          const res = await fetch(`/api/drawings/${uid}`);
+          const res = await apiFetch(`/api/drawings/${uid}`);
           if (res.ok) {
             const d = await res.json();
             if (!d.is_deleted) {
