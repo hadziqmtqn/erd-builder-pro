@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect, useMemo, CSSProperties } from 'react';
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
-import { MoreHorizontal, Edit2, Trash2, Database, AlertTriangle } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Database, AlertTriangle } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
 import {
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { GeneratedCodeModal } from './modals/GeneratedCodeModal';
+import { TableDialog } from './modals/TableDialog';
 
 import {
   AlertDialog,
@@ -105,11 +105,12 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showSqlModal, setShowSqlModal] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogTab, setDialogTab] = useState<'properties' | 'schema'>('properties');
   const updateNodeInternals = useUpdateNodeInternals();
 
   const columnOrderHash = useMemo(() => 
-    data.columns.map(c => `${c.id}-${c.sort_order}`).join(','),
+    data.columns.map(c => `${c.id}-${c.name}-${c.sort_order}`).join(','),
     [data.columns]
   );
 
@@ -120,7 +121,8 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    window.dispatchEvent(new CustomEvent('editEntity', { detail: data.id }));
+    setDialogTab('properties');
+    setDialogOpen(true);
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -137,7 +139,8 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const handleGenerate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setShowSqlModal(true);
+    setDialogTab('schema');
+    setDialogOpen(true);
   };
 
   const { borderColor, headerBg, typeColor } = useMemo(() => ({
@@ -153,8 +156,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
 
   const sortedColumns = useMemo(() => 
     [...data.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [columnOrderHash]
+    [data.columns]
   );
 
   return (
@@ -188,16 +190,9 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <DropdownMenuItem onClick={handleGenerate} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
-                <Database className="w-4 h-4 mr-2" />
-                Generate Schema
-              </DropdownMenuItem>
-              
-              <DropdownMenuSeparator className="bg-white/10" />
-
               <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
-                <Edit2 className="w-4 h-4 mr-2" />
-                Edit Table
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/10" />
               <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
@@ -244,10 +239,11 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <GeneratedCodeModal
-        open={showSqlModal}
-        onOpenChange={setShowSqlModal}
+      <TableDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         entity={data}
+        defaultTab={dialogTab}
       />
     </>
   );

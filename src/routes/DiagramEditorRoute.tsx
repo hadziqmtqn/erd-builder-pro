@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
 
 const ERDView = React.lazy(() => import('@/components/views/ERDView').then(m => ({ default: m.ERDView })));
-const ImportSQLModal = React.lazy(() => import('@/components/modals/ImportSQLModal').then(m => ({ default: m.ImportSQLModal })));
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
@@ -16,9 +15,9 @@ export function DiagramEditorRoute() {
     selectedNodeId, addEntity, undo, redo, canUndo, canRedo,
     takeSnapshot, onNodeDragStop, onMoveEnd,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
-    handleOpenImportModal, handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
-    setIsLocalSaving, lastLoadedDiagramIdRef, setIsImportModalOpen, isImportModalOpen,
+    setIsLocalSaving, lastLoadedDiagramIdRef,
     isERDItemLoading,
   } = ctx;
 
@@ -70,7 +69,6 @@ export function DiagramEditorRoute() {
         onPaneClick={handlePaneClick}
         onMove={handleMove}
         addEntity={addEntity}
-        openImportModal={handleOpenImportModal}
         handleExportSQL={handleWorkspaceExportSQL}
         handleExportPDF={handleWorkspaceExportPDF}
         handleExportImage={handleWorkspaceExportImage}
@@ -84,24 +82,6 @@ export function DiagramEditorRoute() {
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={onMoveEnd}
       />
-      {!isPublicView && (
-        <ImportSQLModal
-          isOpen={isImportModalOpen}
-          onOpenChange={setIsImportModalOpen}
-          nodes={nodes}
-          edges={edges}
-          setNodes={ctx.setNodes}
-          setEdges={ctx.setEdges}
-          activeDiagramId={activeDiagramId}
-          takeSnapshot={takeSnapshot}
-          saveDiagram={saveDiagram}
-          triggerDebouncedSync={triggerDebouncedSync}
-          broadcastMessage={broadcastMessage}
-          setIsLocalSaving={setIsLocalSaving}
-          viewportRef={viewportRef}
-          lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
-        />
-      )}
     </Suspense>
   );
 }

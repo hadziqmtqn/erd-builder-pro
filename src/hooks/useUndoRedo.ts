@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Node, Edge } from '@xyflow/react';
 
 export type HistoryState = {
@@ -7,46 +7,59 @@ export type HistoryState = {
 };
 
 export function useUndoRedo() {
-  const [past, setPast] = useState<HistoryState[]>([]);
-  const [future, setFuture] = useState<HistoryState[]>([]);
+  const pastRef = useRef<HistoryState[]>([]);
+  const futureRef = useRef<HistoryState[]>([]);
+  const [, forceUpdate] = useState(0);
 
   const takeSnapshot = useCallback((nodes: Node<any>[], edges: Edge[]) => {
-    setPast((prev) => {
-      // Limit history to 50 steps to keep it light
-      const newPast = [...prev, { nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }];
-      if (newPast.length > 50) return newPast.slice(1);
-      return newPast;
-    });
-    setFuture([]);
+    const snapshot: HistoryState = {
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+    };
+    pastRef.current = [...pastRef.current, snapshot];
+    if (pastRef.current.length > 50) {
+      pastRef.current = pastRef.current.slice(1);
+    }
+    futureRef.current = [];
+    forceUpdate((n) => n + 1);
   }, []);
 
   const undo = useCallback((currentNodes: Node<any>[], currentEdges: Edge[]) => {
-    if (past.length === 0) return null;
+    if (pastRef.current.length === 0) return null;
 
-    const previous = past[past.length - 1];
-    const newPast = past.slice(0, past.length - 1);
-
-    setPast(newPast);
-    setFuture((prev) => [{ nodes: JSON.parse(JSON.stringify(currentNodes)), edges: JSON.parse(JSON.stringify(currentEdges)) }, ...prev]);
-    
+    const previous = pastRef.current[pastRef.current.length - 1];
+    pastRef.current = pastRef.current.slice(0, pastRef.current.length - 1);
+    futureRef.current = [
+      {
+        nodes: JSON.parse(JSON.stringify(currentNodes)),
+        edges: JSON.parse(JSON.stringify(currentEdges)),
+      },
+      ...futureRef.current,
+    ];
+    forceUpdate((n) => n + 1);
     return previous;
-  }, [past]);
+  }, []);
 
   const redo = useCallback((currentNodes: Node<any>[], currentEdges: Edge[]) => {
-    if (future.length === 0) return null;
+    if (futureRef.current.length === 0) return null;
 
-    const next = future[0];
-    const newFuture = future.slice(1);
-
-    setPast((prev) => [...prev, { nodes: JSON.parse(JSON.stringify(currentNodes)), edges: JSON.parse(JSON.stringify(currentEdges)) }]);
-    setFuture(newFuture);
-
+    const next = futureRef.current[0];
+    futureRef.current = futureRef.current.slice(1);
+    pastRef.current = [
+      ...pastRef.current,
+      {
+        nodes: JSON.parse(JSON.stringify(currentNodes)),
+        edges: JSON.parse(JSON.stringify(currentEdges)),
+      },
+    ];
+    forceUpdate((n) => n + 1);
     return next;
-  }, [future]);
+  }, []);
 
   const clearHistory = useCallback(() => {
-    setPast([]);
-    setFuture([]);
+    pastRef.current = [];
+    futureRef.current = [];
+    forceUpdate((n) => n + 1);
   }, []);
 
   return {
@@ -54,7 +67,7 @@ export function useUndoRedo() {
     redo,
     takeSnapshot,
     clearHistory,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
+    canUndo: pastRef.current.length > 0,
+    canRedo: futureRef.current.length > 0,
   };
 }
