@@ -5,17 +5,26 @@ import {
   Background,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   addEdge,
   Connection,
   Edge,
   Node,
   BackgroundVariant,
   MarkerType,
+  type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2, Undo2, Redo2 } from 'lucide-react';
+import { Plus, Loader2, Undo2, Redo2, Move } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import FlowchartNode, { FlowchartNodeData } from '../FlowchartNode';
 import { initialNodes, initialEdges } from '../flowchart/flowchartConstants';
@@ -56,6 +65,8 @@ export const FlowchartView = React.memo(({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [pendingPreview, setPendingPreview] = useState<FlowchartApplyResult | null>(null);
   const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
@@ -224,23 +235,6 @@ export const FlowchartView = React.memo(({
   const updateNodeData = (updates: Partial<FlowchartNodeData>) => {
     if (!selectedNodeId) return;
 
-    // Prevent duplicate group titles across different Start nodes
-    if ('section' in updates) {
-      const newSection = updates.section?.trim();
-      if (newSection) {
-        const duplicate = nodes.some(n =>
-          n.id !== selectedNodeId &&
-          n.data.section?.toLowerCase() === newSection.toLowerCase()
-        );
-        if (duplicate) {
-          toast.error('Group title already exists', {
-            description: `Another group is already named "${newSection}". Each group must have a unique title.`,
-          });
-          return;
-        }
-      }
-    }
-
     takeSnapshot(nodesRef.current, edgesRef.current);
     setNodes((nds) =>
       nds.map((n) => {
@@ -251,6 +245,22 @@ export const FlowchartView = React.memo(({
       })
     );
   };
+
+  const validateSection = useCallback((section: string): boolean => {
+    const trimmed = section.trim();
+    if (!trimmed) return true;
+    const duplicate = nodes.some(n =>
+      n.id !== selectedNodeId &&
+      n.data.section?.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      toast.error('Group title already exists', {
+        description: `Another group is already named "${trimmed}". Each group must have a unique title.`,
+      });
+      return false;
+    }
+    return true;
+  }, [nodes, selectedNodeId]);
 
   const updateEdgeData = (updates: Partial<Edge>) => {
     if (!selectedEdgeId) return;
@@ -383,13 +393,61 @@ export const FlowchartView = React.memo(({
     }
   };
 
+  // ── Group Selection (Move Group) ──
+  const canvasGroups = useMemo(() => {
+    return nodes
+      .map(n => n.data.section)
+      .filter((s): s is string => !!s)
+      .filter((s, i, arr) => arr.indexOf(s) === i);
+  }, [nodes]);
+
+  const selectedGroupNodeIds = useMemo(() => {
+    if (!selectedGroup) return new Set<string>();
+    const startIds = nodes.filter(n => n.data.section === selectedGroup).map(n => n.id);
+    if (startIds.length === 0) return new Set<string>();
+    const connectedIds = new Set<string>(startIds);
+    const queue = [...startIds];
+    let qi = 0;
+    while (qi < queue.length) {
+      const currentId = queue[qi++];
+      for (const edge of edges) {
+        if (edge.source === currentId && !connectedIds.has(edge.target)) {
+          connectedIds.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+    return connectedIds;
+  }, [selectedGroup, nodes, edges]);
+
+  const groupBounds = useMemo(() => {
+    if (selectedGroupNodeIds.size === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const NODE_W = 160;
+    const NODE_H = 70;
+    for (const n of nodes) {
+      if (selectedGroupNodeIds.has(n.id)) {
+        const x = n.position.x;
+        const y = n.position.y;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + NODE_W);
+        maxY = Math.max(maxY, y + NODE_H);
+      }
+    }
+    if (minX === Infinity) return null;
+    return { x: minX - 14, y: minY - 14, width: maxX - minX + 28, height: maxY - minY + 28 };
+  }, [selectedGroupNodeIds, nodes]);
+
   const memoizedNodes = useMemo(() => {
     return nodes.map((n) => {
-      const selected = n.id === selectedNodeId;
+      const isSelected = n.id === selectedNodeId;
+      const isGroupMember = selectedGroupNodeIds.has(n.id);
+      const selected = isSelected || isGroupMember;
       if (n.selected === selected) return n;
       return { ...n, selected };
     });
-  }, [nodes, selectedNodeId]);
+  }, [nodes, selectedNodeId, selectedGroupNodeIds]);
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
@@ -581,6 +639,22 @@ export const FlowchartView = React.memo(({
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
             <JumpToNode nodes={nodes} label="Symbol" />
+            {canvasGroups.length > 0 && (
+              <>
+                <div className="w-px h-6 bg-border mx-0.5" />
+                <Select value={selectedGroup ?? ''} onValueChange={(val) => { setSelectedGroup(val || null); setSelectedNodeId(null); }}>
+                  <SelectTrigger className="h-9 min-w-[130px] border-none bg-transparent hover:bg-white/5 px-2 text-xs font-medium cursor-pointer [&>svg]:text-muted-foreground" title="Select a group to move">
+                    <Move className="w-3.5 h-3.5 mr-1 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Move Group" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a24] border-white/10 text-white min-w-[150px]">
+                    {canvasGroups.map((g) => (
+                      <SelectItem key={g} value={g} className="focus:bg-white/10 text-xs">{g}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             <div className="w-px h-6 bg-border mx-0.5" />
             <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
               <Plus className="w-4 h-4 sm:mr-2" />
@@ -613,7 +687,7 @@ export const FlowchartView = React.memo(({
           onEdgeClick={(e, edge) => setSelectedEdgeId(edge.id)}
           onEdgeMouseEnter={(e, edge) => setHoveredEdgeId(edge.id)}
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
-          onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+          onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedGroup(null); }}
           fitView
           colorMode="dark"
           onlyRenderVisibleElements={true}
@@ -622,10 +696,29 @@ export const FlowchartView = React.memo(({
           elementsSelectable={!isReadOnly}
           minZoom={0.1}
           maxZoom={2.5}
+          onMove={(e, v) => setViewport(v)}
         >
           <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
         </ReactFlow>
+        {groupBounds && (
+          <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
+            <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
+              <rect
+                x={groupBounds.x}
+                y={groupBounds.y}
+                width={groupBounds.width}
+                height={groupBounds.height}
+                fill="rgba(99, 102, 241, 0.04)"
+                stroke="#6366f1"
+                strokeWidth={1.5 / viewport.zoom}
+                strokeDasharray={`${6 / viewport.zoom} ${3 / viewport.zoom}`}
+                rx={8 / viewport.zoom}
+                ry={8 / viewport.zoom}
+              />
+            </g>
+          </svg>
+        )}
       </div>
 
       {!isReadOnly && (
@@ -645,6 +738,7 @@ export const FlowchartView = React.memo(({
             onUpdateNodeData={updateNodeData}
             onDeleteNode={deleteNode}
             onDeleteGroup={deleteGroup}
+            onValidateSection={validateSection}
           />
 
           <ConnectorPropertiesModal

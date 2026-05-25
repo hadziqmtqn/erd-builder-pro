@@ -28,6 +28,7 @@ interface SymbolPropertiesModalProps {
   onUpdateNodeData: (updates: Partial<FlowchartNodeData>) => void;
   onDeleteNode: () => void;
   onDeleteGroup?: () => void;
+  onValidateSection?: (section: string) => boolean;
 }
 
 function isStartNode(node: Node<FlowchartNodeData>): boolean {
@@ -41,6 +42,7 @@ export function SymbolPropertiesModal({
   onUpdateNodeData,
   onDeleteNode,
   onDeleteGroup,
+  onValidateSection,
 }: SymbolPropertiesModalProps) {
   const isStart = selectedNode ? isStartNode(selectedNode) : false;
 
@@ -72,6 +74,12 @@ export function SymbolPropertiesModal({
                 <Input 
                   value={selectedNode.data.section || ''}
                   onChange={(e) => onUpdateNodeData({ section: e.target.value || undefined })}
+                  onBlur={(e) => {
+                    const val = e.target.value;
+                    if (val && onValidateSection && !onValidateSection(val)) {
+                      onUpdateNodeData({ section: undefined });
+                    }
+                  }}
                   placeholder="e.g. Pengajuan Cuti"
                   className="bg-black/50 border-white/10 text-white"
                 />
