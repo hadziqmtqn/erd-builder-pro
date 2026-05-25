@@ -59,13 +59,34 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
-### Cross-Feature Context: `project_id` (Relasi, Bukan `referenced_file_info`)
+### Cross-Feature Context: `project_id` (Filter OR untuk Orphan Sessions)
 
 - **Keputusan arsitektur**: Gunakan `project_id` (FK ke `projects`) di `ai_chat_sessions` sebagai sumber kebenaran, **bukan** `referenced_file_info` (JSONB).
-- **Kenapa**: `referenced_file_info` adalah cache yang cepat stale (file dihapus/dipindah → referensi tidak valid). Dengan `project_id`, query dinamis semua file (`notes`, `diagrams`, `flowcharts`, `drawings`) per project dilakukan setiap `sendMessage()` — selalu fresh, zero maintenance.
-- **Saat ini**: `createSession()` di `useAIChat.ts` **belum** menyertakan `project_id`. Implementasi plan ada di `.opencode/tasks/ai-cross-feature-integration.md`
+- **Kenapa**: `referenced_file_info` adalah cache yang cepat stale (file dihapus/dipindah → referensi tidak valid). Dengan `project_id`, query dinamis semua file per project dilakukan setiap `sendMessage()` — selalu fresh, zero maintenance.
+- **Saat ini**: `createSession()` di `useAIChat.ts` menyertakan `project_id` jika file punya workspace, plus `entity_type` + `entity_uid` sebagai origin file identifier.
+- **Orphan session handling**: `listSessions` di `useAIChat.ts` menggunakan filter OR: `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` — session dengan `project_id` tampil di semua file project, session `NULL` tetap private ke file asalnya.
 - **Workspace safety**: `project_id` diisi dari active entity saat session dibuat. Saat user pindah project, `entityContext` berubah → session baru mendapat `project_id` baru. Session lama tetap di project_id lama.
 - Dynamic sibling query: `buildSiblingContext()` parallel 4 tabel, greedy budget 6000 chars.
+
+### Dynamic `project_id` Sync pada `sendMessage`
+
+Setiap kali user mengirim pesan di AI Chat, `sendMessage` di `useAIChat.ts` melakukan:
+
+1. **Baca `project_id` file aktif** dari `projectIdRef.current` (ref yang selalu sync dengan prop `projectId` dari AppLayout)
+2. **Bandingkan** dengan `currentSession.project_id`
+3. **Jika berbeda**, update session di Supabase:
+   - `UPDATE ai_chat_sessions SET project_id = $1, updated_at = NOW() WHERE id = $2`
+   - Sync state lokal (`setCurrentSession`, `setSessions`)
+4. **Gunakan `liveProjectId`** (bukan `currentSession.project_id`) untuk `buildSiblingContext` — jika `null`, sibling context tidak di-inject
+
+**3 skenario yang ter-handle:**
+- **File pindah project A → B**: session.project_id jadi B → sibling context query project B
+- **File pindah ke uncategorized (NULL)**: session.project_id jadi NULL → sibling context skip
+- **Session private (NULL) masuk workspace**: session.project_id jadi WORKSPACE → sibling context aktif
+
+**Mengapa pakai ref**: `sendMessage` adalah `useCallback` dengan deps terbatas (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` tidak bisa jadi dep karena akan re-create callback setiap file pindah project. Ref (`projectIdRef`) memutus dependency chain — nilainya selalu terbaca fresh di dalam callback tanpa perlu re-create.
+
+**File**: [`src/hooks/useAIChat.ts`](file:///Users/meowpush/Projects/erd-builder-pro/src/hooks/useAIChat.ts):70-71 (ref + effect), :427-444 (sync logic), :450 (sibling context menggunakan `liveProjectId`)
 
 ### AI Chat @Mentions (File Referencing)
 

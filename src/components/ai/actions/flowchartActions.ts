@@ -161,85 +161,71 @@ function buildFlowchartLayout(
   }
 
   // ── Layer assignment (Sugiyama) ──
-  // Fast-path: if AI provides all positions, skip layout entirely
-  const hasPositions = parsed.nodes.every((nd: any) =>
-    nd.position && typeof nd.position.x === 'number' && typeof nd.position.y === 'number'
-  );
+  // Capped at nodes.length * 3 to prevent infinite loop on cycles
 
-  const VERTICAL_SPACING = 220;
+  const VERTICAL_SPACING = 80;
   const HORIZONTAL_SPACING = 280;
   const START_X = 60;
   const START_Y = 40;
 
   const positions: Record<string, { x: number; y: number }> = {};
 
-  if (hasPositions) {
-    // Use AI-provided positions directly
-    parsed.nodes.forEach((nd: any, idx: number) => {
-      const nodeId = newNodes[idx]?.id;
-      if (nodeId && nd.position) {
-        positions[nodeId] = { x: nd.position.x, y: nd.position.y };
+  const layers: Record<string, number> = {};
+  const q: string[] = [];
+
+  for (const n of newNodes) {
+    if (incomingCount[n.id] === 0 || n.data.shape === 'oval') {
+      layers[n.id] = 0;
+      q.push(n.id);
+    }
+  }
+
+  if (q.length === 0 && newNodes.length > 0) {
+    layers[newNodes[0].id] = 0;
+    q.push(newNodes[0].id);
+  }
+
+  const maxBFSIter = newNodes.length * 3;
+  let qi = 0;
+  let bfsIter = 0;
+  while (qi < q.length && bfsIter < maxBFSIter) {
+    bfsIter++;
+    const current = q[qi++];
+    const currentLayer = layers[current] ?? 0;
+    for (const next of outgoing[current] || []) {
+      const candidate = currentLayer + 1;
+      if ((layers[next] ?? -1) < candidate) {
+        layers[next] = candidate;
+        q.push(next);
       }
+    }
+  }
+
+  for (const n of newNodes) {
+    if (layers[n.id] === undefined) layers[n.id] = 0;
+  }
+
+  const layerGroups: Record<number, string[]> = {};
+  for (const [id, layer] of Object.entries(layers)) {
+    if (!layerGroups[layer]) layerGroups[layer] = [];
+    layerGroups[layer].push(id);
+  }
+
+  const sortedLayers = Object.keys(layerGroups).map(Number).sort((a, b) => a - b);
+  const maxLayerCount = Math.max(...sortedLayers.map(l => layerGroups[l].length));
+
+  for (const layer of sortedLayers) {
+    const ids = layerGroups[layer];
+    const layerWidth = (ids.length - 1) * HORIZONTAL_SPACING;
+    const maxWidth = (maxLayerCount - 1) * HORIZONTAL_SPACING;
+    const layerStartX = START_X + (maxWidth - layerWidth) / 2;
+
+    ids.forEach((id, idx) => {
+      positions[id] = {
+        x: layerStartX + idx * HORIZONTAL_SPACING,
+        y: START_Y + layer * VERTICAL_SPACING,
+      };
     });
-  } else {
-    // Sugiyama layer assignment — capped at nodes.length * 3 to prevent infinite loop on cycles
-    const layers: Record<string, number> = {};
-    const q: string[] = [];
-
-    for (const n of newNodes) {
-      if (incomingCount[n.id] === 0 || n.data.shape === 'oval') {
-        layers[n.id] = 0;
-        q.push(n.id);
-      }
-    }
-
-    if (q.length === 0 && newNodes.length > 0) {
-      layers[newNodes[0].id] = 0;
-      q.push(newNodes[0].id);
-    }
-
-    const maxBFSIter = newNodes.length * 3;
-    let qi = 0;
-    let bfsIter = 0;
-    while (qi < q.length && bfsIter < maxBFSIter) {
-      bfsIter++;
-      const current = q[qi++];
-      const currentLayer = layers[current] ?? 0;
-      for (const next of outgoing[current] || []) {
-        const candidate = currentLayer + 1;
-        if ((layers[next] ?? -1) < candidate) {
-          layers[next] = candidate;
-          q.push(next);
-        }
-      }
-    }
-
-    for (const n of newNodes) {
-      if (layers[n.id] === undefined) layers[n.id] = 0;
-    }
-
-    const layerGroups: Record<number, string[]> = {};
-    for (const [id, layer] of Object.entries(layers)) {
-      if (!layerGroups[layer]) layerGroups[layer] = [];
-      layerGroups[layer].push(id);
-    }
-
-    const sortedLayers = Object.keys(layerGroups).map(Number).sort((a, b) => a - b);
-    const maxLayerCount = Math.max(...sortedLayers.map(l => layerGroups[l].length));
-
-    for (const layer of sortedLayers) {
-      const ids = layerGroups[layer];
-      const layerWidth = (ids.length - 1) * HORIZONTAL_SPACING;
-      const maxWidth = (maxLayerCount - 1) * HORIZONTAL_SPACING;
-      const layerStartX = START_X + (maxWidth - layerWidth) / 2;
-
-      ids.forEach((id, idx) => {
-        positions[id] = {
-          x: layerStartX + idx * HORIZONTAL_SPACING,
-          y: START_Y + layer * VERTICAL_SPACING,
-        };
-      });
-    }
   }
 
   // ── Smart decision branch layout ──
@@ -407,7 +393,7 @@ export function applyToFlowchartContent(
   const { positionedNodes, newEdges } = buildFlowchartLayout(newNodes, parsed, labelToIds, idToNode, idSeed);
 
   // Offset new nodes below existing ones
-  const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 160), 50);
+  const maxY = currentNodes.reduce((max, n) => Math.max(max, n.position.y + 80), 50);
   const offsetNodes = positionedNodes.map(n => ({
     ...n,
     position: { x: n.position.x + 50, y: n.position.y + maxY },
