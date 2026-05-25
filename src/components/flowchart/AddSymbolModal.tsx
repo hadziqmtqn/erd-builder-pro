@@ -28,7 +28,7 @@ interface AddSymbolModalProps {
   onConfirm: () => void;
 }
 
-const isStartLabel = (label: string) => label.trim().toLowerCase() === 'start';
+const isStartLabel = (label: string) => label.trim().toLowerCase().includes('start');
 
 export function AddSymbolModal({ 
   isOpen, 

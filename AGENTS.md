@@ -460,8 +460,11 @@ Every AI action lives in [`src/components/ai/AIActions.ts`](./src/components/ai/
 ### Flowchart Architecture
 
 #### Shared Helpers ([`src/components/ai/actions/flowchartActions.ts`](./src/components/ai/actions/flowchartActions.ts))
-- `buildFlowchartLayout(nodes, parsed, labelToIds, idToNode)` — positions nodes using a robust cycle-aware, layered top-down layout engine with DFS column assignment.
+- `buildFlowchartLayout(nodes, parsed, labelToIds, idToNode)` — positions nodes using a robust cycle-aware, layered top-down layout engine with DP + DFS column assignment.
 - **Smart decision branch layout**: detects cycles via DFS back-edges, assigns DP-based layers, orders yes/no decision branches, assigns collision-free grid columns, and centers convergence nodes.
+- **Branch offset** (`BRANCH_OFFSET=280`) matches `HORIZONTAL_SPACING` — Yes/No branches align to grid columns.
+- **Per-diamond shift tracking** (`perDiamondShift`) replaces global `shiftedNodes` guard — diamond chains (e.g. Diamond A → Diamond B → Process) accumulate shifts: +280 from A, then +280 from B = +560 total, keeping column alignment.
+- **Convergence centering**: after all branch shifts, nodes with ≥2 incoming edges from different X positions (e.g. End node where Yes/No branches meet) are centered between min and max source X.
 - `pickClosestHandles(sourceNode, targetNode)` — finds closest edge midpoints for clean connection routing
 - `previewFlowchartContent(nodes, edges, content)` — parses AI response JSON into preview nodes/edges without mutating the canvas
 - `applyInsertBetween(nodes, edges, content, sourceLabel, targetLabel)` — inserts a new node between two connected nodes, rewiring edges
@@ -542,8 +545,7 @@ Three fixes prevent cascading re-renders on every drag frame:
 
 - **`Array.shift()` → index pointer**: both `collectDescendants()` and the Sugiyama layer-assignment BFS used `q.shift()` which is O(n²). Both now use `q[idx++]` pointer pattern — O(n).
 - **`pickClosestHandles` precompute**: handle positions are precomputed per-node via `computeHandlePoints()` + `nodePosMap`, then stored in `srcHandleCache`/`tgtHandleCache` for O(1) reuse across all edges. Old code recomputed `handlePositions[side](sx, sy)` inside a 16-iteration double loop for every edge.
-- **Diamond BFS early-exit**: if both yes/no children are already shifted (by a previous diamond), the function skips BFS entirely.
-- **`shiftPos` helper**: extracted position mutation + `shiftedNodes.add()` into a single `shiftPos(id, dx)` function — no code duplication between yes/no/child branches.
+- **`computeHandles` NODE_H=70** — synced with preview modal height for consistent edge handle placement between canvas and SVG preview.
 - **Parse cache**: `getCachedOrParse(aiResponse)` caches `parseNodesAndEdges` result between `previewFlowchartContent` and `applyToFlowchartContent`/`applyReplaceAll`. `clearParseCache()` frees memory after confirm. `applyInsertBetween` does not use the cache (different schema).
 - **Stable IDs**: all AI-generated node/edge IDs use `hashStr(JSON.stringify(parsed))` instead of `Date.now()`, ensuring identical AI responses produce identical IDs. `hashStr` is a simple 32-bit FNV-1a-like hash.
 - **`maxIter` guard**: `collectDescendants(id, outgoing, exclude, maxIter=200)` prevents infinite BFS loops from malformed graphs.
@@ -586,6 +588,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 - Semua simbol (termasuk Start/End) bisa dihapus bebas — `deleteNode` tidak lagi memiliki guard Start/End
 - **Start nodes** have a "Group Title" input field in properties modal — stored as `section` in `FlowchartNodeData`
+- **Start label detection**: `isStartNode`/`isStartLabel` uses `.includes('start')` (case-insensitive) — not exact match. Labels like "Start Login", "Start Process", "restart" trigger Group Title form.
 - **Delete Group**: `deleteGroup` di FlowchartView — hapus semua node yang punya `section` (grup) yang sama. Tombol "Hapus Grup" muncul di `SymbolPropertiesModal` untuk Start node yang punya Group Title.
 - **`groupId`**: setiap Start node punya unique key (e.g. `grp_quickstart`) — auto-generated saat node dibuat, tampil di AI context sebagai `[id:grp_xxx]`. AI bisa referensi via `sourceGroupId`/`targetGroupId` di JSON response.
 - **AI grouping**: `flowchartSymbolDetail()` groups symbols by section using BFS from each Start node. Each group rendered under `=== {section} [id:grp_xxx] ===` header. Supports overlapping groups (user can have multiple Start nodes sharing the same End).
