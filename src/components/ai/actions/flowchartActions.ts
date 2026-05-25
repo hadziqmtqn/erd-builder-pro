@@ -105,13 +105,13 @@ function buildFlowchartLayout(
 ): { positionedNodes: Node<FlowchartNodeData>[]; newEdges: Edge[] } {
   const newEdges: Edge[] = [];
 
-  // Build graph for layout
+  // Build graph adjacency list
   const outgoing: Record<string, string[]> = {};
-  const incomingCount: Record<string, number> = {};
+  const incoming: Record<string, string[]> = {};
 
   for (const n of newNodes) {
     outgoing[n.id] = [];
-    incomingCount[n.id] = 0;
+    incoming[n.id] = [];
   }
 
   function resolveEdgeIds(edgeData: any): [string | undefined, string | undefined] {
@@ -154,148 +154,202 @@ function buildFlowchartLayout(
     const [srcId, tgtId] = resolveEdgeIds(edgeData);
     if (srcId && tgtId) {
       outgoing[srcId].push(tgtId);
-      incomingCount[tgtId] = (incomingCount[tgtId] || 0) + 1;
+      incoming[tgtId].push(srcId);
       if (!allEdgeLabels[srcId]) allEdgeLabels[srcId] = {};
       allEdgeLabels[srcId][tgtId] = edgeData.label || '';
     }
   }
 
-  // ── Layer assignment (Sugiyama) ──
-  // Capped at nodes.length * 3 to prevent infinite loop on cycles
+  // Cycle detection / back-edge identification
+  const visited = new Set<string>();
+  const path = new Set<string>();
+  const backEdges = new Set<string>();
 
-  const VERTICAL_SPACING = 80;
-  const HORIZONTAL_SPACING = 280;
-  const START_X = 60;
-  const START_Y = 40;
+  function detectCycles(u: string) {
+    visited.add(u);
+    path.add(u);
+    for (const v of outgoing[u] || []) {
+      if (path.has(v)) {
+        backEdges.add(`${u}->${v}`);
+      } else if (!visited.has(v)) {
+        detectCycles(v);
+      }
+    }
+    path.delete(u);
+  }
 
-  const positions: Record<string, { x: number; y: number }> = {};
+  // Roots = nodes with no incoming edges
+  const roots = newNodes.filter(n => incoming[n.id].length === 0).map(n => n.id);
+  if (roots.length === 0 && newNodes.length > 0) {
+    roots.push(newNodes[0].id);
+  }
 
-  const layers: Record<string, number> = {};
-  const q: string[] = [];
-
-  for (const n of newNodes) {
-    if (incomingCount[n.id] === 0 || n.data.shape === 'oval') {
-      layers[n.id] = 0;
-      q.push(n.id);
+  for (const r of roots) {
+    if (!visited.has(r)) {
+      detectCycles(r);
     }
   }
 
-  if (q.length === 0 && newNodes.length > 0) {
-    layers[newNodes[0].id] = 0;
-    q.push(newNodes[0].id);
+  for (const n of newNodes) {
+    if (!visited.has(n.id)) {
+      detectCycles(n.id);
+    }
   }
 
-  const maxBFSIter = newNodes.length * 3;
-  let qi = 0;
-  let bfsIter = 0;
-  while (qi < q.length && bfsIter < maxBFSIter) {
-    bfsIter++;
-    const current = q[qi++];
-    const currentLayer = layers[current] ?? 0;
-    for (const next of outgoing[current] || []) {
-      const candidate = currentLayer + 1;
-      if ((layers[next] ?? -1) < candidate) {
-        layers[next] = candidate;
-        q.push(next);
+  // Layer Assignment (using DP + memoization, ignoring back-edges)
+  const layers: Record<string, number> = {};
+  const memo = new Map<string, number>();
+
+  function getLayer(u: string): number {
+    if (memo.has(u)) return memo.get(u)!;
+    const incomingNodes = (incoming[u] || []).filter(src => !backEdges.has(`${src}->${u}`));
+    if (incomingNodes.length === 0) {
+      memo.set(u, 0);
+      return 0;
+    }
+    let maxParentLayer = 0;
+    for (const src of incomingNodes) {
+      maxParentLayer = Math.max(maxParentLayer, getLayer(src));
+    }
+    const ans = maxParentLayer + 1;
+    memo.set(u, ans);
+    return ans;
+  }
+
+  for (const n of newNodes) {
+    layers[n.id] = getLayer(n.id);
+  }
+
+  // Column Assignment (DFS, placing siblings centered around parent)
+  const col = new Map<string, number>();
+  const occupied = new Map<number, Set<number>>();
+
+  function isFree(l: number, c: number): boolean {
+    const cols = occupied.get(l);
+    return !cols || !cols.has(c);
+  }
+
+  function occupy(l: number, c: number) {
+    if (!occupied.has(l)) occupied.set(l, new Set());
+    occupied.get(l)!.add(c);
+  }
+
+  const assigned = new Set<string>();
+
+  function assignColumns(u: string, targetCol: number) {
+    if (assigned.has(u)) return;
+    assigned.add(u);
+
+    const l = layers[u];
+    // Find nearest free column starting at targetCol and searching outwards
+    let c = targetCol;
+    let step = 1;
+    let sign = 1;
+    while (!isFree(l, c)) {
+      c = targetCol + step * sign;
+      if (sign === 1) {
+        sign = -1;
+      } else {
+        sign = 1;
+        step++;
+      }
+    }
+
+    col.set(u, c);
+    occupy(l, c);
+
+    const children = (outgoing[u] || []).filter(v => !backEdges.has(`${u}->${v}`));
+    if (children.length === 1) {
+      assignColumns(children[0], c);
+    } else if (children.length > 1) {
+      let yesChild: string | null = null;
+      let noChild: string | null = null;
+      for (const childId of children) {
+        const label = allEdgeLabels[u]?.[childId] || '';
+        if (label.toLowerCase() === 'yes') yesChild = childId;
+        else if (label.toLowerCase() === 'no') noChild = childId;
+      }
+
+      const orderedChildren = [...children];
+      if (yesChild && noChild) {
+        orderedChildren.sort((a, b) => {
+          if (a === noChild) return -1;
+          if (b === noChild) return 1;
+          if (a === yesChild) return 1;
+          if (b === yesChild) return -1;
+          return 0;
+        });
+      }
+
+      const mid = (orderedChildren.length - 1) / 2;
+      orderedChildren.forEach((childId, idx) => {
+        const offset = idx - mid;
+        const childTargetCol = Math.round(c + offset);
+        assignColumns(childId, childTargetCol);
+      });
+    }
+  }
+
+  for (const r of roots) {
+    assignColumns(r, 0);
+  }
+
+  for (const n of newNodes) {
+    if (!assigned.has(n.id)) {
+      assignColumns(n.id, 0);
+    }
+  }
+
+  // Convergence centering pass
+  for (const n of newNodes) {
+    const incomingNodes = (incoming[n.id] || []).filter(src => !backEdges.has(`${src}->${n.id}`));
+    if (incomingNodes.length >= 2) {
+      let sumCol = 0;
+      let parentCount = 0;
+      for (const parentId of incomingNodes) {
+        if (col.has(parentId)) {
+          sumCol += col.get(parentId)!;
+          parentCount++;
+        }
+      }
+      if (parentCount >= 2) {
+        const targetCol = Math.round(sumCol / parentCount);
+        const currentCol = col.get(n.id)!;
+        const l = layers[n.id];
+        
+        if (targetCol !== currentCol) {
+          if (isFree(l, targetCol)) {
+            occupied.get(l)?.delete(currentCol);
+            occupy(l, targetCol);
+            col.set(n.id, targetCol);
+          }
+        }
       }
     }
   }
 
-  for (const n of newNodes) {
-    if (layers[n.id] === undefined) layers[n.id] = 0;
-  }
+  // Spacing layout and positioning
+  const HORIZONTAL_SPACING = 240;
+  const VERTICAL_SPACING = 160;
+  const START_X = 120;
+  const START_Y = 85;
 
-  const layerGroups: Record<number, string[]> = {};
-  for (const [id, layer] of Object.entries(layers)) {
-    if (!layerGroups[layer]) layerGroups[layer] = [];
-    layerGroups[layer].push(id);
-  }
-
-  const sortedLayers = Object.keys(layerGroups).map(Number).sort((a, b) => a - b);
-  const maxLayerCount = Math.max(...sortedLayers.map(l => layerGroups[l].length));
-
-  for (const layer of sortedLayers) {
-    const ids = layerGroups[layer];
-    const layerWidth = (ids.length - 1) * HORIZONTAL_SPACING;
-    const maxWidth = (maxLayerCount - 1) * HORIZONTAL_SPACING;
-    const layerStartX = START_X + (maxWidth - layerWidth) / 2;
-
-    ids.forEach((id, idx) => {
-      positions[id] = {
-        x: layerStartX + idx * HORIZONTAL_SPACING,
-        y: START_Y + layer * VERTICAL_SPACING,
-      };
-    });
-  }
-
-  // ── Smart decision branch layout ──
-  // For diamond nodes, spread Yes/No branches left/right
-  const BRANCH_OFFSET = 180;
-  const shiftedNodes = new Set<string>();
-
-  function shiftPos(id: string, dx: number) {
-    if (shiftedNodes.has(id)) return;
-    positions[id] = {
-      x: (positions[id]?.x || 0) + dx,
-      y: positions[id]?.y || 0,
-    };
-    shiftedNodes.add(id);
-  }
-
-  for (const n of newNodes) {
-    if (n.data.shape !== 'diamond') continue;
-    const diamondId = n.id;
-    const children = outgoing[diamondId] || [];
-
-    if (children.length < 2) continue;
-
-    // Find which child is Yes and which is No
-    let yesChild: string | null = null;
-    let noChild: string | null = null;
-
-    for (const childId of children) {
-      const label = allEdgeLabels[diamondId]?.[childId] || '';
-      if (label.toLowerCase() === 'yes') yesChild = childId;
-      else if (label.toLowerCase() === 'no') noChild = childId;
-    }
-
-    // Fallback: first child = Yes, second = No
-    if (!yesChild && !noChild && children.length >= 2) {
-      yesChild = children[0];
-      noChild = children[1];
-    } else if (children.length >= 1) {
-      if (!yesChild) yesChild = children[0];
-      if (!noChild && children.length > 1) noChild = children[1];
-    }
-
-    // Skip BFS if both children already shifted
-    if (yesChild && noChild && shiftedNodes.has(yesChild) && shiftedNodes.has(noChild)) continue;
-
-    // Collect descendants, excluding the other branch
-    const noDescendants = noChild
-      ? collectDescendants(noChild, outgoing, yesChild ? new Set([yesChild]) : new Set())
-      : new Set<string>();
-    const yesDescendants = yesChild
-      ? collectDescendants(yesChild, outgoing, noChild ? new Set([noChild]) : new Set())
-      : new Set<string>();
-
-    // Apply Yes offset (right)
-    for (const descId of yesDescendants) shiftPos(descId, BRANCH_OFFSET);
-
-    // Apply No offset (left)
-    for (const descId of noDescendants) shiftPos(descId, -BRANCH_OFFSET);
-
-    // Also shift the immediate children
-    if (yesChild) shiftPos(yesChild, BRANCH_OFFSET);
-    if (noChild) shiftPos(noChild, -BRANCH_OFFSET);
-  }
+  const colsList = Array.from(col.values());
+  const minCol = colsList.length > 0 ? Math.min(...colsList) : 0;
 
   const positionedNodes = newNodes.map(n => {
-    const pos = positions[n.id];
-    return pos ? { ...n, position: { ...pos } } : n;
+    const c = col.get(n.id) ?? 0;
+    const l = layers[n.id] ?? 0;
+    return {
+      ...n,
+      position: {
+        x: START_X + (c - minCol) * HORIZONTAL_SPACING,
+        y: START_Y + l * VERTICAL_SPACING,
+      },
+    };
   });
 
-  // Build node position lookup map for O(1) access
+  // Precompute position map
   const nodePosMap = new Map<string, { x: number; y: number }>();
   for (const n of positionedNodes) {
     nodePosMap.set(n.id, n.position);
@@ -308,7 +362,7 @@ function buildFlowchartLayout(
 
   function computeHandles(pos: { x: number; y: number }): Array<{ x: number; y: number }> {
     const NODE_W = 160;
-    const NODE_H = 60;
+    const NODE_H = 70;
     return [
       { x: pos.x + NODE_W / 2, y: pos.y },                          // top
       { x: pos.x + NODE_W / 2, y: pos.y + NODE_H },                 // bottom

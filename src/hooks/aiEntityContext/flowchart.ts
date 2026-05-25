@@ -79,12 +79,51 @@ export function buildFlowchartContext(data: EntityContextData): string | null {
     });
   }
 
-  // Build detailed per-symbol listing with connections inline
-  const nodeLines = nodes.map((n: any) => {
+  // Find start nodes for section grouping
+  const startNodes = nodes.filter((n: any) =>
+    n.data?.label?.trim().toLowerCase() === 'start'
+  );
+
+  // BFS from a start node to collect reachable ids
+  function collectGroup(startId: string): Set<string> {
+    const visited = new Set<string>();
+    const queue = [startId];
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      for (const e of edges) {
+        if (e.source === id && !visited.has(e.target)) {
+          queue.push(e.target);
+        }
+      }
+    }
+    return visited;
+  }
+
+  // Build section groups
+  const grouped = new Map<string, { startNode: any; nodeIds: Set<string> }>();
+  const ungroupedIds = new Set(nodes.map((n: any) => n.id));
+
+  for (const start of startNodes) {
+    const section = start.data?.section || '(no title)';
+    const groupId = start.data?.groupId;
+    const nodeIds = collectGroup(start.id);
+    const key = groupId || section;
+    if (grouped.has(key)) {
+      const existing = grouped.get(key)!;
+      for (const id of nodeIds) existing.nodeIds.add(id);
+    } else {
+      grouped.set(key, { startNode: start, nodeIds });
+    }
+    for (const id of nodeIds) ungroupedIds.delete(id);
+  }
+
+  // Build per-symbol listing grouped by section
+  function formatNode(n: any): string {
     const d = n.data || {};
     const shape = d.shape || 'rectangle';
     const meaning = SHAPE_MEANINGS[shape] || shape;
-    const hint = SHAPE_HINTS[shape] || '';
 
     const outList = (outgoingEdges[n.id] || [])
       .map((e) => `    → ${e.target}${e.label ? ` [${e.label}]` : ''}`).join('\n');
@@ -93,9 +132,43 @@ export function buildFlowchartContext(data: EntityContextData): string | null {
 
     const connections = [outList, inList].filter(Boolean).join('\n');
     const connStr = connections ? `\n${connections}` : ' (not connected to anything)';
-
     return `  - "${d.label || 'unnamed'}" (${meaning})${connStr}`;
-  }).join('\n\n');
+  }
+
+  const nodeParts: string[] = [];
+
+  if (startNodes.length > 0) {
+    // Render per-section groups
+    for (const [, { startNode, nodeIds }] of grouped) {
+      const groupNodes = nodes.filter((n: any) => nodeIds.has(n.id));
+      if (groupNodes.length === 0) continue;
+      const section = startNode.data?.section || '(no title)';
+      const groupId = startNode.data?.groupId;
+      const groupTag = groupId ? ` [id:${groupId}]` : '';
+      nodeParts.push(`=== ${section}${groupTag} ===`);
+      for (const n of groupNodes) {
+        nodeParts.push(formatNode(n));
+      }
+    }
+
+    // Remaining ungrouped nodes
+    if (ungroupedIds.size > 0) {
+      const remaining = nodes.filter((n: any) => ungroupedIds.has(n.id));
+      if (remaining.length > 0) {
+        nodeParts.push('=== Ungrouped ===');
+        for (const n of remaining) {
+          nodeParts.push(formatNode(n));
+        }
+      }
+    }
+  } else {
+    // No start nodes — flat list (backward compatible)
+    for (const n of nodes) {
+      nodeParts.push(formatNode(n));
+    }
+  }
+
+  const nodeLines = nodeParts.join('\n\n');
 
   // Edge detail lines for additional reference
   const edgeLines = edges.map((e: any) => {
@@ -138,11 +211,26 @@ ${shapeBreakdown || '  (none)'}
 Flowchart notation reference:
 ${Object.entries(SHAPE_MEANINGS).map(([s, m]) => `  ${s} = ${m} (${SHAPE_HINTS[s]})`).join('\n')}
 
-Symbols detail:
+Symbols detail (grouped by section):
 ${nodeLines || '  (none)'}
 
 Connections:
 ${edgeLines || '  (none)'}
+
+Grid layout:
+  Each symbol is placed on a grid with these dimensions:
+  - Symbol bounding box: 160px wide × 70px tall
+  - Vertical distance between consecutive layers (center to center): 160px (gap from bottom of one symbol to top of next is ~90px)
+  - Horizontal distance between columns (center to center): 240px
+  - Decision (diamond) branches: branches are placed on separate columns (spaced by 1 column, i.e. 240px offset)
+  - Symbols at the same layer share the same Y position; the first layer starts at Y=85px
+  Edge paths use orthogonal routing (vertical → horizontal → vertical) with arrow markers.
+
+Group-aware instructions:
+  - Symbols are grouped under === Section Title [id:grp_xxx] === headers. Each group is a subgraph that starts from a "Start" node with a group title.
+  - If the user says "di grup A", "di section B", "di bagian C", or references a specific group by name or id, focus ONLY on the symbols inside that section.
+  - The [id:grp_xxx] tag uniquely identifies each group. Use it when you need to reference a group unambiguously.
+  - "Ungrouped" symbols are not connected to any Start node — treat them as independent.
 
 Use this as the single source of truth for the current flowchart. When the user asks about the flow, trace through the connections step by step.
 

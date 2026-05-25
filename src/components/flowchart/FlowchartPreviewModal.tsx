@@ -28,8 +28,8 @@ interface FlowchartPreviewModalProps {
 }
 
 const NODE_W = 160;
-const NODE_H = 60;
-const ICON_SIZE = 32;
+const NODE_H = 70;
+const ICON_SIZE = 48;
 
 type HandleSide = 'top' | 'bottom' | 'left' | 'right';
 
@@ -255,33 +255,54 @@ export function FlowchartPreviewModal({
                 preserveAspectRatio="xMidYMid meet"
               >
                 <defs>
-                  <marker id="arrow-preview" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <marker id="arrow-preview" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
                     <path d="M0,0 L10,5 L0,10 Z" fill="#b1b1b7" />
                   </marker>
+                  <pattern id="grid-dots" width={80} height={80} patternUnits="userSpaceOnUse">
+                    <circle cx={40} cy={40} r={0.8} fill="#2a2a30" />
+                  </pattern>
                 </defs>
+
+                {/* Grid background matching 80px layout spacing */}
+                <rect
+                  x={minX - 40}
+                  y={minY - 40}
+                  width={graphW + 80}
+                  height={maxY - minY + 80}
+                  fill="url(#grid-dots)"
+                />
 
                 {edgePaths.map((ep) => {
                   if (!ep) return null;
+                  const midX = (ep.srcPos.x + ep.tgtPos.x) / 2;
+                  const midY = (ep.srcPos.y + ep.tgtPos.y) / 2;
                   return (
                     <g key={ep.id}>
                       <path
                         d={ep.d}
                         fill="none"
-                        stroke="#b1b1b7"
+                        stroke="#6b6b73"
                         strokeWidth={2}
+                        strokeLinejoin="round"
                         markerEnd="url(#arrow-preview)"
                       />
                       {ep.label && (
-                        <text
-                          x={(ep.srcPos.x + ep.tgtPos.x) / 2}
-                          y={(ep.srcPos.y + ep.tgtPos.y) / 2 - 8}
-                          textAnchor="middle"
-                          fill="#fff"
-                          fontSize={11}
-                          className="select-none"
-                        >
-                          {ep.label}
-                        </text>
+                        <g>
+                          <text
+                            x={midX}
+                            y={midY - 8}
+                            textAnchor="middle"
+                            fill="#fff"
+                            stroke="#1a1a1e"
+                            strokeWidth={3}
+                            paintOrder="stroke"
+                            fontSize={11}
+                            fontWeight={600}
+                            className="select-none"
+                          >
+                            {ep.label}
+                          </text>
+                        </g>
                       )}
                     </g>
                   );
@@ -303,13 +324,14 @@ export function FlowchartPreviewModal({
                             key={side}
                             cx={hp.x}
                             cy={hp.y}
-                            r={isConnected ? 3 : 2}
+                            r={isConnected ? 3.5 : 2}
                             fill={isConnected ? color : '#555'}
-                            opacity={isConnected ? 0.9 : 0.4}
+                            opacity={isConnected ? 1 : 0.35}
                           />
                         );
                       })}
 
+                      {/* Node body with glow */}
                       <rect
                         x={sx}
                         y={sy}
@@ -318,21 +340,33 @@ export function FlowchartPreviewModal({
                         rx={8}
                         ry={8}
                         fill={color}
-                        fillOpacity={0.15}
+                        fillOpacity={0.08}
                         stroke={color}
-                        strokeWidth={2}
+                        strokeWidth={1}
                         strokeOpacity={0.6}
                       />
-                      <g transform={`translate(${sx + 8}, ${sy + (NODE_H - ICON_SIZE) / 2})`}>
+                      {/* Inner accent border */}
+                      <rect
+                        x={sx + 3}
+                        y={sy + 3}
+                        width={NODE_W - 6}
+                        height={NODE_H - 6}
+                        rx={6}
+                        ry={6}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth={0.5}
+                        strokeOpacity={0.2}
+                      />
+                      <g transform={`translate(${sx + (NODE_W - ICON_SIZE) / 2}, ${sy + 8})`}>
                         {renderShape(node.data.shape || 'rectangle', color, ICON_SIZE)}
                       </g>
                       <text
-                        x={sx + ICON_SIZE + 16}
-                        y={sy + NODE_H / 2}
-                        dominantBaseline="central"
-                        fill="#fff"
-                        fontSize={12}
-                        fontWeight={500}
+                        x={sx + NODE_W / 2}
+                        y={sy + NODE_H - 7}
+                        textAnchor="middle"
+                        fill="#e8e8ec"
+                        fontSize={11}
                         className="select-none"
                       >
                         {node.data.label}
