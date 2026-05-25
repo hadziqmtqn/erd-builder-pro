@@ -76,7 +76,7 @@ function deriveViewFromPath(pathname: string): AppView {
 }
 
 
-import { WorkspaceContext, WorkspaceContextValue, useWorkspace } from './WorkspaceContext';
+import { WorkspaceContext, WorkspaceContextValue, FlowchartExportHandler, useWorkspace } from './WorkspaceContext';
 
 // ──────────────────────────────────────────────────────
 // Provider
@@ -834,6 +834,9 @@ export function WorkspaceProvider({
   // ── Breadcrumb state (set by Page components) ──
   const [breadcrumbLabel, setBreadcrumbLabel] = React.useState<string | null>(null);
 
+  // ── Flowchart SVG export handler (set by FlowchartView) ──
+  const [flowchartExportHandler, setFlowchartExportHandler] = React.useState<FlowchartExportHandler | null>(null);
+
   // ── Context value ──
   const ctx = useMemo<WorkspaceContextValue>(() => ({
     user,
@@ -948,6 +951,7 @@ export function WorkspaceProvider({
     triggerTableRefresh, tableLoadingState, setTableLoadingState,
 
     breadcrumbLabel, setBreadcrumbLabel,
+    flowchartExportHandler, setFlowchartExportHandler,
   }), [
     user, isGuest, _handleLogout, view, sidebarView,
     isPublicView, setIsPublicView, publicData,
@@ -1016,6 +1020,7 @@ export function WorkspaceProvider({
     notesTotal, diagramsTotal, drawingsTotal, flowchartsTotal,
     tablePage,
     breadcrumbLabel, setBreadcrumbLabel,
+    flowchartExportHandler, setFlowchartExportHandler,
   ]);
 
   return (

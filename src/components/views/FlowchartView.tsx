@@ -37,7 +37,10 @@ import { useAIAction } from '@/contexts/AIActionContext';
 import { toast } from 'sonner';
 import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, applyReplaceAll, clearParseCache, FlowchartApplyResult } from '@/components/ai/actions/flowchartActions';
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
+import { FlowchartExportModal } from '@/components/flowchart/FlowchartExportModal';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
+import { useWorkspace } from '@/providers/WorkspaceContext';
+import type { FlowchartExportHandler } from '@/providers/WorkspaceContext';
 
 const nodeTypes = {
   custom: FlowchartNode,
@@ -69,6 +72,7 @@ export const FlowchartView = React.memo(({
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [pendingPreview, setPendingPreview] = useState<FlowchartApplyResult | null>(null);
+  const [exportPreview, setExportPreview] = useState<{ nodes: Node<FlowchartNodeData>[]; edges: Edge[]; filename: string } | null>(null);
   const [newNodeData, setNewNodeData] = useState<FlowchartNodeData>({
     label: 'New Symbol',
     shape: 'rectangle',
@@ -393,13 +397,63 @@ export const FlowchartView = React.memo(({
     }
   };
 
-  // ── Group Selection (Move Group) ──
+  // ── SVG Export ──
+  const { setFlowchartExportHandler } = useWorkspace();
+
+  const getExportFilename = (suffix?: string) => {
+    const base = activeFlowchart?.title?.replace(/[^a-zA-Z0-9_-]/g, '_') || 'flowchart';
+    return suffix ? `${base}-${suffix}` : base;
+  };
+
+  const handleExportSVGAll = useCallback(() => {
+    const previewNodes = nodesRef.current;
+    const previewEdges = edgesRef.current;
+    if (previewNodes.length === 0) { toast.error('No nodes to export'); return; }
+    setExportPreview({ nodes: previewNodes, edges: previewEdges, filename: getExportFilename() });
+  }, []);
+
+  const handleExportSVGGroup = useCallback((group: string) => {
+    const groupNodeIds = new Set(
+      nodesRef.current.filter(n => n.data.section === group).map(n => n.id)
+    );
+    if (groupNodeIds.size === 0) { toast.error(`No nodes found in group "${group}"`); return; }
+
+    const startIds = [...groupNodeIds];
+    const connectedIds = new Set<string>(startIds);
+    const queue = [...startIds];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const edge of edgesRef.current) {
+        if (edge.source === currentId && !connectedIds.has(edge.target)) {
+          connectedIds.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+
+    const filteredNodes = nodesRef.current.filter(n => connectedIds.has(n.id));
+    const filteredEdges = edgesRef.current.filter(e => connectedIds.has(e.source) && connectedIds.has(e.target));
+
+    if (filteredNodes.length === 0) { toast.error('No nodes to export'); return; }
+    setExportPreview({ nodes: filteredNodes, edges: filteredEdges, filename: getExportFilename(group) });
+  }, []);
+
   const canvasGroups = useMemo(() => {
     return nodes
       .map(n => n.data.section)
       .filter((s): s is string => !!s)
       .filter((s, i, arr) => arr.indexOf(s) === i);
   }, [nodes]);
+
+  // Register SVG export handler in workspace context
+  useEffect(() => {
+    setFlowchartExportHandler({
+      exportAll: handleExportSVGAll,
+      exportGroup: handleExportSVGGroup,
+      groups: canvasGroups,
+    });
+    return () => setFlowchartExportHandler(null);
+  }, [handleExportSVGAll, handleExportSVGGroup, canvasGroups, setFlowchartExportHandler]);
 
   const selectedGroupNodeIds = useMemo(() => {
     if (!selectedGroup) return new Set<string>();
@@ -763,6 +817,15 @@ export const FlowchartView = React.memo(({
           onCancel={() => { setPendingPreview(null); pendingContentRef.current = null; }}
           confirmLabel={pendingApplyModeRef.current === 'insert' ? 'Confirm Insert' : pendingApplyModeRef.current === 'replace' ? 'Confirm Replace' : 'Confirm Append'}
           canvasGroups={pendingApplyModeRef.current === 'replace' ? nodes.map(n => n.data.section).filter((s): s is string => !!s).filter((s, i, arr) => arr.indexOf(s) === i) : []}
+        />
+      )}
+
+      {exportPreview && (
+        <FlowchartExportModal
+          nodes={exportPreview.nodes}
+          edges={exportPreview.edges}
+          filename={exportPreview.filename}
+          onCancel={() => setExportPreview(null)}
         />
       )}
     </Card>
