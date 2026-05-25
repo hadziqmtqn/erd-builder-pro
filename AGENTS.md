@@ -596,6 +596,18 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (prioritas tertinggi ke terendah).
 - **Move Group** (FlowchartView toolbar): `<Select>` dropdown listing semua grup (dari `canvasGroups`). Pilih grup → BFS select semua node anggota via `selected: true` → bounding box dashed indigo muncul di sekeliling grup. Drag satu node anggota → semua anggota grup ikut bergerak (ReactFlow multi-drag native). Klik pane → grup deselected. Bounding box SVG di-render di luar ReactFlow dengan viewport transform (`onMove` tracker) agar posisi rect konsisten dengan flow coordinates saat pan/zoom. File: [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)
 
+## Flowchart SVG Export
+
+- [`src/lib/generateFlowchartSVG.ts`](./src/lib/generateFlowchartSVG.ts): utility yang menghasilkan SVG string dari nodes + edges, termasuk shapes, labels, connections, dan arrow markers. Support semua shape (oval, diamond, parallelogram, database, document, cloud, circle, rectangle). `downloadSVG(svgString, filename)` trigger download.
+- **Export flow**: FlowchartView mendaftarkan `FlowchartExportHandler` ke `WorkspaceContext` via `setFlowchartExportHandler` pada mount. Handler berisi `exportAll()`, `exportGroup(group)`, dan `groups[]`.
+- **Preview modal** ([`src/components/flowchart/FlowchartExportModal.tsx`](./src/components/flowchart/FlowchartExportModal.tsx)): sebelum di-ekspor, FlowchartView buka `FlowchartExportModal` yang render ReactFlow asli (pakai `FlowchartNode` component) — bukan native SVG style. User bisa preview dan klik "Download SVG" untuk trigger export.
+- **Export All Canvas**: semua nodes + edges di-render di modal ReactFlow, lalu di-ekspor sebagai SVG lengkap dengan dark background (`#0f0f14`), arrow markers, handle dots, dan section badges.
+- **Export Group**: BFS dari Start node grup → kumpulkan semua connected nodes/edges → filter hanya nodes dalam grup → render di modal → ekspor sebagai SVG.
+- **NavActionsMenu** ([`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx)): untuk `documentType === 'flowchart'`, render submenu Export → SVG Format → "All Canvas" + satu item per grup. Membaca handler dari `useWorkspace().flowchartExportHandler`.
+- **FlowchartExportHandler** didefinisikan di `WorkspaceContext.tsx`: `{ exportAll: () => void; exportGroup: (group: string) => void; groups: string[] }`.
+
+
+
 **Special instructions for Edit Columns prompt:**
 - When multiple tables selected, prompt shows ALL selected tables with column structures
 - Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Klik tombol **Append** untuk menerapkan perubahan ke tabel admins.")

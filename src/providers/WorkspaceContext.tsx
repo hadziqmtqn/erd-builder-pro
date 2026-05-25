@@ -3,6 +3,12 @@ import { Node, Edge, OnNodesChange, OnEdgesChange, OnConnect } from '@xyflow/rea
 import { BroadcastMessageType } from '../hooks/useBroadcastChannel';
 import { Entity, AppView } from '../types';
 
+export interface FlowchartExportHandler {
+  exportAll: () => void;
+  exportGroup: (group: string) => void;
+  groups: string[];
+}
+
 // ──────────────────────────────────────────────────────
 // Context type
 // ──────────────────────────────────────────────────────
@@ -268,6 +274,10 @@ export interface WorkspaceContextValue {
   // Page-specific breadcrumb (set by Page components like DashboardPage, NotesPage, etc.)
   breadcrumbLabel: string | null;
   setBreadcrumbLabel: (label: string | null) => void;
+
+  // Flowchart SVG export handler (set by FlowchartView)
+  flowchartExportHandler: FlowchartExportHandler | null;
+  setFlowchartExportHandler: (handler: FlowchartExportHandler | null) => void;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
