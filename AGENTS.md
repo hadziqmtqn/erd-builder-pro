@@ -589,10 +589,12 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Semua simbol (termasuk Start/End) bisa dihapus bebas — `deleteNode` tidak lagi memiliki guard Start/End
 - **Start nodes** have a "Group Title" input field in properties modal — stored as `section` in `FlowchartNodeData`
 - **Start label detection**: `isStartNode`/`isStartLabel` uses `.includes('start')` (case-insensitive) — not exact match. Labels like "Start Login", "Start Process", "restart" trigger Group Title form.
+- **Group title uniqueness**: validated on write via `updateNodeData` with toast error on duplicate.
 - **Delete Group**: `deleteGroup` di FlowchartView — hapus semua node yang punya `section` (grup) yang sama. Tombol "Hapus Grup" muncul di `SymbolPropertiesModal` untuk Start node yang punya Group Title.
 - **`groupId`**: setiap Start node punya unique key (e.g. `grp_quickstart`) — auto-generated saat node dibuat, tampil di AI context sebagai `[id:grp_xxx]`. AI bisa referensi via `sourceGroupId`/`targetGroupId` di JSON response.
 - **AI grouping**: `flowchartSymbolDetail()` groups symbols by section using BFS from each Start node. Each group rendered under `=== {section} [id:grp_xxx] ===` header. Supports overlapping groups (user can have multiple Start nodes sharing the same End).
 - **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (prioritas tertinggi ke terendah).
+- **Move Group** (FlowchartView toolbar): `<Select>` dropdown listing semua grup (dari `canvasGroups`). Pilih grup → BFS select semua node anggota via `selected: true` → bounding box dashed indigo muncul di sekeliling grup. Drag satu node anggota → semua anggota grup ikut bergerak (ReactFlow multi-drag native). Klik pane → grup deselected. Bounding box SVG di-render di luar ReactFlow dengan viewport transform (`onMove` tracker) agar posisi rect konsisten dengan flow coordinates saat pan/zoom. File: [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)
 
 **Special instructions for Edit Columns prompt:**
 - When multiple tables selected, prompt shows ALL selected tables with column structures
