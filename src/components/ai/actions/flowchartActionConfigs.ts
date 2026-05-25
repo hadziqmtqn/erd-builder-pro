@@ -133,6 +133,8 @@ export const flowchartActions: AIAction[] = [
 
 Current symbols:\n${symbols}
 
+Note on groups: Symbols grouped under === headers are separate sections. If the user asks to modify only "section X", "grup Y", or references a specific [id:grp_xxx], focus ONLY on that group and preserve all other groups unchanged.
+
 User Request: Generate a flowchart for [USER TOPIC].
 
 Instruction:
