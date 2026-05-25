@@ -8,15 +8,23 @@ import {
   DialogBody,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { FlowchartNodeData } from '../FlowchartNode';
-import { Check, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Check, X, ZoomIn, ZoomOut, RotateCcw, Layers } from 'lucide-react';
 
 interface FlowchartPreviewModalProps {
   nodes: Node<FlowchartNodeData>[];
   edges: Edge[];
-  onConfirm: () => void;
+  onConfirm: (groupSection?: string) => void;
   onCancel: () => void;
   confirmLabel?: string;
+  canvasGroups?: string[];
 }
 
 const NODE_W = 160;
@@ -129,9 +137,11 @@ export function FlowchartPreviewModal({
   onConfirm,
   onCancel,
   confirmLabel = 'Confirm Append',
+  canvasGroups = [],
 }: FlowchartPreviewModalProps) {
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [replaceGroup, setReplaceGroup] = useState<string | null>(null);
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
   const panOffset = useRef({ x: 0, y: 0 });
@@ -216,7 +226,7 @@ export function FlowchartPreviewModal({
 
   return (
     <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent className="sm:max-w-2xl h-[550px]">
+      <DialogContent className="sm:max-w-2xl h-[600px]">
         <DialogHeader>
           <DialogTitle>Preview Flowchart</DialogTitle>
         </DialogHeader>
@@ -351,12 +361,29 @@ export function FlowchartPreviewModal({
                 <X className="size-4" />
                 Cancel
               </Button>
-              <Button onClick={onConfirm} className="gap-2">
+              <Button onClick={() => onConfirm(replaceGroup || undefined)} className="gap-2">
                 <Check className="size-4" />
                 {confirmLabel}
               </Button>
             </div>
           </div>
+          {canvasGroups.length > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-white/5" onMouseDown={(e) => e.stopPropagation()}>
+              <Layers className="size-3.5 text-muted-foreground shrink-0" />
+              <span className="text-[11px] text-muted-foreground">Replace:</span>
+              <Select value={replaceGroup ?? ''} onValueChange={(v) => setReplaceGroup(v || null)}>
+                <SelectTrigger className="h-7 text-[12px]">
+                  <SelectValue placeholder="All Symbols" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Symbols</SelectItem>
+                  {canvasGroups.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </DialogBody>
       </DialogContent>
     </Dialog>

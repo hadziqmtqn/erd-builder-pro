@@ -223,6 +223,24 @@ export const FlowchartView = React.memo(({
 
   const updateNodeData = (updates: Partial<FlowchartNodeData>) => {
     if (!selectedNodeId) return;
+
+    // Prevent duplicate group titles across different Start nodes
+    if ('section' in updates) {
+      const newSection = updates.section?.trim();
+      if (newSection) {
+        const duplicate = nodes.some(n =>
+          n.id !== selectedNodeId &&
+          n.data.section?.toLowerCase() === newSection.toLowerCase()
+        );
+        if (duplicate) {
+          toast.error('Group title already exists', {
+            description: `Another group is already named "${newSection}". Each group must have a unique title.`,
+          });
+          return;
+        }
+      }
+    }
+
     takeSnapshot(nodesRef.current, edgesRef.current);
     setNodes((nds) =>
       nds.map((n) => {
@@ -261,10 +279,27 @@ export const FlowchartView = React.memo(({
     if (!node || !node.data.section) return;
     takeSnapshot(nodesRef.current, edgesRef.current);
     const section = node.data.section;
-    const groupIds = nodes.filter(n => n.data.section === section).map(n => n.id);
-    if (groupIds.length === 0) return;
-    setNodes((nds) => nds.filter(n => !groupIds.includes(n.id)));
-    setEdges((eds) => eds.filter(e => !groupIds.includes(e.source) && !groupIds.includes(e.target)));
+
+    // Find all Start nodes with this section title
+    const startIds = nodes.filter(n => n.data.section === section).map(n => n.id);
+    if (startIds.length === 0) return;
+
+    // BFS to collect all descendants reachable from any Start node
+    const connectedIds = new Set<string>(startIds);
+    const queue = [...startIds];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const edge of edges) {
+        if (edge.source === currentId && !connectedIds.has(edge.target)) {
+          connectedIds.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+
+    const idsToDelete = [...connectedIds];
+    setNodes((nds) => nds.filter(n => !idsToDelete.includes(n.id)));
+    setEdges((eds) => eds.filter(e => !idsToDelete.includes(e.source) && !idsToDelete.includes(e.target)));
     setSelectedNodeId(null);
   };
 
@@ -449,24 +484,57 @@ export const FlowchartView = React.memo(({
     return unregister;
   }, [registerContentHandler, setNodes, setEdges, takeSnapshot]);
 
-  const handleConfirmAppend = useCallback(() => {
+  const handleConfirmAppend = useCallback((replaceGroupSection?: string) => {
     const content = pendingContentRef.current;
     if (!content) return;
 
     takeSnapshot(nodesRef.current, edgesRef.current);
 
-    let result: FlowchartApplyResult | null = null;
-    if (pendingApplyModeRef.current === 'insert') {
-      result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
+    if (replaceGroupSection) {
+      // Replace only the specified group
+      const startIds = nodesRef.current.filter(n => n.data.section === replaceGroupSection).map(n => n.id);
+      const connectedIds = new Set<string>(startIds);
+      const queue = [...startIds];
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        for (const edge of edgesRef.current) {
+          if (edge.source === currentId && !connectedIds.has(edge.target)) {
+            connectedIds.add(edge.target);
+            queue.push(edge.target);
+          }
+        }
+      }
+      const idsToRemove = [...connectedIds];
+      setNodes((nds) => {
+        const kept = nds.filter(n => !idsToRemove.includes(n.id));
+        const parsed = applyReplaceAll(content);
+        if (parsed) return [...kept, ...parsed.nodes];
+        return nds;
+      });
+      setEdges((eds) => {
+        const kept = eds.filter(e => !idsToRemove.includes(e.source) && !idsToRemove.includes(e.target));
+        const parsed = applyReplaceAll(content);
+        if (parsed) return [...kept, ...parsed.edges];
+        return eds;
+      });
     } else if (pendingApplyModeRef.current === 'replace') {
-      result = applyReplaceAll(content);
+      const result = applyReplaceAll(content);
+      if (result) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+      }
+    } else if (pendingApplyModeRef.current === 'insert') {
+      const result = applyInsertBetween(nodesRef.current, edgesRef.current, content);
+      if (result) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+      }
     } else {
-      result = applyToFlowchartContent(nodesRef.current, edgesRef.current, content);
-    }
-
-    if (result) {
-      setNodes(result.nodes);
-      setEdges(result.edges);
+      const result = applyToFlowchartContent(nodesRef.current, edgesRef.current, content);
+      if (result) {
+        setNodes(result.nodes);
+        setEdges(result.edges);
+      }
     }
     setPendingPreview(null);
     pendingContentRef.current = null;
@@ -600,6 +668,7 @@ export const FlowchartView = React.memo(({
           onConfirm={handleConfirmAppend}
           onCancel={() => { setPendingPreview(null); pendingContentRef.current = null; }}
           confirmLabel={pendingApplyModeRef.current === 'insert' ? 'Confirm Insert' : pendingApplyModeRef.current === 'replace' ? 'Confirm Replace' : 'Confirm Append'}
+          canvasGroups={nodes.map(n => n.data.section).filter((s): s is string => !!s).filter((s, i, arr) => arr.indexOf(s) === i)}
         />
       )}
     </Card>

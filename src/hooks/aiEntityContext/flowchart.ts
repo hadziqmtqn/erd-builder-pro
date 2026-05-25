@@ -154,8 +154,8 @@ This app has a built-in visual flowchart editor. If the user asks you to create 
 \`\`\`json
 {
   "nodes": [
-    { "id": "n1", "type": "custom", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "shape": "oval", "color": "#22c55e" } },
-    { "id": "n2", "type": "custom", "position": { "x": 200, "y": 0 }, "data": { "label": "Process", "shape": "rectangle", "color": "#3b82f6" } }
+    { "id": "n1", "type": "custom", "data": { "label": "Start", "shape": "oval", "color": "#22c55e" } },
+    { "id": "n2", "type": "custom", "data": { "label": "Process", "shape": "rectangle", "color": "#3b82f6" } }
   ],
   "edges": [
     { "id": "e1", "source": "n1", "target": "n2", "type": "smoothstep" }

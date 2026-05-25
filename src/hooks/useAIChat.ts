@@ -70,6 +70,9 @@ export function useAIChat(
   const onStreamCompleteRef = useRef<((response: string) => void) | undefined>(undefined);
   useEffect(() => { onStreamCompleteRef.current = onStreamComplete; }, [onStreamComplete]);
 
+  const projectIdRef = useRef(projectId);
+  useEffect(() => { projectIdRef.current = projectId; }, [projectId]);
+
   // Stable helper that reads from refs — no callback deps
   const getUserId = (): string | null => {
     const u = userRef.current;
@@ -95,8 +98,12 @@ export function useAIChat(
       let query = buildBaseQuery()
         .order('updated_at', { ascending: false });
 
-      // Filter sessions by project (cross-feature) or fallback to entity
-      if (projectId) {
+      // Filter sessions: project-scoped sessions OR file-private sessions (project_id IS NULL)
+      if (projectId && entityContext) {
+        query = query.or(
+          `project_id.eq.${projectId},and(project_id.is.null,entity_type.eq.${entityContext.entityType},entity_uid.eq.${entityContext.entityUid})`
+        );
+      } else if (projectId) {
         query = query.eq('project_id', projectId);
       } else if (entityContext) {
         query = query
@@ -412,16 +419,40 @@ export function useAIChat(
         apiUserContent += `[Selected text: "${selectionText}"]\n`;
       }
 
+      // ─── Sync session.project_id with current file's project_id ──
+      // Handle 3 scenarios:
+      //   1. File pindah project A → B: session updated to B → sibling context queries B
+      //   2. File pindah ke uncategorized (NULL): session set to NULL → sibling context skipped
+      //   3. Session private (NULL) masuk workspace: session updated → sibling context now active
+      const liveProjectId = projectIdRef.current ?? null;
+      const oldSessionProjectId = currentSession?.project_id || null;
+      if (liveProjectId !== oldSessionProjectId) {
+        const updatePayload: Record<string, any> = { updated_at: new Date().toISOString(), project_id: liveProjectId };
+        const { error: updateProjectError } = await supabase
+          .from('ai_chat_sessions')
+          .update(updatePayload)
+          .eq('id', currentSession.id);
+
+        if (!updateProjectError) {
+          const updatedSession = { ...currentSession, ...updatePayload } as AIChatSession;
+          setCurrentSession(updatedSession);
+          setSessions(prev => prev.map(s =>
+            s.id === currentSession.id ? updatedSession : s
+          ));
+        }
+        // Sync only once per session; use liveProjectId for sibling context regardless
+      }
+
       // Cross-feature sibling context from the same project.
-      // Exclude the CURRENT active entity (not the session origin) — entityContextText
-      // already provides full context for the active file.
+      // Uses live project_id (not stale session.project_id).
+      // Exclude the CURRENT active entity — entityContextText already provides full context.
       // Always fresh: queries Supabase every sendMessage with up to 6000 chars budget.
-      if (currentSession?.project_id && entityContext) {
+      if (liveProjectId && entityContext) {
         try {
           const siblingCtx = await buildSiblingContext(
             entityContext.entityType,
             entityContext.entityUid,
-            currentSession.project_id,
+            liveProjectId,
           );
           if (siblingCtx) {
             apiUserContent += `\n${siblingCtx}\n`;

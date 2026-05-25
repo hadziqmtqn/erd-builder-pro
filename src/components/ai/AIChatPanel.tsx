@@ -149,6 +149,7 @@ export const AIChatPanel = ({
         target.closest('[role="alertdialog"]') ||
         target.closest('[role="dialog"]') ||
         target.closest('[role="menu"]') ||
+        target.closest('[data-slot="select-content"]') ||
         target.closest('.fixed.inset-0') ||
         target.closest('.ProseMirror') ||
         target.closest('.tiptap-editor-content')

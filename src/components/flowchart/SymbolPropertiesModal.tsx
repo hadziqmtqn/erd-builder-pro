@@ -125,7 +125,7 @@ export function SymbolPropertiesModal({
                 onClick={() => { onDeleteNode(); onClose(); }}
               >
                 <Trash2 className="size-4" />
-                Hapus Simbol
+                Delete Symbol
               </Button>
               {isStart && selectedNode.data.section && onDeleteGroup && (
                 <Button
@@ -135,7 +135,7 @@ export function SymbolPropertiesModal({
                   onClick={() => { onDeleteGroup(); onClose(); }}
                 >
                   <Trash2 className="size-4" />
-                  Hapus Grup "{selectedNode.data.section}"
+                  Delete Group "{selectedNode.data.section}"
                 </Button>
               )}
             </div>
