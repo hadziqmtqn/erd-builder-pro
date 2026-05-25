@@ -81,7 +81,7 @@ export function buildFlowchartContext(data: EntityContextData): string | null {
 
   // Find start nodes for section grouping
   const startNodes = nodes.filter((n: any) =>
-    n.data?.label?.trim().toLowerCase() === 'start'
+    n.data?.label?.trim().toLowerCase().includes('start')
   );
 
   // BFS from a start node to collect reachable ids

@@ -48,7 +48,7 @@ function flowchartSymbolDetail(context: Record<string, any>): string {
 
   // Find all start nodes
   const startNodes = nodes.filter(
-    (n: any) => n.data?.label?.trim().toLowerCase() === 'start'
+    (n: any) => n.data?.label?.trim().toLowerCase().includes('start')
   );
 
   // If no start nodes, show flat list (backward compatible)

@@ -31,7 +31,7 @@ interface SymbolPropertiesModalProps {
 }
 
 function isStartNode(node: Node<FlowchartNodeData>): boolean {
-  return node.data.label.trim().toLowerCase() === 'start';
+  return node.data.label.trim().toLowerCase().includes('start');
 }
 
 export function SymbolPropertiesModal({
