@@ -363,32 +363,36 @@ code:not(pre code) {
 
 .tiptap-editor ul,
 .prose.tiptap-editor ul,
-.tiptap-editor-content ul {
+.tiptap-editor-content ul,
+.ProseMirror ul {
   list-style-type: disc !important;
-  padding-left: 1.5rem !important;
+  padding-left: 2rem !important;
   margin-top: 0.15rem !important;
   margin-bottom: 0.15rem !important;
 }
 
 .tiptap-editor ol,
 .prose.tiptap-editor ol,
-.tiptap-editor-content ol {
+.tiptap-editor-content ol,
+.ProseMirror ol {
   list-style-type: decimal !important;
-  padding-left: 1.5rem !important;
+  padding-left: 2rem !important;
   margin-top: 0.15rem !important;
   margin-bottom: 0.15rem !important;
 }
 
 .tiptap-editor li,
 .prose.tiptap-editor li,
-.tiptap-editor-content li {
+.tiptap-editor-content li,
+.ProseMirror li {
   margin-top: 0.05rem !important;
   margin-bottom: 0.05rem !important;
 }
 
 .tiptap-editor li > p,
 .prose.tiptap-editor li > p,
-.tiptap-editor-content li > p {
+.tiptap-editor-content li > p,
+.ProseMirror li > p {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
@@ -489,17 +493,19 @@ code:not(pre code) {
 ul[data-type="taskList"] {
   list-style: none !important;
   padding: 0 !important;
-  padding-left: 1.5rem !important;
+  padding-left: 2rem !important;
 }
 
 ul[data-type="taskList"] li {
   display: flex !important;
   align-items: flex-start !important;
   margin-bottom: 0.2rem !important;
-  margin-left: -1.5rem !important;
+  margin-left: -0.5rem !important;
 }
 
 ul[data-type="taskList"] li > label {
+  display: flex !important;
+  align-items: center !important;
   flex: 0 0 auto !important;
   margin-right: 0.5rem !important;
   user-select: none !important;
@@ -517,7 +523,6 @@ ul[data-type="taskList"] input[type="checkbox"] {
   cursor: pointer !important;
   width: 1.25rem !important;
   height: 1.25rem !important;
-  margin-top: 0.25rem !important;
   border-radius: 0.25rem !important;
   border: 2px solid var(--muted-foreground) !important;
   background-color: var(--background) !important;

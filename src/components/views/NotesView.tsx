@@ -53,7 +53,7 @@ export const NotesView = React.memo(({
 
       let parsedHtml = content;
       try {
-        parsedHtml = await marked.parse(content);
+        parsedHtml = await marked.parse(content, { gfm: true, breaks: true });
         parsedHtml = await NoteImporter.processHtmlForEditor(parsedHtml);
       } catch {}
 
@@ -76,9 +76,9 @@ export const NotesView = React.memo(({
       if (actionId) {
         const markdownContent = getMarkdownFromHtml(originalContent);
         const merged = applyToNoteContent(markdownContent, actionId, content);
-        parsedContent = await marked.parse(merged);
+        parsedContent = await marked.parse(merged, { gfm: true, breaks: true });
       } else {
-        parsedContent = await marked.parse(content);
+        parsedContent = await marked.parse(content, { gfm: true, breaks: true });
       }
       parsedContent = await NoteImporter.processHtmlForEditor(parsedContent);
     } catch (err) {
@@ -86,7 +86,8 @@ export const NotesView = React.memo(({
     }
 
     parsedContent = DOMPurify.sanitize(parsedContent, {
-      ADD_ATTR: ['data-type', 'data-checked'],
+      ADD_TAGS: ['iframe', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'hr', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'u', 'code', 'pre', 'blockquote', 'img'],
+      ADD_ATTR: ['data-type', 'data-checked', 'src', 'alt', 'href', 'target', 'rel', 'colspan', 'rowspan', 'style'],
     });
 
     let newContent = '';

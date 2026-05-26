@@ -312,11 +312,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   useEffect(() => {
     if (!editor) return;
 
-    const handleUpdate = () => {
-      if (onChange) {
-        onChange(editor.getHTML());
-      }
-
+    const extractHeadings = () => {
       const extracted: HeadingInfo[] = [];
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name === 'heading' && node.attrs.level <= 5) {
@@ -328,6 +324,14 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         }
       });
       setHeadings(extracted);
+    };
+
+    const handleUpdate = () => {
+      if (onChange) {
+        onChange(editor.getHTML());
+      }
+
+      extractHeadings();
 
       // Slash Menu Logic
       const { selection } = editor.state;
@@ -360,6 +364,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     };
 
     editor.on('update', handleUpdate);
+    extractHeadings();
     return () => {
       editor.off('update', handleUpdate);
     };

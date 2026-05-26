@@ -710,3 +710,19 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - `mentionFiles` prop passed from `AIChatPanel` to `ChatMessages` (same data used for ChatInput dropdown)
 - Unmatched `@text` (no file found) remains as plain text — unchanged
 - Uses `renderMentionText(text)` function called inside the user message `<p>` element, replacing raw `{displayText}`
+
+## Custom SQL DDL AST Parser & Lexer
+
+- **Parser Architecture**: Ganti regex matching yang ringkih di [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) dengan custom **Lexer & Parser DDL** token-based.
+- **Lexer (`SqlLexer`)**:
+  - Mengabaikan komentar SQL (`--`, `/* */`, `#`).
+  - Tokenizer yang membedakan: `KEYWORD`, `IDENTIFIER` (membersihkan backticks, quotes, braces `[]`), `SYMBOL` (`(`, `)`, `,`, `;`, `.`), `NUMBER`, dan `STRING`.
+- **Parser (`SqlParser` / `parseSqlDdl`)**:
+  - Melakukan parsing pernyataan `CREATE TABLE` dan `ALTER TABLE` menggunakan token stream.
+  - Mendukung column inline constraints (`PRIMARY KEY`, `NOT NULL`, `NULL`, inline `REFERENCES`).
+  - Mendukung table level constraints (`PRIMARY KEY (...)` dan `FOREIGN KEY (...) REFERENCES ...`).
+  - Mengabaikan noise dialek SQL seperti `ENGINE=InnoDB`, `DEFAULT CHARSET`, collation kustom, indeks kustom (`INDEX`/`KEY`/`UNIQUE`).
+  - Membatasi boundary check di `parseColumnConstraints` agar berhenti di `;` (semicolon), sehingga statement `ALTER TABLE` berurutan ter-parse dengan benar tanpa melompati baris.
+- **Integration**:
+  - [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) mengimpor `parseSqlDdl` untuk menggantikan regex-based `parseAlterTableAddColumn` dan parsing relasi manual.
+  - Diagram visual sinkron 100% dengan dialek PostgreSQL, MySQL, dan SQLite.
