@@ -107,10 +107,10 @@ export interface WorkspaceContextValue {
   handleEntityUpdate: (entity: Entity, options?: { immediate?: boolean }) => Promise<void>;
 
   // Sidebar
-  handleSidebarDiagramCreate: (title: string, projectId?: string | null) => Promise<void>;
+  handleSidebarDiagramCreate: (title: string, projectId?: string | null) => Promise<any>;
   handleSidebarNoteCreate: (title: string, projectId?: string | null) => Promise<void>;
   handleSidebarDrawingCreate: (title: string, projectId?: string | null) => Promise<void>;
-  handleSidebarFlowchartCreate: (title: string, projectId?: string | null) => Promise<void>;
+  handleSidebarFlowchartCreate: (title: string, projectId?: string | null) => Promise<any>;
   handleSidebarProjectCreate: (name: string) => Promise<void>;
   handleSidebarProjectUpdate: (id: any, data: any) => Promise<void>;
   handleSidebarProjectDelete: (id: any) => Promise<void>;

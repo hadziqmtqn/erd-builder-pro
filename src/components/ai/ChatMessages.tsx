@@ -3,9 +3,12 @@ import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
-import { AIChatMessage, AIChatSession } from '@/types';
+import { AIChatMessage, AIChatSession, Entity } from '@/types';
+import { Node, Edge } from '@xyflow/react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
+import { ErdSelectDialog } from './ErdSelectDialog';
 
 interface MentionFile {
   name: string;
@@ -103,6 +106,7 @@ export interface ChatMessagesProps {
   entityTypeMeta?: Record<string, { label: string; icon: ComponentType<{ className?: string }> }>;
   mentionFiles?: MentionFile[];
   activeProjectId?: string | number | null;
+  diagrams?: any[];
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -127,8 +131,13 @@ export const ChatMessages = memo(function ChatMessages({
   entityTypeMeta,
   mentionFiles = [],
   activeProjectId,
+  diagrams = [],
 }: ChatMessagesProps) {
-  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, activeProjectId: workspaceProjectId } = useWorkspace();
+  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, handleDiagramSelect, handleFlowchartSelect, activeProjectId: workspaceProjectId } = useWorkspace();
+
+  // ERD preview dialog state
+  const [erdDialogOpen, setErdDialogOpen] = useState(false);
+  const [pendingErdSql, setPendingErdSql] = useState<string | null>(null);
   const targetProjectId = activeProjectId !== undefined ? activeProjectId : workspaceProjectId;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -136,6 +145,10 @@ export const ChatMessages = memo(function ChatMessages({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [expandedMessages, setExpandedMessages] = useState<Set<string | number>>(new Set());
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  // Track created ERD/Flowchart UIDs to prevent duplicate creation
+  const chatErdUidRef = useRef<string | null>(localStorage.getItem('chat_erd_uid'));
+  const chatFlowchartUidRef = useRef<string | null>(localStorage.getItem('chat_flowchart_uid'));
 
   // ─── Auto-scroll to bottom on new messages ─────────
   useEffect(() => {
@@ -456,13 +469,12 @@ export const ChatMessages = memo(function ChatMessages({
                         onClick={async () => {
                           const sql = extractSQL(msg.content);
                           if (sql) {
-                            localStorage.setItem('pending_create_erd_ddl', sql);
-                            toast.info('Creating new ERD diagram...');
-                            await handleSidebarDiagramCreate('ERD from Chat', targetProjectId);
+                            setPendingErdSql(sql);
+                            setErdDialogOpen(true);
                           }
                         }}
                         className="flex items-center justify-center size-8 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md shadow-sm transition-all cursor-pointer"
-                        title="Create New ERD Diagram"
+                        title={chatErdUidRef.current ? 'Update existing ERD with this SQL' : 'Create new ERD from this SQL'}
                       >
                         <Database className="size-4" />
                       </button>
@@ -474,12 +486,21 @@ export const ChatMessages = memo(function ChatMessages({
                           const json = extractFlowchartJSON(msg.content);
                           if (json) {
                             localStorage.setItem('pending_create_flowchart_json', json);
-                            toast.info('Creating new Flowchart...');
-                            await handleSidebarFlowchartCreate('Flowchart from Chat', targetProjectId);
+                            if (chatFlowchartUidRef.current) {
+                              toast.info('Updating existing Flowchart...');
+                              await handleFlowchartSelect(chatFlowchartUidRef.current);
+                            } else {
+                              toast.info('Creating new Flowchart...');
+                              const f = await handleSidebarFlowchartCreate('Flowchart from Chat', targetProjectId);
+                              if (f?.uid) {
+                                chatFlowchartUidRef.current = f.uid;
+                                localStorage.setItem('chat_flowchart_uid', f.uid);
+                              }
+                            }
                           }
                         }}
                         className="flex items-center justify-center size-8 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md shadow-sm transition-all cursor-pointer"
-                        title="Create New Flowchart"
+                        title={chatFlowchartUidRef.current ? 'Update existing Flowchart' : 'Create new Flowchart'}
                       >
                         <GitBranch className="size-4" />
                       </button>
@@ -523,6 +544,62 @@ export const ChatMessages = memo(function ChatMessages({
         <ChevronDown className="size-4 text-muted-foreground/70" />
       </button>
     )}
+
+    <ErdSelectDialog
+      open={erdDialogOpen}
+      sql={pendingErdSql || ''}
+      projectId={targetProjectId}
+      diagrams={diagrams}
+      fetchEntitiesForDiff={async (uid) => {
+        try {
+          const res = await apiFetch(`/api/diagrams/${uid}`);
+          if (!res.ok) return null;
+          const data = await res.json();
+          if (!data || !data.entities) return null;
+          const nodes: Node<Entity>[] = data.entities.map((e: any) => ({
+            id: e.id,
+            type: 'entity',
+            position: { x: e.x || 0, y: e.y || 0 },
+            data: e,
+          }));
+          const edges: Edge[] = (data.relationships || []).map((r: any) => ({
+            id: r.id,
+            source: r.source_entity_id,
+            target: r.target_entity_id,
+            sourceHandle: r.source_handle || undefined,
+            targetHandle: r.target_handle || undefined,
+            label: r.label,
+            type: 'smoothstep',
+          }));
+          return { nodes, edges };
+        } catch {
+          return null;
+        }
+      }}
+      onConfirm={async (action, diagramUid) => {
+        if (!pendingErdSql) return;
+        localStorage.setItem('pending_create_erd_ddl', pendingErdSql);
+        if (action === 'update' && diagramUid) {
+          toast.info('Updating ERD diagram...');
+          chatErdUidRef.current = diagramUid;
+          localStorage.setItem('chat_erd_uid', diagramUid);
+          await handleDiagramSelect(diagramUid);
+        } else {
+          toast.info('Creating new ERD diagram...');
+          const d = await handleSidebarDiagramCreate('ERD from Chat', targetProjectId);
+          if (d?.uid) {
+            chatErdUidRef.current = d.uid;
+            localStorage.setItem('chat_erd_uid', d.uid);
+          }
+        }
+        setErdDialogOpen(false);
+        setPendingErdSql(null);
+      }}
+      onCancel={() => {
+        setErdDialogOpen(false);
+        setPendingErdSql(null);
+      }}
+    />
     </div>
   );
 });
