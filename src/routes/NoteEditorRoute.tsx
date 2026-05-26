@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { FileQuestion } from 'lucide-react';
@@ -11,10 +11,33 @@ export function NoteEditorRoute() {
 
   const {
     activeNote, activeNoteUid, saveNote, handleNoteChange, deleteNote,
-    isPublicView, isLoading, isNoteItemLoading,
+    isPublicView, isLoading, isNoteItemLoading, handleNoteSelect,
   } = ctx;
 
+  // Safety net: URL has id but context hasn't synced yet
+  const processedUrlRef = useRef(false);
+  useEffect(() => {
+    if (isPublicView || !id) return;
+    if (processedUrlRef.current) return;
+    if (activeNoteUid === id) {
+      processedUrlRef.current = true;
+      return;
+    }
+    if (!activeNoteUid) {
+      processedUrlRef.current = true;
+      handleNoteSelect(id);
+    }
+  }, [id, activeNoteUid, isPublicView, handleNoteSelect]);
+
   if (!isPublicView && !activeNoteUid) {
+    if (id && !processedUrlRef.current) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading note...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a note to view</p>

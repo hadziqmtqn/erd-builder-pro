@@ -41,7 +41,7 @@ function getActionIcon(actionId: string) {
   }
 }
 
-function getPlaceholder(actionId: string | null | undefined): string {
+function getPlaceholder(actionId: string | null | undefined, hasProject: boolean): string {
   switch (actionId) {
     case 'notes-summarize':       return 'Describe what to summarize...';
     case 'notes-improve-grammar': return 'Describe which part to improve...';
@@ -56,7 +56,7 @@ function getPlaceholder(actionId: string | null | undefined): string {
     case 'flowchart-pseudocode':  return 'Describe pseudocode needs...';
     case 'flowchart-insert':      return 'Describe where to insert a symbol...';
     case 'flowchart-import':      return 'Describe the process to diagram...';
-    default:                      return 'Ask anything... Type @ to reference a file';
+    default:                      return hasProject ? 'Ask anything... Type @ to reference a file' : 'Ask anything...';
   }
 }
 
@@ -79,6 +79,7 @@ export interface ChatInputProps {
   onSelectAction: (action: AIAction) => void;
   onAbort: () => void;
   isCrossEntity?: boolean;
+  hasProject?: boolean;
   mentionFiles?: MentionFile[];
 }
 
@@ -94,6 +95,7 @@ export const ChatInput = memo(function ChatInput({
   onSelectAction,
   onAbort,
   isCrossEntity = false,
+  hasProject = false,
   mentionFiles = [],
 }: ChatInputProps) {
   // ── Hooks must be before any early return (Rules of Hooks) ──
@@ -205,7 +207,7 @@ export const ChatInput = memo(function ChatInput({
           defaultValue=""
           onInput={handleInput}
           onKeyDown={handleMentionKeyDown}
-          placeholder={isStreaming ? 'AI is responding...' : getPlaceholder(activeActionId)}
+          placeholder={isStreaming ? 'AI is responding...' : getPlaceholder(activeActionId, hasProject)}
           className="flex-1 min-h-[80px] max-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
           rows={3}
           disabled={isStreaming}

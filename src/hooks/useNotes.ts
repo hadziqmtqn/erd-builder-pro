@@ -14,6 +14,9 @@ export function useNotes(isGuest: boolean = false) {
   const [notesTotal, setNotesTotal] = useState(0);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
   const notesRef = useRef<Note[]>(notes);
+  // Ref to activeNoteUid — used inside fetchNotes setter to preserve the active
+  // note when the page data arrives without it (race condition with selectNote)
+  const activeNoteUidRef = useRef(activeNoteUid);
   // Content edit version — bumped on every user edit, checked by selectNote to
   // prevent API/IndexedDB response from overwriting user's in-flight edits
   const contentVersionRef = useRef(0);
@@ -22,8 +25,9 @@ export function useNotes(isGuest: boolean = false) {
   const bumpContentVersion = useCallback(() => { contentVersionRef.current++; return contentVersionRef.current; }, []);
   const getContentVersion = useCallback(() => contentVersionRef.current, []);
 
-  // Keep ref in sync
+  // Keep refs in sync
   notesRef.current = notes;
+  activeNoteUidRef.current = activeNoteUid;
 
   const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
     if (isGuest) {
@@ -84,7 +88,14 @@ export function useNotes(isGuest: boolean = false) {
         if (isLoadMore) {
           setNotes(prev => [...prev, ...notesListData]);
         } else {
-          setNotes(notesListData);
+          setNotes(prev => {
+            const activeUid = activeNoteUidRef.current;
+            if (activeUid && !notesListData.some(n => n.uid === activeUid)) {
+              const existing = prev.find(n => n.uid === activeUid);
+              if (existing) return [...notesListData, existing];
+            }
+            return notesListData;
+          });
         }
         setNotesTotal(total);
         setHasMoreNotes((notesListData.length + offset) < total);
@@ -246,14 +257,14 @@ export function useNotes(isGuest: boolean = false) {
   };
 
   const saveNote = async (note: Note) => {
-    if (!note.id) return false;
+    if (!note.id && !note.uid) return false;
     
     try {
       const isSyncPending = !isGuest;
       const dataToSave = JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id });
       
       if (isGuest) {
-        const localNote = await localPersistence.getResource(note.id);
+        const localNote = await localPersistence.getResource(note.id || note.uid);
         if (localNote) {
           localNote.content = note.content;
           localNote.updated_at = new Date().toISOString();

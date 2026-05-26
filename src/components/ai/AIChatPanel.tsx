@@ -446,6 +446,7 @@ export const AIChatPanel = ({
           onSelectAction={handleSelectAction}
           onAbort={abortStream}
           isCrossEntity={isCrossEntity}
+          hasProject={!!projectId}
           mentionFiles={mentionFiles}
         />
       </div>

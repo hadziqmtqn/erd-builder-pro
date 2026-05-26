@@ -13,9 +13,11 @@ export function useFlowcharts(isGuest: boolean = false) {
   const [flowchartsTotal, setFlowchartsTotal] = useState(0);
   const [hasMoreFlowcharts, setHasMoreFlowcharts] = useState(false);
   const flowchartsRef = useRef<Flowchart[]>(flowcharts);
+  const activeFlowchartIdRef = useRef(activeFlowchartId);
 
-  // Keep ref in sync
+  // Keep refs in sync
   flowchartsRef.current = flowcharts;
+  activeFlowchartIdRef.current = activeFlowchartId;
 
   const matchesFlowchartId = (flowchart: Flowchart, uid: string | number) => {
     return String(flowchart.id) === String(uid) || String(flowchart.uid) === String(uid);
@@ -101,6 +103,11 @@ export function useFlowcharts(isGuest: boolean = false) {
             return [...preservedPrev, ...mergedList];
           }
 
+          const activeId = activeFlowchartIdRef.current;
+          if (activeId != null && !mergedList.some(f => String(f.id) === String(activeId) || (f.uid && String(f.uid) === String(activeId)))) {
+            const existing = prev.find(f => String(f.id) === String(activeId) || (f.uid && String(f.uid) === String(activeId)));
+            if (existing) return [...mergedList, existing];
+          }
           return mergedList;
         });
         setFlowchartsTotal(total);

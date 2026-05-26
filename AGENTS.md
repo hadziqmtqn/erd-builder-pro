@@ -165,7 +165,7 @@ Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in
 ### Files with this fix
 - [`src/hooks/useFlowcharts.ts`](./src/hooks/useFlowcharts.ts): `matchesFlowchartId` helper — `String(f.uid ?? f.id)` → `String(f.id) || String(f.uid)` dual check
 - [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts): all `diagramsRef.find` lookups — `String(d.id) || String(d.uid)` dual check (was `d.id` only or `String(d.uid ?? d.id)`)
-- [`src/hooks/useNotes.ts`](./src/hooks/useNotes.ts): all lookups and state filters — `String(n.id) || String(n.uid)` dual check
+- [`src/hooks/useNotes.ts`](./src/hooks/useNotes.ts): all lookups and state filters — `String(n.id) || String(n.uid)` dual check. Additionally, `saveNote` guard updated from `!note.id` to `!note.id && !note.uid` (falling back to `note.uid` for local storage draft saving when `id` is not present), resolving confirm-save failures during AI content application (Replace/Append) in `NotesView`.
 - [`src/hooks/useDrawings.ts`](./src/hooks/useDrawings.ts): `matchesDrawingId` helper + all inline lookups/filters — `String(d.id) || String(d.uid)` dual check
 - [`src/hooks/useAppMetadata.ts`](./src/hooks/useAppMetadata.ts): `activeDocument`, `initialShareSettings`, `activeDrawing` lookups — dual check
 - [`src/hooks/useAutoSave.ts`](./src/hooks/useAutoSave.ts), `useFlowchartChangeHandler.ts`, `useDrawingChangeHandler.ts`, `useFocusSync.ts`: all `String(d.uid ?? d.id)` → dual check
@@ -672,6 +672,35 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - All `src/` file paths in AGENTS.md use relative `./` links with backtick formatting: `` [`src/path/file.ts`](./src/path/file.ts) ``
 - Links open files locally when clicked in supporting terminals
 - Relative sibling paths (without `src/` prefix, e.g. after a comma) are NOT linked
+
+## URL Sync Safety Net (Editor Routes)
+
+- Setiap editor route ([`NoteEditorRoute`](./src/routes/NoteEditorRoute.tsx), [`DiagramEditorRoute`](./src/routes/DiagramEditorRoute.tsx), [`DrawingEditorRoute`](./src/routes/DrawingEditorRoute.tsx), [`FlowchartEditorRoute`](./src/routes/FlowchartEditorRoute.tsx)) memiliki `useEffect` safety net yang menyinkronkan `id` dari `useParams()` ke context `active*Id`/`active*Uid`.
+- **Masalah**: Navigation hooks (`useNoteNavigation`, `useDiagramNavigation`, dll.) memiliki URL sync effect, tapi ada race condition — data fetch dari `selectNote`/`selectDiagram` bisa selesai SEBELUM initial data fetch. Akibatnya `isItemLoading` jadi `false` dan `activeNote` masih `null`, memicu "not found" padahal file masih loading.
+- **Fix Tahap 1 (Safety Net)**: Setiap editor route:
+  1. `processedUrlRef` (`useRef(false)`) — flag sekali-proses per mount
+  2. `useEffect` dengan dep `[id, activeId, isPublicView, handleSelect]`:
+     - Jika `activeId` sudah match dengan `id` → set `processedUrlRef = true`, return
+     - Jika `activeId` masih null → panggil `handleSelect(id)`, set `processedUrlRef = true`
+  3. Di guard "select a ... to view" (`!activeId`): jika `id` ada tapi `processedUrlRef` masih `false` → render loading spinner (bukan "select")
+- **Duplicate guard**: `handleSelect` (dari navigation hooks) memiliki guard 1.5s via `lastSelected*Ref`, jadi safety net effect tidak menyebabkan double-fetch jika URL sync effect sudah jalan duluan.
+- **Fix Tahap 2 (Fetch Wipe Prevention)**: Race condition tambahan — `selectNote` menyelesaikan fetch duluan dan menambahkan note ke array, lalu `fetchNotes(pageData)` selesai dan **mereplace seluruh array** (via `setNotes(page1Data)`), menghapus active note dari array → `activeNote` jadi null, `isItemLoading` false → "not found". Fix di semua 4 hook:
+  - Tambah ref untuk active ID di setiap hook: `activeNoteUidRef`, `activeDiagramIdRef`, `activeDrawingUidRef`, `activeFlowchartIdRef`
+  - Di `fetch*`, cabang non-loadMore: `set*(prev => {...})` — jika active ID tidak ada di new page data, preserve item dari `prev`
+  - File:
+    - [`src/hooks/useNotes.ts`](./src/hooks/useNotes.ts): `activeNoteUidRef` + conditional preserve di `setNotes`
+    - [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts): `activeDiagramIdRef` + preserve di `setDiagrams`
+    - [`src/hooks/useDrawings.ts`](./src/hooks/useDrawings.ts): `activeDrawingUidRef` + preserve di `setDrawings` (merge pattern)
+    - [`src/hooks/useFlowcharts.ts`](./src/hooks/useFlowcharts.ts): `activeFlowchartIdRef` + preserve di `setFlowcharts` (merge pattern)
+- **File pattern safety net**: [`src/routes/NoteEditorRoute.tsx`](./src/routes/NoteEditorRoute.tsx):17-30 (safety net effect), 32-42 (guard + loading fallback)
+
+## Server-Side AI Proxy
+
+- **`server/routes/ai.ts`**: `POST /api/ai/proxy` — proxy endpoint yang meneruskan request chat ke OpenAI-compatible provider dan stream SSE response kembali ke client.
+- **Kenapa proxy**: API key tidak langsung ter-expose ke third-party di browser DevTools. Key dikirim dalam POST body dari client ke server, lalu server forward ke provider.
+- **`res.on("close")` vs `req.on("close")`**: Gunakan `res.on("close")` untuk detect client disconnect. `req.on("close")` fires premature saat POST body selesai dibaca oleh `express.json()`, yang menyebabkan `AbortController.abort()` dipanggil sebelum fetch ke AI provider sempat konek.
+- **30s timeout**: Safety timeout agar fetch ke provider tidak hang forever.
+- **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
 
 ## @Mentions as Clickable Links in Chat
 

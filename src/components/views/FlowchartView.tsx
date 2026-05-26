@@ -652,7 +652,7 @@ export const FlowchartView = React.memo(({
     pendingContentRef.current = null;
     clearParseCache();
   }, [setNodes, setEdges, takeSnapshot]);
-  
+
   const memoizedEdges = useMemo(() => edges.map(e => {
     const isHovered = e.id === hoveredEdgeId;
     const isSelected = e.id === selectedEdgeId;

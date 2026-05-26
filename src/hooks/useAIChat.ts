@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { AIChatSession, AIChatMessage } from '@/types';
 import { fetchEntityContext, buildSiblingContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
 
 export type EntityContext = EntityCtxType;
 
@@ -553,7 +554,7 @@ export function useAIChat(
     }
   }, []);
 
-  // ─── AI API Call (OpenAI-compatible) ─────────────────
+  // ─── AI API Call (via server-side proxy) ────────────
 
   async function callAIStream(
     baseUrl: string,
@@ -571,23 +572,27 @@ export function useAIChat(
       created_at: new Date().toISOString(),
     }]);
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await apiFetch('/api/ai/proxy', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model,
         messages,
-        stream: true,
+        model,
+        apiKey,
+        baseUrl,
       }),
       signal,
     });
 
     if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      throw new Error(`Connection to AI API failed (${response.status}).\n\nProvider URL: ${baseUrl}\nModel: ${model}\n\nPlease check your API key and URL in Settings > AI Config.\n\nDetails: ${errBody || response.statusText}`);
+      let errMsg = `AI request failed (${response.status})`;
+      try {
+        const errBody = await response.json();
+        errMsg = errBody.details || errBody.error || errMsg;
+      } catch {}
+      throw new Error(errMsg);
     }
 
     const reader = response.body?.getReader();

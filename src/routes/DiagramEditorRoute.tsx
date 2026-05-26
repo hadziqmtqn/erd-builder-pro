@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
@@ -18,10 +18,33 @@ export function DiagramEditorRoute() {
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
     setIsLocalSaving, lastLoadedDiagramIdRef,
-    isERDItemLoading,
+    isERDItemLoading, handleDiagramSelect,
   } = ctx;
 
+  // Safety net: URL has id but context hasn't synced yet
+  const processedUrlRef = useRef(false);
+  useEffect(() => {
+    if (isPublicView || !id) return;
+    if (processedUrlRef.current) return;
+    if (String(activeDiagramId) === id) {
+      processedUrlRef.current = true;
+      return;
+    }
+    if (!activeDiagramId) {
+      processedUrlRef.current = true;
+      handleDiagramSelect(id);
+    }
+  }, [id, activeDiagramId, isPublicView, handleDiagramSelect]);
+
   if (!isPublicView && !activeDiagramId) {
+    if (id && !processedUrlRef.current) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a diagram to view</p>
