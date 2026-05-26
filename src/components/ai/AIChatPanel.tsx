@@ -245,9 +245,59 @@ export const AIChatPanel = ({
           }
         } else if (file.type === 'flowchart') {
           const fc = flowcharts.find(f => String(f.id) === String(file.uid) || String(f.uid) === String(file.uid));
-          content = fc?.data || '';
+          const rawData = fc?.data || '';
+          if (rawData) {
+            try {
+              const parsed = JSON.parse(rawData);
+              const nodes = parsed.nodes || [];
+              const edges = parsed.edges || [];
+              const nodeMap = new Map(nodes.map((n: any) => [n.id, n.data?.label || n.label || '']));
+              
+              const stepLines = nodes
+                .map((n: any) => `    - Step [${n.id}]: "${n.data?.label || n.label || ''}" (${n.type || 'step'})`)
+                .join('\n');
+              const connectionLines = edges
+                .map((e: any) => `    - Connection: "${nodeMap.get(e.source) || e.source}" ➔ "${nodeMap.get(e.target) || e.target}"${e.label ? ` (label: ${e.label})` : ''}`)
+                .join('\n');
+              
+              content = `Flowchart "${file.name}" structure:\n  Steps:\n${stepLines}\n  Connections:\n${connectionLines}`;
+            } catch {
+              content = rawData;
+            }
+          }
         } else if (file.type === 'diagram') {
-          content = `Referenced ERD diagram: ${file.name}`;
+          const diagram = diagrams.find(d => String(d.id) === String(file.uid) || String(d.uid) === String(file.uid));
+          if (diagram) {
+            const { data: entities } = await supabase
+              .from('entities')
+              .select('id, name')
+              .eq('diagram_id', diagram.id);
+            if (entities && entities.length > 0) {
+              const entityIds = entities.map(e => e.id);
+              const { data: columns } = await supabase
+                .from('columns')
+                .select('entity_id, name, type, is_pk')
+                .in('entity_id', entityIds);
+              
+              const colsByEntity: Record<string | number, any[]> = {};
+              for (const col of columns || []) {
+                if (!colsByEntity[col.entity_id]) colsByEntity[col.entity_id] = [];
+                colsByEntity[col.entity_id].push(col);
+              }
+
+              const entityLines = entities.map(e => {
+                const colStr = (colsByEntity[e.id] || [])
+                  .map(c => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}`)
+                  .join(', ');
+                return `    - Table: ${e.name} (${colStr})`;
+              }).join('\n');
+              content = `ERD diagram "${file.name}" tables:\n${entityLines}`;
+            } else {
+              content = `ERD diagram "${file.name}" (no tables defined)`;
+            }
+          } else {
+            content = `Referenced ERD diagram: ${file.name}`;
+          }
         } else if (file.type === 'drawing') {
           const dw = drawings.find(d => String(d.id) === String(file.uid) || String(d.uid) === String(file.uid));
           content = dw?.data || '';

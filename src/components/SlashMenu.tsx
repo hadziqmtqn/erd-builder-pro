@@ -240,7 +240,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
           <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60">{cat}</div>
           {catItems.map((item, index) => {
             const globalIndex = filteredItems.indexOf(item);
-            return <ItemRow key={item.title} item={item} isSelected={globalIndex === selectedIndex} index={globalIndex} 
+            return <ItemRow key={item.title} item={item} isSelected={globalIndex === selectedIndex} index={globalIndex} query={query}
               onMouseEnter={() => setSelectedIndex(globalIndex)}
               onClick={() => {
                 if (item.customView) {
@@ -260,7 +260,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
     })
   ) : (
     filteredItems.map((item, index) => (
-      <ItemRow key={item.title} item={item} isSelected={index === selectedIndex} index={index} 
+      <ItemRow key={item.title} item={item} isSelected={index === selectedIndex} index={index} query={query}
         onMouseEnter={() => setSelectedIndex(index)}
         onClick={() => {
           if (item.customView) {
@@ -309,7 +309,21 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   );
 };
 
-const ItemRow = ({ item, isSelected, index, onClick, onMouseEnter }: { item: SlashMenuItem, isSelected: boolean, index: number, onClick: () => void, onMouseEnter: () => void }) => (
+const ItemRow = ({ item, isSelected, index, onClick, onMouseEnter, query }: { item: SlashMenuItem, isSelected: boolean, index: number, onClick: () => void, onMouseEnter: () => void, query?: string }) => {
+  const titleParts = useMemo(() => {
+    if (!query) return [{ text: item.title, match: false }];
+    const lower = item.title.toLowerCase();
+    const q = query.toLowerCase();
+    const idx = lower.indexOf(q);
+    if (idx === -1) return [{ text: item.title, match: false }];
+    const parts: { text: string; match: boolean }[] = [];
+    if (idx > 0) parts.push({ text: item.title.slice(0, idx), match: false });
+    parts.push({ text: item.title.slice(idx, idx + q.length), match: true });
+    if (idx + q.length < item.title.length) parts.push({ text: item.title.slice(idx + q.length), match: false });
+    return parts;
+  }, [item.title, query]);
+
+  return (
   <button
     data-index={index}
     onPointerDown={(e) => e.preventDefault()}
@@ -326,7 +340,15 @@ const ItemRow = ({ item, isSelected, index, onClick, onMouseEnter }: { item: Sla
     )}>
       {item.icon}
     </div>
-    <span className="text-sm font-medium flex-1 truncate">{item.title}</span>
+    <span className="text-sm font-medium flex-1 truncate">
+      {titleParts.map((part, i) =>
+        part.match ? (
+          <span key={i} className="text-primary font-bold">{part.text}</span>
+        ) : (
+          <span key={i}>{part.text}</span>
+        )
+      )}
+    </span>
     {item.shortcut && !item.children && !item.customView && (
       <span className="text-[10px] font-mono opacity-40 ml-auto">{item.shortcut}</span>
     )}
@@ -335,6 +357,7 @@ const ItemRow = ({ item, isSelected, index, onClick, onMouseEnter }: { item: Sla
     )}
   </button>
 );
+};
 
 const Trash2Placeholder = ({ className }: { className?: string }) => <Trash2 className={className} />;
 

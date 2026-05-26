@@ -596,6 +596,20 @@ export const FlowchartView = React.memo(({
     return unregister;
   }, [registerContentHandler, setNodes, setEdges, takeSnapshot]);
 
+  useEffect(() => {
+    const pendingFlowchart = localStorage.getItem('pending_create_flowchart_json');
+    if (pendingFlowchart) {
+      localStorage.removeItem('pending_create_flowchart_json');
+      const result = previewFlowchartContent(pendingFlowchart);
+      if (result && result.nodes.length > 0) {
+        takeSnapshot(nodesRef.current, edgesRef.current);
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        toast.success('Applied generated architecture Flowchart to new canvas');
+      }
+    }
+  }, [setNodes, setEdges, takeSnapshot]);
+
   const handleConfirmAppend = useCallback((replaceGroupSection?: string) => {
     const content = pendingContentRef.current;
     if (!content) return;
