@@ -55,23 +55,31 @@ export class NoteExporter {
     const exportStyles = `
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
       body { 
         font-family: 'Inter', -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, oxygen, ubuntu, cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
         padding: 40px; 
         color: #111; 
-        line-height: 1.4; 
+        line-height: 1.5; 
         max-width: 800px; 
         margin: 0 auto; 
         background: white;
       }
       
-      h1 { font-size: 32pt; font-weight: 800; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 20px; color: #000; letter-spacing: -0.02em; }
-      h2 { font-size: 22pt; font-weight: 700; margin-top: 24px; margin-bottom: 12px; color: #111; letter-spacing: -0.01em; }
-      h3 { font-size: 16pt; font-weight: 600; margin-top: 20px; margin-bottom: 8px; color: #222; }
+      h1 { font-size: 28pt; font-weight: 800; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-top: 0; margin-bottom: 16px; color: #000; letter-spacing: -0.02em; }
+      h2 { font-size: 20pt; font-weight: 700; margin-top: 20px; margin-bottom: 8px; color: #111; letter-spacing: -0.01em; }
+      h3 { font-size: 15pt; font-weight: 600; margin-top: 16px; margin-bottom: 6px; color: #222; }
+      h4 { font-size: 13pt; font-weight: 600; margin-top: 14px; margin-bottom: 6px; color: #333; }
+      h5, h6 { font-size: 11.5pt; font-weight: 600; margin-top: 12px; margin-bottom: 4px; color: #444; }
       
-      .meta { display: flex; justify-content: space-between; color: #888; font-size: 10pt; margin-bottom: 20px; border-bottom: 1px solid #f5f5f5; padding-bottom: 10px; font-weight: 500; }
+      .meta { display: flex; justify-content: space-between; color: #888; font-size: 10pt; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid #f5f5f5; padding-bottom: 10px; font-weight: 500; }
       
-      p { margin-bottom: 1em; font-size: 11pt; color: #374151; }
+      p { margin-bottom: 10px; font-size: 11pt; color: #374151; line-height: 1.5; }
       
       blockquote { 
         border-left: 4px solid #e5e7eb; 
@@ -116,8 +124,9 @@ export class NoteExporter {
       }
 
       /* Lists */
-      ul:not([data-type="taskList"]), ol { padding-left: 24px; margin-bottom: 1em; }
-      li { margin-bottom: 0.4em; }
+      ul:not([data-type="taskList"]), ol { padding-left: 24px; margin-bottom: 12px; }
+      li { margin-bottom: 4px; }
+      li p { margin-bottom: 0; }
 
       /* Tables */
       table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 20px 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
@@ -192,6 +201,16 @@ export class NoteExporter {
       </html>
     `);
     printWindow.document.close();
+  }
+
+  /**
+   * Helper to decode HTML entities
+   */
+  private static decodeHtml(html: string): string {
+    if (typeof document === 'undefined') return html;
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
   }
 
   /**
@@ -313,7 +332,8 @@ export class NoteExporter {
             pdf.setFont("helvetica", "normal");
             pdf.setFontSize(10);
             pdf.setTextColor(80);
-            pdf.text(`${h.level === 1 ? '•' : '-'} ${h.text}`, margin + indent, currentY + 9);
+            const decodedHeadingText = NoteExporter.decodeHtml(h.text);
+            pdf.text(`${h.level === 1 ? '•' : '-'} ${decodedHeadingText}`, margin + indent, currentY + 9);
             currentY += 14;
           }
           currentY += 10;
@@ -331,180 +351,265 @@ export class NoteExporter {
       const doc = parser.parseFromString(content, "text/html");
       const nodes = Array.from(doc.body.childNodes);
 
-      for (const node of nodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const el = node as HTMLElement;
-          const tag = el.tagName.toLowerCase();
+      const renderNode = async (el: HTMLElement) => {
+        const tag = el.tagName.toLowerCase();
 
-          // Heading Handler
-          if (['h1', 'h2', 'h3', 'h4'].includes(tag)) {
-            const size = opts.preserveFormatting
-              ? (tag === 'h1' ? 20 : tag === 'h2' ? 16 : 14)
-              : 12;
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(size);
-            const lines = pdf.splitTextToSize(el.innerText, contentWidth);
-            const h = lines.length * (size * 1.3);
-            
-            checkNewPage(h + 10);
-            pdf.text(lines, margin, currentY + size);
-            currentY += h + 20;
-          }
+        // Heading Handler
+        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+          const size = opts.preserveFormatting
+            ? (tag === 'h1' ? 20 : tag === 'h2' ? 16 : tag === 'h3' ? 13.5 : 12)
+            : 11;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(size);
+          const decodedText = NoteExporter.decodeHtml(el.innerText.trim());
+          const lines = pdf.splitTextToSize(decodedText, contentWidth);
+          const h = lines.length * (size * 1.25);
+          
+          // Add spacing before heading (margin-top equivalent), but skip or reduce if it's top of the page
+          const beforeSpacing = currentY > margin ? 16 : 0;
+          checkNewPage(h + beforeSpacing + 4);
+          currentY += beforeSpacing;
+          
+          pdf.text(lines, margin, currentY + size);
+          currentY += h + 5; // Compact margin-bottom
+        }
 
-          // Image Handler
-          else if (tag === 'img' || el.querySelector('img')) {
-            const imgEl = tag === 'img' ? (el as HTMLImageElement) : el.querySelector('img')!;
-            const src = imgEl.getAttribute('src');
-            
-            if (src) {
-              const imgData = await this.getImageData(src);
-              if (imgData) {
-                // Approximate size (simple scaling)
-                const imgW = contentWidth;
-                const imgH = (imgW * 0.6); // Aspect ratio placeholder or calculated
-                
-                checkNewPage(imgH + 20);
-                pdf.addImage(imgData.data, imgData.format, margin, currentY, imgW, imgH, undefined, 'FAST');
-                currentY += imgH + 20;
-              }
+        // Image Handler
+        else if (tag === 'img') {
+          const src = el.getAttribute('src');
+          if (src) {
+            const imgData = await NoteExporter.getImageData(src);
+            if (imgData) {
+              const imgW = contentWidth;
+              const imgH = (imgW * 0.6);
+              
+              checkNewPage(imgH + 16);
+              pdf.addImage(imgData.data, imgData.format, margin, currentY + 4, imgW, imgH, undefined, 'FAST');
+              currentY += imgH + 16;
             }
           }
+        }
+        else if (el.querySelector('img') && tag !== 'p' && tag !== 'li' && tag !== 'div' && tag !== 'blockquote') {
+          const imgEl = el.querySelector('img')!;
+          const src = imgEl.getAttribute('src');
+          if (src) {
+            const imgData = await NoteExporter.getImageData(src);
+            if (imgData) {
+              const imgW = contentWidth;
+              const imgH = (imgW * 0.6);
+              
+              checkNewPage(imgH + 16);
+              pdf.addImage(imgData.data, imgData.format, margin, currentY + 4, imgW, imgH, undefined, 'FAST');
+              currentY += imgH + 16;
+            }
+          }
+        }
 
-          // Table Handler
-          else if (['table', 'figure'].includes(tag) && (tag === 'figure' ? !!el.querySelector('table') : true)) {
-            const tableEl = tag === 'table' ? el : el.querySelector('table')!;
-            
-            const rows = Array.from(tableEl.querySelectorAll<HTMLElement>('tr'));
-            if (rows.length === 0) continue;
-
+        // Table Handler
+        else if (['table', 'figure'].includes(tag) && (tag === 'figure' ? !!el.querySelector('table') : true)) {
+          const tableEl = tag === 'table' ? el : el.querySelector('table')!;
+          const rows = Array.from(tableEl.querySelectorAll<HTMLElement>('tr'));
+          if (rows.length > 0) {
             // Count columns
             let numCols = 0;
             rows.forEach(row => {
               const cells = Array.from(row.querySelectorAll('th, td'));
               numCols = Math.max(numCols, cells.length);
             });
-            if (numCols === 0) continue;
 
-            const colWidth = contentWidth / numCols;
-            const cellPad = 5;
-            const minRowH = 22;
+            if (numCols > 0) {
+              const colWidth = contentWidth / numCols;
+              const cellPad = 5;
+              const minRowH = 22;
 
-            // Pre-calculate row heights
-            let totalTableH = 0;
-            const rowHeights: number[] = [];
-            for (const row of rows) {
-              const cells = Array.from(row.querySelectorAll<HTMLElement>('th, td'));
-              let maxH = minRowH;
+              // Pre-calculate row heights
+              let totalTableH = 0;
+              const rowHeights: number[] = [];
+              for (const row of rows) {
+                const cells = Array.from(row.querySelectorAll<HTMLElement>('th, td'));
+                let maxH = minRowH;
+                pdf.setFontSize(9);
+                for (const cell of cells) {
+                  const text = cell.innerText.trim();
+                  if (text) {
+                    const lines = pdf.splitTextToSize(text, colWidth - cellPad * 2);
+                    maxH = Math.max(maxH, lines.length * 11 + cellPad * 2);
+                  }
+                }
+                rowHeights.push(maxH);
+                totalTableH += maxH;
+              }
+
+              checkNewPage(totalTableH + 16);
+
+              let yStart = currentY + 4;
+              let rowIdx = 0;
               pdf.setFontSize(9);
-              for (const cell of cells) {
-                const text = cell.innerText.trim();
-                if (text) {
-                  const lines = pdf.splitTextToSize(text, colWidth - cellPad * 2);
-                  maxH = Math.max(maxH, lines.length * 11 + cellPad * 2);
-                }
-              }
-              rowHeights.push(maxH);
-              totalTableH += maxH;
-            }
 
-            checkNewPage(totalTableH + 20);
+              for (const row of rows) {
+                const cells = Array.from(row.querySelectorAll<HTMLElement>('th, td'));
+                const isHeader = row.closest('thead') !== null || cells.some(c => c.tagName.toLowerCase() === 'th');
+                const rHeight = rowHeights[rowIdx] || minRowH;
+                let xStart = margin;
 
-            // Render table
-            let yStart = currentY + 8;
-            let rowIdx = 0;
-            pdf.setFontSize(9);
+                for (const cell of cells) {
+                  const text = cell.innerText.trim();
+                  const w = colWidth;
 
-            for (const row of rows) {
-              const cells = Array.from(row.querySelectorAll<HTMLElement>('th, td'));
-              const isHeader = row.closest('thead') !== null || cells.some(c => c.tagName.toLowerCase() === 'th');
-              const rHeight = rowHeights[rowIdx] || minRowH;
-              let xStart = margin;
+                  if (isHeader) {
+                    pdf.setFillColor(248, 249, 250);
+                    pdf.rect(xStart, yStart, w, rHeight, 'F');
+                  }
 
-              for (const cell of cells) {
-                const text = cell.innerText.trim();
-                const w = colWidth;
+                  pdf.setDrawColor(210);
+                  pdf.setLineWidth(0.3);
+                  pdf.rect(xStart, yStart, w, rHeight, 'S');
 
-                // Background
-                if (isHeader) {
-                  pdf.setFillColor(248, 249, 250);
-                  pdf.rect(xStart, yStart, w, rHeight, 'F');
+                  if (text) {
+                    pdf.setTextColor(isHeader ? 10 : 70);
+                    pdf.setFont("helvetica", isHeader ? "bold" : "normal");
+                    const lines = pdf.splitTextToSize(text, w - cellPad * 2);
+                    pdf.text(lines, xStart + cellPad, yStart + cellPad + 9);
+                  }
+
+                  xStart += w;
                 }
 
-                // Border
-                pdf.setDrawColor(210);
-                pdf.setLineWidth(0.3);
-                pdf.rect(xStart, yStart, w, rHeight, 'S');
-
-                // Text
-                if (text) {
-                  pdf.setTextColor(isHeader ? 10 : 70);
-                  pdf.setFont("helvetica", isHeader ? "bold" : "normal");
-                  const lines = pdf.splitTextToSize(text, w - cellPad * 2);
-                  pdf.text(lines, xStart + cellPad, yStart + cellPad + 9);
-                }
-
-                xStart += w;
+                yStart += rHeight;
+                rowIdx++;
               }
 
-              yStart += rHeight;
-              rowIdx++;
+              currentY = yStart + 10;
+              pdf.setTextColor(0);
+              pdf.setFont("helvetica", "normal");
             }
-
-            currentY = yStart + 16;
-            pdf.setTextColor(0);
-            pdf.setFont("helvetica", "normal");
           }
+        }
 
-          // Paragraph / List Item Handler
-          else if (['p', 'li', 'div', 'blockquote'].includes(tag)) {
+        // List Container Handler
+        else if (tag === 'ul' || tag === 'ol') {
+          for (const child of Array.from(el.childNodes)) {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+              await renderNode(child as HTMLElement);
+            }
+          }
+        }
+
+        // List Item Handler
+        else if (tag === 'li') {
+          // Clone and strip nested lists to prevent double printing
+          const clone = el.cloneNode(true) as HTMLElement;
+          const nestedLists = Array.from(clone.querySelectorAll('ul, ol'));
+          nestedLists.forEach(nl => nl.remove());
+          
+          const text = clone.innerText.trim();
+          if (text) {
             const isTask = el.getAttribute('data-type') === 'taskItem' || el.classList.contains('task-item');
             const isChecked = el.getAttribute('data-checked') === 'true';
-            const isBullet = tag === 'li' && !isTask;
-            const isQuote = tag === 'blockquote';
-            const useQuoteStyle = isQuote && opts.preserveFormatting;
-            
-            const indent = (isBullet || isTask) ? 20 : useQuoteStyle ? 15 : 0;
-            const text = el.innerText.trim();
-            
-            if (text) {
-              pdf.setFont("helvetica", useQuoteStyle ? "oblique" : "normal");
-              pdf.setFontSize(opts.preserveFormatting ? (isQuote ? 10 : 11) : 10);
-              
-              if (useQuoteStyle) {
-                pdf.setDrawColor(200);
-                pdf.setLineWidth(2);
-                pdf.line(margin, currentY, margin, currentY + 15); // Simple left border
-              }
+            const isBullet = !isTask;
 
-              const lines = pdf.splitTextToSize(text, contentWidth - indent);
-              const h = lines.length * 14;
-              
-              checkNewPage(h + 10);
-              
-              if (isBullet) {
-                pdf.text("•", margin + 5, currentY + 11);
-              } else if (isTask) {
-                pdf.setDrawColor(150);
-                pdf.rect(margin + 2, currentY + 2, 10, 10);
-                if (isChecked) {
-                  pdf.setFont("helvetica", "bold");
-                  pdf.text("L", margin + 4, currentY + 10); // Simple checkmark
-                  pdf.setFont("helvetica", "normal");
-                }
+            // Calculate indentation based on list depth
+            let listDepth = 0;
+            let parent: HTMLElement | null = el.parentElement;
+            while (parent && parent !== doc.body) {
+              if (['ul', 'ol'].includes(parent.tagName.toLowerCase())) {
+                listDepth++;
               }
-              
-              pdf.text(lines, margin + indent, currentY + 11);
-              currentY += h + 12;
+              parent = parent.parentElement;
+            }
+            if (listDepth === 0) listDepth = 1;
+            
+            const indent = listDepth * 16;
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(opts.preserveFormatting ? 10.5 : 10);
+            
+            const lines = pdf.splitTextToSize(text, contentWidth - indent);
+            const h = lines.length * 13.5;
+            
+            checkNewPage(h + 6);
+            
+            if (isBullet) {
+              pdf.text(listDepth > 1 ? "-" : "•", margin + indent - 10, currentY + 9);
+            } else if (isTask) {
+              pdf.setDrawColor(150);
+              pdf.rect(margin + indent - 12, currentY + 1, 9, 9);
+              if (isChecked) {
+                pdf.setFont("helvetica", "bold");
+                pdf.text("L", margin + indent - 10, currentY + 8);
+                pdf.setFont("helvetica", "normal");
+              }
+            }
+            
+            pdf.text(lines, margin + indent, currentY + 9);
+            currentY += h + 4;
+          }
+
+          // Recurse to render any nested lists or tables/images inside the list item
+          for (const child of Array.from(el.childNodes)) {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+              const childEl = child as HTMLElement;
+              const childTag = childEl.tagName.toLowerCase();
+              if (['ul', 'ol', 'img', 'table'].includes(childTag)) {
+                await renderNode(childEl);
+              }
             }
           }
+        }
+
+        // Paragraph / Div / Blockquote Handler
+        else if (['p', 'div', 'blockquote'].includes(tag)) {
+          // Clone and strip nested elements to prevent double printing
+          const clone = el.cloneNode(true) as HTMLElement;
+          const nestedBlocks = Array.from(clone.querySelectorAll('ul, ol, table, img, h1, h2, h3, h4, h5, h6, blockquote, hr'));
+          nestedBlocks.forEach(nb => nb.remove());
           
-          // Horizontal Rule
-          else if (tag === 'hr') {
-            checkNewPage(20);
-            pdf.setDrawColor(240);
-            pdf.line(margin, currentY + 10, pageWidth - margin, currentY + 10);
-            currentY += 20;
+          const text = clone.innerText.trim();
+          if (text) {
+            const isQuote = tag === 'blockquote';
+            const useQuoteStyle = isQuote && opts.preserveFormatting;
+            const indent = useQuoteStyle ? 15 : 0;
+            
+            pdf.setFont("helvetica", useQuoteStyle ? "oblique" : "normal");
+            pdf.setFontSize(opts.preserveFormatting ? (isQuote ? 10 : 10.5) : 10);
+            
+            if (useQuoteStyle) {
+              pdf.setDrawColor(200);
+              pdf.setLineWidth(2);
+              pdf.line(margin, currentY, margin, currentY + 12);
+            }
+            
+            const lines = pdf.splitTextToSize(text, contentWidth - indent);
+            const h = lines.length * 13.5;
+            
+            checkNewPage(h + 6);
+            pdf.text(lines, margin + indent, currentY + 9);
+            currentY += h + 5;
           }
+
+          // Recurse to render nested items
+          for (const child of Array.from(el.childNodes)) {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+              const childEl = child as HTMLElement;
+              const childTag = childEl.tagName.toLowerCase();
+              if (['ul', 'ol', 'img', 'table', 'blockquote', 'hr', 'p', 'div'].includes(childTag)) {
+                await renderNode(childEl);
+              }
+            }
+          }
+        }
+
+        // Horizontal Rule
+        else if (tag === 'hr') {
+          checkNewPage(16);
+          pdf.setDrawColor(240);
+          pdf.line(margin, currentY + 8, pageWidth - margin, currentY + 8);
+          currentY += 16;
+        }
+      };
+
+      for (const node of nodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          await renderNode(node as HTMLElement);
         }
       }
 

@@ -4,6 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
 import { AIChatMessage, AIChatSession } from '@/types';
+import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { toast } from 'sonner';
 
 interface MentionFile {
   name: string;
@@ -39,6 +41,38 @@ function hasSQLContent(content: string): boolean {
   if (sqlKeywords.test(content)) return true;
   return false;
 }
+
+function extractSQL(content: string): string | null {
+  const sqlKeywords = /\b(CREATE\s+TABLE|ALTER\s+TABLE|INSERT\s+INTO)\b/i;
+  const blockRegex = /```(?:\w*)\n?([\s\S]*?)```/g;
+  let match;
+  const blocks: string[] = [];
+  while ((match = blockRegex.exec(content)) !== null) {
+    if (sqlKeywords.test(match[1])) {
+      blocks.push(match[1].trim());
+    }
+  }
+  if (blocks.length > 0) return blocks.join('\n\n');
+  if (sqlKeywords.test(content)) return content.trim();
+  return null;
+}
+
+function extractFlowchartJSON(content: string): string | null {
+  const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed && Array.isArray(parsed.nodes)) return match[1].trim();
+    } catch { /* ignore */ }
+  }
+  try {
+    const parsed = JSON.parse(content.trim());
+    if (parsed && Array.isArray(parsed.nodes)) return content.trim();
+  } catch { /* ignore */ }
+  return null;
+}
+
 import { Button } from '@/components/ui/button';
 import { CodeBlock } from './CodeBlock';
 
@@ -92,6 +126,7 @@ export const ChatMessages = memo(function ChatMessages({
   entityTypeMeta,
   mentionFiles = [],
 }: ChatMessagesProps) {
+  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, activeProjectId } = useWorkspace();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -412,6 +447,45 @@ export const ChatMessages = memo(function ChatMessages({
                         )}
                       </>
                     )}
+
+                    {hasSQLContent(msg.content) && (
+                      <button
+                        onClick={async () => {
+                          const sql = extractSQL(msg.content);
+                          if (sql) {
+                            localStorage.setItem('pending_create_erd_ddl', sql);
+                            toast.info('Creating new ERD diagram...');
+                            await handleSidebarDiagramCreate('ERD from Chat', activeProjectId);
+                          }
+                        }}
+                        className="flex items-center justify-center size-8 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md shadow-sm transition-all cursor-pointer"
+                        title="Create New ERD Diagram"
+                      >
+                        <Database className="size-4" />
+                      </button>
+                    )}
+
+                    {hasFlowchartJSON(msg.content) && (
+                      <button
+                        onClick={async () => {
+                          const json = extractFlowchartJSON(msg.content);
+                          if (json) {
+                            localStorage.setItem('pending_create_flowchart_json', json);
+                            toast.info('Creating new Flowchart...');
+                            await handleSidebarFlowchartCreate('Flowchart from Chat', activeProjectId);
+                          }
+                        }}
+                        className="flex items-center justify-center size-8 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md shadow-sm transition-all cursor-pointer"
+                        title="Create New Flowchart"
+                      >
+                        <GitBranch className="size-4" />
+                      </button>
+                    )}
+
+                    {(hasSQLContent(msg.content) || hasFlowchartJSON(msg.content)) && (
+                      <div className="w-px h-6 bg-border mx-1" />
+                    )}
+
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(msg.content);

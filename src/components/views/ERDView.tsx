@@ -251,6 +251,20 @@ const ERDViewComponent = ({
     return unregister;
   }, [registerContentHandler, setNodes, setEdges]);
 
+  React.useEffect(() => {
+    const pendingDdl = localStorage.getItem('pending_create_erd_ddl');
+    if (pendingDdl) {
+      localStorage.removeItem('pending_create_erd_ddl');
+      const result = applyToErdContent([], [], 'erd-generate-sql', pendingDdl);
+      if (result) {
+        takeSnapshotRef.current?.([], []);
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        toast.success('Applied generated architecture DDL to new diagram');
+      }
+    }
+  }, [setNodes, setEdges]);
+
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 

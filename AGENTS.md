@@ -725,4 +725,31 @@ The prompt is built as a **prefix of the user message** (not system message) —
   - Membatasi boundary check di `parseColumnConstraints` agar berhenti di `;` (semicolon), sehingga statement `ALTER TABLE` berurutan ter-parse dengan benar tanpa melompati baris.
 - **Integration**:
   - [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) mengimpor `parseSqlDdl` untuk menggantikan regex-based `parseAlterTableAddColumn` dan parsing relasi manual.
-  - Diagram visual sinkron 100% dengan dialek PostgreSQL, MySQL, dan SQLite.
+- Diagram visual sinkron 100% dengan dialek PostgreSQL, MySQL, dan SQLite.
+
+## Fase 2 Cross-Document Interoperability & AI Workspace Architect
+
+- **Automated Document Creation**:
+  - Tombol **"Create ERD"** dan **"Create Flowchart"** ditambahkan pada balon pesan chat AI jika asisten menghasilkan SQL DDL atau JSON flowchart.
+  - Alur: Mengambil data terkait → Menyimpannya di `localStorage` (`pending_create_erd_ddl` atau `pending_create_flowchart_json`) → Memanggil fungsi pembuatan dokumen dari context (`handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate`) → Mengarahkan pengguna ke halaman baru.
+  - Mount hook: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx) dan [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx) mendeteksi item `localStorage` pada mount, memparsing konten, menginisialisasi canvas, mengambil snapshot riwayat (untuk undo/redo), dan membersihkan storage secara otomatis.
+- **Rich Context Mentions**:
+  - **Diagram Mentions**: Penyebutan `@DiagramName` pada chat memicu pencarian database dinamis untuk mengidentifikasi seluruh daftar tabel, tipe kolom, dan primary keys untuk dikirim sebagai prompt konteks (sebelumnya hanya mengirimkan nama diagram).
+  - **Flowchart Mentions**: Penyebutan `@FlowchartName` memparsing JSON alur ReactFlow menjadi ringkasan deskriptif terstruktur ("Steps" dan "Connections") sebelum dikirim ke AI, menghemat alokasi token dan meningkatkan pemahaman alur oleh model.
+
+## Spacing & Spacing Fixes (Editor and PDF Export)
+
+- **In-App Editor Spacing**:
+  - **Bug**: Di Tiptap editor (yang dibungkus class `.tiptap-editor-lined`), gap tinggi antar heading (`h1` sampai `h6`) dengan paragraf/content sekitarnya terlalu mepet/stacked (Gambar 2). Hal ini dikarenakan selector `.tiptap-editor-lined .ProseMirror>*` memaksa `margin-top: 0 !important` dan `margin-bottom: 0 !important`.
+  - **Fix**: Mengubah reset global di [`src/index.css`](./src/index.css) menggunakan `:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6)` sehingga mengecualikan heading dari zero-margin reset. Mendefinisikan margin-top/bottom yang proporsional dan spacious untuk `h1` sampai `h6` agar memiliki breathing room yang optimal, serta menambahkan selector `:first-child` khusus pada heading untuk mereset `margin-top` ke `0.5rem` bila heading berada paling atas dokumen.
+- **PDF Export Spacing**:
+  - **Bug**: Pada hasil export Note ke PDF (Gambar 1), jarak (gap) antar heading, paragraf, dan list item terlalu longgar karena margins/paddings default browser tidak ter-reset, ditambah penambahan gap manual yang terlalu besar pada `exportToPDF` (jsPDF direct object builder) dan print styling (`printNote`).
+  - **Fix**:
+    1. **Direct PDF Export (`exportToPDF` di [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
+       - Mengimplementasikan static helper `NoteExporter.decodeHtml(html)` untuk me-resolve HTML entities (seperti `&amp;` -> `&`) pada Table of Contents outline dan heading teks.
+       - Mengubah render loop flat menjadi engine rekursif DOM traversal (`renderNode`) untuk menangani rendering elemen block, list (`ul`/`ol`), list item (`li`), dan blockquote secara presisi dengan dynamic indentation berdasarkan level kedalaman list (`listDepth * 16`).
+       - Memperketat spacing vertikal dengan mengurangi `margin-bottom` paragraph dari `12pt` ke `5pt` dan `margin-bottom` heading dari `20pt` ke `5pt`.
+    2. **High-Quality Print PDF (`printNote` di [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
+       - Menambahkan CSS reset global (`* { margin: 0; padding: 0; box-sizing: border-box; }`) di `exportStyles` guna mencegah margin default browser menumpuk.
+       - Mengatur margin heading dan paragraph yang lebih compact (`margin-bottom: 10px` untuk `p`, `margin-top: 20px` / `margin-bottom: 8px` untuk `h2`).
+       - Menambahkan rule `li p { margin-bottom: 0; }` agar paragraph di dalam list item tidak menduplikasi margin bawah.
