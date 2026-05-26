@@ -52,10 +52,10 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 });
 
 router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { name, project_id } = req.body;
+  const { name, project_id, uid } = req.body;
   const { data, error } = await supabase
     .from("diagrams")
-    .insert([{ name, project_id: project_id || null, user_id: (req as any).user.id }])
+    .insert([{ name, project_id: project_id || null, uid: uid || undefined, user_id: (req as any).user.id }])
     .select()
     .single();
 
@@ -283,17 +283,27 @@ router.put("/:uid/project", authenticate, async (req: ExpressRequest, res: Expre
 });
 
 router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const uid = req.params.uid;
+  const identifier = req.params.uid;
   const { entities, relationships, viewport, expectedVersion } = req.body;
 
   try {
     // ✅ STEP 1: Fetch current diagram state with version check
-    const { data: currentDiagram, error: fetchError } = await supabase
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+    
+    let query = supabase
       .from("diagrams")
-      .select("id, _version, updated_at")
-      .eq("uid", uid)
-      .eq("user_id", (req as any).user.id)
-      .single();
+      .select("id, uid, _version, updated_at")
+      .eq("user_id", (req as any).user.id);
+
+    if (isUuid) {
+      query = query.eq("uid", identifier);
+    } else if (!isNaN(Number(identifier))) {
+      query = query.eq("id", identifier);
+    } else {
+      return res.status(400).json({ error: "Invalid identifier format" });
+    }
+
+    const { data: currentDiagram, error: fetchError } = await query.single();
 
     if (fetchError || !currentDiagram) {
       return res.status(404).json({ error: "Diagram not found" });
@@ -301,10 +311,18 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
 
     const diagramId = currentDiagram.id;
 
+    // ✅ STEP 1b: Backfill uid if null (diagram was created before uid column had a default)
+    const effectiveUid = isUuid ? identifier : null;
+    if (!effectiveUid && !currentDiagram.uid) {
+      const backfillUid = crypto.randomUUID();
+      await supabase.from("diagrams").update({ uid: backfillUid }).eq("id", diagramId);
+      currentDiagram.uid = backfillUid;
+    }
+
     // ✅ STEP 2: Optimistic locking - reject if version mismatch
     if (expectedVersion !== undefined && expectedVersion !== null) {
       if (currentDiagram._version !== expectedVersion) {
-        console.warn(`[Race Condition] Version mismatch for diagram ${uid}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
+        console.warn(`[Race Condition] Version mismatch for diagram ${identifier}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
         return res.status(409).json({ 
           error: "Conflict: Diagram was modified. Please refresh and try again.",
           currentVersion: currentDiagram._version,
@@ -505,7 +523,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       version: updatedDiagram?._version || currentDiagram._version + 1
     });
   } catch (err: any) {
-    console.error(`[Save Error] Diagram ${uid}:`, err);
+    console.error(`[Save Error] Diagram ${identifier}:`, err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -35,6 +35,7 @@ interface ColumnRowProps {
 
 const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) => {
   const isFk = col._is_fk;
+  const diffState = col.diffState as 'new' | 'deleted' | undefined;
 
   const leftStyle: CSSProperties = useMemo(() => ({
     top: '50%', left: '-4px', transform: 'translate(-50%, -50%)', backgroundColor: borderColor, zIndex: 50,
@@ -44,8 +45,14 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
     top: '50%', right: '-4px', transform: 'translate(50%, -50%)', backgroundColor: borderColor, zIndex: 50,
   }), [borderColor]);
 
+  const rowBgClass = useMemo(() => {
+    if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
+    if (diffState === 'deleted') return 'bg-red-500/10 hover:bg-red-500/15 line-through opacity-50 border-b border-red-500/20';
+    return 'border-white/5 hover:bg-white/5';
+  }, [diffState]);
+
   return (
-    <div className="group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0 border-white/5 hover:bg-white/5">
+    <div className={cn("group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0", rowBgClass)}>
       <Handle
         type="target"
         position={Position.Left}
@@ -76,14 +83,19 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
       />
 
       <div className="flex items-center gap-2">
-        <span className={cn("text-sm font-medium", col.is_pk ? "text-white" : "text-white/80")}>
-          {col.name}
+        <span className={cn(
+          "text-sm font-medium", 
+          col.is_pk ? "text-white" : "text-white/80",
+          diffState === 'new' && "text-emerald-400 font-semibold",
+          diffState === 'deleted' && "text-red-400/80 line-through"
+        )}>
+          {diffState === 'new' ? `+ ${col.name}` : diffState === 'deleted' ? `- ${col.name}` : col.name}
         </span>
       </div>
 
       <div className="flex flex-col items-end gap-0.5 max-w-[140px]">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono font-semibold" style={{ color: typeColor }}>
+          <span className="text-[11px] font-mono font-semibold" style={{ color: diffState === 'new' ? '#10b981' : diffState === 'deleted' ? '#ef4444' : typeColor }}>
             {col.type.toLowerCase()}
           </span>
           {(col.is_pk || isFk) && (
@@ -143,16 +155,44 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     setDialogOpen(true);
   };
 
-  const { borderColor, headerBg, typeColor } = useMemo(() => ({
-    borderColor: data.color,
-    headerBg: `${data.color}20`,
-    typeColor: data.color,
-  }), [data.color]);
+  const diffState = data.diffState as 'new' | 'deleted' | 'modified' | undefined;
+
+  const { borderColor, headerBg, typeColor } = useMemo(() => {
+    if (diffState === 'new') {
+      return {
+        borderColor: '#10b981',
+        headerBg: 'rgba(16, 185, 129, 0.15)',
+        typeColor: '#10b981',
+      };
+    }
+    if (diffState === 'deleted') {
+      return {
+        borderColor: '#ef4444',
+        headerBg: 'rgba(239, 68, 68, 0.15)',
+        typeColor: '#ef4444',
+      };
+    }
+    if (diffState === 'modified') {
+      return {
+        borderColor: '#f59e0b',
+        headerBg: 'rgba(245, 158, 11, 0.15)',
+        typeColor: '#f59e0b',
+      };
+    }
+    return {
+      borderColor: data.color,
+      headerBg: `${data.color}20`,
+      typeColor: data.color,
+    };
+  }, [data.color, diffState]);
 
   const containerClasses = useMemo(() => cn(
-    "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container",
-    selected && "ring-2 ring-white/10"
-  ), [selected]);
+    "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container transition-all duration-300",
+    selected && "ring-2 ring-white/10",
+    diffState === 'new' && "shadow-[0_0_20px_rgba(16,185,129,0.35)]",
+    diffState === 'deleted' && "opacity-40 shadow-[0_0_15px_rgba(239,68,68,0.25)]",
+    diffState === 'modified' && "shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+  ), [selected, diffState]);
 
   const sortedColumns = useMemo(() => 
     [...data.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -172,7 +212,21 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
         >
           <div className="flex items-center gap-2">
             <Database className="w-4 h-4 transition-transform group-hover/header:rotate-12" style={{ color: borderColor }} />
-            <span className="font-bold text-sm tracking-wide uppercase">{data.name}</span>
+            <span className={cn(
+              "font-bold text-sm tracking-wide uppercase",
+              diffState === 'deleted' && "line-through text-red-400"
+            )}>
+              {data.name}
+            </span>
+            {diffState === 'new' && (
+              <span className="px-1 py-0.5 text-[8px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase tracking-wider">NEW</span>
+            )}
+            {diffState === 'deleted' && (
+              <span className="px-1 py-0.5 text-[8px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 rounded uppercase tracking-wider">DEL</span>
+            )}
+            {diffState === 'modified' && (
+              <span className="px-1 py-0.5 text-[8px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded uppercase tracking-wider">MOD</span>
+            )}
           </div>
           
           <DropdownMenu>

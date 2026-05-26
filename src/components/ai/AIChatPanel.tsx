@@ -474,6 +474,7 @@ export const AIChatPanel = ({
           currentSession={currentSession}
           entityTypeMeta={entityTypeMeta}
           mentionFiles={mentionFiles}
+          activeProjectId={projectId}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}

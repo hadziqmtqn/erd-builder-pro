@@ -20,6 +20,8 @@ import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
 import { toast } from 'sonner';
+import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
+import { cn } from '@/lib/utils';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -54,6 +56,8 @@ interface ERDViewProps {
   isLoading?: boolean;
   selectedNodeId?: string | null;
   onMoveEnd?: (e: any, v: any) => void;
+  saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
+  triggerDebouncedSync?: () => void;
 }
 
 
@@ -84,12 +88,27 @@ const ERDViewComponent = ({
   onNodeDragStop,
   onMoveEnd,
   isLoading,
+  saveDiagram,
+  triggerDebouncedSync,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
 
   // ─── Multi-table selection ───────────────────────────
   const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
+
+  // ─── Visual Schema Diffing States ────────────────────
+  const [pendingDiff, setPendingDiff] = useState<{
+    originalNodes: Node<Entity>[];
+    originalEdges: Edge[];
+    proposedNodes: Node<Entity>[];
+    proposedEdges: Edge[];
+    diffNodes: Node<Entity>[];
+    diffEdges: Edge[];
+    diffResult: DiffResult;
+  } | null>(null);
+  const [approvedTableIds, setApprovedTableIds] = useState<string[]>([]);
+  const [showChecklist, setShowChecklist] = useState(false);
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
@@ -207,6 +226,100 @@ const ERDViewComponent = ({
   const takeSnapshotRef = React.useRef(takeSnapshot);
   takeSnapshotRef.current = takeSnapshot;
 
+  // ─── Visual Schema Diffing Callbacks ────────────────
+  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[]) => {
+    const diffData = computeSchemaDiff(origNodes, origEdges, propNodes, propEdges);
+    const changedIds = diffData.nodes
+      .filter(n => n.data.diffState)
+      .map(n => n.id);
+    
+    setApprovedTableIds(changedIds);
+    setPendingDiff({
+      originalNodes: origNodes,
+      originalEdges: origEdges,
+      proposedNodes: propNodes,
+      proposedEdges: propEdges,
+      diffNodes: diffData.nodes,
+      diffEdges: diffData.edges,
+      diffResult: diffData,
+    });
+    setShowChecklist(false);
+  }, []);
+
+  const handleRejectAll = useCallback(() => {
+    setPendingDiff(null);
+    toast.info('AI schema update rejected');
+  }, []);
+
+  const handleApplyMerge = useCallback(() => {
+    if (!pendingDiff) return;
+
+    const { originalNodes, originalEdges, proposedNodes, proposedEdges } = pendingDiff;
+    const finalNodes: Node<Entity>[] = [];
+
+    // Process all proposed nodes
+    proposedNodes.forEach(pNode => {
+      const isApproved = approvedTableIds.includes(pNode.id);
+      if (isApproved) {
+        const cleanedNode = {
+          ...pNode,
+          data: {
+            ...pNode.data,
+            columns: (pNode.data.columns || [])
+              .filter((c: any) => c.diffState !== 'deleted')
+              .map((c: any) => {
+                const { diffState, ...cleanedCol } = c;
+                return cleanedCol;
+              })
+          }
+        };
+        delete (cleanedNode.data as any).diffState;
+        finalNodes.push(cleanedNode);
+      } else {
+        const orig = originalNodes.find(o => o.id === pNode.id);
+        if (orig) {
+          finalNodes.push(orig);
+        }
+      }
+    });
+
+    // Process deleted nodes (in original but not in proposed)
+    originalNodes.forEach(oNode => {
+      const proposed = proposedNodes.find(p => p.id === oNode.id);
+      if (!proposed) {
+        const deleteApproved = approvedTableIds.includes(oNode.id);
+        if (!deleteApproved) {
+          finalNodes.push(oNode);
+        }
+      }
+    });
+
+    // Reconstruct edges (relations)
+    const finalEdges = proposedEdges.filter(edge => {
+      const sourceExists = finalNodes.some(n => n.id === edge.source);
+      const targetExists = finalNodes.some(n => n.id === edge.target);
+      return sourceExists && targetExists;
+    });
+
+    // Bring back original edges for tables that were NOT deleted
+    originalEdges.forEach(origEdge => {
+      const alreadyHas = finalEdges.some(e => e.id === origEdge.id);
+      if (!alreadyHas) {
+        const sourceExists = finalNodes.some(n => n.id === origEdge.source);
+        const targetExists = finalNodes.some(n => n.id === origEdge.target);
+        if (sourceExists && targetExists) {
+          finalEdges.push(origEdge);
+        }
+      }
+    });
+
+    takeSnapshotRef.current?.(nodesRef.current, edgesRef.current);
+    setNodes(finalNodes);
+    setEdges(finalEdges);
+    setPendingDiff(null);
+    toast.success('AI changes merged successfully!');
+  }, [pendingDiff, approvedTableIds, setNodes, setEdges]);
+
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
     animated: false,
@@ -240,16 +353,13 @@ const ERDViewComponent = ({
       }
 
       if (result) {
-        takeSnapshotRef.current?.(nodesRef.current, edgesRef.current);
-        setNodes(result.nodes);
-        setEdges(result.edges);
-        toast.success('Applied to diagram');
+        startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
       } else {
         toast.error('No valid changes found in response');
       }
     }, ['append']);
     return unregister;
-  }, [registerContentHandler, setNodes, setEdges]);
+  }, [registerContentHandler, startDiff]);
 
   React.useEffect(() => {
     const pendingDdl = localStorage.getItem('pending_create_erd_ddl');
@@ -257,19 +367,32 @@ const ERDViewComponent = ({
       localStorage.removeItem('pending_create_erd_ddl');
       const result = applyToErdContent([], [], 'erd-generate-sql', pendingDdl);
       if (result) {
-        takeSnapshotRef.current?.([], []);
-        setNodes(result.nodes);
-        setEdges(result.edges);
-        toast.success('Applied generated architecture DDL to new diagram');
+        if (nodesRef.current.length === 0) {
+          takeSnapshotRef.current?.([], []);
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          if (saveDiagram) {
+            saveDiagram(result.nodes, result.edges, { x: 0, y: 0, zoom: 1 }).then(() => {
+              // Trigger cloud sync immediately — saveDiagram only saves to IndexedDB draft,
+              // and the auto-save effect has a 2-second guard that blocks newly created diagrams.
+              triggerDebouncedSync?.();
+            }).catch(err => {
+              console.error('Error saving generated diagram:', err);
+            });
+          }
+          toast.success('Applied generated architecture DDL to new diagram');
+        } else {
+          startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
+        }
       }
     }
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync]);
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 
 
-      {!isReadOnly && (
+      {!isReadOnly && !pendingDiff && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
             <JumpToNode nodes={nodes} label="Table" />
@@ -313,8 +436,8 @@ const ERDViewComponent = ({
       )}
       <div className="flex-1">
         <ReactFlow
-          nodes={styledNodes}
-          edges={styledEdges}
+          nodes={pendingDiff ? pendingDiff.diffNodes : styledNodes}
+          edges={pendingDiff ? pendingDiff.diffEdges : styledEdges}
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -326,9 +449,9 @@ const ERDViewComponent = ({
           onMove={onMove}
           colorMode="dark"
           onlyRenderVisibleElements={true}
-          nodesDraggable={!isReadOnly}
-          nodesConnectable={!isReadOnly}
-          elementsSelectable={!isReadOnly}
+          nodesDraggable={!isReadOnly && !pendingDiff}
+          nodesConnectable={!isReadOnly && !pendingDiff}
+          elementsSelectable={!isReadOnly && !pendingDiff}
           onNodeDragStop={onNodeDragStop}
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
@@ -340,6 +463,126 @@ const ERDViewComponent = ({
           <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
       </div>
+
+      {/* Floating Diff Merge Panel */}
+      {pendingDiff && (
+        <div className="absolute bottom-6 inset-x-0 z-50 flex flex-col items-center justify-center gap-2.5 pointer-events-none">
+          {/* Main Diff Bar */}
+          <div className="flex items-center gap-4 p-2.5 bg-[#0f0f14]/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw]">
+            <div className="flex items-center gap-2 px-2.5 text-zinc-300">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">AI Schema Proposal</span>
+              <div className="h-4 w-px bg-white/10 mx-2" />
+              <div className="flex gap-2 text-[11px] font-bold">
+                {pendingDiff.diffResult.newCount > 0 && (
+                  <span className="text-emerald-400">{pendingDiff.diffResult.newCount} New</span>
+                )}
+                {pendingDiff.diffResult.modifiedCount > 0 && (
+                  <span className="text-amber-400">{pendingDiff.diffResult.modifiedCount} Mod</span>
+                )}
+                {pendingDiff.diffResult.deletedCount > 0 && (
+                  <span className="text-red-400">{pendingDiff.diffResult.deletedCount} Del</span>
+                )}
+              </div>
+            </div>
+
+            <div className="h-6 w-px bg-white/10" />
+
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowChecklist(!showChecklist)}
+                className="h-8 px-3 bg-white/5 border-white/10 text-zinc-200 hover:text-white"
+              >
+                Review Changes
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRejectAll}
+                className="h-8 px-3 text-red-400 border-red-950/50 bg-red-950/20 hover:bg-red-950/40 hover:text-red-300 font-bold"
+              >
+                Reject All
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={handleApplyMerge}
+                className="h-8 px-4 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold shadow-lg shadow-emerald-500/20"
+              >
+                Merge Selected
+              </Button>
+            </div>
+          </div>
+
+          {/* Checklist Panel */}
+          {showChecklist && (
+            <div className="w-[320px] bg-[#0f0f14]/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Select tables to merge:</span>
+                <button 
+                  onClick={() => {
+                    const allTableIds = pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => n.id);
+                    setApprovedTableIds(approvedTableIds.length === allTableIds.length ? [] : allTableIds);
+                  }}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 underline font-medium"
+                >
+                  {approvedTableIds.length === pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => n.id).length ? 'Unselect All' : 'Select All'}
+                </button>
+              </div>
+
+              <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                {pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => {
+                  const label = n.data.name || n.data.label || n.id;
+                  const type = n.data.diffState;
+                  const isChecked = approvedTableIds.includes(n.id);
+                  
+                  return (
+                    <label 
+                      key={n.id} 
+                      className={cn(
+                        "flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all",
+                        isChecked 
+                          ? "bg-white/5 border-white/10 text-zinc-100" 
+                          : "bg-transparent border-transparent text-zinc-500 hover:text-zinc-300"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setApprovedTableIds(prev => 
+                              prev.includes(n.id) 
+                                ? prev.filter(id => id !== n.id) 
+                                : [...prev, n.id]
+                            );
+                          }}
+                          className="rounded border-white/10 bg-transparent text-emerald-500 focus:ring-0 cursor-pointer h-4 w-4"
+                        />
+                        <span className="text-xs font-semibold">{label}</span>
+                      </div>
+                      
+                      {type === 'new' && (
+                        <span className="px-1 py-0.5 text-[8px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded uppercase tracking-wider">NEW</span>
+                      )}
+                      {type === 'deleted' && (
+                        <span className="px-1 py-0.5 text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/25 rounded uppercase tracking-wider">DEL</span>
+                      )}
+                      {type === 'modified' && (
+                        <span className="px-1 py-0.5 text-[8px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25 rounded uppercase tracking-wider">MOD</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
