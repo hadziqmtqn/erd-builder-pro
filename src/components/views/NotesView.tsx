@@ -33,7 +33,8 @@ export const NotesView = React.memo(({
   const { registerContentHandler } = useAIAction();
   const confirmLockRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+  const preAiContentRef = useRef<string | null>(null);
+
   const showSkeleton = isLoading;
   const [pendingChange, setPendingChange] = useState<{
     content: string;
@@ -100,10 +101,25 @@ export const NotesView = React.memo(({
 
     handleNoteChange(newContent);
 
+    // Save pre-AI content for undo
+    preAiContentRef.current = originalContent;
+
     try {
       const result = await saveNote({ ...activeNote, content: newContent });
       if (result !== false) {
         setPendingChange(null);
+        toast('AI change applied', {
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              const prev = preAiContentRef.current;
+              if (prev) {
+                handleNoteChange(prev);
+                saveNote({ ...activeNote, content: prev });
+              }
+            },
+          },
+        });
       } else {
         toast.error('Failed to save AI content. Please try again.');
       }

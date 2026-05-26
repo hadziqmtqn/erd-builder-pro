@@ -21,9 +21,11 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const [diagramsTotal, setDiagramsTotal] = useState(0);
   const [hasMoreDiagrams, setHasMoreDiagrams] = useState(false);
   const diagramsRef = useRef<Diagram[]>(diagrams);
+  const activeDiagramIdRef = useRef(activeDiagramId);
 
-  // Keep ref in sync
+  // Keep refs in sync
   diagramsRef.current = diagrams;
+  activeDiagramIdRef.current = activeDiagramId;
 
   const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
     if (isGuest) {
@@ -90,7 +92,14 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         if (isLoadMore) {
           setDiagrams(prev => [...prev, ...diagramsList]);
         } else {
-          setDiagrams(diagramsList);
+          setDiagrams(prev => {
+            const activeId = activeDiagramIdRef.current;
+            if (activeId != null && !diagramsList.some(d => String(d.id) === String(activeId) || (d.uid && String(d.uid) === String(activeId)))) {
+              const existing = prev.find(d => String(d.id) === String(activeId) || (d.uid && String(d.uid) === String(activeId)));
+              if (existing) return [...diagramsList, existing];
+            }
+            return diagramsList;
+          });
         }
         setDiagramsTotal(total);
         setHasMoreDiagrams((diagramsList.length + offset) < total);

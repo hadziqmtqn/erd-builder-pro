@@ -13,9 +13,11 @@ export function useDrawings(isGuest: boolean = false) {
   const [drawingsTotal, setDrawingsTotal] = useState(0);
   const [hasMoreDrawings, setHasMoreFiles] = useState(false);
   const drawingsRef = useRef<Drawing[]>(drawings);
+  const activeDrawingUidRef = useRef(activeDrawingUid);
 
-  // Keep ref in sync
+  // Keep refs in sync
   drawingsRef.current = drawings;
+  activeDrawingUidRef.current = activeDrawingUid;
 
   const matchesDrawingId = (drawing: Drawing, uid: string | number) => {
     return String(drawing.id) === String(uid) || String(drawing.uid) === String(uid);
@@ -95,6 +97,11 @@ export function useDrawings(isGuest: boolean = false) {
             return [...preservedPrev, ...mergedList];
           }
 
+          const activeId = activeDrawingUidRef.current;
+          if (activeId && !mergedList.some(d => String(d.id) === String(activeId) || (d.uid && String(d.uid) === String(activeId)))) {
+            const existing = prev.find(d => String(d.id) === String(activeId) || (d.uid && String(d.uid) === String(activeId)));
+            if (existing) return [...mergedList, existing];
+          }
           return mergedList;
         });
         setDrawingsTotal(total);

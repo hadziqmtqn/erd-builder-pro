@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Image } from 'lucide-react';
@@ -11,10 +11,33 @@ export function DrawingEditorRoute() {
 
   const {
     activeDrawing, activeDrawingId, saveDrawing, handleDrawingChange, deleteDrawing,
-    isPublicView, isLoading, isDrawingItemLoading,
+    isPublicView, isLoading, isDrawingItemLoading, handleDrawingSelect,
   } = ctx;
 
+  // Safety net: URL has id but context hasn't synced yet
+  const processedUrlRef = useRef(false);
+  useEffect(() => {
+    if (isPublicView || !id) return;
+    if (processedUrlRef.current) return;
+    if (String(activeDrawingId) === id) {
+      processedUrlRef.current = true;
+      return;
+    }
+    if (!activeDrawingId) {
+      processedUrlRef.current = true;
+      handleDrawingSelect(id);
+    }
+  }, [id, activeDrawingId, isPublicView, handleDrawingSelect]);
+
   if (!isPublicView && !activeDrawingId) {
+    if (id && !processedUrlRef.current) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
+          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <p className="text-sm font-medium text-muted-foreground">Select a drawing to view</p>
