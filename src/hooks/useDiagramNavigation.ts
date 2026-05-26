@@ -109,13 +109,15 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
       }
 
       // State updates (batched by React 18)
-      setActiveDiagramId(id);
+      setActiveDiagramId(urlIdentifier);
       setView('erd');
       setNodes([]);
       setEdges([]);
 
       // Fetch diagram data with stale-response guard
-      await selectDiagram(id, (newId: any) => {
+      // Use urlIdentifier (prefers uid) so useERDSession.handleDiagramSelect
+      // sets activeDiagramId to UUID instead of numeric id
+      await selectDiagram(urlIdentifier, (newId: any) => {
         setActiveDiagramId(newId);
         lastLoadedDiagramIdRef.current = newId;
       }, { isStale: () => diagramTargetRef.current !== id });

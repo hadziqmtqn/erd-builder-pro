@@ -143,6 +143,9 @@ export function useDrawings(isGuest: boolean = false) {
       });
       if (res.ok) {
         const newDrawing = await res.json();
+        if (!newDrawing.uid) {
+          newDrawing.uid = crypto.randomUUID();
+        }
         setDrawings(prev => [newDrawing, ...prev]);
         toast.success('Drawing created successfully');
         return newDrawing;

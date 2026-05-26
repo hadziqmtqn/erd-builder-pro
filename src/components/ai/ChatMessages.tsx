@@ -102,6 +102,7 @@ export interface ChatMessagesProps {
   currentSession?: AIChatSession | null;
   entityTypeMeta?: Record<string, { label: string; icon: ComponentType<{ className?: string }> }>;
   mentionFiles?: MentionFile[];
+  activeProjectId?: string | number | null;
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -125,8 +126,10 @@ export const ChatMessages = memo(function ChatMessages({
   currentSession,
   entityTypeMeta,
   mentionFiles = [],
+  activeProjectId,
 }: ChatMessagesProps) {
-  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, activeProjectId } = useWorkspace();
+  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, activeProjectId: workspaceProjectId } = useWorkspace();
+  const targetProjectId = activeProjectId !== undefined ? activeProjectId : workspaceProjectId;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -455,7 +458,7 @@ export const ChatMessages = memo(function ChatMessages({
                           if (sql) {
                             localStorage.setItem('pending_create_erd_ddl', sql);
                             toast.info('Creating new ERD diagram...');
-                            await handleSidebarDiagramCreate('ERD from Chat', activeProjectId);
+                            await handleSidebarDiagramCreate('ERD from Chat', targetProjectId);
                           }
                         }}
                         className="flex items-center justify-center size-8 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md shadow-sm transition-all cursor-pointer"
@@ -472,7 +475,7 @@ export const ChatMessages = memo(function ChatMessages({
                           if (json) {
                             localStorage.setItem('pending_create_flowchart_json', json);
                             toast.info('Creating new Flowchart...');
-                            await handleSidebarFlowchartCreate('Flowchart from Chat', activeProjectId);
+                            await handleSidebarFlowchartCreate('Flowchart from Chat', targetProjectId);
                           }
                         }}
                         className="flex items-center justify-center size-8 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md shadow-sm transition-all cursor-pointer"

@@ -9,6 +9,9 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   color: string;
   section?: string;
   groupId?: string;
+  code?: string;
+  isSimulationActive?: boolean;
+  isSimulationVisited?: boolean;
 }
 
 const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?: boolean }) => {
@@ -48,29 +51,66 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
   }, [data.shape]);
 
   const shapeBackground = useMemo(() => {
+    const isSimulationActive = data.isSimulationActive as boolean;
+    const isSimulationVisited = data.isSimulationVisited as boolean;
+
     const baseStyle: React.CSSProperties = {
-      background: `linear-gradient(135deg, ${data.color}25 0%, ${data.color}10 100%)`,
-      borderColor: data.color,
-      borderWidth: '2px',
+      background: isSimulationActive
+        ? `linear-gradient(135deg, ${data.color}40 0%, ${data.color}20 100%)`
+        : isSimulationVisited
+          ? `linear-gradient(135deg, ${data.color}15 0%, ${data.color}05 100%)`
+          : `linear-gradient(135deg, ${data.color}25 0%, ${data.color}10 100%)`,
+      borderColor: isSimulationActive ? '#10b981' : isSimulationVisited ? '#059669' : data.color,
+      borderWidth: isSimulationActive ? '3px' : '2px',
       borderStyle: 'solid',
-      boxShadow: selected ? `0 0 20px ${data.color}60` : `0 4px 10px rgba(0,0,0,0.3)`,
+      boxShadow: isSimulationActive
+        ? '0 0 25px rgba(16, 185, 129, 0.8)'
+        : isSimulationVisited
+          ? '0 0 12px rgba(5, 150, 105, 0.4)'
+          : selected
+            ? `0 0 20px ${data.color}60`
+            : `0 4px 10px rgba(0,0,0,0.3)`,
+      animation: isSimulationActive ? 'pulse-green 1.8s infinite' : 'none',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      opacity: isSimulationActive ? 1 : isSimulationVisited ? 0.75 : 1,
     };
 
-    const svgFill = `${data.color}20`;
-    const svgStroke = data.color;
+    const svgFill = isSimulationActive
+      ? `rgba(16, 185, 129, 0.25)`
+      : isSimulationVisited
+        ? `${data.color}08`
+        : `${data.color}20`;
+
+    const svgStroke = isSimulationActive
+      ? '#10b981'
+      : isSimulationVisited
+        ? '#059669'
+        : data.color;
+
+    const svgStrokeWidth = isSimulationActive ? '3' : '2';
+
+    const pathStyle: React.CSSProperties = {
+      filter: isSimulationActive
+        ? 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.8))'
+        : isSimulationVisited
+          ? 'drop-shadow(0 0 5px rgba(5, 150, 105, 0.3))'
+          : 'none',
+      transition: 'all 0.3s',
+      animation: isSimulationActive ? 'pulse-green 1.8s infinite' : 'none',
+    };
 
     switch (data.shape) {
       case 'diamond':
         return (
-          <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible animate-pulse-sim" viewBox="0 0 100 100" preserveAspectRatio="none">
             <path 
               d="M50,2 L98,50 L50,98 L2,50 Z" 
               fill={svgFill} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
               strokeLinejoin="round"
+              style={pathStyle}
             />
           </svg>
         );
@@ -81,9 +121,10 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
               d="M20,2 L98,2 L80,98 L2,98 Z" 
               fill={svgFill} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
               strokeLinejoin="round"
+              style={pathStyle}
             />
           </svg>
         );
@@ -95,7 +136,9 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
             className="absolute inset-0 rounded-full pointer-events-none flex items-center justify-center" 
             style={{ 
               ...baseStyle,
-              background: `radial-gradient(circle at 30% 30%, ${data.color}40 0%, ${data.color}10 100%)`
+              background: isSimulationActive
+                ? `radial-gradient(circle at 30% 30%, rgba(16, 185, 129, 0.45) 0%, rgba(16, 185, 129, 0.15) 100%)`
+                : `radial-gradient(circle at 30% 30%, ${data.color}40 0%, ${data.color}10 100%)`
             }} 
           />
         );
@@ -107,20 +150,21 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
               d="M2,15 L2,85 C2,95 98,95 98,85 L98,15" 
               fill={svgFill} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
               strokeLinejoin="round"
+              style={pathStyle}
             />
             {/* Top Cap */}
             <path 
               d="M2,15 C2,5 98,5 98,15 C98,25 2,25 2,15 Z" 
-              fill={`${data.color}35`} 
+              fill={isSimulationActive ? 'rgba(16, 185, 129, 0.35)' : `${data.color}35`} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
             />
             {/* Middle decorative line for cylinder depth */}
-            <path d="M2,50 C2,60 98,60 98,50" fill="none" stroke={svgStroke} strokeWidth="2" vectorEffect="non-scaling-stroke" opacity="0.3" />
+            <path d="M2,50 C2,60 98,60 98,50" fill="none" stroke={svgStroke} strokeWidth={svgStrokeWidth} vectorEffect="non-scaling-stroke" opacity="0.3" />
           </svg>
         );
       case 'document':
@@ -130,12 +174,13 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
               d="M2,2 L70,2 L98,30 L98,85 C98,93 90,98 85,98 L15,98 C7,98 2,93 2,85 Z" 
               fill={svgFill} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
               strokeLinejoin="round" 
+              style={pathStyle}
             />
             {/* Dog-ear fold */}
-            <path d="M70,2 V30 H98" fill="none" stroke={svgStroke} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            <path d="M70,2 V30 H98" fill="none" stroke={svgStroke} strokeWidth={svgStrokeWidth} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           </svg>
         );
       case 'cloud':
@@ -145,10 +190,11 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
               d="M20,80 C5,80 5,60 15,50 C10,20 40,15 55,25 C65,5 95,10 95,40 C105,50 105,80 80,80 Z" 
               fill={svgFill} 
               stroke={svgStroke} 
-              strokeWidth="2" 
+              strokeWidth={svgStrokeWidth} 
               vectorEffect="non-scaling-stroke"
               strokeLinecap="round" 
               strokeLinejoin="round" 
+              style={pathStyle}
             />
           </svg>
         );
@@ -156,7 +202,7 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       default:
         return <div className="absolute inset-0 rounded-md pointer-events-none" style={baseStyle} />;
     }
-  }, [data.color, data.shape, selected]);
+  }, [data.color, data.shape, selected, data.isSimulationActive, data.isSimulationVisited]);
 
   return (
     <div 

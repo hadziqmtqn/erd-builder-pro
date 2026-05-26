@@ -141,6 +141,9 @@ export function useNotes(isGuest: boolean = false) {
       });
       if (res.ok) {
         const newNote = await res.json();
+        if (!newNote.uid) {
+          newNote.uid = crypto.randomUUID();
+        }
         setNotes(prev => [newNote, ...prev]);
         toast.success('Note created successfully');
         return newNote;

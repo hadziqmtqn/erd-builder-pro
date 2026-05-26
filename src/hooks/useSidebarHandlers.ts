@@ -57,7 +57,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const d = await createDiagram(n, pid);
     if (d) {
       await fetchProjects();
-      handleDiagramSelect(d.id);
+      await handleDiagramSelect(d.uid || d.id);
     }
   }, [createDiagram, fetchProjects, handleDiagramSelect]);
 
@@ -65,7 +65,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const n = await createNote(t, pid);
     if (n) {
       await fetchProjects();
-      handleNoteSelect(n.uid);
+      await handleNoteSelect(n.uid);
     }
   }, [createNote, fetchProjects, handleNoteSelect]);
 
@@ -73,7 +73,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const d = await createDrawing(t, pid);
     if (d) {
       await fetchProjects();
-      handleDrawingSelect(d.uid ?? d.id);
+      await handleDrawingSelect(d.uid ?? d.id);
     }
   }, [createDrawing, fetchProjects, handleDrawingSelect]);
 
@@ -81,7 +81,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     const f = await createFlowchart(t, pid);
     if (f) {
       await fetchProjects();
-      handleFlowchartSelect(f.uid);
+      await handleFlowchartSelect(f.uid);
     }
   }, [createFlowchart, fetchProjects, handleFlowchartSelect]);
 

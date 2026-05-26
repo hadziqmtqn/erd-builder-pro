@@ -174,6 +174,12 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                   continue;
                 }
 
+                if (res.status === 404) {
+                  console.warn(`[SyncService] Draft ${draft.type}#${draft.id} returned 404 — marking as synced (data preserved in IndexedDB)`);
+                  await localPersistence.markSynced(draft.type, draft.id, lastUpdated);
+                  continue;
+                }
+
                 if (res.ok) {
                   const responseData = await res.json();
                   if (draft.type === DraftType.ERD && responseData.version !== undefined) {

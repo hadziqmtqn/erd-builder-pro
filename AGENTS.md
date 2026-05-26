@@ -732,6 +732,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **Automated Document Creation**:
   - Tombol **"Create ERD"** dan **"Create Flowchart"** ditambahkan pada balon pesan chat AI jika asisten menghasilkan SQL DDL atau JSON flowchart.
   - Alur: Mengambil data terkait → Menyimpannya di `localStorage` (`pending_create_erd_ddl` atau `pending_create_flowchart_json`) → Memanggil fungsi pembuatan dokumen dari context (`handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate`) → Mengarahkan pengguna ke halaman baru.
+  - **Project ID Inheritance (Workspace Integration)**: Mengalirkan prop `projectId` dari active document (diperoleh di `AppLayout` lewat entity context) ke `AIChatPanel` → `<ChatMessages activeProjectId={projectId} />`. Klik tombol "Create ERD" / "Create Flowchart" memicu `handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate` dengan `projectId` ini, menjamin dokumen baru terbuat dengan `project_id` yang sama demi integritas workspace/project.
   - Mount hook: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx) dan [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx) mendeteksi item `localStorage` pada mount, memparsing konten, menginisialisasi canvas, mengambil snapshot riwayat (untuk undo/redo), dan membersihkan storage secara otomatis.
 - **Rich Context Mentions**:
   - **Diagram Mentions**: Penyebutan `@DiagramName` pada chat memicu pencarian database dinamis untuk mengidentifikasi seluruh daftar tabel, tipe kolom, dan primary keys untuk dikirim sebagai prompt konteks (sebelumnya hanya mengirimkan nama diagram).
@@ -753,3 +754,75 @@ The prompt is built as a **prefix of the user message** (not system message) —
        - Menambahkan CSS reset global (`* { margin: 0; padding: 0; box-sizing: border-box; }`) di `exportStyles` guna mencegah margin default browser menumpuk.
        - Mengatur margin heading dan paragraph yang lebih compact (`margin-bottom: 10px` untuk `p`, `margin-top: 20px` / `margin-bottom: 8px` untuk `h2`).
        - Menambahkan rule `li p { margin-bottom: 0; }` agar paragraph di dalam list item tidak menduplikasi margin bawah.
+
+## Fase 3: Living Flowcharts Simulation & Visual Schema Diffing
+
+- **Living Flowcharts (AI Logic Simulation Sandbox)**:
+  - **Logic Execution Sandbox**: Memungkinkan pengguna melampirkan potongan kode JavaScript di belakang simbol flowchart melalui `SymbolPropertiesModal` (disimpan dalam data node sebagai `code`). Simulasi dieksekusi di browser menggunakan `new Function('context', ...)` untuk mengisolasi variabel input/output ke objek `context` JSON.
+  - **Interactive Simulation Controls**: Menambahkan tombol **"Simulate Flow"** pada bilah alat atas. Saat diklik, panel sandbox meluncur di sisi kanan canvas untuk menguji input JSON dan melihat logs eksekusi.
+  - **Dynamic Path & Node Visuals**: Selama simulasi, alur dianimasikan secara real-time. Node aktif bersinar jingga (*amber glow*) dan berkedip dengan animasi denyut, node yang dikunjungi menyala hijau (*emerald glow*), konektor (panah) berubah menjadi hijau solid/jingga solid dan beranimasi (bergerak/berdenyut) untuk memetakan penelusuran.
+  - **Conditional Branch Selection**: Jika simpul keputusan (diamond) memiliki beberapa cabang keluar (outward edges), executor secara otomatis mengikuti cabang yang labelnya cocok dengan nilai kembalian (*return value*) dari kode JS. Jika tidak ada kode atau tidak ada cabang yang cocok, simulasi dijeda dan panel logs menyediakan opsi bagi pengguna untuk mengklik tombol cabang secara manual guna melanjutkan penelusuran.
+
+- **Visual Schema Diffing & Merge Resolution (Git-style Database Design)**:
+  - **Schema Diff Engine**: Utilitas [`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts) membandingkan skema ERD lama dengan usulan skema SQL DDL baru dari AI. Utilitas ini menandai node/tabel dengan `diffState` (`'new' | 'modified' | 'deleted'`) dan kolom individual dengan tanda yang sama.
+  - **Visual Diff Highlights**: Di atas canvas ERD, tabel baru digambar dengan batas hijau terang (serta badge "NEW" dan bayangan emerald), tabel yang dimodifikasi digambar batas jingga (badge "MOD"), dan tabel yang dihapus digambar batas merah pudar (badge "DEL" dengan opacity rendah). Kolom baru diawali tanda `+` hijau, sedangkan kolom terhapus dicoret (line-through) merah.
+  - **Conflict & Merge Resolution Panel**: Menampilkan floating toolbar di bagian bawah canvas dengan ringkasan perubahan (misal: "2 New, 1 Mod, 0 Del"). Pengguna dapat membuka **Checklist Panel** untuk meninjau secara detail dan memilih tabel mana saja yang ingin disetujui untuk di-merge.
+  - **Merge & Reversion Logic**: Saat tombol **"Merge Selected"** diklik:
+    - Tabel baru/modifikasi yang disetujui akan di-merge (menghapus penanda `diffState` dan menyaring kolom yang ditandai untuk dihapus agar tidak ikut tersimpan).
+    - Tabel modifikasi/hapus yang ditolak akan dikembalikan (*reverted*) ke skema originalnya sebelum AI menyentuhnya.
+    - Relasi (konektor panah/edges) dibangun ulang secara dinamis untuk menyambungkan hanya tabel-tabel yang terpilih/disetujui.
+
+## Auto-Generated Document Persistence Fix
+
+### Bug: Auto-generated ERD/Flowchart content lost on reload
+
+**Root Cause (3 issues):**
+
+1. **Draft ID mismatch (ERD only)**: `handleSidebarDiagramCreate` passed `d.id` (numeric) to `handleDiagramSelect`, setting `activeDiagramId` to numeric. `saveDiagram` saved draft to IndexedDB keyed by numeric id. `syncDrafts` constructed endpoint `/api/diagrams/save/${draft.id}` with numeric id, but server route queries `.eq("uid", uid)` — fails because numeric != UUID.
+
+2. **Missing `triggerDebouncedSync()` call**: Both `ERDView` and `FlowchartView` mount effects called `saveDiagram`/`saveFlowchart` after parsing `pending_create_erd_ddl`/`pending_create_flowchart_json` from localStorage. These save functions only write to IndexedDB draft — they do NOT trigger cloud sync. Without `triggerDebouncedSync()`, the draft stays local.
+
+3. **Auto-save 2-second guard**: `useAutoSave.ts` has a guard that ignores all save events for the first 2 seconds after diagram load (`Date.now() - lastDiagramLoadTimestampRef.current < 2000`). This consumed and discarded the `saveCounter` increment from auto-generated content, preventing auto-save from triggering cloud sync.
+
+**Fix:**
+
+- [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts): Changed `handleDiagramSelect(d.id)` → `handleDiagramSelect(d.uid || d.id)` to match flowchart pattern (`f.uid`). This ensures `activeDiagramId` is UUID and draft ID matches what the sync endpoint expects.
+- [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx): Added `triggerDebouncedSync` prop. Called `triggerDebouncedSync()` in `.then()` after `saveDiagram()` in the pending DDL mount effect.
+- [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx): Added `triggerDebouncedSync` prop. Called `triggerDebouncedSync()` in `.then()` after `saveFlowchart()` in the pending flowchart mount effect.
+- [`src/routes/DiagramEditorRoute.tsx`](./src/routes/DiagramEditorRoute.tsx): Passes `triggerDebouncedSync` from workspace context to `ERDView`.
+- [`src/routes/FlowchartEditorRoute.tsx`](./src/routes/FlowchartEditorRoute.tsx): Passes `triggerDebouncedSync` from workspace context to `FlowchartView`.
+
+## Create ERD/Flowchart/Notes/Drawing — UUID Persistence Fix
+
+### Bug: `api/diagrams/save/9` — Draft saved with numeric ID instead of UUID
+
+**Root Cause (Systemic)**: Three separate issues conspire to set `activeDiagramId` to numeric `id` instead of UUID `uid`:
+
+1. **DB `uid` column may not auto-generate**: `POST /api/diagrams` does not explicitly set `uid`. If the database `uuid` column lacks `gen_random_uuid()` default, `uid` returns `null`.
+2. **`selectDiagram` callback overwrites `activeDiagramId`**: `useDiagramNavigation.ts:118` passes raw `id` to `selectDiagram`; `useERDSession.ts:104` calls `callback(id)` which overwrites the correctly-set UUID with the numeric `id`.
+3. **Race on initial load**: On first page load, `fetchDiagrams` may not have completed before URL sync fires `handleDiagramSelect`. The diagram is not yet in `currentDiagrams`, so `urlIdentifier = undefined || id` = numeric `id`.
+4. **Server save endpoint only accepts UUID**: `POST /api/diagrams/save/:uid` at `server/routes/diagrams.ts:294` used `.eq("uid", uid)` exclusively — no fallback for numeric IDs. Even after client-side fixes, saves from diagrams without DB `uid` failed.
+5. **Server create endpoint doesn't persist `uid`**: `POST /api/diagrams` at `server/routes/diagrams.ts:58` never accepted `uid` from the client — even if client generated a UUID, the DB row still had `uid = null`.
+
+The chain: `activeDiagramId = numeric` → `saveDiagram` → `saveDraft(DraftType.ERD, numericId, data)` → `syncDrafts` → `/api/diagrams/save/${numericId}` → server `.eq("uid", numericId)` fails (numeric doesn't match UUID column).
+
+**Fix (5 layers)**:
+
+1. **Client `createDiagram` sends `uid` to server** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):141): Generates `createUid = crypto.randomUUID()` and sends it as `uid` field in the POST body. If the API response omits `uid`, falls back to `createUid`. This ensures both the client object AND the DB row (via server fix #4) have a UUID.
+
+2. **`selectDiagram` callback uses `urlIdentifier`** ([`src/hooks/useDiagramNavigation.ts`](./src/hooks/useDiagramNavigation.ts):118): Changed `selectDiagram(id, ...)` → `selectDiagram(urlIdentifier, ...)`. `urlIdentifier` (`diagram?.uid || id`) prefers UUID, preventing the callback inside `useERDSession.handleDiagramSelect` from overwriting with numeric `id`.
+
+3. **Post-load UUID correction** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts):225): After diagram data loads (`finalData` contains `uid`), if `finalData.uid` differs from the raw `id` param, calls `setActiveDiagramId(finalData.uid)` to correct any numeric ID that was set by the race condition on initial load.
+
+4. **Server save accepts numeric IDs + backfills `uid`** ([`server/routes/diagrams.ts`](./server/routes/diagrams.ts):291-320): The save endpoint now detects UUID vs numeric ID (same pattern as GET/:uid). When found by numeric `id` and `uid` is null, backfills with `crypto.randomUUID()`. This fixes saves for ALL existing diagrams that lack `uid`.
+
+5. **Server create persists `uid` from client** ([`server/routes/diagrams.ts`](./server/routes/diagrams.ts):58): `POST /api/diagrams` now accepts optional `uid` from `req.body`. When the client sends a UUID, it's stored in the `uid` column — eliminating the DB-mismatch for newly created diagrams.
+
+**Key insight**: The `useERDSession.handleDiagramSelect` (line 95) takes `(id, setActiveDiagramId, options?)`. Its line 104 calls `setActiveDiagramId(id)` with the raw `id` parameter. If `id` is numeric, `activeDiagramId` becomes numeric and the save chain uses numeric ID. The fix ensures `urlIdentifier` (UUID-preferring) flows through this callback path, AND the server accepts numeric IDs as fallback for existing data.
+
+## Sync Service & Draft Management
+
+- **`useSyncService`** ([`src/hooks/useSyncService.ts`](./src/hooks/useSyncService.ts)): reads pending drafts from IndexedDB (`localPersistence.getAllPendingSyncs()`) and POST/PUT to cloud API.
+- **404 handling** (line 177-181): when a sync draft returns 404, draft is **marked as synced** (`markSynced`) — NOT deleted. This preserves data in IndexedDB (local-first) while preventing infinite retry loops. The stale numeric ERD draft pattern: pre-UUID-migration drafts stored with numeric `id` can't be found by server (`diagram id=9` may not exist), so 404 cleanup marks them as synced instead of retrying forever.
+- **Stale draft cause**: before UUID fixes, `activeDiagramId` could be numeric → `saveDraft(ERD, 9, data)` → draft stuck because server couldn't query numeric ID by `uid` column. After server fix (numeric ID lookup via `.eq("id", identifier)`) + 404 markSynced, stale drafts stop retrying.
+

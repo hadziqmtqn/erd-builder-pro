@@ -138,13 +138,17 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
 
     try {
+      const createUid = crypto.randomUUID();
       const res = await apiFetch('/api/diagrams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, project_id: effectiveProjectId }),
+        body: JSON.stringify({ name, project_id: effectiveProjectId, uid: createUid }),
       });
       if (res.ok) {
         const newDiagram = await res.json();
+        if (!newDiagram.uid) {
+          newDiagram.uid = createUid;
+        }
         setDiagrams(prev => [newDiagram, ...prev]);
         toast.success('Diagram created successfully');
         return newDiagram;

@@ -68,6 +68,21 @@ export function SymbolPropertiesModal({
               />
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-zinc-300">Code Logic (JavaScript)</Label>
+              <textarea 
+                value={selectedNode.data.code || ''}
+                onChange={(e) => onUpdateNodeData({ code: e.target.value })}
+                placeholder={selectedNode.data.shape === 'diamond' 
+                  ? "e.g. return context.amount > 100 ? 'Yes' : 'No';" 
+                  : "e.g. context.status = 'Approved'; context.tries += 1;"}
+                className="w-full h-24 bg-black/50 border border-white/10 rounded-md p-2 text-xs font-mono text-white resize-none focus:outline-none focus:border-white/20 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-850 [&::-webkit-scrollbar-thumb]:rounded-full"
+              />
+              <p className="text-[9px] text-muted-foreground/50 leading-normal">
+                Attached sandbox logic. For Decision diamonds, return the matching branch label (case-sensitive). Process symbols can mutate variables in the <code>context</code> object.
+              </p>
+            </div>
+
             {isStart && (
               <div className="space-y-2">
                 <Label>Group Title</Label>

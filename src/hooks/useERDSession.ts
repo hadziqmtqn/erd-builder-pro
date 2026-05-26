@@ -224,6 +224,13 @@ export function useERDSession(
       // === overwriting the correct diagram's canvas.                        ===
       if (options?.isStale && options.isStale()) return;
 
+      // === UUID CORRECTION: After the diagram data is loaded, ensure        ===
+      // === activeDiagramId uses the UUID (uid), not the numeric id that may ===
+      // === have been passed from the URL (race condition on initial load).  ===
+      if (finalData.uid && String(finalData.uid) !== String(id)) {
+        setActiveDiagramId(finalData.uid);
+      }
+
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedNodeId(null);

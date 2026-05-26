@@ -12,6 +12,7 @@ export function FlowchartEditorRoute() {
   const {
     activeFlowchart, activeFlowchartId, handleFlowchartChange,
     isPublicView, isLoading, isFlowchartItemLoading, handleFlowchartSelect,
+    saveFlowchart, triggerDebouncedSync,
   } = ctx;
 
   // Safety net: URL has id but context hasn't synced yet
@@ -79,6 +80,8 @@ export function FlowchartEditorRoute() {
         activeFlowchart={activeFlowchart}
         handleFlowchartChange={handleFlowchartChange}
         isReadOnly={isPublicView}
+        saveFlowchart={saveFlowchart}
+        triggerDebouncedSync={triggerDebouncedSync}
       />
     </Suspense>
   );

@@ -149,6 +149,9 @@ export function useFlowcharts(isGuest: boolean = false) {
       });
       if (res.ok) {
         const newFlowchart = await res.json();
+        if (!newFlowchart.uid) {
+          newFlowchart.uid = crypto.randomUUID();
+        }
         setFlowcharts(prev => [newFlowchart, ...prev]);
         toast.success('Flowchart created successfully');
         return newFlowchart;

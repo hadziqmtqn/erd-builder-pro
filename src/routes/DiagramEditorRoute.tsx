@@ -104,6 +104,8 @@ export function DiagramEditorRoute() {
         selectedNodeId={selectedNodeId}
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={onMoveEnd}
+        saveDiagram={saveDiagram}
+        triggerDebouncedSync={triggerDebouncedSync}
       />
     </Suspense>
   );
