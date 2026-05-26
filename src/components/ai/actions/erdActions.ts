@@ -1,6 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { Entity, Column } from '@/types';
-import { parseSQLToERD } from '@/lib/sqlParser';
+import { parseSQLToERD, parseSqlDdl } from '@/lib/sqlParser';
 import { COLUMN_TYPES } from '@/lib/utils';
 
 function cleanIdentifier(id: string): string {
@@ -371,74 +371,45 @@ function applySingleColumnChanges(
  */
 function parseAlterTableAddColumn(sql: string): Map<string, Column[]> {
   const result = new Map<string, Column[]>();
+  const parsed = parseSqlDdl(sql);
 
-  // Find ALTER TABLE blocks (may contain multiple ADD COLUMN comma-separated)
-  const alterRegex = /ALTER\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60;()]+)["`\x60]?\s*(.*?)(?=(?:ALTER\s+TABLE|$))/gi;
-  let alterMatch;
-  while ((alterMatch = alterRegex.exec(sql)) !== null) {
-    const tableName = cleanIdentifier(alterMatch[2]);
-    const rest = alterMatch[3];
-    if (!tableName || !rest) continue;
+  for (const alter of parsed.alterAddColumns) {
+    const tableName = alter.tableName.toLowerCase();
+    const cols = result.get(tableName) || [];
 
-    // Split remainder by top-level commas to isolate each ADD operation
-    const parts = splitTopLevel(rest);
+    alter.columns.forEach((c, i) => {
+      let rawType = c.type.split('(')[0].trim().toUpperCase();
+      if (rawType.startsWith('BIGINT')) rawType = 'BIGINT';
+      else if (rawType.startsWith('TINYINT')) rawType = 'BOOLEAN';
+      else if (rawType.startsWith('INT')) rawType = 'INT';
+      else if (rawType.startsWith('CHAR')) rawType = 'CHAR';
+      else if (rawType.startsWith('VARBINARY')) rawType = 'VARBINARY';
+      else if (rawType.startsWith('VARCHAR')) rawType = 'VARCHAR';
+      else if (rawType === 'SERIAL' || rawType === 'BIGSERIAL') rawType = 'INT';
+      else if (rawType === 'INTEGER') rawType = 'INT';
+      else if (rawType === 'DOUBLE PRECISION') rawType = 'DOUBLE';
+      else if (rawType === 'CHARACTER VARYING') rawType = 'VARCHAR';
+      else if (rawType === 'CHARACTER') rawType = 'CHAR';
+      else if (rawType === 'BOOLEAN') rawType = 'BOOLEAN';
+      else if (rawType === 'DATETIME') rawType = 'TIMESTAMP';
+      else if (rawType === 'YEAR') rawType = 'INT';
 
-    for (const part of parts) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
+      const normalizedType = COLUMN_TYPES.includes(rawType) ? rawType : 'VARCHAR';
 
-      // Skip FOREIGN KEY / CONSTRAINT additions — handled by parseSQLToERD
-      if (/FOREIGN\s+KEY|CONSTRAINT/i.test(trimmed)) continue;
-
-      // Match ADD [COLUMN] col_name type [constraints]
-      const addMatch = trimmed.match(
-        /ADD\s+(?:COLUMN\s+)?["`\x60]?([^"`\s\x60,;(]+)["`\x60]?\s+([A-Za-z][A-Za-z0-9]*(?:\s*\([^)]*\))?(?:\s+UNSIGNED|\s+ZEROFILL)?)/i
-      );
-      if (!addMatch) continue;
-
-      const colName = cleanIdentifier(addMatch[1]);
-      let rawType = addMatch[2].toUpperCase().replace(/\(.*\)/, '').trim();
-      if (!COLUMN_TYPES.includes(rawType)) rawType = 'VARCHAR';
-
-      const afterType = trimmed.substring(addMatch[0].length).toUpperCase();
-      const isNullable = !/\bNOT\s+NULL\b/.test(afterType);
-      const isPK = /\bPRIMARY\s+KEY\b/.test(afterType);
-
-      const cols = result.get(tableName.toLowerCase()) || [];
       cols.push({
-        id: `col_${Date.now()}_${cols.length}`,
-        name: colName,
-        type: rawType,
-        is_pk: isPK,
-        is_nullable: isNullable,
+        id: `col_${Date.now()}_${cols.length}_${i}`,
+        name: c.name,
+        type: normalizedType,
+        is_pk: c.is_pk,
+        is_nullable: c.is_nullable,
         sort_order: 0,
       });
-      result.set(tableName.toLowerCase(), cols);
-    }
+    });
+
+    result.set(tableName, cols);
   }
 
   return result;
-}
-
-/**
- * Splits a SQL clause string by top-level commas (ignoring commas inside parentheses).
- */
-function splitTopLevel(str: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of str) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) {
-      parts.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  if (current.trim()) parts.push(current);
-  return parts;
 }
 
 /**
@@ -551,26 +522,27 @@ export function applyToErdContent(
         existingEdgeKeys.add(edgeKey);
       };
 
-      // A) Inline FOREIGN KEY inside CREATE TABLE
-      const inlineFkRegex = /FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/gi;
-      let inlineMatch;
-      while ((inlineMatch = inlineFkRegex.exec(sql)) !== null) {
-        const sqlBefore = sql.substring(0, inlineMatch.index);
-        const lastCreateTable = sqlBefore.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["`\x60]?[^"`\s\x60.]+["`\x60]?\.)?["`\x60]?([^"`\s\x60(]+)["`\x60]?\s*\(/i);
-        const sName = lastCreateTable ? cleanIdentifier(lastCreateTable[1]) : '';
-        if (sName) {
-          tryAddEdge(sName, cleanIdentifier(inlineMatch[1]), cleanIdentifier(inlineMatch[3]), cleanIdentifier(inlineMatch[4]));
+      // A) Table-level & Inline FOREIGN KEY constraints parsed from CREATE TABLE
+      const parsedSchema = parseSqlDdl(sql);
+      for (const table of parsedSchema.tables) {
+        for (const c of table.constraints) {
+          if (c.type === 'FOREIGN_KEY' && c.refTable) {
+            const refCols = c.refColumns || [];
+            c.columns.forEach((colName, idx) => {
+              const targetColName = refCols[idx] || colName;
+              tryAddEdge(table.name, colName, c.refTable!, targetColName);
+            });
+          }
         }
       }
 
-      // B) ALTER TABLE ... ADD FOREIGN KEY
-      const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s+ADD\s+(?:COLUMN\s+[^,]+,\s*)?(?:CONSTRAINT\s+["`\x60]?[^"`\s\x60]+["`\x60]?\s+)?FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/gi;
-      let alterMatch;
-      while ((alterMatch = alterFkRegex.exec(sql)) !== null) {
-        const sName = cleanIdentifier(alterMatch[2]);
-        if (sName) {
-          tryAddEdge(sName, cleanIdentifier(alterMatch[3]), cleanIdentifier(alterMatch[5]), cleanIdentifier(alterMatch[6]));
-        }
+      // B) ALTER TABLE ... ADD FOREIGN KEY constraints
+      for (const rel of parsedSchema.alterFks) {
+        const targetCols = rel.targetCols || [];
+        rel.sourceCols.forEach((colName, idx) => {
+          const targetColName = targetCols[idx] || colName;
+          tryAddEdge(rel.sourceTable, colName, rel.targetTable, targetColName);
+        });
       }
 
       return { nodes: mergedNodes, edges: [...mergedEdges, ...additionalEdges], action: 'erd-generate-sql' };

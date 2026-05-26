@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -19,7 +19,20 @@ interface DocumentOutlineProps {
   editor: Editor | null;
 }
 
+function buildNumberedHeadings(headings: HeadingInfo[]): { heading: HeadingInfo; number: string }[] {
+  const counters: number[] = [0, 0, 0, 0, 0, 0];
+  return headings.map(h => {
+    const idx = h.level - 1;
+    counters[idx]++;
+    for (let i = idx + 1; i < counters.length; i++) counters[i] = 0;
+    const number = counters.slice(0, idx + 1).join('.');
+    return { heading: h, number };
+  });
+}
+
 export function DocumentOutline({ headings, scrollToHeading, editor }: DocumentOutlineProps) {
+  const numbered = useMemo(() => buildNumberedHeadings(headings), [headings]);
+
   return (
     <div className="absolute -right-14 top-0 h-full hidden md:block z-40">
       <div className="sticky top-1/2 -translate-y-1/2">
@@ -54,9 +67,9 @@ export function DocumentOutline({ headings, scrollToHeading, editor }: DocumentO
                   <span className="text-[10px] text-muted-foreground uppercase font-medium">Headings</span>
                 </div>
 
-                {headings.length > 0 ? (
+                {numbered.length > 0 ? (
                   <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                    {headings.map((heading, i) => (
+                    {numbered.map(({ heading, number }, i) => (
                       <button
                         key={`${heading.pos}-${i}`}
                         onClick={() => scrollToHeading(heading.pos)}
@@ -69,7 +82,8 @@ export function DocumentOutline({ headings, scrollToHeading, editor }: DocumentO
                                   "pl-12 text-foreground/40 scale-90 origin-left"
                         )}
                       >
-                        {heading.text}
+                        <span className="tabular-nums text-muted-foreground/50 mr-2 shrink-0">{number}.</span>
+                        <span className="truncate">{heading.text}</span>
                       </button>
                     ))}
                   </div>

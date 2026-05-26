@@ -41,162 +41,689 @@ function cleanIdentifier(id: string): string {
     return id.replace(/["`[\]]/g, '').trim();
 }
 
-/**
- * Splits a code block by commas, but ignores commas inside parentheses.
- * e.g. "id INT, price DECIMAL(10,2)" -> ["id INT", "price DECIMAL(10,2)"]
- */
-function splitByTopLevelCommas(str: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let depth = 0;
-    
-    for (let i = 0; i < str.length; i++) {
-        const char = str[i];
-        if (char === '(') depth++;
-        else if (char === ')') depth--;
-        
-        if (char === ',' && depth === 0) {
-            result.push(current.trim());
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    if (current.trim()) result.push(current.trim());
-    return result;
+// ─── SQL LEXER & TOKENIZER ────────────────────────────────
+
+const KEYWORDS = new Set([
+  'CREATE', 'TABLE', 'IF', 'NOT', 'EXISTS',
+  'ALTER', 'ADD', 'COLUMN', 'CONSTRAINT',
+  'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES',
+  'UNIQUE', 'CHECK', 'INDEX', 'DEFAULT', 'NULL',
+  'ON', 'UPDATE', 'DELETE', 'CASCADE', 'RESTRICT',
+  'SET', 'NO', 'ACTION', 'AUTO_INCREMENT', 'SERIAL', 'BIGSERIAL', 'COLLATE',
+  'UNSIGNED', 'ZEROFILL'
+]);
+
+type TokenType = 'KEYWORD' | 'IDENTIFIER' | 'SYMBOL' | 'NUMBER' | 'STRING';
+
+interface Token {
+  type: TokenType;
+  value: string;
 }
+
+class SqlLexer {
+  private input: string;
+  private pos: number = 0;
+
+  constructor(input: string) {
+    // Strip comments: single line (--, #) and multi-line (/* */)
+    this.input = input
+      .replace(/--.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/#.*$/gm, '');
+  }
+
+  tokenize(): Token[] {
+    const tokens: Token[] = [];
+    while (this.pos < this.input.length) {
+      const char = this.input[this.pos];
+
+      // Whitespace
+      if (/\s/.test(char)) {
+        this.pos++;
+        continue;
+      }
+
+      // Symbols
+      if (char === '(' || char === ')' || char === ',' || char === ';' || char === '.') {
+        tokens.push({ type: 'SYMBOL', value: char });
+        this.pos++;
+        continue;
+      }
+
+      // Quoted Identifiers
+      if (char === '"' || char === '`') {
+        const quote = char;
+        let value = '';
+        this.pos++;
+        while (this.pos < this.input.length && this.input[this.pos] !== quote) {
+          if (this.input[this.pos] === '\\' && this.input[this.pos + 1] === quote) {
+            value += quote;
+            this.pos += 2;
+          } else {
+            value += this.input[this.pos];
+            this.pos++;
+          }
+        }
+        if (this.pos < this.input.length) this.pos++;
+        tokens.push({ type: 'IDENTIFIER', value });
+        continue;
+      }
+
+      // Braced Identifiers (SQL Server)
+      if (char === '[') {
+        let value = '';
+        this.pos++;
+        while (this.pos < this.input.length && this.input[this.pos] !== ']') {
+          value += this.input[this.pos];
+          this.pos++;
+        }
+        if (this.pos < this.input.length) this.pos++;
+        tokens.push({ type: 'IDENTIFIER', value });
+        continue;
+      }
+
+      // String Literals
+      if (char === "'") {
+        let value = '';
+        this.pos++;
+        while (this.pos < this.input.length && this.input[this.pos] !== "'") {
+          if (this.input[this.pos] === '\\' && this.input[this.pos + 1] === "'") {
+            value += "'";
+            this.pos += 2;
+          } else if (this.input[this.pos] === "'" && this.input[this.pos + 1] === "'") {
+            value += "'";
+            this.pos += 2;
+          } else {
+            value += this.input[this.pos];
+            this.pos++;
+          }
+        }
+        if (this.pos < this.input.length) this.pos++;
+        tokens.push({ type: 'STRING', value });
+        continue;
+      }
+
+      // Numbers
+      if (/[0-9]/.test(char)) {
+        let value = '';
+        while (this.pos < this.input.length && /[0-9.]/.test(this.input[this.pos])) {
+          value += this.input[this.pos];
+          this.pos++;
+        }
+        tokens.push({ type: 'NUMBER', value });
+        continue;
+      }
+
+      // Words (Identifiers or Keywords)
+      if (/[a-zA-Z_]/.test(char)) {
+        let value = '';
+        while (this.pos < this.input.length && /[a-zA-Z0-9_$]/.test(this.input[this.pos])) {
+          value += this.input[this.pos];
+          this.pos++;
+        }
+        const upper = value.toUpperCase();
+        if (KEYWORDS.has(upper)) {
+          tokens.push({ type: 'KEYWORD', value: upper });
+        } else {
+          tokens.push({ type: 'IDENTIFIER', value });
+        }
+        continue;
+      }
+
+      // Operator or other unknown character
+      tokens.push({ type: 'SYMBOL', value: char });
+      this.pos++;
+    }
+    return tokens;
+  }
+}
+
+class TokenStream {
+  private tokens: Token[];
+  private idx: number = 0;
+
+  constructor(tokens: Token[]) {
+    this.tokens = tokens;
+  }
+
+  peek(offset: number = 0): Token | null {
+    if (this.idx + offset >= this.tokens.length) return null;
+    return this.tokens[this.idx + offset];
+  }
+
+  next(): Token | null {
+    if (this.idx >= this.tokens.length) return null;
+    return this.tokens[this.idx++];
+  }
+
+  matchKeyword(keyword: string): boolean {
+    const t = this.peek();
+    return t !== null && t.type === 'KEYWORD' && t.value === keyword;
+  }
+
+  consumeKeyword(keyword: string): boolean {
+    if (this.matchKeyword(keyword)) {
+      this.next();
+      return true;
+    }
+    return false;
+  }
+
+  matchSymbol(symbol: string): boolean {
+    const t = this.peek();
+    return t !== null && t.type === 'SYMBOL' && t.value === symbol;
+  }
+
+  consumeSymbol(symbol: string): boolean {
+    if (this.matchSymbol(symbol)) {
+      this.next();
+      return true;
+    }
+    return false;
+  }
+
+  eof(): boolean {
+    return this.idx >= this.tokens.length;
+  }
+}
+
+// ─── PARSER HELPER FUNCTIONS ──────────────────────────────
+
+function parseTableName(stream: TokenStream): string {
+  let name = '';
+  const t1 = stream.next();
+  if (t1 && (t1.type === 'IDENTIFIER' || t1.type === 'KEYWORD')) {
+    name = t1.value;
+  }
+  if (stream.consumeSymbol('.')) {
+    const t2 = stream.next();
+    if (t2 && (t2.type === 'IDENTIFIER' || t2.type === 'KEYWORD')) {
+      name = t2.value;
+    }
+  }
+  return cleanIdentifier(name);
+}
+
+function parseDataType(stream: TokenStream): string {
+  const t = stream.next();
+  if (!t) return 'VARCHAR';
+  let typeName = t.value;
+
+  if (stream.consumeSymbol('(')) {
+    let depth = 1;
+    let paramsStr = '';
+    while (!stream.eof()) {
+      const p = stream.next();
+      if (!p) break;
+      if (p.type === 'SYMBOL' && p.value === '(') {
+        depth++;
+      } else if (p.type === 'SYMBOL' && p.value === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+      if (p.type === 'STRING') {
+        paramsStr += `'${p.value}'`;
+      } else {
+        paramsStr += p.value;
+      }
+    }
+    typeName += `(${paramsStr})`;
+  }
+
+  while (!stream.eof()) {
+    const nextT = stream.peek();
+    if (nextT && nextT.type === 'KEYWORD' && (nextT.value === 'UNSIGNED' || nextT.value === 'ZEROFILL')) {
+      typeName += ' ' + nextT.value;
+      stream.next();
+    } else {
+      break;
+    }
+  }
+
+  return typeName;
+}
+
+interface InlineColumnConstraints {
+  isPk: boolean;
+  isNullable: boolean;
+  refTable?: string;
+  refColumn?: string;
+}
+
+function parseColumnConstraints(stream: TokenStream): InlineColumnConstraints {
+  let isPk = false;
+  let isNullable = true;
+  let refTable: string | undefined;
+  let refColumn: string | undefined;
+
+  while (!stream.eof()) {
+    const t = stream.peek();
+    if (!t) break;
+
+    if (t.type === 'SYMBOL' && (t.value === ',' || t.value === ')' || t.value === ';')) {
+      break;
+    }
+
+    if (stream.consumeKeyword('PRIMARY')) {
+      stream.consumeKeyword('KEY');
+      isPk = true;
+      isNullable = false;
+      continue;
+    }
+
+    if (stream.consumeKeyword('NOT')) {
+      if (stream.consumeKeyword('NULL')) {
+        isNullable = false;
+      }
+      continue;
+    }
+
+    if (stream.consumeKeyword('NULL')) {
+      isNullable = true;
+      continue;
+    }
+
+    if (stream.consumeKeyword('REFERENCES')) {
+      refTable = parseTableName(stream);
+      if (stream.consumeSymbol('(')) {
+        const colToken = stream.next();
+        if (colToken) {
+          refColumn = colToken.value;
+        }
+        stream.consumeSymbol(')');
+      }
+      continue;
+    }
+
+    if (stream.consumeKeyword('DEFAULT')) {
+      const nextT = stream.peek();
+      if (nextT && nextT.type === 'SYMBOL' && nextT.value === '(') {
+        let depth = 0;
+        while (!stream.eof()) {
+          const skipT = stream.next();
+          if (!skipT) break;
+          if (skipT.type === 'SYMBOL' && skipT.value === '(') depth++;
+          else if (skipT.type === 'SYMBOL' && skipT.value === ')') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+      } else {
+        stream.next();
+      }
+      continue;
+    }
+
+    if (stream.consumeKeyword('COLLATE')) {
+      stream.next();
+      continue;
+    }
+
+    stream.next();
+  }
+
+  return { isPk, isNullable, refTable, refColumn };
+}
+
+interface ParsedColumn {
+  name: string;
+  type: string;
+  is_pk: boolean;
+  is_nullable: boolean;
+  enum_values?: string;
+}
+
+interface ParsedTableConstraint {
+  type: 'PRIMARY_KEY' | 'FOREIGN_KEY';
+  columns: string[];
+  refTable?: string;
+  refColumns?: string[];
+}
+
+interface ParsedTable {
+  name: string;
+  columns: ParsedColumn[];
+  constraints: ParsedTableConstraint[];
+}
+
+function parseTableItems(stream: TokenStream, table: ParsedTable) {
+  if (!stream.consumeSymbol('(')) return;
+
+  while (!stream.eof()) {
+    if (stream.matchSymbol(')')) {
+      stream.next();
+      break;
+    }
+
+    if (stream.consumeKeyword('CONSTRAINT')) {
+      const nameToken = stream.next();
+      // Skip the constraint name identifier
+    }
+
+    if (stream.consumeKeyword('PRIMARY')) {
+      stream.consumeKeyword('KEY');
+      if (stream.consumeSymbol('(')) {
+        const columns: string[] = [];
+        while (!stream.eof() && !stream.matchSymbol(')')) {
+          const colToken = stream.next();
+          if (colToken && (colToken.type === 'IDENTIFIER' || colToken.type === 'KEYWORD')) {
+            columns.push(colToken.value);
+          }
+          stream.consumeSymbol(',');
+        }
+        stream.consumeSymbol(')');
+        table.constraints.push({ type: 'PRIMARY_KEY', columns });
+      }
+    } else if (stream.consumeKeyword('FOREIGN')) {
+      stream.consumeKeyword('KEY');
+      if (stream.consumeSymbol('(')) {
+        const columns: string[] = [];
+        while (!stream.eof() && !stream.matchSymbol(')')) {
+          const colToken = stream.next();
+          if (colToken && (colToken.type === 'IDENTIFIER' || colToken.type === 'KEYWORD')) {
+            columns.push(colToken.value);
+          }
+          stream.consumeSymbol(',');
+        }
+        stream.consumeSymbol(')');
+
+        if (stream.consumeKeyword('REFERENCES')) {
+          const refTable = parseTableName(stream);
+          const refColumns: string[] = [];
+          if (stream.consumeSymbol('(')) {
+            while (!stream.eof() && !stream.matchSymbol(')')) {
+              const colToken = stream.next();
+              if (colToken && (colToken.type === 'IDENTIFIER' || colToken.type === 'KEYWORD')) {
+                refColumns.push(colToken.value);
+              }
+              stream.consumeSymbol(',');
+            }
+            stream.consumeSymbol(')');
+          }
+          table.constraints.push({ type: 'FOREIGN_KEY', columns, refTable, refColumns });
+        }
+      }
+    } else if (
+      stream.consumeKeyword('UNIQUE') ||
+      stream.consumeKeyword('CHECK') ||
+      stream.consumeKeyword('KEY') ||
+      stream.consumeKeyword('INDEX')
+    ) {
+      let depth = 0;
+      while (!stream.eof()) {
+        const nextT = stream.peek();
+        if (!nextT) break;
+        if (nextT.type === 'SYMBOL' && nextT.value === ',' && depth === 0) {
+          break;
+        }
+        if (nextT.type === 'SYMBOL' && nextT.value === ')' && depth === 0) {
+          break;
+        }
+        if (nextT.type === 'SYMBOL' && nextT.value === '(') depth++;
+        else if (nextT.type === 'SYMBOL' && nextT.value === ')') depth--;
+        stream.next();
+      }
+    } else {
+      const colNameToken = stream.next();
+      if (colNameToken && (colNameToken.type === 'IDENTIFIER' || colNameToken.type === 'KEYWORD')) {
+        const colName = cleanIdentifier(colNameToken.value);
+        const colType = parseDataType(stream);
+        const { isPk, isNullable, refTable, refColumn } = parseColumnConstraints(stream);
+
+        let enumValues = '';
+        if (colType.toUpperCase().startsWith('ENUM')) {
+          const enumMatch = colType.match(/ENUM\s*\(([^)]+)\)/i);
+          if (enumMatch) {
+            enumValues = enumMatch[1]
+              .split(',')
+              .map(v => v.trim().replace(/^['"]|['"]$/g, ''))
+              .join(', ');
+          }
+        }
+
+        table.columns.push({
+          name: colName,
+          type: colType,
+          is_pk: isPk,
+          is_nullable: isNullable,
+          enum_values: enumValues,
+        });
+
+        if (refTable && refColumn) {
+          table.constraints.push({
+            type: 'FOREIGN_KEY',
+            columns: [colName],
+            refTable,
+            refColumns: [refColumn],
+          });
+        }
+      }
+    }
+
+    if (stream.consumeSymbol(',')) {
+      continue;
+    } else if (stream.matchSymbol(')')) {
+      stream.next();
+      break;
+    } else {
+      while (!stream.eof()) {
+        const nextT = stream.peek();
+        if (!nextT) break;
+        if (nextT.type === 'SYMBOL' && (nextT.value === ',' || nextT.value === ')')) {
+          break;
+        }
+        stream.next();
+      }
+      stream.consumeSymbol(',');
+    }
+  }
+}
+
+export interface ParsedSchema {
+  tables: ParsedTable[];
+  alterFks: {
+    sourceTable: string;
+    sourceCols: string[];
+    targetTable: string;
+    targetCols: string[];
+  }[];
+  alterAddColumns: {
+    tableName: string;
+    columns: ParsedColumn[];
+  }[];
+}
+
+export function parseSqlDdl(sql: string): ParsedSchema {
+  const lexer = new SqlLexer(sql);
+  const tokens = lexer.tokenize();
+  const stream = new TokenStream(tokens);
+
+  const tables: ParsedTable[] = [];
+  const alterFks: ParsedSchema['alterFks'] = [];
+  const alterAddColumns: ParsedSchema['alterAddColumns'] = [];
+
+  while (!stream.eof()) {
+    if (stream.consumeKeyword('CREATE')) {
+      if (stream.consumeKeyword('TABLE')) {
+        if (stream.consumeKeyword('IF')) {
+          stream.consumeKeyword('NOT');
+          stream.consumeKeyword('EXISTS');
+        }
+
+        const tableName = parseTableName(stream);
+        if (tableName) {
+          const table: ParsedTable = {
+            name: tableName,
+            columns: [],
+            constraints: [],
+          };
+          parseTableItems(stream, table);
+          tables.push(table);
+        }
+      }
+    } else if (stream.consumeKeyword('ALTER')) {
+      if (stream.consumeKeyword('TABLE')) {
+        const tableName = parseTableName(stream);
+        if (tableName) {
+          while (!stream.eof()) {
+            if (stream.consumeSymbol(';')) {
+              break;
+            }
+
+            if (stream.consumeKeyword('ADD')) {
+              if (stream.consumeKeyword('CONSTRAINT')) {
+                const nameToken = stream.next();
+              }
+
+              if (stream.consumeKeyword('FOREIGN')) {
+                stream.consumeKeyword('KEY');
+                if (stream.consumeSymbol('(')) {
+                  const sourceCols: string[] = [];
+                  while (!stream.eof() && !stream.matchSymbol(')')) {
+                    const colToken = stream.next();
+                    if (colToken && (colToken.type === 'IDENTIFIER' || colToken.type === 'KEYWORD')) {
+                      sourceCols.push(colToken.value);
+                    }
+                    stream.consumeSymbol(',');
+                  }
+                  stream.consumeSymbol(')');
+
+                  if (stream.consumeKeyword('REFERENCES')) {
+                    const targetTable = parseTableName(stream);
+                    const targetCols: string[] = [];
+                    if (stream.consumeSymbol('(')) {
+                      while (!stream.eof() && !stream.matchSymbol(')')) {
+                        const colToken = stream.next();
+                        if (colToken && (colToken.type === 'IDENTIFIER' || colToken.type === 'KEYWORD')) {
+                          targetCols.push(colToken.value);
+                        }
+                        stream.consumeSymbol(',');
+                      }
+                      stream.consumeSymbol(')');
+                    }
+                    alterFks.push({
+                      sourceTable: tableName,
+                      sourceCols,
+                      targetTable,
+                      targetCols,
+                    });
+                  }
+                }
+              } else {
+                stream.consumeKeyword('COLUMN');
+                const colNameToken = stream.next();
+                if (colNameToken && (colNameToken.type === 'IDENTIFIER' || colNameToken.type === 'KEYWORD')) {
+                  const colName = cleanIdentifier(colNameToken.value);
+                  const colType = parseDataType(stream);
+                  const { isPk, isNullable, refTable, refColumn } = parseColumnConstraints(stream);
+
+                  let enumValues = '';
+                  if (colType.toUpperCase().startsWith('ENUM')) {
+                    const enumMatch = colType.match(/ENUM\s*\(([^)]+)\)/i);
+                    if (enumMatch) {
+                      enumValues = enumMatch[1]
+                        .split(',')
+                        .map(v => v.trim().replace(/^['"]|['"]$/g, ''))
+                        .join(', ');
+                    }
+                  }
+
+                  const newCol: ParsedColumn = {
+                    name: colName,
+                    type: colType,
+                    is_pk: isPk,
+                    is_nullable: isNullable,
+                    enum_values: enumValues,
+                  };
+
+                  let existingAlter = alterAddColumns.find(
+                    a => a.tableName.toLowerCase() === tableName.toLowerCase()
+                  );
+                  if (!existingAlter) {
+                    existingAlter = { tableName, columns: [] };
+                    alterAddColumns.push(existingAlter);
+                  }
+                  existingAlter.columns.push(newCol);
+
+                  if (refTable && refColumn) {
+                    alterFks.push({
+                      sourceTable: tableName,
+                      sourceCols: [colName],
+                      targetTable: refTable,
+                      targetCols: [refColumn],
+                    });
+                  }
+                }
+              }
+            } else {
+              while (!stream.eof()) {
+                const nextT = stream.peek();
+                if (!nextT) break;
+                if (nextT.type === 'SYMBOL' && (nextT.value === ',' || nextT.value === ';')) {
+                  break;
+                }
+                stream.next();
+              }
+            }
+
+            if (stream.consumeSymbol(',')) {
+              continue;
+            } else {
+              stream.consumeSymbol(';');
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      while (!stream.eof()) {
+        const t = stream.next();
+        if (t && t.type === 'SYMBOL' && t.value === ';') {
+          break;
+        }
+      }
+    }
+  }
+
+  return { tables, alterFks, alterAddColumns };
+}
+
+// ─── PUBLIC PARSER API ────────────────────────────────────
 
 export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge[] } {
   const nodes: Node<Entity>[] = [];
   const edges: Edge[] = [];
-  
-  // 1. IMPROVED CLEANING
-  // Instead of aggressive global stripping, we do a more surgical removal
-  // to avoid deleting legitimate CREATE TABLE statements that follow an INSERT with a semicolon in a string.
-  let cleanSql = sql
-    .replace(/--.*$/gm, '') // Remove single line comments
-    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
-    .replace(/#.*$/gm, ''); // Remove MySQL style # comments
 
-  // Find all CREATE TABLE start positions
-  const tableStarts: number[] = [];
-  const createTableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/gi;
-  let match;
-  while ((match = createTableRegex.exec(cleanSql)) !== null) {
-    tableStarts.push(match.index);
-  }
-
-  const tableDefinitions: { name: string; body: string; tail: string }[] = [];
-
-  for (let i = 0; i < tableStarts.length; i++) {
-    const start = tableStarts[i];
-    const nextStart = tableStarts[i + 1] || cleanSql.length;
-    const segment = cleanSql.substring(start, nextStart);
-
-    // IMPROVED REGEX: 
-    // Matches: `schema`.`table`, `table`, table, "table", etc.
-    // Supports hyphens and other common identifier characters.
-    const nameMatch = segment.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60(]+)["`\x60]?)\s*\(/i);
-    if (!nameMatch) continue;
-
-    const tableName = cleanIdentifier(nameMatch[2]);
-    const bodyStart = segment.indexOf('(');
-    if (bodyStart === -1) continue;
-
-    // Find the matching closing parenthesis for the table body
-    let depth = 0;
-    let bodyEnd = -1;
-    for (let j = bodyStart; j < segment.length; j++) {
-      if (segment[j] === '(') depth++;
-      else if (segment[j] === ')') depth--;
-
-      if (depth === 0) {
-        bodyEnd = j;
-        break;
-      }
-    }
-
-    if (bodyEnd === -1) continue;
-
-    const body = segment.substring(bodyStart + 1, bodyEnd);
-    const tailStart = bodyEnd + 1;
-    const tailEnd = segment.indexOf(';', tailStart);
-    const tail = tailEnd !== -1 ? segment.substring(tailStart, tailEnd) : segment.substring(tailStart);
-
-    tableDefinitions.push({ name: tableName, body, tail });
-  }
+  const parsed = parseSqlDdl(sql);
 
   let xPos = 50;
   let yPos = 50;
 
-  for (const tableDef of tableDefinitions) {
-    const columns: Column[] = [];
+  // 1. Create Nodes
+  for (const table of parsed.tables) {
     const tableId = `node-${Math.random().toString(36).substr(2, 9)}`;
 
-    const lines = splitByTopLevelCommas(tableDef.body);
-    
-    // Pass 1: Find table-level primary keys to ensure we mark columns correctly later
+    // Collect table-level PK column names
     const tableLevelPks = new Set<string>();
-    lines.forEach(line => {
-      const trimmedLine = line.trim();
-      // Match PRIMARY KEY (id) or PRIMARY KEY (`id`)
-      const pkMatch = trimmedLine.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
-      if (pkMatch) {
-        pkMatch[1].split(',').forEach(part => {
-          tableLevelPks.add(cleanIdentifier(part));
-        });
+    for (const c of table.constraints) {
+      if (c.type === 'PRIMARY_KEY') {
+        c.columns.forEach(col => tableLevelPks.add(col.toLowerCase()));
       }
-    });
-    
-    lines.forEach((line, index) => {
-      const trimmedLine = line.trim();
-      const upperLine = trimmedLine.toUpperCase();
-      
-      // Skip table-level constraints/indexes including FOREIGN KEY
-      if (/^(CONSTRAINT|PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|INDEX|KEY|FULLTEXT|SPATIAL)\b/i.test(upperLine)) {
-          if (trimmedLine.includes('(')) return;
-      }
+    }
 
-      const parts = trimmedLine.split(/\s+/);
-      if (parts.length < 2) return;
-
-      const colName = cleanIdentifier(parts[0]);
-      if (!colName) return;
-      
-      // Robust type extraction: ignore COLLATE, CHARACTER SET, and other noise
-      let rawType = parts[1];
-      
-      // If the word following the type is 'UNSIGNED' or 'ZEROFILL', we include it for better normalization
-      if (parts[2] && /^(UNSIGNED|ZEROFILL)$/i.test(parts[2])) {
-          rawType += ' ' + parts[2];
-      }
-
-      const colType = normalizeType(rawType);
-      
-      // Extract ENUM values if present
-      let enumValues = '';
-      if (colType === 'ENUM') {
-        const enumMatch = trimmedLine.match(/ENUM\s*\(([^)]+)\)/i);
-        if (enumMatch) {
-          enumValues = enumMatch[1]
-            .split(',')
-            .map(v => v.trim().replace(/^['"]|['"]$/g, ''))
-            .join(', ');
-        }
-      }
-      
-      // Check for inline PRIMARY KEY or if it was identified in table-level PKs
-      const isPk = upperLine.includes('PRIMARY KEY') || tableLevelPks.has(colName);
-      const isNullable = !upperLine.includes('NOT NULL') && !isPk; // PKs are usually not nullable
+    const columns: Column[] = [];
+    table.columns.forEach((col, idx) => {
+      const isPk = col.is_pk || tableLevelPks.has(col.name.toLowerCase());
+      const normalizedType = normalizeType(col.type);
 
       columns.push({
         id: `col-${Math.random().toString(36).substr(2, 9)}`,
-        name: colName,
-        type: colType,
+        name: col.name,
+        type: normalizedType,
         is_pk: isPk,
-        is_nullable: isNullable,
-        enum_values: enumValues,
-        sort_order: columns.length // Assign sequential order
+        is_nullable: !isPk && col.is_nullable,
+        enum_values: col.enum_values || '',
+        sort_order: idx,
       });
     });
 
@@ -206,12 +733,12 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       position: { x: xPos, y: yPos },
       data: {
         id: tableId,
-        name: tableDef.name,
+        name: table.name,
         columns,
         color: '#6366f1',
         x: xPos,
-        y: yPos
-      }
+        y: yPos,
+      },
     });
 
     xPos += 350;
@@ -221,63 +748,52 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     }
   }
 
+  // Helper to resolve relationships
   const processRel = (sourceTable: string, sourceCol: string, targetTable: string, targetCol: string) => {
     const sNode = nodes.find(n => n.data.name.toLowerCase() === sourceTable.toLowerCase());
     const tNode = nodes.find(n => n.data.name.toLowerCase() === targetTable.toLowerCase());
 
     if (sNode && tNode) {
-        const sCol = sNode.data.columns.find(c => c.name.toLowerCase() === sourceCol.toLowerCase());
-        const tCol = tNode.data.columns.find(c => c.name.toLowerCase() === targetCol.toLowerCase());
+      const sCol = sNode.data.columns.find(c => c.name.toLowerCase() === sourceCol.toLowerCase());
+      const tCol = tNode.data.columns.find(c => c.name.toLowerCase() === targetCol.toLowerCase());
 
-        if (sCol && tCol) {
-            edges.push({
-                id: `e-${sNode.id}-${tNode.id}-${Math.random()}`,
-                source: sNode.id,
-                target: tNode.id,
-                sourceHandle: `col-${sCol.id}-source`,
-                targetHandle: `col-${tCol.id}-target`,
-                label: '1:N',
-                type: 'smoothstep',
-                animated: false
-            });
-        }
+      if (sCol && tCol) {
+        // Mark source column as FK
+        sCol._is_fk = true;
+
+        edges.push({
+          id: `e-${sNode.id}-${tNode.id}-${Math.random()}`,
+          source: sNode.id,
+          target: tNode.id,
+          sourceHandle: `col-${sCol.id}-source`,
+          targetHandle: `col-${tCol.id}-target`,
+          label: '1:N',
+          type: 'smoothstep',
+          animated: false,
+        });
+      }
     }
   };
 
-  // 3. EXTRACT RELATIONSHIPS
-  // Handle ALTER TABLE constraints with better regex for special characters
-  const alterFkRegex = /ALTER\s+TABLE\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s+ADD\s+(?:CONSTRAINT\s+["`\x60]?([^"`\s\x60]+)["`\x60]?\s+)?FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?)\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/gi;
-  const alterMatches = Array.from(cleanSql.matchAll(alterFkRegex));
-  for (const m of alterMatches) {
-    processRel(cleanIdentifier(m[2]), cleanIdentifier(m[4]), cleanIdentifier(m[6]), cleanIdentifier(m[7]));
+  // 2. Process table level FK constraints
+  for (const table of parsed.tables) {
+    for (const c of table.constraints) {
+      if (c.type === 'FOREIGN_KEY' && c.refTable) {
+        const refCols = c.refColumns || [];
+        c.columns.forEach((colName, idx) => {
+          const targetColName = refCols[idx] || colName;
+          processRel(table.name, colName, c.refTable!, targetColName);
+        });
+      }
+    }
   }
 
-  // Handle inline constraints
-  for (const tableDef of tableDefinitions) {
-    const lines = splitByTopLevelCommas(tableDef.body);
-    lines.forEach(line => {
-        // FOREIGN KEY (...) REFERENCES ...
-        const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)\s+REFERENCES\s+(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/i);
-        if (fkMatch) {
-            processRel(tableDef.name, cleanIdentifier(fkMatch[1]), cleanIdentifier(fkMatch[3]), cleanIdentifier(fkMatch[4]));
-            // Mark FK column on source node (if it exists among parsed columns)
-            const fkColName = cleanIdentifier(fkMatch[1]);
-            for (const node of nodes) {
-              if (node.data.name.toLowerCase() === tableDef.name.toLowerCase()) {
-                const col = node.data.columns.find(c => c.name.toLowerCase() === fkColName.toLowerCase());
-                if (col) {
-                  col._is_fk = true;
-                  col.is_nullable = false;
-                }
-              }
-            }
-        }
-        
-        // inline column REFERENCES: col_name type REFERENCES target_table(col)
-        const inlineFkMatch = line.match(/^(?:["`\x60]?([^"`\s\x60]+)["`\x60]?)\s+[^,]+\s+REFERENCES\s+(?:["`\x60]?([^"`\s\x60.]+)["`\x60]?\.)?["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\(\s*["`\x60]?([^"`\s\x60]+)["`\x60]?\s*\)/i);
-        if (inlineFkMatch) {
-            processRel(tableDef.name, cleanIdentifier(inlineFkMatch[1]), cleanIdentifier(inlineFkMatch[3]), cleanIdentifier(inlineFkMatch[4]));
-        }
+  // 3. Process ALTER TABLE FK constraints
+  for (const rel of parsed.alterFks) {
+    const targetCols = rel.targetCols || [];
+    rel.sourceCols.forEach((colName, idx) => {
+      const targetColName = targetCols[idx] || colName;
+      processRel(rel.sourceTable, colName, rel.targetTable, targetColName);
     });
   }
 
