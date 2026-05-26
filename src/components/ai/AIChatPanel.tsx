@@ -103,6 +103,7 @@ export const AIChatPanel = ({
   };
   const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
   const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
+  // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
   const actions = currentViewType ? getActionsForView(currentViewType) : [];
 
   // ─── Auto-fill prompt from AI action buttons ──────
@@ -475,6 +476,7 @@ export const AIChatPanel = ({
           entityTypeMeta={entityTypeMeta}
           mentionFiles={mentionFiles}
           activeProjectId={projectId}
+          diagrams={diagrams}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}

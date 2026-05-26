@@ -826,3 +826,24 @@ The chain: `activeDiagramId = numeric` → `saveDiagram` → `saveDraft(DraftTyp
 - **404 handling** (line 177-181): when a sync draft returns 404, draft is **marked as synced** (`markSynced`) — NOT deleted. This preserves data in IndexedDB (local-first) while preventing infinite retry loops. The stale numeric ERD draft pattern: pre-UUID-migration drafts stored with numeric `id` can't be found by server (`diagram id=9` may not exist), so 404 cleanup marks them as synced instead of retrying forever.
 - **Stale draft cause**: before UUID fixes, `activeDiagramId` could be numeric → `saveDraft(ERD, 9, data)` → draft stuck because server couldn't query numeric ID by `uid` column. After server fix (numeric ID lookup via `.eq("id", identifier)`) + 404 markSynced, stale drafts stop retrying.
 
+## Cross-Feature Chat (Satu Sesi untuk Semua Fitur)
+
+- **Satu sesi chat bisa bahas Notes, ERD, dan Flowchart** — `entity_type`/`entity_uid` diisi saat sesi pertama dibuat, tidak berubah. Tapi konten chat fleksibel.
+- **Radio pills** di `ChatInput.tsx` menampilkan actions sesuai **file fitur yang sedang dibuka** (bukan sesi `entity_type`). Ditentukan dari `entityType` prop (current view).
+  - File: [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx):106 — `getActionsForView(currentViewType)` berdasarkan `entityType` (current file, bukan session origin)
+  - File: [`src/components/ai/ChatInput.tsx`](./src/components/ai/ChatInput.tsx):198 — `showActions = !isStreaming && actions.length > 0` (tidak ada filter `isCrossEntity` — actions tetap muncul meski sesi dari view berbeda)
+- **Pencegahan duplikat Create ERD/Flowchart**: setiap kali user klik tombol Create ERD/Flowchart dari chat, UID diagram yang dibuat disimpan di ref (`chatErdUidRef`) + localStorage (`chat_erd_uid`). Klik berikutnya → update existing diagram (navigate + pending DDL/JSON di localStorage), bukan create baru.
+  - File: [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx): `chatErdUidRef`, `chatFlowchartUidRef`
+  - `handleSidebarDiagramCreate`/`handleSidebarFlowchartCreate` return created object (changed from `Promise<void>` to `Promise<any>` di [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts) dan [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx))
+- **Content-aware buttons**: setiap AI message bisa punya multiple action buttons:
+  - Markdown/text → Replace/Append (routed ke content handler view aktif, e.g. NotesView)
+  - SQL DDL → "Create/Update ERD" — membuka **ErdSelectDialog** untuk milih target
+  - Flowchart JSON → "Create Flowchart" / "Update Flowchart"
+  - Semua tombol independen — tidak ada routing konflik
+- **ErdSelectDialog** ([`src/components/ai/ErdSelectDialog.tsx`](./src/components/ai/ErdSelectDialog.tsx)): dialog yang muncul saat user klik "Create/Update ERD":
+  - **File selector** (select dropdown) di atas: "Create new ERD diagram" atau pilih existing ERD
+  - Filter existing ERD sesuai `projectId` sesi chat (jika sesi punya project → hanya ERD di project itu; jika tidak → ERD tanpa project)
+  - **React Flow preview** di bawah selector — menampilkan hasil parse SQL (`parseSQLToERD`) sebagai tabel dengan kolom, PK, FK
+  - Confirm → create baru atau navigate ke existing + pending DDL di localStorage
+  - File: `ChatMessages.tsx` → `ErdSelectDialog` di-render via portal, state `erdDialogOpen` + `pendingErdSql`
+

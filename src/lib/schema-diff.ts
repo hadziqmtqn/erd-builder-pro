@@ -20,104 +20,92 @@ export function computeSchemaDiff(
   let modifiedCount = 0;
   let deletedCount = 0;
 
-  // 1. Process proposed nodes (NEW or MODIFIED or UNCHANGED)
-  proposedNodes.forEach(pNode => {
-    const originalNode = currentNodes.find(cNode => cNode.id === pNode.id);
-    
-    if (!originalNode) {
-      // NEW Table
+  // Build name-based lookup tables
+  const currentByName = new Map<string, Node<Entity>>();
+  currentNodes.forEach(n => currentByName.set(n.data.name.toLowerCase(), n));
+  const proposedByName = new Map<string, Node<Entity>>();
+  proposedNodes.forEach(n => proposedByName.set(n.data.name.toLowerCase(), n));
+
+  // 1. Process all unique names from both sets
+  const allNames = new Set([
+    ...currentByName.keys(),
+    ...proposedByName.keys(),
+  ]);
+
+  allNames.forEach(name => {
+    const origNode = currentByName.get(name);
+    const propNode = proposedByName.get(name);
+
+    if (!origNode && propNode) {
+      // NEW table — only in proposed
       newCount++;
       diffNodes.push({
-        ...pNode,
+        ...propNode,
         data: {
-          ...pNode.data,
-          diffState: 'new',
-        } as any
+          ...propNode.data,
+          diffState: 'new' as any,
+        },
       });
-    } else {
-      // MODIFIED or UNCHANGED Table
-      const originalCols = originalNode.data.columns || [];
-      const proposedCols = pNode.data.columns || [];
-      
+    } else if (origNode && !propNode) {
+      // DELETED table — only in current
+      deletedCount++;
+      const deletedCols = (origNode.data.columns || []).map(col => ({
+        ...col,
+        diffState: 'deleted' as any,
+      }));
+      diffNodes.push({
+        ...origNode,
+        data: {
+          ...origNode.data,
+          columns: deletedCols,
+          diffState: 'deleted' as any,
+        },
+      });
+    } else if (origNode && propNode) {
+      // EXISTING — compare columns
+      const origCols = origNode.data.columns || [];
+      const propCols = propNode.data.columns || [];
+      const origColMap = new Map(origCols.map(c => [c.name.toLowerCase(), c]));
+      const propColMap = new Map(propCols.map(c => [c.name.toLowerCase(), c]));
+      const allColNames = new Set([...origColMap.keys(), ...propColMap.keys()]);
       const combinedColumns: any[] = [];
       let columnsChanged = false;
 
-      // Check for new/modified columns in proposed
-      proposedCols.forEach(pCol => {
-        const originalCol = originalCols.find(cCol => cCol.name.toLowerCase() === pCol.name.toLowerCase());
-        if (!originalCol) {
+      allColNames.forEach(colName => {
+        const origCol = origColMap.get(colName);
+        const propCol = propColMap.get(colName);
+
+        if (!origCol && propCol) {
           columnsChanged = true;
-          combinedColumns.push({
-            ...pCol,
-            diffState: 'new',
-          });
-        } else {
-          // Compare characteristics (type, pk, nullable)
-          const charChanged = 
-            originalCol.type.toLowerCase() !== pCol.type.toLowerCase() ||
-            !!originalCol.is_pk !== !!pCol.is_pk ||
-            !!originalCol.is_nullable !== !!pCol.is_nullable;
-          
-          if (charChanged) {
+          combinedColumns.push({ ...propCol, diffState: 'new' as any });
+        } else if (origCol && !propCol) {
+          columnsChanged = true;
+          combinedColumns.push({ ...origCol, diffState: 'deleted' as any });
+        } else if (origCol && propCol) {
+          const changed =
+            origCol.type.toLowerCase() !== propCol.type.toLowerCase() ||
+            !!origCol.is_pk !== !!propCol.is_pk ||
+            !!origCol.is_nullable !== !!propCol.is_nullable;
+          if (changed) {
             columnsChanged = true;
-            combinedColumns.push({
-              ...pCol,
-              diffState: 'new', // treat changes as a new version
-            });
+            combinedColumns.push({ ...propCol, diffState: 'new' as any });
           } else {
-            combinedColumns.push(pCol);
+            combinedColumns.push(origCol);
           }
         }
       });
 
-      // Check for deleted columns (in original but not in proposed)
-      originalCols.forEach(oCol => {
-        const proposedCol = proposedCols.find(pCol => pCol.name.toLowerCase() === oCol.name.toLowerCase());
-        if (!proposedCol) {
-          columnsChanged = true;
-          combinedColumns.push({
-            ...oCol,
-            diffState: 'deleted',
-          });
-        }
-      });
-
-      if (columnsChanged) {
-        modifiedCount++;
-        diffNodes.push({
-          ...pNode,
-          data: {
-            ...pNode.data,
-            columns: combinedColumns,
-            diffState: 'modified',
-          } as any
-        });
-      } else {
-        // UNCHANGED
-        diffNodes.push(pNode);
-      }
-    }
-  });
-
-  // 2. Process deleted nodes (in current but not in proposed)
-  currentNodes.forEach(cNode => {
-    const proposedNode = proposedNodes.find(pNode => pNode.id === cNode.id);
-    if (!proposedNode) {
-      deletedCount++;
-      // Mark all columns in deleted node as deleted
-      const deletedCols = (cNode.data.columns || []).map(col => ({
-        ...col,
-        diffState: 'deleted',
-      }));
-
+      // Preserve original position (so user sees where the table is on the real canvas)
       diffNodes.push({
-        ...cNode,
+        ...(columnsChanged ? propNode : origNode),
+        position: origNode.position,
         data: {
-          ...cNode.data,
-          columns: deletedCols,
-          diffState: 'deleted',
-        } as any
+          ...(propNode.data),
+          columns: combinedColumns,
+          diffState: columnsChanged ? ('modified' as any) : undefined,
+        },
       });
+      if (columnsChanged) modifiedCount++;
     }
   });
 

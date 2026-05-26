@@ -195,7 +195,7 @@ export const ChatInput = memo(function ChatInput({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [mentionOpen]);
 
-  const showActions = !isCrossEntity && ['note', 'diagram', 'flowchart'].includes(entityType || '') && !isStreaming && actions.length > 0;
+  const showActions = !isStreaming && actions.length > 0;
 
   if (!hasActiveSession) return null;
 

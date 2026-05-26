@@ -59,6 +59,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
       await fetchProjects();
       await handleDiagramSelect(d.uid || d.id);
     }
+    return d;
   }, [createDiagram, fetchProjects, handleDiagramSelect]);
 
   const handleSidebarNoteCreate = useCallback(async (t: string, pid?: number | string | null) => {
@@ -83,6 +84,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
       await fetchProjects();
       await handleFlowchartSelect(f.uid);
     }
+    return f;
   }, [createFlowchart, fetchProjects, handleFlowchartSelect]);
 
   const handleSidebarProjectCreate = useCallback(async (n: string) => {
