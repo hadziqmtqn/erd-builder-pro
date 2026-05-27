@@ -112,6 +112,17 @@ const ERDViewComponent = ({
   const [approvedTableIds, setApprovedTableIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
 
+  // Memoized diff-derived values — prevent filter/map re-run on every ReactFlow render
+  const diffNodesWithChanges = React.useMemo(() =>
+    pendingDiff?.diffNodes.filter(n => n.data.diffState) ?? []
+  , [pendingDiff?.diffNodes]);
+  const allChangedIds = React.useMemo(() =>
+    diffNodesWithChanges.map(n => n.id)
+  , [diffNodesWithChanges]);
+  const diffNewCount = pendingDiff?.diffResult.newCount ?? 0;
+  const diffModCount = pendingDiff?.diffResult.modifiedCount ?? 0;
+  const diffDelCount = pendingDiff?.diffResult.deletedCount ?? 0;
+
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
       e.stopPropagation();
@@ -504,14 +515,14 @@ const ERDViewComponent = ({
               <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">AI Schema Proposal</span>
               <div className="h-4 w-px bg-white/10 mx-2" />
               <div className="flex gap-2 text-[11px] font-bold">
-                {pendingDiff.diffResult.newCount > 0 && (
-                  <span className="text-emerald-400">{pendingDiff.diffResult.newCount} New</span>
+                {diffNewCount > 0 && (
+                  <span className="text-emerald-400">{diffNewCount} New</span>
                 )}
-                {pendingDiff.diffResult.modifiedCount > 0 && (
-                  <span className="text-amber-400">{pendingDiff.diffResult.modifiedCount} Mod</span>
+                {diffModCount > 0 && (
+                  <span className="text-amber-400">{diffModCount} Mod</span>
                 )}
-                {pendingDiff.diffResult.deletedCount > 0 && (
-                  <span className="text-red-400">{pendingDiff.diffResult.deletedCount} Del</span>
+                {diffDelCount > 0 && (
+                  <span className="text-red-400">{diffDelCount} Del</span>
                 )}
               </div>
             </div>
@@ -552,17 +563,16 @@ const ERDViewComponent = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Select tables to merge:</span>
                 <button 
                   onClick={() => {
-                    const allTableIds = pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => n.id);
-                    setApprovedTableIds(approvedTableIds.length === allTableIds.length ? [] : allTableIds);
+                    setApprovedTableIds(approvedTableIds.length === allChangedIds.length ? [] : [...allChangedIds]);
                   }}
                   className="text-[10px] text-zinc-500 hover:text-zinc-300 underline font-medium"
                 >
-                  {approvedTableIds.length === pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => n.id).length ? 'Unselect All' : 'Select All'}
+                  {approvedTableIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
                 </button>
               </div>
 
               <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                {pendingDiff.diffNodes.filter(n => n.data.diffState).map(n => {
+                {diffNodesWithChanges.map(n => {
                   const label = n.data.name || n.data.label || n.id;
                   const type = n.data.diffState;
                   const isChecked = approvedTableIds.includes(n.id);
