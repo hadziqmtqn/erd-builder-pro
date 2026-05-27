@@ -388,6 +388,35 @@ const ERDViewComponent = ({
     }
   }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync]);
 
+  // ─── Handle pending UPDATE DDL ──
+  // Unlike create, update waits for server data to load first (nodes.length > 0),
+  // then shows the diff/merge UI so the user can selectively merge changes.
+  const pendingUpdateConsumedRef = React.useRef(false);
+  React.useEffect(() => {
+    const pendingUpdateDdl = localStorage.getItem('pending_update_erd_ddl');
+    if (!pendingUpdateDdl) {
+      pendingUpdateConsumedRef.current = false;
+      return;
+    }
+
+    // Wait for server data to load — nodes will be empty during navigation,
+    // then populated once selectDiagram completes
+    if (nodes.length === 0 || pendingUpdateConsumedRef.current) return;
+
+    // Consume the pending DDL
+    localStorage.removeItem('pending_update_erd_ddl');
+    pendingUpdateConsumedRef.current = true;
+
+    const result = applyToErdContent([], [], 'erd-generate-sql', pendingUpdateDdl);
+    if (result) {
+      // Use the visual diff/merge UI to compare existing data with proposed SQL
+      startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
+      toast.info('Review the schema changes and merge when ready');
+    } else {
+      toast.error('Could not parse the SQL for diff');
+    }
+  }, [nodes, startDiff]);
+
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 

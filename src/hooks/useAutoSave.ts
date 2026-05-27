@@ -126,7 +126,14 @@ export function useAutoSave(params: UseAutoSaveParams) {
     // 🛡️ Guard 1: Only trigger if saveCounter actually changed
     if (saveCounter === lastProcessedCounterRef.current) return;
     
-    // 🛡️ Guard 2: Ignore any changes (like initial viewport jumps) for the first 2 seconds after load
+    // 🛡️ Guard 2: If we just saved (via handleEntityUpdate's immediate path), skip —
+    // the save is already complete; consuming the counter prevents the duplicate auto-save.
+    if (Date.now() - lastSaveCallRef.current < 100) {
+      lastProcessedCounterRef.current = saveCounter;
+      return;
+    }
+
+    // 🛡️ Guard 3: Ignore any changes (like initial viewport jumps) for the first 2 seconds after load
     if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
       lastProcessedCounterRef.current = saveCounter; // Consume the counter so it doesn't trigger later
       return;
