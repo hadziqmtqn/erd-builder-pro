@@ -1,9 +1,9 @@
-import React, { Suspense, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
 
-const ERDView = React.lazy(() => import('@/components/views/ERDView').then(m => ({ default: m.ERDView })));
+import { ERDView } from '@/components/views/ERDView';
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
@@ -75,14 +75,6 @@ export function DiagramEditorRoute() {
   }
 
   return (
-    <Suspense fallback={
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <span className="text-xs text-muted-foreground/60 animate-pulse">Loading diagram...</span>
-        </div>
-      </div>
-    }>
       <ERDView
         key={isPublicView ? publicData?.id : activeDiagramId}
         isLoading={isLoading}
@@ -109,6 +101,5 @@ export function DiagramEditorRoute() {
         triggerDebouncedSync={triggerDebouncedSync}
         pendingErdDiffTrigger={pendingErdDiffTrigger}
       />
-    </Suspense>
   );
 }

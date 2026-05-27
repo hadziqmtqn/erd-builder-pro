@@ -1,9 +1,9 @@
-import React, { Suspense, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { GitBranch } from 'lucide-react';
 
-const FlowchartView = React.lazy(() => import('@/components/views/FlowchartView').then(m => ({ default: m.FlowchartView })));
+import { FlowchartView } from '@/components/views/FlowchartView';
 
 export function FlowchartEditorRoute() {
   const ctx = useWorkspace();
@@ -66,14 +66,6 @@ export function FlowchartEditorRoute() {
   }
 
   return (
-    <Suspense fallback={
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <span className="text-xs text-muted-foreground/60 animate-pulse">Loading flowchart...</span>
-        </div>
-      </div>
-    }>
       <FlowchartView
         isLoading={isLoading}
         activeFlowchartId={activeFlowchartId}
@@ -83,6 +75,5 @@ export function FlowchartEditorRoute() {
         saveFlowchart={saveFlowchart}
         triggerDebouncedSync={triggerDebouncedSync}
       />
-    </Suspense>
   );
 }
