@@ -270,6 +270,8 @@ export interface WorkspaceContextValue {
   triggerTableRefresh: () => void;
   tableLoadingState: 'idle' | 'loading';
   setTableLoadingState: (state: 'idle' | 'loading') => void;
+  pendingErdDiffTrigger: number;
+  triggerPendingErdDiff: () => void;
 
   // Page-specific breadcrumb (set by Page components like DashboardPage, NotesPage, etc.)
   breadcrumbLabel: string | null;

@@ -58,6 +58,7 @@ interface ERDViewProps {
   onMoveEnd?: (e: any, v: any) => void;
   saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
   triggerDebouncedSync?: () => void;
+  pendingErdDiffTrigger?: number;
 }
 
 
@@ -90,6 +91,7 @@ const ERDViewComponent = ({
   isLoading,
   saveDiagram,
   triggerDebouncedSync,
+  pendingErdDiffTrigger,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
@@ -391,21 +393,17 @@ const ERDViewComponent = ({
   // ─── Handle pending UPDATE DDL ──
   // Unlike create, update waits for server data to load first (nodes.length > 0),
   // then shows the diff/merge UI so the user can selectively merge changes.
-  const pendingUpdateConsumedRef = React.useRef(false);
+  // pendingErdDiffTrigger allows re-processing when already on the same page.
   React.useEffect(() => {
     const pendingUpdateDdl = localStorage.getItem('pending_update_erd_ddl');
-    if (!pendingUpdateDdl) {
-      pendingUpdateConsumedRef.current = false;
-      return;
-    }
+    if (!pendingUpdateDdl) return;
 
     // Wait for server data to load — nodes will be empty during navigation,
     // then populated once selectDiagram completes
-    if (nodes.length === 0 || pendingUpdateConsumedRef.current) return;
+    if (nodes.length === 0) return;
 
     // Consume the pending DDL
     localStorage.removeItem('pending_update_erd_ddl');
-    pendingUpdateConsumedRef.current = true;
 
     const result = applyToErdContent([], [], 'erd-generate-sql', pendingUpdateDdl);
     if (result) {
@@ -415,7 +413,7 @@ const ERDViewComponent = ({
     } else {
       toast.error('Could not parse the SQL for diff');
     }
-  }, [nodes, startDiff]);
+  }, [nodes, startDiff, pendingErdDiffTrigger]);
 
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
@@ -668,7 +666,8 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.selectedNodeId === next.selectedNodeId &&
     prev.canUndo === next.canUndo &&
     prev.canRedo === next.canRedo &&
-    prev.onMoveEnd === next.onMoveEnd
+    prev.onMoveEnd === next.onMoveEnd &&
+    prev.pendingErdDiffTrigger === next.pendingErdDiffTrigger
   );
 });
 

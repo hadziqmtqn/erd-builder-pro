@@ -1,4 +1,4 @@
-import { memo, useRef, useState, useEffect, useCallback, createElement, ComponentType } from 'react';
+import { memo, useRef, useState, useEffect, useCallback, useMemo, createElement, ComponentType } from 'react';
 import { MessageSquare, Plus, Bot, User, Loader2, Replace, ArrowDownToLine, Copy, Check, ChevronDown, Database, GitBranch } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -142,7 +142,7 @@ export const ChatMessages = memo(function ChatMessages({
   activeProjectId,
   diagrams = [],
 }: ChatMessagesProps) {
-  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, handleDiagramSelect, handleFlowchartSelect, activeProjectId: workspaceProjectId } = useWorkspace();
+  const { handleSidebarDiagramCreate, handleSidebarFlowchartCreate, handleDiagramSelect, handleFlowchartSelect, activeProjectId: workspaceProjectId, triggerPendingErdDiff } = useWorkspace();
 
   const targetProjectId = activeProjectId !== undefined ? activeProjectId : workspaceProjectId;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -158,6 +158,74 @@ export const ChatMessages = memo(function ChatMessages({
   const [erdExistingData, setErdExistingData] = useState<{ nodes: Node<Entity>[]; edges: Edge[] } | null>(null);
   const [erdFetchingExisting, setErdFetchingExisting] = useState(false);
   const chatFlowchartUidRef = useRef<string | null>(localStorage.getItem('chat_flowchart_uid'));
+
+  // ── Memoized parsed SQL (only re-parses when erdSql changes) ──
+  const erdParsed = useMemo(() => {
+    if (!erdSql) return null;
+    try { return parseSQLToERD(erdSql); } catch { return null; }
+  }, [erdSql]);
+
+  // ── Memoized diff lines (only recomputes when parsed SQL or existing data changes) ──
+  const erdDiff = useMemo(() => {
+    if (!erdParsed || !erdExistingData || erdMode !== 'update') return null;
+    const existingByName = new Map<string, any>();
+    for (const node of erdExistingData.nodes) {
+      existingByName.set(node.data.name.toLowerCase(), node.data);
+    }
+
+    const diffRows: { tableName: string; isNew: boolean; oldCols: any[]; newCols: any[] }[] = [];
+    for (const node of erdParsed.nodes) {
+      const existing = existingByName.get(node.data.name.toLowerCase());
+      diffRows.push({
+        tableName: node.data.name,
+        isNew: !existing,
+        oldCols: (existing?.columns || []).map((c: any) => ({ name: c.name, type: c.type, is_pk: !!c.is_pk, is_nullable: !!c.is_nullable })),
+        newCols: (node.data.columns || []).map((c: any) => ({ name: c.name, type: c.type, is_pk: !!c.is_pk, is_nullable: !!c.is_nullable })),
+      });
+    }
+
+    const deletedTables: string[] = [];
+    for (const node of erdExistingData.nodes) {
+      if (!erdParsed.nodes.find((n: any) => n.data.name.toLowerCase() === node.data.name.toLowerCase())) {
+        deletedTables.push(node.data.name);
+      }
+    }
+
+    if (diffRows.length === 0) return null;
+
+    type DiffLine =
+      | { type: 'header'; tableName: string; isNew?: boolean }
+      | { type: 'add' | 'remove' | 'normal'; prefix: string; col: { name: string; type: string; is_pk: boolean; is_nullable: boolean } };
+
+    const diffLines: DiffLine[] = [];
+    for (const row of diffRows) {
+      diffLines.push({ type: 'header', tableName: row.tableName, isNew: row.isNew });
+
+      const oldByName = new Map(row.oldCols.map((c: any) => [c.name.toLowerCase(), c]));
+      const newByName = new Map(row.newCols.map((c: any) => [c.name.toLowerCase(), c]));
+      const allNames = new Set([...oldByName.keys(), ...newByName.keys()]);
+
+      for (const name of allNames) {
+        const old = oldByName.get(name);
+        const nw = newByName.get(name);
+
+        if (!old && nw) {
+          diffLines.push({ type: 'add', prefix: '+', col: nw });
+        } else if (old && !nw) {
+          diffLines.push({ type: 'remove', prefix: '-', col: old });
+        } else if (old && nw) {
+          const changed = old.type !== nw.type || old.is_nullable !== nw.is_nullable;
+          if (changed) {
+            diffLines.push({ type: 'remove', prefix: '-', col: old });
+            diffLines.push({ type: 'add', prefix: '+', col: nw });
+          } else {
+            diffLines.push({ type: 'normal', prefix: ' ', col: old });
+          }
+        }
+      }
+    }
+    return { diffLines, deletedTables };
+  }, [erdParsed, erdExistingData, erdMode]);
 
   // Fetch existing ERD data when user selects a target file for update
   useEffect(() => {
@@ -243,8 +311,14 @@ export const ChatMessages = memo(function ChatMessages({
     localStorage.setItem('pending_update_erd_ddl', sql);
     localStorage.setItem('chat_erd_uid', uid);
     toast.info('Review schema changes in the ERD diff panel...');
+    // If already on the target ERD, handleDiagramSelect returns early (no re-mount).
+    // Use triggerPendingErdDiff to force ERDView to re-check pending_update_erd_ddl.
+    if (window.location.pathname === `/diagrams/${uid}`) {
+      triggerPendingErdDiff();
+      return;
+    }
     await handleDiagramSelect(uid);
-  }, [handleDiagramSelect]);
+  }, [handleDiagramSelect, triggerPendingErdDiff]);
 
   function renderMentionText(text: string) {
     const mentionRegex = /@([^\s\n]+)/g;
@@ -537,8 +611,6 @@ export const ChatMessages = memo(function ChatMessages({
                           const sql = extractSQL(msg.content);
                           if (sql) {
                             setErdSql(sql);
-                            setSqlPreviewExpanded(false);
-                            setErdStep('choose');
                           }
                         }}
                         className="flex items-center justify-center size-8 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md shadow-sm transition-all cursor-pointer"
@@ -616,7 +688,7 @@ export const ChatMessages = memo(function ChatMessages({
     {erdSql && (
       <Dialog open={true} onOpenChange={(v) => { if (!v) { setErdMode(null); setErdSql(null); } }}>
         <DialogOverlay />
-        <DialogContent size="2xl" showCloseButton>
+        <DialogContent size="md" showCloseButton>
           <DialogHeader>
             <div className="flex items-center gap-3">
               <div className="size-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
@@ -666,182 +738,116 @@ export const ChatMessages = memo(function ChatMessages({
                 </button>
               </div>
 
-              {erdMode && (() => {
-                // Parse SQL once
-                let parsed: any;
-                try { parsed = parseSQLToERD(erdSql); } catch { parsed = null; }
-                if (!parsed || !parsed.nodes.length) return null;
-
-                if (erdMode === 'update') {
-                  return (
-                    <div className="space-y-3 pt-2 border-t border-border/20">
-                      <label className="text-[11px] font-medium text-muted-foreground">Target ERD</label>
-                      <Select value={erdUpdateUid || ''} onValueChange={setErdUpdateUid}>
-                        <SelectTrigger className="w-full text-xs">
-                          <SelectValue placeholder="Choose an ERD diagram...">
-                            {(val: string | null) => {
-                              if (!val) return null;
-                              const d = diagrams.find((d: any) => (d.uid ?? String(d.id)) === val);
-                              return d?.name || 'Untitled';
-                            }}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(() => {
-                            const eligible = diagrams.filter((d: any) => {
-                              if (targetProjectId == null || targetProjectId === 'none') {
-                                return d.project_id == null || d.project_id === 'none' || d.project_id === '';
-                              }
-                              return String(d.project_id) === String(targetProjectId);
-                            });
-                            if (eligible.length === 0) {
-                              return (
-                                <div className="px-3 py-4 text-[11px] text-muted-foreground/50 text-center">
-                                  No ERD diagrams in this project
-                                </div>
-                              );
+              {erdParsed && erdMode && (
+                erdMode === 'update' ? (
+                  <div className="space-y-3 pt-2 border-t border-border/20">
+                    <label className="text-[11px] font-medium text-muted-foreground">Target ERD</label>
+                    <Select value={erdUpdateUid || ''} onValueChange={setErdUpdateUid}>
+                      <SelectTrigger className="w-full text-xs">
+                        <SelectValue placeholder="Choose an ERD diagram...">
+                          {(val: string | null) => {
+                            if (!val) return null;
+                            const d = diagrams.find((d: any) => (d.uid ?? String(d.id)) === val);
+                            return d?.name || 'Untitled';
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const eligible = diagrams.filter((d: any) => {
+                            if (targetProjectId == null || targetProjectId === 'none') {
+                              return d.project_id == null || d.project_id === 'none' || d.project_id === '';
                             }
-                            return (
-                              <SelectGroup>
-                                <SelectLabel>ERD Diagrams</SelectLabel>
-                                {eligible.map((d: any) => (
-                                  <SelectItem key={d.uid ?? d.id} value={d.uid ?? String(d.id)}>
-                                    <span>{d.name || 'Untitled'}</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            );
-                          })()}
-                        </SelectContent>
-                      </Select>
-
-                      {erdUpdateUid && erdFetchingExisting && (
-                        <div className="flex items-center justify-center py-4 text-[11px] text-muted-foreground">
-                          <Loader2 className="size-3.5 animate-spin mr-2" />
-                          Loading existing schema...
-                        </div>
-                      )}
-
-                      {erdUpdateUid && !erdFetchingExisting && erdExistingData && (() => {
-                        const existingByName = new Map<string, any>();
-                        for (const node of erdExistingData.nodes) {
-                          existingByName.set(node.data.name.toLowerCase(), node.data);
-                        }
-
-                        const diffRows: { tableName: string; isNew: boolean; oldCols: any[]; newCols: any[] }[] = [];
-                        for (const node of parsed.nodes) {
-                          const existing = existingByName.get(node.data.name.toLowerCase());
-                          diffRows.push({
-                            tableName: node.data.name,
-                            isNew: !existing,
-                            oldCols: (existing?.columns || []).map((c: any) => ({ name: c.name, type: c.type, is_pk: !!c.is_pk, is_nullable: !!c.is_nullable })),
-                            newCols: (node.data.columns || []).map((c: any) => ({ name: c.name, type: c.type, is_pk: !!c.is_pk, is_nullable: !!c.is_nullable })),
+                            return String(d.project_id) === String(targetProjectId);
                           });
-                        }
-
-                        const deletedTables: string[] = [];
-                        for (const node of erdExistingData.nodes) {
-                          if (!parsed.nodes.find((n: any) => n.data.name.toLowerCase() === node.data.name.toLowerCase())) {
-                            deletedTables.push(node.data.name);
+                          if (eligible.length === 0) {
+                            return (
+                              <div className="px-3 py-4 text-[11px] text-muted-foreground/50 text-center">
+                                No ERD diagrams in this project
+                              </div>
+                            );
                           }
-                        }
+                          return (
+                            <SelectGroup>
+                              <SelectLabel>ERD Diagrams</SelectLabel>
+                              {eligible.map((d: any) => (
+                                <SelectItem key={d.uid ?? d.id} value={d.uid ?? String(d.id)}>
+                                  <span>{d.name || 'Untitled'}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          );
+                        })()}
+                      </SelectContent>
+                    </Select>
 
-                        if (diffRows.length === 0) return null;
+                    {erdUpdateUid && erdFetchingExisting && (
+                      <div className="flex items-center justify-center py-4 text-[11px] text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin mr-2" />
+                        Loading existing schema...
+                      </div>
+                    )}
 
-                        // Build unified diff lines
-                        type DiffLine =
-                          | { type: 'header'; tableName: string; isNew?: boolean }
-                          | { type: 'add' | 'remove' | 'normal'; prefix: string; col: { name: string; type: string; is_pk: boolean; is_nullable: boolean } };
-
-                        const diffLines: DiffLine[] = [];
-                        for (const row of diffRows) {
-                          diffLines.push({ type: 'header', tableName: row.tableName, isNew: row.isNew });
-
-                          const oldByName = new Map(row.oldCols.map((c: any) => [c.name.toLowerCase(), c]));
-                          const newByName = new Map(row.newCols.map((c: any) => [c.name.toLowerCase(), c]));
-                          const allNames = new Set([...oldByName.keys(), ...newByName.keys()]);
-
-                          for (const name of allNames) {
-                            const old = oldByName.get(name);
-                            const nw = newByName.get(name);
-
-                            if (!old && nw) {
-                              diffLines.push({ type: 'add', prefix: '+', col: nw });
-                            } else if (old && !nw) {
-                              diffLines.push({ type: 'remove', prefix: '-', col: old });
-                            } else if (old && nw) {
-                              const changed = old.type !== nw.type || old.is_nullable !== nw.is_nullable;
-                              if (changed) {
-                                diffLines.push({ type: 'remove', prefix: '-', col: old });
-                                diffLines.push({ type: 'add', prefix: '+', col: nw });
-                              } else {
-                                diffLines.push({ type: 'normal', prefix: ' ', col: old });
-                              }
-                            }
-                          }
-                        }
-
-                        return (
-                          <div className="space-y-1.5">
-                            <label className="text-[11px] font-medium text-muted-foreground">
-                              Column Comparison
-                              {deletedTables.length > 0 && (
-                                <span className="ml-2 text-red-400/70 text-[10px]">
-                                  ({deletedTables.length} table{deletedTables.length > 1 ? 's' : ''} removed)
-                                </span>
-                              )}
-                            </label>
-                            <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
-                              <div className="divide-y divide-border/10">
-                                {diffLines.map((line, li) => {
-                                  if (line.type === 'header') {
-                                    return (
-                                      <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
-                                        {line.isNew && (
-                                          <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
-                                        )}
-                                        <span className="text-[11px] font-semibold text-gray-200">{line.tableName}</span>
-                                      </div>
-                                    );
-                                  }
-                                  const isAdd = line.type === 'add';
-                                  const isRemove = line.type === 'remove';
-                                  const bg = isAdd ? 'bg-emerald-900/20' : isRemove ? 'bg-red-900/20' : '';
-                                  const prefixColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400' : 'text-gray-600';
-                                  const colNameColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-gray-300';
-                                  const typeColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-gray-500';
-                                  const pkColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400/70' : 'text-amber-400';
-                                  const nulColor = isAdd ? 'text-emerald-400/50' : isRemove ? 'text-red-400/50' : 'text-gray-600';
+                    {erdUpdateUid && !erdFetchingExisting && erdDiff && (() => {
+                      const deletedTables = erdDiff.deletedTables;
+                      return (
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-medium text-muted-foreground">
+                            Column Comparison
+                            {deletedTables.length > 0 && (
+                              <span className="ml-2 text-red-400/70 text-[10px]">
+                                ({deletedTables.length} table{deletedTables.length > 1 ? 's' : ''} removed)
+                              </span>
+                            )}
+                          </label>
+                          <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
+                            <div className="divide-y divide-border/10">
+                              {erdDiff.diffLines.map((line: any, li: number) => {
+                                if (line.type === 'header') {
                                   return (
-                                    <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
-                                      <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
-                                      {line.col.is_pk && <span className={pkColor}>PK</span>}
-                                      <span className={colNameColor}>{line.col.name}</span>
-                                      <span className={typeColor}>{line.col.type}</span>
-                                      {line.col.is_nullable && <span className={nulColor}>?</span>}
+                                    <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
+                                      {line.isNew && (
+                                        <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
+                                      )}
+                                      <span className="text-[11px] font-semibold text-gray-200">{line.tableName}</span>
                                     </div>
                                   );
-                                })}
-                              </div>
+                                }
+                                const isAdd = line.type === 'add';
+                                const isRemove = line.type === 'remove';
+                                const bg = isAdd ? 'bg-emerald-900/20' : isRemove ? 'bg-red-900/20' : '';
+                                const prefixColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400' : 'text-gray-600';
+                                const colNameColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-gray-300';
+                                const typeColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-gray-500';
+                                const pkColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400/70' : 'text-amber-400';
+                                const nulColor = isAdd ? 'text-emerald-400/50' : isRemove ? 'text-red-400/50' : 'text-gray-600';
+                                return (
+                                  <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
+                                    <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
+                                    {line.col.is_pk && <span className={pkColor}>PK</span>}
+                                    <span className={colNameColor}>{line.col.name}</span>
+                                    <span className={typeColor}>{line.col.type}</span>
+                                    {line.col.is_nullable && <span className={nulColor}>?</span>}
+                                  </div>
+                                );
+                              })}
                             </div>
-                            {deletedTables.length > 0 && (
-                              <p className="text-[9px] text-red-400/50 leading-relaxed">Tables not in new SQL will be kept as-is in the existing ERD.</p>
-                            )}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                }
-
-                // ── Create New: show table cards ──
-                return (
+                          {deletedTables.length > 0 && (
+                            <p className="text-[9px] text-red-400/50 leading-relaxed">Tables not in new SQL will be kept as-is in the existing ERD.</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  // ── Create New: show table cards ──
                   <div className="space-y-1.5 pt-1">
                     <label className="text-[11px] font-medium text-muted-foreground">
-                      Tables ({parsed.nodes.length})
+                      Tables ({erdParsed.nodes.length})
                     </label>
                     <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
-                      {parsed.nodes.map((node: any) => (
+                      {erdParsed.nodes.map((node: any) => (
                         <div key={node.id} className="rounded-lg border border-border/40 bg-[#0d1117] overflow-hidden">
                           <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-black/20">
                             <Database className="size-3 text-indigo-400 shrink-0" />
@@ -865,8 +871,8 @@ export const ChatMessages = memo(function ChatMessages({
                       ))}
                     </div>
                   </div>
-                );
-              })()}
+                )
+              )}
 
 
             </div>
