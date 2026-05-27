@@ -116,8 +116,8 @@ export const TableDialog = ({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v)}>
-          <DialogHeader className="px-6 pt-6 pb-0">
+        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v)} className="flex flex-col h-full overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
             <div className="flex items-center justify-between pr-8">
               <div className="space-y-1 text-left">
                 <DialogTitle>
@@ -155,8 +155,8 @@ export const TableDialog = ({
             </TabsList>
           </DialogHeader>
 
-          <TabsContent value="properties" className="m-0">
-            <DialogBody>
+          <TabsContent value="properties" className="m-0 h-full flex flex-col overflow-hidden">
+            <DialogBody className="p-0 overflow-hidden flex flex-col h-full">
               <PropertiesPanel
                 selectedEntity={entity}
                 onUpdateEntity={handleEntityUpdate}

@@ -56,7 +56,7 @@ export const TablePropertiesModal: React.FC<TablePropertiesModalProps> = ({
           </div>
         </DialogHeader>
         
-        <DialogBody>
+        <DialogBody className="p-0 overflow-hidden flex flex-col">
           <PropertiesPanel 
             selectedEntity={selectedEntity} 
             onUpdateEntity={handleEntityUpdate} 

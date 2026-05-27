@@ -887,3 +887,25 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - Posisi node original dipertahankan (`origNode.position`) agar diff tampil di layout yang familiar
 - **ERDView `startDiff`** ([`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):230): menggunakan `computeSchemaDiff` untuk menampilkan diff overlay di canvas utama (merge panel + approve/reject per tabel)
 
+## Spinner Style Standardization
+
+- **UI Update**: Previously, some views used a large spinner (`w-10 h-10`) while others used a small spinner (`w-6 h-6`). This has been standardized across the entire application.
+- **Implementation**: All loading states (including `<AppInitialization>`, editor routes, and views) now use the same uniform small spinner design: `className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"`.
+
+## Global vs Item Loading State Fix (Infinite Spinner)
+
+- **Bug**: `isLoading` from `WorkspaceContext` is an aggregate of all background fetches (`isProjectsLoading || isDiagramsLoading || ...`). Binding the main canvas overlay spinner to this global state caused the spinner to hang indefinitely if any single background request (like fetching projects during a tab reload) got stuck or delayed.
+- **Fix**: Replaced `isLoading={isLoading}` with specific item loading states (`isERDItemLoading`, `isFlowchartItemLoading`, `isNoteItemLoading`, `isDrawingItemLoading`) across `DiagramEditorRoute`, `FlowchartEditorRoute`, `NoteEditorRoute`, and `DrawingEditorRoute`. The canvas overlay spinner now correctly triggers ONLY when the specific document is actively loading.
+
+## ERD AI Action "Merge Selected" Save Fix
+
+- **Bug**: Clicking "Merge Selected" on the ERD AI Schema Proposal diff bar updated the local React Flow state (`setNodes`, `setEdges`) but did NOT trigger `useAutoSave` because `saveCounter` wasn't bumped. As a result, changes weren't persisted to the database.
+- **Fix**: Added an explicit `saveDiagram(finalNodes, finalEdges, getViewport())` call inside `handleApplyMerge` in `ERDView.tsx` followed by `triggerDebouncedSync()`. 
+- **Detail**: To capture the current pan/zoom state for `saveDiagram`, `useReactFlow()` was added to `ERDViewComponent`. This is possible because `main.tsx` wraps the entire app in `<ReactFlowProvider>`.
+- **Column Changes Persistence Bug**: When merging proposed schema changes, the database save did not persist column changes (added/removed columns or type changes). This was caused by the `pending_update_erd_ddl` effect in `ERDView.tsx` calling `applyToErdContent` with empty arrays (`[], []`) instead of `(nodesRef.current, edgesRef.current)`. As a result, new random IDs were generated for the proposed tables and columns, causing an ID mismatch during the merge and reverting the changes.
+- **Column Persistence Fix**: Changed `applyToErdContent` calls in the DDL create and update effects in `ERDView.tsx` to pass `nodesRef.current` and `edgesRef.current`. This ensures that original table and column IDs are correctly matched and merged, and then properly saved to the database.
+- **Read-Only / Lock Canvas Interactions Mid-Merge**: Double-clicking table headers during active schema diff mode opened the `TableDialog` (properties modal) which allowed making manual column/table modifications. Since the merge operation (`handleApplyMerge`) overrides active canvas state with the merged proposal snapshot, any manual changes made mid-merge would be silently overwritten/lost.
+- **Lock Implementation**: 
+  - In `ERDView.tsx`, when `pendingDiff` is active, nodes are mapped to set `data.isDiffMode = true`.
+  - In `EntityNode.tsx`, `useWorkspace()` context is imported to check `isPublicView`. Combined with `data.isDiffMode`, we define `isReadOnly = isPublicView || !!data.isDiffMode`.
+  - If `isReadOnly` is active, double-click handler `onDoubleClick` is set to `undefined`, edit/delete click handlers return early, and the `DropdownMenu` trigger button (three-dots) is completely hidden. This completely blocks manual edits during diff review.
