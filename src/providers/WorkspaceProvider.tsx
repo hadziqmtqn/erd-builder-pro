@@ -644,6 +644,8 @@ export function WorkspaceProvider({
   // Table view pagination
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const triggerTableRefresh = useCallback(() => setTableRefreshKey(k => k + 1), []);
+  const [pendingErdDiffTrigger, setPendingErdDiffTrigger] = useState(0);
+  const triggerPendingErdDiff = useCallback(() => setPendingErdDiffTrigger(k => k + 1), []);
   const [tableLoadingState, setTableLoadingState] = useState<'idle' | 'loading'>('idle');
   useTableViewPagination({
     view, hasActiveItem, isAuthenticated, isPublicView,
@@ -949,6 +951,7 @@ export function WorkspaceProvider({
 
     tableSearchParams, setTableSearchParams, tablePage,
     triggerTableRefresh, tableLoadingState, setTableLoadingState,
+    pendingErdDiffTrigger, triggerPendingErdDiff,
 
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
@@ -1021,6 +1024,7 @@ export function WorkspaceProvider({
     tablePage,
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
+    pendingErdDiffTrigger, triggerPendingErdDiff,
   ]);
 
   return (

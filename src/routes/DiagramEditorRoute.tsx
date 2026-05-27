@@ -19,6 +19,7 @@ export function DiagramEditorRoute() {
     isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
     setIsLocalSaving, lastLoadedDiagramIdRef,
     isERDItemLoading, handleDiagramSelect,
+    pendingErdDiffTrigger,
   } = ctx;
 
   // Safety net: URL has id but context hasn't synced yet
@@ -106,6 +107,7 @@ export function DiagramEditorRoute() {
         onMoveEnd={onMoveEnd}
         saveDiagram={saveDiagram}
         triggerDebouncedSync={triggerDebouncedSync}
+        pendingErdDiffTrigger={pendingErdDiffTrigger}
       />
     </Suspense>
   );
