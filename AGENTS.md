@@ -826,6 +826,26 @@ The chain: `activeDiagramId = numeric` → `saveDiagram` → `saveDraft(DraftTyp
 - **404 handling** (line 177-181): when a sync draft returns 404, draft is **marked as synced** (`markSynced`) — NOT deleted. This preserves data in IndexedDB (local-first) while preventing infinite retry loops. The stale numeric ERD draft pattern: pre-UUID-migration drafts stored with numeric `id` can't be found by server (`diagram id=9` may not exist), so 404 cleanup marks them as synced instead of retrying forever.
 - **Stale draft cause**: before UUID fixes, `activeDiagramId` could be numeric → `saveDraft(ERD, 9, data)` → draft stuck because server couldn't query numeric ID by `uid` column. After server fix (numeric ID lookup via `.eq("id", identifier)`) + 404 markSynced, stale drafts stop retrying.
 
+## ERD Double-Save Fix (Property Edit Race Condition)
+
+### Bug: `handleEntityUpdate` sends 2 saves for 1 column type change
+
+**Root Cause**: `handleEntityUpdate` in `WorkspaceProvider.tsx` (lines 365-380) has two independent save paths:
+1. `updateEntity(updatedEntity)` → `takeSnapshot()` → increments `saveCounter` (triggers auto-save)
+2. Direct `saveDiagram(currentNodes, ...)` → SAVE #1
+3. Auto-save `useEffect` catches `saveCounter` change → 800ms timeout → `saveDiagram(...)` → SAVE #2
+
+The 500ms guard inside the auto-save timeout (`Date.now() - lastSaveCallRef.current < 500`) is irrelevant because 800ms > 500ms — by the time the guard runs, SAVE #1 is 800ms old.
+
+**Fix**: 100ms guard in [`src/hooks/useAutoSave.ts`](./src/hooks/useAutoSave.ts):130 — right after the `saveCounter` change check, if `Date.now() - lastSaveCallRef.current < 100`, consume the `saveCounter` and return early:
+```ts
+if (Date.now() - lastSaveCallRef.current < 100) {
+  lastProcessedCounterRef.current = saveCounter;
+  return;
+}
+```
+This prevents the auto-save effect from scheduling its 800ms timeout when `handleEntityUpdate` already saved directly. The gap between direct save completion and React re-render is always < 1ms in practice, so 100ms is a safe threshold.
+
 ## Cross-Feature Chat (Satu Sesi untuk Semua Fitur)
 
 - **Satu sesi chat bisa bahas Notes, ERD, dan Flowchart** — `entity_type`/`entity_uid` diisi saat sesi pertama dibuat, tidak berubah. Tapi konten chat fleksibel.
@@ -837,13 +857,33 @@ The chain: `activeDiagramId = numeric` → `saveDiagram` → `saveDraft(DraftTyp
   - `handleSidebarDiagramCreate`/`handleSidebarFlowchartCreate` return created object (changed from `Promise<void>` to `Promise<any>` di [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts) dan [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx))
 - **Content-aware buttons**: setiap AI message bisa punya multiple action buttons:
   - Markdown/text → Replace/Append (routed ke content handler view aktif, e.g. NotesView)
-  - SQL DDL → "Create/Update ERD" — membuka **ErdSelectDialog** untuk milih target
+  - SQL DDL → "Create/Update ERD" — membuka dialog inline di `ChatMessages.tsx`
   - Flowchart JSON → "Create Flowchart" / "Update Flowchart"
   - Semua tombol independen — tidak ada routing konflik
-- **ErdSelectDialog** ([`src/components/ai/ErdSelectDialog.tsx`](./src/components/ai/ErdSelectDialog.tsx)): dialog yang muncul saat user klik "Create/Update ERD":
-  - **File selector** (select dropdown) di atas: "Create new ERD diagram" atau pilih existing ERD
-  - Filter existing ERD sesuai `projectId` sesi chat (jika sesi punya project → hanya ERD di project itu; jika tidak → ERD tanpa project)
-  - **React Flow preview** di bawah selector — menampilkan hasil parse SQL (`parseSQLToERD`) sebagai tabel dengan kolom, PK, FK
-  - Confirm → create baru atau navigate ke existing + pending DDL di localStorage
-  - File: `ChatMessages.tsx` → `ErdSelectDialog` di-render via portal, state `erdDialogOpen` + `pendingErdSql`
+- **ERD Dialog (inline di `ChatMessages.tsx`)**: dialog yang muncul saat user klik Database button pada AI message yang mengandung SQL DDL:
+  - **Radio-style cards** (`erdMode: 'create' | 'update' | null`): dua card selectable — "Create New" (indigo) dan "Update Existing" (amber). Tidak ada yang langsung eksekusi, semua tunggu tombol Submit.
+  - **Submit button** di footer: disabled sampai mode dipilih (dan untuk update, sampai file target dipilih). Ada loading spinner (`erdModeConfirming`) selama eksekusi.
+  - **Create New**: menampilkan table cards (parsed SQL sebagai card per tabel dengan kolom, PK/FK badge) — tidak ada element tambahan.
+  - **Update Existing**: hanya menampilkan Target ERD selector (base-ui `Select`) — **tidak ada preview tabel sebelum file dipilih**. Diff muncul setelah user pilih file + data existing termuat.
+  - **Unified diff (GitHub-style)**: setelah user pilih file target dan data existing selesai di-fetch (`erdExistingData` via `apiFetch`), menampilkan per tabel:
+    - Header tabel (sticky, `bg-[#0d1117]` solid — no ghosting)
+    - `+` green bg/emerald text untuk kolom baru atau modified
+    - `-` red bg/red text untuk kolom dihapus
+    - ` ` no bg/gray text untuk unchanged
+    - Modified columns tampil sebagai `- old` + `+ new` sequence
+    - Type column warna terpisah (`text-gray-500`/muted) dari nama kolom
+  - **Filter ERD**: hanya diagram yang sesuai `projectId` sesi (atau tanpa project) yang muncul di file selector
+  - **Dua localStorage key** tetap sama: `pending_create_erd_ddl` (Create) dan `pending_update_erd_ddl` (Update)
+  - Dialog menggunakan `size="2xl"` (max-w-2xl) untuk ruang lebih lega
+  - State: `erdMode`, `erdSql`, `erdUpdateUid`, `erdExistingData`, `erdFetchingExisting`, `erdModeConfirming`
+
+### Schema Diff Engine
+
+- **`computeSchemaDiff(currentNodes, currentEdges, proposedNodes, proposedEdges)`** ([`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts)):
+  - Match tabel by **name** (lowercase) — bukan node ID, karena `parseSQLToERD` generate random ID per parse
+  - Menghasilkan `DiffResult` dengan `nodes` (annotated), `edges`, `newCount`, `modifiedCount`, `deletedCount`
+  - Setiap node diberi `diffState`: `'new'` | `'modified'` | `'deleted'` | `undefined`
+  - Setiap kolom diberi `diffState`: `'new'` | `'deleted'` | `undefined`
+  - Posisi node original dipertahankan (`origNode.position`) agar diff tampil di layout yang familiar
+- **ERDView `startDiff`** ([`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):230): menggunakan `computeSchemaDiff` untuk menampilkan diff overlay di canvas utama (merge panel + approve/reject per tabel)
 
