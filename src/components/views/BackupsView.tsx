@@ -170,7 +170,7 @@ export const BackupsView = () => {
         <div className="p-6">
           {loading && backups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-4">
-              <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+              <Loader2 className="w-6 h-6 text-primary animate-spin" />
               <p className="text-sm font-medium text-muted-foreground">Loading backup history...</p>
             </div>
           ) : backups.length === 0 ? (

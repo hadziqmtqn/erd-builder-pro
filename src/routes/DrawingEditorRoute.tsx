@@ -33,7 +33,7 @@ export function DrawingEditorRoute() {
     if (id && !processedUrlRef.current) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
         </div>
       );
@@ -58,7 +58,7 @@ export function DrawingEditorRoute() {
   if (!activeDrawing) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-        <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+        <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading drawing...</p>
       </div>
     );
@@ -74,7 +74,7 @@ export function DrawingEditorRoute() {
       </div>
     }>
       <DrawingsView
-        isLoading={isLoading}
+        isLoading={isDrawingItemLoading}
         activeDrawingId={isPublicView ? null : activeDrawingId}
         activeDrawing={activeDrawing}
         saveDrawing={saveDrawing}

@@ -928,7 +928,7 @@ export const FlowchartView = React.memo(({
   if (showLoader) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-        <Loader2 className="w-10 h-10 text-primary animate-spin opacity-50" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading flowchart...</p>
       </div>
     );
