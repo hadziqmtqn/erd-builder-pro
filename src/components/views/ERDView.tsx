@@ -9,7 +9,8 @@ import {
   OnEdgesChange,
   Node,
   Edge,
-  MarkerType
+  MarkerType,
+  useReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Plus, Undo2, Redo2 } from 'lucide-react';
@@ -95,6 +96,7 @@ const ERDViewComponent = ({
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
+  const { getViewport } = useReactFlow();
 
   // ─── Multi-table selection ───────────────────────────
   const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
@@ -157,6 +159,17 @@ const ERDViewComponent = ({
       return { ...node, selected };
     });
   }, [nodes, allSelectedIds]);
+
+  const diffNodesWithMode = React.useMemo(() => {
+    if (!pendingDiff) return [];
+    return pendingDiff.diffNodes.map(n => ({
+      ...n,
+      data: {
+        ...n.data,
+        isDiffMode: true
+      }
+    }));
+  }, [pendingDiff]);
 
   const styledEdges = React.useMemo(() => {
     return edges.map(edge => {
@@ -331,7 +344,12 @@ const ERDViewComponent = ({
     setEdges(finalEdges);
     setPendingDiff(null);
     toast.success('AI changes merged successfully!');
-  }, [pendingDiff, approvedTableIds, setNodes, setEdges]);
+    if (saveDiagram) {
+      saveDiagram(finalNodes, finalEdges, getViewport()).then(() => {
+        triggerDebouncedSync?.();
+      }).catch(err => console.error('Error saving after merge:', err));
+    }
+  }, [pendingDiff, approvedTableIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport]);
 
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
@@ -378,7 +396,7 @@ const ERDViewComponent = ({
     const pendingDdl = localStorage.getItem('pending_create_erd_ddl');
     if (pendingDdl) {
       localStorage.removeItem('pending_create_erd_ddl');
-      const result = applyToErdContent([], [], 'erd-generate-sql', pendingDdl);
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingDdl);
       if (result) {
         if (nodesRef.current.length === 0) {
           takeSnapshotRef.current?.([], []);
@@ -416,7 +434,7 @@ const ERDViewComponent = ({
     // Consume the pending DDL
     localStorage.removeItem('pending_update_erd_ddl');
 
-    const result = applyToErdContent([], [], 'erd-generate-sql', pendingUpdateDdl);
+    const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingUpdateDdl);
     if (result) {
       // Use the visual diff/merge UI to compare existing data with proposed SQL
       startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
@@ -474,7 +492,7 @@ const ERDViewComponent = ({
       )}
       <div className="flex-1">
         <ReactFlow
-          nodes={pendingDiff ? pendingDiff.diffNodes : styledNodes}
+          nodes={pendingDiff ? diffNodesWithMode : styledNodes}
           edges={pendingDiff ? pendingDiff.diffEdges : styledEdges}
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}

@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { TableDialog } from './modals/TableDialog';
+import { useWorkspace } from '../providers/WorkspaceProvider';
 
 import {
   AlertDialog,
@@ -116,6 +117,9 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
 });
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
+  const { isPublicView } = useWorkspace();
+  const isReadOnly = isPublicView || !!data.isDiffMode;
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTab, setDialogTab] = useState<'properties' | 'schema'>('properties');
@@ -133,6 +137,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isReadOnly) return;
     setDialogTab('properties');
     setDialogOpen(true);
   };
@@ -140,6 +145,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isReadOnly) return;
     setShowDeleteConfirm(true);
   };
 
@@ -208,7 +214,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
         <div 
           className="px-3 py-2 flex items-center justify-between border-b-2 cursor-pointer group/header"
           style={{ backgroundColor: headerBg, borderColor: borderColor }}
-          onDoubleClick={handleEdit}
+          onDoubleClick={isReadOnly ? undefined : handleEdit}
         >
           <div className="flex items-center gap-2">
             <Database className="w-4 h-4 transition-transform group-hover/header:rotate-12" style={{ color: borderColor }} />
@@ -229,32 +235,34 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
             )}
           </div>
           
-          <DropdownMenu>
-            <DropdownMenuTrigger 
-              className="nodrag nopan p-1 rounded-md hover:bg-white/10 text-white/50 hover:text-white transition-colors focus:outline-none"
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-44 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-white/10" />
-              <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Table
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {!isReadOnly && (
+            <DropdownMenu>
+              <DropdownMenuTrigger 
+                className="nodrag nopan p-1 rounded-md hover:bg-white/10 text-white/50 hover:text-white transition-colors focus:outline-none"
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent 
+                align="end" 
+                className="w-44 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Table
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Columns */}

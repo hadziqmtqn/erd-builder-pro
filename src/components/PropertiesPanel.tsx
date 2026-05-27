@@ -1,13 +1,12 @@
 import { toast } from 'sonner';
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Key, Check, X, Palette, Type, Settings2, ChevronRight, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { COLUMN_TYPES, cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -207,8 +206,8 @@ export default function PropertiesPanel({
   };
 
   return (
-    <>
-      <div className="sticky top-[-24px] z-10 bg-background pt-6 pb-4 -mt-6 -mx-6 px-6 border-b border-border/50 shadow-sm mb-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 bg-background pt-6 px-6 pb-4 border-b border-border/50 shadow-sm z-10">
         {/* Entity Settings */}
         <section className="space-y-4">
           <div className="space-y-2">
@@ -242,11 +241,10 @@ export default function PropertiesPanel({
             </div>
           </div>
         </section>
+      </div>
 
-        <Separator className="my-5" />
-
-        {/* Columns Settings Header */}
-        <div className="flex items-center justify-between sticky top-0 z-10 bg-popover/95 backdrop-blur-sm py-2 -mx-6 px-6">
+      {/* Columns Settings Header */}
+      <div className="shrink-0 flex items-center justify-between bg-popover/95 py-2 px-6 border-b border-border/50 z-10 shadow-sm">
           <div className="flex items-center gap-2">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Columns ({editingEntity.columns.length})</Label>
             <Button
@@ -267,9 +265,8 @@ export default function PropertiesPanel({
             <Plus className="w-4 h-4" />
           </Button>
         </div>
-      </div>
 
-      <section className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+      <section className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3 min-h-0">
         <div className="space-y-3">
           {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col, index, arr) => (
             <Card key={col.id} className="p-3 bg-muted/10 space-y-3 border border-border/30 shadow-none hover:border-primary/30 transition-all">
@@ -399,6 +396,6 @@ export default function PropertiesPanel({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
-    </>
+    </div>
   );
 }
