@@ -41,7 +41,7 @@ export function DiagramEditorRoute() {
     if (id && !processedUrlRef.current) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-          <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
         </div>
       );
@@ -68,7 +68,7 @@ export function DiagramEditorRoute() {
   if (!showDiagram && !isPublicView) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
-        <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin opacity-50" />
+        <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         <p className="mt-4 text-sm font-medium text-muted-foreground animate-pulse">Loading diagram...</p>
       </div>
     );
@@ -77,7 +77,7 @@ export function DiagramEditorRoute() {
   return (
       <ERDView
         key={isPublicView ? publicData?.id : activeDiagramId}
-        isLoading={isLoading}
+        isLoading={isERDItemLoading}
         nodes={nodes} edges={edges} setNodes={ctx.setNodes} setEdges={ctx.setEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
