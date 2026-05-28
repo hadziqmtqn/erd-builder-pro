@@ -105,13 +105,38 @@ export function buildDiagramContext(data: EntityContextData): string | null {
   }).filter(Boolean).join('\n');
 
   let context = `[Database schema context]
-The diagram below is the ACTUAL database schema the user is working on. Use it as the single source of truth when answering questions about table columns, relationships, and structure.
 
-IMPORTANT rules when recommending columns for a table:
-- Check ALL existing tables' columns first — avoid recommending columns that already exist in other tables
-- If another table has authentication/user columns (email, password, role), prefer a foreign key reference instead of duplicating them
-- Always reference existing columns from related tables when possible
+[CRITICAL — Output format instruction]
+When you respond about database schemas, tables, columns, or relationships, you MUST output valid SQL DDL statements inside a \`\`\`sql code block. The app will parse the SQL and generate an interactive ERD diagram automatically — this is the ONLY way the user can see their schema visually.
 
+Rules:
+1. ALWAYS wrap SQL in \`\`\`sql ... \`\`\` code blocks — plain text or HTML tables will NOT be parsed by the app
+2. Use CREATE TABLE for new tables with inline constraints (PRIMARY KEY, NOT NULL, NULL, DEFAULT, REFERENCES)
+3. Use ALTER TABLE ... ADD COLUMN for modifying existing tables
+4. Foreign keys can be inline in CREATE TABLE (REFERENCES) or as ALTER TABLE ... ADD FOREIGN KEY
+5. If the user asks to create an ERD or database from scratch, generate the complete SQL DDL with all tables
+6. If the user asks for an explanation, you may include a brief description before or after the SQL block
+7. Support standard SQL types: BIGINT, INT, VARCHAR(n), TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, UUID, JSONB, etc.
+8. You MAY split SQL into multiple \`\`\`sql blocks if that is clearer, but one block per set of related tables is preferred
+9. When telling the user to apply the SQL to their diagram, do NOT say "click Append/Replace". Instead, say "click the Database button below this message" or "use the SQL → ERD button" — the app shows a dedicated Database icon button (not Append/Replace) when SQL is detected in your response.
+
+Example:
+\`\`\`sql
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE posts (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    body TEXT
+);
+\`\`\`
+
+[Current ERD data]
 Name: ${data.title || '(untitled)'}
 Tables: ${tableCount}, Relationships: ${edgeCount}
 
@@ -121,26 +146,10 @@ Tables:\n${tableLines || '  (none)'}`;
     context += `\n\nRelationships:\n${relLines}`;
   }
 
-  context += `\n\n[Response format]
-When the user asks for table suggestions or schema changes, ALWAYS include a complete valid SQL CREATE TABLE statement for every suggested table. Also include ALTER TABLE statements when modifying existing tables. Use MySQL syntax. The SQL will be parsed and applied to the diagram automatically, so it must be syntactically valid.
-
-However, if the user explicitly requests a JSON mutations format (e.g. in an 'Edit Columns' action), follow their requested format instead. Example:
-
-\`\`\`sql
-CREATE TABLE employments (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    company_name VARCHAR(255) NOT NULL,
-    position VARCHAR(255) NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NULL,
-    is_current TINYINT(1) DEFAULT 0,
-    description TEXT NULL,
-    created_at TIMESTAMP NULL,
-    updated_at TIMESTAMP NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-\`\`\``;
+  context += `\n\n[Schema design rules]
+- When adding columns to existing tables, check existing columns first — avoid duplicates
+- If another table stores user/auth data (email, password, role), reference it via foreign key instead of duplicating columns
+- Use consistent naming conventions across all tables`;
 
   return context;
 }

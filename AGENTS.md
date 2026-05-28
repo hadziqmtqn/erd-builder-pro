@@ -194,12 +194,15 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 - [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx): added `setTableLoadingState('loading')` call in `onAfterDelete`
 - [`src/routes/TableRoute.tsx`](./src/routes/TableRoute.tsx): added `setTableLoadingState('loading')` on page/workspace change; passes loading state as `isLoading` prop
 
-## AI Context for Notes (markdown-aware)
+## AI Prompt Integration & Technical Formatting Rules
 
-- `entityContextText` for Notes is sent to AI in **markdown format**, not plain text
-- Uses `getMarkdownFromHtml()` from [`src/lib/markdownUtils.ts`](./src/lib/markdownUtils.ts) (TurndownService)
-- `<h2>Heading</h2>` → `## Heading`, AI sees heading structure → responds in markdown → `marked.parse()` produces correct `<h2>`
-- Applies to all AI actions (Improve Grammar, Summarize, etc.) and direct chat
+- **Client-Side Verification Guard**: In `useAIChat.ts`, a persistent `TECHNICAL CAPABILITIES & INTEGRATION RULES` system instruction is dynamically appended to `apiMessages` on send. This guarantees that regardless of the user's active system prompt in the database, the AI is always instructed on the correct syntax required by the frontend parsers.
+- **Guest Mode Fallback**: In Guest mode (where database access is unavailable), the AI Chat assistant falls back to a locally-defined default system prompt (`Simple & Direct` content) to prevent empty instructions.
+- **Database Schema (ERD)**: When asked to create database models, ERD, or SQL, the AI is instructed to output clean, standard SQL DDL statements (like `CREATE TABLE`, `ALTER TABLE` for foreign keys) enclosed in a ````sql` block. Plain text or HTML tables are explicitly prohibited.
+- **Flowchart Canvas**: When asked to generate a flowchart, the AI is instructed to output a JSON code block with `nodes` and `edges` fields matching the flowchart layout engine parameters, ensuring compatibility with the visual canvas.
+- **Notes Rich Text**: AI is instructed to preserve and output rich markdown text.
+- **Workspace Integration & mentions**: Prompts outline the linked nature of ERD schemas, flowcharts, and notes. If a user references sibling files (via `@FileName`), the AI receives their content in context and cross-references them to generate consistent designs and business logic.
+- **Seed Prompts updated**: The default SQL seed (`seed_ai_system_prompts.sql`) has been rewritten to contain these English-based feature integration instructions.
 
 ## AIChatPanel Component Architecture
 
@@ -345,7 +348,9 @@ src/components/ai/
 - **Critical pattern**: every guest early return MUST call `setIsLoading(false)` before `return;` — otherwise loading spinner hangs forever
 - Settings menu (`NavUser`) hidden when `isGuest === true` (checked in `nav-user.tsx` via `WorkspaceContext.isGuest`)
 - AI settings not loaded for guest (`useAISettings.ts` skips `fetchData` entirely)
-- AI Chat still functional in Guest Mode (routed to local persistence)
+- AI Chat functional in Guest Mode — sessions are in-memory, no Supabase persistence
+- **Guest AI proxy flow** ([`server/routes/ai.ts`](./server/routes/ai.ts):33): when `apiKey` is missing from the proxy request, the server uses its service-role Supabase client to look up the first enabled `user_ai_config`. This allows Guest mode users to chat with AI without exposing the API key or querying Supabase from the client. The server resolves `api_key`, `base_url` (from `ai_providers`), and `model_identifier` (from `ai_models`).
+- **`useAIChat.ts` Guest guards** ([`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts)): all Supabase-dependent functions check both `isGuestRef.current` AND `sessionStorage.getItem('auth_mode') === 'guest'` — the `sessionStorage` check is synchronous and catches Guest mode before React state updates propagate (fixes race condition where `useAuth` initializes `isGuest=false` before `checkAuth` resolves).
 - Hooks fixed for guest loading (all follow same pattern — `setIsLoading(false)` before guest return):
   - `useNotes.ts:66`
   - `useDiagrams.ts:67`
@@ -771,6 +776,27 @@ The prompt is built as a **prefix of the user message** (not system message) —
     - Tabel baru/modifikasi yang disetujui akan di-merge (menghapus penanda `diffState` dan menyaring kolom yang ditandai untuk dihapus agar tidak ikut tersimpan).
     - Tabel modifikasi/hapus yang ditolak akan dikembalikan (*reverted*) ke skema originalnya sebelum AI menyentuhnya.
     - Relasi (konektor panah/edges) dibangun ulang secara dinamis untuk menyambungkan hanya tabel-tabel yang terpilih/disetujui.
+
+## AI Prompt — SQL DDL Output Instruction
+
+- `buildDiagramContext()` in [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts):76 now places the **SQL DDL format instruction at the TOP** of the context (was at bottom, after table data).
+- Instruction is **directive, not conditional**: "When you respond about database schemas... you MUST output valid SQL DDL statements inside a ```sql code block." (Was: "When the user asks for table suggestions or schema changes, ALWAYS include...")
+- Covers **"buatkan ERD dari scratch"** scenario: rule #5 explicitly tells AI to generate complete SQL DDL when user asks to create an ERD from nothing
+- Enforces ` ```sql ` code block wrapping: plain text/HTML tables will NOT be parsed
+- Schema design rules (no duplicate columns, FK references) moved to a separate bottom section
+
+## Content-Aware Action Buttons (AI Chat)
+
+- **Problem**: When viewing Notes page and AI responds with SQL DDL, Replace/Append buttons still showed (for Notes content), while the Database button (Create/Update ERD) was also visible — confusing which button to use.
+- **Fix (UI)**: [`src/components/ai/AssistantMessageActions.tsx`](./src/components/ai/AssistantMessageActions.tsx):41 — the condition for showing Replace/Append buttons on `contentCheckType === 'none'` (Notes) now checks `!hasSQLContent(msg.content) && !hasFlowchartJSON(msg.content)`. When SQL or JSON is detected, Replace/Append hide and only the dedicated Database/Flowchart buttons appear.
+- **Fix (Prompt)**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):550,571 — system instruction changed from "Advise the user to click the 'Append' (or 'Replace') button" to "Advise the user to click the Database button (or the Create/Update ERD button)" / "Advise the user to click the Flowchart button (Create/Update)". The `fallbackSystemPrompt` (line 507) similarly updated.
+- **Fix (ERD context prompt)**: [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts):120 — rule #9 tells AI not to say "Append/Replace" for SQL content but to say "Database button" instead.
+- **Result**: Action buttons are content-aware: SQL content → Database button only, flowchart JSON → Flowchart button only, plain text → Replace/Append (for Notes) or view-specific actions (ERD/Flowchart).
+
+## Stale URL on Guest → Online Login
+
+- **Bug**: Guest user browsing `/notes/guest-uuid` → logout → Online login → URL still `/notes/guest-uuid` → URL safety net in `NoteEditorRoute` tries `handleNoteSelect('guest-uuid')` → note doesn't exist in Online mode → error
+- **Fix**: [`src/App.tsx`](./src/App.tsx):38-46 — `useEffect` tracks `wasUnauthenticatedRef`. When `isAuthenticated` transitions from `false → true` (user logs in), calls `navigate('/')` to clear stale URL. Only triggers on explicit re-authentication, not on initial mount (`null → true`), so deep-links on page reload still work.
 
 ## Auto-Generated Document Persistence Fix
 

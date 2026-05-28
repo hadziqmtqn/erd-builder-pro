@@ -5,6 +5,7 @@ import { AIChatSession, AIChatMessage } from '@/types';
 import { fetchEntityContext, buildSiblingContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
+import { localPersistence } from '@/lib/localPersistence';
 
 export type EntityContext = EntityCtxType;
 
@@ -95,6 +96,22 @@ export function useAIChat(
     setIsSessionsLoading(true);
     setError(null);
 
+    // Guest mode: load sessions from IndexedDB
+    if (isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest') {
+      try {
+        const stored = await localPersistence.getAllResources('ai_chat_session');
+        const loaded: AIChatSession[] = (stored || [])
+          .filter((s: any) => !s.is_deleted)
+          .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        setSessions(loaded);
+      } catch (err) {
+        console.warn('[AI Chat] Failed to load guest sessions:', err);
+        setSessions([]);
+      }
+      setIsSessionsLoading(false);
+      return;
+    }
+
     try {
       let query = buildBaseQuery()
         .order('updated_at', { ascending: false });
@@ -126,6 +143,34 @@ export function useAIChat(
 
   const createSession = useCallback(async (): Promise<string | null> => {
     setError(null);
+
+    // Guest mode: create session and persist to IndexedDB
+    if (isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest') {
+      const sessionUid = crypto.randomUUID();
+      const newSession: AIChatSession = {
+        id: sessionUid,
+        uid: sessionUid,
+        user_id: 'guest',
+        title: 'New Conversation',
+        entity_type: entityContext?.entityType ?? null,
+        entity_uid: entityContext?.entityUid ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        await localPersistence.saveResource({
+          ...newSession,
+          messages: [],
+          type: 'ai_chat_session',
+        });
+      } catch (err) {
+        console.warn('[AI Chat] Failed to persist guest session:', err);
+      }
+      setSessions(prev => [newSession, ...prev]);
+      setCurrentSession(newSession);
+      setMessages([]);
+      return sessionUid;
+    }
 
     try {
       const payload: any = {
@@ -165,6 +210,22 @@ export function useAIChat(
   const selectSession = useCallback(async (sessionUid: string) => {
     setIsMessagesLoading(true);
     setError(null);
+
+    // Guest mode: find in local state, load messages from IndexedDB
+    if (isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest') {
+      const session = sessionsRef.current.find(s => s.uid === sessionUid) ?? null;
+      if (session) {
+        setCurrentSession(session);
+        try {
+          const stored = await localPersistence.getResource(sessionUid);
+          setMessages((stored?.messages as AIChatMessage[]) || []);
+        } catch {
+          setMessages([]);
+        }
+      }
+      setIsMessagesLoading(false);
+      return;
+    }
 
     try {
       // Find session from existing list or fetch fresh
@@ -212,6 +273,8 @@ export function useAIChat(
 
   const loadMoreMessages = useCallback(async () => {
     if (!currentSession || isLoadingMore || !hasMoreMessages) return;
+    // Guest mode: no Supabase pagination
+    if (isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest') { setIsLoadingMore(false); return; }
     setIsLoadingMore(true);
 
     try {
@@ -245,6 +308,21 @@ export function useAIChat(
 
   const deleteSession = useCallback(async (sessionUid: string) => {
     setError(null);
+
+    // Guest mode: remove from local state and IndexedDB
+    if (isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest') {
+      try {
+        await localPersistence.deleteResource(sessionUid);
+      } catch (err) {
+        console.warn('[AI Chat] Failed to delete guest session:', err);
+      }
+      setSessions(prev => prev.filter(s => s.uid !== sessionUid));
+      if (currentSession?.uid === sessionUid) {
+        setCurrentSession(null);
+        setMessages([]);
+      }
+      return;
+    }
 
     try {
       const { error: deleteError } = await supabase
@@ -297,97 +375,206 @@ export function useAIChat(
     };
     setMessages(prev => [...prev, tempUserMsg]);
 
-    // Save user message to DB
-    try {
-      const dbPayload: any = {
-        session_id: currentSession.id,
-        role: 'user',
-        content: trimmed,
-        selection_text: selectionText || null,
-      };
-      const { error: saveUserError } = await supabase
-        .from('ai_chat_messages')
-        .insert([dbPayload]);
+    const isGuest = isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
-      if (saveUserError) throw saveUserError;
+    // Guest mode: persist user message to IndexedDB immediately + auto-title
+    if (isGuest) {
+      const msgsAfterUser = [...messages, tempUserMsg];
+      persistGuestMessages(currentSession.uid, msgsAfterUser).catch(() => {});
 
-      // Auto-title session from first user message
       const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
       if (isFirstMessage) {
         const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
-        await supabase
-          .from('ai_chat_sessions')
-          .update({ title, updated_at: new Date().toISOString() })
-          .eq('id', currentSession.id);
-
         setCurrentSession(prev => prev ? { ...prev, title } : prev);
         setSessions(prev => prev.map(s =>
           s.id === currentSession.id ? { ...s, title } : s
         ));
+        // Persist title update to IndexedDB
+        persistGuestTitle(currentSession.uid, title).catch(() => {});
       }
-    } catch (err: any) {
-      setError('Failed to save message');
-      toast.error('Failed to save message');
-      setIsStreaming(false);
-      return;
     }
 
-    // ─── Fetch active config & call AI ────────────────
+    // Save user message to DB (skip for Guest mode — no Supabase)
+    if (!isGuest) {
+      try {
+        const dbPayload: any = {
+          session_id: currentSession.id,
+          role: 'user',
+          content: trimmed,
+          selection_text: selectionText || null,
+        };
+        const { error: saveUserError } = await supabase
+          .from('ai_chat_messages')
+          .insert([dbPayload]);
+
+        if (saveUserError) throw saveUserError;
+
+        // Auto-title session from first user message
+        const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
+        if (isFirstMessage) {
+          const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
+          await supabase
+            .from('ai_chat_sessions')
+            .update({ title, updated_at: new Date().toISOString() })
+            .eq('id', currentSession.id);
+
+          setCurrentSession(prev => prev ? { ...prev, title } : prev);
+          setSessions(prev => prev.map(s =>
+            s.id === currentSession.id ? { ...s, title } : s
+          ));
+        }
+      } catch (err: any) {
+        setError('Failed to save message');
+        toast.error('Failed to save message');
+        setIsStreaming(false);
+        return;
+      }
+    }
+
+    // ─── Build messages & call AI ──────────────────────
     try {
-      // 1. Get user's active provider config
-      let configQuery = supabase
-        .from('user_ai_configs')
-        .select('*, ai_providers(*)')
-        .eq('is_enabled', true)
-        .not('selected_model_id', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(1);
+      // Resolve AI config:
+      //   - Guest mode: pass nothing — server will look up default config
+      //   - Online mode: fetch user's config from Supabase
+      let resolvedBaseUrl: string | undefined;
+      let resolvedApiKey: string | undefined;
+      let resolvedModel: string | undefined;
 
-      const uid = getUserId();
-      if (uid) {
-        configQuery = configQuery.eq('user_id', uid);
+      if (!isGuest) {
+        let configQuery = supabase
+          .from('user_ai_configs')
+          .select('*, ai_providers(*)')
+          .eq('is_enabled', true)
+          .not('selected_model_id', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        const uid = getUserId();
+        if (uid) {
+          configQuery = configQuery.eq('user_id', uid);
+        }
+
+        const { data: configData, error: configError } = await configQuery;
+
+        if (configError) throw configError;
+        if (!configData || configData.length === 0) {
+          throw new Error('No AI provider configured. Go to Settings > AI to configure.');
+        }
+
+        const config = configData[0];
+        const provider = config.ai_providers;
+        resolvedBaseUrl = provider?.base_url || 'https://api.openai.com/v1';
+        resolvedApiKey = config.api_key;
+
+        const { data: modelData } = await supabase
+          .from('ai_models')
+          .select('model_identifier')
+          .eq('id', config.selected_model_id)
+          .single();
+
+        resolvedModel = modelData?.model_identifier || 'gpt-4o-mini';
       }
 
-      const { data: configData, error: configError } = await configQuery;
-
-      if (configError) throw configError;
-      if (!configData || configData.length === 0) {
-        throw new Error('No AI provider configured. Go to Settings > AI to configure.');
-      }
-
-      const config = configData[0];
-      const provider = config.ai_providers;
-      const baseUrl = provider?.base_url || 'https://api.openai.com/v1';
-      const apiKey = config.api_key;
-
-      // 2. Get selected model identifier
-      const { data: modelData } = await supabase
-        .from('ai_models')
-        .select('model_identifier')
-        .eq('id', config.selected_model_id)
-        .single();
-
-      const modelId = modelData?.model_identifier || 'gpt-4o-mini';
-
-      // 3. Get active system prompt
-      const { data: promptData } = await supabase
-        .from('ai_system_prompts')
-        .select('content')
-        .eq('is_default', true)
-        .limit(1);
-
-      // 4. Build messages array
+      // Build messages array
       const apiMessages: { role: string; content: string }[] = [];
 
-      // System prompt first
-      if (promptData && promptData.length > 0) {
-        apiMessages.push({ role: 'system', content: promptData[0].content });
+      const fallbackSystemPrompt = `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes. Follow these guidelines strictly:
+
+1. Be concise. Use the shortest answer that fully addresses the question. No greetings, farewells, or small talk.
+2. Database & ERD Generation:
+   - When asked to "create ERD", "generate SQL DDL", "create database schema", "generate SQL", or similar, ALWAYS output standard SQL DDL statements (like CREATE TABLE, ALTER TABLE) enclosed in a single \`\`\`sql code block.
+   - Do NOT output HTML or Markdown tables for database schemas.
+   - Advise the user to click the "Append" (or "Replace") button to apply the SQL to their diagram.
+3. Flowchart Generation:
+   - When asked to "create flowchart", "generate flowchart", "design logic flow", or similar, ALWAYS output a JSON code block in this format:
+     \`\`\`json
+     {
+       "nodes": [
+         { "label": "Start", "shape": "oval", "color": "#10b981" },
+         { "label": "Process Name", "shape": "rectangle", "color": "#8b5cf6" },
+         { "label": "Decision?", "shape": "diamond", "color": "#f59e0b" },
+         { "label": "End", "shape": "oval", "color": "#10b981" }
+       ],
+       "edges": [
+         { "sourceLabel": "Start", "targetLabel": "Process Name" },
+         { "sourceLabel": "Process Name", "targetLabel": "Decision?" },
+         { "sourceLabel": "Decision?", "targetLabel": "End", "label": "Yes" }
+       ]
+     }
+     \`\`\`
+   - Shapes: "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
+    - Colors: Emerald (#10b981), Violet (#8b5cf6), Amber (#f59e0b), Rose (#f43f5e), Sky (#0ea5e9).
+    - Advise the user to click the Flowchart button (Create/Update) below the message to apply it. Do NOT tell users to click "Append" or "Replace" for flowchart JSON.
+ 4. Notes:
+    - Preserve or output content in rich GitHub-Flavored Markdown.
+ 5. Integration:
+   - Sibling files/context (ERD schema, flowcharts, notes) are linked. If the user references a sibling file (via @FileName), use its details to write consistent schemas, documentation, or business logic.
+6. Never repeat user questions. Prefer bullet points for lists (max 5).`;
+
+      let systemPrompt = fallbackSystemPrompt;
+
+      // System prompt (only for Online mode — Guest mode skips since no Supabase access)
+      if (!isGuest) {
+        try {
+          const { data: promptData } = await supabase
+            .from('ai_system_prompts')
+            .select('content')
+            .eq('is_default', true)
+            .limit(1);
+
+          if (promptData && promptData.length > 0) {
+            systemPrompt = promptData[0].content;
+          }
+        } catch (err) {
+          console.warn('[AI Chat] Failed to fetch system prompt from DB:', err);
+        }
       }
+
+      apiMessages.push({ role: 'system', content: systemPrompt });
 
       // Language instruction: respond in user's language
       apiMessages.push({
         role: 'system',
         content: 'Always respond in the same language the user is communicating in.',
+      });
+
+      // Feature integration and technical formatting instructions
+      apiMessages.push({
+        role: 'system',
+        content: `TECHNICAL CAPABILITIES & INTEGRATION RULES:
+This workspace integrates Database ERD Diagrams, Flowcharts, and Markdown Notes. Use these rules to generate compatible outputs:
+
+1. Database / ERD Generation:
+   - When asked to "create ERD", "generate SQL DDL", "create database schema", "generate SQL", or similar, ALWAYS output clean SQL DDL statements (like CREATE TABLE, ALTER TABLE for foreign keys) inside a single \`\`\`sql ... \`\`\` code block.
+    - DO NOT output HTML tables, markdown tables, or plain lists for database schemas unless explicitly requested.
+    - Advise the user to click the Database button (or the Create/Update ERD button) below the message to apply the SQL to their diagram. Do NOT tell users to click "Append" or "Replace" for SQL content — those buttons handle Notes content, not ERD.
+
+2. Flowchart Generation:
+   - When asked to "create flowchart", "generate flowchart", "design logic flow", or similar, ALWAYS output a JSON code block in this format:
+     \`\`\`json
+     {
+       "nodes": [
+         { "label": "Start", "shape": "oval", "color": "#10b981" },
+         { "label": "Process Name", "shape": "rectangle", "color": "#8b5cf6" },
+         { "label": "Decision?", "shape": "diamond", "color": "#f59e0b" },
+         { "label": "End", "shape": "oval", "color": "#10b981" }
+       ],
+       "edges": [
+         { "sourceLabel": "Start", "targetLabel": "Process Name" },
+         { "sourceLabel": "Process Name", "targetLabel": "Decision?" },
+         { "sourceLabel": "Decision?", "targetLabel": "End", "label": "Yes" }
+       ]
+     }
+     \`\`\`
+   - Shapes allowed: "oval", "rectangle", "diamond", "parallelogram", "database", "document", "cloud", "circle".
+    - Colors: Emerald (#10b981), Violet (#8b5cf6), Amber (#f59e0b), Rose (#f43f5e), Sky (#0ea5e9).
+    - Advise the user to click the Flowchart button (Create/Update) below the message to apply it. Do NOT tell users to click "Append" or "Replace" for flowchart JSON.
+
+3. Notes & Rich Text:
+   - Output rich text content using GitHub-Flavored Markdown.
+
+4. Feature Integration:
+   - Sibling files/context (ERD schema, flowcharts, notes) are linked. If the user references a sibling file (via @FileName), use its details to write consistent schemas, documentation, or business logic.`,
       });
 
       // Previous messages from this session (exclude temp)
@@ -397,14 +584,14 @@ export function useAIChat(
         apiMessages.push({ role: msg.role, content: msg.content });
       }
 
-      // Build user message: context as prefix (higher prominence than system message) + selection + question
+      // Build user message: context as prefix + selection + question
       let apiUserContent = '';
 
-      // Priority: pre-built context text > fetch from Supabase
       if (entityContextText) {
         apiUserContent += `${entityContextText}\n\n`;
         console.log('[AI Context] Using pre-built context text (from workspace)');
-      } else if (entityContext) {
+      } else if (entityContext && !isGuest) {
+        // Only fetch from Supabase in Online mode
         try {
           const ctxResult = await fetchEntityContext(entityContext);
           if (ctxResult) {
@@ -420,58 +607,51 @@ export function useAIChat(
         apiUserContent += `[Selected text: "${selectionText}"]\n`;
       }
 
-      // ─── Sync session.project_id with current file's project_id ──
-      // Handle 3 scenarios:
-      //   1. File pindah project A → B: session updated to B → sibling context queries B
-      //   2. File pindah ke uncategorized (NULL): session set to NULL → sibling context skipped
-      //   3. Session private (NULL) masuk workspace: session updated → sibling context now active
-      const liveProjectId = projectIdRef.current ?? null;
-      const oldSessionProjectId = currentSession?.project_id || null;
-      if (liveProjectId !== oldSessionProjectId) {
-        const updatePayload: Record<string, any> = { updated_at: new Date().toISOString(), project_id: liveProjectId };
-        const { error: updateProjectError } = await supabase
-          .from('ai_chat_sessions')
-          .update(updatePayload)
-          .eq('id', currentSession.id);
+      // Skip project_id sync & sibling context in Guest mode (no Supabase)
+      if (!isGuest) {
+        const liveProjectId = projectIdRef.current ?? null;
+        const oldSessionProjectId = currentSession?.project_id || null;
+        if (liveProjectId !== oldSessionProjectId) {
+          const updatePayload: Record<string, any> = { updated_at: new Date().toISOString(), project_id: liveProjectId };
+          const { error: updateProjectError } = await supabase
+            .from('ai_chat_sessions')
+            .update(updatePayload)
+            .eq('id', currentSession.id);
 
-        if (!updateProjectError) {
-          const updatedSession = { ...currentSession, ...updatePayload } as AIChatSession;
-          setCurrentSession(updatedSession);
-          setSessions(prev => prev.map(s =>
-            s.id === currentSession.id ? updatedSession : s
-          ));
-        }
-        // Sync only once per session; use liveProjectId for sibling context regardless
-      }
-
-      // Cross-feature sibling context from the same project.
-      // Uses live project_id (not stale session.project_id).
-      // Exclude the CURRENT active entity — entityContextText already provides full context.
-      // Always fresh: queries Supabase every sendMessage with up to 6000 chars budget.
-      if (liveProjectId && entityContext) {
-        try {
-          const siblingCtx = await buildSiblingContext(
-            entityContext.entityType,
-            entityContext.entityUid,
-            liveProjectId,
-          );
-          if (siblingCtx) {
-            apiUserContent += `\n${siblingCtx}\n`;
+          if (!updateProjectError) {
+            const updatedSession = { ...currentSession, ...updatePayload } as AIChatSession;
+            setCurrentSession(updatedSession);
+            setSessions(prev => prev.map(s =>
+              s.id === currentSession.id ? updatedSession : s
+            ));
           }
-        } catch (err) {
-          console.warn('[AI Context] Failed to fetch sibling context:', err);
+        }
+
+        if (liveProjectId && entityContext) {
+          try {
+            const siblingCtx = await buildSiblingContext(
+              entityContext.entityType,
+              entityContext.entityUid,
+              liveProjectId,
+            );
+            if (siblingCtx) {
+              apiUserContent += `\n${siblingCtx}\n`;
+            }
+          } catch (err) {
+            console.warn('[AI Context] Failed to fetch sibling context:', err);
+          }
         }
       }
 
       apiUserContent += `User request: ${trimmed}`;
       apiMessages.push({ role: 'user', content: apiUserContent });
 
-      // 5. Call AI API with streaming
+      // Call AI API with streaming
       abortControllerRef.current = new AbortController();
       const accumulatedResponse = await callAIStream(
-        baseUrl,
-        apiKey,
-        modelId,
+        resolvedBaseUrl,
+        resolvedApiKey,
+        resolvedModel,
         apiMessages,
         abortControllerRef.current.signal,
         (token) => {
@@ -485,48 +665,64 @@ export function useAIChat(
         }
       );
 
-      // 6. Save full response to DB
-      const { error: saveAIError } = await supabase
-        .from('ai_chat_messages')
-        .insert([{
-          session_id: currentSession.id,
-          role: 'assistant',
-          content: accumulatedResponse,
-        }]);
-
-      if (saveAIError) throw saveAIError;
-
-      // 7. Add final message in state
+      // Add final message in state
+      const finalAiMsg: AIChatMessage = {
+        id: `ai-${Date.now()}`,
+        session_id: currentSession.id,
+        role: 'assistant',
+        content: accumulatedResponse,
+        created_at: new Date().toISOString(),
+      };
       setMessages(prev => {
         const filtered = prev.filter(m => m.id !== 'streaming');
-        return [...filtered, {
-          id: `ai-${Date.now()}`,
-          session_id: currentSession.id,
-          role: 'assistant',
-          content: accumulatedResponse,
-          created_at: new Date().toISOString(),
-        }];
+        return [...filtered, finalAiMsg];
       });
 
-      // 8. Notify caller that streaming completed (for auto-apply to content)
+      // Guest mode: persist AI response to IndexedDB + update session
+      if (isGuest) {
+        const finalMessages = [...previousMessages, tempUserMsg, finalAiMsg];
+        await persistGuestMessages(currentSession.uid, finalMessages);
+
+        // Also update session's updated_at
+        setSessions(prev => {
+          const updated = prev.map(s =>
+            s.uid === currentSession.uid ? { ...s, updated_at: new Date().toISOString() } : s
+          );
+          updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+          return updated;
+        });
+      }
+
+      // Notify caller that streaming completed (for auto-apply to content)
       if (onStreamCompleteRef.current) {
         onStreamCompleteRef.current(accumulatedResponse);
       }
 
-      // Update session updated_at
-      await supabase
-        .from('ai_chat_sessions')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', currentSession.id);
+      // Post-AI persistence (skip for Guest mode)
+      if (!isGuest) {
+        const { error: saveAIError } = await supabase
+          .from('ai_chat_messages')
+          .insert([{
+            session_id: currentSession.id,
+            role: 'assistant',
+            content: accumulatedResponse,
+          }]);
 
-      // Update sessions list order
-      setSessions(prev => {
-        const updated = prev.map(s =>
-          s.id === currentSession.id ? { ...s, updated_at: new Date().toISOString() } : s
-        );
-        updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-        return updated;
-      });
+        if (saveAIError) throw saveAIError;
+
+        await supabase
+          .from('ai_chat_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', currentSession.id);
+
+        setSessions(prev => {
+          const updated = prev.map(s =>
+            s.id === currentSession.id ? { ...s, updated_at: new Date().toISOString() } : s
+          );
+          updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+          return updated;
+        });
+      }
 
     } catch (err: any) {
       const errMsg = err.message || 'AI request failed';
@@ -556,10 +752,35 @@ export function useAIChat(
 
   // ─── AI API Call (via server-side proxy) ────────────
 
+  async function persistGuestMessages(sessionUid: string, msgs: AIChatMessage[]) {
+    try {
+      const stored = await localPersistence.getResource(sessionUid);
+      if (stored) {
+        stored.messages = msgs;
+        await localPersistence.saveResource(stored);
+      }
+    } catch (err) {
+      console.warn('[AI Chat] Failed to persist guest messages:', err);
+    }
+  }
+
+  async function persistGuestTitle(sessionUid: string, title: string) {
+    try {
+      const stored = await localPersistence.getResource(sessionUid);
+      if (stored) {
+        stored.title = title;
+        stored.updated_at = new Date().toISOString();
+        await localPersistence.saveResource(stored);
+      }
+    } catch (err) {
+      console.warn('[AI Chat] Failed to persist guest title:', err);
+    }
+  }
+
   async function callAIStream(
-    baseUrl: string,
-    apiKey: string,
-    model: string,
+    baseUrl: string | undefined,
+    apiKey: string | undefined,
+    model: string | undefined,
     messages: { role: string; content: string }[],
     signal: AbortSignal,
     onToken: (token: string) => void,
