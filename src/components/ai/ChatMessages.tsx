@@ -1,8 +1,8 @@
-import { memo, useRef, useState, useEffect, useCallback, createElement, ComponentType } from 'react';
+import { memo, useRef, useState, useEffect, useCallback } from 'react';
 import { MessageSquare, Plus, Bot, User, Loader2, Copy, Check, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AIChatMessage, AIChatSession } from '@/types';
+import { AIChatMessage } from '@/types';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { Button } from '@/components/ui/button';
 import { CodeBlock } from './CodeBlock';
@@ -34,9 +34,6 @@ export interface ChatMessagesProps {
   lastActionId: string | null;
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => void;
   contentCheckType?: 'flowchart' | 'erd' | 'none';
-  isCrossEntity?: boolean;
-  currentSession?: AIChatSession | null;
-  entityTypeMeta?: Record<string, { label: string; icon: ComponentType<{ className?: string }> }>;
   mentionFiles?: MentionFile[];
   activeProjectId?: string | number | null;
   diagrams?: any[];
@@ -59,9 +56,6 @@ export const ChatMessages = memo(function ChatMessages({
   lastActionId,
   applyContent,
   contentCheckType = 'none',
-  isCrossEntity = false,
-  currentSession,
-  entityTypeMeta,
   mentionFiles = [],
   activeProjectId,
   diagrams = [],
@@ -160,21 +154,6 @@ export const ChatMessages = memo(function ChatMessages({
           </div>
         ) : (
           <>
-            {isCrossEntity && currentSession?.entity_type && (
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-3">
-                <span className="shrink-0 text-sm leading-none mt-0.5">💬</span>
-                <p className="text-[11px] text-amber-700 dark:text-amber-300/80 leading-relaxed">
-                  This conversation was started from{' '}
-                  <span className="font-semibold inline-flex items-center gap-1">
-                    {entityTypeMeta?.[currentSession.entity_type]?.icon &&
-                      createElement(entityTypeMeta[currentSession.entity_type].icon as ComponentType<{ className?: string }>, { className: 'size-3.5' })}
-                    {entityTypeMeta?.[currentSession.entity_type]?.label ?? currentSession.entity_type}
-                  </span>
-                  . You can continue chatting here — the AI sees context from the current file together with related project files.
-                </p>
-              </div>
-            )}
-
             {hasMoreMessages && (
               <div className="flex justify-center py-2">
                 <button
@@ -296,7 +275,6 @@ export const ChatMessages = memo(function ChatMessages({
                       <AssistantMessageActions
                         content={msg.content}
                         msgId={msgKey}
-                        isCrossEntity={isCrossEntity}
                         hasContentHandler={hasContentHandler}
                         contentHandlerStrategies={contentHandlerStrategies}
                         contentCheckType={contentCheckType}

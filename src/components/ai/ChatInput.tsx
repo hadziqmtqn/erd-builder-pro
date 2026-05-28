@@ -78,7 +78,6 @@ export interface ChatInputProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSelectAction: (action: AIAction) => void;
   onAbort: () => void;
-  isCrossEntity?: boolean;
   hasProject?: boolean;
   mentionFiles?: MentionFile[];
 }
@@ -94,7 +93,6 @@ export const ChatInput = memo(function ChatInput({
   onKeyDown,
   onSelectAction,
   onAbort,
-  isCrossEntity = false,
   hasProject = false,
   mentionFiles = [],
 }: ChatInputProps) {
