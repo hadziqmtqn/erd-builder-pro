@@ -55,6 +55,9 @@ export const AIChatPanel = ({
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
 
+  // ERD default name: use source file title, fallback to "New ERD"
+  const erdDefaultName = entityTitle || 'New ERD';
+
   // ─── Stream complete callback ──
   const [lastStreamResponse, setLastStreamResponse] = useState<string | null>(null);
   const pendingActionRef = useRef(pendingAction);
@@ -465,6 +468,7 @@ export const AIChatPanel = ({
           mentionFiles={mentionFiles}
           activeProjectId={projectId}
           diagrams={diagrams}
+          erdDefaultName={erdDefaultName}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}
