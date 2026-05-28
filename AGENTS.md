@@ -513,6 +513,7 @@ Three fixes prevent cascading re-renders on every drag frame:
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
 - Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
+- Init effect **skips loading default `initialNodes`/`initialEdges` when `pending_create_flowchart_json` or `pending_update_flowchart_json` exists in localStorage** — prevents brief flash of dummy flowchart before AI content replaces it (`FlowchartView.tsx:321`).
 - `handleEdgesChange` + `handleNodesChange` both filter out `type: 'select'` — selection changes never trigger auto-save or content-modified flag
 - `useFlowchartChangeHandler` debounces save at 1.5s, updates `activeFlowchart.data` in workspace state
 
@@ -897,11 +898,12 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
 - **Pencegahan duplikat Create ERD/Flowchart**: setiap kali user klik tombol Create ERD/Flowchart dari chat, UID diagram yang dibuat disimpan di ref (`chatErdUidRef`) + localStorage (`chat_erd_uid`). Klik berikutnya → update existing diagram (navigate + pending DDL/JSON di localStorage), bukan create baru.
   - File: [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx): `chatErdUidRef`, `chatFlowchartUidRef`
   - `handleSidebarDiagramCreate`/`handleSidebarFlowchartCreate` return created object (changed from `Promise<void>` to `Promise<any>` di [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts) dan [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx))
-- **Content-aware buttons**: setiap AI message bisa punya multiple action buttons:
-  - Markdown/text → Replace/Append (routed ke content handler view aktif, e.g. NotesView)
-  - SQL DDL → "Create/Update ERD" — membuka dialog inline di `ChatMessages.tsx`
-  - Flowchart JSON → "Create Flowchart" / "Update Flowchart"
-  - Semua tombol independen — tidak ada routing konflik
+- **Content-aware buttons**: setiap AI message bisa punya multiple action buttons — tombol ditampilkan HANYA jika konten type X tidak di-handle oleh view aktif:
+  - `showReplaceAppend = !hasSQLContent && !hasFlowchartJSON` (Notes view: hide Replace/Append saat AI output SQL/JSON)
+  - `showSqlButton = hasSQLContent && contentCheckType !== 'erd'` (ERD view: sembunyi Database button, tapi tampil di Notes/Flowchart)
+  - `showFlowchartButton = hasFlowchartJSON && contentCheckType !== 'flowchart'` (Flowchart view: sembunyi Flowchart button, tapi tampil di Notes/ERD)
+  - File: [`src/components/ai/AssistantMessageActions.tsx`](./src/components/ai/AssistantMessageActions.tsx):41
+- **`isCrossEntity` removed** — tidak lagi diperlukan karena semua sesi silang-fitur. Props `isCrossEntity`, `entityTypeMeta`, `handleSidebarFlowchartCreate`, `handleFlowchartSelect` dihapus dari `AssistantMessageActions`. Props `isCrossEntity` dihapus dari `ChatInput`, `ChatMessages`, `AIChatPanel`.
 - **ERD Dialog (inline di `ChatMessages.tsx`)**: dialog yang muncul saat user klik Database button pada AI message yang mengandung SQL DDL:
   - **Radio-style cards** (`erdMode: 'create' | 'update' | null`): dua card selectable — "Create New" (indigo) dan "Update Existing" (amber). Tidak ada yang langsung eksekusi, semua tunggu tombol Submit.
   - **Submit button** di footer: disabled sampai mode dipilih (dan untuk update, sampai file target dipilih). Ada loading spinner (`erdModeConfirming`) selama eksekusi.
@@ -918,6 +920,21 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - **Dua localStorage key** tetap sama: `pending_create_erd_ddl` (Create) dan `pending_update_erd_ddl` (Update)
   - Dialog menggunakan `size="2xl"` (max-w-2xl) untuk ruang lebih lega
   - State: `erdMode`, `erdSql`, `erdUpdateUid`, `erdExistingData`, `erdFetchingExisting`, `erdModeConfirming`
+  - **ERD Auto-Naming**: `erdDefaultName` prop chain (`AIChatPanel` → `ChatMessages` → `ErdFromSqlDialog`) → `ERD - ${entityTitle || 'New ERD'}`. Uses source file title (e.g., "ERD - PRD Aplikasi Payroll Sederhana") instead of hardcoded "ERD from Chat".
+  - File: [`src/components/ai/ErdFromSqlDialog.tsx`](./src/components/ai/ErdFromSqlDialog.tsx)
+
+- **FlowchartFromJsonDialog (inline di `ChatMessages.tsx`)**: dialog yang muncul saat user klik Flowchart button pada AI message yang mengandung JSON flowchart:
+  - **Radio-style cards** (`flowchartMode: 'create' | 'update' | null`): dua card selectable — "Create New" (indigo) dan "Update Existing" (amber). Tidak ada yang langsung eksekusi, semua tunggu tombol Submit.
+  - **Submit button** di footer: disabled sampai mode dipilih (dan untuk update, sampai file target dipilih). Ada loading spinner (`flowchartModeConfirming`) selama eksekusi.
+  - **Create New**: menampilkan daftar simbol yang akan dibuat (label, shape badge per simbol).
+  - **Update Existing**: Target Flowchart selector (base-ui `Select`). Setelah file dipilih + data existing termuat, diff preview muncul:
+    - **Nodes**: ditampilkan per simbol (label, shape badge, color swatch) dengan status `+` new (green), `-` removed (red), unchanged (neutral). Modified nodes tampil sebagai `- old` + `+ new`.
+    - **Edges**: `+` green untuk edges baru, `-` red untuk edges dihapus, unchanged neutral. Modified edges (label/type berubah) tampil sebagai `- old` + `+ new`.
+  - **Filter Flowchart**: hanya flowchart yang sesuai `projectId` sesi (atau tanpa project) yang muncul di file selector
+  - **Dua localStorage key**: `pending_create_flowchart_json` (Create) dan `pending_update_flowchart_json` (Update)
+  - Dialog menggunakan `size="2xl"` (max-w-2xl) untuk ruang lebih lega
+  - State: `flowchartMode`, `flowchartJson`, `flowchartUpdateUid`, `flowchartExistingData`, `flowchartFetchingExisting`, `flowchartModeConfirming`
+  - File: [`src/components/ai/FlowchartFromJsonDialog.tsx`](./src/components/ai/FlowchartFromJsonDialog.tsx)
 
 ### Schema Diff Engine
 

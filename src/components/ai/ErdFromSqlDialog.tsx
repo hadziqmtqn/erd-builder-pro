@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Loader2, Database, Plus } from 'lucide-react';
+import { Loader2, Database, Plus, AlertTriangle } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import { apiFetch } from '@/lib/api';
@@ -231,6 +231,21 @@ export function ErdFromSqlDialog({
               </button>
             </div>
 
+            {/* Parse error: SQL DDL invalid */}
+            {sql && !erdParsed && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="size-4 text-red-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-red-300">Invalid SQL DDL</p>
+                    <p className="text-[11px] text-red-400/70 mt-1">
+                      The SQL could not be parsed. Ensure it contains valid <code className="bg-red-500/10 px-1 rounded">CREATE TABLE</code> or <code className="bg-red-500/10 px-1 rounded">ALTER TABLE</code> statements.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {erdParsed && erdMode && (
               erdMode === 'update' ? (
                 <div className="space-y-3 pt-2 border-t border-border/20">
@@ -365,7 +380,7 @@ export function ErdFromSqlDialog({
           <Button
             size="sm"
             className="gap-1.5"
-            disabled={!erdMode || erdModeConfirming || (erdMode === 'update' && !erdUpdateUid)}
+            disabled={!erdMode || erdModeConfirming || !erdParsed || (erdMode === 'update' && !erdUpdateUid)}
             onClick={async () => {
               if (!erdMode) return;
               setErdModeConfirming(true);

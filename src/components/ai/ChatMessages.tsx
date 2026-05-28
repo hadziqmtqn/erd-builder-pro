@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { CodeBlock } from './CodeBlock';
 import { formatTime } from './chatUtils';
 import { ErdFromSqlDialog } from './ErdFromSqlDialog';
+import { FlowchartFromJsonDialog } from './FlowchartFromJsonDialog';
 import { AssistantMessageActions } from './AssistantMessageActions';
 import { UserMessageBody } from './UserMessageBody';
 
@@ -37,7 +38,9 @@ export interface ChatMessagesProps {
   mentionFiles?: MentionFile[];
   activeProjectId?: string | number | null;
   diagrams?: any[];
+  flowcharts?: any[];
   erdDefaultName?: string;
+  flowchartDefaultName?: string;
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -60,7 +63,9 @@ export const ChatMessages = memo(function ChatMessages({
   mentionFiles = [],
   activeProjectId,
   diagrams = [],
+  flowcharts = [],
   erdDefaultName = 'New ERD',
+  flowchartDefaultName = 'New Flowchart',
 }: ChatMessagesProps) {
   const {
     handleSidebarDiagramCreate,
@@ -85,6 +90,9 @@ export const ChatMessages = memo(function ChatMessages({
 
   // ─── ERD dialog state ───────────────────────────────────
   const [erdDialogSql, setErdDialogSql] = useState<string | null>(null);
+
+  // ─── Flowchart dialog state ─────────────────────────────
+  const [flowchartDialogJson, setFlowchartDialogJson] = useState<string | null>(null);
 
   // ─── Auto-scroll to bottom on new messages ─────────────
   useEffect(() => {
@@ -285,9 +293,7 @@ export const ChatMessages = memo(function ChatMessages({
                         copiedMsgId={copiedMsgId}
                         onCopy={handleCopy}
                         onOpenErdDialog={setErdDialogSql}
-                        targetProjectId={targetProjectId}
-                        handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
-                        handleFlowchartSelect={handleFlowchartSelect}
+                        onOpenFlowchartDialog={setFlowchartDialogJson}
                       />
                     )}
                   </div>
@@ -322,6 +328,19 @@ export const ChatMessages = memo(function ChatMessages({
           handleSidebarDiagramCreate={handleSidebarDiagramCreate}
           handleDiagramSelect={handleDiagramSelect}
           triggerPendingErdDiff={triggerPendingErdDiff}
+        />
+      )}
+
+      {/* Flowchart from JSON dialog */}
+      {flowchartDialogJson && (
+        <FlowchartFromJsonDialog
+          json={flowchartDialogJson}
+          onClose={() => setFlowchartDialogJson(null)}
+          flowcharts={flowcharts}
+          targetProjectId={targetProjectId}
+          flowchartDefaultName={flowchartDefaultName}
+          handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
+          handleFlowchartSelect={handleFlowchartSelect}
         />
       )}
     </div>

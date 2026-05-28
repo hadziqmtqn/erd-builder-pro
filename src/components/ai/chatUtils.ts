@@ -1,15 +1,37 @@
 // ─── Chat message utility functions ──────────────────────────────────────────
 // Extracted from ChatMessages.tsx — pure functions, no React dependencies.
 
-export function hasFlowchartJSON(content: string): boolean {
-  const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
+/**
+ * Extract JSON object from markdown code block, handling nested braces.
+ * The naive regex `{[\s\S]*?}` fails on nested objects (stops at first `}`).
+ */
+function extractJsonFromCodeBlock(content: string): string | null {
+  const blockStartRegex = /```(?:json)?\s*\{/g;
   let match;
-  while ((match = blockRegex.exec(content)) !== null) {
+  while ((match = blockStartRegex.exec(content)) !== null) {
+    const jsonStart = match.index + match[0].length - 1; // position of the opening `{`
+    let depth = 0;
+    for (let i = jsonStart; i < content.length; i++) {
+      if (content[i] === '{') depth++;
+      else if (content[i] === '}') depth--;
+      if (depth === 0) {
+        return content.substring(jsonStart, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+export function hasFlowchartJSON(content: string): boolean {
+  // Try brace-balanced extraction from code blocks first
+  const json = extractJsonFromCodeBlock(content);
+  if (json) {
     try {
-      const parsed = JSON.parse(match[1]);
+      const parsed = JSON.parse(json);
       if (parsed && Array.isArray(parsed.nodes)) return true;
     } catch { /* ignore */ }
   }
+  // Fallback: entire content is JSON
   try {
     const parsed = JSON.parse(content.trim());
     if (parsed && Array.isArray(parsed.nodes)) return true;
@@ -44,14 +66,15 @@ export function extractSQL(content: string): string | null {
 }
 
 export function extractFlowchartJSON(content: string): string | null {
-  const blockRegex = /```(?:json)?\s*({[\s\S]*?})\s*```/g;
-  let match;
-  while ((match = blockRegex.exec(content)) !== null) {
+  // Try brace-balanced extraction from code blocks first
+  const json = extractJsonFromCodeBlock(content);
+  if (json) {
     try {
-      const parsed = JSON.parse(match[1]);
-      if (parsed && Array.isArray(parsed.nodes)) return match[1].trim();
+      const parsed = JSON.parse(json);
+      if (parsed && Array.isArray(parsed.nodes)) return json.trim();
     } catch { /* ignore */ }
   }
+  // Fallback: entire content is JSON
   try {
     const parsed = JSON.parse(content.trim());
     if (parsed && Array.isArray(parsed.nodes)) return content.trim();
