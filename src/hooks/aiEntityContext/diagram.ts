@@ -119,6 +119,7 @@ Rules:
 7. Support standard SQL types: BIGINT, INT, VARCHAR(n), TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, UUID, JSONB, etc.
 8. You MAY split SQL into multiple \`\`\`sql blocks if that is clearer, but one block per set of related tables is preferred
 9. When telling the user to apply the SQL to their diagram, do NOT say "click Append/Replace". Instead, say "click the Database button below this message" or "use the SQL → ERD button" — the app shows a dedicated Database icon button (not Append/Replace) when SQL is detected in your response.
+10. Use ENGLISH for ALL table names and column names by default (e.g. \`users\`, \`posts\`, \`email\`, \`created_at\`). Only use the user's language if they explicitly ask (e.g. "gunakan bahasa Indonesia"). This keeps the schema portable and follows database conventions.
 
 Example:
 \`\`\`sql

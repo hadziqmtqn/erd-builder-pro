@@ -678,6 +678,18 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Links open files locally when clicked in supporting terminals
 - Relative sibling paths (without `src/` prefix, e.g. after a comma) are NOT linked
 
+## useAIChat Refactoring (Split into Modules)
+
+- [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts) was reduced from 892 lines to ~483 lines by extracting logic into dedicated modules under [`src/hooks/aiChat/`](./src/hooks/aiChat/):
+  - [`buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts): exports `fallbackSystemPrompt`, `buildTechnicalRules()`, `fetchUserSystemPrompt()` — all system prompt construction
+  - [`resolveAiConfig.ts`](./src/hooks/aiChat/resolveAiConfig.ts): `resolveAiConfig(userId)` — fetches AI provider config (baseUrl, apiKey, model) from Supabase
+  - [`callAiStream.ts`](./src/hooks/aiChat/callAiStream.ts): `callAiStream(...)` — server-side SSE proxy streaming
+  - [`guestPersistence.ts`](./src/hooks/aiChat/guestPersistence.ts): `persistGuestMessages()`, `persistGuestTitle()` — IndexedDB persistence for Guest mode
+  - [`syncSessionProjectId.ts`](./src/hooks/aiChat/syncSessionProjectId.ts): `syncSessionProjectId(...)` — syncs `project_id` when entity moves between projects
+  - [`index.ts`](./src/hooks/aiChat/index.ts): barrel export
+- `autoTitleSession` extracted into a `useCallback` to deduplicate Guest/Online title-setting logic
+- `isGuestCheck()` helper replaces repeated `isGuestRef.current || sessionStorage.getItem(...)` boilerplate
+
 ## URL Sync Safety Net (Editor Routes)
 
 - Setiap editor route ([`NoteEditorRoute`](./src/routes/NoteEditorRoute.tsx), [`DiagramEditorRoute`](./src/routes/DiagramEditorRoute.tsx), [`DrawingEditorRoute`](./src/routes/DrawingEditorRoute.tsx), [`FlowchartEditorRoute`](./src/routes/FlowchartEditorRoute.tsx)) memiliki `useEffect` safety net yang menyinkronkan `id` dari `useParams()` ke context `active*Id`/`active*Uid`.
