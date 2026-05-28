@@ -19,7 +19,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
         try {
           parsed = JSON.parse(draftData);
         } catch (e) {
-          return draftData; // Not JSON, could be legacy raw
+          return draftData;
         }
 
         const isNewFormat = parsed && typeof parsed === 'object' && 'data' in parsed;
@@ -29,22 +29,18 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
             if (drawingData.files) {
               let hasCorruption = false;
               const sanitizedFiles = { ...drawingData.files };
-              
+
               Object.keys(sanitizedFiles).forEach(id => {
                 const file = sanitizedFiles[id];
                 if (file && typeof file.dataURL === 'string') {
-                  // Sanitize URL - remove escaped newlines and trim whitespace
-                  // JSON stores \n as literal characters, not actual newlines
                   const cleanUrl = file.dataURL.replace(/\\n/g, '').replace(/\\r/g, '').trim();
                   const isDataURL = cleanUrl.startsWith('data:');
                   const isValidHttpUrl = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
-                  
+
                   if (isValidHttpUrl && cleanUrl !== file.dataURL) {
-                    // URL had whitespace - sanitize it instead of deleting
                     sanitizedFiles[id] = { ...file, dataURL: cleanUrl };
                     hasCorruption = true;
                   } else if (!isDataURL && !isValidHttpUrl) {
-                    // Invalid format - could crash Excalidraw
                     delete sanitizedFiles[id];
                     hasCorruption = true;
                   }
@@ -58,7 +54,6 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
               }
             }
           } catch (e) {
-            // Keep original
           }
         }
       }
@@ -69,6 +64,10 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, []);
 
   const [hasPendingSyncs, setHasPendingSyncs] = useState(false);
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
   const syncNeededRef = useRef(false);
 
   // Helper to check for pending syncs across all types
@@ -82,7 +81,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, []);
 
   const syncDrafts = useCallback(async () => {
-    if (!isAuthenticated || !navigator.onLine || isGuest) return;
+    if (!isAuthenticated || !navigator.onLine || isGuestCheck()) return;
     
     if (isSyncingRef.current) {
       syncNeededRef.current = true;
@@ -206,6 +205,8 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
   }, [isAuthenticated, isGuest, healDraftData, refreshPendingStatus]);
 
   const triggerDebouncedSync = useCallback(() => {
+    // Guest mode saves directly to IndexedDB — no cloud sync needed
+    if (isGuestCheck()) return;
     // Optimistically show pending status as soon as a change is made
     setHasPendingSyncs(true);
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
