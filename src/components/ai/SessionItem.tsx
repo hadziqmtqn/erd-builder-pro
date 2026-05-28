@@ -1,29 +1,17 @@
-import { MessageSquare, Trash2, FileText, Database, GitBranch, PenTool } from 'lucide-react';
+import { MessageSquare, Trash2 } from 'lucide-react';
 import { AIChatSession } from '@/types';
-
-const defaultMeta: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  note: { label: 'Note', icon: FileText },
-  diagram: { label: 'ERD Builder', icon: Database },
-  flowchart: { label: 'Flowchart', icon: GitBranch },
-  drawing: { label: 'Drawing', icon: PenTool },
-};
 
 export function SessionItem({
   session,
-  entityTypeMeta,
   isActive,
   onClick,
   onDelete,
 }: {
   session: AIChatSession;
-  entityTypeMeta?: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }>;
   isActive: boolean;
   onClick: () => void;
   onDelete: () => void;
 }) {
-  const meta = entityTypeMeta ?? defaultMeta;
-  const typeInfo = session.entity_type ? meta[session.entity_type] : null;
-
   return (
     <div
       role="button"
@@ -41,12 +29,6 @@ export function SessionItem({
     >
       <div className="flex items-center gap-2.5 min-w-0">
         <MessageSquare className="size-3.5 shrink-0 opacity-60" />
-        {typeInfo && (
-          <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/70 border border-border/30 leading-none">
-            <typeInfo.icon className="size-3" />
-            {typeInfo.label}
-          </span>
-        )}
         <span className="text-xs font-medium truncate">{session.title}</span>
       </div>
       <button

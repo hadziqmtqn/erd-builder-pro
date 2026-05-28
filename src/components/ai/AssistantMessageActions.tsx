@@ -6,7 +6,6 @@ import { hasFlowchartJSON, hasSQLContent, extractSQL, extractFlowchartJSON } fro
 export interface AssistantMessageActionsProps {
   content: string;
   msgId: string;
-  isCrossEntity: boolean;
   hasContentHandler: boolean;
   contentHandlerStrategies: string[];
   contentCheckType: 'flowchart' | 'erd' | 'none';
@@ -23,7 +22,6 @@ export interface AssistantMessageActionsProps {
 export function AssistantMessageActions({
   content,
   msgId,
-  isCrossEntity,
   hasContentHandler,
   contentHandlerStrategies,
   contentCheckType,
@@ -38,14 +36,14 @@ export function AssistantMessageActions({
 }: AssistantMessageActionsProps) {
   const chatFlowchartUidRef = useRef<string | null>(localStorage.getItem('chat_flowchart_uid'));
 
-  const showApplyButtons = !isCrossEntity && hasContentHandler && (
+  const showApplyButtons = hasContentHandler && (
     (contentCheckType === 'none' && !hasSQLContent(content) && !hasFlowchartJSON(content)) ||
     (contentCheckType === 'flowchart' && hasFlowchartJSON(content)) ||
     (contentCheckType === 'erd' && hasSQLContent(content))
   );
 
-  const showSqlButton = hasSQLContent(content);
-  const showFlowchartButton = hasFlowchartJSON(content);
+  const showSqlButton = hasSQLContent(content) && contentCheckType !== 'erd';
+  const showFlowchartButton = hasFlowchartJSON(content) && contentCheckType !== 'flowchart';
   const showDivider = showSqlButton || showFlowchartButton;
 
   return (
