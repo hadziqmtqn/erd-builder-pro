@@ -37,6 +37,7 @@ export interface ChatMessagesProps {
   mentionFiles?: MentionFile[];
   activeProjectId?: string | number | null;
   diagrams?: any[];
+  erdDefaultName?: string;
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -59,6 +60,7 @@ export const ChatMessages = memo(function ChatMessages({
   mentionFiles = [],
   activeProjectId,
   diagrams = [],
+  erdDefaultName = 'New ERD',
 }: ChatMessagesProps) {
   const {
     handleSidebarDiagramCreate,
@@ -316,6 +318,7 @@ export const ChatMessages = memo(function ChatMessages({
           onClose={() => setErdDialogSql(null)}
           diagrams={diagrams}
           targetProjectId={targetProjectId}
+          erdDefaultName={erdDefaultName}
           handleSidebarDiagramCreate={handleSidebarDiagramCreate}
           handleDiagramSelect={handleDiagramSelect}
           triggerPendingErdDiff={triggerPendingErdDiff}
