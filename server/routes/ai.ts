@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { supabase } from "../lib/config.js";
 
 const router = Router();
 
@@ -22,14 +23,55 @@ router.post("/proxy", async (req, res) => {
   }, 30_000);
 
   try {
-    const { messages, model, apiKey, baseUrl } = req.body;
+    let { messages, model, apiKey, baseUrl } = req.body;
 
-    if (!messages || !model || !apiKey) {
+    if (!messages) {
       clearTimeout(timeout);
-      return res.status(400).json({ error: "Missing required fields: messages, model, apiKey" });
+      return res.status(400).json({ error: "Missing required fields: messages" });
+    }
+
+    // When no apiKey is provided (Guest mode), look up the default config from Supabase
+    if (!apiKey) {
+      if (!supabase) {
+        clearTimeout(timeout);
+        return res.status(500).json({ error: "Supabase not configured on server" });
+      }
+
+      const { data: configData, error: configError } = await supabase
+        .from("user_ai_configs")
+        .select("*, ai_providers(*)")
+        .eq("is_enabled", true)
+        .not("selected_model_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (configError) {
+        clearTimeout(timeout);
+        console.error("AI proxy: Failed to fetch default config:", configError);
+        return res.status(500).json({ error: "Failed to fetch AI configuration" });
+      }
+
+      if (!configData || configData.length === 0) {
+        clearTimeout(timeout);
+        return res.status(400).json({ error: "No AI provider configured on the server" });
+      }
+
+      const config = configData[0];
+      apiKey = config.api_key;
+      baseUrl = baseUrl || config.ai_providers?.base_url || "https://api.openai.com/v1";
+
+      if (!model && config.selected_model_id) {
+        const { data: modelData } = await supabase
+          .from("ai_models")
+          .select("model_identifier")
+          .eq("id", config.selected_model_id)
+          .single();
+        model = modelData?.model_identifier || "gpt-4o-mini";
+      }
     }
 
     const providerBaseUrl = baseUrl || "https://api.openai.com/v1";
+    const effectiveModel = model || "gpt-4o-mini";
 
     const response = await fetch(`${providerBaseUrl}/chat/completions`, {
       method: "POST",
@@ -38,7 +80,7 @@ router.post("/proxy", async (req, res) => {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model,
+        model: effectiveModel,
         messages,
         stream: true,
       }),

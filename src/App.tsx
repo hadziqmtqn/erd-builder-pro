@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import { useRef, useEffect } from 'react';
 
 // Components
 import { Login } from './components/Login';
@@ -29,6 +30,20 @@ import { NotFoundRoute } from './routes/NotFoundRoute';
 
 function AppContent() {
   const { isAuthenticated, isGuest, checkAuth, handleGuestLogin, handleLogout } = useAuth();
+  const navigate = useNavigate();
+
+  // When transitioning from unauthenticated → authenticated (user logs in),
+  // navigate to dashboard to prevent stale URL from Guest mode or previous
+  // session from restoring a file that doesn't exist in the new session.
+  const wasUnauthenticatedRef = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated === false) {
+      wasUnauthenticatedRef.current = true;
+    } else if (isAuthenticated === true && wasUnauthenticatedRef.current) {
+      wasUnauthenticatedRef.current = false;
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
   const { isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument } = usePublicDocument(() => {});
 
   const shareInfo = getSharePathInfo();
