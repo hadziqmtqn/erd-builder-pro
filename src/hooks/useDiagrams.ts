@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
 import { Diagram, Entity, Relationship, DraftType } from '../types';
@@ -23,12 +23,17 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const diagramsRef = useRef<Diagram[]>(diagrams);
   const activeDiagramIdRef = useRef(activeDiagramId);
 
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
+
   // Keep refs in sync
   diagramsRef.current = diagrams;
   activeDiagramIdRef.current = activeDiagramId;
 
   const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const [localResources, localProjects] = await Promise.all([
         localPersistence.getAllResources('erd'),
         localPersistence.getAllResources('project'),
@@ -112,12 +117,12 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]); 
+  }, []); 
 
   const createDiagram = async (name: string, projectId?: number | string | null) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
-    if (isGuest) {
+    if (isGuestCheck()) {
       const newDiagram: Diagram = {
         id: Math.random().toString(36).substr(2, 9) as any,
         uid: crypto.randomUUID(),
@@ -163,7 +168,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   };
 
   const updateDiagram = async (id: number | string, name: string, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const diagram = await localPersistence.getResource(id);
       if (diagram) {
         diagram.name = name;
@@ -196,7 +201,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   };
 
   const deleteDiagram = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const diagram = await localPersistence.getResource(id);
       if (diagram) {
         diagram.is_deleted = true;
@@ -229,7 +234,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   };
 
   const restoreDiagram = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const diagram = await localPersistence.getResource(id);
       if (diagram) {
         diagram.is_deleted = false;
@@ -258,7 +263,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   };
 
   const deleteDiagramPermanent = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       await localPersistence.deleteResource(id);
       await localPersistence.clearDraft(DraftType.ERD, id);
       setDiagrams(prev => prev.filter(f => f.id !== id));
@@ -284,7 +289,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const moveDiagramToProject = async (diagramId: number | string, projectId: number | string | null, options?: { silent?: boolean }) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
-    if (isGuest) {
+    if (isGuestCheck()) {
       const diagram = await localPersistence.getResource(diagramId);
       if (diagram) {
         diagram.project_id = effectiveProjectId;
@@ -324,9 +329,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     
     try {
       const data = JSON.stringify({ nodes, edges, viewport });
-      const isSyncPending = !isGuest;
+      const isSyncPending = !isGuestCheck();
       
-      if (isGuest) {
+      if (isGuestCheck()) {
         let diagram = await localPersistence.getResource(activeDiagramId);
         if (!diagram) {
           const allDiagrams = await localPersistence.getAllResources('erd');
@@ -358,6 +363,41 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           diagram.viewport_zoom = viewport.zoom;
           diagram.updated_at = new Date().toISOString();
           await localPersistence.saveResource(diagram);
+        } else {
+          // Resource not found — create a new one from scratch (edge case: race condition
+          // where the resource was created but not yet available in IndexedDB)
+          const entities: Entity[] = nodes.map(n => ({
+            ...n.data,
+            x: n.position.x,
+            y: n.position.y,
+          })) as Entity[];
+          const relationships: Relationship[] = edges.map(e => ({
+            id: e.id,
+            source_entity_id: e.source,
+            target_entity_id: e.target,
+            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+            source_handle: e.sourceHandle || undefined,
+            target_handle: e.targetHandle || undefined,
+            type: RELATIONSHIP_TYPES.find(t => t.label === e.label || t.shortLabel === e.label)?.value || 'one-to-many',
+            label: e.label as string,
+          }));
+          const fallbackResource: any = {
+            id: activeDiagramId,
+            uid: activeDiagramId,
+            name: 'ERD',
+            project_id: null,
+            is_deleted: false,
+            type: 'erd',
+            entities,
+            relationships,
+            viewport_x: viewport.x,
+            viewport_y: viewport.y,
+            viewport_zoom: viewport.zoom,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          await localPersistence.saveResource(fallbackResource);
         }
       }
 
@@ -367,7 +407,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       await localPersistence.saveDraft(DraftType.ERD, activeDiagramId, data, isSyncPending);
       
       // For authenticated users, also track version for next sync
-      if (!isGuest && expectedVersion !== null) {
+      if (!isGuestCheck() && expectedVersion !== null) {
         // Store the expected version to be sent with next sync
         try {
           const versionKey = `draft_version_${activeDiagramId}`;
@@ -379,7 +419,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     } catch (err) {
       console.error('Error in local saveDiagram:', err);
     }
-  }, [activeDiagramId, isGuest, view]);
+  }, [activeDiagramId, view]);
 
   return {
     diagrams,

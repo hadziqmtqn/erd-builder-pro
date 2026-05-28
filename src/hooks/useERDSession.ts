@@ -90,6 +90,11 @@ export function useERDSession(
 
   const isInitializingRef = useRef(false);
 
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
+
   const loadingIdRef = useRef<string | number | null>(null);
 
   const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }) => {
@@ -110,7 +115,7 @@ export function useERDSession(
       const draft = await localPersistence.getDraft(DraftType.ERD, id);
       let data: Diagram;
 
-      if (isGuest) {
+      if (isGuestCheck()) {
         let localData = await localPersistence.getResource(id);
         // id bisa berupa uid (UUID) karena sidebar pass `item.uid ?? item.id`.
         // IndexedDB store menggunakan `id` sebagai keyPath, jadi fallback cari by uid.
@@ -266,7 +271,7 @@ export function useERDSession(
     } finally {
       loadingIdRef.current = null;
     }
-  }, [isGuest, clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
+  }, [clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
 
   const onConnect: OnConnect = useCallback((params) => {
     if (isPublicView) return;

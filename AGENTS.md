@@ -351,6 +351,7 @@ src/components/ai/
 - AI Chat functional in Guest Mode — sessions are in-memory, no Supabase persistence
 - **Guest AI proxy flow** ([`server/routes/ai.ts`](./server/routes/ai.ts):33): when `apiKey` is missing from the proxy request, the server uses its service-role Supabase client to look up the first enabled `user_ai_config`. This allows Guest mode users to chat with AI without exposing the API key or querying Supabase from the client. The server resolves `api_key`, `base_url` (from `ai_providers`), and `model_identifier` (from `ai_models`).
 - **`useAIChat.ts` Guest guards** ([`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts)): all Supabase-dependent functions check both `isGuestRef.current` AND `sessionStorage.getItem('auth_mode') === 'guest'` — the `sessionStorage` check is synchronous and catches Guest mode before React state updates propagate (fixes race condition where `useAuth` initializes `isGuest=false` before `checkAuth` resolves).
+- **`isGuestCheck()` pattern for all data hooks**: [`useDiagrams.ts`](./src/hooks/useDiagrams.ts), [`useERDSession.ts`](./src/hooks/useERDSession.ts) (and `useAIChat.ts`) use `isGuestRef` + `useEffect` sync + `isGuestCheck()` helper instead of raw `isGuest` closure. Raw `if (isGuest)` closures are stale during initial render (before `checkAuth` propagates). `isGuestCheck()` reads from ref (always current) AND falls back to `sessionStorage.getItem('auth_mode') === 'guest'` (synchronous truth). Fix applied at [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):26-29, [`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts):93-96. The `isGuest` param is also removed from `useCallback` dep arrays since the ref breaks the dependency chain.
 - Hooks fixed for guest loading (all follow same pattern — `setIsLoading(false)` before guest return):
   - `useNotes.ts:66`
   - `useDiagrams.ts:67`
@@ -359,6 +360,7 @@ src/components/ai/
   - `useProjects.ts:60`
   - `useTrash.ts:40`
   - `useAISettings.ts:28-29`
+- **`saveDiagram` Guest resource upsert** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):362-382): when `localPersistence.getResource` + uid fallback both fail in Guest mode, `saveDiagram` now creates a new resource entry from scratch instead of silently skipping. Prevents data loss when `activeDiagramId` is a UUID that doesn't match the IndexedDB keyPath (which uses `id`, not `uid`).
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
 
 ## ERD Architecture
@@ -863,6 +865,8 @@ The chain: `activeDiagramId = numeric` → `saveDiagram` → `saveDraft(DraftTyp
 - **`useSyncService`** ([`src/hooks/useSyncService.ts`](./src/hooks/useSyncService.ts)): reads pending drafts from IndexedDB (`localPersistence.getAllPendingSyncs()`) and POST/PUT to cloud API.
 - **404 handling** (line 177-181): when a sync draft returns 404, draft is **marked as synced** (`markSynced`) — NOT deleted. This preserves data in IndexedDB (local-first) while preventing infinite retry loops. The stale numeric ERD draft pattern: pre-UUID-migration drafts stored with numeric `id` can't be found by server (`diagram id=9` may not exist), so 404 cleanup marks them as synced instead of retrying forever.
 - **Stale draft cause**: before UUID fixes, `activeDiagramId` could be numeric → `saveDraft(ERD, 9, data)` → draft stuck because server couldn't query numeric ID by `uid` column. After server fix (numeric ID lookup via `.eq("id", identifier)`) + 404 markSynced, stale drafts stop retrying.
+- **Guest mode Save indicator bug**: `triggerDebouncedSync` in [`src/hooks/useSyncService.ts`](./src/hooks/useSyncService.ts):152 unconditionally set `hasPendingSyncs = true` before calling `syncDrafts()`. In Guest mode, `syncDrafts` returned early (cloud sync inactive), but `hasPendingSyncs` stayed `true` permanently, causing the navbar save indicator to show a "Save" icon instead of the "Synced" checkmark. **Fix**: added `isGuestCheck()` guard at the top of `triggerDebouncedSync` to return immediately for Guest mode.
+- **`isGuestCheck()` pattern** extended to `useSyncService.ts`: same `isGuestRef` + `sessionStorage` fallback pattern to ensure Guest mode detection is synchronous and immune to React stale closures.
 
 ## ERD Double-Save Fix (Property Edit Race Condition)
 
