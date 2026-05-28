@@ -273,7 +273,7 @@ export const FlowchartView = React.memo(({
     ]);
 
     const prevActiveId = activeNodeId;
-    setVisitedNodeIds(prev => [...prev, prevActiveId]);
+    setVisitedNodeIds(prev => prevActiveId ? [...prev, prevActiveId] : prev);
     setVisitedEdgeIds(prev => [...prev, edge.id]);
     setActiveNodeId(edge.target);
   };
@@ -318,8 +318,9 @@ export const FlowchartView = React.memo(({
     initialLoadRef.current = true;
     try {
       const parsed = parseFlowchartData(activeFlowchart.data) || { nodes: [], edges: [] };
-      const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : initialNodes;
-      const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : initialEdges;
+      const hasPending = localStorage.getItem('pending_create_flowchart_json') || localStorage.getItem('pending_update_flowchart_json');
+      const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : (hasPending ? [] : initialNodes);
+      const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : (hasPending ? [] : initialEdges);
       
       setNodes(nodesData);
       setEdges(edgesData);
@@ -332,8 +333,9 @@ export const FlowchartView = React.memo(({
         setSelectedEdgeId(null);
       }
     } catch {
-      setNodes(initialNodes);
-      setEdges(initialEdges);
+      const hasPending = localStorage.getItem('pending_create_flowchart_json') || localStorage.getItem('pending_update_flowchart_json');
+      setNodes(hasPending ? [] : initialNodes);
+      setEdges(hasPending ? [] : initialEdges);
     }
 
     // Reset flag setelah render cycle selesai — ini biar auto-save trigger
@@ -816,8 +818,6 @@ export const FlowchartView = React.memo(({
             ...activeFlowchart,
             data: dataString
           }).then(() => {
-            // Trigger cloud sync immediately — saveFlowchart only saves to IndexedDB draft,
-            // and the change handler's debounce may not fire in time for newly created flowcharts.
             triggerDebouncedSync?.();
           }).catch(err => {
             console.error('Error saving generated flowchart:', err);
@@ -827,6 +827,34 @@ export const FlowchartView = React.memo(({
         }
         
         toast.success('Applied generated architecture Flowchart to new canvas');
+      }
+    }
+
+    // Update mode: replace existing flowchart with AI-generated content
+    const pendingUpdateFlowchart = localStorage.getItem('pending_update_flowchart_json');
+    if (pendingUpdateFlowchart) {
+      localStorage.removeItem('pending_update_flowchart_json');
+      const result = previewFlowchartContent(pendingUpdateFlowchart);
+      if (result && result.nodes.length > 0) {
+        takeSnapshot(nodesRef.current, edgesRef.current);
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        
+        const dataString = JSON.stringify({ nodes: result.nodes, edges: result.edges });
+        if (saveFlowchart && activeFlowchart) {
+          saveFlowchart({
+            ...activeFlowchart,
+            data: dataString
+          }).then(() => {
+            triggerDebouncedSync?.();
+          }).catch(err => {
+            console.error('Error updating flowchart:', err);
+          });
+        } else {
+          handleFlowchartChange(result.nodes, result.edges);
+        }
+        
+        toast.success('Updated Flowchart with AI-generated content');
       }
     }
   }, [setNodes, setEdges, takeSnapshot, handleFlowchartChange, saveFlowchart, activeFlowchart, triggerDebouncedSync]);

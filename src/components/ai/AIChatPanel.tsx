@@ -58,6 +58,9 @@ export const AIChatPanel = ({
   // ERD default name: use source file title, fallback to "New ERD"
   const erdDefaultName = entityTitle || 'New ERD';
 
+  // Flowchart default name: use source file title, fallback to "New Flowchart"
+  const flowchartDefaultName = entityTitle || 'New Flowchart';
+
   // ─── Stream complete callback ──
   const [lastStreamResponse, setLastStreamResponse] = useState<string | null>(null);
   const pendingActionRef = useRef(pendingAction);
@@ -468,7 +471,9 @@ export const AIChatPanel = ({
           mentionFiles={mentionFiles}
           activeProjectId={projectId}
           diagrams={diagrams}
+          flowcharts={flowcharts}
           erdDefaultName={erdDefaultName}
+          flowchartDefaultName={flowchartDefaultName}
         />
 
         {/* ── Selection Bar ───────────────────────────── */}

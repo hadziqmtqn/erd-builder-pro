@@ -1,6 +1,4 @@
-import { useRef } from 'react';
 import { Replace, ArrowDownToLine, Copy, Check, Database, GitBranch } from 'lucide-react';
-import { toast } from 'sonner';
 import { hasFlowchartJSON, hasSQLContent, extractSQL, extractFlowchartJSON } from './chatUtils';
 
 export interface AssistantMessageActionsProps {
@@ -14,9 +12,7 @@ export interface AssistantMessageActionsProps {
   copiedMsgId: string | null;
   onCopy: (id: string) => void;
   onOpenErdDialog: (sql: string) => void;
-  targetProjectId: string | number | null | undefined;
-  handleSidebarFlowchartCreate: (name: string, projectId?: any) => Promise<any>;
-  handleFlowchartSelect: (uid: string) => Promise<any>;
+  onOpenFlowchartDialog: (json: string) => void;
 }
 
 export function AssistantMessageActions({
@@ -30,12 +26,8 @@ export function AssistantMessageActions({
   copiedMsgId,
   onCopy,
   onOpenErdDialog,
-  targetProjectId,
-  handleSidebarFlowchartCreate,
-  handleFlowchartSelect,
+  onOpenFlowchartDialog,
 }: AssistantMessageActionsProps) {
-  const chatFlowchartUidRef = useRef<string | null>(localStorage.getItem('chat_flowchart_uid'));
-
   const showApplyButtons = hasContentHandler && (
     (contentCheckType === 'none' && !hasSQLContent(content) && !hasFlowchartJSON(content)) ||
     (contentCheckType === 'flowchart' && hasFlowchartJSON(content)) ||
@@ -91,25 +83,12 @@ export function AssistantMessageActions({
 
       {showFlowchartButton && (
         <button
-          onClick={async () => {
+          onClick={() => {
             const json = extractFlowchartJSON(content);
-            if (json) {
-              localStorage.setItem('pending_create_flowchart_json', json);
-              if (chatFlowchartUidRef.current) {
-                toast.info('Updating existing Flowchart...');
-                await handleFlowchartSelect(chatFlowchartUidRef.current);
-              } else {
-                toast.info('Creating new Flowchart...');
-                const f = await handleSidebarFlowchartCreate('Flowchart from Chat', targetProjectId);
-                if (f?.uid) {
-                  chatFlowchartUidRef.current = f.uid;
-                  localStorage.setItem('chat_flowchart_uid', f.uid);
-                }
-              }
-            }
+            if (json) onOpenFlowchartDialog(json);
           }}
           className="flex items-center justify-center size-8 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md shadow-sm transition-all cursor-pointer"
-          title={chatFlowchartUidRef.current ? 'Update existing Flowchart' : 'Create new Flowchart'}
+          title="Create or update Flowchart"
         >
           <GitBranch className="size-4" />
         </button>
