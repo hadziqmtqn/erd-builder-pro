@@ -59,32 +59,32 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
-### Cross-Feature Context: `project_id` (Filter OR untuk Orphan Sessions)
+### Cross-Feature Context: `project_id` (Filter OR for Orphan Sessions)
 
-- **Keputusan arsitektur**: Gunakan `project_id` (FK ke `projects`) di `ai_chat_sessions` sebagai sumber kebenaran, **bukan** `referenced_file_info` (JSONB).
-- **Kenapa**: `referenced_file_info` adalah cache yang cepat stale (file dihapus/dipindah → referensi tidak valid). Dengan `project_id`, query dinamis semua file per project dilakukan setiap `sendMessage()` — selalu fresh, zero maintenance.
-- **Saat ini**: `createSession()` di `useAIChat.ts` menyertakan `project_id` jika file punya workspace, plus `entity_type` + `entity_uid` sebagai origin file identifier.
-- **Orphan session handling**: `listSessions` di `useAIChat.ts` menggunakan filter OR: `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` — session dengan `project_id` tampil di semua file project, session `NULL` tetap private ke file asalnya.
-- **Workspace safety**: `project_id` diisi dari active entity saat session dibuat. Saat user pindah project, `entityContext` berubah → session baru mendapat `project_id` baru. Session lama tetap di project_id lama.
+- **Architecture decision**: Use `project_id` (FK to `projects`) in `ai_chat_sessions` as the source of truth, **not** `referenced_file_info` (JSONB).
+- **Why**: `referenced_file_info` is a cache that goes stale quickly (files deleted/moved → invalid references). With `project_id`, dynamic queries of all files per project are done on every `sendMessage()` — always fresh, zero maintenance.
+- **Currently**: `createSession()` in `useAIChat.ts` includes `project_id` if the file has a workspace, plus `entity_type` + `entity_uid` as the origin file identifier.
+- **Orphan session handling**: `listSessions` in `useAIChat.ts` uses an OR filter: `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` — sessions with `project_id` appear in all project files, `NULL` sessions remain private to their origin file.
+- **Workspace safety**: `project_id` is filled from the active entity when the session is created. When the user switches projects, `entityContext` changes → new session gets a new `project_id`. Old sessions stay with their old project_id.
 - Dynamic sibling query: `buildSiblingContext()` parallel 4 tabel, greedy budget 6000 chars.
 
-### Dynamic `project_id` Sync pada `sendMessage`
+### Dynamic `project_id` Sync on `sendMessage`
 
-Setiap kali user mengirim pesan di AI Chat, `sendMessage` di `useAIChat.ts` melakukan:
+Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does:
 
-1. **Baca `project_id` file aktif** dari `projectIdRef.current` (ref yang selalu sync dengan prop `projectId` dari AppLayout)
-2. **Bandingkan** dengan `currentSession.project_id`
-3. **Jika berbeda**, update session di Supabase:
+1. **Read active file's `project_id`** from `projectIdRef.current` (ref always synced with `projectId` prop from AppLayout)
+2. **Compare** with `currentSession.project_id`
+3. **If different**, update the session in Supabase:
    - `UPDATE ai_chat_sessions SET project_id = $1, updated_at = NOW() WHERE id = $2`
-   - Sync state lokal (`setCurrentSession`, `setSessions`)
-4. **Gunakan `liveProjectId`** (bukan `currentSession.project_id`) untuk `buildSiblingContext` — jika `null`, sibling context tidak di-inject
+   - Sync local state (`setCurrentSession`, `setSessions`)
+4. **Use `liveProjectId`** (not `currentSession.project_id`) for `buildSiblingContext` — if `null`, sibling context is not injected
 
-**3 skenario yang ter-handle:**
-- **File pindah project A → B**: session.project_id jadi B → sibling context query project B
-- **File pindah ke uncategorized (NULL)**: session.project_id jadi NULL → sibling context skip
-- **Session private (NULL) masuk workspace**: session.project_id jadi WORKSPACE → sibling context aktif
+**3 handled scenarios:**
+- **File moves from project A → B**: session.project_id becomes B → sibling context queries project B
+- **File moves to uncategorized (NULL)**: session.project_id becomes NULL → sibling context skipped
+- **Session private (NULL) enters workspace**: session.project_id becomes WORKSPACE → sibling context active
 
-**Mengapa pakai ref**: `sendMessage` adalah `useCallback` dengan deps terbatas (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` tidak bisa jadi dep karena akan re-create callback setiap file pindah project. Ref (`projectIdRef`) memutus dependency chain — nilainya selalu terbaca fresh di dalam callback tanpa perlu re-create.
+**Why use ref**: `sendMessage` is a `useCallback` with limited deps (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` cannot be a dependency because it would re-create the callback every time a file moves project. The ref (`projectIdRef`) breaks the dependency chain — its value is always read fresh inside the callback without needing re-creation.
 
 **File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):70-71 (ref + effect), :427-444 (sync logic), :450 (sibling context menggunakan `liveProjectId`)
 
@@ -127,7 +127,7 @@ Setiap kali user mengirim pesan di AI Chat, `sendMessage` di `useAIChat.ts` mela
 ## Removed Features
 
 - **Replace Selected** — removed entirely (context: `selectionRange`, `setSelectionRange`, `replaceSelectedText`, `registerReplaceSelected`; UI: Scissors button in AIChatPanel; handler in TiptapEditor/NotesView). The `insertContentAt` + `marked.parse` combo failed because `marked.parse` wraps in `<p>` (block) which can't be inserted inline — schema rejects nested paragraphs.
-- **`applyColorScheme`** — removed from `flowchartActions.ts`. Fungsi mapping label → hex color tidak pernah di-wire ke action apapun dan dianggap tidak sesuai best practice (warna tidak boleh dipaksakan per label oleh AI).
+- **`applyColorScheme`** — removed from `flowchartActions.ts`. The function mapping label → hex color was never wired to any action and was deemed not in line with best practice (colors should not be forced per label by AI).
 
 ## Notable Conventions
 
@@ -182,10 +182,10 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 3. `useTableViewPagination` has `tableRefreshKey` in all 4 `useEffect` dependency arrays — whenever it changes, the current page is re-fetched from the server
 4. This ensures the correct data fills the gap left by the deletion
 
-**Loading spinner optimization**: Default fetch tetap `{ silent: true }` (tidak ada loading spinner untuk passive changes: search debounce, auth change, project list change, dll). User-initiated actions (delete, page change, workspace filter) set `tableLoadingState='loading'` di context, membuat `useTableViewPagination` panggil fetch tanpa `silent` — table show spinner, setelah fetch selesai `tableLoadingState` di-reset ke `'idle'`.
-- `delete`: via `onAfterDelete` di `AppLayout.tsx` → `setTableLoadingState('loading')` + `triggerTableRefresh()`
-- `page change`: via `handlePageChange` di `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
-- `workspace filter`: via `handleWorkspaceClick` di `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
+**Loading spinner optimization**: Default fetch remains `{ silent: true }` (no loading spinner for passive changes: search debounce, auth change, project list change, etc.). User-initiated actions (delete, page change, workspace filter) set `tableLoadingState='loading'` in context, causing `useTableViewPagination` to call fetch without `silent` — table shows spinner, after fetch completes `tableLoadingState` is reset to `'idle'`.
+- `delete`: via `onAfterDelete` in `AppLayout.tsx` → `setTableLoadingState('loading')` + `triggerTableRefresh()`
+- `page change`: via `handlePageChange` in `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
+- `workspace filter`: via `handleWorkspaceClick` in `TableRoute.tsx` → `setTableLoadingState('loading')` + `setTableSearchParams()`
 
 **Files involved**:
 - [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx): added `triggerTableRefresh: () => void`, `tableLoadingState`, `setTableLoadingState` to interface; added `isDiagramsLoading`, `isNotesLoading`, `isDrawingsLoading`, `isFlowchartsLoading` to interface
@@ -351,14 +351,14 @@ src/components/ai/
 - AI Chat functional in Guest Mode — sessions are in-memory, no Supabase persistence
 - **Guest AI proxy flow** ([`server/routes/ai.ts`](./server/routes/ai.ts):33): when `apiKey` is missing from the proxy request, the server uses its service-role Supabase client to look up the first enabled `user_ai_config`. This allows Guest mode users to chat with AI without exposing the API key or querying Supabase from the client. The server resolves `api_key`, `base_url` (from `ai_providers`), and `model_identifier` (from `ai_models`).
 - **`useAIChat.ts` Guest guards** ([`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts)): all Supabase-dependent functions check both `isGuestRef.current` AND `sessionStorage.getItem('auth_mode') === 'guest'` — the `sessionStorage` check is synchronous and catches Guest mode before React state updates propagate (fixes race condition where `useAuth` initializes `isGuest=false` before `checkAuth` resolves).
-- **`isGuestCheck()` pattern for all data hooks**: [`useDiagrams.ts`](./src/hooks/useDiagrams.ts), [`useERDSession.ts`](./src/hooks/useERDSession.ts) (and `useAIChat.ts`) use `isGuestRef` + `useEffect` sync + `isGuestCheck()` helper instead of raw `isGuest` closure. Raw `if (isGuest)` closures are stale during initial render (before `checkAuth` propagates). `isGuestCheck()` reads from ref (always current) AND falls back to `sessionStorage.getItem('auth_mode') === 'guest'` (synchronous truth). Fix applied at [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):26-29, [`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts):93-96. The `isGuest` param is also removed from `useCallback` dep arrays since the ref breaks the dependency chain.
+- **`isGuestCheck()` pattern for all data hooks**: [`useDiagrams.ts`](./src/hooks/useDiagrams.ts), [`useERDSession.ts`](./src/hooks/useERDSession.ts), [`useAIChat.ts`](./src/hooks/useAIChat.ts), [`useNotes.ts`](./src/hooks/useNotes.ts), [`useDrawings.ts`](./src/hooks/useDrawings.ts), [`useProjects.ts`](./src/hooks/useProjects.ts), [`useTrash.ts`](./src/hooks/useTrash.ts), and [`useSyncService.ts`](./src/hooks/useSyncService.ts) all use `isGuestRef` + `useEffect` sync + `isGuestCheck()` helper instead of raw `isGuest` closure. Raw `if (isGuest)` closures are stale during initial render (before `checkAuth` propagates). `isGuestCheck()` reads from ref (always current) AND falls back to `sessionStorage.getItem('auth_mode') === 'guest'` (synchronous truth). The `isGuest` param is also removed from `useCallback` dep arrays since the ref breaks the dependency chain.
 - Hooks fixed for guest loading (all follow same pattern — `setIsLoading(false)` before guest return):
-  - `useNotes.ts:66`
-  - `useDiagrams.ts:67`
-  - `useDrawings.ts:68`
+  - `useNotes.ts:76`
+  - `useDiagrams.ts:76`
+  - `useDrawings.ts:76`
   - `useFlowcharts.ts:74`
-  - `useProjects.ts:60`
-  - `useTrash.ts:40`
+  - `useProjects.ts:65`
+  - `useTrash.ts:44`
   - `useAISettings.ts:28-29`
 - **`saveDiagram` Guest resource upsert** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):362-382): when `localPersistence.getResource` + uid fallback both fail in Guest mode, `saveDiagram` now creates a new resource entry from scratch instead of silently skipping. Prevents data loss when `activeDiagramId` is a UUID that doesn't match the IndexedDB keyPath (which uses `id`, not `uid`).
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
@@ -422,7 +422,7 @@ Every AI action lives in [`src/components/ai/AIActions.ts`](./src/components/ai/
    - **Single-table**: `{ "mutations": [...] }` — column-aware fallback: extracts column names from mutations (e.g. `drop_column: "name"`), finds selected node with most matching columns; if no match (e.g. `add_column` only), falls back to `primaryNodeId` (last regular-clicked node), not `selectedNodeIds[0]`
 5. Returns `{ nodes, edges }` → ERDView calls `setNodes` + `takeSnapshot` for undo
 6. Multi-table: snapshot taken once before ALL mutations (atomic undo)
-7. AI prompt instructs AI to append a user-facing message after the JSON code block, e.g. "Klik tombol **Append** untuk menerapkan perubahan ke tabel admins."
+7. AI prompt instructs AI to append a user-facing message after the JSON code block, e.g. "Click the **Append** button to apply changes to the admins table."
 
 ### Notes Actions (`AIActions.ts:124-157`)
 
@@ -479,13 +479,14 @@ Every AI action lives in [`src/components/ai/AIActions.ts`](./src/components/ai/
 - Edge parser supports multi-format: `sourceLabel/targetLabel`, `source/target`, `from/to`, label-as-fallback
 - **`labelToIds`** (`Map<string, string[]>`): array-based label mapping (supports duplicate labels). `resolveEdgeIds` uses `sourceIndex`/`targetIndex` (1‑based) as highest priority, then `sourceLabel`/`targetLabel`, then legacy `source`/`from`. If label lookup finds >1 match, resolves to the first entry.
 
-#### SVG Preview Modal ([`src/components/flowchart/FlowchartPreviewModal.tsx`](./src/components/flowchart/FlowchartPreviewModal.tsx))
-- Pure SVG rendering (no ReactFlow) — eliminates XYFlow dual-instance conflict
-- Zoom/pan controls (`scale`, `translate` state via mouse wheel + drag)
-- Grab cursor (`grab`/`grabbing`) activates when scale > 0.5 (50% zoom) — panning enabled at that threshold
-- Smart connection handles via `pickClosestHandles`; smoothstep-style paths between closest edge midpoints
-- Connection dots rendered per node for visual clarity
+#### Preview Modal ([`src/components/flowchart/FlowchartPreviewModal.tsx`](./src/components/flowchart/FlowchartPreviewModal.tsx))
+- GitHub-style diff view (same design as `FlowchartFromJsonDialog`) showing proposed changes before applying
+- Accepts optional `existingNodes`/`existingEdges` props — when provided, computes a diff comparing AI-generated symbols against current canvas
+- Diff compares nodes by label: new nodes show `+` (green), modified show `~` (amber), removed show `-` (red)
+- Edge diff compares by `sourceLabel→targetLabel` pairs
+- New symbols always shown as cards (label, shape, color) above the diff section
 - `confirmLabel` optional prop (default `"Confirm Append"`) — FlowchartView passes `"Confirm Insert"` for Insert Between mode
+- `canvasGroups` prop shows Replace Group selector (same as before)
 
 #### Delete Symbol
 - `deleteNode(nodeId)` in FlowchartView — cascading edge delete
@@ -506,21 +507,25 @@ Three fixes prevent cascading re-renders on every drag frame:
 
 ### Drag Performance Optimizations (FlowchartView)
 Three fixes prevent cascading re-renders on every drag frame:
-1. **`memoizedNodes` preserves references** (line 295): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (n.selected === selected) return n`). During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
-2. **`setActionContextData` skips during drag** (line 323): the `useEffect` that syncs nodes/edges to AIActionContext now returns early when `isDraggingRef.current` is true. This prevents a cascading second re-render: without this guard, every drag frame triggered `setActionContextData` → `AIActionProvider` re-render → `FlowchartView` (as `useAIAction` consumer) re-renders again → `memoizedNodes` recomputes → React Flow reconciles all nodes twice per frame.
+1. **`memoizedNodes` preserves references** (line 295): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (!!n.selected === selected) return n`). The `!!` coercion normalizes `undefined` (from `useNodesState` because `'select'` changes are filtered out) to `false`, preventing ALL nodes from getting new wrappers when `selectedNodeId` is set. During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
+2. **`setActionContextData` debounced at 300ms during drag** (line 740): the `useEffect` that syncs nodes/edges to AIActionContext returns early when `isDraggingRef.current` is true, and is additionally debounced at 300ms. This prevents high-frequency updates: during active dragging, the cleanup timer cancels the state update, completely preventing spammed updates to the `AIActionProvider` and the subscribing `AIChatPanel` (which otherwise suffers from heavy syntax highlighting and markdown parsing re-renders on every frame).
 3. **`useEdgesState` edges reference is stable during drag** — edges don't change when nodes move, so `memoizedEdges` doesn't recompute mid-drag. The only drag-triggered re-render comes from `nodes` changes, which now only recreate the dragged node's object.
 4. **`memoizedEdges` preserves references** (line 409): non-active edges (not hovered/selected) return the original edge reference — only edges that are actively hovered or selected get new objects with white stroke/width overrides. React Flow skips reconciliation for unchanged edges.
+5. **`selectedGroupNodeIds` stable empty set**: uses `emptySetRef` (`useRef(new Set<string>())`) instead of `new Set<string>()` when `!selectedGroup` — prevents creating a new Set reference on every render, which used to force `memoizedNodes` useMemo to recompute on every non-drag re-render (AIActionContext sync, saveFlowchart state update), cascading into unnecessary React Flow reconciliation of all nodes.
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
 - Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
 - Init effect **skips loading default `initialNodes`/`initialEdges` when `pending_create_flowchart_json` or `pending_update_flowchart_json` exists in localStorage** — prevents brief flash of dummy flowchart before AI content replaces it (`FlowchartView.tsx:321`).
+- **`pendingContentAppliedRef` — Guest mode Create Flowchart content not appearing fix** ([`FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)): ref set to `true` by pending effect after applying AI content. Init effect guards `setNodes`/`setEdges` with `if (!pendingContentAppliedRef.current)` to prevent overwriting canvas when `activeFlowchart.data` transitions from `undefined` → `''` (after `selectFlowchart` resolves in Guest mode). Ref reset to `false` in init effect's `flowchartChanged` block when navigating to a different flowchart.
+- **`saveFlowchart` Guest mode React state sync** ([`useFlowcharts.ts`](./src/hooks/useFlowcharts.ts):277-283): after saving to IndexedDB, calls `setFlowcharts` to update `activeFlowchart.data` immediately — without this, the workspace context never reflects the saved data until auto-save fires or page reloads.
 - `handleEdgesChange` + `handleNodesChange` both filter out `type: 'select'` — selection changes never trigger auto-save or content-modified flag
 - `useFlowchartChangeHandler` debounces save at 1.5s, updates `activeFlowchart.data` in workspace state
 
 #### Content Handler Routing
 - FlowchartView registers content handler with `['append', 'replace']` strategies
 - Action ID routing: `flowchart-import` → `applyReplaceAll`, `flowchart-insert` → `applyInsertBetween`, generic → `previewFlowchartContent` + modal
-- `pendingPreview` in FlowchartView stores parsed preview result; modal renders as SVG (no ReactFlow); main canvas state unaffected
+- `pendingPreview` in FlowchartView stores parsed preview result; modal shows GitHub-style diff comparing AI content against current canvas (no ReactFlow); main canvas state unaffected
+- `existingNodes`/`existingEdges` props on `FlowchartPreviewModal` enable diff computation — passed from `nodes`/`edges` state in FlowchartView
 - `pendingContentRef` stores raw AI response text; `handleConfirmAppend` re-parses via `applyToFlowchartContent` then sets state
 - **Insert Between now shows preview** via `FlowchartPreviewModal` (was direct apply). `pendingApplyModeRef` tracks `'insert'` vs `'append'`; `handleConfirmAppend` calls `applyInsertBetween()` in insert mode.
 - **Undo for AI changes**: `useUndoRedo().takeSnapshot()` called before every AI mutation (import replace, handleConfirmAppend). Same hook as ERD — saves node/edge state snapshots. No undo/redo UI yet (future work).
@@ -572,7 +577,7 @@ Three fixes prevent cascading re-renders on every drag frame:
 
 - `isHovered` local state is scoped per-node — only the hovered node re-renders, not the entire canvas
 - `shapeBackground` memoized on `[data.color, data.shape, selected]` — SVG paths recompute only on actual property changes
-- **Handle visibility**: `handleClasses` = `opacity-0 group-hover:opacity-100` — handles (bulatan edge) hanya muncul saat cursor menyorot node. Parent div punya `group` class.
+- **Handle visibility**: `handleClasses` = `opacity-0 group-hover:opacity-100` — handles only appear when cursor hovers over the node. Parent div has `group` class.
 
 ### Shared patterns
 
@@ -594,31 +599,31 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## Flowchart Section / Group Feature
 
-- Semua simbol (termasuk Start/End) bisa dihapus bebas — `deleteNode` tidak lagi memiliki guard Start/End
+- All symbols (including Start/End) can be freely deleted — `deleteNode` no longer has Start/End guards
 - **Start nodes** have a "Group Title" input field in properties modal — stored as `section` in `FlowchartNodeData`
 - **Start label detection**: `isStartNode`/`isStartLabel` uses `.includes('start')` (case-insensitive) — not exact match. Labels like "Start Login", "Start Process", "restart" trigger Group Title form.
 - **Group title uniqueness**: validated on write via `updateNodeData` with toast error on duplicate.
-- **Delete Group**: `deleteGroup` di FlowchartView — hapus semua node yang punya `section` (grup) yang sama. Tombol "Hapus Grup" muncul di `SymbolPropertiesModal` untuk Start node yang punya Group Title.
-- **`groupId`**: setiap Start node punya unique key (e.g. `grp_quickstart`) — auto-generated saat node dibuat, tampil di AI context sebagai `[id:grp_xxx]`. AI bisa referensi via `sourceGroupId`/`targetGroupId` di JSON response.
+- **Delete Group**: `deleteGroup` in FlowchartView — deletes all nodes that have the same `section` (group). The "Delete Group" button appears in `SymbolPropertiesModal` for Start nodes that have a Group Title.
+- **`groupId`**: each Start node has a unique key (e.g. `grp_quickstart`) — auto-generated when node is created, appears in AI context as `[id:grp_xxx]`. AI can reference via `sourceGroupId`/`targetGroupId` in JSON response.
 - **AI grouping**: `flowchartSymbolDetail()` groups symbols by section using BFS from each Start node. Each group rendered under `=== {section} [id:grp_xxx] ===` header. Supports overlapping groups (user can have multiple Start nodes sharing the same End).
-- **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (prioritas tertinggi ke terendah).
-- **Move Group** (FlowchartView toolbar): `<Select>` dropdown listing semua grup (dari `canvasGroups`). Pilih grup → BFS select semua node anggota via `selected: true` → bounding box dashed indigo muncul di sekeliling grup. Drag satu node anggota → semua anggota grup ikut bergerak (ReactFlow multi-drag native). Klik pane → grup deselected. Bounding box SVG di-render di luar ReactFlow dengan viewport transform (`onMove` tracker) agar posisi rect konsisten dengan flow coordinates saat pan/zoom. File: [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)
+- **Insert Between resolution order**: `sourceGroupId` → `sourceIndex` → `sourceLabel` (highest priority to lowest).
+- **Move Group** (FlowchartView toolbar): `<Select>` dropdown listing all groups (from `canvasGroups`). Select a group → BFS selects all member nodes via `selected: true` → dashed indigo bounding box appears around the group. Drag one member node → all group members move together (ReactFlow multi-drag native). Click pane → group deselected. Bounding box SVG is rendered outside ReactFlow with viewport transform (`onMove` tracker) so the rect position stays consistent with flow coordinates during pan/zoom. File: [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)
 
 ## Flowchart SVG Export
 
-- [`src/lib/generateFlowchartSVG.ts`](./src/lib/generateFlowchartSVG.ts): utility yang menghasilkan SVG string dari nodes + edges, termasuk shapes, labels, connections, dan arrow markers. Support semua shape (oval, diamond, parallelogram, database, document, cloud, circle, rectangle). `downloadSVG(svgString, filename)` trigger download.
-- **Export flow**: FlowchartView mendaftarkan `FlowchartExportHandler` ke `WorkspaceContext` via `setFlowchartExportHandler` pada mount. Handler berisi `exportAll()`, `exportGroup(group)`, dan `groups[]`.
-- **Preview modal** ([`src/components/flowchart/FlowchartExportModal.tsx`](./src/components/flowchart/FlowchartExportModal.tsx)): sebelum di-ekspor, FlowchartView buka `FlowchartExportModal` yang render ReactFlow asli (pakai `FlowchartNode` component) — bukan native SVG style. User bisa preview dan klik "Download SVG" untuk trigger export.
-- **Export All Canvas**: semua nodes + edges di-render di modal ReactFlow, lalu di-ekspor sebagai SVG lengkap dengan dark background (`#0f0f14`), arrow markers, handle dots, dan section badges.
-- **Export Group**: BFS dari Start node grup → kumpulkan semua connected nodes/edges → filter hanya nodes dalam grup → render di modal → ekspor sebagai SVG.
-- **NavActionsMenu** ([`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx)): untuk `documentType === 'flowchart'`, render submenu Export → SVG Format → "All Canvas" + satu item per grup. Membaca handler dari `useWorkspace().flowchartExportHandler`.
-- **FlowchartExportHandler** didefinisikan di `WorkspaceContext.tsx`: `{ exportAll: () => void; exportGroup: (group: string) => void; groups: string[] }`.
+- [`src/lib/generateFlowchartSVG.ts`](./src/lib/generateFlowchartSVG.ts): utility that generates SVG strings from nodes + edges, including shapes, labels, connections, and arrow markers. Supports all shapes (oval, diamond, parallelogram, database, document, cloud, circle, rectangle). `downloadSVG(svgString, filename)` triggers download.
+- **Export flow**: FlowchartView registers a `FlowchartExportHandler` to `WorkspaceContext` via `setFlowchartExportHandler` on mount. Handler contains `exportAll()`, `exportGroup(group)`, and `groups[]`.
+- **Preview modal** ([`src/components/flowchart/FlowchartExportModal.tsx`](./src/components/flowchart/FlowchartExportModal.tsx)): before exporting, FlowchartView opens `FlowchartExportModal` which renders native ReactFlow (uses `FlowchartNode` component) — not native SVG style. Users can preview and click "Download SVG" to trigger export.
+- **Export All Canvas**: all nodes + edges are rendered in a ReactFlow modal, then exported as a full SVG with dark background (`#0f0f14`), arrow markers, handle dots, and section badges.
+- **Export Group**: BFS from the group's Start node → collect all connected nodes/edges → filter only nodes in the group → render in modal → export as SVG.
+- **NavActionsMenu** ([`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx)): for `documentType === 'flowchart'`, renders Export submenu → SVG Format → "All Canvas" + one item per group. Reads handler from `useWorkspace().flowchartExportHandler`.
+- **FlowchartExportHandler** defined in `WorkspaceContext.tsx`: `{ exportAll: () => void; exportGroup: (group: string) => void; groups: string[] }`.
 
 
 
 **Special instructions for Edit Columns prompt:**
 - When multiple tables selected, prompt shows ALL selected tables with column structures
-- Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Klik tombol **Append** untuk menerapkan perubahan ke tabel admins.")
+- Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Click the **Append** button to apply changes to the admins table.")
 - Multi-table JSON format: `{"table_name": {"mutations": [...]}}` — per-table key, not an array of sets
 - Single-table format: `{"mutations": [...]}` — used when only 1 table selected
 
@@ -695,31 +700,31 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## URL Sync Safety Net (Editor Routes)
 
-- Setiap editor route ([`NoteEditorRoute`](./src/routes/NoteEditorRoute.tsx), [`DiagramEditorRoute`](./src/routes/DiagramEditorRoute.tsx), [`DrawingEditorRoute`](./src/routes/DrawingEditorRoute.tsx), [`FlowchartEditorRoute`](./src/routes/FlowchartEditorRoute.tsx)) memiliki `useEffect` safety net yang menyinkronkan `id` dari `useParams()` ke context `active*Id`/`active*Uid`.
-- **Masalah**: Navigation hooks (`useNoteNavigation`, `useDiagramNavigation`, dll.) memiliki URL sync effect, tapi ada race condition — data fetch dari `selectNote`/`selectDiagram` bisa selesai SEBELUM initial data fetch. Akibatnya `isItemLoading` jadi `false` dan `activeNote` masih `null`, memicu "not found" padahal file masih loading.
-- **Fix Tahap 1 (Safety Net)**: Setiap editor route:
-  1. `processedUrlRef` (`useRef(false)`) — flag sekali-proses per mount
-  2. `useEffect` dengan dep `[id, activeId, isPublicView, handleSelect]`:
-     - Jika `activeId` sudah match dengan `id` → set `processedUrlRef = true`, return
-     - Jika `activeId` masih null → panggil `handleSelect(id)`, set `processedUrlRef = true`
-  3. Di guard "select a ... to view" (`!activeId`): jika `id` ada tapi `processedUrlRef` masih `false` → render loading spinner (bukan "select")
-- **Duplicate guard**: `handleSelect` (dari navigation hooks) memiliki guard 1.5s via `lastSelected*Ref`, jadi safety net effect tidak menyebabkan double-fetch jika URL sync effect sudah jalan duluan.
-- **Fix Tahap 2 (Fetch Wipe Prevention)**: Race condition tambahan — `selectNote` menyelesaikan fetch duluan dan menambahkan note ke array, lalu `fetchNotes(pageData)` selesai dan **mereplace seluruh array** (via `setNotes(page1Data)`), menghapus active note dari array → `activeNote` jadi null, `isItemLoading` false → "not found". Fix di semua 4 hook:
-  - Tambah ref untuk active ID di setiap hook: `activeNoteUidRef`, `activeDiagramIdRef`, `activeDrawingUidRef`, `activeFlowchartIdRef`
-  - Di `fetch*`, cabang non-loadMore: `set*(prev => {...})` — jika active ID tidak ada di new page data, preserve item dari `prev`
-  - File:
-    - [`src/hooks/useNotes.ts`](./src/hooks/useNotes.ts): `activeNoteUidRef` + conditional preserve di `setNotes`
-    - [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts): `activeDiagramIdRef` + preserve di `setDiagrams`
-    - [`src/hooks/useDrawings.ts`](./src/hooks/useDrawings.ts): `activeDrawingUidRef` + preserve di `setDrawings` (merge pattern)
-    - [`src/hooks/useFlowcharts.ts`](./src/hooks/useFlowcharts.ts): `activeFlowchartIdRef` + preserve di `setFlowcharts` (merge pattern)
+- Each editor route has a `useEffect` safety net that syncs `id` from `useParams()` to context `active*Id`/`active*Uid`.
+- **Problem**: Navigation hooks (`useNoteNavigation`, `useDiagramNavigation`, etc.) have URL sync effects, but there's a race condition — data fetch from `selectNote`/`selectDiagram` can complete BEFORE the initial data fetch. As a result, `isItemLoading` becomes `false` and `activeNote` is still `null`, triggering "not found" even though the file is still loading.
+- **Fix Phase 1 (Safety Net)**: Each editor route:
+  1. `processedUrlRef` (`useRef(false)`) — one-time flag per mount
+  2. `useEffect` with dep `[id, activeId, isPublicView, handleSelect]`:
+     - If `activeId` already matches `id` → set `processedUrlRef = true`, return
+     - If `activeId` is still null → call `handleSelect(id)`, set `processedUrlRef = true`
+  3. In the guard "select a ... to view" (`!activeId`): if `id` exists but `processedUrlRef` is still `false` → render loading spinner (not "select")
+- **Duplicate guard**: `handleSelect` (from navigation hooks) has a 1.5s guard via `lastSelected*Ref`, so the safety net effect does not cause double-fetch if the URL sync effect has already run.
+- **Fix Phase 2 (Fetch Wipe Prevention)**: Additional race condition — `selectNote` completes fetch first and adds the note to the array, then `fetchNotes(pageData)` completes and **replaces the entire array** (via `setNotes(page1Data)`), removing the active note from the array → `activeNote` becomes null, `isItemLoading` false → "not found". Fix in all 4 hooks:
+  - Add ref for active ID in each hook: `activeNoteUidRef`, `activeDiagramIdRef`, `activeDrawingUidRef`, `activeFlowchartIdRef`
+  - In `fetch*`, non-loadMore branch: `set*(prev => {...})` — if active ID is not in the new page data, preserve item from `prev`
+  - Files:
+    - [`src/hooks/useNotes.ts`](./src/hooks/useNotes.ts): `activeNoteUidRef` + conditional preserve in `setNotes`
+    - [`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts): `activeDiagramIdRef` + preserve in `setDiagrams`
+    - [`src/hooks/useDrawings.ts`](./src/hooks/useDrawings.ts): `activeDrawingUidRef` + preserve in `setDrawings` (merge pattern)
+    - [`src/hooks/useFlowcharts.ts`](./src/hooks/useFlowcharts.ts): `activeFlowchartIdRef` + preserve in `setFlowcharts` (merge pattern)
 - **File pattern safety net**: [`src/routes/NoteEditorRoute.tsx`](./src/routes/NoteEditorRoute.tsx):17-30 (safety net effect), 32-42 (guard + loading fallback)
 
 ## Server-Side AI Proxy
 
-- **`server/routes/ai.ts`**: `POST /api/ai/proxy` — proxy endpoint yang meneruskan request chat ke OpenAI-compatible provider dan stream SSE response kembali ke client.
-- **Kenapa proxy**: API key tidak langsung ter-expose ke third-party di browser DevTools. Key dikirim dalam POST body dari client ke server, lalu server forward ke provider.
-- **`res.on("close")` vs `req.on("close")`**: Gunakan `res.on("close")` untuk detect client disconnect. `req.on("close")` fires premature saat POST body selesai dibaca oleh `express.json()`, yang menyebabkan `AbortController.abort()` dipanggil sebelum fetch ke AI provider sempat konek.
-- **30s timeout**: Safety timeout agar fetch ke provider tidak hang forever.
+- **`server/routes/ai.ts`**: `POST /api/ai/proxy` — proxy endpoint that forwards chat requests to OpenAI-compatible providers and streams SSE responses back to the client.
+- **Why proxy**: API key is not directly exposed to third-parties in browser DevTools. The key is sent in the POST body from client to server, then the server forwards to the provider.
+- **`res.on("close")` vs `req.on("close")`**: Use `res.on("close")` to detect client disconnect. `req.on("close")` fires prematurely when the POST body is finished reading by `express.json()`, which causes `AbortController.abort()` to be called before the fetch to the AI provider can connect.
+- **30s timeout**: Safety timeout to prevent the provider fetch from hanging forever.
 - **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
 
 ## @Mentions as Clickable Links in Chat
@@ -733,70 +738,70 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## Custom SQL DDL AST Parser & Lexer
 
-- **Parser Architecture**: Ganti regex matching yang ringkih di [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) dengan custom **Lexer & Parser DDL** token-based.
+- **Parser Architecture**: Replaced fragile regex matching in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) with a custom token-based **Lexer & Parser DDL**.
 - **Lexer (`SqlLexer`)**:
-  - Mengabaikan komentar SQL (`--`, `/* */`, `#`).
-  - Tokenizer yang membedakan: `KEYWORD`, `IDENTIFIER` (membersihkan backticks, quotes, braces `[]`), `SYMBOL` (`(`, `)`, `,`, `;`, `.`), `NUMBER`, dan `STRING`.
+  - Ignores SQL comments (`--`, `/* */`, `#`).
+  - Tokenizer that distinguishes: `KEYWORD`, `IDENTIFIER` (cleans backticks, quotes, braces `[]`), `SYMBOL` (`(`, `)`, `,`, `;`, `.`), `NUMBER`, and `STRING`.
 - **Parser (`SqlParser` / `parseSqlDdl`)**:
-  - Melakukan parsing pernyataan `CREATE TABLE` dan `ALTER TABLE` menggunakan token stream.
-  - Mendukung column inline constraints (`PRIMARY KEY`, `NOT NULL`, `NULL`, inline `REFERENCES`).
-  - Mendukung table level constraints (`PRIMARY KEY (...)` dan `FOREIGN KEY (...) REFERENCES ...`).
-  - Mengabaikan noise dialek SQL seperti `ENGINE=InnoDB`, `DEFAULT CHARSET`, collation kustom, indeks kustom (`INDEX`/`KEY`/`UNIQUE`).
-  - Membatasi boundary check di `parseColumnConstraints` agar berhenti di `;` (semicolon), sehingga statement `ALTER TABLE` berurutan ter-parse dengan benar tanpa melompati baris.
+  - Parses `CREATE TABLE` and `ALTER TABLE` statements using a token stream.
+  - Supports inline column constraints (`PRIMARY KEY`, `NOT NULL`, `NULL`, inline `REFERENCES`).
+  - Supports table-level constraints (`PRIMARY KEY (...)` and `FOREIGN KEY (...) REFERENCES ...`).
+  - Ignores SQL dialect noise such as `ENGINE=InnoDB`, `DEFAULT CHARSET`, custom collation, custom indexes (`INDEX`/`KEY`/`UNIQUE`).
+  - Limits boundary check in `parseColumnConstraints` to stop at `;` (semicolon), so consecutive `ALTER TABLE` statements are parsed correctly without skipping lines.
 - **Integration**:
-  - [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) mengimpor `parseSqlDdl` untuk menggantikan regex-based `parseAlterTableAddColumn` dan parsing relasi manual.
-- Diagram visual sinkron 100% dengan dialek PostgreSQL, MySQL, dan SQLite.
+  - [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) imports `parseSqlDdl` to replace regex-based `parseAlterTableAddColumn` and manual relationship parsing.
+- Visual diagram is 100% synchronized with PostgreSQL, MySQL, and SQLite dialects.
 
-## Fase 2 Cross-Document Interoperability & AI Workspace Architect
+## Phase 2: Cross-Document Interoperability & AI Workspace Architect
 
 - **Automated Document Creation**:
-  - Tombol **"Create ERD"** dan **"Create Flowchart"** ditambahkan pada balon pesan chat AI jika asisten menghasilkan SQL DDL atau JSON flowchart.
-  - Alur: Mengambil data terkait → Menyimpannya di `localStorage` (`pending_create_erd_ddl` atau `pending_create_flowchart_json`) → Memanggil fungsi pembuatan dokumen dari context (`handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate`) → Mengarahkan pengguna ke halaman baru.
-  - **Project ID Inheritance (Workspace Integration)**: Mengalirkan prop `projectId` dari active document (diperoleh di `AppLayout` lewat entity context) ke `AIChatPanel` → `<ChatMessages activeProjectId={projectId} />`. Klik tombol "Create ERD" / "Create Flowchart" memicu `handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate` dengan `projectId` ini, menjamin dokumen baru terbuat dengan `project_id` yang sama demi integritas workspace/project.
-  - Mount hook: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx) dan [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx) mendeteksi item `localStorage` pada mount, memparsing konten, menginisialisasi canvas, mengambil snapshot riwayat (untuk undo/redo), dan membersihkan storage secara otomatis.
+  - **"Create ERD"** and **"Create Flowchart"** buttons are added to AI chat message bubbles when the assistant generates SQL DDL or flowchart JSON.
+  - Flow: Fetch relevant data → Store in `localStorage` (`pending_create_erd_ddl` or `pending_create_flowchart_json`) → Call document creation functions from context (`handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate`) → Navigate the user to the new page.
+  - **Project ID Inheritance (Workspace Integration)**: Passes `projectId` prop from the active document (obtained in `AppLayout` via entity context) to `AIChatPanel` → `<ChatMessages activeProjectId={projectId} />`. Clicking "Create ERD" / "Create Flowchart" triggers `handleSidebarDiagramCreate` / `handleSidebarFlowchartCreate` with this `projectId`, guaranteeing the new document is created with the same `project_id` for workspace/project integrity.
+  - Mount hook: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx) and [`src/components/views/FlowchartView.tsx`](./src/components/views/FlowchartView.tsx) detect `localStorage` items on mount, parse content, initialize the canvas, take history snapshots (for undo/redo), and automatically clear storage.
 - **Rich Context Mentions**:
-  - **Diagram Mentions**: Penyebutan `@DiagramName` pada chat memicu pencarian database dinamis untuk mengidentifikasi seluruh daftar tabel, tipe kolom, dan primary keys untuk dikirim sebagai prompt konteks (sebelumnya hanya mengirimkan nama diagram).
-  - **Flowchart Mentions**: Penyebutan `@FlowchartName` memparsing JSON alur ReactFlow menjadi ringkasan deskriptif terstruktur ("Steps" dan "Connections") sebelum dikirim ke AI, menghemat alokasi token dan meningkatkan pemahaman alur oleh model.
+  - **Diagram Mentions**: Mentioning `@DiagramName` in chat triggers a dynamic database search to identify the full list of tables, column types, and primary keys to send as context prompt (previously only the diagram name was sent).
+  - **Flowchart Mentions**: Mentioning `@FlowchartName` parses the ReactFlow JSON into structured descriptive summaries ("Steps" and "Connections") before sending to AI, saving token allocation and improving the model's understanding of the flow.
 
 ## Spacing & Spacing Fixes (Editor and PDF Export)
 
 - **In-App Editor Spacing**:
-  - **Bug**: Di Tiptap editor (yang dibungkus class `.tiptap-editor-lined`), gap tinggi antar heading (`h1` sampai `h6`) dengan paragraf/content sekitarnya terlalu mepet/stacked (Gambar 2). Hal ini dikarenakan selector `.tiptap-editor-lined .ProseMirror>*` memaksa `margin-top: 0 !important` dan `margin-bottom: 0 !important`.
-  - **Fix**: Mengubah reset global di [`src/index.css`](./src/index.css) menggunakan `:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6)` sehingga mengecualikan heading dari zero-margin reset. Mendefinisikan margin-top/bottom yang proporsional dan spacious untuk `h1` sampai `h6` agar memiliki breathing room yang optimal, serta menambahkan selector `:first-child` khusus pada heading untuk mereset `margin-top` ke `0.5rem` bila heading berada paling atas dokumen.
+  - **Bug**: In the Tiptap editor (wrapped with class `.tiptap-editor-lined`), gaps between headings (`h1` to `h6`) and surrounding paragraphs/content are too tight/stacked. This is because the selector `.tiptap-editor-lined .ProseMirror>*` forces `margin-top: 0 !important` and `margin-bottom: 0 !important`.
+  - **Fix**: Changed global reset in [`src/index.css`](./src/index.css) using `:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6)` to exclude headings from the zero-margin reset. Defined proportional and spacious margin-top/bottom for `h1` to `h6` for optimal breathing room, and added a `:first-child` selector specifically on headings to reset `margin-top` to `0.5rem` when the heading is at the top of the document.
 - **PDF Export Spacing**:
-  - **Bug**: Pada hasil export Note ke PDF (Gambar 1), jarak (gap) antar heading, paragraf, dan list item terlalu longgar karena margins/paddings default browser tidak ter-reset, ditambah penambahan gap manual yang terlalu besar pada `exportToPDF` (jsPDF direct object builder) dan print styling (`printNote`).
+  - **Bug**: In Note-to-PDF export results, spacing between headings, paragraphs, and list items is too loose because default browser margins/paddings are not reset, plus manual gap additions are too large in `exportToPDF` (jsPDF direct object builder) and print styling (`printNote`).
   - **Fix**:
-    1. **Direct PDF Export (`exportToPDF` di [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
-       - Mengimplementasikan static helper `NoteExporter.decodeHtml(html)` untuk me-resolve HTML entities (seperti `&amp;` -> `&`) pada Table of Contents outline dan heading teks.
-       - Mengubah render loop flat menjadi engine rekursif DOM traversal (`renderNode`) untuk menangani rendering elemen block, list (`ul`/`ol`), list item (`li`), dan blockquote secara presisi dengan dynamic indentation berdasarkan level kedalaman list (`listDepth * 16`).
-       - Memperketat spacing vertikal dengan mengurangi `margin-bottom` paragraph dari `12pt` ke `5pt` dan `margin-bottom` heading dari `20pt` ke `5pt`.
-    2. **High-Quality Print PDF (`printNote` di [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
-       - Menambahkan CSS reset global (`* { margin: 0; padding: 0; box-sizing: border-box; }`) di `exportStyles` guna mencegah margin default browser menumpuk.
-       - Mengatur margin heading dan paragraph yang lebih compact (`margin-bottom: 10px` untuk `p`, `margin-top: 20px` / `margin-bottom: 8px` untuk `h2`).
-       - Menambahkan rule `li p { margin-bottom: 0; }` agar paragraph di dalam list item tidak menduplikasi margin bawah.
+    1. **Direct PDF Export (`exportToPDF` in [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
+       - Implemented static helper `NoteExporter.decodeHtml(html)` to resolve HTML entities (e.g. `&amp;` -> `&`) in Table of Contents outline and heading text.
+       - Changed flat render loop to recursive DOM traversal engine (`renderNode`) for precise block element, list (`ul`/`ol`), list item (`li`), and blockquote rendering with dynamic indentation based on list depth level (`listDepth * 16`).
+       - Tightened vertical spacing by reducing paragraph `margin-bottom` from `12pt` to `5pt` and heading `margin-bottom` from `20pt` to `5pt`.
+    2. **High-Quality Print PDF (`printNote` in [`src/lib/exporters/note-exporter.ts`](./src/lib/exporters/note-exporter.ts))**:
+       - Added CSS global reset (`* { margin: 0; padding: 0; box-sizing: border-box; }`) in `exportStyles` to prevent default browser margins from stacking.
+       - Set more compact heading and paragraph margins (`margin-bottom: 10px` for `p`, `margin-top: 20px` / `margin-bottom: 8px` for `h2`).
+       - Added `li p { margin-bottom: 0; }` rule so paragraphs inside list items do not duplicate bottom margin.
 
-## Fase 3: Living Flowcharts Simulation & Visual Schema Diffing
+## Phase 3: Living Flowcharts Simulation & Visual Schema Diffing
 
 - **Living Flowcharts (AI Logic Simulation Sandbox)**:
-  - **Logic Execution Sandbox**: Memungkinkan pengguna melampirkan potongan kode JavaScript di belakang simbol flowchart melalui `SymbolPropertiesModal` (disimpan dalam data node sebagai `code`). Simulasi dieksekusi di browser menggunakan `new Function('context', ...)` untuk mengisolasi variabel input/output ke objek `context` JSON.
-  - **Interactive Simulation Controls**: Menambahkan tombol **"Simulate Flow"** pada bilah alat atas. Saat diklik, panel sandbox meluncur di sisi kanan canvas untuk menguji input JSON dan melihat logs eksekusi.
-  - **Dynamic Path & Node Visuals**: Selama simulasi, alur dianimasikan secara real-time. Node aktif bersinar jingga (*amber glow*) dan berkedip dengan animasi denyut, node yang dikunjungi menyala hijau (*emerald glow*), konektor (panah) berubah menjadi hijau solid/jingga solid dan beranimasi (bergerak/berdenyut) untuk memetakan penelusuran.
-  - **Conditional Branch Selection**: Jika simpul keputusan (diamond) memiliki beberapa cabang keluar (outward edges), executor secara otomatis mengikuti cabang yang labelnya cocok dengan nilai kembalian (*return value*) dari kode JS. Jika tidak ada kode atau tidak ada cabang yang cocok, simulasi dijeda dan panel logs menyediakan opsi bagi pengguna untuk mengklik tombol cabang secara manual guna melanjutkan penelusuran.
+  - **Logic Execution Sandbox**: Allows users to attach JavaScript code snippets behind flowchart symbols via `SymbolPropertiesModal` (stored in node data as `code`). Simulation executes in-browser using `new Function('context', ...)` to isolate input/output variables to a JSON `context` object.
+  - **Interactive Simulation Controls**: Added **"Simulate Flow"** button on the top toolbar. When clicked, the sandbox panel slides in from the right side of the canvas to test JSON input and view execution logs.
+  - **Dynamic Path & Node Visuals**: During simulation, the flow animates in real-time. Active nodes glow amber and pulse, visited nodes glow emerald, connectors turn solid green/orange and animate to trace the traversal.
+  - **Conditional Branch Selection**: If a decision node (diamond) has multiple outgoing edges, the executor automatically follows the branch whose label matches the return value of the JS code. If no code or no matching branch exists, simulation pauses and the log panel provides branch-button options for manual selection to continue tracing.
 
 - **Visual Schema Diffing & Merge Resolution (Git-style Database Design)**:
-  - **Schema Diff Engine**: Utilitas [`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts) membandingkan skema ERD lama dengan usulan skema SQL DDL baru dari AI. Utilitas ini menandai node/tabel dengan `diffState` (`'new' | 'modified' | 'deleted'`) dan kolom individual dengan tanda yang sama.
-  - **Visual Diff Highlights**: Di atas canvas ERD, tabel baru digambar dengan batas hijau terang (serta badge "NEW" dan bayangan emerald), tabel yang dimodifikasi digambar batas jingga (badge "MOD"), dan tabel yang dihapus digambar batas merah pudar (badge "DEL" dengan opacity rendah). Kolom baru diawali tanda `+` hijau, sedangkan kolom terhapus dicoret (line-through) merah.
-  - **Conflict & Merge Resolution Panel**: Menampilkan floating toolbar di bagian bawah canvas dengan ringkasan perubahan (misal: "2 New, 1 Mod, 0 Del"). Pengguna dapat membuka **Checklist Panel** untuk meninjau secara detail dan memilih tabel mana saja yang ingin disetujui untuk di-merge.
-  - **Merge & Reversion Logic**: Saat tombol **"Merge Selected"** diklik:
-    - Tabel baru/modifikasi yang disetujui akan di-merge (menghapus penanda `diffState` dan menyaring kolom yang ditandai untuk dihapus agar tidak ikut tersimpan).
-    - Tabel modifikasi/hapus yang ditolak akan dikembalikan (*reverted*) ke skema originalnya sebelum AI menyentuhnya.
-    - Relasi (konektor panah/edges) dibangun ulang secara dinamis untuk menyambungkan hanya tabel-tabel yang terpilih/disetujui.
+  - **Schema Diff Engine**: Utility [`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts) compares old ERD schema against proposed new SQL DDL schema from AI. It marks nodes/tables with `diffState` (`'new' | 'modified' | 'deleted'`) and individual columns with the same flags.
+  - **Visual Diff Highlights**: On the ERD canvas, new tables render with bright green borders (plus "NEW" badge and emerald glow), modified tables render with amber borders ("MOD" badge), and deleted tables render with faded red borders ("DEL" badge, low opacity). New columns prefixed with `+` in green, removed columns struck through in red.
+  - **Conflict & Merge Resolution Panel**: Floating toolbar at the bottom of the canvas showing a change summary (e.g., "2 New, 1 Mod, 0 Del"). Users can open a **Checklist Panel** to review details and select which tables to approve for merging.
+  - **Merge & Reversion Logic**: When **"Merge Selected"** is clicked:
+    - Approved new/modified tables are merged (`diffState` markers cleared, columns marked for deletion are filtered out before saving).
+    - Rejected modified/deleted tables are reverted to their original schema before AI touched them.
+    - Relationships (arrow connectors/edges) are dynamically rebuilt to connect only selected/approved tables.
 
 ## AI Prompt — SQL DDL Output Instruction
 
 - `buildDiagramContext()` in [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts):76 now places the **SQL DDL format instruction at the TOP** of the context (was at bottom, after table data).
 - Instruction is **directive, not conditional**: "When you respond about database schemas... you MUST output valid SQL DDL statements inside a ```sql code block." (Was: "When the user asks for table suggestions or schema changes, ALWAYS include...")
-- Covers **"buatkan ERD dari scratch"** scenario: rule #5 explicitly tells AI to generate complete SQL DDL when user asks to create an ERD from nothing
+- Covers **"create ERD from scratch"** scenario: rule #5 explicitly tells AI to generate complete SQL DDL when user asks to create an ERD from nothing
 - Enforces ` ```sql ` code block wrapping: plain text/HTML tables will NOT be parsed
 - Schema design rules (no duplicate columns, FK references) moved to a separate bottom section
 
@@ -889,62 +894,62 @@ if (Date.now() - lastSaveCallRef.current < 100) {
 ```
 This prevents the auto-save effect from scheduling its 800ms timeout when `handleEntityUpdate` already saved directly. The gap between direct save completion and React re-render is always < 1ms in practice, so 100ms is a safe threshold.
 
-## Cross-Feature Chat (Satu Sesi untuk Semua Fitur)
+## Cross-Feature Chat (One Session for All Features)
 
-- **Satu sesi chat bisa bahas Notes, ERD, dan Flowchart** — `entity_type`/`entity_uid` diisi saat sesi pertama dibuat, tidak berubah. Tapi konten chat fleksibel.
-- **Radio pills** di `ChatInput.tsx` menampilkan actions sesuai **file fitur yang sedang dibuka** (bukan sesi `entity_type`). Ditentukan dari `entityType` prop (current view).
-  - File: [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx):106 — `getActionsForView(currentViewType)` berdasarkan `entityType` (current file, bukan session origin)
-  - File: [`src/components/ai/ChatInput.tsx`](./src/components/ai/ChatInput.tsx):198 — `showActions = !isStreaming && actions.length > 0` (tidak ada filter `isCrossEntity` — actions tetap muncul meski sesi dari view berbeda)
-- **Pencegahan duplikat Create ERD/Flowchart**: setiap kali user klik tombol Create ERD/Flowchart dari chat, UID diagram yang dibuat disimpan di ref (`chatErdUidRef`) + localStorage (`chat_erd_uid`). Klik berikutnya → update existing diagram (navigate + pending DDL/JSON di localStorage), bukan create baru.
+- **One chat session can discuss Notes, ERD, and Flowchart** — `entity_type`/`entity_uid` is set when the session is first created and never changes. But chat content is flexible.
+- **Radio pills** in `ChatInput.tsx` display actions according to **the currently open feature file** (not the session's `entity_type`). Determined by the `entityType` prop (current view).
+  - File: [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx):106 — `getActionsForView(currentViewType)` based on `entityType` (current file, not session origin)
+  - File: [`src/components/ai/ChatInput.tsx`](./src/components/ai/ChatInput.tsx):198 — `showActions = !isStreaming && actions.length > 0` (no `isCrossEntity` filter — actions still show even if session originated from a different view)
+- **Create ERD/Flowchart duplicate prevention**: every time user clicks Create ERD/Flowchart from chat, the created diagram UID is stored in a ref (`chatErdUidRef`) + localStorage (`chat_erd_uid`). Next click → updates existing diagram (navigate + pending DDL/JSON in localStorage), not create new.
   - File: [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx): `chatErdUidRef`, `chatFlowchartUidRef`
-  - `handleSidebarDiagramCreate`/`handleSidebarFlowchartCreate` return created object (changed from `Promise<void>` to `Promise<any>` di [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts) dan [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx))
-- **Content-aware buttons**: setiap AI message bisa punya multiple action buttons — tombol ditampilkan HANYA jika konten type X tidak di-handle oleh view aktif:
-  - `showReplaceAppend = !hasSQLContent && !hasFlowchartJSON` (Notes view: hide Replace/Append saat AI output SQL/JSON)
-  - `showSqlButton = hasSQLContent && contentCheckType !== 'erd'` (ERD view: sembunyi Database button, tapi tampil di Notes/Flowchart)
-  - `showFlowchartButton = hasFlowchartJSON && contentCheckType !== 'flowchart'` (Flowchart view: sembunyi Flowchart button, tapi tampil di Notes/ERD)
+  - `handleSidebarDiagramCreate`/`handleSidebarFlowchartCreate` return created object (changed from `Promise<void>` to `Promise<any>` in [`src/hooks/useSidebarHandlers.ts`](./src/hooks/useSidebarHandlers.ts) and [`src/providers/WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx))
+- **Content-aware buttons**: each AI message can have multiple action buttons — buttons are shown ONLY if content type X is not handled by the active view:
+  - `showReplaceAppend = !hasSQLContent && !hasFlowchartJSON` (Notes view: hide Replace/Append when AI outputs SQL/JSON)
+  - `showSqlButton = hasSQLContent && contentCheckType !== 'erd'` (ERD view: hide Database button, but show in Notes/Flowchart)
+  - `showFlowchartButton = hasFlowchartJSON && contentCheckType !== 'flowchart'` (Flowchart view: hide Flowchart button, but show in Notes/ERD)
   - File: [`src/components/ai/AssistantMessageActions.tsx`](./src/components/ai/AssistantMessageActions.tsx):41
-- **`isCrossEntity` removed** — tidak lagi diperlukan karena semua sesi silang-fitur. Props `isCrossEntity`, `entityTypeMeta`, `handleSidebarFlowchartCreate`, `handleFlowchartSelect` dihapus dari `AssistantMessageActions`. Props `isCrossEntity` dihapus dari `ChatInput`, `ChatMessages`, `AIChatPanel`.
-- **ERD Dialog (inline di `ChatMessages.tsx`)**: dialog yang muncul saat user klik Database button pada AI message yang mengandung SQL DDL:
-  - **Radio-style cards** (`erdMode: 'create' | 'update' | null`): dua card selectable — "Create New" (indigo) dan "Update Existing" (amber). Tidak ada yang langsung eksekusi, semua tunggu tombol Submit.
-  - **Submit button** di footer: disabled sampai mode dipilih (dan untuk update, sampai file target dipilih). Ada loading spinner (`erdModeConfirming`) selama eksekusi.
-  - **Create New**: menampilkan table cards (parsed SQL sebagai card per tabel dengan kolom, PK/FK badge) — tidak ada element tambahan.
-  - **Update Existing**: hanya menampilkan Target ERD selector (base-ui `Select`) — **tidak ada preview tabel sebelum file dipilih**. Diff muncul setelah user pilih file + data existing termuat.
-  - **Unified diff (GitHub-style)**: setelah user pilih file target dan data existing selesai di-fetch (`erdExistingData` via `apiFetch`), menampilkan per tabel:
-    - Header tabel (sticky, `bg-[#0d1117]` solid — no ghosting)
-    - `+` green bg/emerald text untuk kolom baru atau modified
-    - `-` red bg/red text untuk kolom dihapus
-    - ` ` no bg/gray text untuk unchanged
-    - Modified columns tampil sebagai `- old` + `+ new` sequence
-    - Type column warna terpisah (`text-gray-500`/muted) dari nama kolom
-  - **Filter ERD**: hanya diagram yang sesuai `projectId` sesi (atau tanpa project) yang muncul di file selector
-  - **Dua localStorage key** tetap sama: `pending_create_erd_ddl` (Create) dan `pending_update_erd_ddl` (Update)
-  - Dialog menggunakan `size="2xl"` (max-w-2xl) untuk ruang lebih lega
+- **`isCrossEntity` removed** — no longer needed since all sessions are cross-feature. Props `isCrossEntity`, `entityTypeMeta`, `handleSidebarFlowchartCreate`, `handleFlowchartSelect` removed from `AssistantMessageActions`. Prop `isCrossEntity` removed from `ChatInput`, `ChatMessages`, `AIChatPanel`.
+- **ERD Dialog (inline in `ChatMessages.tsx`)**: dialog that appears when user clicks the Database button on an AI message containing SQL DDL:
+  - **Radio-style cards** (`erdMode: 'create' | 'update' | null`): two selectable cards — "Create New" (indigo) and "Update Existing" (amber). Nothing executes immediately, all wait for Submit button.
+  - **Submit button** in footer: disabled until mode is selected (and for update, until target file is selected). Has loading spinner (`erdModeConfirming`) during execution.
+  - **Create New**: shows table cards (parsed SQL as per-table cards with columns, PK/FK badge) — no additional elements.
+  - **Update Existing**: shows only Target ERD selector (base-ui `Select`) — **no table preview before file is selected**. Diff appears after user selects a file and existing data is loaded.
+  - **Unified diff (GitHub-style)**: after user selects target file and existing data is fetched (`erdExistingData` via `apiFetch`), displayed per table:
+    - Table header (sticky, `bg-[#0d1117]` solid — no ghosting)
+    - `+` green bg/emerald text for new or modified columns
+    - `-` red bg/red text for removed columns
+    - ` ` no bg/gray text for unchanged
+    - Modified columns shown as `- old` + `+ new` sequence
+    - Type column colored separately (`text-gray-500`/muted) from column name
+  - **Filter ERD**: only diagrams matching the session's `projectId` (or without project) appear in the file selector
+  - **Two localStorage keys**: `pending_create_erd_ddl` (Create) and `pending_update_erd_ddl` (Update)
+  - Dialog uses `size="2xl"` (max-w-2xl) for more spacious layout
   - State: `erdMode`, `erdSql`, `erdUpdateUid`, `erdExistingData`, `erdFetchingExisting`, `erdModeConfirming`
   - **ERD Auto-Naming**: `erdDefaultName` prop chain (`AIChatPanel` → `ChatMessages` → `ErdFromSqlDialog`) → `ERD - ${entityTitle || 'New ERD'}`. Uses source file title (e.g., "ERD - PRD Aplikasi Payroll Sederhana") instead of hardcoded "ERD from Chat".
   - File: [`src/components/ai/ErdFromSqlDialog.tsx`](./src/components/ai/ErdFromSqlDialog.tsx)
 
-- **FlowchartFromJsonDialog (inline di `ChatMessages.tsx`)**: dialog yang muncul saat user klik Flowchart button pada AI message yang mengandung JSON flowchart:
-  - **Radio-style cards** (`flowchartMode: 'create' | 'update' | null`): dua card selectable — "Create New" (indigo) dan "Update Existing" (amber). Tidak ada yang langsung eksekusi, semua tunggu tombol Submit.
-  - **Submit button** di footer: disabled sampai mode dipilih (dan untuk update, sampai file target dipilih). Ada loading spinner (`flowchartModeConfirming`) selama eksekusi.
-  - **Create New**: menampilkan daftar simbol yang akan dibuat (label, shape badge per simbol).
-  - **Update Existing**: Target Flowchart selector (base-ui `Select`). Setelah file dipilih + data existing termuat, diff preview muncul:
-    - **Nodes**: ditampilkan per simbol (label, shape badge, color swatch) dengan status `+` new (green), `-` removed (red), unchanged (neutral). Modified nodes tampil sebagai `- old` + `+ new`.
-    - **Edges**: `+` green untuk edges baru, `-` red untuk edges dihapus, unchanged neutral. Modified edges (label/type berubah) tampil sebagai `- old` + `+ new`.
-  - **Filter Flowchart**: hanya flowchart yang sesuai `projectId` sesi (atau tanpa project) yang muncul di file selector
-  - **Dua localStorage key**: `pending_create_flowchart_json` (Create) dan `pending_update_flowchart_json` (Update)
-  - Dialog menggunakan `size="2xl"` (max-w-2xl) untuk ruang lebih lega
+- **FlowchartFromJsonDialog (inline in `ChatMessages.tsx`)**: dialog that appears when user clicks the Flowchart button on an AI message containing flowchart JSON:
+  - **Radio-style cards** (`flowchartMode: 'create' | 'update' | null`): two selectable cards — "Create New" (indigo) and "Update Existing" (amber). Nothing executes immediately, all wait for Submit button.
+  - **Submit button** in footer: disabled until mode is selected (and for update, until target file is selected). Has loading spinner (`flowchartModeConfirming`) during execution.
+  - **Create New**: shows list of symbols to be created (label, shape badge per symbol).
+  - **Update Existing**: Target Flowchart selector (base-ui `Select`). After file is selected and existing data is loaded, diff preview appears per-node with ERD-style comparison:
+    - **Nodes**: per symbol shows header (label) + `NEW` badge or `DEL` badge. Property changes: `- old` + `+ new` (modified), ` ` prefix (unchanged). Modified nodes shown as `- old` + `+ new` per property (shape, color).
+    - **Edges**: `+` green for new edges, `-` red for removed edges, displayed in a separate "Connections" section.
+  - **Filter Flowchart**: only flowcharts matching the session's `projectId` (or without project) appear in the file selector
+  - **Two localStorage keys**: `pending_create_flowchart_json` (Create) and `pending_update_flowchart_json` (Update)
+  - Dialog uses `size="2xl"` (max-w-2xl) for more spacious layout
   - State: `flowchartMode`, `flowchartJson`, `flowchartUpdateUid`, `flowchartExistingData`, `flowchartFetchingExisting`, `flowchartModeConfirming`
   - File: [`src/components/ai/FlowchartFromJsonDialog.tsx`](./src/components/ai/FlowchartFromJsonDialog.tsx)
 
 ### Schema Diff Engine
 
 - **`computeSchemaDiff(currentNodes, currentEdges, proposedNodes, proposedEdges)`** ([`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts)):
-  - Match tabel by **name** (lowercase) — bukan node ID, karena `parseSQLToERD` generate random ID per parse
-  - Menghasilkan `DiffResult` dengan `nodes` (annotated), `edges`, `newCount`, `modifiedCount`, `deletedCount`
-  - Setiap node diberi `diffState`: `'new'` | `'modified'` | `'deleted'` | `undefined`
-  - Setiap kolom diberi `diffState`: `'new'` | `'deleted'` | `undefined`
-  - Posisi node original dipertahankan (`origNode.position`) agar diff tampil di layout yang familiar
-- **ERDView `startDiff`** ([`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):230): menggunakan `computeSchemaDiff` untuk menampilkan diff overlay di canvas utama (merge panel + approve/reject per tabel)
+  - Match tables by **name** (lowercase) — not node ID, because `parseSQLToERD` generates random IDs per parse
+  - Produces `DiffResult` with `nodes` (annotated), `edges`, `newCount`, `modifiedCount`, `deletedCount`
+  - Each node is given `diffState`: `'new'` | `'modified'` | `'deleted'` | `undefined`
+  - Each column is given `diffState`: `'new'` | `'deleted'` | `undefined`
+  - Original node position is preserved (`origNode.position`) so the diff appears in a familiar layout
+- **ERDView `startDiff`** ([`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):230): uses `computeSchemaDiff` to display a diff overlay on the main canvas (merge panel + approve/reject per table)
 
 ## Spinner Style Standardization
 

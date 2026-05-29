@@ -26,10 +26,6 @@ export interface FlowchartFromJsonDialogProps {
   handleFlowchartSelect: (uid: string) => Promise<any>;
 }
 
-type DiffLine =
-  | { type: 'header'; label: string; isNew?: boolean }
-  | { type: 'add' | 'remove' | 'change'; prefix: string; field: string; oldVal?: string; newVal?: string };
-
 export function FlowchartFromJsonDialog({
   json,
   onClose,
@@ -98,61 +94,62 @@ export function FlowchartFromJsonDialog({
     return () => { cancelled = true; };
   }, [updateUid, mode]);
 
-  // ── Compute diff for update mode ──
-  const diff = useMemo<DiffLine[] | null>(() => {
+  // ── Compute diff for update mode (ERD-style comparison) ──
+  const diff = useMemo(() => {
     if (!existingData || !newNodes.length || mode !== 'update') return null;
 
     const existingByLabel = new Map<string, Node<FlowchartNodeData>>();
     for (const node of existingData.nodes) {
       existingByLabel.set((node.data.label || '').toLowerCase(), node);
     }
-
     const newByLabel = new Map<string, Node<FlowchartNodeData>>();
     for (const node of newNodes) {
       newByLabel.set((node.data.label || '').toLowerCase(), node);
     }
 
-    const lines: DiffLine[] = [];
+    type DiffRow = {
+      nodeName: string;
+      isNew: boolean;
+      isRemoved: boolean;
+      shapeOld?: string; shapeNew?: string; shapeChanged?: boolean;
+      colorOld?: string; colorNew?: string; colorChanged?: boolean;
+      labelOld?: string; labelNew?: string; labelChanged?: boolean;
+    };
 
-    // Nodes from new AI response
+    const rows: DiffRow[] = [];
+
+    // New + modified nodes
     for (const node of newNodes) {
       const label = node.data.label || 'Untitled';
       const existing = existingByLabel.get(label.toLowerCase());
-
       if (!existing) {
-        lines.push({ type: 'header', label, isNew: true });
-        lines.push({ type: 'add', prefix: '+', field: 'shape', newVal: node.data.shape });
-        lines.push({ type: 'add', prefix: '+', field: 'label', newVal: label });
+        rows.push({ nodeName: label, isNew: true, isRemoved: false });
       } else {
         const shapeChanged = existing.data.shape !== node.data.shape;
         const colorChanged = existing.data.color !== node.data.color;
         const labelChanged = (existing.data.label || '') !== label;
         if (shapeChanged || colorChanged || labelChanged) {
-          lines.push({ type: 'header', label });
-          if (labelChanged) {
-            lines.push({ type: 'change', prefix: '~', field: 'label', oldVal: existing.data.label, newVal: label });
-          }
-          if (shapeChanged) {
-            lines.push({ type: 'change', prefix: '~', field: 'shape', oldVal: existing.data.shape, newVal: node.data.shape });
-          }
-          if (colorChanged) {
-            lines.push({ type: 'change', prefix: '~', field: 'color', oldVal: existing.data.color, newVal: node.data.color });
-          }
+          rows.push({
+            nodeName: label,
+            isNew: false,
+            isRemoved: false,
+            shapeOld: existing.data.shape, shapeNew: node.data.shape, shapeChanged,
+            colorOld: existing.data.color, colorNew: node.data.color, colorChanged,
+            labelOld: existing.data.label || label, labelNew: label, labelChanged,
+          });
         }
       }
     }
 
-    // Nodes removed (exist in old but not in new)
+    // Removed nodes
     for (const node of existingData.nodes) {
       const label = node.data.label || '';
       if (!newByLabel.has(label.toLowerCase())) {
-        lines.push({ type: 'header', label, isNew: false });
-        lines.push({ type: 'remove', prefix: '-', field: 'shape', oldVal: node.data.shape });
-        lines.push({ type: 'remove', prefix: '-', field: 'removed', oldVal: 'entire node' });
+        rows.push({ nodeName: label, isNew: false, isRemoved: true });
       }
     }
 
-    // Edge summary
+    // Edge diff
     const oldEdgeKeys = new Set(
       existingData.edges.map(e => {
         const src = existingData.nodes.find(n => n.id === e.source)?.data.label || e.source;
@@ -167,21 +164,10 @@ export function FlowchartFromJsonDialog({
         return `${src.toLowerCase()}→${tgt.toLowerCase()}`;
       })
     );
-
     const addedEdges = [...newEdgeKeys].filter(k => !oldEdgeKeys.has(k));
     const removedEdges = [...oldEdgeKeys].filter(k => !newEdgeKeys.has(k));
 
-    if (addedEdges.length > 0 || removedEdges.length > 0) {
-      lines.push({ type: 'header', label: 'Connections' });
-      for (const e of addedEdges) {
-        lines.push({ type: 'add', prefix: '+', field: 'connection', newVal: e });
-      }
-      for (const e of removedEdges) {
-        lines.push({ type: 'remove', prefix: '-', field: 'connection', oldVal: e });
-      }
-    }
-
-    return lines.length > 0 ? lines : null;
+    return { rows, addedEdges, removedEdges };
   }, [existingData, newNodes, newEdges, mode]);
 
   // ── Create new flowchart ──
@@ -197,7 +183,7 @@ export function FlowchartFromJsonDialog({
     localStorage.setItem('pending_update_flowchart_json', json);
     localStorage.setItem('chat_flowchart_uid', uid);
     toast.info('Review changes in the Flowchart...');
-    if (window.location.pathname === `/flowchart/${uid}`) {
+    if (window.location.pathname === `/flowcharts/${uid}`) {
       onClose();
       return;
     }
@@ -356,41 +342,131 @@ export function FlowchartFromJsonDialog({
 
                 {updateUid && !fetchingExisting && diff && (
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-muted-foreground">Changes</label>
+                    <label className="text-[11px] font-medium text-muted-foreground">
+                      Comparison
+                      {diff.rows.filter(r => r.isRemoved).length > 0 && (
+                        <span className="ml-2 text-red-400/70 text-[10px]">
+                          ({diff.rows.filter(r => r.isRemoved).length} node{diff.rows.filter(r => r.isRemoved).length > 1 ? 's' : ''} removed)
+                        </span>
+                      )}
+                    </label>
                     <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
                       <div className="divide-y divide-border/10">
-                        {diff.map((line: DiffLine, li: number) => {
-                          if (line.type === 'header') {
-                            return (
-                              <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
-                                {line.isNew && (
-                                  <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
-                                )}
-                                <span className="text-[11px] font-semibold text-gray-200">{line.label}</span>
-                              </div>
-                            );
-                          }
-                          const isAdd = line.type === 'add';
-                          const isRemove = line.type === 'remove';
-                          const isChange = line.type === 'change';
-                          const bg = isAdd ? 'bg-emerald-900/20' : isRemove ? 'bg-red-900/20' : isChange ? 'bg-amber-900/20' : '';
-                          const prefixColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400' : 'text-amber-400';
-                          const valColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-amber-300';
-                          const fieldColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-amber-400/60';
-                          return (
-                            <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
-                              <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
-                              <span className={`w-20 shrink-0 ${fieldColor}`}>{line.field}</span>
-                              {line.oldVal && <span className="text-red-400/70 line-through">{line.oldVal}</span>}
-                              {line.oldVal && line.newVal && <span className="text-gray-600">→</span>}
-                              {line.newVal && <span className={valColor}>{line.newVal}</span>}
+                        {diff.rows.map((row, ri) => (
+                          <div key={ri}>
+                            {/* Node header */}
+                            <div className={`flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30 ${row.isRemoved ? 'bg-red-950/30' : ''}`}>
+                              {row.isNew && (
+                                <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
+                              )}
+                              {row.isRemoved && (
+                                <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 shrink-0">DEL</span>
+                              )}
+                              <span className={`text-[11px] font-semibold ${row.isRemoved ? 'text-red-300/70 line-through' : 'text-gray-200'}`}>{row.nodeName}</span>
                             </div>
-                          );
-                        })}
+                            {/* Property lines */}
+                            {row.isNew ? (
+                              <>
+                                <div className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                                  <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
+                                  <span className="w-16 shrink-0 text-emerald-400/60">shape</span>
+                                  <span className="text-emerald-300">{row.shapeNew || 'rectangle'}</span>
+                                </div>
+                                {row.colorNew && (
+                                  <div className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                                    <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
+                                    <span className="w-16 shrink-0 text-emerald-400/60">color</span>
+                                    <span className="text-emerald-300">{row.colorNew}</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : row.isRemoved ? (
+                              <>
+                                <div className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                                  <span className="w-4 shrink-0 select-none text-red-400">-</span>
+                                  <span className="w-16 shrink-0 text-red-400/60">shape</span>
+                                  <span className="text-red-400/70 line-through">{row.shapeOld || 'rectangle'}</span>
+                                </div>
+                                <div className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                                  <span className="w-4 shrink-0 select-none text-red-400">-</span>
+                                  <span className="w-16 shrink-0 text-red-400/60">removed</span>
+                                  <span className="text-red-400/70 line-through">entire node</span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {row.shapeChanged ? (
+                                  <>
+                                    <div className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                                      <span className="w-4 shrink-0 select-none text-red-400">-</span>
+                                      <span className="w-16 shrink-0 text-red-400/60">shape</span>
+                                      <span className="text-red-400/70 line-through">{row.shapeOld}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                                      <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
+                                      <span className="w-16 shrink-0 text-emerald-400/60">shape</span>
+                                      <span className="text-emerald-300">{row.shapeNew}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 px-3 py-[2px]">
+                                    <span className="w-4 shrink-0 select-none text-gray-600"> </span>
+                                    <span className="w-16 shrink-0 text-gray-500">shape</span>
+                                    <span className="text-gray-300">{row.shapeOld}</span>
+                                  </div>
+                                )}
+                                {row.colorChanged ? (
+                                  <>
+                                    <div className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                                      <span className="w-4 shrink-0 select-none text-red-400">-</span>
+                                      <span className="w-16 shrink-0 text-red-400/60">color</span>
+                                      <span className="text-red-400/70 line-through">{row.colorOld}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                                      <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
+                                      <span className="w-16 shrink-0 text-emerald-400/60">color</span>
+                                      <span className="text-emerald-300">{row.colorNew}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 px-3 py-[2px]">
+                                    <span className="w-4 shrink-0 select-none text-gray-600"> </span>
+                                    <span className="w-16 shrink-0 text-gray-500">color</span>
+                                    <span className="text-gray-300">{row.colorOld}</span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    {diff.filter(l => l.type === 'header' && !l.isNew).length === 0 && (
-                      <p className="text-[9px] text-emerald-400/50 leading-relaxed">All symbols are new — full replace will be applied.</p>
+
+                    {/* Edge diff */}
+                    {(diff.addedEdges.length > 0 || diff.removedEdges.length > 0) && (
+                      <div className="rounded-lg border border-border/40 overflow-hidden text-[10px] font-mono leading-relaxed">
+                        <div className="px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
+                          <span className="text-[11px] font-semibold text-gray-200">Connections</span>
+                        </div>
+                        <div className="divide-y divide-border/10">
+                          {diff.addedEdges.map((e, i) => (
+                            <div key={`add-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                              <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
+                              <span className="text-emerald-300">{e}</span>
+                            </div>
+                          ))}
+                          {diff.removedEdges.map((e, i) => (
+                            <div key={`rem-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                              <span className="w-4 shrink-0 select-none text-red-400">-</span>
+                              <span className="text-red-400/70 line-through">{e}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {diff.rows.filter(r => r.isRemoved).length === 0 && diff.addedEdges.length === 0 && diff.removedEdges.length === 0 && diff.rows.every(r => !r.isNew) && (
+                      <p className="text-[9px] text-muted-foreground/50 leading-relaxed">No changes detected — all symbols are identical.</p>
                     )}
                   </div>
                 )}

@@ -3,6 +3,7 @@ import { Node, Edge } from '@xyflow/react';
 import {
   Dialog,
   DialogContent,
+  DialogOverlay,
   DialogHeader,
   DialogTitle,
   DialogBody,
@@ -16,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FlowchartNodeData } from '../FlowchartNode';
-import { Check, X, ZoomIn, ZoomOut, RotateCcw, Layers } from 'lucide-react';
+import { Check, X, Layers, GitBranch } from 'lucide-react';
 
 interface FlowchartPreviewModalProps {
   nodes: Node<FlowchartNodeData>[];
@@ -25,111 +26,13 @@ interface FlowchartPreviewModalProps {
   onCancel: () => void;
   confirmLabel?: string;
   canvasGroups?: string[];
+  existingNodes?: Node<FlowchartNodeData>[];
+  existingEdges?: Edge[];
 }
 
-const NODE_W = 160;
-const NODE_H = 70;
-const ICON_SIZE = 48;
-
-type HandleSide = 'top' | 'bottom' | 'left' | 'right';
-
-function computeHandlePoints(pos: { x: number; y: number }): Array<{ x: number; y: number }> {
-  return [
-    { x: pos.x + NODE_W / 2, y: pos.y },                          // top
-    { x: pos.x + NODE_W / 2, y: pos.y + NODE_H },                 // bottom
-    { x: pos.x, y: pos.y + NODE_H / 2 },                          // left
-    { x: pos.x + NODE_W, y: pos.y + NODE_H / 2 },                 // right
-  ];
-}
-
-function getHandlePos(pos: { x: number; y: number }, side: HandleSide) {
-  const pts = computeHandlePoints(pos);
-  switch (side) {
-    case 'top': return pts[0];
-    case 'bottom': return pts[1];
-    case 'left': return pts[2];
-    case 'right': return pts[3];
-  }
-}
-
-function pickClosestHandles(srcNode: Node, tgtNode: Node): { sourceHandle: HandleSide; targetHandle: HandleSide } {
-  const HANDLE_SIDES: HandleSide[] = ['top', 'bottom', 'left', 'right'];
-  const srcPts = computeHandlePoints(srcNode.position);
-  const tgtPts = computeHandlePoints(tgtNode.position);
-
-  let bestDist = Infinity;
-  let bestSrc = 0;
-  let bestTgt = 0;
-
-  for (let si = 0; si < 4; si++) {
-    const sp = srcPts[si];
-    for (let ti = 0; ti < 4; ti++) {
-      const tp = tgtPts[ti];
-      const dx = sp.x - tp.x;
-      const dy = sp.y - tp.y;
-      const dist = dx * dx + dy * dy;
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestSrc = si;
-        bestTgt = ti;
-      }
-    }
-  }
-
-  return { sourceHandle: HANDLE_SIDES[bestSrc], targetHandle: HANDLE_SIDES[bestTgt] };
-}
-
-function buildSmartEdgePath(
-  srcPos: { x: number; y: number },
-  srcSide: HandleSide,
-  tgtPos: { x: number; y: number },
-  tgtSide: HandleSide,
-): string {
-  const verticalPool = srcSide === 'bottom' || srcSide === 'top' || tgtSide === 'bottom' || tgtSide === 'top';
-  const horizontalPool = srcSide === 'left' || srcSide === 'right' || tgtSide === 'left' || tgtSide === 'right';
-
-  if (verticalPool) {
-    const midY = (srcPos.y + tgtPos.y) / 2;
-    return `M${srcPos.x},${srcPos.y} L${srcPos.x},${midY} L${tgtPos.x},${midY} L${tgtPos.x},${tgtPos.y}`;
-  }
-  if (horizontalPool) {
-    const midX = (srcPos.x + tgtPos.x) / 2;
-    return `M${srcPos.x},${srcPos.y} L${midX},${srcPos.y} L${midX},${tgtPos.y} L${tgtPos.x},${tgtPos.y}`;
-  }
-  return `M${srcPos.x},${srcPos.y} L${tgtPos.x},${tgtPos.y}`;
-}
-
-function renderShape(shape: string, color: string, size: number) {
-  const s = size;
-  const half = s / 2;
-  switch (shape) {
-    case 'oval':
-      return <ellipse cx={half} cy={half} rx={half * 0.9} ry={half * 0.6} fill={color} />;
-    case 'diamond':
-      return <polygon points={`${half},2 ${s - 2},${half} ${half},${s - 2} 2,${half}`} fill={color} />;
-    case 'parallelogram':
-      return <polygon points={`${half * 0.3},2 ${s - 2},2 ${s - half * 0.3},${s - 2} 2,${s - 2}`} fill={color} />;
-    case 'database':
-      return (
-        <g>
-          <path d={`M2,${half} L2,${s - half * 0.4} Q${half},${s - 2} ${s - 2},${s - half * 0.4} L${s - 2},${half}`} fill={color} />
-          <ellipse cx={half} cy={half} rx={half - 2} ry={half * 0.3} fill={color} />
-        </g>
-      );
-    case 'document':
-      return (
-        <path d={`M2,2 L${s - half * 0.4},2 L${s - 2},${half * 0.6} L${s - 2},${s - 2} L2,${s - 2} Z`} fill={color} />
-      );
-    case 'cloud':
-      return (
-        <path d={`M${half * 0.6},${s - 2} Q2,${s - 4} 2,${half * 0.7} Q2,${half * 0.3} ${half},${half * 0.3} Q${half},2 ${half * 1.4},${half * 0.3} Q${s - 2},${half * 0.3} ${s - 2},${half * 0.6} Q${s - 2},${half * 1.1} ${half * 1.5},${half * 1.2} Q${half * 1.4},${s - 2} ${half * 0.6},${s - 2} Z`} fill={color} />
-      );
-    case 'circle':
-      return <circle cx={half} cy={half} r={half - 2} fill={color} />;
-    default:
-      return <rect x={2} y={2} width={s - 4} height={s - 4} rx={4} ry={4} fill={color} />;
-  }
-}
+type DiffLine =
+  | { type: 'header'; label: string; isNew?: boolean }
+  | { type: 'add' | 'remove' | 'change'; prefix: string; field: string; oldVal?: string; newVal?: string };
 
 export function FlowchartPreviewModal({
   nodes,
@@ -138,287 +41,217 @@ export function FlowchartPreviewModal({
   onCancel,
   confirmLabel = 'Confirm Append',
   canvasGroups = [],
+  existingNodes = [],
+  existingEdges = [],
 }: FlowchartPreviewModalProps) {
-  const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [replaceGroup, setReplaceGroup] = useState<string | null>(null);
-  const isPanning = useRef(false);
-  const panStart = useRef({ x: 0, y: 0 });
-  const panOffset = useRef({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  const nodeMap = useMemo(() => {
-    const m = new Map<string, Node<FlowchartNodeData>>();
-    for (const n of nodes) m.set(n.id, n);
-    return m;
-  }, [nodes]);
+  const diff = useMemo<DiffLine[] | null>(() => {
+    if (!existingNodes.length || !nodes.length) return null;
 
-  const connectedHandles = useMemo(() => {
-    const s = new Set<string>();
-    for (const e of edges) {
-      if (e.source && e.sourceHandle) s.add(`${e.source}:${e.sourceHandle}`);
-      if (e.target && e.targetHandle) s.add(`${e.target}:${e.targetHandle}`);
+    const existingByLabel = new Map<string, Node<FlowchartNodeData>>();
+    for (const node of existingNodes) {
+      existingByLabel.set((node.data.label || '').toLowerCase(), node);
     }
-    return s;
-  }, [edges]);
+    const newByLabel = new Map<string, Node<FlowchartNodeData>>();
+    for (const node of nodes) {
+      newByLabel.set((node.data.label || '').toLowerCase(), node);
+    }
 
-  const edgePaths = useMemo(() => {
-    return edges.map((edge) => {
-      const srcNode = nodeMap.get(edge.source);
-      const tgtNode = nodeMap.get(edge.target);
-      if (!srcNode || !tgtNode) return null;
+    const lines: DiffLine[] = [];
 
-      const closest = (edge.sourceHandle && edge.targetHandle)
-        ? { sourceHandle: edge.sourceHandle as HandleSide, targetHandle: edge.targetHandle as HandleSide }
-        : pickClosestHandles(srcNode, tgtNode);
+    for (const node of nodes) {
+      const label = node.data.label || 'Untitled';
+      const existing = existingByLabel.get(label.toLowerCase());
+      if (!existing) {
+        lines.push({ type: 'header', label, isNew: true });
+        lines.push({ type: 'add', prefix: '+', field: 'shape', newVal: node.data.shape });
+        lines.push({ type: 'add', prefix: '+', field: 'label', newVal: label });
+        if (node.data.color) {
+          lines.push({ type: 'add', prefix: '+', field: 'color', newVal: node.data.color });
+        }
+      } else {
+        const shapeChanged = existing.data.shape !== node.data.shape;
+        const colorChanged = existing.data.color !== node.data.color;
+        const labelChanged = (existing.data.label || '') !== label;
+        if (shapeChanged || colorChanged || labelChanged) {
+          lines.push({ type: 'header', label });
+          if (labelChanged) {
+            lines.push({ type: 'change', prefix: '~', field: 'label', oldVal: existing.data.label, newVal: label });
+          }
+          if (shapeChanged) {
+            lines.push({ type: 'change', prefix: '~', field: 'shape', oldVal: existing.data.shape, newVal: node.data.shape });
+          }
+          if (colorChanged) {
+            lines.push({ type: 'change', prefix: '~', field: 'color', oldVal: existing.data.color, newVal: node.data.color });
+          }
+        }
+      }
+    }
 
-      const srcPos = getHandlePos(srcNode.position, closest.sourceHandle);
-      const tgtPos = getHandlePos(tgtNode.position, closest.targetHandle);
+    for (const node of existingNodes) {
+      const label = node.data.label || '';
+      if (!newByLabel.has(label.toLowerCase())) {
+        lines.push({ type: 'header', label, isNew: false });
+        lines.push({ type: 'remove', prefix: '-', field: 'shape', oldVal: node.data.shape });
+        lines.push({ type: 'remove', prefix: '-', field: 'removed', oldVal: 'entire node' });
+      }
+    }
 
-      return {
-        id: edge.id,
-        d: buildSmartEdgePath(srcPos, closest.sourceHandle, tgtPos, closest.targetHandle),
-        label: edge.label,
-        srcPos,
-        tgtPos,
-      };
-    }).filter(Boolean);
-  }, [edges, nodeMap]);
+    const oldEdgeKeys = new Set(
+      existingEdges.map(e => {
+        const src = existingNodes.find(n => n.id === e.source)?.data.label || e.source;
+        const tgt = existingNodes.find(n => n.id === e.target)?.data.label || e.target;
+        return `${src.toLowerCase()}→${tgt.toLowerCase()}`;
+      })
+    );
+    const newEdgeKeys = new Set(
+      edges.map(e => {
+        const src = nodes.find(n => n.id === e.source)?.data.label || e.source;
+        const tgt = nodes.find(n => n.id === e.target)?.data.label || e.target;
+        return `${src.toLowerCase()}→${tgt.toLowerCase()}`;
+      })
+    );
 
-  if (nodes.length === 0) return null;
+    const addedEdges = [...newEdgeKeys].filter(k => !oldEdgeKeys.has(k));
+    const removedEdges = [...oldEdgeKeys].filter(k => !newEdgeKeys.has(k));
 
-  const xs = nodes.map(n => n.position.x);
-  const ys = nodes.map(n => n.position.y);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const maxX = Math.max(...xs) + NODE_W;
-  const maxY = Math.max(...ys) + NODE_H;
-  const graphW = maxX - minX;
+    if (addedEdges.length > 0 || removedEdges.length > 0) {
+      lines.push({ type: 'header', label: 'Connections' });
+      for (const e of addedEdges) {
+        lines.push({ type: 'add', prefix: '+', field: 'connection', newVal: e });
+      }
+      for (const e of removedEdges) {
+        lines.push({ type: 'remove', prefix: '-', field: 'connection', oldVal: e });
+      }
+    }
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale(prev => Math.max(0.3, Math.min(3, prev + delta)));
-  }, []);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (scale <= 0.5) return;
-    isPanning.current = true;
-    panStart.current = { x: e.clientX, y: e.clientY };
-    panOffset.current = { x: pan.x, y: pan.y };
-  }, [scale, pan.x, pan.y]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning.current) return;
-    setPan({
-      x: panOffset.current.x + (e.clientX - panStart.current.x),
-      y: panOffset.current.y + (e.clientY - panStart.current.y),
-    });
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    isPanning.current = false;
-  }, []);
-
-  const zoomIn = () => setScale(prev => Math.min(3, prev + 0.2));
-  const zoomOut = () => setScale(prev => Math.max(0.3, prev - 0.2));
-  const resetView = () => { setScale(1); setPan({ x: 0, y: 0 }); };
+    return lines.length > 0 ? lines : null;
+  }, [existingNodes, existingEdges, nodes, edges]);
 
   return (
     <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent className="sm:max-w-2xl h-[600px]">
+      <DialogOverlay />
+      <DialogContent size="2xl" showCloseButton>
         <DialogHeader>
-          <DialogTitle>Preview Flowchart</DialogTitle>
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+              <GitBranch className="size-4 text-indigo-400" />
+            </div>
+            <div>
+              <DialogTitle>Preview Changes</DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
-        <DialogBody className="flex-1 flex flex-col min-h-0">
-          <div
-            ref={containerRef}
-            className="flex-1 rounded-lg border border-border overflow-hidden bg-[#1a1a1e] mb-4 relative"
-            onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            style={{ cursor: scale > 0.5 ? (isPanning.current ? 'grabbing' : 'grab') : 'default' }}
-          >
-            <div
-              style={{
-                transform: `scale(${scale}) translate(${pan.x / scale}px, ${pan.y / scale}px)`,
-                transformOrigin: '0 0',
-                width: graphW + 80,
-                height: maxY - minY + 80,
-              }}
-            >
-              <svg
-                viewBox={`${minX - 40} ${minY - 40} ${graphW + 80} ${maxY - minY + 80}`}
-                className="w-full h-full"
-                preserveAspectRatio="xMidYMid meet"
-              >
-                <defs>
-                  <marker id="arrow-preview" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                    <path d="M0,0 L10,5 L0,10 Z" fill="#b1b1b7" />
-                  </marker>
-                  <pattern id="grid-dots" width={80} height={80} patternUnits="userSpaceOnUse">
-                    <circle cx={40} cy={40} r={0.8} fill="#2a2a30" />
-                  </pattern>
-                </defs>
 
-                {/* Grid background matching 80px layout spacing */}
-                <rect
-                  x={minX - 40}
-                  y={minY - 40}
-                  width={graphW + 80}
-                  height={maxY - minY + 80}
-                  fill="url(#grid-dots)"
-                />
-
-                {edgePaths.map((ep) => {
-                  if (!ep) return null;
-                  const midX = (ep.srcPos.x + ep.tgtPos.x) / 2;
-                  const midY = (ep.srcPos.y + ep.tgtPos.y) / 2;
-                  return (
-                    <g key={ep.id}>
-                      <path
-                        d={ep.d}
-                        fill="none"
-                        stroke="#6b6b73"
-                        strokeWidth={2}
-                        strokeLinejoin="round"
-                        markerEnd="url(#arrow-preview)"
-                      />
-                      {ep.label && (
-                        <g>
-                          <text
-                            x={midX}
-                            y={midY - 8}
-                            textAnchor="middle"
-                            fill="#fff"
-                            stroke="#1a1a1e"
-                            strokeWidth={3}
-                            paintOrder="stroke"
-                            fontSize={11}
-                            fontWeight={600}
-                            className="select-none"
-                          >
-                            {ep.label}
-                          </text>
-                        </g>
-                      )}
-                    </g>
-                  );
-                })}
-
-                {nodes.map((node) => {
-                  const sx = node.position.x;
-                  const sy = node.position.y;
-                  const color = node.data.color || '#8b5cf6';
-
-                  return (
-                    <g key={node.id}>
-                      {/* Connection handle dots */}
-                      {(['top', 'bottom', 'left', 'right'] as HandleSide[]).map((side) => {
-                        const hp = getHandlePos({ x: sx, y: sy }, side);
-                        const isConnected = connectedHandles.has(`${node.id}:${side}`);
-                        return (
-                          <circle
-                            key={side}
-                            cx={hp.x}
-                            cy={hp.y}
-                            r={isConnected ? 3.5 : 2}
-                            fill={isConnected ? color : '#555'}
-                            opacity={isConnected ? 1 : 0.35}
-                          />
-                        );
-                      })}
-
-                      {/* Node body with glow */}
-                      <rect
-                        x={sx}
-                        y={sy}
-                        width={NODE_W}
-                        height={NODE_H}
-                        rx={8}
-                        ry={8}
-                        fill={color}
-                        fillOpacity={0.08}
-                        stroke={color}
-                        strokeWidth={1}
-                        strokeOpacity={0.6}
-                      />
-                      {/* Inner accent border */}
-                      <rect
-                        x={sx + 3}
-                        y={sy + 3}
-                        width={NODE_W - 6}
-                        height={NODE_H - 6}
-                        rx={6}
-                        ry={6}
-                        fill="none"
-                        stroke={color}
-                        strokeWidth={0.5}
-                        strokeOpacity={0.2}
-                      />
-                      <g transform={`translate(${sx + (NODE_W - ICON_SIZE) / 2}, ${sy + 8})`}>
-                        {renderShape(node.data.shape || 'rectangle', color, ICON_SIZE)}
-                      </g>
-                      <text
-                        x={sx + NODE_W / 2}
-                        y={sy + NODE_H - 7}
-                        textAnchor="middle"
-                        fill="#e8e8ec"
-                        fontSize={11}
-                        className="select-none"
-                      >
-                        {node.data.label}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <Button variant="outline" size="sm" onClick={zoomOut} className="size-8 p-0" title="Zoom out">
-                <ZoomOut className="size-4" />
-              </Button>
-              <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">{Math.round(scale * 100)}%</span>
-              <Button variant="outline" size="sm" onClick={zoomIn} className="size-8 p-0" title="Zoom in">
-                <ZoomIn className="size-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={resetView} className="size-8 p-0" title="Reset view">
-                <RotateCcw className="size-3.5" />
-              </Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onCancel} className="gap-2">
-                <X className="size-4" />
-                Cancel
-              </Button>
-              <Button onClick={() => onConfirm(replaceGroup || undefined)} className="gap-2">
-                <Check className="size-4" />
-                {confirmLabel}
-              </Button>
-            </div>
-          </div>
-          {canvasGroups.length > 0 && (
-            <div className="flex items-center gap-2 pt-2 border-t border-white/5" onMouseDown={(e) => e.stopPropagation()}>
-              <Layers className="size-3.5 text-muted-foreground shrink-0" />
-              <span className="text-[11px] text-muted-foreground">Replace:</span>
-              <Select value={replaceGroup ?? ''} onValueChange={(v) => setReplaceGroup(v || null)}>
-                <SelectTrigger className="h-7 text-[12px]">
-                  <SelectValue placeholder="All Symbols" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Symbols</SelectItem>
-                  {canvasGroups.map((g) => (
-                    <SelectItem key={g} value={g}>{g}</SelectItem>
+        <DialogBody>
+          <div className="flex flex-col gap-4">
+            {/* New symbols: always show */}
+            {nodes.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  New Symbols ({nodes.length})
+                </label>
+                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
+                  {nodes.map((node) => (
+                    <div key={node.id} className="rounded-lg border border-border/40 bg-[#0d1117] overflow-hidden">
+                      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-black/20">
+                        <GitBranch className="size-3 text-indigo-400 shrink-0" />
+                        <span className="text-[11px] font-semibold text-gray-200">{node.data.label}</span>
+                        <span className="text-[9px] text-gray-500 ml-auto">{node.data.shape}</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono">
+                        <span className="text-gray-500">Shape:</span>
+                        <span className="text-gray-300">{node.data.shape}</span>
+                        {node.data.color && (
+                          <>
+                            <span className="text-gray-500 ml-2">Color:</span>
+                            <span className="text-gray-300">{node.data.color}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+                </div>
+              </div>
+            )}
+
+            {/* Diff: only when existing content */}
+            {diff && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground">Changes</label>
+                <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
+                  <div className="divide-y divide-border/10">
+                    {diff.map((line, li) => {
+                      if (line.type === 'header') {
+                        return (
+                          <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
+                            {line.isNew && (
+                              <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
+                            )}
+                            <span className="text-[11px] font-semibold text-gray-200">{line.label}</span>
+                          </div>
+                        );
+                      }
+                      const isAdd = line.type === 'add';
+                      const isRemove = line.type === 'remove';
+                      const isChange = line.type === 'change';
+                      const bg = isAdd ? 'bg-emerald-900/20' : isRemove ? 'bg-red-900/20' : isChange ? 'bg-amber-900/20' : '';
+                      const prefixColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400' : 'text-amber-400';
+                      const valColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-amber-300';
+                      const fieldColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-amber-400/60';
+                      return (
+                        <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
+                          <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
+                          <span className={`w-20 shrink-0 ${fieldColor}`}>{line.field}</span>
+                          {line.oldVal && <span className="text-red-400/70 line-through">{line.oldVal}</span>}
+                          {line.oldVal && line.newVal && <span className="text-gray-600">→</span>}
+                          {line.newVal && <span className={valColor}>{line.newVal}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!diff && !nodes.length && (
+              <p className="text-xs text-muted-foreground">No changes detected.</p>
+            )}
+          </div>
         </DialogBody>
+
+        <div className="flex items-center justify-between gap-3 px-6 pb-6">
+          <div className="flex items-center gap-3">
+            {canvasGroups.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Layers className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="text-[11px] text-muted-foreground">Replace:</span>
+                <Select value={replaceGroup ?? ''} onValueChange={(v) => setReplaceGroup(v || null)}>
+                  <SelectTrigger className="h-7 text-[12px]">
+                    <SelectValue placeholder="All Symbols" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Symbols</SelectItem>
+                    {canvasGroups.map((g) => (
+                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={onCancel} className="gap-2">
+              <X className="size-4" />
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => onConfirm(replaceGroup || undefined)} className="gap-2">
+              <Check className="size-4" />
+              {confirmLabel}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Note, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
@@ -22,6 +22,11 @@ export function useNotes(isGuest: boolean = false) {
   const contentVersionRef = useRef(0);
   // Guard: prevent duplicate concurrent loads for the same note UID (matching ERD's loadingIdRef pattern)
   const loadingNoteUidRef = useRef<string | null>(null);
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
+
   const bumpContentVersion = useCallback(() => { contentVersionRef.current++; return contentVersionRef.current; }, []);
   const getContentVersion = useCallback(() => contentVersionRef.current, []);
 
@@ -30,7 +35,7 @@ export function useNotes(isGuest: boolean = false) {
   activeNoteUidRef.current = activeNoteUid;
 
   const fetchNotes = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const [localNotes, localProjects] = await Promise.all([
         localPersistence.getAllResources('notes'),
         localPersistence.getAllResources('project'),
@@ -108,12 +113,12 @@ export function useNotes(isGuest: boolean = false) {
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]); 
+  }, []); 
 
   const createNote = async (title: string, projectId?: number | string | null, content?: string) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
-    if (isGuest) {
+    if (isGuestCheck()) {
       const noteUid = crypto.randomUUID();
       const newNote: Note = {
         id: noteUid,
@@ -177,7 +182,7 @@ export function useNotes(isGuest: boolean = false) {
   };
 
   const updateNote = async (uid: string, title: string, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.title = title;
@@ -203,7 +208,7 @@ export function useNotes(isGuest: boolean = false) {
   };
 
   const deleteNote = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.is_deleted = true;
@@ -233,7 +238,7 @@ export function useNotes(isGuest: boolean = false) {
   const moveNoteToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
-    if (isGuest) {
+    if (isGuestCheck()) {
       const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         note.project_id = effectiveProjectId;
@@ -263,10 +268,10 @@ export function useNotes(isGuest: boolean = false) {
     if (!note.id && !note.uid) return false;
     
     try {
-      const isSyncPending = !isGuest;
+      const isSyncPending = !isGuestCheck();
       const dataToSave = JSON.stringify({ content: note.content, title: note.title, project_id: note.project_id });
       
-      if (isGuest) {
+      if (isGuestCheck()) {
         const localNote = await localPersistence.getResource(note.id || note.uid);
         if (localNote) {
           localNote.content = note.content;
@@ -286,7 +291,7 @@ export function useNotes(isGuest: boolean = false) {
   };
 
   const restoreNote = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const note = await localPersistence.getResource(uid);
       if (note) {
         note.is_deleted = false;
@@ -310,7 +315,7 @@ export function useNotes(isGuest: boolean = false) {
   };
 
   const deleteNotePermanent = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const note = notesRef.current.find(n => n.uid === uid);
       if (note) {
         await localPersistence.deleteResource(note.id);
@@ -353,7 +358,7 @@ export function useNotes(isGuest: boolean = false) {
     if (!options?.silent) setIsItemLoading(true);
     try {
       // Step 1: Start API fetch immediately (fire in background, don't block)
-      const apiPromise = !isGuest ? (async () => {
+      const apiPromise = !isGuestCheck() ? (async () => {
         try {
           const res = await apiFetch(`/api/notes/${uid}`);
           if (!res.ok) return null;
