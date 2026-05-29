@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Drawing, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
@@ -14,6 +14,11 @@ export function useDrawings(isGuest: boolean = false) {
   const [hasMoreDrawings, setHasMoreFiles] = useState(false);
   const drawingsRef = useRef<Drawing[]>(drawings);
   const activeDrawingUidRef = useRef(activeDrawingUid);
+
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
   // Keep refs in sync
   drawingsRef.current = drawings;
@@ -51,7 +56,7 @@ export function useDrawings(isGuest: boolean = false) {
     page?: number,
     options?: { silent?: boolean }
   ) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const localDrawings = await localPersistence.getAllResources('drawings');
       let filtered = localDrawings.filter(d => !d.is_deleted);
       if (projectId !== 'all') {
@@ -112,12 +117,12 @@ export function useDrawings(isGuest: boolean = false) {
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]);
+  }, []);
 
   const createDrawing = async (title: string, projectId?: number | string | null, data?: string) => {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
-    if (isGuest) {
+    if (isGuestCheck()) {
       const newDrawing: Drawing = {
         id: Math.random().toString(36).substr(2, 9) as any,
         title,
@@ -174,7 +179,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const updateDrawing = async (uid: string, title: string, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.title = title;
@@ -200,7 +205,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const deleteDrawing = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.is_deleted = true;
@@ -228,7 +233,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const moveDrawingToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.project_id = projectId;
@@ -259,7 +264,7 @@ export function useDrawings(isGuest: boolean = false) {
     if (!drawingId) return false;
     
     try {
-      const isSyncPending = !isGuest;
+      const isSyncPending = !isGuestCheck();
       // We need to save as JSON because useSyncService expects a JSON string with {title, data, project_id}
       const payload = {
         title: drawing.title,
@@ -268,7 +273,7 @@ export function useDrawings(isGuest: boolean = false) {
       };
       const dataToSave = JSON.stringify(payload);
       
-      if (isGuest) {
+      if (isGuestCheck()) {
         const localDrawing = await localPersistence.getResource(drawingId);
         if (localDrawing) {
           localDrawing.data = drawing.data;
@@ -286,7 +291,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const restoreDrawing = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const drawing = await localPersistence.getResource(uid);
       if (drawing) {
         drawing.is_deleted = false;
@@ -310,7 +315,7 @@ export function useDrawings(isGuest: boolean = false) {
   };
 
   const deleteDrawingPermanent = async (uid: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       await localPersistence.deleteResource(uid);
       await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
       setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
@@ -332,7 +337,7 @@ export function useDrawings(isGuest: boolean = false) {
   const selectDrawing = async (uid: string, options?: { silent?: boolean }) => {
     if (!options?.silent) setIsItemLoading(true);
     try {
-      if (isGuest) {
+      if (isGuestCheck()) {
         const localData = await localPersistence.getResource(uid);
         if (!localData || localData.is_deleted) return;
         setDrawings(prev => {

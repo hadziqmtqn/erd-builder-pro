@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Project } from '../types';
 import { localPersistence } from '../lib/localPersistence';
@@ -12,6 +12,10 @@ export function useProjects(isGuest: boolean = false) {
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(false);
   const projectsRef = useRef<Project[]>(projects);
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
   // Keep ref in sync
   projectsRef.current = projects;
@@ -24,7 +28,7 @@ export function useProjects(isGuest: boolean = false) {
   }>({ diagrams: [], notes: [], drawings: [], flowcharts: [] });
 
   const fetchProjects = useCallback(async (isLoadMore = false, searchQuery = '') => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const [localProjects, uDiagrams, uNotes, uDrawings, uFlowcharts] = await Promise.all([
         localPersistence.getAllResources('project'),
         localPersistence.getAllResources('erd'),
@@ -95,10 +99,10 @@ export function useProjects(isGuest: boolean = false) {
       setIsLoading(false);
     }
     return null;
-  }, [isGuest]);
+  }, []);
 
   const createProject = async (name: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const newProject: Project = {
         id: Math.random().toString(36).substr(2, 9),
         uid: crypto.randomUUID(),
@@ -131,7 +135,7 @@ export function useProjects(isGuest: boolean = false) {
   };
 
   const updateProject = async (id: number | string, name: string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const project = await localPersistence.getResource(id);
       if (project) {
         project.name = name;
@@ -156,7 +160,7 @@ export function useProjects(isGuest: boolean = false) {
   };
 
   const deleteProject = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const project = await localPersistence.getResource(id);
       if (project) {
         const deleted_at = new Date().toISOString();
@@ -196,7 +200,7 @@ export function useProjects(isGuest: boolean = false) {
   };
 
   const restoreProject = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const project = await localPersistence.getResource(id);
       if (project) {
         project.is_deleted = false;
@@ -225,7 +229,7 @@ export function useProjects(isGuest: boolean = false) {
   };
 
   const deleteProjectPermanent = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       await localPersistence.deleteResource(id);
       setProjects(prev => prev.filter(p => p.id !== id));
       toast.success('Project permanently deleted from local');

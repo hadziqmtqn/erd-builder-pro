@@ -126,6 +126,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     if (isGuest) {
       const newFlowchart: Flowchart = {
         id: Math.random().toString(36).substr(2, 9) as any,
+        uid: crypto.randomUUID(),
         title,
         data: data || '',
         project_id: effectiveProjectId || null,
@@ -191,7 +192,10 @@ export function useFlowcharts(isGuest: boolean = false) {
 
   const deleteFlowchart = async (uid: string) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(uid);
+      let flowchart = await localPersistence.getResource(uid);
+      if (!flowchart) {
+        flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid)) || null;
+      }
       if (flowchart) {
         flowchart.is_deleted = true;
         flowchart.deleted_at = new Date().toISOString();
@@ -270,6 +274,12 @@ export function useFlowcharts(isGuest: boolean = false) {
           localFlowchart.updated_at = new Date().toISOString();
           await localPersistence.saveResource(localFlowchart);
         }
+        // Sync React state so activeFlowchart.data reflects saved data immediately
+        setFlowcharts(prev => prev.map(f =>
+          matchesFlowchartId(f, flowchart.uid ?? flowchart.id)
+            ? { ...f, data: flowchart.data || '' }
+            : f
+        ));
       }
 
       // Use uid for draft so sync service builds the correct /api/flowcharts/:uid endpoint
@@ -284,7 +294,10 @@ export function useFlowcharts(isGuest: boolean = false) {
 
   const restoreFlowchart = async (uid: string) => {
     if (isGuest) {
-      const flowchart = await localPersistence.getResource(uid);
+      let flowchart = await localPersistence.getResource(uid);
+      if (!flowchart) {
+        flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid)) || null;
+      }
       if (flowchart) {
         flowchart.is_deleted = false;
         flowchart.deleted_at = undefined;
@@ -308,8 +321,14 @@ export function useFlowcharts(isGuest: boolean = false) {
 
   const deleteFlowchartPermanent = async (uid: string) => {
     if (isGuest) {
-      await localPersistence.deleteResource(uid);
-      await localPersistence.clearDraft(DraftType.FLOWCHART, uid);
+      let flowchart = await localPersistence.getResource(uid);
+      if (!flowchart) {
+        flowchart = flowchartsRef.current.find(f => matchesFlowchartId(f, uid)) || null;
+      }
+      const resourceId = flowchart?.id || uid;
+      const draftId = flowchart?.uid || uid;
+      await localPersistence.deleteResource(resourceId);
+      await localPersistence.clearDraft(DraftType.FLOWCHART, draftId);
       setFlowcharts(prev => prev.filter(f => matchesFlowchartId(f, uid)));
       toast.success('Flowchart permanently deleted from local');
       return;
@@ -337,7 +356,11 @@ export function useFlowcharts(isGuest: boolean = false) {
       const draftProjectId = draftPayload?.project_id;
 
       if (isGuest) {
-        const localData = await localPersistence.getResource(uid);
+        let localData = await localPersistence.getResource(uid);
+        // Fallback: Guest mode resources keyed by numeric `id`, not `uid` — search by uid in array
+        if (!localData) {
+          localData = flowchartsRef.current.find(f => matchesFlowchartId(f, uid)) || null;
+        }
         if (!localData || localData.is_deleted) return;
         setFlowcharts(prev => {
           const exists = prev.some(existing => matchesFlowchartId(existing, uid));

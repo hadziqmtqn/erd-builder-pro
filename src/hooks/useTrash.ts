@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Diagram, Note, Drawing, Flowchart, Project } from '../types';
 import { localPersistence } from '../lib/localPersistence';
@@ -13,9 +13,13 @@ export function useTrash(isGuest: boolean = false) {
     projects: Project[];
   }>({ diagrams: [], notes: [], drawings: [], flowcharts: [], projects: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const isGuestRef = useRef(isGuest);
+  useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
+  const isGuestCheck = (): boolean =>
+    isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
   const fetchTrash = useCallback(async () => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       try {
         const [files, notes, drawings, flowchart, projects] = await Promise.all([
           localPersistence.getAllResources('erd'),
@@ -60,10 +64,10 @@ export function useTrash(isGuest: boolean = false) {
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]);
+  }, []);
 
   const restoreResource = async (id: number | string) => {
-    if (isGuest) {
+    if (isGuestCheck()) {
       const item = await localPersistence.getResource(id);
       if (item) {
         item.is_deleted = false;
@@ -79,7 +83,7 @@ export function useTrash(isGuest: boolean = false) {
   };
 
   const restoreNote = async (id: number | string) => {
-    if (isGuest) return restoreResource(id);
+    if (isGuestCheck()) return restoreResource(id);
     try {
       const res = await apiFetch(`/api/notes/${id}/restore`, { method: 'POST' });
       if (res.ok) {
@@ -94,7 +98,7 @@ export function useTrash(isGuest: boolean = false) {
   };
 
   const restoreDrawing = async (id: number | string) => {
-    if (isGuest) return restoreResource(id);
+    if (isGuestCheck()) return restoreResource(id);
     try {
       const res = await apiFetch(`/api/drawings/${id}/restore`, { method: 'POST' });
       if (res.ok) {
@@ -109,7 +113,7 @@ export function useTrash(isGuest: boolean = false) {
   };
 
   const restoreFlowchart = async (id: number | string) => {
-    if (isGuest) return restoreResource(id);
+    if (isGuestCheck()) return restoreResource(id);
     try {
       const res = await apiFetch(`/api/flowcharts/${id}/restore`, { method: 'POST' });
       if (res.ok) {

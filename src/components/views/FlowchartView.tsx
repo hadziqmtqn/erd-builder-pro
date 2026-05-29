@@ -86,11 +86,13 @@ export const FlowchartView = React.memo(({
   const initialLoadRef = React.useRef(true);
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
+  const pendingContentAppliedRef = React.useRef(false);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
   const isEditingNodeRef = React.useRef(false);
   const nodesRef = React.useRef(nodes);
   const edgesRef = React.useRef(edges);
+  const emptySetRef = React.useRef(new Set<string>());
   const { takeSnapshot, undo, redo, canUndo, canRedo } = useUndoRedo();
   const pendingApplyModeRef = React.useRef<'append' | 'insert' | 'replace'>('append');
 
@@ -319,23 +321,28 @@ export const FlowchartView = React.memo(({
     try {
       const parsed = parseFlowchartData(activeFlowchart.data) || { nodes: [], edges: [] };
       const hasPending = localStorage.getItem('pending_create_flowchart_json') || localStorage.getItem('pending_update_flowchart_json');
-      const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : (hasPending ? [] : initialNodes);
-      const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : (hasPending ? [] : initialEdges);
+      const nodesData = (parsed.nodes && parsed.nodes.length > 0) ? parsed.nodes : (hasPending || pendingContentAppliedRef.current ? [] : initialNodes);
+      const edgesData = (parsed.edges && parsed.edges.length > 0) ? parsed.edges : (hasPending || pendingContentAppliedRef.current ? [] : initialEdges);
       
-      setNodes(nodesData);
-      setEdges(edgesData);
+      if (!pendingContentAppliedRef.current) {
+        setNodes(nodesData);
+        setEdges(edgesData);
+      }
 
       // Only reset selection when switching to a different flowchart, not on data refresh (auto-save cycle)
       const flowchartChanged = lastFlowchartIdRef.current !== activeFlowchartId;
       if (flowchartChanged) {
         lastFlowchartIdRef.current = activeFlowchartId;
+        pendingContentAppliedRef.current = false;
         setSelectedNodeId(null);
         setSelectedEdgeId(null);
       }
     } catch {
       const hasPending = localStorage.getItem('pending_create_flowchart_json') || localStorage.getItem('pending_update_flowchart_json');
-      setNodes(hasPending ? [] : initialNodes);
-      setEdges(hasPending ? [] : initialEdges);
+      if (!pendingContentAppliedRef.current) {
+        setNodes(hasPending ? [] : initialNodes);
+        setEdges(hasPending ? [] : initialEdges);
+      }
     }
 
     // Reset flag setelah render cycle selesai — ini biar auto-save trigger
@@ -647,9 +654,9 @@ export const FlowchartView = React.memo(({
   }, [handleExportSVGAll, handleExportSVGGroup, canvasGroups, setFlowchartExportHandler]);
 
   const selectedGroupNodeIds = useMemo(() => {
-    if (!selectedGroup) return new Set<string>();
+    if (!selectedGroup) return emptySetRef.current;
     const startIds = nodes.filter(n => n.data.section === selectedGroup).map(n => n.id);
-    if (startIds.length === 0) return new Set<string>();
+    if (startIds.length === 0) return emptySetRef.current;
     const connectedIds = new Set<string>(startIds);
     const queue = [...startIds];
     let qi = 0;
@@ -690,7 +697,7 @@ export const FlowchartView = React.memo(({
       const isGroupMember = selectedGroupNodeIds.has(n.id);
       const selected = isSelected || isGroupMember;
       
-      const nodeToMap = n.selected === selected ? n : { ...n, selected };
+      const nodeToMap = !!n.selected === selected ? n : { ...n, selected };
 
       if (!isSimulating) return nodeToMap;
 
@@ -730,10 +737,13 @@ export const FlowchartView = React.memo(({
   // NOTE: skip during drag — prevents cascading re-render on every drag frame
   useEffect(() => {
     if (isDraggingRef.current) return;
-    setActionContextData({
-      nodes: nodesRef.current,
-      edges: edgesRef.current,
-    });
+    const timer = setTimeout(() => {
+      setActionContextData({
+        nodes: nodesRef.current,
+        edges: edgesRef.current,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
   }, [nodes, edges, setActionContextData]);
 
   // AI Content Handler (show preview before applying)
@@ -807,6 +817,7 @@ export const FlowchartView = React.memo(({
       localStorage.removeItem('pending_create_flowchart_json');
       const result = previewFlowchartContent(pendingFlowchart);
       if (result && result.nodes.length > 0) {
+        pendingContentAppliedRef.current = true;
         takeSnapshot(nodesRef.current, edgesRef.current);
         setNodes(result.nodes);
         setEdges(result.edges);
@@ -836,6 +847,7 @@ export const FlowchartView = React.memo(({
       localStorage.removeItem('pending_update_flowchart_json');
       const result = previewFlowchartContent(pendingUpdateFlowchart);
       if (result && result.nodes.length > 0) {
+        pendingContentAppliedRef.current = true;
         takeSnapshot(nodesRef.current, edgesRef.current);
         setNodes(result.nodes);
         setEdges(result.edges);
@@ -1207,6 +1219,8 @@ export const FlowchartView = React.memo(({
         <FlowchartPreviewModal
           nodes={pendingPreview.nodes}
           edges={pendingPreview.edges}
+          existingNodes={nodes}
+          existingEdges={edges}
           onConfirm={handleConfirmAppend}
           onCancel={() => { setPendingPreview(null); pendingContentRef.current = null; }}
           confirmLabel={pendingApplyModeRef.current === 'insert' ? 'Confirm Insert' : pendingApplyModeRef.current === 'replace' ? 'Confirm Replace' : 'Confirm Append'}

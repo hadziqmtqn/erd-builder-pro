@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { COLUMN_TYPES, cn } from '../lib/utils';
@@ -31,13 +31,30 @@ export default function PropertiesPanel({
   const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevColumnsCount = useRef(editingEntity?.columns?.length || 0);
+  const lastAddedIdRef = useRef<string | null>(null);
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const setInputRef = useCallback((id: string, el: HTMLInputElement | null) => {
+    inputRefs.current[id] = el;
+  }, []);
   
-  // Auto-scroll when columns are added
+  // Auto-scroll and Focus when columns are added
   useEffect(() => {
     const currentLength = editingEntity?.columns?.length || 0;
     if (currentLength > prevColumnsCount.current) {
+      // Auto-scroll
       setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        
+        // Auto-focus the last added column
+        if (lastAddedIdRef.current) {
+          const input = inputRefs.current[lastAddedIdRef.current];
+          if (input) {
+            input.focus();
+            input.select(); // Select text so user can just start typing the new name
+          }
+          lastAddedIdRef.current = null;
+        }
       }, 100);
     }
     prevColumnsCount.current = currentLength;
@@ -100,6 +117,8 @@ export default function PropertiesPanel({
       ...editingEntity,
       columns: [...editingEntity.columns, newColumn],
     };
+    // Track the new column ID for auto-focus
+    lastAddedIdRef.current = newColumn.id;
     setEditingEntity(updated);
     syncWithParent(updated, true); // Immediate save for new column
   };
@@ -296,6 +315,7 @@ export default function PropertiesPanel({
                 <div className="flex-1 space-y-3">
                   <div className="flex items-center gap-2">
                     <Input
+                      ref={(el) => setInputRef(col.id, el)}
                       placeholder="Column name"
                       value={col.name}
                       onChange={(e) => updateColumnLocal(col.id, { name: e.target.value })}

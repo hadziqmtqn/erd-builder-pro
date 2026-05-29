@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Node } from '@xyflow/react';
 import { 
   Dialog, 
@@ -45,6 +46,19 @@ export function SymbolPropertiesModal({
   onValidateSection,
 }: SymbolPropertiesModalProps) {
   const isStart = selectedNode ? isStartNode(selectedNode) : false;
+  const getDefaultCode = () => {
+    if (!selectedNode) return '';
+    if (selectedNode.data.code) return selectedNode.data.code;
+    return selectedNode.data.shape === 'diamond'
+      ? "return context.amount > 100 ? 'Yes' : 'No';"
+      : "context.status = 'Approved';";
+  };
+  const [localCode, setLocalCode] = useState(getDefaultCode);
+
+  const handleCodeChange = (val: string) => {
+    setLocalCode(val);
+    onUpdateNodeData({ code: val });
+  };
 
   return (
     <Dialog open={!!selectedNodeId} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -57,7 +71,7 @@ export function SymbolPropertiesModal({
         </DialogHeader>
         
         {selectedNode && (
-          <DialogBody className="space-y-6">
+          <DialogBody key={selectedNodeId} className="space-y-6">
             <div className="space-y-2">
               <Label>Label</Label>
               <Input 
@@ -71,8 +85,8 @@ export function SymbolPropertiesModal({
             <div className="space-y-2">
               <Label className="text-xs font-bold text-zinc-300">Code Logic (JavaScript)</Label>
               <textarea 
-                value={selectedNode.data.code || ''}
-                onChange={(e) => onUpdateNodeData({ code: e.target.value })}
+                value={localCode}
+                onChange={(e) => handleCodeChange(e.target.value)}
                 placeholder={selectedNode.data.shape === 'diamond' 
                   ? "e.g. return context.amount > 100 ? 'Yes' : 'No';" 
                   : "e.g. context.status = 'Approved'; context.tries += 1;"}
