@@ -1,5 +1,13 @@
 # 💎 ERD Builder Pro
 
+<div align="center">
+
+[![Docker Hub](https://img.shields.io/badge/docker-available-blue?logo=docker)](https://hub.docker.com/r/bekenweb/erd-builder-pro)
+[![Docker Pulls](https://img.shields.io/docker/pulls/bekenweb/erd-builder-pro)](https://hub.docker.com/r/bekenweb/erd-builder-pro)
+[![Docker Image Size](https://img.shields.io/docker/image-size/bekenweb/erd-builder-pro/latest)](https://hub.docker.com/r/bekenweb/erd-builder-pro)
+
+</div>
+
 **ERD Builder Pro** is a professional-grade, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures. Built with a modular architecture and modern tech stack, it offers a seamless experience for database design and technical documentation.
 
 <div align="center">
@@ -89,7 +97,25 @@ For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https:
    ```
    Access the dashboard at `http://localhost:3000`.
 
-### 📦 Deployment
+### 🐳 Docker
+
+Pull and run with Docker:
+
+```bash
+docker pull bekenweb/erd-builder-pro:latest
+
+docker run -d --name erd-builder-pro -p 3000:3000 \
+  -e SUPABASE_URL=your_supabase_url \
+  -e SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
+  -e JWT_SECRET=your_secret \
+  bekenweb/erd-builder-pro:latest
+```
+
+> Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are baked into the image. Pull the appropriate tag matching your environment, or build your own with `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
+
+Available tags: [`latest`](https://hub.docker.com/r/bekenweb/erd-builder-pro/tags), versioned (`v1.2.3`), and commit SHA (`2bbc233`).
+
+### 📦 Local Build
 
 Build the optimized production bundle:
 ```bash
