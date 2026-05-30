@@ -15,19 +15,21 @@ function normalizeType(typeStr: string): string {
     
     // Handle multi-word types (common in MySQL)
     // We only take the first word as the primary type but map accordingly
+    if (normalized === 'INTERVAL') return 'INTERVAL'; // must be before INT prefix
     if (normalized.startsWith('BIGINT')) return 'BIGINT';
     if (normalized.startsWith('TINYINT')) return 'BOOLEAN'; // Common convention
+    if (normalized.startsWith('SMALLINT')) return 'SMALLINT';
+    if (normalized.startsWith('MEDIUMINT')) return 'MEDIUMINT';
     if (normalized.startsWith('INT')) return 'INT';
+    if (normalized.startsWith('CHARACTER')) return normalized === 'CHARACTER' ? 'CHAR' : 'VARCHAR';
     if (normalized.startsWith('CHAR')) return 'CHAR';
     if (normalized.startsWith('VARBINARY')) return 'VARBINARY';
     if (normalized.startsWith('VARCHAR')) return 'VARCHAR';
 
     // Alias handling
-    if (normalized === 'SERIAL' || normalized === 'BIGSERIAL') return 'INT';
+    if (normalized === 'SERIAL' || normalized === 'BIGSERIAL' || normalized === 'SMALLSERIAL') return 'INT';
     if (normalized === 'INTEGER') return 'INT';
     if (normalized === 'DOUBLE PRECISION') return 'DOUBLE';
-    if (normalized === 'CHARACTER VARYING') return 'VARCHAR';
-    if (normalized === 'CHARACTER') return 'CHAR';
     if (normalized === 'BOOLEAN') return 'BOOLEAN';
     if (normalized === 'DATETIME') return 'TIMESTAMP';
     if (normalized === 'YEAR') return 'INT';
@@ -350,6 +352,19 @@ function parseColumnConstraints(stream: TokenStream): InlineColumnConstraints {
         }
       } else {
         stream.next();
+        // Consume parenthesized argument list: DEFAULT uuid_generate_v4()
+        if (stream.consumeSymbol('(')) {
+          let depth = 1;
+          while (!stream.eof()) {
+            const skipT = stream.next();
+            if (!skipT) break;
+            if (skipT.type === 'SYMBOL' && skipT.value === '(') depth++;
+            else if (skipT.type === 'SYMBOL' && skipT.value === ')') {
+              depth--;
+              if (depth === 0) break;
+            }
+          }
+        }
       }
       continue;
     }

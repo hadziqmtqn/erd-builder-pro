@@ -235,8 +235,12 @@ export function useERDSession(
         setActiveDiagramId(finalData.uid);
       }
 
-      setNodes(flowNodes);
-      setEdges(flowEdges);
+      // === PENDING DDL GUARD: When a pending DDL (from Create/Update ERD      ===
+      // === from SQL) was applied by ERDView's effect while this fetch was    ===
+      // === in-flight, don't overwrite the DDL-applied data with empty server ===
+      // === data (the diagram was just created and has no entities yet).      ===
+      setNodes(prev => prev.length > 0 ? prev : flowNodes);
+      setEdges(prev => prev.length > 0 ? prev : flowEdges);
       setSelectedNodeId(null);
 
       // === Apply saved viewport BEFORE hiding loading overlay ===

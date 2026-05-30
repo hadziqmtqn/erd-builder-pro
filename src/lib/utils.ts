@@ -6,21 +6,25 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const COLUMN_TYPES = [
-  "INT",
-  "BIGINT",
-  "VARCHAR",
-  "CHAR",
-  "TEXT",
-  "LONGTEXT",
+  // MySQL
+  "INT", "BIGINT", "TINYINT", "SMALLINT", "MEDIUMINT",
+  "VARCHAR", "CHAR", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
+  "BINARY", "VARBINARY",
+  "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB",
+  "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL",
   "BOOLEAN",
-  "DATE",
-  "TIMESTAMP",
-  "FLOAT",
-  "DOUBLE",
-  "DECIMAL",
-  "UUID",
-  "JSON",
-  "ENUM",
+  "DATE", "TIME", "YEAR", "DATETIME", "TIMESTAMP",
+  "BIT", "ENUM", "JSON",
+  // PostgreSQL aliases & extra
+  "INTEGER",
+  "SERIAL", "BIGSERIAL", "SMALLSERIAL",
+  "MONEY",
+  "BYTEA",
+  "UUID", "JSONB",
+  "INTERVAL",
+  "TIMESTAMPTZ", "TIMETZ",
+  "CIDR", "INET", "MACADDR", "MACADDR8",
+  "TSVECTOR", "TSQUERY",
 ];
 
 export const RELATIONSHIP_TYPES = [
