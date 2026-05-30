@@ -48,8 +48,8 @@ export function JumpToNode({ nodes, className, label = 'Symbol' }: JumpToNodePro
     if (!s) return nodes;
     
     return nodes.filter(node => {
-      const data = node.data as any;
-      const name = (data.name || data.label || '').toLowerCase();
+      const data = node.data as Record<string, any>;
+      const name = ((data.name || data.label) || '').toLowerCase();
       // Simple fuzzy match: starts with or includes
       return name.includes(s);
     });
@@ -119,14 +119,15 @@ export function JumpToNode({ nodes, className, label = 'Symbol' }: JumpToNodePro
               </div>
             ) : (
               filteredNodes.map((node) => {
-                const name = (node.data as any).name || (node.data as any).label || 'Unnamed component';
+                const d = node.data as Record<string, any>;
+                const name = d.name || d.label || 'Unnamed component';
                 return (
                   <DropdownMenuItem 
                     key={node.id} 
                     onClick={() => handleJump(node)}
                     className="flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors focus:bg-accent focus:text-accent-foreground rounded-lg mx-1"
                   >
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (node.data as any).color || '#8b5cf6' }} />
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (node.data as Record<string, any>).color || '#8b5cf6' }} />
                     <span className="text-[13px] font-medium truncate tracking-tight">{name}</span>
                   </DropdownMenuItem>
                 );

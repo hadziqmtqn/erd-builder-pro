@@ -299,7 +299,7 @@ const ERDViewComponent = ({
               })
           }
         };
-        delete (cleanedNode.data as any).diffState;
+        delete (cleanedNode.data as Record<string, any>).diffState;
         finalNodes.push(cleanedNode);
       } else {
         const orig = originalNodes.find(o => o.id === pNode.id);

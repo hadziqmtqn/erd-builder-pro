@@ -108,7 +108,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     const isUserAction = tableLoadingState === 'loading';
     const options = isUserAction ? { page: pageNum } : { silent: true, page: pageNum };
-    const promise = (fetchFlowcharts as any)(false, projId, fileSearchQuery, null, 10, options) as Promise<any> | undefined;
+    const promise = (fetchFlowcharts as (...args: any[]) => Promise<any>)(false, projId, fileSearchQuery, null, 10, options);
     if (isUserAction && promise?.then) {
       promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
     }

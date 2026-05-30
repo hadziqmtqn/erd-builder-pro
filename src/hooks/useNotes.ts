@@ -120,7 +120,7 @@ export function useNotes(isGuest: boolean = false) {
 
     if (isGuestCheck()) {
       const noteUid = crypto.randomUUID();
-      const newNote: Note = {
+      const newNote = {
         id: noteUid,
         uid: noteUid,
         title,
@@ -129,9 +129,8 @@ export function useNotes(isGuest: boolean = false) {
         is_deleted: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      };
-      // @ts-ignore
-      newNote.type = 'notes';
+        type: 'notes',
+      } as Note & { type: string };
       await localPersistence.saveResource(newNote);
       setNotes(prev => [newNote, ...prev]);
       toast.success('Note created locally');

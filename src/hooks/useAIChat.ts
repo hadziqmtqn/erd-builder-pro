@@ -64,9 +64,7 @@ export function useAIChat(
   sessionsRef.current = sessions;
 
   // Stable refs (break dependency chains)
-  const userRef = useRef(auth.user);
   const isGuestRef = useRef(auth.isGuest);
-  useEffect(() => { userRef.current = auth.user; }, [auth.user]);
   useEffect(() => { isGuestRef.current = auth.isGuest; }, [auth.isGuest]);
 
   const onStreamCompleteRef = useRef<((response: string) => void) | undefined>(undefined);
@@ -75,34 +73,20 @@ export function useAIChat(
   const projectIdRef = useRef(projectId);
   useEffect(() => { projectIdRef.current = projectId; }, [projectId]);
 
-  const getUserId = (): string | null => {
-    const u = userRef.current;
-    if (!u || isGuestRef.current) return null;
-    return u.id;
-  };
-
   const isGuestCheck = (): boolean =>
     isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
   const buildSessionUrl = () => {
-    let url = '/api/ai/chat/sessions';
-    const uid = getUserId();
-    if (!uid) return url;
-
     const params = new URLSearchParams();
-    if (projectId && entityContext) {
+    if (projectId) {
       params.set('project_id', String(projectId));
-      params.set('entity_type', entityContext.entityType);
-      params.set('entity_uid', entityContext.entityUid);
-    } else if (projectId) {
-      params.set('project_id', String(projectId));
-    } else if (entityContext) {
+    }
+    if (entityContext) {
       params.set('entity_type', entityContext.entityType);
       params.set('entity_uid', entityContext.entityUid);
     }
     const qs = params.toString();
-    if (qs) url += '?' + qs;
-    return url;
+    return '/api/ai/chat/sessions' + (qs ? '?' + qs : '');
   };
 
   // ─── Session Management ───────────────────────────────
@@ -134,7 +118,7 @@ export function useAIChat(
     } finally {
       setIsSessionsLoading(false);
     }
-  }, [entityContext?.entityType, entityContext?.entityUid, projectId]);
+  }, [projectId, entityContext?.entityType, entityContext?.entityUid]);
 
   const createSession = useCallback(async (): Promise<string | null> => {
     if (isGuestCheck()) {
@@ -213,7 +197,7 @@ export function useAIChat(
       if (!msgRes.ok) throw new Error('Failed to load messages');
       const { data: msgData, count } = await msgRes.json();
 
-      const loadedMessages: AIChatMessage[] = (msgData || []).reverse().map(m => ({ ...m, selection_text: m.selection_text ?? null }));
+      const loadedMessages: AIChatMessage[] = (msgData || []).reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
       setMessages(loadedMessages);
       messageOffsetRef.current = loadedMessages.length;
       setHasMoreMessages((count || 0) > loadedMessages.length);
@@ -236,7 +220,7 @@ export function useAIChat(
       const { data } = await msgRes.json();
 
       if (data && data.length > 0) {
-        const olderMessages: AIChatMessage[] = data.reverse().map(m => ({ ...m, selection_text: m.selection_text ?? null }));
+        const olderMessages: AIChatMessage[] = data.reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
         setMessages(prev => [...olderMessages, ...prev]);
         messageOffsetRef.current = offset + olderMessages.length;
         setHasMoreMessages(data.length >= PAGE_SIZE);

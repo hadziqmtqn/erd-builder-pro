@@ -137,8 +137,8 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
                   <div className="relative flex items-center mt-1 shrink-0">
                     <input 
                       type="checkbox"
-                      checked={(options as any)[opt.id]}
-                      onChange={() => setOptions(prev => ({ ...prev, [opt.id]: !(prev as any)[opt.id] }))}
+                      checked={(options as Record<string, any>)[opt.id]}
+                      onChange={() => setOptions(prev => ({ ...prev, [opt.id]: !(prev as Record<string, any>)[opt.id] }))}
                       className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-700 bg-transparent transition-all checked:border-zinc-100 checked:bg-zinc-100 cursor-pointer"
                     />
                     <Check className="absolute top-0.5 left-0.5 w-4 h-4 text-zinc-950 opacity-0 peer-checked:opacity-100 transition-opacity" />

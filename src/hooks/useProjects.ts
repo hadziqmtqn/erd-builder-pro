@@ -104,14 +104,13 @@ export function useProjects(isGuest: boolean = false) {
   const createProject = async (name: string) => {
     if (isGuestCheck()) {
       const newProject: Project = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substring(2, 11),
         uid: crypto.randomUUID(),
         name,
         is_deleted: false,
         created_at: new Date().toISOString(),
-      };
-      // @ts-ignore
-      newProject.type = 'project';
+        type: 'project',
+      } as Project & { type: string };
       await localPersistence.saveResource(newProject);
       setProjects(prev => [newProject, ...prev]);
       toast.success('Project created locally');

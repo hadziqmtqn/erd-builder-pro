@@ -123,17 +123,16 @@ export function useDrawings(isGuest: boolean = false) {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
     if (isGuestCheck()) {
-      const newDrawing: Drawing = {
-        id: Math.random().toString(36).substr(2, 9) as any,
+      const newDrawing = {
+        id: Math.random().toString(36).substring(2, 9),
         title,
         data: data || '',
         project_id: effectiveProjectId || null,
         is_deleted: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      };
-      // @ts-ignore
-      newDrawing.type = 'drawings';
+        type: 'drawings',
+      } as Drawing & { type: string };
       await localPersistence.saveResource(newDrawing);
       setDrawings(prev => [newDrawing, ...prev]);
       toast.success('Drawing created locally');

@@ -20,6 +20,7 @@ interface MentionFile {
 
 export interface ChatMessagesProps {
   hasActiveSession: boolean;
+  hasSessions?: boolean;
   isMessagesLoading: boolean;
   hasMessages: boolean;
   messages: AIChatMessage[];
@@ -45,6 +46,7 @@ export interface ChatMessagesProps {
 
 export const ChatMessages = memo(function ChatMessages({
   hasActiveSession,
+  hasSessions,
   isMessagesLoading,
   hasMessages,
   messages,
@@ -143,15 +145,23 @@ export const ChatMessages = memo(function ChatMessages({
 
         {!hasActiveSession ? (
           <div className="h-full flex flex-col items-center justify-center text-center py-16">
-            <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
-            <h4 className="text-sm font-semibold">AI Assistant</h4>
-            <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
-              Select a conversation or start a new chat
-            </p>
-            <Button variant="default" size="sm" className="mt-4" onClick={handleNewSession}>
-              <Plus className="size-4 mr-2" />
-              New Chat
-            </Button>
+            {!hasSessions ? (
+              <>
+                <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
+                <h4 className="text-sm font-semibold">AI Assistant</h4>
+                <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+                  Select a conversation or start a new chat
+                </p>
+                <Button variant="default" size="sm" className="mt-4" onClick={handleNewSession}>
+                  <Plus className="size-4 mr-2" />
+                  New Chat
+                </Button>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground/50 font-medium">
+                Select a conversation to continue
+              </p>
+            )}
           </div>
         ) : isMessagesLoading ? (
           <div className="flex items-center justify-center py-16">

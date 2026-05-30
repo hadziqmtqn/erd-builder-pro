@@ -123,7 +123,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     TrailingNode,
     ImageResize.configure({
       inline: false,
-    } as any),
+    } as Record<string, any>),
     TaskList,
     TaskItem.configure({
       nested: true,

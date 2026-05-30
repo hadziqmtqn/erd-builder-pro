@@ -36,8 +36,7 @@ export const LucideIconExtension = Node.create({
   addNodeView() {
     return ReactNodeViewRenderer((props) => {
       const { name, color } = props.node.attrs;
-      // @ts-ignore
-      const IconComponent = LucideIcons[name] || LucideIcons.HelpCircle;
+      const IconComponent = (LucideIcons as Record<string, any>)[name] || LucideIcons.HelpCircle;
 
       return (
         <NodeViewWrapper className="inline-flex items-center align-middle ml-0.5 mr-1.5 leading-none translate-y-[-1px]">

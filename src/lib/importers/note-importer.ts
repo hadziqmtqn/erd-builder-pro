@@ -332,7 +332,6 @@ export class NoteImporter {
   static async convertMarkdownToHtml(file: File): Promise<string> {
     try {
       const text = await file.text();
-      // @ts-ignore - marked is available globally or via import
       const marked = (window as any).marked || (await import('marked')).marked;
       const html = await marked.parse(text);
       return this.processHtmlForEditor(html);

@@ -395,8 +395,7 @@ const IconSearchView = ({
   };
 
   const allIconNames = useMemo(() => {
-    // @ts-ignore
-    return Object.keys(LucideIcons).filter(key =>
+    return Object.keys(LucideIcons as Record<string, any>).filter(key =>
       /^[A-Z]/.test(key) && key !== 'Icon' && key !== 'LucideIcon' && key !== 'createLucideIcon'
     );
   }, []);
@@ -502,8 +501,7 @@ const IconSearchView = ({
             </div>
             <div className="grid grid-cols-6 gap-0.5">
               {displayedIcons.map((name, idx) => {
-                // @ts-ignore
-                const Icon = LucideIcons[name] || LucideIcons.HelpCircle;
+                const Icon = (LucideIcons as Record<string, any>)[name] || LucideIcons.HelpCircle;
                 const isSelected = selectedIndex === idx;
                 return (
                   <button

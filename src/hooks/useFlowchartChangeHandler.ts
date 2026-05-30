@@ -91,7 +91,7 @@ export function useFlowchartChangeHandler(params: UseFlowchartChangeHandlerParam
       await saveFlowchart({
         ...currentFlowchart,
         data: dataString
-      } as any);
+      });
 
       lastSaveCallRef.current = Date.now();
       setIsLocalSaving(false);

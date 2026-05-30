@@ -1,5 +1,5 @@
 import { Node, Edge } from '@xyflow/react';
-import { Entity } from '@/types';
+import { Entity, Column } from '@/types';
 
 export interface DiffResult {
   nodes: Node<Entity>[];
@@ -43,7 +43,7 @@ export function computeSchemaDiff(
         ...propNode,
         data: {
           ...propNode.data,
-          diffState: 'new' as any,
+          diffState: 'new' as const,
         },
       });
     } else if (origNode && !propNode) {
@@ -51,14 +51,14 @@ export function computeSchemaDiff(
       deletedCount++;
       const deletedCols = (origNode.data.columns || []).map(col => ({
         ...col,
-        diffState: 'deleted' as any,
+        diffState: 'deleted' as const,
       }));
       diffNodes.push({
         ...origNode,
         data: {
           ...origNode.data,
           columns: deletedCols,
-          diffState: 'deleted' as any,
+          diffState: 'deleted' as const,
         },
       });
     } else if (origNode && propNode) {
@@ -68,7 +68,7 @@ export function computeSchemaDiff(
       const origColMap = new Map(origCols.map(c => [c.name.toLowerCase(), c]));
       const propColMap = new Map(propCols.map(c => [c.name.toLowerCase(), c]));
       const allColNames = new Set([...origColMap.keys(), ...propColMap.keys()]);
-      const combinedColumns: any[] = [];
+      const combinedColumns: (Column & { diffState?: 'new' | 'deleted' })[] = [];
       let columnsChanged = false;
 
       allColNames.forEach(colName => {
@@ -77,10 +77,10 @@ export function computeSchemaDiff(
 
         if (!origCol && propCol) {
           columnsChanged = true;
-          combinedColumns.push({ ...propCol, diffState: 'new' as any });
+          combinedColumns.push({ ...propCol, diffState: 'new' });
         } else if (origCol && !propCol) {
           columnsChanged = true;
-          combinedColumns.push({ ...origCol, diffState: 'deleted' as any });
+          combinedColumns.push({ ...origCol, diffState: 'deleted' });
         } else if (origCol && propCol) {
           const changed =
             origCol.type.toLowerCase() !== propCol.type.toLowerCase() ||
@@ -88,7 +88,7 @@ export function computeSchemaDiff(
             !!origCol.is_nullable !== !!propCol.is_nullable;
           if (changed) {
             columnsChanged = true;
-            combinedColumns.push({ ...propCol, diffState: 'new' as any });
+            combinedColumns.push({ ...propCol, diffState: 'new' });
           } else {
             combinedColumns.push(origCol);
           }
@@ -102,7 +102,7 @@ export function computeSchemaDiff(
         data: {
           ...(propNode.data),
           columns: combinedColumns,
-          diffState: columnsChanged ? ('modified' as any) : undefined,
+          diffState: columnsChanged ? ('modified' as const) : undefined,
         },
       });
       if (columnsChanged) modifiedCount++;

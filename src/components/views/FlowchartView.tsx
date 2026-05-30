@@ -424,11 +424,11 @@ export const FlowchartView = React.memo(({
 
   const confirmAddSymbol = () => {
     takeSnapshot(nodesRef.current, edgesRef.current);
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 11);
     const data = { ...newNodeData };
     // Auto-generate groupId for Start nodes
     if (data.label.trim().toLowerCase() === 'start' && !data.groupId) {
-      data.groupId = `grp_${Math.random().toString(36).substr(2, 6)}`;
+      data.groupId = `grp_${Math.random().toString(36).substring(2, 8)}`;
     }
     const newNode: Node<FlowchartNodeData> = {
       id,

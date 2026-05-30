@@ -67,7 +67,7 @@ export const TableDialog = ({
     };
   }, [entity]);
 
-  const currentCode = (generatedCode as any)[activeSchemaTab];
+  const currentCode = (generatedCode as Record<string, string>)[activeSchemaTab];
 
   const getLanguage = (tab: string) => {
     if (tab === 'typescript' || tab === 'zod') return 'typescript';

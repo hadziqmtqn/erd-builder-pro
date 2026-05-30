@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 // Components
@@ -8,7 +8,6 @@ import { FeedbackDialog } from '@/components/FeedbackDialog';
 import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
 import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
 import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
-import { ERDSettingsDialog } from '@/components/modals/ERDSettingsDialog';
 import { DuplicateDocumentDialog } from '@/components/modals/DuplicateDocumentDialog';
 import { TablePropertiesModal } from '@/components/modals/TablePropertiesModal';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
@@ -164,6 +163,13 @@ function AppLayoutInner() {
     return ent?.project_id ?? null;
   }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
 
+  // ── Update browser tab title ──
+  useEffect(() => {
+    document.title = activeFileName
+      ? `${activeFileName} | ERD Builder Pro`
+      : 'ERD Builder Pro';
+  }, [activeFileName]);
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
@@ -248,11 +254,11 @@ function AppLayoutInner() {
               if (format === 'markdown') {
                 // executeExportMarkdown
               } else if (format === 'pdf') {
-                NoteExporter.exportToPDF(activeNote as any, options, pageSize);
+                NoteExporter.exportToPDF(activeNote, options, pageSize);
               } else if (format === 'print') {
-                NoteExporter.printNote(activeNote as any, options);
+                NoteExporter.printNote(activeNote, options);
               } else if (format === 'word') {
-                NoteExporter.exportToWord(activeNote as any, options);
+                NoteExporter.exportToWord(activeNote, options);
               }
             }
           }}
@@ -284,33 +290,7 @@ function AppLayoutInner() {
           />
         )}
 
-        {!isPublicView && view === 'erd' ? (
-          <ERDSettingsDialog
-            isOpen={isRenameDialogOpen}
-            onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}
-            activeDocument={editDialogNote ?? activeDocument}
-            newName={newName}
-            setNewName={setNewName}
-            projects={projects}
-            selectedProjectId={renameProjectId}
-            setSelectedProjectId={setRenameProjectId}
-            updateDiagram={updateDiagram}
-            onMoveDiagramToProject={moveDiagramToProject}
-            onRenameSuccess={undefined}
-            nodes={nodes}
-            edges={edges}
-            setNodes={setNodes}
-            setEdges={setEdges}
-            activeDiagramId={activeDiagramId}
-            takeSnapshot={takeSnapshot}
-            saveDiagram={saveDiagram}
-            triggerDebouncedSync={triggerDebouncedSync}
-            broadcastMessage={broadcastMessage}
-            setIsLocalSaving={setIsLocalSaving}
-            viewportRef={viewportRef}
-            lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
-          />
-        ) : !isPublicView && (
+        {!isPublicView && (
           <RenameDocumentDialog
             isOpen={isRenameDialogOpen}
             onOpenChange={(open) => { setIsRenameDialogOpen(open); if (!open) setEditDialogNote(null); }}

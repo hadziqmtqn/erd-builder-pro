@@ -171,7 +171,7 @@ export function DashboardRoute() {
       {/* ── Stat Cards (using API totals) ── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {typeConfig.map((cfg) => {
-          const count = (ctx as any)[cfg.totalKey] ?? 0;
+          const count = (ctx as Record<string, any>)[cfg.totalKey] ?? 0;
           return (
             <button
               key={cfg.key}
@@ -228,7 +228,7 @@ export function DashboardRoute() {
             <button
               key={cfg.key}
               onClick={() => {
-                const fn = (ctx as any)[cfg.createFn];
+                const fn = (ctx as Record<string, any>)[cfg.createFn];
                 if (fn) fn(`New ${cfg.label.slice(0, -1)}`);
               }}
               className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent/50 transition-colors"

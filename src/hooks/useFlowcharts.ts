@@ -124,8 +124,8 @@ export function useFlowcharts(isGuest: boolean = false) {
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
     if (isGuest) {
-      const newFlowchart: Flowchart = {
-        id: Math.random().toString(36).substr(2, 9) as any,
+      const newFlowchart = {
+        id: Math.random().toString(36).substring(2, 9),
         uid: crypto.randomUUID(),
         title,
         data: data || '',
@@ -133,9 +133,8 @@ export function useFlowcharts(isGuest: boolean = false) {
         is_deleted: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      };
-      // @ts-ignore
-      newFlowchart.type = 'flowchart';
+        type: 'flowchart',
+      } as Flowchart & { type: string };
       await localPersistence.saveResource(newFlowchart);
       setFlowcharts(prev => [newFlowchart, ...prev]);
       toast.success('Flowchart created locally');

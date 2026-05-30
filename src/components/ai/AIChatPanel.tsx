@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, ChevronDown, Minimize2, PanelRightClose, Plus, Loader2 } from 'lucide-react';
+import { Sparkles, Minimize2, PanelRightClose, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -95,12 +95,32 @@ export const AIChatPanel = ({
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [activeActionPrompt, setActiveActionPrompt] = useState<string | null>(null);
-  const [showSessions, setShowSessions] = useState(true);
+  const [page, setPage] = useState<'list' | 'chat'>('list');
   const [minimized, setMinimized] = useState(false);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // ─── Session search & pagination ────────────────
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [sessionPage, setSessionPage] = useState(1);
+  const SESSIONS_PER_PAGE = 20;
+
+  const filteredSessions = useMemo(() => {
+    if (!sessionSearch.trim()) return sessions;
+    const q = sessionSearch.toLowerCase();
+    return sessions.filter(s => s.title?.toLowerCase().includes(q));
+  }, [sessions, sessionSearch]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / SESSIONS_PER_PAGE));
+  const paginatedSessions = useMemo(() => {
+    const start = (sessionPage - 1) * SESSIONS_PER_PAGE;
+    return filteredSessions.slice(start, start + SESSIONS_PER_PAGE);
+  }, [filteredSessions, sessionPage]);
+
+  // Reset to page 1 on search change
+  useEffect(() => { setSessionPage(1); }, [sessionSearch]);
 
   const entityToViewMap: Record<string, ViewType> = {
     note: 'notes',
@@ -117,6 +137,7 @@ export const AIChatPanel = ({
     if (pendingPrompt && pendingPrompt.trim()) {
       if (inputRef.current) inputRef.current.value = pendingPrompt;
       setMinimized(false);
+      setPage('chat');
       setTimeout(() => inputRef.current?.focus(), 100);
       if (onPromptUsed) onPromptUsed();
     }
@@ -248,7 +269,7 @@ export const AIChatPanel = ({
               .select('content')
               .eq('uid', file.uid)
               .single();
-            content = (data as any)?.content || '';
+            content = (data as Record<string, any>)?.content || '';
           }
         } else if (file.type === 'flowchart') {
           const fc = flowcharts.find(f => String(f.id) === String(file.uid) || String(f.uid) === String(file.uid));
@@ -356,7 +377,7 @@ export const AIChatPanel = ({
   // ─── Handle new session ────────────────────────────
   const handleNewSession = useCallback(async () => {
     await createSession();
-    setShowSessions(false);
+    setPage('chat');
   }, [createSession]);
 
   const handleClearSelection = useCallback(() => {
@@ -365,6 +386,7 @@ export const AIChatPanel = ({
 
   const hasActiveSession = !!currentSession;
   const hasMessages = messages.length > 0;
+  const hasSessions = sessions.length > 0;
 
   return (
     <Tooltip.Provider>
@@ -373,131 +395,169 @@ export const AIChatPanel = ({
         style={{ display: minimized ? 'none' : undefined }}
         className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300"
       >
-        {/* ── Header ─────────────────────────────────── */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-muted/20">
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="size-4 text-primary" />
-            <h3 className="text-sm font-semibold tracking-tight">AI Assistant</h3>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => setShowSessions(!showSessions)}
-              title={showSessions ? "Hide sessions" : "Show sessions"}
-            >
-              <ChevronDown className={`size-3.5 transition-transform ${showSessions ? 'rotate-180' : ''}`} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => setMinimized(true)}
-              title="Minimize panel"
-            >
-              <Minimize2 className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={handleClose}
-              title="Close panel"
-            >
-              <PanelRightClose className="size-3.5" />
-            </Button>
-          </div>
-        </div>
+        {page === 'list' ? (
+          <>
+            {/* ── List Header ────────────────────────── */}
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-muted/20">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="size-4 text-primary" />
+                <h3 className="text-sm font-semibold tracking-tight">AI Assistant</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="size-8" onClick={() => setMinimized(true)} title="Minimize panel">
+                  <Minimize2 className="size-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
+                  <PanelRightClose className="size-3.5" />
+                </Button>
+              </div>
+            </div>
 
-        {/* ── Session List ─────────────────────────────── */}
-        {showSessions && (
-          <div className="shrink-0 border-b bg-muted/10">
-            <div className="p-3 space-y-1 max-h-[240px] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/10">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full gap-2 h-8 text-xs border-dashed"
-                onClick={handleNewSession}
-              >
+            {/* ── Session List Page ──────────────────── */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
+              <Button variant="outline" size="sm" className="w-full gap-2 h-8 text-xs border-dashed" onClick={handleNewSession}>
                 <Plus className="size-3.5" />
                 New Chat
               </Button>
 
-              {isSessionsLoading ? (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="size-5 animate-spin text-muted-foreground/50" />
+              {hasSessions && (
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" />
+                  <input
+                    type="text"
+                    placeholder="Search conversations..."
+                    value={sessionSearch}
+                    onChange={e => setSessionSearch(e.target.value)}
+                    className="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border border-border bg-background/50 outline-none focus:border-primary/30 transition-colors"
+                  />
                 </div>
-              ) : sessions.length === 0 ? (
-                <div className="py-6 text-center">
-                  <p className="text-[11px] text-muted-foreground/50 font-medium">No conversations yet</p>
+              )}
+
+              {isSessionsLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground/40" />
+                </div>
+              ) : filteredSessions.length === 0 ? (
+                <div className="py-16 text-center">
+                  <p className="text-[11px] text-muted-foreground/50 font-medium">
+                    {sessionSearch ? 'No matching conversations' : 'No conversations yet'}
+                  </p>
                 </div>
               ) : (
-                sessions.map((session) => (
-                  <SessionItem
-                    key={session.uid}
-                    session={session}
-                    isActive={currentSession?.uid === session.uid}
-                    onClick={() => {
-                      selectSession(session.uid);
-                      setShowSessions(false);
-                    }}
-                    onDelete={() => deleteSession(session.uid)}
-                  />
-                ))
+                <>
+                  {paginatedSessions.map((session) => (
+                    <SessionItem
+                      key={session.uid}
+                      session={session}
+                      isActive={currentSession?.uid === session.uid}
+                      onClick={() => {
+                        selectSession(session.uid);
+                        setPage('chat');
+                      }}
+                      onDelete={() => deleteSession(session.uid)}
+                    />
+                  ))}
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-2">
+                      <button
+                        onClick={() => setSessionPage(p => Math.max(1, p - 1))}
+                        disabled={sessionPage <= 1}
+                        className="size-6 flex items-center justify-center rounded hover:bg-muted/30 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronLeft className="size-3" />
+                      </button>
+                      <span className="text-[10px] text-muted-foreground/50 font-medium tabular-nums">
+                        {sessionPage}/{totalPages}
+                      </span>
+                      <button
+                        onClick={() => setSessionPage(p => Math.min(totalPages, p + 1))}
+                        disabled={sessionPage >= totalPages}
+                        className="size-6 flex items-center justify-center rounded hover:bg-muted/30 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronRight className="size-3" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          </div>
+          </>
+        ) : (
+          <>
+            {/* ── Chat Header ─────────────────────────── */}
+            <div className="shrink-0 flex items-center justify-between px-3 py-3 border-b bg-muted/20">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  onClick={() => setPage('list')}
+                  className="size-7 flex items-center justify-center rounded hover:bg-muted/30 shrink-0 transition-colors"
+                  title="Back to conversations"
+                >
+                  <ArrowLeft className="size-4" />
+                </button>
+                <span className="text-sm font-medium truncate">{currentSession?.title || 'AI Assistant'}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="icon" className="size-8" onClick={() => setMinimized(true)} title="Minimize panel">
+                  <Minimize2 className="size-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
+                  <PanelRightClose className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* ── Messages ────────────────────────────── */}
+            <ChatMessages
+              hasActiveSession={hasActiveSession}
+              hasSessions={hasSessions}
+              isMessagesLoading={isMessagesLoading}
+              hasMessages={hasMessages}
+              messages={messages}
+              isStreaming={isStreaming}
+              hasMoreMessages={hasMoreMessages}
+              isLoadingMore={isLoadingMore}
+              minimized={minimized}
+              loadMoreMessages={loadMoreMessages}
+              handleNewSession={handleNewSession}
+              sendMessage={sendMessage}
+              hasContentHandler={hasContentHandler}
+              contentHandlerStrategies={contentHandlerStrategies}
+              lastActionId={lastActionId}
+              applyContent={applyContent}
+              contentCheckType={contentCheckType}
+              mentionFiles={mentionFiles}
+              activeProjectId={projectId}
+              diagrams={diagrams}
+              flowcharts={flowcharts}
+              erdDefaultName={erdDefaultName}
+              flowchartDefaultName={flowchartDefaultName}
+            />
+
+            {/* ── Selection Bar ────────────────────────── */}
+            <SelectionBar
+              hasActiveSession={hasActiveSession}
+              selectionText={selectionText}
+              onClear={handleClearSelection}
+            />
+
+            {/* ── Input Area ───────────────────────────── */}
+            <ChatInput
+              hasActiveSession={hasActiveSession}
+              isStreaming={isStreaming}
+              entityType={entityType}
+              actions={actions}
+              activeActionId={activeActionId}
+              inputRef={inputRef}
+              onSend={handleSend}
+              onKeyDown={handleKeyDown}
+              onSelectAction={handleSelectAction}
+              onAbort={abortStream}
+              hasProject={!!projectId}
+              mentionFiles={mentionFiles}
+            />
+          </>
         )}
-
-        {/* ── Messages Area ───────────────────────────── */}
-        <ChatMessages
-          hasActiveSession={hasActiveSession}
-          isMessagesLoading={isMessagesLoading}
-          hasMessages={hasMessages}
-          messages={messages}
-          isStreaming={isStreaming}
-          hasMoreMessages={hasMoreMessages}
-          isLoadingMore={isLoadingMore}
-          minimized={minimized}
-          loadMoreMessages={loadMoreMessages}
-          handleNewSession={handleNewSession}
-          sendMessage={sendMessage}
-          hasContentHandler={hasContentHandler}
-          contentHandlerStrategies={contentHandlerStrategies}
-          lastActionId={lastActionId}
-          applyContent={applyContent}
-          contentCheckType={contentCheckType}
-          mentionFiles={mentionFiles}
-          activeProjectId={projectId}
-          diagrams={diagrams}
-          flowcharts={flowcharts}
-          erdDefaultName={erdDefaultName}
-          flowchartDefaultName={flowchartDefaultName}
-        />
-
-        {/* ── Selection Bar ───────────────────────────── */}
-        <SelectionBar
-          hasActiveSession={hasActiveSession}
-          selectionText={selectionText}
-          onClear={handleClearSelection}
-        />
-
-        {/* ── Input Area ──────────────────────────────── */}
-        <ChatInput
-          hasActiveSession={hasActiveSession}
-          isStreaming={isStreaming}
-          entityType={entityType}
-          actions={actions}
-          activeActionId={activeActionId}
-          inputRef={inputRef}
-          onSend={handleSend}
-          onKeyDown={handleKeyDown}
-          onSelectAction={handleSelectAction}
-          onAbort={abortStream}
-          hasProject={!!projectId}
-          mentionFiles={mentionFiles}
-        />
       </div>
 
       {minimized && (
