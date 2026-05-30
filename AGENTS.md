@@ -59,12 +59,13 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
-### Cross-Feature Context: `project_id` (Filter OR for Orphan Sessions)
+### Cross-Feature Context: `project_id` (AND Filter for Session Scoping)
 
 - **Architecture decision**: Use `project_id` (FK to `projects`) in `ai_chat_sessions` as the source of truth, **not** `referenced_file_info` (JSONB).
 - **Why**: `referenced_file_info` is a cache that goes stale quickly (files deleted/moved → invalid references). With `project_id`, dynamic queries of all files per project are done on every `sendMessage()` — always fresh, zero maintenance.
 - **Currently**: `createSession()` in `useAIChat.ts` includes `project_id` if the file has a workspace, plus `entity_type` + `entity_uid` as the origin file identifier.
-- **Orphan session handling**: `listSessions` in `useAIChat.ts` uses an OR filter: `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` — sessions with `project_id` appear in all project files, `NULL` sessions remain private to their origin file.
+- **Session scoping**: `listSessions` in `useAIChat.ts` uses an AND filter: `project_id = X AND entity_type = ? AND entity_uid = ?`. Sessions are scoped to BOTH project AND origin file — a session created from a Note in Project A never appears in Project B or in a different feature file within Project A. When `project_id` is NULL (uncategorized), sessions are scoped by `entity_type + entity_uid` only.
+- **Why NOT OR**: The previous OR filter `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` caused sessions to leak across projects during navigation (stale `project_id` in closure) and orphan sessions with NULL project_id to appear in all files. The AND filter is stricter but safer.
 - **Workspace safety**: `project_id` is filled from the active entity when the session is created. When the user switches projects, `entityContext` changes → new session gets a new `project_id`. Old sessions stay with their old project_id.
 - Dynamic sibling query: `buildSiblingContext()` parallel 4 tabel, greedy budget 6000 chars.
 
@@ -931,9 +932,9 @@ if (Date.now() - lastSaveCallRef.current < 100) {
 ```
 This prevents the auto-save effect from scheduling its 800ms timeout when `handleEntityUpdate` already saved directly. The gap between direct save completion and React re-render is always < 1ms in practice, so 100ms is a safe threshold.
 
-## Cross-Feature Chat (One Session for All Features)
+## Cross-Feature Chat (Session Scoping by File)
 
-- **One chat session can discuss Notes, ERD, and Flowchart** — `entity_type`/`entity_uid` is set when the session is first created and never changes. But chat content is flexible.
+- **Sessions are scoped by origin file** — `entity_type`/`entity_uid` is set when the session is first created. The AND filter (`project_id = X AND entity_type = ? AND entity_uid = ?`) ensures sessions only appear in their origin file and project. A session created from a Note in Project A never appears in Project B or in a different feature file within Project A.
 - **Radio pills** in `ChatInput.tsx` display actions according to **the currently open feature file** (not the session's `entity_type`). Determined by the `entityType` prop (current view).
   - File: [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx):106 — `getActionsForView(currentViewType)` based on `entityType` (current file, not session origin)
   - File: [`src/components/ai/ChatInput.tsx`](./src/components/ai/ChatInput.tsx):198 — `showActions = !isStreaming && actions.length > 0` (no `isCrossEntity` filter — actions still show even if session originated from a different view)
