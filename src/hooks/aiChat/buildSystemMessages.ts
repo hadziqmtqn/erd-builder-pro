@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 
 export const fallbackSystemPrompt = `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes. Follow these guidelines strictly:
 
@@ -74,12 +74,10 @@ This workspace integrates Database ERD Diagrams, Flowcharts, and Markdown Notes.
 
 export async function fetchUserSystemPrompt(): Promise<string | null> {
   try {
-    const { data } = await supabase
-      .from('ai_system_prompts')
-      .select('content')
-      .eq('is_default', true)
-      .limit(1);
-    return data && data.length > 0 ? data[0].content : null;
+    const res = await apiFetch('/api/ai/chat/prompts/default');
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.content || null;
   } catch {
     return null;
   }

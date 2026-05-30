@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { AIChatSession, AIChatMessage } from '@/types';
 import { fetchEntityContext, buildSiblingContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
@@ -84,11 +84,25 @@ export function useAIChat(
   const isGuestCheck = (): boolean =>
     isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest';
 
-  const buildBaseQuery = () => {
-    let query = supabase.from('ai_chat_sessions').select('*');
+  const buildSessionUrl = () => {
+    let url = '/api/ai/chat/sessions';
     const uid = getUserId();
-    if (uid) query = query.eq('user_id', uid);
-    return query;
+    if (!uid) return url;
+
+    const params = new URLSearchParams();
+    if (projectId && entityContext) {
+      params.set('project_id', String(projectId));
+      params.set('entity_type', entityContext.entityType);
+      params.set('entity_uid', entityContext.entityUid);
+    } else if (projectId) {
+      params.set('project_id', String(projectId));
+    } else if (entityContext) {
+      params.set('entity_type', entityContext.entityType);
+      params.set('entity_uid', entityContext.entityUid);
+    }
+    const qs = params.toString();
+    if (qs) url += '?' + qs;
+    return url;
   };
 
   // ─── Session Management ───────────────────────────────
@@ -111,22 +125,11 @@ export function useAIChat(
     }
 
     try {
-      let query = buildBaseQuery().order('updated_at', { ascending: false });
-
-      if (projectId && entityContext) {
-        query = query.or(
-          `project_id.eq.${projectId},and(project_id.is.null,entity_type.eq.${entityContext.entityType},entity_uid.eq.${entityContext.entityUid})`
-        );
-      } else if (projectId) {
-        query = query.eq('project_id', projectId);
-      } else if (entityContext) {
-        query = query.eq('entity_type', entityContext.entityType).eq('entity_uid', entityContext.entityUid);
-      }
-
-      const { data, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
+      const res = await apiFetch(buildSessionUrl());
+      if (!res.ok) throw new Error('Failed to load sessions');
+      const data = await res.json();
       setSessions(data || []);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load chat sessions');
     } finally {
       setIsSessionsLoading(false);
@@ -157,20 +160,22 @@ export function useAIChat(
 
     try {
       const payload: any = { title: 'New Conversation' };
-      const uid = getUserId();
-      if (uid) payload.user_id = uid;
       if (entityContext) { payload.entity_type = entityContext.entityType; payload.entity_uid = entityContext.entityUid; }
       if (projectId) payload.project_id = projectId;
 
-      const { data, error } = await supabase.from('ai_chat_sessions').insert([payload]).select().single();
-      if (error) throw error;
+      const res = await apiFetch('/api/ai/chat/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Failed to create session');
+      const newSession = await res.json() as AIChatSession;
 
-      const newSession = data as AIChatSession;
       setSessions(prev => [newSession, ...prev]);
       setCurrentSession(newSession);
       setMessages([]);
       return newSession.uid;
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to create chat session');
       return null;
     }
@@ -195,29 +200,24 @@ export function useAIChat(
     try {
       let session: AIChatSession | null = sessionsRef.current.find(s => s.uid === sessionUid) ?? null;
       if (!session) {
-        const { data, error } = await supabase.from('ai_chat_sessions').select('*').eq('uid', sessionUid).single();
-        if (error) throw error;
-        session = data;
+        const res = await apiFetch(`/api/ai/chat/sessions/${sessionUid}`);
+        if (!res.ok) throw new Error('Session not found');
+        session = await res.json();
       }
       if (!session) throw new Error('Session not found');
 
       setCurrentSession(session);
       messageOffsetRef.current = 0;
 
-      const { data, error: msgError, count } = await supabase
-        .from('ai_chat_messages')
-        .select('*', { count: 'exact', head: false })
-        .eq('session_id', session.id)
-        .order('created_at', { ascending: false })
-        .range(0, PAGE_SIZE - 1);
+      const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.id}/messages?offset=0&limit=${PAGE_SIZE}`);
+      if (!msgRes.ok) throw new Error('Failed to load messages');
+      const { data: msgData, count } = await msgRes.json();
 
-      if (msgError) throw msgError;
-
-      const loadedMessages: AIChatMessage[] = (data || []).reverse().map(m => ({ ...m, selection_text: m.selection_text ?? null }));
+      const loadedMessages: AIChatMessage[] = (msgData || []).reverse().map(m => ({ ...m, selection_text: m.selection_text ?? null }));
       setMessages(loadedMessages);
       messageOffsetRef.current = loadedMessages.length;
       setHasMoreMessages((count || 0) > loadedMessages.length);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load messages');
     } finally {
       setIsMessagesLoading(false);
@@ -231,14 +231,9 @@ export function useAIChat(
 
     try {
       const offset = messageOffsetRef.current;
-      const { data, error } = await supabase
-        .from('ai_chat_messages')
-        .select('*')
-        .eq('session_id', currentSession.id)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1);
-
-      if (error) throw error;
+      const msgRes = await apiFetch(`/api/ai/chat/sessions/${currentSession.id}/messages?offset=${offset}&limit=${PAGE_SIZE}`);
+      if (!msgRes.ok) throw new Error('Failed to load more messages');
+      const { data } = await msgRes.json();
 
       if (data && data.length > 0) {
         const olderMessages: AIChatMessage[] = data.reverse().map(m => ({ ...m, selection_text: m.selection_text ?? null }));
@@ -264,8 +259,8 @@ export function useAIChat(
     }
 
     try {
-      const { error } = await supabase.from('ai_chat_sessions').delete().eq('uid', sessionUid);
-      if (error) throw error;
+      const res = await apiFetch(`/api/ai/chat/sessions/${sessionUid}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete session');
       setSessions(prev => prev.filter(s => s.uid !== sessionUid));
       if (currentSession?.uid === sessionUid) { setCurrentSession(null); setMessages([]); }
     } catch {
@@ -290,7 +285,11 @@ export function useAIChat(
     if (isGuest) {
       await persistGuestTitle(sessionId as string, title);
     } else {
-      await supabase.from('ai_chat_sessions').update({ title, updated_at: new Date().toISOString() }).eq('id', sessionId);
+      await apiFetch(`/api/ai/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
+      });
     }
   }, []);
 
@@ -328,10 +327,14 @@ export function useAIChat(
     // Online mode: save user message to DB + auto-title
     if (!isGuest) {
       try {
-        const { error } = await supabase.from('ai_chat_messages').insert([{
-          session_id: currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
-        }]);
-        if (error) throw error;
+        const res = await apiFetch('/api/ai/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to save message');
 
         const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
         if (isFirstMessage) {
@@ -349,7 +352,7 @@ export function useAIChat(
     try {
       // Resolve AI config
       const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined } =
-        isGuest ? { baseUrl: undefined, apiKey: undefined, model: undefined } : await resolveAiConfig(getUserId());
+        isGuest ? { baseUrl: undefined, apiKey: undefined, model: undefined } : await resolveAiConfig();
 
       // Build system messages
       const apiMessages: { role: string; content: string }[] = [];
@@ -439,12 +442,20 @@ export function useAIChat(
           return updated;
         });
       } else {
-        const { error: saveAIError } = await supabase.from('ai_chat_messages').insert([{
-          session_id: currentSession.id, role: 'assistant', content: accumulatedResponse,
-        }]);
-        if (saveAIError) throw saveAIError;
+        const saveAIRes = await apiFetch('/api/ai/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSession.id, role: 'assistant', content: accumulatedResponse,
+          }),
+        });
+        if (!saveAIRes.ok) throw new Error('Failed to save AI response');
 
-        await supabase.from('ai_chat_sessions').update({ updated_at: new Date().toISOString() }).eq('id', currentSession.id);
+        await apiFetch(`/api/ai/chat/sessions/${currentSession.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updated_at: new Date().toISOString() }),
+        });
         setSessions(prev => {
           const updated = prev.map(s => s.id === currentSession.id ? { ...s, updated_at: new Date().toISOString() } : s);
           updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());

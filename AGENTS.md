@@ -363,6 +363,31 @@ src/components/ai/
 - **`saveDiagram` Guest resource upsert** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):362-382): when `localPersistence.getResource` + uid fallback both fail in Guest mode, `saveDiagram` now creates a new resource entry from scratch instead of silently skipping. Prevents data loss when `activeDiagramId` is a UUID that doesn't match the IndexedDB keyPath (which uses `id`, not `uid`).
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
 
+## AI Settings API Migration (Server-Only Supabase)
+
+- **Problem**: `useAISettings.ts` called Supabase directly from the frontend (`supabase.from('ai_providers').select(...)`) requiring `VITE_SUPABASE_URL` env var. In Vercel preview where only `SUPABASE_URL` (server) was set, AI settings failed with `TypeError: Load failed`.
+- **Fix**: Moved all AI Settings CRUD (providers, configs, models, prompts, initialize) to server API at `/api/ai/settings/*`.
+- **Server file**: [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) — Express router with `authenticate` middleware, mounted at `app.use("/api/ai/settings", aiSettingsRouter)` in [`server/index.ts`](./server/index.ts).
+- **Client file**: [`src/hooks/useAISettings.ts`](./src/hooks/useAISettings.ts) — rewritten to use `apiFetch` for all calls instead of direct `supabase` client. No `VITE_SUPABASE_URL` dependency.
+- **Route list**: `GET/POST /configs`, `GET/POST /models`, `PUT/DELETE /models/:id`, `GET/POST /prompts`, `DELETE /prompts/:id`, `PUT /prompts/:id/toggle-default`, `POST /initialize`, `PUT /providers/:id`, `GET /providers`.
+- **No conflict**: Express router for `/api/ai` (proxy, `/api/ai/proxy`) and `/api/ai/settings` (settings) are separate mount points — no path overlap.
+- **Targeted fetch optimization**: `fetchModelsData()` and `fetchPromptsData()` replace `fetchData()` calls in model/prompt handlers — avoids re-fetching providers/configs on every CRUD operation.
+
+## AI Chat API Migration (Server-Only Supabase)
+
+- **Problem**: `useAIChat.ts` and its sub-modules (`resolveAiConfig.ts`, `syncSessionProjectId.ts`, `buildSystemMessages.ts`) called Supabase directly from the frontend for AI chat CRUD (sessions, messages, config, prompts). This required `VITE_SUPABASE_URL` env var which was unavailable in Vercel preview.
+- **Fix**: Moved all AI Chat persistence to server API at `/api/ai/chat/*`.
+- **Server file**: [`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts) — Express router with `authenticate` middleware, mounted at `app.use("/api/ai/chat", aiChatRouter)`.
+- **Endpoints**: `GET/POST /sessions`, `GET/DELETE /sessions/:uid`, `PUT /sessions/:id`, `GET /sessions/:id/messages`, `POST /messages`, `GET /config`, `GET /prompts/default`.
+- **Client files**: All 4 migrated files now use `apiFetch` instead of `supabase`:
+  - [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts) — sessions + messages CRUD
+  - [`src/hooks/aiChat/resolveAiConfig.ts`](./src/hooks/aiChat/resolveAiConfig.ts) — AI config resolution
+  - [`src/hooks/aiChat/syncSessionProjectId.ts`](./src/hooks/aiChat/syncSessionProjectId.ts) — project ID sync
+  - [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts) — default prompt fetch
+- **Zero direct Supabase calls remain** in the entire `src/` directory. All database access now goes through `apiFetch` → Express server → server supabase client (`SUPABASE_URL` env).
+- **VITE_SUPABASE_URL no longer needed** in any environment.
+- **Guest mode safety**: AI Chat uses `isGuestCheck()` guards at the top of every function — all online API calls are skipped in guest mode, using IndexedDB (`localPersistence`) instead. AI Settings is never accessible in guest mode (Settings menu hidden in `NavUser`), plus `fetchData`/`fetchModelsData`/`fetchPromptsData` all have `if (isGuest) return` guards.
+
 ## Login Fix Pattern (Second Round-Trip Bug)
 
 - **Bug**: After successful `POST /api/login`, `App.tsx` called `checkAuth()` (async `GET /api/me`) instead of `handleLogin()` (synchronous). This caused the login page to stay visible because:

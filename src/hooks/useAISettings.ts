@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { AIProvider, UserAIConfig, AIModel, AISystemPrompt } from '@/types';
 import { toast } from 'sonner';
@@ -15,7 +15,6 @@ export const useAISettings = () => {
   const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<string>('');
 
-  // New Model Form State
   const [editingModelId, setEditingModelId] = useState<number | string | null>(null);
   const [newModel, setNewModel] = useState({
     provider_id: '',
@@ -27,69 +26,82 @@ export const useAISettings = () => {
     if (!user) return;
     if (isGuest) {
       setIsLoading(false);
-      return; // Guest: no DB settings to load
+      return;
     }
     setIsLoading(true);
     try {
-      // 1. Fetch Providers
-      const { data: provData, error: provError } = await supabase
-        .from('ai_providers')
-        .select('*')
-        .eq('is_active', true)
-        .order('id');
+      const [provRes, configsRes, modelsRes, promptsRes] = await Promise.all([
+        apiFetch('/api/ai/settings/providers'),
+        apiFetch('/api/ai/settings/configs'),
+        apiFetch('/api/ai/settings/models'),
+        apiFetch('/api/ai/settings/prompts'),
+      ]);
 
-      if (provError) throw provError;
-      setProviders(provData || []);
-      
-      // Set default tab if none is active
-      if (provData && provData.length > 0 && !activeTab) {
+      if (!provRes.ok) {
+        const err = await provRes.json();
+        throw new Error(err.error || 'Failed to fetch providers');
+      }
+      const provData: AIProvider[] = await provRes.json();
+      setProviders(provData);
+
+      if (provData.length > 0 && !activeTab) {
         setActiveTab('api-config');
       }
 
-      // 2. Fetch User Configs (skip for guests - no DB config)
-      if (!isGuest) {
-        const { data: configData, error: configError } = await supabase
-          .from('user_ai_configs')
-          .select('*')
-          .eq('user_id', user.id);
-        
-        if (configError) throw configError;
+      if (configsRes.ok) {
+        const configData: UserAIConfig[] = await configsRes.json();
         const configMap: Record<string, UserAIConfig> = {};
-        configData?.forEach(c => {
-          const provider = provData?.find(p => p.id === c.provider_id);
+        configData.forEach(c => {
+          const provider = provData.find(p => p.id === c.provider_id);
           if (provider) configMap[provider.code] = c;
         });
         setConfigs(configMap);
       }
 
-      // 3. Fetch Models
-      const { data: modelData, error: modelError } = await supabase
-        .from('ai_models')
-        .select('*')
-        .eq('is_active', true);
+      if (modelsRes.ok) {
+        const modelData: AIModel[] = await modelsRes.json();
+        const modelMap: Record<string, AIModel[]> = {};
+        modelData.forEach(m => {
+          if (!modelMap[m.provider_id]) modelMap[m.provider_id] = [];
+          modelMap[m.provider_id].push(m);
+        });
+        setModels(modelMap);
+      }
 
-      if (modelError) throw modelError;
-      const modelMap: Record<string, AIModel[]> = {};
-      modelData?.forEach(m => {
-        if (!modelMap[m.provider_id]) modelMap[m.provider_id] = [];
-        modelMap[m.provider_id].push(m);
-      });
-      setModels(modelMap);
-
-      // 4. Fetch System Prompts
-      const { data: promptData, error: promptError } = await supabase
-        .from('ai_system_prompts')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (promptError) throw promptError;
-      setPrompts(promptData || []);
-
+      if (promptsRes.ok) {
+        const promptData: AISystemPrompt[] = await promptsRes.json();
+        setPrompts(promptData);
+      }
     } catch (error: any) {
       toast.error('Failed to load AI settings: ' + error.message);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchModelsData = async () => {
+    if (!user || isGuest) return;
+    try {
+      const res = await apiFetch('/api/ai/settings/models');
+      if (!res.ok) return;
+      const modelData: AIModel[] = await res.json();
+      const modelMap: Record<string, AIModel[]> = {};
+      modelData.forEach(m => {
+        if (!modelMap[m.provider_id]) modelMap[m.provider_id] = [];
+        modelMap[m.provider_id].push(m);
+      });
+      setModels(modelMap);
+    } catch {}
+  };
+
+  const fetchPromptsData = async () => {
+    if (!user || isGuest) return;
+    try {
+      const res = await apiFetch('/api/ai/settings/prompts');
+      if (!res.ok) return;
+      const promptData: AISystemPrompt[] = await res.json();
+      setPrompts(promptData);
+    } catch {}
   };
 
   useEffect(() => {
@@ -107,28 +119,33 @@ export const useAISettings = () => {
 
     setIsSaving(true);
     try {
-      // 1. Update Provider Base URL if needed
-      if (provider.code === 'openai_compatible') {
-        const { error: pError } = await supabase
-          .from('ai_providers')
-          .update({ base_url: provider.base_url })
-          .eq('id', provider.id);
-        if (pError) throw pError;
+      if (provider.code === 'openai_compatible' && provider.base_url !== undefined) {
+        const pRes = await apiFetch(`/api/ai/settings/providers/${provider.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_url: provider.base_url }),
+        });
+        if (!pRes.ok) {
+          const err = await pRes.json();
+          throw new Error(err.error || 'Failed to update provider');
+        }
       }
 
-      // 2. Update User Config
-      const { error } = await supabase
-        .from('user_ai_configs')
-        .upsert({
-          user_id: user.id,
+      const cRes = await apiFetch('/api/ai/settings/configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           provider_id: provider.id,
           api_key: config.api_key,
           selected_model_id: config.selected_model_id,
           is_enabled: config.is_enabled ?? true,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,provider_id' });
+        }),
+      });
 
-      if (error) throw error;
+      if (!cRes.ok) {
+        const err = await cRes.json();
+        throw new Error(err.error || 'Failed to save configuration');
+      }
       toast.success(`${provider.name} configuration saved successfully!`);
     } catch (error: any) {
       toast.error('Failed to save configuration: ' + error.message);
@@ -154,7 +171,6 @@ export const useAISettings = () => {
     try {
       if (providerCode === 'openai' || providerCode === 'openai_compatible') {
         let baseUrl = provider.base_url || 'https://api.openai.com/v1';
-        // Clean trailing slashes
         baseUrl = baseUrl.replace(/\/+$/, '');
         
         const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -213,34 +229,40 @@ export const useAISettings = () => {
     setIsSaving(true);
     try {
       if (editingModelId) {
-        const { error } = await supabase
-          .from('ai_models')
-          .update({
+        const res = await apiFetch(`/api/ai/settings/models/${editingModelId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             provider_id: newModel.provider_id,
             model_identifier: newModel.model_identifier,
             display_name: newModel.display_name,
-          })
-          .eq('id', editingModelId);
-        
-        if (error) throw error;
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to update model');
+        }
         toast.success('Model updated successfully!');
       } else {
-        const { error } = await supabase
-          .from('ai_models')
-          .insert([{
+        const res = await apiFetch('/api/ai/settings/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             provider_id: newModel.provider_id,
             model_identifier: newModel.model_identifier,
             display_name: newModel.display_name,
-            is_active: true
-          }]);
-
-        if (error) throw error;
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to add model');
+        }
         toast.success('Model added successfully!');
       }
       
       setNewModel({ provider_id: '', model_identifier: '', display_name: '' });
       setEditingModelId(null);
-      await fetchData();
+      await fetchModelsData();
     } catch (error: any) {
       toast.error('Failed to process model: ' + error.message);
     } finally {
@@ -251,10 +273,13 @@ export const useAISettings = () => {
   const handleDeleteModel = async (id: number | string) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('ai_models').delete().eq('id', id);
-      if (error) throw error;
+      const res = await apiFetch(`/api/ai/settings/models/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete model');
+      }
       toast.success('Model deleted');
-      await fetchData();
+      await fetchModelsData();
     } catch (error: any) {
       toast.error('Failed to delete model: ' + error.message);
     } finally {
@@ -266,33 +291,23 @@ export const useAISettings = () => {
     if (!user) return;
     setIsSaving(true);
     try {
-      if (editingId) {
-        const { error } = await supabase
-          .from('ai_system_prompts')
-          .update({
-            name: formData.name,
-            content: formData.content,
-            category: formData.category,
-            is_default: formData.is_default,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingId);
-        if (error) throw error;
-        toast.success('Prompt updated successfully');
-      } else {
-        const { error } = await supabase
-          .from('ai_system_prompts')
-          .insert([{
-            name: formData.name,
-            content: formData.content,
-            category: formData.category,
-            is_default: formData.is_default,
-            user_id: user.id
-          }]);
-        if (error) throw error;
-        toast.success('Prompt created successfully');
+      const res = await apiFetch('/api/ai/settings/prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingId,
+          name: formData.name,
+          content: formData.content,
+          category: formData.category,
+          is_default: formData.is_default,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to save prompt');
       }
-      await fetchData();
+      toast.success(editingId ? 'Prompt updated successfully' : 'Prompt created successfully');
+      await fetchPromptsData();
     } catch (error: any) {
       toast.error('Failed to save prompt: ' + error.message);
     } finally {
@@ -303,10 +318,13 @@ export const useAISettings = () => {
   const handleDeletePrompt = async (id: string) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase.from('ai_system_prompts').delete().eq('id', id);
-      if (error) throw error;
+      const res = await apiFetch(`/api/ai/settings/prompts/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete prompt');
+      }
       toast.success('Prompt deleted');
-      await fetchData();
+      await fetchPromptsData();
     } catch (error: any) {
       toast.error('Failed to delete prompt: ' + error.message);
     } finally {
@@ -319,22 +337,17 @@ export const useAISettings = () => {
       const current = prompts.find(p => p.id === id);
       const willBeActive = current ? !current.is_default : true;
 
-      if (willBeActive) {
-        const { error: resetError } = await supabase
-          .from('ai_system_prompts')
-          .update({ is_default: false })
-          .neq('id', id);
-        if (resetError) throw resetError;
+      const res = await apiFetch(`/api/ai/settings/prompts/${id}/toggle-default`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_default: willBeActive }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update prompt');
       }
-
-      const { error } = await supabase
-        .from('ai_system_prompts')
-        .update({ is_default: willBeActive })
-        .eq('id', id);
-      if (error) throw error;
-
       toast.success(willBeActive ? 'System prompt activated' : 'System prompt deactivated');
-      await fetchData();
+      await fetchPromptsData();
     } catch (error: any) {
       toast.error('Failed to update prompt: ' + error.message);
     }
@@ -343,41 +356,11 @@ export const useAISettings = () => {
   const handleInitializeProviders = async () => {
     setIsSaving(true);
     try {
-      const defaultProviders = [
-        { name: 'OpenAI', code: 'openai', base_url: 'https://api.openai.com/v1', is_active: true },
-        { name: 'Google Gemini', code: 'gemini', base_url: null, is_active: true },
-        { name: 'OpenAI Compatible', code: 'openai_compatible', base_url: 'https://api.sumopod.com/v1', is_active: true }
-      ];
-
-      const { data: insertedProviders, error: pError } = await supabase
-        .from('ai_providers')
-        .insert(defaultProviders)
-        .select();
-
-      if (pError) throw pError;
-
-      if (insertedProviders) {
-        const modelsToInsert: any[] = [];
-        insertedProviders.forEach(p => {
-          if (p.code === 'openai') {
-            modelsToInsert.push(
-              { provider_id: p.id, model_identifier: 'gpt-4o', display_name: 'GPT-4o (Smartest)', is_active: true },
-              { provider_id: p.id, model_identifier: 'gpt-4o-mini', display_name: 'GPT-4o Mini (Fast)', is_active: true }
-            );
-          } else if (p.code === 'gemini') {
-            modelsToInsert.push(
-              { provider_id: p.id, model_identifier: 'gemini-1.5-pro', display_name: 'Gemini 1.5 Pro', is_active: true },
-              { provider_id: p.id, model_identifier: 'gemini-1.5-flash', display_name: 'Gemini 1.5 Flash', is_active: true }
-            );
-          }
-        });
-
-        if (modelsToInsert.length > 0) {
-          const { error: mError } = await supabase.from('ai_models').insert(modelsToInsert);
-          if (mError) throw mError;
-        }
+      const res = await apiFetch('/api/ai/settings/initialize', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to initialize');
       }
-
       toast.success('AI System initialized!');
       fetchData();
     } catch (error: any) {
