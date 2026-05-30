@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { AIChatSession } from '@/types';
 
 export async function syncSessionProjectId(
@@ -10,21 +10,26 @@ export async function syncSessionProjectId(
   const oldProjectId = session?.project_id || null;
   if (liveProjectId === oldProjectId || liveProjectId === undefined) return;
 
-  const updatePayload: Record<string, any> = {
+  const updatePayload = {
     updated_at: new Date().toISOString(),
     project_id: liveProjectId,
   };
 
-  const { error } = await supabase
-    .from('ai_chat_sessions')
-    .update(updatePayload)
-    .eq('id', session.id);
+  try {
+    const res = await apiFetch(`/api/ai/chat/sessions/${session.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatePayload),
+    });
 
-  if (!error) {
-    const updatedSession = { ...session, ...updatePayload } as AIChatSession;
-    setCurrentSession(updatedSession);
-    setSessions(prev => prev.map(s =>
-      s.id === session.id ? updatedSession : s
-    ));
+    if (res.ok) {
+      const updatedSession = await res.json();
+      setCurrentSession(updatedSession);
+      setSessions(prev => prev.map(s =>
+        s.id === session.id ? updatedSession : s
+      ));
+    }
+  } catch {
+    // silently fail — non-critical
   }
 }

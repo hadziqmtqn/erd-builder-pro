@@ -13,6 +13,8 @@ import feedbackRouter from "./routes/feedback.js";
 import backupsRouter from "./routes/backups.js";
 import commonRouter from "./routes/common.js";
 import aiRouter from "./routes/ai.js";
+import aiSettingsRouter from "./routes/ai-settings.js";
+import aiChatRouter from "./routes/ai-chat.js";
 
 const app = express();
 
@@ -44,6 +46,8 @@ app.use("/api/drawings", drawingsRouter);
 app.use("/api/flowcharts", flowchartsRouter);
 app.use("/api/backups", backupsRouter);
 app.use("/api/ai", aiRouter);
+app.use("/api/ai/settings", aiSettingsRouter);
+app.use("/api/ai/chat", aiChatRouter);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 
