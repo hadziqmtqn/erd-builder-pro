@@ -54,10 +54,11 @@ router.post("/login", async (req: ExpressRequest, res: ExpressResponse) => {
 
     if (authData && authData.session) {
       const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      const isSecure = isProd && req.protocol === 'https';
       
       res.cookie("token", authData.session.access_token, {
         httpOnly: true,
-        secure: isProd,
+        secure: isSecure,
         sameSite: "lax",
         path: "/",
         maxAge: SEVEN_DAYS_MS
@@ -74,10 +75,11 @@ router.post("/login", async (req: ExpressRequest, res: ExpressResponse) => {
 // Logout
 router.post("/logout", (req: ExpressRequest, res: ExpressResponse) => {
   const isProd = process.env.NODE_ENV === "production";
+  const isSecure = isProd && req.protocol === 'https';
   res.clearCookie("token", {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax"
+    secure: isSecure,
+    sameSite: isSecure ? "none" : "lax"
   });
   res.json({ success: true });
 });

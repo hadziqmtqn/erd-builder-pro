@@ -363,6 +363,18 @@ src/components/ai/
 - **`saveDiagram` Guest resource upsert** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):362-382): when `localPersistence.getResource` + uid fallback both fail in Guest mode, `saveDiagram` now creates a new resource entry from scratch instead of silently skipping. Prevents data loss when `activeDiagramId` is a UUID that doesn't match the IndexedDB keyPath (which uses `id`, not `uid`).
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
 
+## Login Fix Pattern (Second Round-Trip Bug)
+
+- **Bug**: After successful `POST /api/login`, `App.tsx` called `checkAuth()` (async `GET /api/me`) instead of `handleLogin()` (synchronous). This caused the login page to stay visible because:
+  1. `POST /api/login` sets `Set-Cookie: token=...` and returns user data
+  2. `onLogin()` calls `checkAuth()` — a **second HTTP round-trip** to verify the session
+  3. During the async call, `isAuthenticated` stays `false` → login page still renders
+  4. If `GET /api/me` fails (e.g., cookie `Secure` flag blocks HTTP localhost), user is stuck
+- **Fix** ([`src/App.tsx`](./src/App.tsx)): Destructure `handleLogin` from `useAuth` (was unused), wire `onLogin={(userData) => handleLogin(userData)}` — synchronous state update, no second API call.
+- **Login.tsx** ([`src/components/Login.tsx`](./src/components/Login.tsx)): `onLogin` prop changed from `() => void` to `(userData?: any) => void`; reads user data from `POST /api/login` response body and passes it through.
+- **Cookie Secure flag** ([`server/routes/auth.ts`](./server/routes/auth.ts)): Changed from `secure: isProd` to `secure: isProd && req.protocol === 'https'` — prevents cookie rejection on HTTP localhost in production mode (`npm run start`).
+- **Key pattern**: Never rely on a second API round-trip (`checkAuth()`) to confirm login success. The first call already succeeded; use synchronous state transition.
+
 ## ERD Architecture
 
 ### Data Structures

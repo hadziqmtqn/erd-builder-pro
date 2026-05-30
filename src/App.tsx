@@ -29,7 +29,7 @@ import { DashboardRoute } from './routes/DashboardRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 
 function AppContent() {
-  const { isAuthenticated, isGuest, checkAuth, handleGuestLogin, handleLogout } = useAuth();
+  const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
 
   // When transitioning from unauthenticated → authenticated (user logs in),
@@ -79,7 +79,7 @@ function AppContent() {
 
   // Login
   if (!isAuthenticated && !shareInfo) {
-    return <Login onLogin={() => checkAuth()} onGuestLogin={handleGuestLogin} />;
+    return <Login onLogin={(userData?: any) => handleLogin(userData)} onGuestLogin={handleGuestLogin} />;
   }
 
   // Main app

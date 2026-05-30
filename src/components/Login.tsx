@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (userData?: any) => void;
   onGuestLogin?: () => void;
 }
 
@@ -50,7 +50,8 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
         body: JSON.stringify({ email, password }),
       });
       if (res.ok) {
-        onLogin();
+        const data = await res.json();
+        onLogin(data.user);
         toast.success("Welcome back!");
       } else {
         const data = await res.json();
