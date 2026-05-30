@@ -99,7 +99,7 @@ export function useDrawingChangeHandler(params: UseDrawingChangeHandlerParams): 
 
         drawingIsSavingRef.current = true;
         try {
-          await saveDrawing({ ...currentDrawing, data } as any);
+          await saveDrawing({ ...currentDrawing, data });
           lastDrawingSaveTimeRef.current = Date.now();
           lastSaveCallRef.current = Date.now();
           triggerDebouncedSync();
@@ -129,7 +129,7 @@ export function useDrawingChangeHandler(params: UseDrawingChangeHandlerParams): 
 
       drawingIsSavingRef.current = true;
       try {
-        await saveDrawing({ ...currentDrawing, data } as any);
+        await saveDrawing({ ...currentDrawing, data });
         lastDrawingSaveTimeRef.current = Date.now();
         lastSaveCallRef.current = Date.now();
         triggerDebouncedSync();

@@ -80,11 +80,12 @@ export async function fetchSiblings(
 
     if (data) {
       for (const row of data) {
-        const uid = (row as any)[q.uidCol];
+        const rowData = row as Record<string, any>;
+        const uid = rowData[q.uidCol];
         if (uid === currentUid) continue;
         results.push({
           type: q.type,
-          title: (row as any)[q.titleCol] || '(untitled)',
+          title: rowData[q.titleCol] || '(untitled)',
           uid,
         });
       }

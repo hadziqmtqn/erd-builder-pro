@@ -5,12 +5,7 @@ import { Diagram, Entity, Relationship, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
 import { apiFetch } from '../lib/api';
-import { 
-  getCachedDiagramVersion, 
-  updateCachedDiagramVersion,
-  clearCachedDiagramVersion,
-  refreshDiagramVersion
-} from '../lib/diagramVersioning';
+import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
@@ -123,8 +118,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     const effectiveProjectId = (projectId === 'none' || projectId === 'uncategorized') ? null : projectId;
 
     if (isGuestCheck()) {
-      const newDiagram: Diagram = {
-        id: Math.random().toString(36).substr(2, 9) as any,
+      const newDiagram = {
+        id: Math.random().toString(36).substring(2, 11),
         uid: crypto.randomUUID(),
         name,
         project_id: effectiveProjectId || null,
@@ -133,9 +128,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         updated_at: new Date().toISOString(),
         entities: [],
         relationships: [],
-      };
-      // @ts-ignore
-      newDiagram.type = 'erd';
+        type: 'erd',
+      } as Diagram & { type: string };
       await localPersistence.saveResource(newDiagram);
       setDiagrams(prev => [newDiagram, ...prev]);
       toast.success('Diagram created locally');

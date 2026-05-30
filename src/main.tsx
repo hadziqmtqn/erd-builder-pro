@@ -17,7 +17,7 @@ window.fetch = async (...args) => {
   // Get URL string safely depending on the argument type passed to fetch
   const url = typeof args[0] === 'string' 
     ? args[0] 
-    : (args[0] instanceof Request ? args[0].url : typeof args[0] === 'object' && 'href' in (args[0] as any) ? (args[0] as any).href : '');
+    : (args[0] instanceof Request ? args[0].url : typeof args[0] === 'object' && 'href' in (args[0] as Record<string, any>) ? (args[0] as Record<string, any>).href : '');
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
   const isSupabaseRoute = url.includes('supabase.co');

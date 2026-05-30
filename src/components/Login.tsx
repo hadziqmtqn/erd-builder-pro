@@ -142,7 +142,6 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                           variant="outline" 
                           className="w-full" 
                           onClick={() => {
-                            // @ts-ignore
                             onGuestLogin?.();
                             toast.success("Welcome! You're in Guest Mode.");
                           }}

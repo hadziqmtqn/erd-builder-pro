@@ -701,7 +701,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
 
   // 1. Create Nodes
   for (const table of parsed.tables) {
-    const tableId = `node-${Math.random().toString(36).substr(2, 9)}`;
+    const tableId = `node-${Math.random().toString(36).substring(2, 11)}`;
 
     // Collect table-level PK column names
     const tableLevelPks = new Set<string>();
@@ -717,7 +717,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       const normalizedType = normalizeType(col.type);
 
       columns.push({
-        id: `col-${Math.random().toString(36).substr(2, 9)}`,
+        id: `col-${Math.random().toString(36).substring(2, 11)}`,
         name: col.name,
         type: normalizedType,
         is_pk: isPk,

@@ -31,7 +31,7 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
       shouldShow={({ editor, state }) => {
         return editor.isFocused && editor.isEditable && !state.selection.empty;
       }}
-      {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any)}
+      {...{ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any}
       className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
     >
       <TooltipProvider delay={200}>

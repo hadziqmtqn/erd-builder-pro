@@ -27,7 +27,7 @@ export async function fetchDiagram(uid: string) {
   const columnsByEntity: Record<string, { entity_id: string; name: string; type: string; is_pk: boolean }[]> = {};
   for (const col of columns || []) {
     if (!columnsByEntity[col.entity_id]) columnsByEntity[col.entity_id] = [];
-    const entry: { entity_id: string; name: string; type: string; is_pk: boolean } = col as any;
+    const entry = col as { entity_id: string; name: string; type: string; is_pk: boolean };
     columnsByEntity[col.entity_id].push(entry);
   }
 

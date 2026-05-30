@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Node, Edge, useReactFlow } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Entity } from '../types';
+import { Entity, AppView } from '../types';
 import { apiFetch } from '../lib/api';
 
 export interface ForbiddenDoc {
@@ -58,7 +58,7 @@ export function usePublicDocument(
       const data = await res.json();
       
       setPublicData(data);
-      setView(type as any);
+      setView(type as AppView);
       
       if (type === 'erd') {
         const flowNodes: Node<Entity>[] = data.entities.map((e: any) => ({

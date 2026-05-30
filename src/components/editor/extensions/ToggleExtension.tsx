@@ -37,7 +37,7 @@ export const ToggleExtension = Node.create({
           content: [{ type: 'paragraph' }]
         });
       },
-    } as any;
+    } as Record<string, any>;
   },
   addNodeView() {
     return ReactNodeViewRenderer(({ node, updateAttributes }) => {

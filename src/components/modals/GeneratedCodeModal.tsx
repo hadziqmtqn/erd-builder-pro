@@ -51,7 +51,7 @@ export const GeneratedCodeModal = ({
     };
   }, [entity]);
 
-  const currentCode = (generatedCode as any)[activeTab];
+  const currentCode = (generatedCode as Record<string, string>)[activeTab];
   
   const getLanguage = (tab: string) => {
     if (tab === 'typescript' || tab === 'zod') return 'typescript';

@@ -207,7 +207,7 @@ export function SQLImportForm({
             if (colChange.type === 'add') {
               mergedCols.push({
                 ...colChange.column,
-                id: `col-${Math.random().toString(36).substr(2, 9)}`,
+                id: `col-${Math.random().toString(36).substring(2, 11)}`,
                 sort_order: mergedCols.length,
               });
             } else if (colChange.type === 'modify') {
@@ -255,7 +255,7 @@ export function SQLImportForm({
         if (name !== newNode.data.name) {
           newNode.data.name = name;
         }
-        const newId = `node-${Math.random().toString(36).substr(2, 9)}`;
+        const newId = `node-${Math.random().toString(36).substring(2, 11)}`;
         idMapping[newNode.id] = newId;
         newNode.id = newId;
         newNode.data.id = newId;
@@ -267,7 +267,7 @@ export function SQLImportForm({
         const targetId = idMapping[edge.target] || edge.target;
         updatedEdges.push({
           ...edge,
-          id: `e-${Math.random().toString(36).substr(2, 9)}`,
+          id: `e-${Math.random().toString(36).substring(2, 11)}`,
           source: sourceId,
           target: targetId,
         });

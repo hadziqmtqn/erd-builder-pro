@@ -436,7 +436,7 @@ export function WorkspaceProvider({
   async function handleDrawingSelect(uid: string) {
     if (activeDrawingId === uid && view === 'drawings') return;
     await flushPendingSaves();
-    setSidebarViewState('drawings' as any);
+    setSidebarViewState('drawings');
     setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, data: undefined } : d));
     lastProcessedDrawingUrlRef.current = '/drawings/' + uid;
     navigate('/drawings/' + uid, { replace: true });
@@ -699,7 +699,7 @@ export function WorkspaceProvider({
       await flushPendingSaves();
     }
     if (newView !== 'trash' && newView !== 'changelog' && newView !== 'backups' && newView !== 'ai-settings') {
-      setSidebarViewState(newView as any);
+      setSidebarViewState(newView);
     }
     if (showTable) {
       setActiveNoteUid(null);

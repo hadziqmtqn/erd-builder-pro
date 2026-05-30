@@ -90,7 +90,7 @@ export default function PropertiesPanel({
   const addColumn = () => {
     const maxSortOrder = editingEntity.columns.reduce((max, col) => Math.max(max, col.sort_order || 0), -1);
     const newColumn: Column = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       name: 'new_column',
       type: 'VARCHAR',
       is_pk: false,

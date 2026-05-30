@@ -59,13 +59,20 @@ Note: `saveNote` now directly calls `setNotes` to sync React state immediately a
 - SelectionBar shows count badge (e.g. "2 tables") parsed from `Tables:` pattern by counting `); ` separators
 - `referenced_file_info` (JSONB) is for cross-feature links (Notes/ERD/flowchart) — NOT for selection text
 
-### Cross-Feature Context: `project_id` (AND Filter for Session Scoping)
+### Cross-Feature Context: Session Scoping
 
 - **Architecture decision**: Use `project_id` (FK to `projects`) in `ai_chat_sessions` as the source of truth, **not** `referenced_file_info` (JSONB).
 - **Why**: `referenced_file_info` is a cache that goes stale quickly (files deleted/moved → invalid references). With `project_id`, dynamic queries of all files per project are done on every `sendMessage()` — always fresh, zero maintenance.
-- **Currently**: `createSession()` in `useAIChat.ts` includes `project_id` if the file has a workspace, plus `entity_type` + `entity_uid` as the origin file identifier.
-- **Session scoping**: `listSessions` in `useAIChat.ts` uses an AND filter: `project_id = X AND entity_type = ? AND entity_uid = ?`. Sessions are scoped to BOTH project AND origin file — a session created from a Note in Project A never appears in Project B or in a different feature file within Project A. When `project_id` is NULL (uncategorized), sessions are scoped by `entity_type + entity_uid` only.
-- **Why NOT OR**: The previous OR filter `(project_id = X OR (project_id IS NULL AND entity_type = ? AND entity_uid = ?))` caused sessions to leak across projects during navigation (stale `project_id` in closure) and orphan sessions with NULL project_id to appear in all files. The AND filter is stricter but safer.
+- **`createSession()`**: Sets `project_id` if available, plus `entity_type` + `entity_uid` as the origin file identifier.
+- **Session scoping (`buildSessionUrl` / `listSessions`)**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts) always sends `entity_type` + `entity_uid` and `project_id` (if available) as query params. No `getUserId()` guard exists — the server auth middleware (JWT cookie) handles user filtering, eliminating the race where auth resolves after `listSessions` callbacks were already memoized.
+- **Server (`/sessions` GET)** at [`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts):8 — three-tier query:
+  - `project_id` + `entity_uid` → OR query: `project_id = X OR (project_id IS NULL AND entity_type = Y AND entity_uid = Z)` — shows project sessions AND file's own orphan sessions
+  - `project_id` only → `project_id = X`
+  - `entity_uid` only (no project) → `project_id IS NULL AND entity_type = Y AND entity_uid = Z` — file's orphan sessions only
+  - No params → `return res.json([])` — was `project_id IS NULL` before (leaked ALL orphan sessions across files)
+- **Why `entity_uid` in listing**: Orphan sessions (`project_id IS NULL`) need file-level scoping. Without entity params, the server returns all orphan sessions regardless of origin file — leaking sessions across notes/diagrams with null project_id.
+- **Why no `getUserId()` guard**: The old `buildSessionUrl` returned the URL with NO params when `getUserId()` returned null (auth not loaded on initial render). `listSessions` deps didn't include user ID, so it never refetched. The auth middleware on the server always extracts `user_id` from JWT, making the client-side guard unnecessary.
+- **`userRef` removed** from `useAIChat.ts` — was only used by the removed `getUserId()` helper.
 - **Workspace safety**: `project_id` is filled from the active entity when the session is created. When the user switches projects, `entityContext` changes → new session gets a new `project_id`. Old sessions stay with their old project_id.
 - Dynamic sibling query: `buildSiblingContext()` parallel 4 tabel, greedy budget 6000 chars.
 
@@ -204,6 +211,16 @@ After a Move-to-Trash, the table list shows stale data (missing/empty slots) bec
 - **Notes Rich Text**: AI is instructed to preserve and output rich markdown text.
 - **Workspace Integration & mentions**: Prompts outline the linked nature of ERD schemas, flowcharts, and notes. If a user references sibling files (via `@FileName`), the AI receives their content in context and cross-references them to generate consistent designs and business logic.
 - **Seed Prompts updated**: The default SQL seed (`seed_ai_system_prompts.sql`) has been rewritten to contain these English-based feature integration instructions.
+
+## Session List Search & Pagination
+
+- **Session list** in `AIChatPanel.tsx` has search input (filters by title, case-insensitive) and pagination (20 per page).
+- Pagination controls: `<` `page/total` `>` chevron buttons at bottom of list.
+- Search and pagination reset to page 1 when search query changes.
+- **One New Chat button**: 
+  - If `sessions.length === 0`: centered default (white) button in `ChatMessages` empty state — prominent CTA for first session.
+  - If `sessions.length > 0`: outline (dashed) button at top of session list — streamlined quick-add. The centered button in `ChatMessages` is replaced with "Select a conversation to continue" text.
+  - Logic: `hasSessions` boolean controls which button renders. `hasSessions` passed as prop from `AIChatPanel` → `ChatMessages`.
 
 ## AIChatPanel Component Architecture
 
@@ -932,9 +949,9 @@ if (Date.now() - lastSaveCallRef.current < 100) {
 ```
 This prevents the auto-save effect from scheduling its 800ms timeout when `handleEntityUpdate` already saved directly. The gap between direct save completion and React re-render is always < 1ms in practice, so 100ms is a safe threshold.
 
-## Cross-Feature Chat (Session Scoping by File)
+## Cross-Feature Chat (Session Scoping by Project)
 
-- **Sessions are scoped by origin file** — `entity_type`/`entity_uid` is set when the session is first created. The AND filter (`project_id = X AND entity_type = ? AND entity_uid = ?`) ensures sessions only appear in their origin file and project. A session created from a Note in Project A never appears in Project B or in a different feature file within Project A.
+- **Sessions are scoped by project** — `entity_type`/`entity_uid` is set when the session is first created for origin tracking. Session listing uses only `project_id` filter — all sessions within a project are visible across all feature files (Notes, ERD, Flowchart). A session created from a Note in Project A appears in ERD and Flowchart views within Project A, but never in Project B.
 - **Radio pills** in `ChatInput.tsx` display actions according to **the currently open feature file** (not the session's `entity_type`). Determined by the `entityType` prop (current view).
   - File: [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx):106 — `getActionsForView(currentViewType)` based on `entityType` (current file, not session origin)
   - File: [`src/components/ai/ChatInput.tsx`](./src/components/ai/ChatInput.tsx):198 — `showActions = !isStreaming && actions.length > 0` (no `isCrossEntity` filter — actions still show even if session originated from a different view)
@@ -1011,3 +1028,27 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - In `ERDView.tsx`, when `pendingDiff` is active, nodes are mapped to set `data.isDiffMode = true`.
   - In `EntityNode.tsx`, `useWorkspace()` context is imported to check `isPublicView`. Combined with `data.isDiffMode`, we define `isReadOnly = isPublicView || !!data.isDiffMode`.
   - If `isReadOnly` is active, double-click handler `onDoubleClick` is set to `undefined`, edit/delete click handlers return early, and the `DropdownMenu` trigger button (three-dots) is completely hidden. This completely blocks manual edits during diff review.
+
+## TypeScript Cleanup — `@ts-ignore`, `substr()`, and `as any`
+
+### `@ts-ignore` eliminated (10 files, 11 occurrences)
+
+All `@ts-ignore` comments removed and replaced with proper type-safe alternatives:
+
+- **5 data hooks** (`useDiagrams`, `useNotes`, `useFlowcharts`, `useDrawings`, `useProjects`): `type: 'erd'`/`'notes'`/etc. pattern — object type annotation changed from `const x: Interface = { ... }` with separate `x.type = '...'` to single initializer `{ ..., type: '...' } as Interface & { type: string }`. This avoids mutating after creation and eliminates the `@ts-ignore`.
+- **`useERDSession.ts`**: `window.currentSyncIsSilent` → `(window as any).currentSyncIsSilent` (type-safe window global access).
+- **`Login.tsx`**: `onGuestLogin?.()` — `@ts-ignore` was unnecessary; TS handles optional chaining correctly.
+- **`LucideIconExtension.tsx`**, **`SlashMenu.tsx` (2x)**: `LucideIcons[name]` → `(LucideIcons as Record<string, any>)[name]` for dynamic icon lookup.
+- **`note-importer.ts`**: `await import('marked')).marked` — removed `@ts-ignore`, dynamic import resolves correctly.
+
+### `substr()` eliminated (12 calls across 7 files)
+
+All `String.prototype.substr()` (deprecated) replaced with `substring()`:
+- `substr(2, 9)` → `substring(2, 11)` (9-char random IDs)
+- `substr(2, 6)` → `substring(2, 8)` (6-char group IDs)
+- Files: `useDiagrams.ts`, `useProjects.ts`, `useERDSession.ts`, `sqlParser.ts`, `SQLImportForm.tsx`, `PropertiesPanel.tsx`, `FlowchartView.tsx`
+
+### `as any` audit
+
+- **25 `as any` casts across 15 files** replaced with precise types (`as const`, `Record<string, any>`, intersection types, proper function overloads).
+- **13 remaining** are true dispensasi: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).

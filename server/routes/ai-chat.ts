@@ -18,14 +18,21 @@ router.get("/sessions", authenticate, async (req: ExpressRequest, res: ExpressRe
       .eq("user_id", userId)
       .order("updated_at", { ascending: false });
 
-    if (projectId && entityType && entityUid) {
+    const hasProject = !!projectId;
+    const hasEntity = !!entityType && !!entityUid;
+
+    if (hasProject && hasEntity) {
+      // Project-scoped sessions + orphan sessions from this file
       query = query.or(
         `project_id.eq.${projectId},and(project_id.is.null,entity_type.eq.${entityType},entity_uid.eq.${entityUid})`
       );
-    } else if (projectId) {
+    } else if (hasProject) {
       query = query.eq("project_id", projectId);
-    } else if (entityType && entityUid) {
-      query = query.eq("entity_type", entityType).eq("entity_uid", entityUid);
+    } else if (hasEntity) {
+      query = query.is("project_id", null).eq("entity_type", entityType).eq("entity_uid", entityUid);
+    } else {
+      // No filters provided — return empty instead of leaking orphan sessions
+      return res.json([]);
     }
 
     const { data, error } = await query;

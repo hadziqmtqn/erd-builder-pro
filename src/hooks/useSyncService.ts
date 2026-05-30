@@ -272,12 +272,12 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
       try {
         const pendingSyncs = await localPersistence.getAllPendingSyncs();
         // Since DraftType.DIAGRAM is removed from the enum, we use the string 'diagram' directly
-        const legacyDrafts = pendingSyncs.filter(d => (d as any).type === 'diagram');
+        const legacyDrafts = pendingSyncs.filter((d: any) => d.type === 'diagram');
         
         if (legacyDrafts.length > 0) {
           console.log(`%c[Migration] Cleaning up ${legacyDrafts.length} legacy 'diagram' drafts...`, 'color: #f59e0b; font-weight: bold');
           for (const draft of legacyDrafts) {
-            await localPersistence.deleteDraft('diagram' as any, draft.id);
+            await (localPersistence.deleteDraft as any)('diagram', draft.id);
           }
           console.log('%c[Migration] Legacy drafts cleaned successfully.', 'color: #10b981; font-weight: bold');
         }

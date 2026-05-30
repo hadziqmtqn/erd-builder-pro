@@ -177,8 +177,7 @@ export function useERDSession(
             viewport_zoom: parsedDraft.viewport.zoom 
           };
           // Only show toast if not a silent reload
-          // @ts-ignore - options might be passed from App.tsx
-          if (!window.currentSyncIsSilent) {
+          if (!(window as any).currentSyncIsSilent) {
             toast.info("Loaded unsynced local draft", { duration: 2000 });
           }
         } catch (e) {}
@@ -312,7 +311,7 @@ export function useERDSession(
   };
 
   const addEntity = () => {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 11);
     const uniqueName = getUniqueName('NewTable', nodes);
 
     // Calculate the center of the current viewport
@@ -330,7 +329,7 @@ export function useERDSession(
       y: centerY - 50,
       color: '#6366f1',
       columns: [
-        { id: Math.random().toString(36).substr(2, 9), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }
+        { id: Math.random().toString(36).substring(2, 11), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }
       ],
     };
     const newNode: Node<Entity> = { id, type: 'entity', position: { x: newEntity.x, y: newEntity.y }, data: newEntity };

@@ -35,9 +35,9 @@ export const Badge = Mark.create({
   },
   addCommands() {
     return {
-      toggleBadge: () => ({ commands }) => commands.toggleMark(this.name),
-      setBadgeColor: color => ({ commands }) => commands.updateAttributes(this.name, { color: color || null }),
-    } as any;
+      toggleBadge: () => ({ commands }: { commands: any }) => commands.toggleMark(this.name),
+      setBadgeColor: (color: string) => ({ commands }: { commands: any }) => commands.updateAttributes(this.name, { color: color || null }),
+    };
   },
   addKeyboardShortcuts() {
     return {
