@@ -1087,3 +1087,66 @@ All `String.prototype.substr()` (deprecated) replaced with `substring()`:
 
 - **25 `as any` casts across 15 files** replaced with precise types (`as const`, `Record<string, any>`, intersection types, proper function overloads).
 - **13 remaining** are true dispensasi: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).
+
+## Future Plans
+
+### Full Migration: Supabase → Pure PostgreSQL
+
+Replace all Supabase dependencies with direct PostgreSQL (`pg`/`pg-pool`), custom auth, and native Realtime.
+
+**Scope**:
+- **Auth**: `supabase.auth.signInWithPassword()` → bcrypt + JWT sign/verify. New table `public.users` (id UUID, email, password_hash, name, created_at). `JWT_SECRET` env var. Cookie stays same shape.
+- **DB client**: `server/lib/config.ts` → `new Pool({ connectionString })`. All 16+ server route files: `supabase.from('x')` → `pg.query('SELECT ...')`.
+- **RLS**: `auth.uid()` → `current_setting('app.user_id')::uuid` or application-layer filter in Express routes.
+- **Remaining frontend Supabase calls** (`aiEntityContext/*.ts`, `AIChatPanel.tsx` mention/siblings): migrate to `apiFetch` backend endpoints (pattern already established).
+- **Realtime** (`useRealtimeSync.ts`): optional — replace Supabase Realtime with `pg LISTEN/NOTIFY` + WebSocket relay, or keep Supabase Realtime as standalone service.
+- **Edge config** (`server/lib/edge-config.ts`): remove. `api/ai-proxy.ts` replaces inline `createClient()` with `apiFetch` to main Express server.
+
+**Migration steps**:
+1. Setup `pg` pool + test koneksi
+2. Create `users` table + seed from Supabase `auth.users`
+3. Implement bcrypt + JWT auth
+4. Migrate one route file (e.g. `notes.ts`) → test end-to-end
+5. Batch sisanya
+6. Update foreign keys from `REFERENCES auth.users(id)` → `REFERENCES public.users(id)`
+7. RLS rewrite (`auth.uid()` → `current_setting(...)`)
+8. Testing + security audit
+9. Realtime migration (opsional)
+
+**Risk**: existing JWT tokens will be invalid on deploy — all users forced logout. Table `auth.users` needs data copy + FK re-point.
+
+**Estimated effort**: ~12-17 hari.
+
+### Role & Permission System (CASL)
+
+Integrate CASL for unified permission enforcement across server middleware and client UI.
+
+**Architecture**:
+```
+shared/
+  abilities.ts          ← defineAbilityFor(user) — single source of truth
+  types.ts              ← Subject + Action types
+
+server/
+  middleware/
+    authorize.ts        ← ability.cannot() → 403
+
+client/
+  components/
+    Can.tsx             ← <Can I="update" a="Note"> render children
+  hooks/
+    useAbility.ts       ← ability from context
+```
+
+**Tables needed** (in `public` schema):
+- `roles` (id UUID, name TEXT, description TEXT)
+- `role_permissions` (id UUID, role_id FK, action TEXT, subject TEXT, conditions JSONB)
+- `user_roles` (user_id FK, role_id FK)
+
+**CASL vs native decision**: Native Express middleware sufficient for server-only. CASL recommended because app needs **UI-side enforcement** (show/hide buttons, filter lists) — single ability definition syncs both layers. Also handles complex resource-level conditions (`user can update note if userId === note.author_id`).
+
+**Implementation order** (post-migration):
+1. Add `@casl/ability` + `@casl/react`
+2. Create shared ability definitions
+3. Apply to Express routes as middleware
+4. Apply to React UI components (conditionals, <Can> filter)
