@@ -397,6 +397,7 @@ function AppLayoutInner() {
             diagrams={diagrams}
             flowcharts={flowcharts}
             drawings={drawings}
+            activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
           />
         )}
         {showAIChat && (

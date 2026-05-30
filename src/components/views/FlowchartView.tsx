@@ -86,7 +86,6 @@ export const FlowchartView = React.memo(({
   const initialLoadRef = React.useRef(true);
   const isParsingFromDataRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
-  const pendingNodeChangesRef = React.useRef<any[]>([]);
   const pendingContentAppliedRef = React.useRef(false);
   const lastFlowchartIdRef = React.useRef(activeFlowchartId);
   const isEditingEdgeRef = React.useRef(false);
@@ -376,19 +375,14 @@ export const FlowchartView = React.memo(({
 
   const onNodeDragStart = useCallback(() => {
     isDraggingRef.current = true;
-    pendingNodeChangesRef.current = [];
   }, []);
 
   const onNodeDragStop = useCallback(() => {
     isDraggingRef.current = false;
-    if (pendingNodeChangesRef.current.length) {
-      onNodesChange(pendingNodeChangesRef.current);
-      pendingNodeChangesRef.current = [];
-    }
     if (nodesRef.current.length > 0 || edgesRef.current.length > 0) {
       handleFlowchartChangeRef.current(nodesRef.current, edgesRef.current);
     }
-  }, [onNodesChange]);
+  }, []);
 
   const defaultEdgeOptions = useMemo(() => ({
     type: 'smoothstep' as const,
@@ -723,21 +717,9 @@ export const FlowchartView = React.memo(({
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
-      const dataChanges: any[] = [];
-      changes.forEach((change) => {
-        if (change.type === 'position') {
-          if (isDraggingRef.current) {
-            pendingNodeChangesRef.current.push(change);
-            return;
-          }
-          dataChanges.push(change);
-        } else if (change.type !== 'select') {
-          dataChanges.push(change);
-        }
-      });
-      if (dataChanges.length > 0) {
-        onNodesChange(dataChanges);
-      }
+      const dataChanges = changes.filter((change: any) => change.type !== 'select');
+      if (dataChanges.length === 0) return;
+      onNodesChange(dataChanges);
     },
     [onNodesChange],
   );

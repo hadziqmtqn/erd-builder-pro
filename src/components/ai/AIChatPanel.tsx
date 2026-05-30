@@ -35,6 +35,7 @@ interface AIChatPanelProps {
   diagrams?: any[];
   flowcharts?: any[];
   drawings?: any[];
+  activeNoteContent?: string;
 }
 
 export const AIChatPanel = ({
@@ -52,15 +53,15 @@ export const AIChatPanel = ({
   diagrams = [],
   flowcharts = [],
   drawings = [],
+  activeNoteContent,
 }: AIChatPanelProps) => {
   const entityContext: EntityContext | null =
     entityType && entityUid ? { entityType, entityUid } : null;
 
   // ERD default name: use source file title, fallback to "New ERD"
   const erdDefaultName = entityTitle || 'New ERD';
-
-  // Flowchart default name: use source file title, fallback to "New Flowchart"
   const flowchartDefaultName = entityTitle || 'New Flowchart';
+  const noteDefaultName = entityTitle || 'New Note';
 
   // ─── Stream complete callback ──
   const [lastStreamResponse, setLastStreamResponse] = useState<string | null>(null);
@@ -532,8 +533,11 @@ export const AIChatPanel = ({
               activeProjectId={projectId}
               diagrams={diagrams}
               flowcharts={flowcharts}
+              notes={notes}
               erdDefaultName={erdDefaultName}
               flowchartDefaultName={flowchartDefaultName}
+              noteDefaultName={noteDefaultName}
+              activeNoteContent={activeNoteContent}
             />
 
             {/* ── Selection Bar ────────────────────────── */}

@@ -63,6 +63,57 @@ export const NotesView = React.memo(({
     return cleanup;
   }, [activeNote, isReadOnly, registerContentHandler]);
 
+  useEffect(() => {
+    if (!activeNote || isReadOnly) return;
+
+    const applyPendingContent = async () => {
+      const pendingContent = localStorage.getItem('pending_note_content');
+      const pendingStrategy = localStorage.getItem('pending_note_strategy');
+      if (!pendingContent || !pendingStrategy) return;
+
+      localStorage.removeItem('pending_note_content');
+      localStorage.removeItem('pending_note_strategy');
+
+      const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
+
+      let parsedContent = pendingContent;
+      try {
+        parsedContent = await marked.parse(pendingContent, { gfm: true, breaks: true });
+        parsedContent = await NoteImporter.processHtmlForEditor(parsedContent);
+      } catch {}
+
+      parsedContent = DOMPurify.sanitize(parsedContent, {
+        ADD_TAGS: ['iframe', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'hr', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'u', 'code', 'pre', 'blockquote', 'img'],
+        ADD_ATTR: ['data-type', 'data-checked', 'src', 'alt', 'href', 'target', 'rel', 'colspan', 'rowspan', 'style'],
+      });
+
+      let newContent = '';
+      if (pendingStrategy === 'replace') {
+        newContent = parsedContent;
+      } else {
+        const separator = currentContent.trim() ? '<br><hr><br>' : '';
+        newContent = currentContent + separator + parsedContent;
+      }
+
+      handleNoteChange(newContent);
+      await saveNote({ ...activeNote, content: newContent });
+    };
+
+    // Check localStorage on mount (300ms delay for note data to settle)
+    const mountTimer = setTimeout(() => applyPendingContent(), 300);
+
+    const handlePendingEvent = () => {
+      clearTimeout(mountTimer);
+      applyPendingContent();
+    };
+
+    window.addEventListener('apply-pending-note', handlePendingEvent);
+    return () => {
+      clearTimeout(mountTimer);
+      window.removeEventListener('apply-pending-note', handlePendingEvent);
+    };
+  }, [activeNote, isReadOnly, handleNoteChange, saveNote]);
+
   const handleConfirmChange = async () => {
     if (!pendingChange) return;
     if (confirmLockRef.current) return;
