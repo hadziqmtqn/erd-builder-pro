@@ -19,7 +19,9 @@ router.get("/sessions", authenticate, async (req: ExpressRequest, res: ExpressRe
       .order("updated_at", { ascending: false });
 
     if (projectId && entityType && entityUid) {
-      query = query.eq("project_id", projectId).eq("entity_type", entityType).eq("entity_uid", entityUid);
+      query = query.or(
+        `project_id.eq.${projectId},and(project_id.is.null,entity_type.eq.${entityType},entity_uid.eq.${entityUid})`
+      );
     } else if (projectId) {
       query = query.eq("project_id", projectId);
     } else if (entityType && entityUid) {
