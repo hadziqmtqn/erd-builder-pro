@@ -9,6 +9,7 @@ import { CodeBlock } from './CodeBlock';
 import { formatTime } from './chatUtils';
 import { ErdFromSqlDialog } from './ErdFromSqlDialog';
 import { FlowchartFromJsonDialog } from './FlowchartFromJsonDialog';
+import { NoteFromTextDialog } from './NoteFromTextDialog';
 import { AssistantMessageActions } from './AssistantMessageActions';
 import { UserMessageBody } from './UserMessageBody';
 
@@ -40,8 +41,11 @@ export interface ChatMessagesProps {
   activeProjectId?: string | number | null;
   diagrams?: any[];
   flowcharts?: any[];
+  notes?: any[];
   erdDefaultName?: string;
   flowchartDefaultName?: string;
+  noteDefaultName?: string;
+  activeNoteContent?: string;
 }
 
 export const ChatMessages = memo(function ChatMessages({
@@ -66,14 +70,19 @@ export const ChatMessages = memo(function ChatMessages({
   activeProjectId,
   diagrams = [],
   flowcharts = [],
+  notes = [],
   erdDefaultName = 'New ERD',
   flowchartDefaultName = 'New Flowchart',
+  noteDefaultName = 'New Note',
+  activeNoteContent,
 }: ChatMessagesProps) {
   const {
     handleSidebarDiagramCreate,
     handleSidebarFlowchartCreate,
+    handleSidebarNoteCreate,
     handleDiagramSelect,
     handleFlowchartSelect,
+    handleNoteSelect,
     activeProjectId: workspaceProjectId,
     triggerPendingErdDiff,
   } = useWorkspace();
@@ -95,6 +104,9 @@ export const ChatMessages = memo(function ChatMessages({
 
   // ─── Flowchart dialog state ─────────────────────────────
   const [flowchartDialogJson, setFlowchartDialogJson] = useState<string | null>(null);
+
+  // ─── Note dialog state ─────────────────────────────────
+  const [noteDialogText, setNoteDialogText] = useState<string | null>(null);
 
   // ─── Auto-scroll to bottom on new messages ─────────────
   useEffect(() => {
@@ -304,6 +316,7 @@ export const ChatMessages = memo(function ChatMessages({
                         onCopy={handleCopy}
                         onOpenErdDialog={setErdDialogSql}
                         onOpenFlowchartDialog={setFlowchartDialogJson}
+                        onOpenNoteDialog={setNoteDialogText}
                       />
                     )}
                   </div>
@@ -351,6 +364,19 @@ export const ChatMessages = memo(function ChatMessages({
           flowchartDefaultName={flowchartDefaultName}
           handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
           handleFlowchartSelect={handleFlowchartSelect}
+        />
+      )}
+      {/* Note from text dialog */}
+      {noteDialogText && (
+        <NoteFromTextDialog
+          text={noteDialogText}
+          onClose={() => setNoteDialogText(null)}
+          notes={notes}
+          targetProjectId={targetProjectId}
+          noteDefaultName={noteDefaultName}
+          handleSidebarNoteCreate={handleSidebarNoteCreate}
+          handleNoteSelect={handleNoteSelect}
+          activeNoteContent={activeNoteContent}
         />
       )}
     </div>

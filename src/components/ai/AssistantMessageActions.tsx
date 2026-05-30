@@ -1,4 +1,4 @@
-import { Replace, ArrowDownToLine, Copy, Check, Database, GitBranch } from 'lucide-react';
+import { Replace, ArrowDownToLine, Copy, Check, Database, GitBranch, FileText } from 'lucide-react';
 import { hasFlowchartJSON, hasSQLContent, extractSQL, extractFlowchartJSON } from './chatUtils';
 
 export interface AssistantMessageActionsProps {
@@ -13,6 +13,7 @@ export interface AssistantMessageActionsProps {
   onCopy: (id: string) => void;
   onOpenErdDialog: (sql: string) => void;
   onOpenFlowchartDialog: (json: string) => void;
+  onOpenNoteDialog: (text: string) => void;
 }
 
 export function AssistantMessageActions({
@@ -27,9 +28,9 @@ export function AssistantMessageActions({
   onCopy,
   onOpenErdDialog,
   onOpenFlowchartDialog,
+  onOpenNoteDialog,
 }: AssistantMessageActionsProps) {
   const showApplyButtons = hasContentHandler && (
-    (contentCheckType === 'none' && !hasSQLContent(content) && !hasFlowchartJSON(content)) ||
     (contentCheckType === 'flowchart' && hasFlowchartJSON(content)) ||
     (contentCheckType === 'erd' && hasSQLContent(content))
   );
@@ -67,6 +68,15 @@ export function AssistantMessageActions({
           )}
         </>
       )}
+
+      {/* Notes button: ALWAYS visible */}
+      <button
+        onClick={() => onOpenNoteDialog(content)}
+        className="flex items-center justify-center size-8 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-md shadow-sm transition-all cursor-pointer"
+        title="Save as Note"
+      >
+        <FileText className="size-4" />
+      </button>
 
       {showSqlButton && (
         <button

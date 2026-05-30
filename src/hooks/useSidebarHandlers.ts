@@ -68,6 +68,7 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
       await fetchProjects();
       await handleNoteSelect(n.uid);
     }
+    return n;
   }, [createNote, fetchProjects, handleNoteSelect]);
 
   const handleSidebarDrawingCreate = useCallback(async (t: string, pid?: number | string | null) => {

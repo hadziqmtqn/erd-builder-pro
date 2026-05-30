@@ -574,11 +574,12 @@ Three fixes prevent cascading re-renders on every drag frame:
 3. **`defaultEdgeOptions` memoized**: stable reference prevents React Flow from re-processing default edge options on every render.
 
 ### Drag Performance Optimizations (FlowchartView)
-Three fixes prevent cascading re-renders on every drag frame:
-1. **`memoizedNodes` preserves references** (line 295): instead of `nodes.map(n => ({...n, selected: ...}))` which creates new objects for ALL nodes, now only creates a new object for nodes whose `selected` state actually changed (`if (!!n.selected === selected) return n`). The `!!` coercion normalizes `undefined` (from `useNodesState` because `'select'` changes are filtered out) to `false`, preventing ALL nodes from getting new wrappers when `selectedNodeId` is set. During drag, only the dragged node gets a new reference from `useNodesState` — all other nodes keep their identity, letting React Flow skip reconciliation for them.
-2. **`setActionContextData` debounced at 300ms during drag** (line 740): the `useEffect` that syncs nodes/edges to AIActionContext returns early when `isDraggingRef.current` is true, and is additionally debounced at 300ms. This prevents high-frequency updates: during active dragging, the cleanup timer cancels the state update, completely preventing spammed updates to the `AIActionProvider` and the subscribing `AIChatPanel` (which otherwise suffers from heavy syntax highlighting and markdown parsing re-renders on every frame).
-3. **`useEdgesState` edges reference is stable during drag** — edges don't change when nodes move, so `memoizedEdges` doesn't recompute mid-drag. The only drag-triggered re-render comes from `nodes` changes, which now only recreate the dragged node's object.
-4. **`memoizedEdges` preserves references** (line 409): non-active edges (not hovered/selected) return the original edge reference — only edges that are actively hovered or selected get new objects with white stroke/width overrides. React Flow skips reconciliation for unchanged edges.
+Multiple fixes prevent cascading re-renders on every drag frame:
+
+1. **Position changes are NOT blocked during drag** (matched ERDView pattern): `handleNodesChange` (line 718) only filters `type: 'select'` changes. Previously position changes were buffered in `pendingNodeChangesRef` during drag, which caused React Flow to detect a mismatch between its internal state and the external `nodes` prop, triggering extra reconciliation on every frame. Now position changes flow through normally to `useNodesState` — only the dragged node gets a new object reference from `useNodesState`, while `memoizedNodes` identity preservation (`!!n.selected === selected ? n : { ...n, selected }`) keeps all other nodes stable.
+2. **`setActionContextData` debounced at 500ms during drag** (line 738): the `useEffect` that syncs nodes/edges to AIActionContext returns early when `isDraggingRef.current` is true, and is additionally debounced at 500ms. This prevents high-frequency updates: during active dragging, the cleanup timer cancels the state update, completely preventing spammed updates to the `AIActionProvider` and the subscribing `AIChatPanel` (which otherwise suffers from heavy syntax highlighting and markdown parsing re-renders on every frame).
+3. **`useEdgesState` edges reference is stable during drag** — edges don't change when nodes move, so `memoizedEdges` doesn't recompute mid-drag. The only drag-triggered re-render comes from `nodes` changes, which only recreate the dragged node's object.
+4. **`memoizedEdges` preserves references** (line 949): non-active edges (not hovered/selected) return the original edge reference — only edges that are actively hovered or selected get new objects with white stroke/width overrides. React Flow skips reconciliation for unchanged edges.
 5. **`selectedGroupNodeIds` stable empty set**: uses `emptySetRef` (`useRef(new Set<string>())`) instead of `new Set<string>()` when `!selectedGroup` — prevents creating a new Set reference on every render, which used to force `memoizedNodes` useMemo to recompute on every non-drag re-render (AIActionContext sync, saveFlowchart state update), cascading into unnecessary React Flow reconciliation of all nodes.
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
@@ -876,10 +877,11 @@ The prompt is built as a **prefix of the user message** (not system message) —
 ## Content-Aware Action Buttons (AI Chat)
 
 - **Problem**: When viewing Notes page and AI responds with SQL DDL, Replace/Append buttons still showed (for Notes content), while the Database button (Create/Update ERD) was also visible — confusing which button to use.
-- **Fix (UI)**: [`src/components/ai/AssistantMessageActions.tsx`](./src/components/ai/AssistantMessageActions.tsx):41 — the condition for showing Replace/Append buttons on `contentCheckType === 'none'` (Notes) now checks `!hasSQLContent(msg.content) && !hasFlowchartJSON(msg.content)`. When SQL or JSON is detected, Replace/Append hide and only the dedicated Database/Flowchart buttons appear.
+- **Fix (UI)**: [`src/components/ai/AssistantMessageActions.tsx`](./src/components/ai/AssistantMessageActions.tsx):32 — Notes view (`contentCheckType === 'none'`) now ALWAYS shows Replace/Append buttons, regardless of content type. Database/Flowchart buttons appear alongside when SQL/JSON is detected. A dedicated **Notes button** (amber FileText icon) is ALWAYS visible across ALL views — opens `NoteFromTextDialog` with Create New / Update Existing options. This lets users save ANY AI response as a Note from any feature view (Notes, ERD, Flowchart).
 - **Fix (Prompt)**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):550,571 — system instruction changed from "Advise the user to click the 'Append' (or 'Replace') button" to "Advise the user to click the Database button (or the Create/Update ERD button)" / "Advise the user to click the Flowchart button (Create/Update)". The `fallbackSystemPrompt` (line 507) similarly updated.
 - **Fix (ERD context prompt)**: [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts):120 — rule #9 tells AI not to say "Append/Replace" for SQL content but to say "Database button" instead.
-- **Result**: Action buttons are content-aware: SQL content → Database button only, flowchart JSON → Flowchart button only, plain text → Replace/Append (for Notes) or view-specific actions (ERD/Flowchart).
+- **Result**: Action buttons are content-aware: Notes always shows Replace/Append (plus optional Database/Flowchart/Notes), ERD shows Append only for SQL, Flowchart shows Replace/Append only for JSON. The Notes button is always available cross-view.
+- **NoteFromTextDialog** ([`src/components/ai/NoteFromTextDialog.tsx`](./src/components/ai/NoteFromTextDialog.tsx)): follows same pattern as `ErdFromSqlDialog`/`FlowchartFromJsonDialog` — Create New (creates a new Note with AI content) or Update Existing (navigates to selected Note). Uses `handleSidebarNoteCreate` (now returns `Promise<any>` with created note) and `handleNoteSelect` from workspace context.
 
 ## Stale URL on Guest → Online Login
 
@@ -1018,6 +1020,26 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - Each column is given `diffState`: `'new'` | `'deleted'` | `undefined`
   - Original node position is preserved (`origNode.position`) so the diff appears in a familiar layout
 - **ERDView `startDiff`** ([`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):230): uses `computeSchemaDiff` to display a diff overlay on the main canvas (merge panel + approve/reject per table)
+
+## NoteFromTextDialog (localStorage Bridge for AI Content)
+
+- **`NoteFromTextDialog`** ([`src/components/ai/NoteFromTextDialog.tsx`](./src/components/ai/NoteFromTextDialog.tsx)): single dialog with side-by-side diff preview, replaces the two-dialog flow (dialog → DiffPreviewModal).
+- **3 modes on Notes page** (auto-detected via `window.location.pathname`): Create New, Replace All, Append. **2 modes off-Notes**: Create New, Update Existing.
+- **localStorage bridge** (matching ERD/Flowchart `pending_create_erd_ddl` pattern):
+  - `pending_note_content: string` — AI markdown text
+  - `pending_note_strategy: 'replace' | 'append'`
+- **`NotesView`** ([`src/components/views/NotesView.tsx`](./src/components/views/NotesView.tsx):66-115) has a second `useEffect` that:
+  1. On mount: checks localStorage after 300ms delay (allows note data to settle)
+  2. Listens for custom `'apply-pending-note'` window event (for on-Notes page flow)
+  3. When triggered: reads localStorage, parses markdown → HTML (`marked` + `DOMPurify`), applies strategy (replace vs append), calls `handleNoteChange` + `saveNote` — **no DiffPreviewModal**
+- **Diff preview**: NoteFromTextDialog shows side-by-side Original vs AI Changes when on Notes page (Replace/Append) or Update Existing mode. Replaces the DiffPreviewModal that was previously opened by the content handler.
+- **Prop chain**: `AppLayout` → `AIChatPanel` (new `activeNoteContent` prop) → `ChatMessages` → `NoteFromTextDialog`
+- **Flow**:
+  - **Off-Notes Create**: Store → `handleSidebarNoteCreate` (creates + navigates) → NotesView mount → 300ms → apply
+  - **Off-Notes Update**: Store → `handleNoteSelect` (navigates) → NotesView mount → 300ms → apply
+  - **On-Notes Replace/Append**: Store → `window.dispatchEvent(new CustomEvent('apply-pending-note'))` with 50ms delay → NotesView event listener → apply directly (no second dialog)
+  - **Files**: [`src/components/ai/NoteFromTextDialog.tsx`](./src/components/ai/NoteFromTextDialog.tsx), [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx), [`src/components/views/NotesView.tsx`](./src/components/views/NotesView.tsx), [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx), [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx)
+- **AssistantMessageActions**: Notes button (`FileText` icon) always visible across ALL views. Replace/Append buttons hidden on Notes view (`contentCheckType === 'none'` → `showApplyButtons` is false). User opens NoteFromTextDialog via Notes button.
 
 ## Spinner Style Standardization
 

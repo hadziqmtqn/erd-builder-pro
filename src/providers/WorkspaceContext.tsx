@@ -108,7 +108,7 @@ export interface WorkspaceContextValue {
 
   // Sidebar
   handleSidebarDiagramCreate: (title: string, projectId?: string | null) => Promise<any>;
-  handleSidebarNoteCreate: (title: string, projectId?: string | null) => Promise<void>;
+  handleSidebarNoteCreate: (title: string, projectId?: string | null) => Promise<any>;
   handleSidebarDrawingCreate: (title: string, projectId?: string | null) => Promise<void>;
   handleSidebarFlowchartCreate: (title: string, projectId?: string | null) => Promise<any>;
   handleSidebarProjectCreate: (name: string) => Promise<void>;
