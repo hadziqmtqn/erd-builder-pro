@@ -12,6 +12,7 @@ import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
 import { supabase } from '@/lib/supabase';
+import type { AIChatSession } from '@/types';
 
 interface MentionFile {
   name: string;
@@ -97,6 +98,7 @@ export const AIChatPanel = ({
   const [activeActionPrompt, setActiveActionPrompt] = useState<string | null>(null);
   const [page, setPage] = useState<'list' | 'chat'>('list');
   const [minimized, setMinimized] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<AIChatSession | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -454,7 +456,7 @@ export const AIChatPanel = ({
                         selectSession(session.uid);
                         setPage('chat');
                       }}
-                      onDelete={() => deleteSession(session.uid)}
+                      onDelete={() => setSessionToDelete(session)}
                     />
                   ))}
 
@@ -582,6 +584,20 @@ export const AIChatPanel = ({
         confirmText="Replace Draft"
         cancelText="Keep Draft"
         variant="info"
+      />
+
+      <ConfirmModal
+        isOpen={!!sessionToDelete}
+        onCancel={() => setSessionToDelete(null)}
+        onConfirm={() => {
+          if (sessionToDelete) deleteSession(sessionToDelete.uid);
+          setSessionToDelete(null);
+        }}
+        title="Delete Conversation?"
+        message={`Are you sure you want to delete "${sessionToDelete?.title || 'this conversation'}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
       />
     </Tooltip.Provider>
   );

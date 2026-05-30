@@ -94,7 +94,7 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 
 **Why use ref**: `sendMessage` is a `useCallback` with limited deps (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` cannot be a dependency because it would re-create the callback every time a file moves project. The ref (`projectIdRef`) breaks the dependency chain — its value is always read fresh inside the callback without needing re-creation.
 
-**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):70-71 (ref + effect), :427-444 (sync logic), :450 (sibling context menggunakan `liveProjectId`)
+**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):73-74 (ref + effect), :417-434 (sync logic), :441 (sibling context menggunakan `liveProjectId`)
 
 ### AI Chat @Mentions (File Referencing)
 
@@ -402,9 +402,22 @@ src/components/ai/
   - [`src/hooks/aiChat/resolveAiConfig.ts`](./src/hooks/aiChat/resolveAiConfig.ts) — AI config resolution
   - [`src/hooks/aiChat/syncSessionProjectId.ts`](./src/hooks/aiChat/syncSessionProjectId.ts) — project ID sync
   - [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts) — default prompt fetch
-- **Zero direct Supabase calls remain** in the entire `src/` directory. All database access now goes through `apiFetch` → Express server → server supabase client (`SUPABASE_URL` env).
-- **VITE_SUPABASE_URL no longer needed** in any environment.
+- **Most database calls migrated** — AI Chat CRUD, AI Settings, and core app operations go through `apiFetch` → Express server → server supabase client (`SUPABASE_URL` env).
+- **Remaining direct Supabase calls** (frontend still imports `@/lib/supabase`):
+  - [`src/hooks/aiEntityContext/siblings.ts`](./src/hooks/aiEntityContext/siblings.ts): `fetchProjectEntities`, `fetchSiblings`
+  - [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts), `note.ts`, `flowchart.ts`, `drawing.ts`: entity context fetching
+  - [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx): mention resolution (notes, entities, columns)
+  - [`src/hooks/useRealtimeSync.ts`](./src/hooks/useRealtimeSync.ts): realtime subscriptions
+- All remaining calls are **wrapped in try/catch** and fail silently — core CRUD works without them.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are **optional** — needed only for AI context, mentions, and realtime.
 - **Guest mode safety**: AI Chat uses `isGuestCheck()` guards at the top of every function — all online API calls are skipped in guest mode, using IndexedDB (`localPersistence`) instead. AI Settings is never accessible in guest mode (Settings menu hidden in `NavUser`), plus `fetchData`/`fetchModelsData`/`fetchPromptsData` all have `if (isGuest) return` guards.
+
+## Server Auth (Supabase Auth — No Custom JWT)
+
+- **Auth middleware** (`server/lib/middleware.ts:6`): uses `supabase.auth.getUser(token)` — verifies JWT directly against Supabase Auth endpoint. No custom JWT verification needed.
+- **`JWT_SECRET` removed** — was previously exported from `server/lib/config.ts` but never used by auth middleware. Supabase manages its own JWT signing keys.
+- **Login flow**: `POST /api/login` → `supabase.auth.signInWithPassword({ email, password })` → returns session JWT → set as `Set-Cookie: token=...` → subsequent requests carry cookie → middleware calls `supabase.auth.getUser(token)` to identify user.
+- **Reason Supabase Auth works**: The `SUPABASE_SERVICE_ROLE_KEY` server-side Supabase client can call `supabase.auth.getUser(token)` to verify any valid Supabase JWT. No local secret needed.
 
 ## Login Fix Pattern (Second Round-Trip Bug)
 
