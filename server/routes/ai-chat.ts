@@ -93,8 +93,8 @@ router.delete("/sessions/:uid", authenticate, async (req: ExpressRequest, res: E
   }
 });
 
-// PUT /api/ai/chat/sessions/:id
-router.put("/sessions/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+// PUT /api/ai/chat/sessions/:uid
+router.put("/sessions/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { title, project_id, updated_at } = req.body;
     const updatePayload: Record<string, any> = { updated_at: updated_at || new Date().toISOString() };
@@ -104,7 +104,7 @@ router.put("/sessions/:id", authenticate, async (req: ExpressRequest, res: Expre
     const { data, error } = await supabase
       .from("ai_chat_sessions")
       .update(updatePayload)
-      .eq("id", req.params.id)
+      .eq("uid", req.params.uid)
       .select()
       .single();
 
@@ -115,16 +115,25 @@ router.put("/sessions/:id", authenticate, async (req: ExpressRequest, res: Expre
   }
 });
 
-// GET /api/ai/chat/sessions/:id/messages
-router.get("/sessions/:id/messages", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+// GET /api/ai/chat/sessions/:uid/messages
+router.get("/sessions/:uid/messages", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const offset = parseInt(req.query.offset as string) || 0;
     const limit = parseInt(req.query.limit as string) || 30;
 
+    // Resolve uid → numeric session_id for messages lookup
+    const { data: session } = await supabase
+      .from("ai_chat_sessions")
+      .select("id")
+      .eq("uid", req.params.uid)
+      .single();
+
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
     const { data, error, count } = await supabase
       .from("ai_chat_messages")
       .select("*", { count: "exact", head: false })
-      .eq("session_id", req.params.id)
+      .eq("session_id", session.id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

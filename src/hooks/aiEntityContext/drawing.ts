@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { EntityContextData } from './types';
 
 export async function fetchDrawing(uid: string) {
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from('drawings')
     .select('title, data, project_id')

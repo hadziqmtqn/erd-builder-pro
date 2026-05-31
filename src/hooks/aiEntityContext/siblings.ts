@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 
 // ── Fetch per-project entities + columns (for rich ERD sibling context) ──
 
@@ -8,6 +8,7 @@ interface ColumnRow { entity_id: number | string; name: string; type: string; is
 async function fetchProjectEntities(
   projectId: number | string,
 ): Promise<Record<string | number, { name: string; cols: string }[]>> {
+  if (!supabase) return {};
   const { data: diagrams } = await supabase
     .from('diagrams')
     .select('id')
@@ -60,7 +61,7 @@ export async function fetchSiblings(
   currentUid: string,
   projectId: number | string | null,
 ) {
-  if (!projectId) return [];
+  if (!supabase || !projectId) return [];
 
   const results: { type: string; title: string; uid: string }[] = [];
 
@@ -119,7 +120,7 @@ export async function buildSiblingContext(
   projectId: number | string,
   budget: number = MAX_BUDGET,
 ): Promise<string | null> {
-  if (!projectId) return null;
+  if (!supabase || !projectId) return null;
 
   const [notesRes, diagramsRes, flowchartsRes, drawingsRes, entityMap] = await Promise.all([
     supabase

@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { MAX_CHARS_TOTAL, EntityContextData } from './types';
 
 export async function fetchDiagram(uid: string) {
+  if (!supabase) return null;
   const { data: diagram, error } = await supabase
     .from('diagrams')
     .select('id, name, project_id')

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { EntityContextData } from './types';
 
 export const SHAPE_MEANINGS: Record<string, string> = {
@@ -24,6 +24,7 @@ const SHAPE_HINTS: Record<string, string> = {
 };
 
 export async function fetchFlowchart(uid: string) {
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from('flowcharts')
     .select('title, data, project_id')

@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { PREVIEW_CHARS, EntityContextData } from './types';
 
 export async function fetchNote(uid: string) {
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from('notes')
     .select('title, content, project_id')

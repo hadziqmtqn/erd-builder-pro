@@ -254,6 +254,8 @@ export const AIChatPanel = ({
     const seenUids = new Set<string>();
     let context = '';
 
+    if (!supabase) return { context: '', seenUids };
+
     for (const match of matches) {
       const name = match[1];
       const file = mentionFiles.find(f => f.name.toLowerCase() === name.toLowerCase());

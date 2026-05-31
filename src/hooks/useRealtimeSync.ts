@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 import { Node, Edge } from '@xyflow/react';
 import { Entity } from '../types';
 
@@ -17,6 +17,7 @@ export const useRealtimeSync = (
 
   useEffect(() => {
     if (!activeDiagramId) return;
+    if (!supabase) return;
 
     // 🛡️ Skip re-subscribe if already subscribed to this diagram.
     // Prevents unnecessary canvas re-initialization when AppContent
