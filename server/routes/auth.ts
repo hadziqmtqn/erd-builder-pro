@@ -1,5 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../lib/config.js";
+import { validate, loginSchema } from "../lib/validation.js";
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
 });
 
 // Login
-router.post("/login", async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   const email = req.body.email?.trim();
   const password = req.body.password;
   const externalToken = req.body.externalToken;
@@ -49,7 +50,7 @@ router.post("/login", async (req: ExpressRequest, res: ExpressResponse) => {
     }
 
     if (authError) {
-      return res.status(401).json({ error: authError.message });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     if (authData && authData.session) {
@@ -79,7 +80,7 @@ router.post("/logout", (req: ExpressRequest, res: ExpressResponse) => {
   res.clearCookie("token", {
     httpOnly: true,
     secure: isSecure,
-    sameSite: isSecure ? "none" : "lax"
+    sameSite: "lax"
   });
   res.json({ success: true });
 });

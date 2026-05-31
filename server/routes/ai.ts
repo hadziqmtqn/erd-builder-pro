@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { supabase } from "../lib/config.js";
+import { validate, aiProxySchema } from "../lib/validation.js";
 
 const router = Router();
 
-router.post("/proxy", async (req, res) => {
+// NOTE: No auth middleware here — guest mode sends requests without a session cookie.
+// Abuse is mitigated by rate limiting applied in server/index.ts.
+router.post("/proxy", validate(aiProxySchema), async (req, res) => {
   let aborted = false;
   const controller = new AbortController();
 
@@ -23,25 +26,32 @@ router.post("/proxy", async (req, res) => {
   }, 30_000);
 
   try {
-    let { messages, model, apiKey, baseUrl } = req.body;
+    let { messages, model, apiKey, baseUrl, userId } = req.body;
 
     if (!messages) {
       clearTimeout(timeout);
       return res.status(400).json({ error: "Missing required fields: messages" });
     }
 
-    // When no apiKey is provided (Guest mode), look up the default config from Supabase
+    // When no apiKey is provided (Guest mode or online mode without apiKey), look up config from Supabase
     if (!apiKey) {
       if (!supabase) {
         clearTimeout(timeout);
         return res.status(500).json({ error: "Supabase not configured on server" });
       }
 
-      const { data: configData, error: configError } = await supabase
+      let query = supabase
         .from("user_ai_configs")
         .select("*, ai_providers(*)")
         .eq("is_enabled", true)
         .not("selected_model_id", "is", null)
+
+      // Online mode: filter by user_id
+      if (userId) {
+        query = query.eq("user_id", userId);
+      }
+
+      const { data: configData, error: configError } = await query
         .order("updated_at", { ascending: false })
         .limit(1);
 
@@ -91,9 +101,9 @@ router.post("/proxy", async (req, res) => {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
+      console.error(`AI provider error (${response.status}):`, errBody);
       return res.status(response.status).json({
         error: `AI provider error (${response.status})`,
-        details: errBody || response.statusText,
       });
     }
 

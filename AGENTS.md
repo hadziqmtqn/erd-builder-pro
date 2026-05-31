@@ -1168,6 +1168,36 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 - Hidden when `isReadOnly` (shared/public view or diff mode)
 - Helps users discover the table editing flow without hunting through context menus
 
+## Security Hardening
+
+**Packages added**: `express-rate-limit`, `helmet`, `zod`
+
+### Phase 1 — Critical + High Fixes
+
+- **CORS restricted** (`server/index.ts:31-33`): `origin: true` replaced with explicit allowlist via `CORS_ORIGINS` env var (comma-separated). Production uses the allowlist; development keeps `origin: true`.
+- **Rate limiting** (`server/index.ts:36-68`): 4 rate limiters — global (200 req/min), auth (10 req/min), AI proxy (30 req/min), upload (20 req/min). All use `express-rate-limit` with standard headers.
+- **Trash endpoint scoped** (`server/routes/common.ts:26-33`): `GET /api/trash` now filters by `user_id = (req as any).user.id` — previously returned ALL users' deleted items.
+- **`GEMINI_API_KEY` removed from client bundle** (`vite.config.ts:12`): was embedded via Vite `define` but never used in frontend code — pure secret leak.
+- **Upload DELETE ownership check** (`server/routes/common.ts:113-133`): key must start with `erd-builder-pro/` prefix. Multer limits: 10MB max, allowed MIME types (JPEG, PNG, GIF, WebP, SVG, PDF). Multer error handler catches size/type violations.
+- **AI proxy**: kept unauthenticated (guest mode has no session cookie) — abuse mitigated by 30 req/min rate limiter.
+
+### Phase 2 — Medium Fixes
+
+- **Public route owner bypass fixed** (`diagrams.ts:89-96`, `notes.ts:93-101`, `drawings.ts:93-100`, `flowcharts.ts:92-99`): `isOwner` now checks `user.id === document.user_id` — previously ANY authenticated user bypassed share_token.
+- **Zod input validation** (`server/lib/validation.ts`): schemas for login, AI proxy, document CRUD, upload, delete. `validate()` middleware on critical endpoints: `POST /api/login`, `POST /api/ai/proxy`, `POST /api/diagrams`, `POST /api/notes`, `POST /api/drawings`, `POST /api/flowcharts`, `POST /api/upload`, `DELETE /api/upload`.
+- **Helmet** (`server/index.ts:22`): `helmet()` middleware adds security headers (CSP, X-Frame-Options, X-Content-Type-Options, etc.).
+- **Body limit reduced**: `express.json({ limit: "5mb" })` (was 50MB).
+- **Logout cookie fixed** (`server/routes/auth.ts:82`): `sameSite: "lax"` (was inconsistent `"none"` when secure).
+
+### Phase 3 — Low Fixes
+
+- **Error message sanitization** (`server/lib/utils.ts`): `handleError()` no longer leaks `error.message` or `details` to client. Auth login returns generic "Invalid credentials". AI proxy logs provider errors server-side only. Upload/delete errors return generic messages.
+- **CSP**: handled by `helmet()` middleware.
+
+### Remaining (Manual)
+
+- **Supabase RLS audit**: frontend `aiEntityContext/*.ts` files make direct Supabase queries bypassing server auth. Security depends entirely on RLS policies being correctly configured. Verify RLS on: `diagrams`, `notes`, `drawings`, `flowcharts`, `entities`, `columns`, `relationships`, `projects`, `ai_chat_sessions`, `ai_chat_messages`.
+
 ## Future Plans
 
 ### Full Migration: Supabase → Pure PostgreSQL

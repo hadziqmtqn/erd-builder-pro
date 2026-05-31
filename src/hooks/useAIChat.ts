@@ -9,7 +9,6 @@ import {
   fallbackSystemPrompt,
   buildTechnicalRules,
   fetchUserSystemPrompt,
-  resolveAiConfig,
   callAiStream,
   persistGuestMessages,
   persistGuestTitle,
@@ -334,9 +333,10 @@ export function useAIChat(
 
     // ─── Build messages & call AI ─────────────────────
     try {
-      // Resolve AI config
+      // Resolve AI config — all modes now delegate config resolution to the proxy (avoids double Vercel cold start)
       const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined } =
-        isGuest ? { baseUrl: undefined, apiKey: undefined, model: undefined } : await resolveAiConfig();
+        { baseUrl: undefined, apiKey: undefined, model: undefined };
+      const userId = isGuest ? undefined : auth.user?.id;
 
       // Build system messages
       const apiMessages: { role: string; content: string }[] = [];
@@ -404,7 +404,8 @@ export function useAIChat(
             if (last?.id === 'streaming') return [...prev.slice(0, -1), { ...last, content: last.content + token }];
             return prev;
           });
-        }
+        },
+        userId
       );
 
       // Finalize message

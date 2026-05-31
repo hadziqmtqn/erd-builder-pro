@@ -17,7 +17,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Invalid JSON body" });
   }
 
-  const { messages, model, apiKey, baseUrl } = body;
+  const { messages, model, apiKey, baseUrl, userId } = body;
 
   if (!messages) {
     return res.status(400).json({ error: "Missing required fields: messages" });
@@ -27,7 +27,7 @@ export default async function handler(req: any, res: any) {
   let resolvedBaseUrl = baseUrl;
   let resolvedModel = model;
 
-  // Guest mode: resolve from Supabase (no apiKey sent from client)
+  // Guest/Online mode: resolve config from Supabase when no apiKey sent
   if (!resolvedApiKey) {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
@@ -38,11 +38,18 @@ export default async function handler(req: any, res: any) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: configData, error: configError } = await supabase
+    let query = supabase
       .from("user_ai_configs")
       .select("*, ai_providers(*)")
       .eq("is_enabled", true)
       .not("selected_model_id", "is", null)
+
+    // Online mode: filter by user_id
+    if (userId) {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data: configData, error: configError } = await query
       .order("updated_at", { ascending: false })
       .limit(1);
 
@@ -85,9 +92,9 @@ export default async function handler(req: any, res: any) {
 
   if (!providerRes.ok) {
     const errBody = await providerRes.text().catch(() => "");
+    console.error(`AI provider error (${providerRes.status}):`, errBody);
     return res.status(providerRes.status).json({
       error: `AI provider error (${providerRes.status})`,
-      details: errBody || providerRes.statusText,
     });
   }
 

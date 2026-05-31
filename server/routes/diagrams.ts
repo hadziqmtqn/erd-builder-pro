@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 
 const router = Router();
@@ -51,7 +52,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   });
 });
 
-router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/", authenticate, validate(createDiagramSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   const { name, project_id, uid } = req.body;
   const { data, error } = await supabase
     .from("diagrams")
@@ -90,7 +91,7 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
   const sessionToken = req.cookies.token;
   if (sessionToken) {
     const { data: { user } } = await supabase.auth.getUser(sessionToken);
-    if (user) {
+    if (user && user.id === diagram.user_id) {
       isOwner = true;
     }
   }

@@ -1,13 +1,12 @@
 import { Response as ExpressResponse } from "express";
 
 /**
- * Standardize API error responses
+ * Standardize API error responses — never leak internal error details
  */
-export const handleError = (res: ExpressResponse, error: any, message: string = "Internal Server Error") => {
-  console.error(`${message}:`, error);
+export const handleError = (res: ExpressResponse, _error: any, message: string = "Internal Server Error") => {
+  console.error(`${message}:`, _error);
   return res.status(500).json({ 
-    error: error?.message || message,
-    details: error 
+    error: message
   });
 };
 

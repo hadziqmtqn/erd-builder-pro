@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
+import { validate, createNoteSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
@@ -54,7 +55,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   });
 });
 
-router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+router.post("/", authenticate, validate(createNoteSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   const { title, content, project_id } = req.body;
   const { data, error } = await supabase
     .from("notes")
@@ -90,14 +91,13 @@ router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => 
     return res.status(403).json({ error: "This document is private" });
   }
 
-  // Owner Bypass: For single-account, any logged-in user is the owner
+  // Owner Bypass: Only the document owner can bypass share_token
   let isOwner = false;
   const sessionToken = req.cookies.token;
   if (sessionToken) {
     const { data: { user } } = await supabase.auth.getUser(sessionToken);
-    if (user) {
+    if (user && user.id === note.user_id) {
       isOwner = true;
-      console.log(`[Bypass Check] Bypass GRANTED for authenticated user (Single Account Mode)`);
     }
   }
 
