@@ -13,7 +13,7 @@ import {
   useReactFlow
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Undo2, Redo2 } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
@@ -42,6 +42,7 @@ interface ERDViewProps {
   onPaneClick: () => void;
   onMove: (event: any, viewport: any) => void;
   addEntity: () => void;
+  onImportSQL?: () => void;
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
   onNodeDragStop?: () => void;
 
@@ -79,6 +80,7 @@ const ERDViewComponent = ({
   onPaneClick,
   onMove,
   addEntity,
+  onImportSQL,
   isReadOnly = false,
 
   undo,
@@ -458,6 +460,10 @@ const ERDViewComponent = ({
             <Button onClick={addEntity} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
               <Plus className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Add Table</span>
+            </Button>
+            <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+              <Upload className="w-3.5 h-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import SQL</span>
             </Button>
 
             <div className="flex items-center gap-0.5 ml-auto">

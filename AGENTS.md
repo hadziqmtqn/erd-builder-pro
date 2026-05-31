@@ -94,7 +94,7 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 
 **Why use ref**: `sendMessage` is a `useCallback` with limited deps (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` cannot be a dependency because it would re-create the callback every time a file moves project. The ref (`projectIdRef`) breaks the dependency chain — its value is always read fresh inside the callback without needing re-creation.
 
-**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):73-74 (ref + effect), :417-434 (sync logic), :441 (sibling context menggunakan `liveProjectId`)
+**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):73-74 (ref + effect), :417-434 (sync logic), :441 (sibling context using `liveProjectId`)
 
 ### AI Chat @Mentions (File Referencing)
 
@@ -138,6 +138,17 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - **`applyColorScheme`** — removed from `flowchartActions.ts`. The function mapping label → hex color was never wired to any action and was deemed not in line with best practice (colors should not be forced per label by AI).
 
 ## Notable Conventions
+
+> **IMPORTANT**: All AGENTS.md content must be written in **English only**. No other languages allowed.
+
+### Refactoring & Modularity
+
+- **Split on sight**: when a function/component takes on >1 responsibility, has a boolean parameter that changes behavior, or exceeds ~400 lines — split/refactor immediately. Do not postpone.
+- **Max ~400 lines per file**: if exceeded, extract logic into a separate file/module with a clear name.
+- **One responsibility per function/component**: avoid boolean `isX` parameters that alter internal flow. Use separate functions or strategy pattern.
+- **Extract logic from components**: business/heavy computation logic must not live inside React components. Extract to `src/lib/` or `src/hooks/`.
+- **Consistent naming**: extracted files must follow existing patterns. E.g. extract from `AIChatPanel.tsx` → `src/components/ai/ChatMessages.tsx`.
+- **No god objects**: Context/Provider must not hold all state. Separate by domain.
 
 - `onChange` handler in `NotesEditor` defined **inline** (no `useCallback`), causing TiptapEditor's `handleUpdate` effect to re-register every render. This is intentional but fragile.
 - `handleNoteChange` stable via `useCallback` in `useNoteChangeHandler`
@@ -1086,7 +1097,76 @@ All `String.prototype.substr()` (deprecated) replaced with `substring()`:
 ### `as any` audit
 
 - **25 `as any` casts across 15 files** replaced with precise types (`as const`, `Record<string, any>`, intersection types, proper function overloads).
-- **13 remaining** are true dispensasi: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).
+- **13 remaining** are true exceptions: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).
+
+## ERD Export All Dialog
+
+**File**: [`src/components/modals/ExportAllDialog.tsx`](./src/components/modals/ExportAllDialog.tsx)
+
+Unified dialog for all ERD export (schema + visual). Replaces submenu Export in `NavActionsMenu` (previously 3 callbacks: `onExportSQL`, `onExportPDF`, `onExportImage`) with a single `onExportAll` callback.
+
+**Format tabs:**
+- **Schema group**: MySQL, PostgreSQL, Laravel Migration, Laravel Model, TypeScript, Prisma, Zod — generated via `src/lib/sql-generator-all.ts` (bulk generation from `src/lib/sql-generator.ts` per-entity functions)
+- **Visual group**: PDF, SVG — with `Experimental` badge (`FlaskConical` icon + amber styling)
+
+**CodeMirror viewer**: Schema tabs use `@uiw/react-codemirror` read-only editor with `oneDark` theme (matching Import SQL dialog). Installed `@codemirror/lang-javascript` and `@codemirror/lang-php` for TypeScript/Zod/Prisma and Laravel tabs respectively.
+
+**Per-file .zip export** (non-SQL formats): Laravel Migration, Laravel Model, TypeScript, Prisma, Zod generate one file per table, downloaded as `.zip` via `jszip`. File structure:
+- `migrations/create_{table}_table.php`
+- `models/{Model}.php`
+- `{Model}.ts`
+- `schema.prisma` (single file, all tables)
+
+SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
+
+**Copy button behavior**: Enabled only for SQL tabs (MySQL, PostgreSQL). Disabled (`opacity-30 cursor-not-allowed`) for per-file format tabs (Laravel, TypeScript, Prisma, Zod) — each format generates multiple files, making clipboard copy meaningless.
+
+**Bulk generator** ([`src/lib/sql-generator-all.ts`](./src/lib/sql-generator-all.ts)):
+- `generateAllTablesFiles(format, nodes, edges)` — returns `ExportFile[]` per table (name + content). Used by .zip export via `jszip`.
+- `generateAllTablesCode(format, nodes, edges, fileName)` — returns single concatenated string. Used by CodeMirror display for SQL formats.
+- `buildEntityFkMap(entities, edges)` — extracts FK relationships from edges, returns `Map<string, {col, refTable, refCol}[]>`. Used by both `generateAlterTableFKs()` (SQL) and `generateLaravelMigration()` inline FK constraints.
+- `getExtension(format)` — file extension per format.
+- Filenames use singularized PascalCase matching generated code (e.g. `User.php`, `User.ts`). Migration filenames keep plural per Laravel convention (`create_users_table.php`).
+
+**Generator best-practice fixes:**
+- `generateLaravelMigration`: `$table->enum()` → `$table->string()` (Laravel 11+ removed `enum` support). FK constraints now generated inline via `$table->foreign()->references()->on()` using `buildEntityFkMap()`.
+- `generateLaravelModel`: adds `protected $table = '{table}'` when singularized model name differs from table name (e.g. `User` vs `users`) — prevents Eloquent pluralization mismatch.
+- `generateTypeScript`: `created_at`/`updated_at` no longer hardcoded — only appended if absent from entity columns.
+- `generatePrisma`: timestamp fields no longer hardcoded — same conditional append.
+- `generateZod`: `z.string()` → `z.string().uuid()` for UUID types, `z.string().datetime()` for datetime/timestamp, `z.string().date()` for date, `z.record(z.unknown())` for json. Schema variable name uses singular camelCase (`userSchema`), filename `UserSchema.ts`.
+- `toPascalCase(name, shouldSingularize?)` exported from `sql-generator.ts` — supports `shouldSingularize` parameter. Used by `sql-generator-all.ts` for filename generation.
+
+**Key behaviors:**
+- Visual tabs: description + `Generate PDF/SVG` button that calls `onExportPDF`/`onExportImage` callback (from `useImageExporter.ts`)
+- Dialog only appears for `view === 'erd'` (guard in `AppLayout.tsx`)
+- `NavActionsMenu` ERD Export submenu replaced with a single "Export All" item → `onExportAll` → `setIsExportAllOpen(true)`
+
+**File changes:**
+- **NEW** [`src/components/modals/ExportAllDialog.tsx`](./src/components/modals/ExportAllDialog.tsx) — dialog component
+- **NEW** [`src/lib/sql-generator-all.ts`](./src/lib/sql-generator-all.ts) — bulk schema generation, per-file export, FK extraction
+- **MODIFIED** [`src/lib/sql-generator.ts`](./src/lib/sql-generator.ts) — `generateLaravelMigration` FK + string() fix, `generateLaravelModel` `$table` fix, conditional timestamps, Zod type improvements, exported `toPascalCase`
+- **MODIFIED** [`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx) — `onExportAll` prop + single menu item
+- **MODIFIED** [`src/components/MainHeader.tsx`](./src/components/MainHeader.tsx) — `onExportAll` prop pass-through
+- **MODIFIED** [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx) — `isExportAllOpen` state + `ExportAllDialog` render
+
+## Import SQL Moved to ERD Toolbar
+
+- `onImportSQL` prop added to `ERDView` — triggers `handleOpenImportModal` from `DiagramEditorRoute`
+- Import SQL button (Upload icon) rendered in floating toolbar next to Add Table button — visible only on ERD view
+- Removed from `NavActionsMenu`, `MainHeader`, `AppLayout` prop chain
+- **Files**: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx), [`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx), [`src/components/MainHeader.tsx`](./src/components/MainHeader.tsx), [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx), [`src/routes/DiagramEditorRoute.tsx`](./src/routes/DiagramEditorRoute.tsx)
+
+## SQL Parser: `cleanIdentifier()` Lowercase Fix
+
+- **Bug**: SQL keyword `action` used as column name (`ALTER TABLE users ADD COLUMN action VARCHAR(50)`) — lexer tokenized `action` as `KEYWORD` (uppercased `ACTION`), column name stored as `ACTION` instead of `action`. When AI-generated SQL referencing `action` arrived, parser couldn't match columns by name (`ACTION` ≠ `action`).
+- **Fix**: `cleanIdentifier()` in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) now lowercases output. Safe because unquoted SQL identifiers are case-insensitive; quoted identifiers (`"Users"`) have quotes stripped by the same function.
+- **Files**: `sqlParser.ts:9`
+
+## EntityNode Double-Click Tooltip
+
+- Added `title="Double-click to edit table"` on ERD table header div in [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx)
+- Hidden when `isReadOnly` (shared/public view or diff mode)
+- Helps users discover the table editing flow without hunting through context menus
 
 ## Future Plans
 
@@ -1103,19 +1183,19 @@ Replace all Supabase dependencies with direct PostgreSQL (`pg`/`pg-pool`), custo
 - **Edge config** (`server/lib/edge-config.ts`): remove. `api/ai-proxy.ts` replaces inline `createClient()` with `apiFetch` to main Express server.
 
 **Migration steps**:
-1. Setup `pg` pool + test koneksi
+1. Setup `pg` pool + test connection
 2. Create `users` table + seed from Supabase `auth.users`
 3. Implement bcrypt + JWT auth
 4. Migrate one route file (e.g. `notes.ts`) → test end-to-end
-5. Batch sisanya
+5. Batch the rest
 6. Update foreign keys from `REFERENCES auth.users(id)` → `REFERENCES public.users(id)`
 7. RLS rewrite (`auth.uid()` → `current_setting(...)`)
 8. Testing + security audit
-9. Realtime migration (opsional)
+9. Realtime migration (optional)
 
 **Risk**: existing JWT tokens will be invalid on deploy — all users forced logout. Table `auth.users` needs data copy + FK re-point.
 
-**Estimated effort**: ~12-17 hari.
+**Estimated effort**: ~12-17 days.
 
 ### Role & Permission System (CASL)
 

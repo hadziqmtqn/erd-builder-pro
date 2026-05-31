@@ -40,7 +40,7 @@ function normalizeType(typeStr: string): string {
 
 function cleanIdentifier(id: string): string {
     if (!id) return '';
-    return id.replace(/["`[\]]/g, '').trim();
+    return id.replace(/["`[\]]/g, '').trim().toLowerCase();
 }
 
 // ─── SQL LEXER & TOKENIZER ────────────────────────────────

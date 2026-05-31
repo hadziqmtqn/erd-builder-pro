@@ -16,6 +16,7 @@ export function DiagramEditorRoute() {
     takeSnapshot, onNodeDragStop, onMoveEnd,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleOpenImportModal,
     isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
     setIsLocalSaving, lastLoadedDiagramIdRef,
     isERDItemLoading, handleDiagramSelect,
@@ -85,6 +86,7 @@ export function DiagramEditorRoute() {
         onPaneClick={handlePaneClick}
         onMove={handleMove}
         addEntity={addEntity}
+        onImportSQL={handleOpenImportModal}
         handleExportSQL={handleWorkspaceExportSQL}
         handleExportPDF={handleWorkspaceExportPDF}
         handleExportImage={handleWorkspaceExportImage}

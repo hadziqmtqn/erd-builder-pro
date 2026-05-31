@@ -63,7 +63,7 @@ function singularize(str: string): string {
   return str;
 }
 
-function toPascalCase(str: string, shouldSingularize: boolean = false): string {
+export function toPascalCase(str: string, shouldSingularize: boolean = false): string {
   const parts = str.split('_');
   if (shouldSingularize && parts.length > 0) {
     parts[parts.length - 1] = singularize(parts[parts.length - 1]);
@@ -115,7 +115,7 @@ export function generatePostgreSQL(entity: Entity): string {
   return `CREATE TABLE "${tableName}" (\n${columns}\n);`;
 }
 
-export function generateLaravelMigration(entity: Entity): string {
+export function generateLaravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
   const tableName = entity.name.toLowerCase();
   
   const columns = entity.columns.map(col => {
@@ -146,9 +146,8 @@ export function generateLaravelMigration(entity: Entity): string {
         case 'uuid': method = 'uuid'; break;
         case 'json': method = 'json'; break;
         case 'enum': 
-          method = 'enum'; 
-          const values = col.enum_values ? `[${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')}]` : '[]';
-          args = `'${col.name}', ${values}`;
+          method = 'string';
+          args = `'${col.name}'`;
           break;
         default: method = 'string';
       }
@@ -160,14 +159,30 @@ export function generateLaravelMigration(entity: Entity): string {
     return `    ${chain};`;
   }).join('\n');
 
+  let fkBlock = '';
+  if (fkConstraints && fkConstraints.length > 0) {
+    const fkLines = fkConstraints
+      .filter(fk => entity.columns.some(c => c.name === fk.column))
+      .map(fk => {
+        const constraintName = `fk_${tableName}_${fk.column}`;
+        return `    $table->foreign('${fk.column}')->references('${fk.references}')->on('${fk.on}')->onDelete('cascade');`;
+      })
+      .join('\n');
+    if (fkLines) {
+      fkBlock = `\n${fkLines}`;
+    }
+  }
+
   return `Schema::create('${tableName}', function (Blueprint $table) {
-${columns}
+${columns}${fkBlock}
     $table->timestamps();
 });`;
 }
 
 export function generateTypeScript(entity: Entity): string {
   const className = toPascalCase(entity.name, true);
+  
+  const hasTimestamps = entity.columns.some(c => c.name === 'created_at' || c.name === 'updated_at');
   
   const properties = entity.columns.map(col => {
     const t = col.type.toLowerCase();
@@ -194,12 +209,17 @@ export function generateTypeScript(entity: Entity): string {
     return `  ${col.name}${optional}: ${tsType}${nullable};`;
   }).join('\n');
 
-  return `export interface ${className} {\n${properties}\n  created_at: string;\n  updated_at: string;\n}`;
+  const timestampFields = hasTimestamps ? '' : '\n  created_at: string;\n  updated_at: string;';
+
+  return `export interface ${className} {\n${properties}${timestampFields}\n}`;
 }
 
 export function generatePrisma(entity: Entity): string {
   const modelName = toPascalCase(entity.name, true);
   let enums = '';
+
+  const hasCreatedAt = entity.columns.some(c => c.name === 'created_at');
+  const hasUpdatedAt = entity.columns.some(c => c.name === 'updated_at');
   
   const fields = entity.columns.map(col => {
     const t = col.type.toLowerCase();
@@ -233,11 +253,18 @@ export function generatePrisma(entity: Entity): string {
     return `  ${name} ${prismaType}${attributes}`;
   }).join('\n');
 
-  return `model ${modelName} {\n${fields}\n  created_at DateTime @default(now())\n  updated_at DateTime @updatedAt\n}${enums}`;
+  const timestampFields = [];
+  if (!hasCreatedAt) timestampFields.push('  created_at DateTime @default(now())');
+  if (!hasUpdatedAt) timestampFields.push('  updated_at DateTime @updatedAt');
+  const timestamps = timestampFields.length > 0 ? `\n${timestampFields.join('\n')}` : '';
+
+  return `model ${modelName} {\n${fields}${timestamps}\n}${enums}`;
 }
 
 export function generateLaravelModel(entity: Entity): string {
   const className = toPascalCase(entity.name, true);
+  const tableName = entity.name.toLowerCase();
+  const needsExplicitTable = className.toLowerCase() !== entity.name.toLowerCase();
   
   const fillable = entity.columns
     .filter(col => !col.is_pk && !['created_at', 'updated_at'].includes(col.name))
@@ -259,12 +286,16 @@ export function generateLaravelModel(entity: Entity): string {
     })
     .join('\n');
 
+  const tableProp = needsExplicitTable
+    ? `\n    protected \$table = '${tableName}';\n`
+    : '';
+
   return `namespace App\\Models;
 
 use Illuminate\\Database\\Eloquent\\Model;
 
 class ${className} extends Model
-{
+{${tableProp}
     protected $fillable = [
 ${fillable}
     ];
@@ -279,7 +310,8 @@ ${castItems}
 }
 
 export function generateZod(entity: Entity): string {
-  const name = entity.name.toLowerCase();
+  const schemaName = toPascalCase(entity.name, true);
+  const varName = schemaName.charAt(0).toLowerCase() + schemaName.slice(1);
   
   const fields = entity.columns.map(col => {
     const t = col.type.toLowerCase();
@@ -287,12 +319,17 @@ export function generateZod(entity: Entity): string {
     
     switch (t) {
       case 'integer':
-      case 'int':
+      case 'int': zod = 'z.number().int()'; break;
       case 'bigint': zod = 'z.number().int()'; break;
       case 'decimal':
       case 'float': zod = 'z.number()'; break;
       case 'boolean':
       case 'bool': zod = 'z.boolean()'; break;
+      case 'uuid': zod = 'z.string().uuid()'; break;
+      case 'datetime':
+      case 'timestamp': zod = 'z.string().datetime()'; break;
+      case 'date': zod = 'z.string().date()'; break;
+      case 'json': zod = 'z.record(z.unknown())'; break;
       case 'enum': 
         const values = col.enum_values ? `[${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')}]` : '[]';
         zod = `z.enum(${values})`;
@@ -305,5 +342,5 @@ export function generateZod(entity: Entity): string {
     return `  ${col.name}: ${zod},`;
   }).join('\n');
 
-  return `import { z } from 'zod';\n\nexport const ${name}Schema = z.object({\n${fields}\n});\n\nexport type ${toPascalCase(entity.name, true)} = z.infer<typeof ${name}Schema>;`;
+  return `import { z } from 'zod';\n\nexport const ${varName}Schema = z.object({\n${fields}\n});\n\nexport type ${schemaName} = z.infer<typeof ${varName}Schema>;`;
 }
