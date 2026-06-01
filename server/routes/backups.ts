@@ -2,6 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { supabase, GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -71,14 +72,14 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
         throw new Error("Empty response body from storage");
       }
     } catch (s3Error: any) {
-      console.error("S3 Get Error:", s3Error);
+      logger.error({ err: s3Error }, "S3 Get Error:");
       return res.status(404).json({ 
         error: "File not found or storage is temporarily unavailable."
       });
     }
 
   } catch (error: any) {
-    console.error("Download Error:", error);
+    logger.error({ err: error }, "Download Error:");
     res.status(500).json({ error: `Failed to download file: ${error.message}` });
   }
 });
@@ -122,7 +123,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
             }
           })
         }
-      ).catch(err => console.error("==> GitHub Trigger Failed:", err));
+      ).catch(err => logger.error({ err }, "==> GitHub Trigger Failed"));
     }
 
     res.json(backupRecord);

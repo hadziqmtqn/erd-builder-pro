@@ -620,6 +620,7 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 - **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
+- **Auto layout spacing tuning**: `src/lib/autoLayout.ts` now uses a much smaller width estimate per column (`BASE_TABLE_WIDTH = 240`, `COL_TO_WIDTH_ESTIMATE = 8`) and clamps horizontal spacing with `MIN_HORIZONTAL_SPACING = 320` plus a smaller padding. This keeps ERD tables visually closer together while still avoiding overlap for wider tables.
 
 ### Per-Table Dialog: `TableDialog`
 

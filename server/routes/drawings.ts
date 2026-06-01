@@ -4,6 +4,7 @@ import { authenticate } from "../lib/middleware.js";
 import { validate, createDrawingSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -240,7 +241,7 @@ router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: 
 
         // 2. Delete objects from R2 in parallel
         if (r2Keys.length > 0) {
-          console.log(`Deleting ${r2Keys.length} images from R2 for drawing ${req.params.uid}`);
+          logger.info(`Deleting ${r2Keys.length} images from R2 for drawing ${req.params.uid}`);
           // Narrow s3Client type for the callback scope
           const client = s3Client;
           await Promise.all(r2Keys.map(key => 
@@ -248,12 +249,12 @@ router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: 
               Bucket: R2_BUCKET_NAME,
               Key: key,
             })).catch(err => {
-              console.error(`Failed to delete R2 object ${key}:`, err);
+              logger.error({ err }, `Failed to delete R2 object ${key}`);
             })
           ));
         }
       } catch (e) {
-        console.error("Failed to parse drawing data for R2 cleanup:", e);
+        logger.error({ err: e }, "Failed to parse drawing data for R2 cleanup");
       }
     }
 

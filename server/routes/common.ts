@@ -4,6 +4,7 @@ import { authenticate } from "../lib/middleware.js";
 import { validate, uploadSchema, deleteUploadSchema } from "../lib/validation.js";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import multer from "multer";
+import { logger } from "../lib/logger.js";
 import path from "node:path";
 
 const router = Router();
@@ -68,7 +69,7 @@ router.get("/test-r2", authenticate, async (req: ExpressRequest, res: ExpressRes
       publicUrl: R2_PUBLIC_URL || "Not configured"
     });
   } catch (err: any) {
-    console.error("R2 Test Error:", err);
+    logger.error({ err: err }, "R2 Test Error:");
     res.status(500).json({ 
       error: "Failed to connect to storage"
     });
@@ -105,7 +106,7 @@ router.post("/upload", authenticate, validate(uploadSchema), upload.single("imag
 
     res.json({ url: publicUrl, key: r2Key });
   } catch (err: any) {
-    console.error("Cloudflare R2 upload error:", err);
+    logger.error({ err: err }, "Cloudflare R2 upload error:");
     res.status(500).json({ error: "Failed to upload file" });
   }
 });
@@ -128,7 +129,7 @@ router.delete("/upload", authenticate, validate(deleteUploadSchema), async (req:
     }));
     res.json({ success: true });
   } catch (err: any) {
-    console.error("Cloudflare R2 delete error:", err);
+    logger.error({ err: err }, "Cloudflare R2 delete error:");
     res.status(500).json({ error: "Failed to delete file" });
   }
 });

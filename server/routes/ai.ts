@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { supabase } from "../lib/config.js";
 import { validate, aiProxySchema } from "../lib/validation.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
 
       if (configError) {
         clearTimeout(timeout);
-        console.error("AI proxy: Failed to fetch default config:", configError);
+        logger.error({ err: configError }, "AI proxy: Failed to fetch default config:");
         return res.status(500).json({ error: "Failed to fetch AI configuration" });
       }
 
@@ -101,7 +102,7 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      console.error(`AI provider error (${response.status}):`, errBody);
+      logger.error({ err: errBody }, `AI provider error (${response.status})`);
       return res.status(response.status).json({
         error: `AI provider error (${response.status})`,
       });
@@ -147,7 +148,7 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
     }
   } catch (err: any) {
     if (aborted) return;
-    console.error("AI proxy error:", err);
+    logger.error({ err: err }, "AI proxy error:");
     if (!res.headersSent) {
       res.status(500).json({ error: err.message || "Internal server error" });
     }

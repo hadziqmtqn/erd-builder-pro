@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.post("/feedback", async (req, res) => {
   const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.error("[Feedback] Telegram config missing from .env");
+    logger.error("[Feedback] Telegram config missing from .env");
     return res.status(200).json({ status: "ok", message: "Config missing (Logged to console only)" });
   }
 
@@ -40,11 +41,11 @@ router.post("/feedback", async (req, res) => {
     if (result.ok) {
       res.status(200).json({ status: "ok" });
     } else {
-      console.error("[Feedback Service Error]", result.description);
+      logger.error({ err: result.description }, "[Feedback Service Error]");
       res.status(500).json({ error: "Failed to send feedback" });
     }
   } catch (error: any) {
-    console.error("[Feedback Service Exception]", error?.message || error);
+    logger.error({ err: error?.message || error }, "[Feedback Service Exception]");
     res.status(500).json({ error: "Internal Server Error" });
   }
 });

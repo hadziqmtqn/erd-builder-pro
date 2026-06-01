@@ -5,6 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
 import { checkSupabase } from "./lib/middleware.js";
+import { httpLogger } from "./lib/logger.js";
 import authRouter from "./routes/auth.js";
 import diagramsRouter from "./routes/diagrams.js";
 import projectsRouter from "./routes/projects.js";
@@ -94,6 +95,9 @@ app.use("/api/upload", uploadLimiter);
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 app.use(cookieParser());
+
+// Structured request logging (via Pino)
+app.use(httpLogger);
 
 app.use("/api/*", (req, res, next) => {
   const path = req.originalUrl.split("?")[0];

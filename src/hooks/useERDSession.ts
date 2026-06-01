@@ -552,18 +552,14 @@ export function useERDSession(
   }, [setEdges, takeSnapshot, getNodes, getEdges]);
 
   const handleMoveEnd = useCallback((_: any, v: Viewport) => {
-    // Only trigger save if user is not a public visitor AND not initializing
     if (!isPublicView && !isInitializingRef.current) {
-      // Avoid saving if viewport hasn't significantly changed (prevents accidental saves on click)
       const prev = viewportRef.current;
       const hasChanged = 
         Math.abs((prev.x || 0) - v.x) > 0.5 || 
         Math.abs((prev.y || 0) - v.y) > 0.5 || 
         Math.abs((prev.zoom || 1) - v.zoom) > 0.001;
-
       if (hasChanged) {
         viewportRef.current = v;
-        setSaveCounter(prevCounter => prevCounter + 1);
       }
     }
   }, [isPublicView]);

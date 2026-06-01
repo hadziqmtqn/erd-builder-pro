@@ -3,6 +3,7 @@ import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -164,7 +165,7 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
       supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
     ]);
   } catch (err) {
-    console.error("Cascading soft delete failed:", err);
+    logger.error({ err: err }, "Cascading soft delete failed:");
   }
 
   res.json({ success: true });
@@ -192,7 +193,7 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
       supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
     ]);
   } catch (err) {
-    console.error("Cascading restore failed:", err);
+    logger.error({ err: err }, "Cascading restore failed:");
   }
 
   res.json({ success: true });
@@ -234,7 +235,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
                   Key: key,
                 }));
               } catch (err) {
-                console.error("Failed to delete image from R2 during project deletion:", err);
+                logger.error({ err: err }, "Failed to delete image from R2 during project deletion:");
               }
             }
           }

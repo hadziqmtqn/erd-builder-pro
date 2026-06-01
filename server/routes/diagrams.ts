@@ -3,6 +3,7 @@ import { supabase } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -293,7 +294,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
     const result: T[] = [];
     for (const item of arr) {
       if (seen.has(item.id)) {
-        console.warn(`[Save Warning] Duplicate ${label} id=${item.id} removed`);
+        logger.warn(`[Save Warning] Duplicate ${label} id=${item.id} removed`);
         continue;
       }
       seen.add(item.id);
@@ -303,6 +304,24 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
   };
   const dedupedEntities: any[] = dedupe(entities || [], 'entity');
   const dedupedRelationships: any[] = dedupe(relationships || [], 'relationship');
+
+  // Batch upsert with individual fallback: try batch first, retry one-by-one on conflict
+  async function upsertSafe(table: string, rows: any[], toRow: (item: any) => any) {
+    if (rows.length === 0) return;
+    
+    const { error } = await supabase.from(table).upsert(rows.map(toRow), { onConflict: 'id' });
+    if (!error) return;
+    
+    if (error.message?.includes('cannot affect row a second time')) {
+      logger.warn(`[Save] Batch upsert for ${table} failed with conflict — falling back to individual upserts`);
+      for (const item of rows) {
+        const { error: singleErr } = await supabase.from(table).upsert(toRow(item), { onConflict: 'id' });
+        if (singleErr) throw singleErr;
+      }
+    } else {
+      throw error;
+    }
+  }
 
   try {
     // ✅ STEP 1: Fetch current diagram state with version check
@@ -340,7 +359,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
     // ✅ STEP 2: Optimistic locking - reject if version mismatch
     if (expectedVersion !== undefined && expectedVersion !== null) {
       if (currentDiagram._version !== expectedVersion) {
-        console.warn(`[Race Condition] Version mismatch for diagram ${identifier}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
+        logger.warn(`[Race Condition] Version mismatch for diagram ${identifier}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
         return res.status(409).json({ 
           error: "Conflict: Diagram was modified. Please refresh and try again.",
           currentVersion: currentDiagram._version,
@@ -372,49 +391,45 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
     const entitiesToDelete = Array.from(existingEntityIds).filter(id => !newEntityIds.has(id));
     let colsToDelete: string[] = [];
 
-    // ✅ STEP 6: Upsert entities one by one to avoid "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    // ✅ STEP 6: Upsert entities (batch, fallback to individual on conflict)
     if (dedupedEntities.length > 0) {
+      await upsertSafe('entities', dedupedEntities, (e: any) => ({
+        id: e.id,
+        diagram_id: diagramId,
+        name: e.name,
+        x: e.x,
+        y: e.y,
+        color: e.color || '#6366f1'
+      }));
+
+      // ✅ STEP 7: Upsert columns (batch, fallback to individual on conflict)
+      // Deduplicate column IDs across all entities first
+      const allColumns: any[] = [];
+      const newColIds = new Set();
+      const seenColIds = new Set();
       for (const entity of dedupedEntities) {
-        const entityRow = {
-          id: entity.id,
-          diagram_id: diagramId,
-          name: entity.name,
-          x: entity.x,
-          y: entity.y,
-          color: entity.color || '#6366f1'
-        };
-        const { error: upsertEntError } = await supabase
-          .from("entities")
-          .upsert(entityRow, { onConflict: 'id' });
-        if (upsertEntError) {
-          console.error(`[Save Error] entities upsert failed for id=${entityRow.id}: ${upsertEntError.message}`);
-          throw upsertEntError;
+        for (const col of entity.columns || []) {
+          if (seenColIds.has(col.id)) {
+            logger.warn(`[Save Warning] Duplicate column id=${col.id} across entities removed`);
+            continue;
+          }
+          seenColIds.add(col.id);
+          allColumns.push({ ...col, _entity_id: entity.id });
+          newColIds.add(col.id);
         }
       }
 
-      // ✅ STEP 7: Upsert columns one by one
-      const newColIds = new Set();
-      for (const entity of dedupedEntities) {
-        for (const col of entity.columns || []) {
-          const colRow = {
-            id: col.id,
-            entity_id: entity.id,
-            name: col.name,
-            type: col.type,
-            is_pk: col.is_pk || false,
-            is_nullable: col.is_nullable !== undefined ? col.is_nullable : true,
-            enum_values: col.enum_values || null,
-            sort_order: col.sort_order || 0
-          };
-          const { error: upsertColError } = await supabase
-            .from("columns")
-            .upsert(colRow, { onConflict: 'id' });
-          if (upsertColError) {
-            console.error(`[Save Error] columns upsert failed for id=${colRow.id}: ${upsertColError.message}`);
-            throw upsertColError;
-          }
-          newColIds.add(col.id);
-        }
+      if (allColumns.length > 0) {
+        await upsertSafe('columns', allColumns, (col: any) => ({
+          id: col.id,
+          entity_id: col._entity_id,
+          name: col.name,
+          type: col.type,
+          is_pk: col.is_pk || false,
+          is_nullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          enum_values: col.enum_values || null,
+          sort_order: col.sort_order || 0
+        }));
       }
 
       // Collect columns to delete (executed later)
@@ -430,29 +445,20 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       }
     }
 
-    // ✅ STEP 6: Upsert relationships one by one
+    // ✅ STEP 6b: Upsert relationships (batch, fallback to individual on conflict)
     if (dedupedRelationships.length > 0) {
-      for (const r of dedupedRelationships) {
-        const relRow = {
-          id: r.id,
-          diagram_id: diagramId,
-          source_entity_id: r.source_entity_id,
-          target_entity_id: r.target_entity_id,
-          source_column_id: r.source_column_id || null,
-          target_column_id: r.target_column_id || null,
-          source_handle: r.source_handle || null,
-          target_handle: r.target_handle || null,
-          type: r.type || 'one-to-many',
-          label: r.label || null
-        };
-        const { error: upsertRelError } = await supabase
-          .from("relationships")
-          .upsert(relRow, { onConflict: 'id' });
-        if (upsertRelError) {
-          console.error(`[Save Error] relationships upsert failed for id=${relRow.id}: ${upsertRelError.message}`);
-          throw upsertRelError;
-        }
-      }
+      await upsertSafe('relationships', dedupedRelationships, (r: any) => ({
+        id: r.id,
+        diagram_id: diagramId,
+        source_entity_id: r.source_entity_id,
+        target_entity_id: r.target_entity_id,
+        source_column_id: r.source_column_id || null,
+        target_column_id: r.target_column_id || null,
+        source_handle: r.source_handle || null,
+        target_handle: r.target_handle || null,
+        type: r.type || 'one-to-many',
+        label: r.label || null
+      }));
     }
 
     // ✅ STEP 7: Safe Deletion Phase (Only runs if ALL Upserts succeeded)
@@ -545,7 +551,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       version: updatedDiagram?._version || currentDiagram._version + 1
     });
   } catch (err: any) {
-    console.error(`[Save Error] Diagram ${identifier}:`, err);
+    logger.error({ err, uid: identifier }, `Save Error`);
     res.status(500).json({ error: err.message });
   }
 });

@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../lib/config.js";
 import { validate, loginSchema } from "../lib/validation.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -21,20 +22,20 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
     let authError;
 
     if (externalToken) {
-      console.log("==> Backend: Validating external token...");
+      logger.info("==> Backend: Validating external token...");
       const start = Date.now();
       
       // Verification check for env keys
       if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
-        console.error("==> Backend Error: Supabase keys are missing in Express environment!");
+        logger.error("==> Backend Error: Supabase keys are missing in Express environment!");
         return res.status(500).json({ error: "Server configuration error" });
       }
 
       const { data, error } = await supabase.auth.getUser(externalToken);
-      console.log(`==> Backend: Validation took ${Date.now() - start}ms`);
+      logger.info(`==> Backend: Validation took ${Date.now() - start}ms`);
 
       if (error) {
-        console.error("==> Backend Error:", error.message);
+        logger.error({ err: error.message }, "==> Backend Error:");
         authError = error;
       } else {
         authData = { session: { access_token: externalToken, expires_in: 3600 }, user: data.user };
@@ -68,7 +69,7 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
     }
     res.status(401).json({ error: "Invalid credentials" });
   } catch (err) {
-    console.error("Auth error:", err);
+    logger.error({ err: err }, "Auth error:");
     res.status(500).json({ error: "Authentication failed" });
   }
 });

@@ -4,6 +4,7 @@ import { authenticate } from "../lib/middleware.js";
 import { validate, createNoteSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -234,7 +235,7 @@ router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: 
               Key: key,
             }));
           } catch (err) {
-            console.error("Failed to delete image from R2 during note deletion:", err);
+            logger.error({ err: err }, "Failed to delete image from R2 during note deletion:");
           }
         }
       }
