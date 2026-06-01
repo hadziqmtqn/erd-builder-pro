@@ -358,6 +358,7 @@ const ERDViewComponent = ({
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
     animated: false,
+    reconnectable: true,
     markerEnd: {
       type: MarkerType.Arrow,
       width: 15,
@@ -509,6 +510,23 @@ const ERDViewComponent = ({
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onReconnect={(oldEdge, connection) => {
+            if (!connection.sourceHandle || !connection.targetHandle) return;
+            const sourceNode = nodes.find(n => n.id === connection.source);
+            const targetNode = nodes.find(n => n.id === connection.target);
+            if (sourceNode && targetNode) {
+              const srcId = String(connection.sourceHandle).replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+              const tgtId = String(connection.targetHandle).replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+              const srcCol = sourceNode.data.columns.find((c: any) => String(c.id ?? c.uid) === srcId);
+              const tgtCol = targetNode.data.columns.find((c: any) => String(c.id ?? c.uid) === tgtId);
+              if (srcCol && tgtCol && srcCol.type !== tgtCol.type) {
+                toast.error('Type Mismatch', { description: `Cannot reconnect ${srcCol.type} to ${tgtCol.type}` });
+                return;
+              }
+            }
+            setEdges(eds => eds.filter(e => e.id !== oldEdge.id));
+            onConnect(connection);
+          }}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClickLocal}
           onNodeDoubleClick={onNodeDoubleClick}

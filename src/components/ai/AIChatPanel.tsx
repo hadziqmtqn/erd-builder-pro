@@ -77,6 +77,13 @@ export const AIChatPanel = ({
   }, [onClearPendingAction]);
 
   const { applyContent, hasContentHandler, contentHandlerStrategies, selectionText, setSelectionText, actionContextData } = useAIAction();
+  const entityToViewMap: Record<string, ViewType> = {
+    note: 'notes',
+    diagram: 'erd',
+    flowchart: 'flowchart',
+  };
+  const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
+
   const {
     sessions,
     currentSession,
@@ -92,7 +99,7 @@ export const AIChatPanel = ({
     hasMoreMessages,
     isLoadingMore,
     loadMoreMessages,
-  } = useAIChat(entityContext, entityContextText, onStreamComplete, projectId);
+  } = useAIChat(entityContext, entityContextText, onStreamComplete, projectId, currentViewType);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -125,12 +132,6 @@ export const AIChatPanel = ({
   // Reset to page 1 on search change
   useEffect(() => { setSessionPage(1); }, [sessionSearch]);
 
-  const entityToViewMap: Record<string, ViewType> = {
-    note: 'notes',
-    diagram: 'erd',
-    flowchart: 'flowchart',
-  };
-  const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
   const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
   // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
   const actions = currentViewType ? getActionsForView(currentViewType) : [];

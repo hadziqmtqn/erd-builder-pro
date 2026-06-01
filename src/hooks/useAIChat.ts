@@ -45,6 +45,7 @@ export function useAIChat(
   entityContextText?: string | null,
   onStreamComplete?: (response: string) => void,
   projectId?: number | string | null,
+  viewType?: string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
@@ -349,6 +350,35 @@ export function useAIChat(
       apiMessages.push({ role: 'system', content: systemPrompt });
       apiMessages.push({ role: 'system', content: 'Always respond in the same language the user is communicating in.' });
       apiMessages.push({ role: 'system', content: buildTechnicalRules() });
+
+      // View-specific AI rules (per-view configurable instructions)
+      if (viewType && !isGuest) {
+        try {
+          const rulesRes = await apiFetch(`/api/ai/rules/${viewType}`);
+          if (rulesRes.ok) {
+            const rulesData = await rulesRes.json();
+            if (rulesData.content && rulesData.is_enabled) {
+              apiMessages.push({
+                role: 'system',
+                content: `[AI Rules for ${viewType.toUpperCase()} view]\n${rulesData.content}\n\nIMPORTANT: The rules above are guidelines. If the user explicitly requests something that contradicts a rule, follow the user's direct instruction.`
+              });
+            }
+          }
+        } catch {}
+      } else if (viewType && isGuest) {
+        try {
+          const stored = localStorage.getItem(`ai_rules_${viewType}`);
+          if (stored) {
+            const rulesData = JSON.parse(stored);
+            if (rulesData.content && rulesData.is_enabled !== false) {
+              apiMessages.push({
+                role: 'system',
+                content: `[AI Rules for ${viewType.toUpperCase()} view]\n${rulesData.content}\n\nIMPORTANT: The rules above are guidelines. If the user explicitly requests something that contradicts a rule, follow the user's direct instruction.`
+              });
+            }
+          }
+        } catch {}
+      }
 
       // Previous messages
       const previousMessages = messages.filter(m => !m.id.toString().startsWith('temp-'));

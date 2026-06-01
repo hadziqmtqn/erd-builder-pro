@@ -863,15 +863,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
        - Set more compact heading and paragraph margins (`margin-bottom: 10px` for `p`, `margin-top: 20px` / `margin-bottom: 8px` for `h2`).
        - Added `li p { margin-bottom: 0; }` rule so paragraphs inside list items do not duplicate bottom margin.
 
-## Phase 3: Living Flowcharts Simulation & Visual Schema Diffing
-
-- **Living Flowcharts (AI Logic Simulation Sandbox)**:
-  - **Logic Execution Sandbox**: Allows users to attach JavaScript code snippets behind flowchart symbols via `SymbolPropertiesModal` (stored in node data as `code`). Simulation executes in-browser using `new Function('context', ...)` to isolate input/output variables to a JSON `context` object.
-  - **Interactive Simulation Controls**: Added **"Simulate Flow"** button on the top toolbar. When clicked, the sandbox panel slides in from the right side of the canvas to test JSON input and view execution logs.
-  - **Dynamic Path & Node Visuals**: During simulation, the flow animates in real-time. Active nodes glow amber and pulse, visited nodes glow emerald, connectors turn solid green/orange and animate to trace the traversal.
-  - **Conditional Branch Selection**: If a decision node (diamond) has multiple outgoing edges, the executor automatically follows the branch whose label matches the return value of the JS code. If no code or no matching branch exists, simulation pauses and the log panel provides branch-button options for manual selection to continue tracing.
-
-- **Visual Schema Diffing & Merge Resolution (Git-style Database Design)**:
+## Phase 3: Visual Schema Diffing & Merge Resolution (Git-style Database Design)
   - **Schema Diff Engine**: Utility [`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts) compares old ERD schema against proposed new SQL DDL schema from AI. It marks nodes/tables with `diffState` (`'new' | 'modified' | 'deleted'`) and individual columns with the same flags.
   - **Visual Diff Highlights**: On the ERD canvas, new tables render with bright green borders (plus "NEW" badge and emerald glow), modified tables render with amber borders ("MOD" badge), and deleted tables render with faded red borders ("DEL" badge, low opacity). New columns prefixed with `+` in green, removed columns struck through in red.
   - **Conflict & Merge Resolution Panel**: Floating toolbar at the bottom of the canvas showing a change summary (e.g., "2 New, 1 Mod, 0 Del"). Users can open a **Checklist Panel** to review details and select which tables to approve for merging.
@@ -887,6 +879,9 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Covers **"create ERD from scratch"** scenario: rule #5 explicitly tells AI to generate complete SQL DDL when user asks to create an ERD from nothing
 - Enforces ` ```sql ` code block wrapping: plain text/HTML tables will NOT be parsed
 - Schema design rules (no duplicate columns, FK references) moved to a separate bottom section
+- **Portable SQL types (default)**: AI instructed to use dialect-neutral, portable types by default — `BIGINT` for PKs (NOT `BIGSERIAL`/`SERIAL`/`AUTO_INCREMENT`), `INT`, `VARCHAR(n)`, `TEXT`, `BOOLEAN`, `TIMESTAMP`, `DECIMAL`, `UUID`. This ensures parsed ERD types match across export dialects.
+- **Dialect override**: Rule #11 in `diagram.ts` allows dialect-specific syntax (PostgreSQL, MySQL, etc.) **if the user explicitly asks for it**. Both the ERD context prompt (`diagram.ts`) and the Technical Rules (`buildSystemMessages.ts`) enforce the same portable-by-default, dialect-on-request policy.
+- **Files**: [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts), [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts)
 
 ## Content-Aware Action Buttons (AI Chat)
 
@@ -1055,6 +1050,17 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - **Files**: [`src/components/ai/NoteFromTextDialog.tsx`](./src/components/ai/NoteFromTextDialog.tsx), [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx), [`src/components/views/NotesView.tsx`](./src/components/views/NotesView.tsx), [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx), [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx)
 - **AssistantMessageActions**: Notes button (`FileText` icon) always visible across ALL views. Replace/Append buttons hidden on Notes view (`contentCheckType === 'none'` → `showApplyButtons` is false). User opens NoteFromTextDialog via Notes button.
 
+## AI Rules (Per-View Configurable)
+
+- **`server/routes/ai-rules.ts`**: `GET/PUT /api/ai/rules/:viewType` — validates `'erd'|'notes'|'flowchart'`, upserts per `(user_id, view_type)`.
+- **`src/hooks/useAIRules.ts`**: fetch/save rules per view type, guest fallback via localStorage.
+- **`src/components/ai/AIRulesTab.tsx`**: 3 sub-tabs (ERD, Notes, Flowchart) with textarea, save button, disable toggle.
+- **`src/components/modals/SettingsModal.tsx`**: tab "AI Rules" (`ListChecks` icon) in Feature group, renders `<AIRulesTab />`.
+- **`useAIChat.ts`**: injects view rules into system prompt with override instruction — "if user explicitly requests something contradicting a rule, follow user's direct instruction."
+- **`AIChatPanel.tsx`**: maps `entityType` → `currentViewType` (`note→notes`, `diagram→erd`, `flowchart→flowchart`), passes to `useAIChat`.
+- **DB table**: `user_ai_rules` (UUID PK, FK `auth.users`, `view_type` CHECK, unique per user+view) with RLS policy and `updated_at` trigger.
+- **Files**: [`src/hooks/useAIRules.ts`](./src/hooks/useAIRules.ts), [`src/components/ai/AIRulesTab.tsx`](./src/components/ai/AIRulesTab.tsx), [`server/routes/ai-rules.ts`](./server/routes/ai-rules.ts)
+
 ## Spinner Style Standardization
 
 - **UI Update**: Previously, some views used a large spinner (`w-10 h-10`) while others used a small spinner (`w-6 h-6`). This has been standardized across the entire application.
@@ -1164,6 +1170,12 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 - **Bug**: SQL keyword `action` used as column name (`ALTER TABLE users ADD COLUMN action VARCHAR(50)`) — lexer tokenized `action` as `KEYWORD` (uppercased `ACTION`), column name stored as `ACTION` instead of `action`. When AI-generated SQL referencing `action` arrived, parser couldn't match columns by name (`ACTION` ≠ `action`).
 - **Fix**: `cleanIdentifier()` in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) now lowercases output. Safe because unquoted SQL identifiers are case-insensitive; quoted identifiers (`"Users"`) have quotes stripped by the same function.
 - **Files**: `sqlParser.ts:9`
+
+## SQL Parser: `BIGSERIAL` → `BIGINT` Normalize Fix
+
+- **Bug**: `normalizeType()` in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) mapped `BIGSERIAL`, `SERIAL`, and `SMALLSERIAL` all to `INT`. This caused FK type mismatch when AI generated `id BIGSERIAL` (parsed as `INT`) referencing `assigned_to_id BIGINT` — ERD type validation rejected the connection.
+- **Fix** ([`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts):30-32): Split into individual mappings — `SERIAL → INT`, `BIGSERIAL → BIGINT`, `SMALLSERIAL → SMALLINT`. Same fix applied to `erdActions.ts:388` (`applyToErdContent` normalizer).
+- **Files**: `sqlParser.ts:30-32`, `erdActions.ts:388-390`
 
 ## EntityNode Double-Click Tooltip
 

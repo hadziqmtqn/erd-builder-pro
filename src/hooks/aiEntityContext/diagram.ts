@@ -117,10 +117,16 @@ Rules:
 4. Foreign keys can be inline in CREATE TABLE (REFERENCES) or as ALTER TABLE ... ADD FOREIGN KEY
 5. If the user asks to create an ERD or database from scratch, generate the complete SQL DDL with all tables
 6. If the user asks for an explanation, you may include a brief description before or after the SQL block
-7. Support standard SQL types: BIGINT, INT, VARCHAR(n), TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, UUID, JSONB, etc.
+7. Use STANDARD PORTABLE SQL types — avoid database-specific keywords:
+   - Use BIGINT for primary keys (NOT BIGSERIAL, SERIAL, or AUTO_INCREMENT)
+   - Use INT for integer, VARCHAR(n) for strings, TEXT for long text, BOOLEAN for booleans
+   - Use TIMESTAMP for datetime, DATE for date, DECIMAL(p,s) for decimals
+   - Use UUID for UUID columns, JSONB for JSON data
+   - DEFAULT values like NOW() and NULL are safe and portable
 8. You MAY split SQL into multiple \`\`\`sql blocks if that is clearer, but one block per set of related tables is preferred
 9. When telling the user to apply the SQL to their diagram, do NOT say "click Append/Replace". Instead, say "click the Database button below this message" or "use the SQL → ERD button" — the app shows a dedicated Database icon button (not Append/Replace) when SQL is detected in your response.
 10. Use ENGLISH for ALL table names and column names by default (e.g. \`users\`, \`posts\`, \`email\`, \`created_at\`). Only use the user's language if they explicitly ask (e.g. "gunakan bahasa Indonesia"). This keeps the schema portable and follows database conventions.
+11. If the user explicitly asks for a specific database dialect (e.g. "MySQL", "PostgreSQL", "use BIGSERIAL"), you may use that dialect's syntax. Otherwise stick to the portable defaults above.
 
 Example:
 \`\`\`sql

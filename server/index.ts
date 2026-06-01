@@ -121,6 +121,7 @@ app.use("/api/backups", backupsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/ai/settings", aiSettingsRouter);
 app.use("/api/ai/chat", aiChatRouter);
+app.use("/api/ai/rules", (await import("./routes/ai-rules.js")).default);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 

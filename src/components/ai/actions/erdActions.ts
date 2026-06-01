@@ -385,7 +385,9 @@ function parseAlterTableAddColumn(sql: string): Map<string, Column[]> {
       else if (rawType.startsWith('CHAR')) rawType = 'CHAR';
       else if (rawType.startsWith('VARBINARY')) rawType = 'VARBINARY';
       else if (rawType.startsWith('VARCHAR')) rawType = 'VARCHAR';
-      else if (rawType === 'SERIAL' || rawType === 'BIGSERIAL') rawType = 'INT';
+      else if (rawType === 'SERIAL') rawType = 'INT';
+      else if (rawType === 'BIGSERIAL') rawType = 'BIGINT';
+      else if (rawType === 'SMALLSERIAL') rawType = 'SMALLINT';
       else if (rawType === 'INTEGER') rawType = 'INT';
       else if (rawType === 'DOUBLE PRECISION') rawType = 'DOUBLE';
       else if (rawType === 'CHARACTER VARYING') rawType = 'VARCHAR';

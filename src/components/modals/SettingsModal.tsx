@@ -8,7 +8,8 @@ import {
   Palette,
   Settings,
   Brain,
-  Library
+  Library,
+  ListChecks
 } from 'lucide-react';
 import {
   Dialog,
@@ -52,6 +53,7 @@ import { useAISettings } from '@/hooks/useAISettings';
 import { APISettingsTab } from '@/components/ai/APISettingsTab';
 import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
+import { AIRulesTab } from '@/components/ai/AIRulesTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
 
@@ -99,6 +101,7 @@ export function SettingsModal() {
       items: [
         { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
         { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
+        { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
         { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
       ]
     },
@@ -260,6 +263,10 @@ export function SettingsModal() {
                     onToggleDefault={togglePromptDefault}
                   />
                 </div>
+              )}
+
+              {settingsTab === 'ai-rules' && (
+                <AIRulesTab />
               )}
 
               {settingsTab === 'backups' && (
