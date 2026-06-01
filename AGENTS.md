@@ -620,7 +620,8 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 - **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
-- **Auto layout spacing tuning**: `src/lib/autoLayout.ts` now uses a much smaller width estimate per column (`BASE_TABLE_WIDTH = 240`, `COL_TO_WIDTH_ESTIMATE = 8`) and clamps horizontal spacing with `MIN_HORIZONTAL_SPACING = 320` plus a smaller padding. This keeps ERD tables visually closer together while still avoiding overlap for wider tables.
+- **Auto layout spacing tuning**: `src/lib/autoLayoutERD.ts` now uses a much smaller width estimate per column (`BASE_TABLE_WIDTH = 220`, `COL_TO_WIDTH_ESTIMATE = 6`) and clamps horizontal spacing with `MIN_HORIZONTAL_SPACING = 280` plus a smaller padding. Vertical layer spacing is also reduced (`+72`) so ERD tables sit closer together overall while still avoiding overlap for wider tables.
+- **Flowchart auto layout**: `src/lib/autoLayoutFlowchart.ts` — BFS from Start nodes, diamond decision branch offset (`BRANCH_OFFSET = 280`), convergence centering for multi-source nodes. Used by `FlowchartView` toolbar "Auto Layout" button.
 
 ### Per-Table Dialog: `TableDialog`
 
@@ -645,6 +646,7 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 - **`maxIter` guard**: `collectDescendants(id, outgoing, exclude, maxIter=200)` prevents infinite BFS loops from malformed graphs.
 - **Sugiyama BFS capped**: `maxBFSIter = newNodes.length * 3` prevents infinite loop on cyclic graphs (back-edges). The original `while (queue.length > 0)` never terminates when the graph has cycles (e.g. `n4→n2→n3→n4` loop) because each cycle pass re-queues all cycle nodes with higher layers, growing the queue unboundedly.
 - **Fast-path positions**: if ALL AI-provided nodes have `position` with `x`/`y` numbers, `buildFlowchartLayout` uses them directly and skips the Sugiyama layout entirely — eliminates the layout bottleneck for AI responses that include positions.
+- **Symbol-aware manual Auto Layout**: [`src/lib/autoLayoutFlowchart.ts`](./src/lib/autoLayoutFlowchart.ts) now returns `{ nodes, edges }` instead of nodes only. It assigns diamond decision branches with semantic `Yes`/`No` side placement, spreads other branches by shape-aware column offsets, and recalculates `sourceHandle`/`targetHandle` so branch arrows do not flip sides after layout.
 
 ### Flowchart AI Content Safety Guards
 

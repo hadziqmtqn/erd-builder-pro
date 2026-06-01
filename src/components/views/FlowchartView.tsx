@@ -17,7 +17,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2, Undo2, Redo2, Move, Play } from 'lucide-react';
+import { Plus, Loader2, Undo2, Redo2, Move, Play, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Select,
@@ -40,6 +40,7 @@ import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, a
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 import { FlowchartExportModal } from '@/components/flowchart/FlowchartExportModal';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
+import { autoLayoutFlowchart } from '@/lib/autoLayoutFlowchart';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import type { FlowchartExportHandler } from '@/providers/WorkspaceContext';
 
@@ -295,6 +296,14 @@ export const FlowchartView = React.memo(({
       setEdges(nextState.edges);
     }
   }, [redo, setNodes, setEdges]);
+
+  const handleAutoLayout = useCallback(() => {
+    if (nodes.length === 0) return;
+    const repositions = autoLayoutFlowchart(nodes, edges);
+    takeSnapshot(nodesRef.current, edgesRef.current);
+    setNodes(repositions.nodes);
+    setEdges(repositions.edges);
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot]);
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
@@ -1000,6 +1009,11 @@ export const FlowchartView = React.memo(({
             )}
             {!isSimulating && (
               <>
+                <div className="w-px h-6 bg-border mx-0.5" />
+                <Button onClick={handleAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+                  <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Auto Layout</span>
+                </Button>
                 <div className="w-px h-6 bg-border mx-0.5" />
                 <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
                   <Plus className="w-4 h-4 sm:mr-2" />

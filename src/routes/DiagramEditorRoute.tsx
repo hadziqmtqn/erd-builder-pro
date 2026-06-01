@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
-import { autoLayoutERD } from '@/lib/autoLayout';
+import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 

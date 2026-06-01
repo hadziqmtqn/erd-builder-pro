@@ -21,6 +21,7 @@ function mapType(type: string, target: SQLType): string {
       case 'decimal': return 'DECIMAL(10,2)';
       case 'float': return 'FLOAT';
       case 'uuid': return 'VARCHAR(36)';
+      case 'ulid': return 'CHAR(26)';
       case 'json': return 'JSON';
       default: return t.toUpperCase();
     }
@@ -42,6 +43,7 @@ function mapType(type: string, target: SQLType): string {
       case 'decimal': return 'DECIMAL(10,2)';
       case 'float': return 'REAL';
       case 'uuid': return 'UUID';
+      case 'ulid': return 'CHAR(26)';
       case 'json': return 'JSONB';
       default: return t.toUpperCase();
     }
@@ -118,53 +120,59 @@ export function generatePostgreSQL(entity: Entity): string {
 export function generateLaravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
   const tableName = entity.name.toLowerCase();
   
-  const columns = entity.columns.map(col => {
-    const t = col.type.toLowerCase();
-    const name = col.name.toLowerCase();
-    let method = 'string';
-    let args = `'${col.name}'`;
+  const hasTimestamps = entity.columns.some(c => c.name === 'created_at');
+  const hasSoftDeletes = entity.columns.some(c => c.name === 'deleted_at');
+  const skipNames = new Set(['created_at', 'updated_at', 'deleted_at']);
 
-    if (col.is_pk && name === 'id') {
-      method = 'id';
-      args = '';
-    } else {
-      switch (t) {
-        case 'integer':
-        case 'int': method = 'integer'; break;
-        case 'bigint': 
-          method = (name.endsWith('_id') || col.is_pk) ? 'unsignedBigInteger' : 'bigInteger'; 
-          break;
-        case 'text': method = 'text'; break;
-        case 'longtext': method = 'longText'; break;
-        case 'boolean':
-        case 'bool': method = 'boolean'; break;
-        case 'timestamp': method = 'timestamp'; break;
-        case 'datetime': method = 'dateTime'; break;
-        case 'date': method = 'date'; break;
-        case 'decimal': method = 'decimal'; args = `'${col.name}', 10, 2`; break;
-        case 'float': method = 'float'; break;
-        case 'uuid': method = 'uuid'; break;
-        case 'json': method = 'json'; break;
-        case 'enum': 
-          method = 'string';
-          args = `'${col.name}'`;
-          break;
-        default: method = 'string';
+  const columns = entity.columns
+    .filter(col => !skipNames.has(col.name.toLowerCase()))
+    .map(col => {
+      const t = col.type.toLowerCase();
+      const name = col.name.toLowerCase();
+      let method = 'string';
+      let args = `'${col.name}'`;
+
+      if (col.is_pk && name === 'id') {
+        method = 'id';
+        args = '';
+      } else {
+        switch (t) {
+          case 'integer':
+          case 'int': method = 'integer'; break;
+          case 'bigint': 
+            method = (name.endsWith('_id') || col.is_pk) ? 'unsignedBigInteger' : 'bigInteger'; 
+            break;
+          case 'text': method = 'text'; break;
+          case 'longtext': method = 'longText'; break;
+          case 'boolean':
+          case 'bool': method = 'boolean'; break;
+          case 'timestamp': method = 'timestamp'; break;
+          case 'datetime': method = 'dateTime'; break;
+          case 'date': method = 'date'; break;
+          case 'decimal': method = 'decimal'; args = `'${col.name}', 10, 2`; break;
+          case 'float': method = 'float'; break;
+          case 'uuid': method = 'uuid'; break;
+          case 'ulid': method = 'ulid'; break;
+          case 'json': method = 'json'; break;
+          case 'enum': 
+            method = 'string';
+            args = `'${col.name}'`;
+            break;
+          default: method = 'string';
+        }
       }
-    }
 
-    let chain = `$table->${method}(${args})`;
-    if (col.is_nullable && !col.is_pk) chain += '->nullable()';
-    
-    return `    ${chain};`;
-  }).join('\n');
+      let chain = `$table->${method}(${args})`;
+      if (col.is_nullable && !col.is_pk) chain += '->nullable()';
+      
+      return `    ${chain};`;
+    }).join('\n');
 
   let fkBlock = '';
   if (fkConstraints && fkConstraints.length > 0) {
     const fkLines = fkConstraints
       .filter(fk => entity.columns.some(c => c.name === fk.column))
       .map(fk => {
-        const constraintName = `fk_${tableName}_${fk.column}`;
         return `    $table->foreign('${fk.column}')->references('${fk.references}')->on('${fk.on}')->onDelete('cascade');`;
       })
       .join('\n');
@@ -175,7 +183,7 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
 
   return `Schema::create('${tableName}', function (Blueprint $table) {
 ${columns}${fkBlock}
-    $table->timestamps();
+${hasSoftDeletes ? '    $table->softDeletes();' : ''}${hasTimestamps ? '\n    $table->timestamps();' : ''}
 });`;
 }
 
@@ -326,6 +334,7 @@ export function generateZod(entity: Entity): string {
       case 'boolean':
       case 'bool': zod = 'z.boolean()'; break;
       case 'uuid': zod = 'z.string().uuid()'; break;
+      case 'ulid': zod = 'z.string().ulid()'; break;
       case 'datetime':
       case 'timestamp': zod = 'z.string().datetime()'; break;
       case 'date': zod = 'z.string().date()'; break;

@@ -3,10 +3,10 @@ import { Entity } from '@/types';
 
 const START_X = 50;
 const START_Y = 50;
-const COL_TO_WIDTH_ESTIMATE = 8;
-const BASE_TABLE_WIDTH = 240;
-const MIN_HORIZONTAL_SPACING = 320;
-const HORIZONTAL_PADDING = 56;
+const COL_TO_WIDTH_ESTIMATE = 6;
+const BASE_TABLE_WIDTH = 220;
+const MIN_HORIZONTAL_SPACING = 280;
+const HORIZONTAL_PADDING = 32;
 
 const HEADER_H = 44;
 const ROW_H = 36;
@@ -90,7 +90,7 @@ export function autoLayoutERD(
   const maxEstWidth = Math.max(...result.map(estimateNodeWidth), 0);
   const maxEstHeight = Math.max(...result.map(estimateNodeHeight), 0);
   const H_SPACING = Math.max(maxEstWidth + HORIZONTAL_PADDING, MIN_HORIZONTAL_SPACING);
-  const V_SPACING = maxEstHeight + 120; // vertical gap between layers
+  const V_SPACING = maxEstHeight + 72; // vertical gap between layers
 
   const maxLayerWidth = Math.max(...[...layers.values()].map(l => l.length));
   const canvasWidth = START_X + maxLayerWidth * H_SPACING;

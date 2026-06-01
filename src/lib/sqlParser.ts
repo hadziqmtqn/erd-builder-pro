@@ -31,6 +31,7 @@ function normalizeType(typeStr: string): string {
     if (normalized === 'INTEGER') return 'INT';
     if (normalized === 'DOUBLE PRECISION') return 'DOUBLE';
     if (normalized === 'BOOLEAN') return 'BOOLEAN';
+    if (normalized === 'ULID') return 'ULID';
     if (normalized === 'DATETIME') return 'TIMESTAMP';
     if (normalized === 'YEAR') return 'INT';
 

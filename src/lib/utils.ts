@@ -20,7 +20,7 @@ export const COLUMN_TYPES = [
   "SERIAL", "BIGSERIAL", "SMALLSERIAL",
   "MONEY",
   "BYTEA",
-  "UUID", "JSONB",
+  "UUID", "ULID", "JSONB",
   "INTERVAL",
   "TIMESTAMPTZ", "TIMETZ",
   "CIDR", "INET", "MACADDR", "MACADDR8",
