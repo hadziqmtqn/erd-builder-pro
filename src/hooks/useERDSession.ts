@@ -470,6 +470,33 @@ export function useERDSession(
     options?.broadcastEdgesUpdate?.(nextEdges);
   };
 
+  const toggleEdgeSide = useCallback((handleId?: string) => {
+    if (!handleId) return handleId;
+    if (handleId.endsWith('-source')) return handleId.replace(/-source$/, '-source-l');
+    if (handleId.endsWith('-source-l')) return handleId.replace(/-source-l$/, '-source');
+    if (handleId.endsWith('-target')) return handleId.replace(/-target$/, '-target-r');
+    if (handleId.endsWith('-target-r')) return handleId.replace(/-target-r$/, '-target');
+    return handleId;
+  }, []);
+
+  const handleEdgeFlip = useCallback((edgeId: string) => {
+    const edge = edges.find(e => e.id === edgeId);
+    if (!edge) return;
+
+    const nextEdges = edges.map((current) => {
+      if (current.id !== edgeId) return current;
+      return {
+        ...current,
+        sourceHandle: toggleEdgeSide(current.sourceHandle),
+        targetHandle: toggleEdgeSide(current.targetHandle),
+      };
+    });
+
+    takeSnapshot(nodes, edges);
+    setEdges(nextEdges);
+    options?.broadcastEdgesUpdate?.(nextEdges);
+  }, [edges, nodes, setEdges, takeSnapshot, options?.broadcastEdgesUpdate, toggleEdgeSide]);
+
   const deleteEdge = (id: string) => {
     takeSnapshot(nodes, edges);
     const nextEdges = edges.filter((edge) => edge.id !== id);
@@ -673,6 +700,7 @@ export function useERDSession(
     updateEntity,
     deleteEntity,
     handleEdgeUpdate,
+    handleEdgeFlip,
     deleteEdge,
     handleDiagramSelect,
     viewportRef,

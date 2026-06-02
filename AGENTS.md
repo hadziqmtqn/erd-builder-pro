@@ -180,6 +180,12 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - Do not keep FK handles semi-visible at rest; that leaves a faint dot behind after the cursor leaves the row.
 - The handle should rely on `opacity-0` plus hover/focus classes, not a permanent opacity override.
 
+### ERD Edge Side Reposition
+
+- `useERDSession.ts` exposes `handleEdgeFlip(edgeId)` to move one selected ERD edge to the opposite side without affecting other edges.
+- The flip toggles the stored `sourceHandle`/`targetHandle` suffixes only, so the logical relation remains the same while the rendered side changes.
+- `RelationshipPropertiesPanel.tsx` now includes a `Move Edge Side` button for the selected edge.
+
 ## UUID vs Numeric ID (Delete/Restore)
 
 All document types (flowchart, notes, drawings, erd/diagram) have hooks with `delete*`, `restore*`, and `delete*Permanent` functions that accept a `uid: string` parameter.

@@ -106,6 +106,7 @@ function AppLayoutInner() {
     tableDeleteDoc, setTableDeleteDoc,
     executeDuplicate, confirmPermanentDelete,
     handleEdgeUpdate: handleEdgeUpdate2,
+    handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
 
@@ -361,6 +362,7 @@ function AppLayoutInner() {
             selectedEdge={edges.find(e => e.id === selectedEdgeId) || null}
             nodes={nodes}
             handleEdgeUpdate={handleEdgeUpdate2}
+            handleEdgeFlip={handleEdgeFlip2}
             deleteEdge={deleteEdge}
           />
         )}

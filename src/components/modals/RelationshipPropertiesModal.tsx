@@ -15,6 +15,7 @@ interface RelationshipPropertiesModalProps {
   selectedEdge: any;
   nodes: any[];
   handleEdgeUpdate: (edgeId: string, updatedData: any) => void;
+  handleEdgeFlip: (edgeId: string) => void;
   deleteEdge: (edgeId: string) => void;
 }
 
@@ -24,6 +25,7 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
   selectedEdge,
   nodes,
   handleEdgeUpdate,
+  handleEdgeFlip,
   deleteEdge,
 }) => {
   return (
@@ -40,6 +42,7 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
             selectedEdge={selectedEdge} 
             nodes={nodes} 
             onUpdateEdge={handleEdgeUpdate} 
+            onFlipEdge={handleEdgeFlip}
             onDeleteEdge={deleteEdge}
           />
         </DialogBody>
