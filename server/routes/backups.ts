@@ -1,5 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
@@ -13,17 +14,21 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
   const offset = parseInt(req.query.offset as string) || 0;
 
   try {
-    const { data, error, count } = await supabase
-      .from('backups')
-      .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw error;
-    res.json({ data, total: count });
+    const [data, total] = await Promise.all([
+      prisma?.backup.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma?.backup.count({
+        where: { userId: user.id },
+      }),
+    ]);
+    res.json({ data: data || [], total: total || 0 });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    logger.error({ err: error }, "Backup list error:");
+    res.status(500).json({ error: "Failed to fetch backups" });
   }
 });
 
@@ -34,18 +39,15 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
 
   try {
     // 1. Fetch record and verify ownership
-    const { data: backup, error } = await supabase
-      .from('backups')
-      .select('*')
-      .eq('id', id)
-      .eq('user_id', user.id)
-      .single();
+    const backup = await prisma?.backup.findFirst({
+      where: { id, userId: user.id },
+    });
 
-    if (error || !backup) {
+    if (!backup) {
       return res.status(404).json({ error: "Backup record not found" });
     }
 
-    if (!backup.file_path) {
+    if (!backup.filePath) {
       return res.status(400).json({ error: "File has not been uploaded yet" });
     }
 
@@ -56,7 +58,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
     // 2. Fetch from R2
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET_NAME,
-      Key: backup.file_path,
+      Key: backup.filePath,
     });
 
     try {
@@ -80,7 +82,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
 
   } catch (error: any) {
     logger.error({ err: error }, "Download Error:");
-    res.status(500).json({ error: `Failed to download file: ${error.message}` });
+    res.status(500).json({ error: "Failed to download file" });
   }
 });
 
@@ -90,18 +92,18 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   const { name } = req.body;
 
   try {
-    // 1. Create record in Supabase
-    const { data: backupRecord, error } = await supabase
-      .from('backups')
-      .insert([{
-        user_id: user.id,
-        name: name,
-        status: 'pending'
-      }])
-      .select()
-      .single();
+    // 1. Create record via Prisma
+    const backupRecord = await prisma?.backup.create({
+      data: {
+        userId: user.id,
+        name,
+        status: 'pending',
+      },
+    });
 
-    if (error) throw error;
+    if (!backupRecord) {
+      throw new Error("Failed to create backup record");
+    }
 
     // 2. Trigger GitHub Action via Repository Dispatch
     if (GITHUB_TOKEN && GITHUB_REPO_OWNER && GITHUB_REPO_NAME) {
@@ -128,7 +130,8 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
 
     res.json(backupRecord);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    logger.error({ err: error }, "Backup create error:");
+    res.status(500).json({ error: "Failed to create backup" });
   }
 });
 

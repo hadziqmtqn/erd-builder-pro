@@ -1,3 +1,7 @@
+// BigInt serialization fix for Prisma — JSON.stringify cannot handle BigInt by default
+// Prisma returns BigInt for BIGSERIAL columns; this converts to number automatically.
+(BigInt.prototype as any).toJSON = function () { return Number(this); };
+
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -95,6 +99,31 @@ app.use("/api/upload", uploadLimiter);
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 app.use(cookieParser());
+
+// Response field name conversion: Prisma returns camelCase, but frontend expects
+// snake_case (matching the original Supabase API format). This middleware intercepts
+// res.json() and converts all object keys from camelCase to snake_case.
+function camelToSnake(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) return obj.map(camelToSnake);
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    result[snakeKey] = camelToSnake(value);
+  }
+  return result;
+}
+
+app.use((_req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = function (body: unknown) {
+    return originalJson(camelToSnake(body));
+  } as typeof res.json;
+  next();
+});
 
 // Structured request logging (via Pino)
 app.use(httpLogger);

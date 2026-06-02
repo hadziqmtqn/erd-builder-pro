@@ -1,6 +1,7 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
+import { handleError } from "../lib/utils.js";
 
 const router = Router();
 
@@ -14,17 +15,17 @@ router.get("/:viewType", authenticate, async (req: ExpressRequest, res: ExpressR
       return res.status(400).json({ error: `Invalid view type. Must be one of: ${VALID_VIEW_TYPES.join(', ')}` });
     }
 
-    const { data, error } = await supabase
-      .from("user_ai_rules")
-      .select("id, view_type, content, is_enabled, updated_at")
-      .eq("user_id", (req as any).user.id)
-      .eq("view_type", viewType)
-      .maybeSingle();
+    const data = await prisma?.userAiRule.findFirst({
+      where: {
+        userId: (req as any).user.id,
+        viewType,
+      },
+      select: { id: true, viewType: true, content: true, isEnabled: true, updatedAt: true }
+    });
 
-    if (error) return res.status(500).json({ error: error.message });
     res.json(data || { view_type: viewType, content: '', is_enabled: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to fetch AI rules");
   }
 });
 
@@ -39,33 +40,26 @@ router.put("/:viewType", authenticate, async (req: ExpressRequest, res: ExpressR
     const { content, is_enabled } = req.body;
     const userId = (req as any).user.id;
 
-    const { data: existing } = await supabase
-      .from("user_ai_rules")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("view_type", viewType)
-      .maybeSingle();
+    const existing = await prisma?.userAiRule.findFirst({
+      where: { userId, viewType },
+      select: { id: true }
+    });
 
     let result;
     if (existing) {
-      result = await supabase
-        .from("user_ai_rules")
-        .update({ content, is_enabled: is_enabled ?? true, updated_at: new Date().toISOString() })
-        .eq("id", existing.id)
-        .select()
-        .single();
+      result = await prisma?.userAiRule.update({
+        where: { id: existing.id },
+        data: { content, isEnabled: is_enabled ?? true, updatedAt: new Date() }
+      });
     } else {
-      result = await supabase
-        .from("user_ai_rules")
-        .insert({ user_id: userId, view_type: viewType, content, is_enabled: is_enabled ?? true })
-        .select()
-        .single();
+      result = await prisma?.userAiRule.create({
+        data: { userId, viewType, content, isEnabled: is_enabled ?? true }
+      });
     }
 
-    if (result.error) return res.status(500).json({ error: result.error.message });
-    res.json(result.data);
+    res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to save AI rules");
   }
 });
 

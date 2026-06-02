@@ -1,5 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, s3Client, R2_BUCKET_NAME, R2_PUBLIC_URL, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY } from "../lib/config.js";
+import { s3Client, R2_BUCKET_NAME, R2_PUBLIC_URL, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, uploadSchema, deleteUploadSchema } from "../lib/validation.js";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -30,12 +31,44 @@ const upload = multer({
 // Trash API — scoped to authenticated user
 router.get("/trash", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const userId = (req as any).user.id;
-  const { data: diagrams } = await supabase.from("diagrams").select("*, projects!left(name)").eq("is_deleted", true).eq("user_id", userId).order("deleted_at", { ascending: false });
-  const { data: notes } = await supabase.from("notes").select("*, projects!left(name)").eq("is_deleted", true).eq("user_id", userId).order("deleted_at", { ascending: false });
-  const { data: drawings } = await supabase.from("drawings").select("*, projects!left(name)").eq("is_deleted", true).eq("user_id", userId).order("deleted_at", { ascending: false });
-  const { data: flowcharts } = await supabase.from("flowcharts").select("*, projects!left(name)").eq("is_deleted", true).eq("user_id", userId).order("deleted_at", { ascending: false });
-  const { data: projects } = await supabase.from("projects").select("*").eq("is_deleted", true).eq("user_id", userId).order("deleted_at", { ascending: false });
-  res.json({ diagrams: diagrams || [], notes: notes || [], drawings: drawings || [], flowcharts: flowcharts || [], projects: projects || [] });
+  try {
+    const [diagrams, notes, drawings, flowcharts, projects] = await Promise.all([
+      prisma?.diagram.findMany({
+        where: { isDeleted: true, userId },
+        include: { project: { select: { name: true } } },
+        orderBy: { deletedAt: 'desc' },
+      }),
+      prisma?.note.findMany({
+        where: { isDeleted: true, userId },
+        include: { project: { select: { name: true } } },
+        orderBy: { deletedAt: 'desc' },
+      }),
+      prisma?.drawing.findMany({
+        where: { isDeleted: true, userId },
+        include: { project: { select: { name: true } } },
+        orderBy: { deletedAt: 'desc' },
+      }),
+      prisma?.flowchart.findMany({
+        where: { isDeleted: true, userId },
+        include: { project: { select: { name: true } } },
+        orderBy: { deletedAt: 'desc' },
+      }),
+      prisma?.project.findMany({
+        where: { isDeleted: true, userId },
+        orderBy: { deletedAt: 'desc' },
+      }),
+    ]);
+    res.json({
+      diagrams: diagrams || [],
+      notes: notes || [],
+      drawings: drawings || [],
+      flowcharts: flowcharts || [],
+      projects: projects || [],
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Trash fetch error:");
+    res.status(500).json({ error: "Failed to fetch trash items" });
+  }
 });
 
 // Test R2 Configuration

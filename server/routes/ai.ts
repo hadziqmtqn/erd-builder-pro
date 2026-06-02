@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { validate, aiProxySchema } from "../lib/validation.js";
 import { logger } from "../lib/logger.js";
 
@@ -34,50 +34,61 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
       return res.status(400).json({ error: "Missing required fields: messages" });
     }
 
-    // When no apiKey is provided (Guest mode or online mode without apiKey), look up config from Supabase
+    // When no apiKey is provided, look up config from DB
     if (!apiKey) {
-      if (!supabase) {
-        clearTimeout(timeout);
-        return res.status(500).json({ error: "Supabase not configured on server" });
+      // Attempt to get userId from session cookie if not provided in body
+      if (!userId) {
+        try {
+          const { supabase } = await import("../lib/config.js");
+          const token = req.cookies?.token;
+          if (token) {
+            const { data: { user } } = await supabase.auth.getUser(token);
+            if (user) userId = user.id;
+          }
+        } catch {}
       }
 
-      let query = supabase
-        .from("user_ai_configs")
-        .select("*, ai_providers(*)")
-        .eq("is_enabled", true)
-        .not("selected_model_id", "is", null)
-
-      // Online mode: filter by user_id
-      if (userId) {
-        query = query.eq("user_id", userId);
+      if (!prisma) {
+        clearTimeout(timeout);
+        return res.status(500).json({ error: "Database not configured on server" });
       }
 
-      const { data: configData, error: configError } = await query
-        .order("updated_at", { ascending: false })
-        .limit(1);
+      try {
+        // Authenticated: scope config lookup to user's own config
+        // Guest (no userId): use first enabled system config as fallback
+        const where: any = {
+          isEnabled: true,
+          selectedModelId: { not: null },
+        };
+        if (userId) {
+          where.userId = userId;
+        }
 
-      if (configError) {
+        const config = await prisma.userAiConfig.findFirst({
+          where,
+          include: { provider: true },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        if (!config) {
+          clearTimeout(timeout);
+          return res.status(400).json({ error: "No AI provider configured. Configure AI in Settings." });
+        }
+
+        apiKey = config.apiKey;
+        baseUrl = baseUrl || config.provider?.baseUrl || "https://api.openai.com/v1";
+
+        if (!model && config.selectedModelId) {
+          const modelData = await prisma.aiModel.findFirst({
+            where: { id: config.selectedModelId },
+            select: { modelIdentifier: true },
+          });
+          model = modelData?.modelIdentifier || "gpt-4o-mini";
+        }
+      } catch (dbErr) {
         clearTimeout(timeout);
-        logger.error({ err: configError }, "AI proxy: Failed to fetch default config:");
+        logger.error({ err: dbErr }, "AI proxy: Failed to fetch default config:");
         return res.status(500).json({ error: "Failed to fetch AI configuration" });
-      }
-
-      if (!configData || configData.length === 0) {
-        clearTimeout(timeout);
-        return res.status(400).json({ error: "No AI provider configured on the server" });
-      }
-
-      const config = configData[0];
-      apiKey = config.api_key;
-      baseUrl = baseUrl || config.ai_providers?.base_url || "https://api.openai.com/v1";
-
-      if (!model && config.selected_model_id) {
-        const { data: modelData } = await supabase
-          .from("ai_models")
-          .select("model_identifier")
-          .eq("id", config.selected_model_id)
-          .single();
-        model = modelData?.model_identifier || "gpt-4o-mini";
       }
     }
 
@@ -150,7 +161,7 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
     if (aborted) return;
     logger.error({ err: err }, "AI proxy error:");
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message || "Internal server error" });
+      res.status(500).json({ error: "AI proxy error" });
     }
   }
 });

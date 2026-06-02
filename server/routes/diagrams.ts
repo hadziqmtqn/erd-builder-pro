@@ -1,5 +1,6 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
@@ -8,287 +9,440 @@ import { logger } from "../lib/logger.js";
 const router = Router();
 
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const limit = parseInt(req.query.limit as string) || 10;
-  const offset = parseInt(req.query.offset as string) || 0;
-  const projectId = req.query.project_id as string;
-  const q = req.query.q as string;
-  const isPublic = req.query.is_public === 'true' ? true : req.query.is_public === 'false' ? false : null;
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  let query = supabase
-    .from("diagrams")
-    .select("*, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false)
-    .eq("user_id", (req as any).user.id);
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const projectId = req.query.project_id as string;
+    const q = req.query.q as string;
+    const isPublic = req.query.is_public === 'true' ? true : req.query.is_public === 'false' ? false : null;
 
-  if (isPublic !== null) {
-    query = query.eq("is_public", isPublic);
+    const where: any = {
+      userId: (req as any).user.id,
+      isDeleted: false,
+    };
+
+    if (isPublic !== null) {
+      where.isPublic = isPublic;
+    }
+
+    if (q && q.trim()) {
+      where.name = { contains: q.trim(), mode: 'insensitive' };
+    }
+
+    if (projectId === "null") {
+      where.projectId = null;
+    } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
+      where.projectId = parseInt(projectId);
+    }
+
+    const deletedProjects = await prisma.project.findMany({
+      where: { isDeleted: true },
+      select: { id: true },
+    });
+    const deletedIds = deletedProjects.map(p => Number(p.id));
+
+    if (deletedIds.length > 0) {
+      where.OR = [
+        { projectId: null },
+        { projectId: { notIn: deletedIds } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      prisma.diagram.findMany({
+        where,
+        include: { project: true },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.diagram.count({ where }),
+    ]);
+
+    res.json({ data: data || [], total: total || 0 });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch diagrams");
   }
-
-  if (q && q.trim()) {
-    query = query.ilike("name", `%${q.trim()}%`);
-  }
-
-  if (projectId === "null") {
-    query = query.is("project_id", null);
-  } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
-    query = query.eq("project_id", parseInt(projectId));
-  }
-
-  const { data: deletedProjects } = await supabase.from("projects").select("id").eq("is_deleted", true);
-  const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
-  
-  if (deletedIds.length > 0) {
-    query = query.or(`project_id.is.null,project_id.not.in.(${deletedIds.join(",")})`);
-  }
-
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) return handleError(res, error, "Supabase error fetching diagrams");
-  
-  res.json({ 
-    data: data || [], 
-    total: count || 0
-  });
 });
 
 router.post("/", authenticate, validate(createDiagramSchema), async (req: ExpressRequest, res: ExpressResponse) => {
-  const { name, project_id, uid } = req.body;
-  const { data, error } = await supabase
-    .from("diagrams")
-    .insert([{ name, project_id: project_id || null, uid: uid || undefined, user_id: (req as any).user.id }])
-    .select()
-    .single();
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return handleError(res, error, "Failed to create diagram");
-  res.json(data);
+    const { name, project_id, uid } = req.body;
+    const data = await prisma.diagram.create({
+      data: {
+        name,
+        projectId: project_id || null,
+        uid: uid || undefined,
+        userId: (req as any).user.id,
+      },
+    });
+
+    res.json(data);
+  } catch (err: any) {
+    handleError(res, err, "Failed to create diagram");
+  }
 });
 
 router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data: diagram, error: diagramError } = await supabase
-    .from("diagrams")
-    .select("*, projects!left(name, is_deleted)")
-    .eq("uid", req.params.uid)
-    .single();
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
+    const diagram = await prisma.diagram.findUnique({
+      where: { uid: req.params.uid },
+      include: { project: { select: { name: true, isDeleted: true } } },
+    });
 
-  // Security Check: Is the project deleted?
-  if (diagram.projects && diagram.projects.is_deleted) {
-    return res.status(404).json({ error: "Diagram not found (associated project deleted)" });
-  }
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
 
-  // Security Check: Is the diagram itself deleted?
-  if (diagram.is_deleted) {
-    return res.status(404).json({ error: "Diagram not found" });
-  }
-
-  if (!diagram.is_public) {
-    return res.status(403).json({ error: "This document is private" });
-  }
-
-  let isOwner = false;
-  const sessionToken = req.cookies.token;
-  if (sessionToken) {
-    const { data: { user } } = await supabase.auth.getUser(sessionToken);
-    if (user && user.id === diagram.user_id) {
-      isOwner = true;
-    }
-  }
-
-  if (!isOwner) {
-    if (diagram.expiry_date && new Date(diagram.expiry_date) < new Date()) {
-      return res.status(403).json({ error: "This share link has expired" });
+    if (diagram.project && diagram.project.isDeleted) {
+      return res.status(404).json({ error: "Diagram not found (associated project deleted)" });
     }
 
-    const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
-    if (diagram.share_token && diagram.share_token !== providedToken) {
-      return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+    if (diagram.isDeleted) {
+      return res.status(404).json({ error: "Diagram not found" });
     }
+
+    if (!diagram.isPublic) {
+      return res.status(403).json({ error: "This document is private" });
+    }
+
+    let isOwner = false;
+    const sessionToken = req.cookies.token;
+    if (sessionToken) {
+      const { data: { user } } = await supabase.auth.getUser(sessionToken);
+      if (user && user.id === diagram.userId) {
+        isOwner = true;
+      }
+    }
+
+    if (!isOwner) {
+      if (diagram.expiryDate && new Date(diagram.expiryDate) < new Date()) {
+        return res.status(403).json({ error: "This share link has expired" });
+      }
+
+      const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
+      if (diagram.shareToken && diagram.shareToken !== providedToken) {
+        return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+      }
+    }
+
+    const diagramId = Number(diagram.id);
+
+    const entities = await prisma.entity.findMany({
+      where: { diagramId },
+    });
+
+    const relationships = await prisma.relationship.findMany({
+      where: { diagramId },
+    });
+
+    const entitiesWithColumns = await Promise.all(
+      entities.map(async (entity: any) => {
+        const columns = await prisma!.column.findMany({
+          where: { entityId: entity.id },
+          orderBy: { sortOrder: 'asc' },
+        });
+        return { ...entity, columns: columns || [] };
+      })
+    );
+
+    res.json({ ...diagram, entities: entitiesWithColumns, relationships });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch public diagram");
   }
-
-  const diagramId = diagram.id;
-
-  const { data: entities, error: entitiesError } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("diagram_id", diagramId);
-
-  if (entitiesError) return res.status(500).json({ error: entitiesError.message });
-
-  const { data: relationships, error: relError } = await supabase
-    .from("relationships")
-    .select("*")
-    .eq("diagram_id", diagramId);
-
-  if (relError) return res.status(500).json({ error: relError.message });
-
-  const entitiesWithColumns = await Promise.all(entities.map(async (entity: any) => {
-    const { data: columns } = await supabase
-      .from("columns")
-      .select("*")
-      .eq("entity_id", entity.id)
-      .order("sort_order", { ascending: true });
-    return { ...entity, columns: columns || [] };
-  }));
-
-  res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
 router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { uid } = req.params;
-  const { is_public, share_token, expiry_date } = req.body;
-
   try {
-    const { data: currentDiagram } = await supabase
-      .from("diagrams")
-      .select("*")
-      .eq("uid", uid)
-      .single();
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+
+    const { uid } = req.params;
+    const { is_public, share_token, expiry_date } = req.body;
+
+    const currentDiagram = await prisma.diagram.findFirst({
+      where: { uid, userId: (req as any).user.id },
+    });
 
     if (!currentDiagram) return res.status(404).json({ error: "Diagram not found" });
 
-    let updateData: any = {
-      is_public,
-      share_token: is_public ? share_token : null,
-      expiry_date: is_public ? expiry_date : null,
+    const updateData: any = {
+      isPublic: is_public,
+      shareToken: is_public ? share_token : null,
+      expiryDate: is_public ? expiry_date : null,
     };
 
     if (is_public) {
-      if (!currentDiagram.published_at) {
-        updateData.published_at = new Date().toISOString();
+      if (!currentDiagram.publishedAt) {
+        updateData.publishedAt = new Date();
       }
     } else {
-      updateData.published_at = null;
+      updateData.publishedAt = null;
     }
 
-    const { data, error } = await supabase
-      .from("diagrams")
-      .update(updateData)
-      .eq("uid", uid)
-      .eq("user_id", (req as any).user.id)
-      .select()
-      .single();
+    const data = await prisma.diagram.update({
+      where: { id: currentDiagram.id },
+      data: updateData,
+    });
 
-    if (error) throw error;
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to update share settings");
   }
 });
 
 router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const identifier = req.params.uid;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-  
-  let query = supabase
-    .from("diagrams")
-    .select("*")
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (isUuid) {
-    query = query.eq("uid", identifier);
-  } else if (!isNaN(Number(identifier))) {
-    query = query.eq("id", identifier);
-  } else {
-    return res.status(400).json({ error: "Invalid identifier format" });
+    const identifier = req.params.uid;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+
+    const diagram = await prisma.diagram.findFirst({
+      where: {
+        ...(isUuid ? { uid: identifier } : !isNaN(Number(identifier)) ? { id: Number(identifier) } : {}),
+        userId: (req as any).user.id,
+      },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    const diagramId = Number(diagram.id);
+
+    const entities = await prisma.entity.findMany({
+      where: { diagramId },
+    });
+
+    const relationships = await prisma.relationship.findMany({
+      where: { diagramId },
+    });
+
+    const entitiesWithColumns = await Promise.all(
+      entities.map(async (entity: any) => {
+        const columns = await prisma!.column.findMany({
+          where: { entityId: entity.id },
+          orderBy: { sortOrder: 'asc' },
+        });
+        return { ...entity, columns: columns || [] };
+      })
+    );
+
+    res.json({ ...diagram, entities: entitiesWithColumns, relationships });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch diagram");
   }
-
-  const { data: diagram, error: diagramError } = await query.single();
-
-  if (diagramError || !diagram) return res.status(404).json({ error: "Diagram not found" });
-
-  const diagramId = diagram.id;
-
-  const { data: entities, error: entitiesError } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("diagram_id", diagramId);
-
-  if (entitiesError) return res.status(500).json({ error: entitiesError.message });
-
-  const { data: relationships, error: relError } = await supabase
-    .from("relationships")
-    .select("*")
-    .eq("diagram_id", diagramId);
-
-  if (relError) return res.status(500).json({ error: relError.message });
-
-  const entitiesWithColumns = await Promise.all(entities.map(async (entity: any) => {
-    const { data: columns } = await supabase
-      .from("columns")
-      .select("*")
-      .eq("entity_id", entity.id)
-      .order("sort_order", { ascending: true });
-    return { ...entity, columns: columns || [] };
-  }));
-
-  res.json({ ...diagram, entities: entitiesWithColumns, relationships });
 });
 
 router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("diagrams")
-    .update(getSafeUpdate(true))
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return handleError(res, error, "Failed to delete diagram");
-  res.json({ success: true });
+    const diagram = await prisma.diagram.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    const safeUpdate = getSafeUpdate(true);
+    await prisma.diagram.update({
+      where: { id: diagram.id },
+      data: {
+        ...(safeUpdate.is_deleted !== undefined && { isDeleted: safeUpdate.is_deleted }),
+        ...(safeUpdate.deleted_at !== undefined && { deletedAt: safeUpdate.deleted_at }),
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to delete diagram");
+  }
 });
 
 router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("diagrams")
-    .update(getSafeUpdate(false))
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return handleError(res, error, "Failed to restore diagram");
-  res.json({ success: true });
+    const diagram = await prisma.diagram.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    const safeUpdate = getSafeUpdate(false);
+    await prisma.diagram.update({
+      where: { id: diagram.id },
+      data: {
+        ...(safeUpdate.is_deleted !== undefined && { isDeleted: safeUpdate.is_deleted }),
+        ...(safeUpdate.deleted_at !== undefined && { deletedAt: safeUpdate.deleted_at }),
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to restore diagram");
+  }
 });
 
 router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("diagrams")
-    .delete()
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    const diagram = await prisma.diagram.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    await prisma.diagram.delete({
+      where: { id: diagram.id },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to permanently delete diagram");
+  }
 });
 
 router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { name } = req.body;
-  const { error } = await supabase
-    .from("diagrams")
-    .update({ name })
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    const { name } = req.body;
+    const diagram = await prisma.diagram.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    await prisma.diagram.update({
+      where: { id: diagram.id },
+      data: { name },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to update diagram");
+  }
 });
 
 router.put("/:uid/project", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { project_id } = req.body;
-  const { error } = await supabase
-    .from("diagrams")
-    .update({ project_id: project_id || null })
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    const { project_id } = req.body;
+    const diagram = await prisma.diagram.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+
+    if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    await prisma.diagram.update({
+      where: { id: diagram.id },
+      data: { projectId: project_id || null },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to update diagram project");
+  }
 });
+
+async function upsertEntities(rows: any[], diagramId: number) {
+  if (rows.length === 0 || !prisma) return;
+  await prisma.$transaction(
+    rows.map(e =>
+      prisma!.entity.upsert({
+        where: { id: e.id },
+        create: {
+          id: e.id,
+          diagramId,
+          name: e.name,
+          x: e.x,
+          y: e.y,
+          color: e.color || '#6366f1',
+        },
+        update: {
+          name: e.name,
+          x: e.x,
+          y: e.y,
+          color: e.color || '#6366f1',
+        },
+      })
+    )
+  );
+}
+
+async function upsertColumns(rows: any[]) {
+  if (rows.length === 0 || !prisma) return;
+  await prisma.$transaction(
+    rows.map(col =>
+      prisma!.column.upsert({
+        where: { id: col.id },
+        create: {
+          id: col.id,
+          entityId: col._entity_id,
+          name: col.name,
+          type: col.type,
+          isPk: col.is_pk || false,
+          isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          enumValues: col.enum_values || null,
+          sortOrder: col.sort_order || 0,
+        },
+        update: {
+          entityId: col._entity_id,
+          name: col.name,
+          type: col.type,
+          isPk: col.is_pk || false,
+          isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          enumValues: col.enum_values || null,
+          sortOrder: col.sort_order || 0,
+        },
+      })
+    )
+  );
+}
+
+async function upsertRelationships(rows: any[], diagramId: number) {
+  if (rows.length === 0 || !prisma) return;
+  await prisma.$transaction(
+    rows.map(r =>
+      prisma!.relationship.upsert({
+        where: { id: r.id },
+        create: {
+          id: r.id,
+          diagramId,
+          sourceEntityId: r.source_entity_id,
+          targetEntityId: r.target_entity_id,
+          sourceColumnId: r.source_column_id || null,
+          targetColumnId: r.target_column_id || null,
+          sourceHandle: r.source_handle || null,
+          targetHandle: r.target_handle || null,
+          type: r.type || 'one-to-many',
+          label: r.label || null,
+        },
+        update: {
+          diagramId,
+          sourceEntityId: r.source_entity_id,
+          targetEntityId: r.target_entity_id,
+          sourceColumnId: r.source_column_id || null,
+          targetColumnId: r.target_column_id || null,
+          sourceHandle: r.source_handle || null,
+          targetHandle: r.target_handle || null,
+          type: r.type || 'one-to-many',
+          label: r.label || null,
+        },
+      })
+    )
+  );
+}
 
 router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const identifier = req.params.uid;
   const { entities, relationships, viewport, expectedVersion } = req.body;
 
-  // Deduplicate incoming arrays by id to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
   const dedupe = <T extends { id: any }>(arr: T[], label: string): T[] => {
     const seen = new Set();
     const result: T[] = [];
@@ -305,105 +459,73 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
   const dedupedEntities: any[] = dedupe(entities || [], 'entity');
   const dedupedRelationships: any[] = dedupe(relationships || [], 'relationship');
 
-  // Batch upsert with individual fallback: try batch first, retry one-by-one on conflict
-  async function upsertSafe(table: string, rows: any[], toRow: (item: any) => any) {
-    if (rows.length === 0) return;
-    
-    const { error } = await supabase.from(table).upsert(rows.map(toRow), { onConflict: 'id' });
-    if (!error) return;
-    
-    if (error.message?.includes('cannot affect row a second time')) {
-      logger.warn(`[Save] Batch upsert for ${table} failed with conflict — falling back to individual upserts`);
-      for (const item of rows) {
-        const { error: singleErr } = await supabase.from(table).upsert(toRow(item), { onConflict: 'id' });
-        if (singleErr) throw singleErr;
-      }
-    } else {
-      throw error;
-    }
-  }
-
   try {
-    // ✅ STEP 1: Fetch current diagram state with version check
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-    
-    let query = supabase
-      .from("diagrams")
-      .select("id, uid, _version, updated_at")
-      .eq("user_id", (req as any).user.id);
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+
+    let diagramWhere: any = { userId: (req as any).user.id };
     if (isUuid) {
-      query = query.eq("uid", identifier);
+      diagramWhere.uid = identifier;
     } else if (!isNaN(Number(identifier))) {
-      query = query.eq("id", identifier);
+      diagramWhere.id = Number(identifier);
     } else {
       return res.status(400).json({ error: "Invalid identifier format" });
     }
 
-    const { data: currentDiagram, error: fetchError } = await query.single();
+    const currentDiagram = await prisma.diagram.findFirst({
+      where: diagramWhere,
+      select: { id: true, uid: true, version: true, updatedAt: true, name: true },
+    });
 
-    if (fetchError || !currentDiagram) {
+    if (!currentDiagram) {
       return res.status(404).json({ error: "Diagram not found" });
     }
 
-    const diagramId = currentDiagram.id;
+    const diagramId = Number(currentDiagram.id);
 
-    // ✅ STEP 1b: Backfill uid if null (diagram was created before uid column had a default)
     const effectiveUid = isUuid ? identifier : null;
     if (!effectiveUid && !currentDiagram.uid) {
       const backfillUid = crypto.randomUUID();
-      await supabase.from("diagrams").update({ uid: backfillUid }).eq("id", diagramId);
+      await prisma.diagram.update({
+        where: { id: diagramId },
+        data: { uid: backfillUid },
+      });
       currentDiagram.uid = backfillUid;
     }
 
-    // ✅ STEP 2: Optimistic locking - reject if version mismatch
     if (expectedVersion !== undefined && expectedVersion !== null) {
-      if (currentDiagram._version !== expectedVersion) {
-        logger.warn(`[Race Condition] Version mismatch for diagram ${identifier}. Expected: ${expectedVersion}, Current: ${currentDiagram._version}`);
-        return res.status(409).json({ 
+      if (currentDiagram.version !== expectedVersion) {
+        logger.warn(`[Race Condition] Version mismatch for diagram ${identifier}. Expected: ${expectedVersion}, Current: ${currentDiagram.version}`);
+        return res.status(409).json({
           error: "Conflict: Diagram was modified. Please refresh and try again.",
-          currentVersion: currentDiagram._version,
-          retryable: true
+          currentVersion: currentDiagram.version,
+          retryable: true,
         });
       }
     }
 
-    // ✅ STEP 3: Get existing relationships for comparison (to detect true changes)
-    const { data: existingRelationships } = await supabase
-      .from("relationships")
-      .select("id")
-      .eq("diagram_id", diagramId);
-    
-    const existingRelIds = new Set(existingRelationships?.map((r: any) => r.id) || []);
+    const existingRelationships = await prisma.relationship.findMany({
+      where: { diagramId },
+      select: { id: true },
+    });
+
+    const existingRelIds = new Set(existingRelationships.map(r => r.id));
     const newRelIds = new Set(dedupedRelationships.map((r: any) => r.id));
 
-    // We will collect IDs for Deletion, but execute the Deletes AFTER Upserts succeed.
-    // This prevents data loss if Upserts fail due to schema mismatch.
-    
-    // (A) Collect IDs for Deletion
-    const { data: existingEntities } = await supabase
-      .from("entities")
-      .select("id")
-      .eq("diagram_id", diagramId);
-    
-    const existingEntityIds = new Set(existingEntities?.map((e: any) => e.id) || []);
+    const existingEntities = await prisma.entity.findMany({
+      where: { diagramId },
+      select: { id: true },
+    });
+
+    const existingEntityIds = new Set(existingEntities.map(e => e.id));
     const newEntityIds = new Set(entities.map((e: any) => e.id));
     const entitiesToDelete = Array.from(existingEntityIds).filter(id => !newEntityIds.has(id));
     let colsToDelete: string[] = [];
 
-    // ✅ STEP 6: Upsert entities (batch, fallback to individual on conflict)
     if (dedupedEntities.length > 0) {
-      await upsertSafe('entities', dedupedEntities, (e: any) => ({
-        id: e.id,
-        diagram_id: diagramId,
-        name: e.name,
-        x: e.x,
-        y: e.y,
-        color: e.color || '#6366f1'
-      }));
+      await upsertEntities(dedupedEntities, diagramId);
 
-      // ✅ STEP 7: Upsert columns (batch, fallback to individual on conflict)
-      // Deduplicate column IDs across all entities first
       const allColumns: any[] = [];
       const newColIds = new Set();
       const seenColIds = new Set();
@@ -420,139 +542,93 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       }
 
       if (allColumns.length > 0) {
-        await upsertSafe('columns', allColumns, (col: any) => ({
-          id: col.id,
-          entity_id: col._entity_id,
-          name: col.name,
-          type: col.type,
-          is_pk: col.is_pk || false,
-          is_nullable: col.is_nullable !== undefined ? col.is_nullable : true,
-          enum_values: col.enum_values || null,
-          sort_order: col.sort_order || 0
-        }));
+        await upsertColumns(allColumns);
       }
 
-      // Collect columns to delete (executed later)
       const keptEntityIds = Array.from(existingEntityIds).filter(id => newEntityIds.has(id));
       if (keptEntityIds.length > 0) {
-        const { data: existingColumns } = await supabase
-          .from("columns")
-          .select("id")
-          .in("entity_id", keptEntityIds);
-          
-        const existingColIds = new Set(existingColumns?.map((c: any) => c.id) || []);
+        const existingColumns = await prisma.column.findMany({
+          where: { entityId: { in: keptEntityIds } },
+          select: { id: true },
+        });
+
+        const existingColIds = new Set(existingColumns.map((c: any) => c.id));
         colsToDelete = Array.from(existingColIds).filter(id => !newColIds.has(id)) as string[];
       }
     }
 
-    // ✅ STEP 6b: Upsert relationships (batch, fallback to individual on conflict)
     if (dedupedRelationships.length > 0) {
-      await upsertSafe('relationships', dedupedRelationships, (r: any) => ({
-        id: r.id,
-        diagram_id: diagramId,
-        source_entity_id: r.source_entity_id,
-        target_entity_id: r.target_entity_id,
-        source_column_id: r.source_column_id || null,
-        target_column_id: r.target_column_id || null,
-        source_handle: r.source_handle || null,
-        target_handle: r.target_handle || null,
-        type: r.type || 'one-to-many',
-        label: r.label || null
-      }));
+      await upsertRelationships(dedupedRelationships, diagramId);
     }
 
-    // ✅ STEP 7: Safe Deletion Phase (Only runs if ALL Upserts succeeded)
-    
-    // 7.1 Delete removed relationships
     const relsToDelete = Array.from(existingRelIds).filter(id => !newRelIds.has(id));
     if (relsToDelete.length > 0) {
-      const { error: delRelError } = await supabase
-        .from("relationships")
-        .delete()
-        .in("id", relsToDelete);
-      if (delRelError) throw delRelError;
-    }
-
-    // 7.2 Delete removed columns from kept entities
-    if (typeof colsToDelete !== 'undefined' && colsToDelete.length > 0) {
-      const { error: delColError } = await supabase
-        .from("columns")
-        .delete()
-        .in("id", colsToDelete);
-      if (delColError) throw delColError;
-    }
-
-    // 7.3 Delete removed entities (and their columns due to CASCADE / manual delete)
-    if (entitiesToDelete.length > 0) {
-      // Delete columns first to satisfy FK if cascade isn't reliable
-      const { error: delColError2 } = await supabase
-        .from("columns")
-        .delete()
-        .in("entity_id", entitiesToDelete);
-      if (delColError2) throw delColError2;
-
-      // Delete the entities
-      const { error: delEntError } = await supabase
-        .from("entities")
-        .delete()
-        .in("id", entitiesToDelete);
-      if (delEntError) throw delEntError;
-    }
-
-    // ✅ STEP 9: Update diagram metadata
-    const { data: updatedDiagram, error: updateError } = await supabase
-      .from("diagrams")
-      .update({ 
-        updated_at: new Date().toISOString(),
-        viewport_x: viewport?.x || 0,
-        viewport_y: viewport?.y || 0,
-        viewport_zoom: viewport?.zoom || 1.0
-      })
-      .eq("id", diagramId)
-      .select("_version")
-      .single();
-
-    if (updateError) throw updateError;
-
-    // ✅ STEP 10: Create a Composite Snapshot (Throttled 5 min)
-    // Since diagrams have complex relations, we store the full state (entities + rels) in entity_changes
-    const userId = (req as any).user.id;
-    const { data: lastAudit } = await supabase
-      .from("entity_changes")
-      .select("created_at")
-      .eq("entity_type", "diagrams")
-      .eq("entity_id", diagramId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const shouldAudit = !lastAudit || new Date(lastAudit.created_at) < fiveMinutesAgo;
-
-    if (shouldAudit) {
-      await supabase.from("entity_changes").insert({
-        entity_type: "diagrams",
-        entity_id: diagramId,
-        version: updatedDiagram?._version || currentDiagram._version + 1,
-        user_id: userId,
-        changes: {
-          entities,
-          relationships,
-          viewport,
-          name: currentDiagram.name, // Capture name at snapshot time
-        },
-        change_type: 'update'
+      await prisma.relationship.deleteMany({
+        where: { id: { in: relsToDelete } },
       });
     }
 
-    // ✅ STEP 11: Return new version for next save
-    res.json({ 
+    if (typeof colsToDelete !== 'undefined' && colsToDelete.length > 0) {
+      await prisma.column.deleteMany({
+        where: { id: { in: colsToDelete } },
+      });
+    }
+
+    if (entitiesToDelete.length > 0) {
+      await prisma.column.deleteMany({
+        where: { entityId: { in: entitiesToDelete } },
+      });
+
+      await prisma.entity.deleteMany({
+        where: { id: { in: entitiesToDelete } },
+      });
+    }
+
+    const updatedDiagram = await prisma.diagram.update({
+      where: { id: diagramId },
+      data: {
+        updatedAt: new Date(),
+        viewportX: viewport?.x || 0,
+        viewportY: viewport?.y || 0,
+        viewportZoom: viewport?.zoom || 1.0,
+      },
+      select: { version: true },
+    });
+
+    const userId = (req as any).user.id;
+    const lastAudit = await prisma.entityChange.findFirst({
+      where: { entityType: 'diagrams', entityId: String(diagramId) },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const shouldAudit = !lastAudit || new Date(lastAudit.createdAt) < fiveMinutesAgo;
+
+    if (shouldAudit) {
+      await prisma.entityChange.create({
+        data: {
+          entityType: 'diagrams',
+          entityId: String(diagramId),
+          version: updatedDiagram?.version ?? (currentDiagram.version ?? 0) + 1,
+          userId,
+          changes: {
+            entities,
+            relationships,
+            viewport,
+            name: currentDiagram.name,
+          },
+          changeType: 'update',
+        },
+      });
+    }
+
+    res.json({
       success: true,
-      version: updatedDiagram?._version || currentDiagram._version + 1
+      version: updatedDiagram?.version ?? (currentDiagram.version ?? 0) + 1,
     });
   } catch (err: any) {
     logger.error({ err, uid: identifier }, `Save Error`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to save diagram" });
   }
 });
 

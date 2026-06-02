@@ -2,227 +2,262 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createNoteSchema } from "../lib/validation.js";
-import { handleError, getSafeUpdate } from "../lib/utils.js";
+import { handleError } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
+import { prisma } from "../lib/prisma.js";
 
 const router = Router();
 
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const limit = parseInt(req.query.limit as string) || 10;
-  const offset = parseInt(req.query.offset as string) || 0;
-  const projectId = req.query.project_id as string;
-  const q = req.query.q as string;
-  const isPublic = req.query.is_public === 'true' ? true : req.query.is_public === 'false' ? false : null;
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const projectId = req.query.project_id as string;
+    const q = req.query.q as string;
+    const isPublic = req.query.is_public === 'true' ? true : req.query.is_public === 'false' ? false : null;
 
-  let query = supabase
-    .from("notes")
-    .select("id, uid, title, content, project_id, is_public, share_token, expiry_date, created_at, updated_at, is_deleted, user_id, projects!left(*)", { count: 'exact' })
-    .eq("is_deleted", false)
-    .eq("user_id", (req as any).user.id);
+    const where: any = {
+      isDeleted: false,
+      userId: (req as any).user.id,
+    };
 
-  if (isPublic !== null) {
-    query = query.eq("is_public", isPublic);
-  }
- 
-  if (q && q.trim()) {
-    query = query.ilike("title", `%${q.trim()}%`);
-  }
- 
-  if (projectId === "null") {
-    query = query.is("project_id", null);
-  } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
-    query = query.eq("project_id", parseInt(projectId));
-  }
-  // Otherwise (projectId === "all"), no project_id filter is applied for global view
- 
-  // Optimization: Filter out notes belonging to deleted projects at the database level
-  const { data: deletedProjects } = await supabase.from("projects").select("id").eq("is_deleted", true);
-  const deletedIds = deletedProjects?.map((p: any) => p.id) || [];
-  
-  if (deletedIds.length > 0) {
-    query = query.or(`project_id.is.null,project_id.not.in.(${deletedIds.join(",")})`);
-  }
+    if (isPublic !== null) {
+      where.isPublic = isPublic;
+    }
 
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    if (q && q.trim()) {
+      where.title = { contains: q.trim(), mode: 'insensitive' };
+    }
 
-  if (error) return handleError(res, error, "Supabase error fetching notes");
-  
-  res.json({ 
-    data: data || [], 
-    total: count || 0
-  });
+    if (projectId === "null") {
+      where.projectId = null;
+    } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
+      where.projectId = parseInt(projectId);
+    }
+
+    const deletedProjects = await prisma?.project.findMany({
+      where: { isDeleted: true },
+      select: { id: true },
+    });
+    const deletedIds = deletedProjects?.map((p) => p.id) || [];
+
+    if (deletedIds.length > 0) {
+      where.OR = [
+        { projectId: null },
+        { projectId: { notIn: deletedIds } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      prisma?.note.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        include: { project: true },
+      }),
+      prisma?.note.count({ where }),
+    ]);
+
+    res.json({
+      data: data || [],
+      total: total || 0,
+    });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch notes");
+  }
 });
 
 router.post("/", authenticate, validate(createNoteSchema), async (req: ExpressRequest, res: ExpressResponse) => {
-  const { title, content, project_id } = req.body;
-  const { data, error } = await supabase
-    .from("notes")
-    .insert([{ title, content: content || "", project_id: project_id || null, user_id: (req as any).user.id }])
-    .select()
-    .single();
-
-  if (error) return handleError(res, error, "Failed to create note");
-  res.json(data);
+  try {
+    const { title, content, project_id } = req.body;
+    const note = await prisma?.note.create({
+      data: {
+        title,
+        content: content || "",
+        projectId: project_id != null ? BigInt(project_id) : null,
+        userId: (req as any).user.id,
+      },
+    });
+    res.json(note);
+  } catch (err: any) {
+    handleError(res, err, "Failed to create note");
+  }
 });
 
 router.get("/public/:uid", async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data: note, error } = await supabase
-    .from("notes")
-    .select("*, projects!left(name, is_deleted)")
-    .eq("uid", req.params.uid)
-    .single();
+  try {
+    const note = await prisma?.note.findUnique({
+      where: { uid: req.params.uid },
+      include: { project: { select: { name: true, isDeleted: true } } },
+    });
 
-  if (error || !note) return res.status(404).json({ error: "Note not found" });
+    if (!note) return res.status(404).json({ error: "Note not found" });
 
-  // Security Check: Is the project deleted?
-  if (note.projects && note.projects.is_deleted) {
-    return res.status(404).json({ error: "Note not found (associated project deleted)" });
-  }
-
-  // Security Check: Is the note itself deleted?
-  if (note.is_deleted) {
-    return res.status(404).json({ error: "Note not found" });
-  }
-
-  // Security Check: Is it public?
-  if (!note.is_public) {
-    return res.status(403).json({ error: "This document is private" });
-  }
-
-  // Owner Bypass: Only the document owner can bypass share_token
-  let isOwner = false;
-  const sessionToken = req.cookies.token;
-  if (sessionToken) {
-    const { data: { user } } = await supabase.auth.getUser(sessionToken);
-    if (user && user.id === note.user_id) {
-      isOwner = true;
-    }
-  }
-
-  if (!isOwner) {
-    // Security Check: Is it expired?
-    if (note.expiry_date && new Date(note.expiry_date) < new Date()) {
-      return res.status(403).json({ error: "This share link has expired" });
+    if (note.project && note.project.isDeleted) {
+      return res.status(404).json({ error: "Note not found (associated project deleted)" });
     }
 
-    // Security Check: Token matching (if required)
-    const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
-    if (note.share_token && note.share_token !== providedToken) {
-      return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+    if (note.isDeleted) {
+      return res.status(404).json({ error: "Note not found" });
     }
-  }
 
-  res.json(note);
+    if (!note.isPublic) {
+      return res.status(403).json({ error: "This document is private" });
+    }
+
+    let isOwner = false;
+    const sessionToken = req.cookies.token;
+    if (sessionToken) {
+      const { data: { user } } = await supabase.auth.getUser(sessionToken);
+      if (user && user.id === note.userId) {
+        isOwner = true;
+      }
+    }
+
+    if (!isOwner) {
+      if (note.expiryDate && new Date(note.expiryDate) < new Date()) {
+        return res.status(403).json({ error: "This share link has expired" });
+      }
+
+      const providedToken = (req.headers['x-share-token'] as string) || (req.query.token as string);
+      if (note.shareToken && note.shareToken !== providedToken) {
+        return res.status(401).json({ error: "Invalid access token", requiresToken: true });
+      }
+    }
+
+    res.json(note);
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch public note");
+  }
 });
 
 router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { uid } = req.params;
-  const { is_public, share_token, expiry_date } = req.body;
-
   try {
-    const { data: currentNote } = await supabase
-      .from("notes")
-      .select("*")
-      .eq("uid", uid)
-      .eq("user_id", (req as any).user.id)
-      .single();
+    const { uid } = req.params;
+    const { is_public, share_token, expiry_date } = req.body;
+
+    const currentNote = await prisma?.note.findFirst({
+      where: { uid, userId: (req as any).user.id },
+    });
 
     if (!currentNote) return res.status(404).json({ error: "Note not found" });
 
-    let updateData: any = {
-      is_public,
-      share_token: is_public ? share_token : null,
-      expiry_date: is_public ? expiry_date : null,
+    const updateData: any = {
+      isPublic: is_public,
+      shareToken: is_public ? share_token : null,
+      expiryDate: is_public ? expiry_date ? new Date(expiry_date) : null : null,
     };
 
     if (is_public) {
-      if (!currentNote.published_at) {
-        updateData.published_at = new Date().toISOString();
+      if (!currentNote.publishedAt) {
+        updateData.publishedAt = new Date();
       }
     } else {
-      updateData.published_at = null;
+      updateData.publishedAt = null;
     }
 
-    const { data, error } = await supabase
-      .from("notes")
-      .update(updateData)
-      .eq("uid", uid)
-      .eq("user_id", (req as any).user.id)
-      .select()
-      .single();
+    const updated = await prisma?.note.update({
+      where: { id: currentNote.id },
+      data: updateData,
+    });
 
-    if (error) throw error;
-    res.json(data);
+    res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to update share settings");
   }
 });
 
 router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { data, error } = await supabase
-    .from("notes")
-    .select("*")
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id)
-    .single();
-
-  if (error || !data) return res.status(404).json({ error: "Note not found" });
-  res.json(data);
+  try {
+    const note = await prisma?.note.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+    if (!note) return res.status(404).json({ error: "Note not found" });
+    res.json(note);
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch note");
+  }
 });
 
 router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { title, content, project_id } = req.body;
-  
-  const updateData: any = { updated_at: new Date().toISOString() };
-  if (title !== undefined) updateData.title = title;
-  if (content !== undefined) updateData.content = content;
-  if (project_id !== undefined) updateData.project_id = project_id;
+  try {
+    const { title, content, project_id } = req.body;
 
-  const { error } = await supabase
-    .from("notes")
-    .update(updateData)
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+    const existing = await prisma?.note.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+    if (!existing) return res.status(404).json({ error: "Note not found" });
 
-  if (error) return handleError(res, error, "Failed to update note");
-  res.json({ success: true });
+    const updateData: any = { updatedAt: new Date() };
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (project_id !== undefined) updateData.projectId = project_id != null ? BigInt(project_id) : null;
+
+    await prisma?.note.update({
+      where: { id: existing.id },
+      data: updateData,
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to update note");
+  }
 });
 
 router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("notes")
-    .update(getSafeUpdate(true))
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    const existing = await prisma?.note.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+    if (!existing) return res.status(404).json({ error: "Note not found" });
 
-  if (error) return handleError(res, error, "Failed to delete note");
-  res.json({ success: true });
+    await prisma?.note.update({
+      where: { id: existing.id },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to delete note");
+  }
 });
 
 router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { error } = await supabase
-    .from("notes")
-    .update(getSafeUpdate(false))
-    .eq("uid", req.params.uid)
-    .eq("user_id", (req as any).user.id);
+  try {
+    const existing = await prisma?.note.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+    });
+    if (!existing) return res.status(404).json({ error: "Note not found" });
 
-  if (error) return handleError(res, error, "Failed to restore note");
-  res.json({ success: true });
+    await prisma?.note.update({
+      where: { id: existing.id },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to restore note");
+  }
 });
 
 router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { data: note } = await supabase
-      .from("notes")
-      .select("content")
-      .eq("uid", req.params.uid)
-      .eq("user_id", (req as any).user.id)
-      .single();
+    const note = await prisma?.note.findFirst({
+      where: { uid: req.params.uid, userId: (req as any).user.id },
+      select: { content: true, id: true },
+    });
 
-    if (note && note.content && s3Client && R2_BUCKET_NAME) {
+    if (!note) return res.status(404).json({ error: "Note not found" });
+
+    if (note.content && s3Client && R2_BUCKET_NAME) {
       const regex = /<img[^>]+src="([^">]+)"/g;
       let match;
       while ((match = regex.exec(note.content)) !== null) {
@@ -241,16 +276,13 @@ router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: 
       }
     }
 
-    const { error } = await supabase
-      .from("notes")
-      .delete()
-      .eq("uid", req.params.uid)
-      .eq("user_id", (req as any).user.id);
+    await prisma?.note.delete({
+      where: { id: note.id },
+    });
 
-    if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to permanently delete note");
   }
 });
 

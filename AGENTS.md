@@ -1248,6 +1248,54 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 
 - **Supabase RLS audit**: frontend `aiEntityContext/*.ts` files make direct Supabase queries bypassing server auth. Security depends entirely on RLS policies being correctly configured. Verify RLS on: `diagrams`, `notes`, `drawings`, `flowcharts`, `entities`, `columns`, `relationships`, `projects`, `ai_chat_sessions`, `ai_chat_messages`.
 
+## Prisma camelCase → Snake_case Bridge (Middleware)
+
+- **Problem**: After migrating all 11 server route files from `supabase.from()` to Prisma, the frontend stopped receiving ERD edges (relationships). PR in database but invisible on canvas.
+- **Root cause**: Prisma uses `@map` directives to map camelCase model fields (`sourceEntityId`, `diagramId`) to snake_case DB columns (`source_entity_id`, `diagram_id`). When Prisma returns query results, the field names are camelCase — but the entire frontend codebase expects snake_case because the original Supabase API returned snake_case. The XYFlow edge builder looked for `edge.source_entity_id` which was `undefined`.
+- **Same issue affects all models**: `Entity.diagramId`, `Column.isPk`/`isNullable`/`sortOrder`/`enumValues`, `Relationship.sourceEntityId`/`targetEntityId`/`sourceColumnId`/`targetColumnId`/`sourceHandle`/`targetHandle`, `Diagram.isDeleted`/`projectId`/`viewportX`, and all `createdAt`/`updatedAt` timestamps.
+- **Fix** ([`server/index.ts`](./server/index.ts)): Added a response middleware that intercepts `res.json()` and recursively converts all object keys from camelCase to snake_case. The `camelToSnake` function:
+  - Recursively traverses objects and arrays
+  - Uses `.replace(/[A-Z]/g, letter => '_' + letter.toLowerCase())` for key conversion
+  - Preserves Dates, primitives, null/undefined as-is
+  - Is transparent to route handlers (they use clean camelCase in Prisma queries)
+  - Is transparent to frontend (continues receiving snake_case as before)
+- **Auth routes unaffected**: Supabase user objects from `supabase.auth.getUser()` are already snake_case (`app_metadata`, `user_metadata`, `created_at`), so no spurious conversion occurs. Even if a key like `emailConfirmedAt` existed, converting to `email_confirmed_at` is equivalent (PostgreSQL convention).
+- **Alternative considered**: Editing every route handler to map field names on each response was rejected — too many touch points. Changing the Prisma schema to use snake_case field names directly (removing all `@map`) would require renaming all fields in every Prisma query across 11 files.
+- **Chosen approach**: Single middleware in `server/index.ts:110-127`. One function, zero changes to route handlers or frontend. All 15+ server route files continue using clean camelCase in Prisma queries.
+
+## Security Hardening, Phase 4 — Audit Fixes
+
+### Critical Fixes
+
+| Issue | File | Fix |
+|-------|------|-----|
+| **C1. AI Chat ownership** | `ai-chat.ts` | All session endpoints (`GET /sessions/:uid`, `DELETE`, `PUT`, `GET /:uid/messages`, `POST /messages`) now add `userId: (req as any).user.id` to `where` clauses. Uses `findFirst` with `userId` instead of `findUnique` on `uid` alone. |
+| **C2. API key leak** | `ai-chat.ts:174` | `/api/ai/chat/config` no longer returns `apiKey`. Proxy looks up key server-side from authenticated user's session. Response returns only `{ baseUrl, model }`. |
+| **C3. AI proxy config** | `ai.ts:44-56` | Removed un-scoped `...(userId ? { userId } : {})` fallback that returned any user's config. Now: (a) if `apiKey` provided → BYOK mode; (b) if no `apiKey` → extracts `userId` from cookie/body → scopes config lookup to that user → rejects unauthenticated requests without API key. |
+| **C4. Projects create** | `projects.ts:157` | Added `const userId = (req as any).user.id;` — was `ReferenceError` (variable never defined). |
+| **C5. Project permanent delete** | `projects.ts:294` | Replaced `err.message` leak with `handleError()`. |
+
+### High Severity Fixes
+
+| Issue | File | Fix |
+|-------|------|-----|
+| **H4. err.message leaks** | 11 files, 17+ routes | All `res.status(500).json({ error: err.message })` replaced with `handleError(res, err, "Generic message")`. Only exception: `common.ts` multer file-filter error (user-facing message). |
+| **H5. Drawing ownership** | `drawings.ts:178,198,214` | Added `userId` check on PUT/DELETE/RESTORE via `findFirst({ where: { uid, userId } })` before mutating. Permanent delete already correct. |
+| **H6. Configs API key** | `ai-settings.ts:23,55` | `GET/POST /configs` now mask `apiKey` in responses (`'***'`). Key stays server-side for proxy lookup. |
+| **H7. Prompt ownership** | `ai-settings.ts:138,167,179` | POST/DELETE/TOGGLE-DEFAULT now scope to `OR: [{ userId }, { userId: null }]` — users can only modify own prompts or system prompts. |
+| **H11. projectId validation** | `ai-chat.ts:54,94` | `project_id` validated via `Number()` + `isNaN()` before `BigInt()`. Non-numeric returns 400. |
+
+### Remaining (Frontend Supabase Direct Calls)
+
+These files call `supabase.from('*')` directly from the frontend, bypassing server auth. Security relies on Supabase RLS:
+
+- `src/hooks/aiEntityContext/siblings.ts` — fetches diagrams, notes, flowcharts, drawings by project
+- `src/hooks/aiEntityContext/diagram.ts` / `note.ts` / `drawing.ts` / `flowchart.ts` — entity context
+- `src/components/ai/AIChatPanel.tsx:273-278` — fetches note content by uid for @mentions
+- `src/hooks/useRealtimeSync.ts` — realtime subscriptions
+
+All wrapped in try/catch (fail silent). Core CRUD works without them. `VITE_SUPABASE_URL` optional. Recommended migration to `apiFetch` backend endpoints.
+
 ## Future Plans
 
 ### Full Migration: Supabase → Pure PostgreSQL
