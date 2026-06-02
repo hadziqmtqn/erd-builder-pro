@@ -25,6 +25,9 @@ import aiChatRouter from "./routes/ai-chat.js";
 
 const app = express();
 
+// Trust proxy for Vercel (X-Forwarded-For) — required by express-rate-limit
+app.set('trust proxy', 1);
+
 // Security headers — relaxed CSP for Vite dev + app requirements
 const isProd = process.env.NODE_ENV === 'production';
 app.use(helmet({
