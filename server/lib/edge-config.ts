@@ -5,9 +5,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || "";
 export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-export const JWT_SECRET = process.env.JWT_SECRET || "erd-builder-secret-key";
-export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
-export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password123";
 
 // Edge-safe Supabase client
 export const getEdgeSupabase = () => {

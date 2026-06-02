@@ -46,7 +46,7 @@ docs: add Docker Hub badges to README
 
 - **Node.js** v20+
 - **npm** v10+
-- **Supabase** account (free tier works)
+- **Supabase** account (free tier works) for Auth + database
 - **Cloudflare R2** account (optional, for storage)
 
 ## Setup
@@ -56,7 +56,8 @@ git clone https://github.com/hadziqmtqn/erd-builder-pro
 cd erd-builder-pro
 
 cp .env.example .env
-# Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+# Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Optional: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY for mentions, AI context, and realtime
 
 npm install
 npm run dev        # Full stack (Express + Vite middleware)
@@ -69,6 +70,7 @@ npm run clean      # Remove dist/
 
 - **Read [`AGENTS.md`](./AGENTS.md)** — contains agent memory about architecture, patterns, bug fixes, and technical decisions. Must be read before making changes.
 - **Understand Guest Mode**: All data hooks (`useNotes`, `useDiagrams`, `useFlowcharts`, `useDrawings`, `useTrash`, `useProjects`, `useAIChat`) use the `isGuestCheck()` pattern — `isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest'`. Never use raw `if (isGuest)` — it causes stale closures on initial render.
+- **Auth is Supabase-only**: the server verifies Supabase session JWTs from the `httpOnly` `token` cookie. Do not add local `JWT_SECRET`, `ADMIN_EMAIL`, or `ADMIN_PASSWORD` assumptions back into new code.
 - **Keep AGENTS.md updated**: After completing a feature/fix, update `AGENTS.md` with any relevant new patterns.
 
 ## Code Style
@@ -113,7 +115,7 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 ```
 
-Optional: `R2_*` (Cloudflare storage), `JWT_SECRET`, `GITHUB_*`, `TELEGRAM_*`.
+Optional: `R2_*` (Cloudflare storage), `GITHUB_*`, `TELEGRAM_*`.
 
 ## Need Help?
 

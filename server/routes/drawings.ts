@@ -6,6 +6,7 @@ import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -66,12 +67,15 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 router.post("/", authenticate, validate(createDrawingSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { title, data, project_id } = req.body;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+    const userId = (req as any).user.id;
+    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
     const drawing = await prisma?.drawing.create({
       data: {
         title,
         data: data || "[]",
-        projectId: project_id != null ? Number(project_id) : null,
-        userId: (req as any).user.id,
+        projectId: resolvedProjectId,
+        userId,
       },
     });
     res.json(drawing);
@@ -179,11 +183,12 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
   try {
     const { title, data, project_id } = req.body;
     const userId = (req as any).user.id;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const updateData: any = { updatedAt: new Date() };
     if (title !== undefined) updateData.title = title;
     if (data !== undefined) updateData.data = data;
-    if (project_id !== undefined) updateData.projectId = project_id != null ? Number(project_id) : null;
+    if (project_id !== undefined) updateData.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
 
     const existing = await prisma?.drawing.findFirst({
       where: { uid: req.params.uid, userId },

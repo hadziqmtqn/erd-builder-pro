@@ -5,6 +5,7 @@ import { authenticate } from "../lib/middleware.js";
 import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { logger } from "../lib/logger.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -72,12 +73,14 @@ router.post("/", authenticate, validate(createDiagramSchema), async (req: Expres
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const { name, project_id, uid } = req.body;
+    const userId = (req as any).user.id;
+    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
     const data = await prisma.diagram.create({
       data: {
         name,
-        projectId: project_id || null,
+        projectId: resolvedProjectId,
         uid: uid || undefined,
-        userId: (req as any).user.id,
+        userId,
       },
     });
 
@@ -339,9 +342,10 @@ router.put("/:uid/project", authenticate, async (req: ExpressRequest, res: Expre
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
 
+    const resolvedProjectId = await resolveOwnedProjectId(prisma, (req as any).user.id, project_id);
     await prisma.diagram.update({
       where: { id: diagram.id },
-      data: { projectId: project_id || null },
+      data: { projectId: resolvedProjectId },
     });
 
     res.json({ success: true });

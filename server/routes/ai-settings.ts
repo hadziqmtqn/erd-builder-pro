@@ -2,6 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { handleError } from "../lib/utils.js";
+import { requireAdmin } from "../lib/security.js";
 
 const router = Router();
 
@@ -81,6 +82,7 @@ router.get("/models", authenticate, async (_req: ExpressRequest, res: ExpressRes
 // POST /api/ai/settings/models
 router.post("/models", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(req, res)) return;
     const { provider_id, model_identifier, display_name } = req.body;
     const data = await prisma?.aiModel.create({
       data: {
@@ -99,6 +101,7 @@ router.post("/models", authenticate, async (req: ExpressRequest, res: ExpressRes
 // PUT /api/ai/settings/models/:id
 router.put("/models/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(req, res)) return;
     const { provider_id, model_identifier, display_name } = req.body;
     await prisma?.aiModel.update({
       where: { id: BigInt(req.params.id) },
@@ -117,6 +120,7 @@ router.put("/models/:id", authenticate, async (req: ExpressRequest, res: Express
 // DELETE /api/ai/settings/models/:id
 router.delete("/models/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(req, res)) return;
     await prisma?.aiModel.delete({
       where: { id: BigInt(req.params.id) }
     });
@@ -147,10 +151,13 @@ router.post("/prompts", authenticate, async (req: ExpressRequest, res: ExpressRe
     const { id, name, content, category, is_default } = req.body;
     if (id) {
       const existing = await prisma?.aiSystemPrompt.findFirst({
-        where: { id, OR: [{ userId }, { userId: null }] },
-        select: { id: true },
+        where: { id },
+        select: { id: true, userId: true, isBuiltIn: true },
       });
       if (!existing) return res.status(404).json({ error: "Prompt not found" });
+      if (existing.userId !== userId && !requireAdmin(req, res)) return;
+      if (existing.isBuiltIn && !requireAdmin(req, res)) return;
+      if (is_default && !requireAdmin(req, res)) return;
 
       const data = await prisma?.aiSystemPrompt.update({
         where: { id },
@@ -164,6 +171,7 @@ router.post("/prompts", authenticate, async (req: ExpressRequest, res: ExpressRe
       });
       res.json(data);
     } else {
+      if (is_default && !requireAdmin(req, res)) return;
       const data = await prisma?.aiSystemPrompt.create({
         data: {
           name,
@@ -185,9 +193,12 @@ router.delete("/prompts/:id", authenticate, async (req: ExpressRequest, res: Exp
   try {
     const userId = getUserId(req);
     const existing = await prisma?.aiSystemPrompt.findFirst({
-      where: { id: req.params.id, OR: [{ userId }, { userId: null }] },
+      where: { id: req.params.id },
+      select: { id: true, userId: true, isBuiltIn: true },
     });
     if (!existing) return res.status(404).json({ error: "Prompt not found" });
+    if (existing.userId !== userId && !requireAdmin(req, res)) return;
+    if (existing.isBuiltIn && !requireAdmin(req, res)) return;
     await prisma?.aiSystemPrompt.delete({
       where: { id: req.params.id }
     });
@@ -200,9 +211,10 @@ router.delete("/prompts/:id", authenticate, async (req: ExpressRequest, res: Exp
 // PUT /api/ai/settings/prompts/:id/toggle-default
 router.put("/prompts/:id/toggle-default", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(req, res)) return;
     const userId = getUserId(req);
     const existing = await prisma?.aiSystemPrompt.findFirst({
-      where: { id: req.params.id, OR: [{ userId }, { userId: null }] },
+      where: { id: req.params.id },
     });
     if (!existing) return res.status(404).json({ error: "Prompt not found" });
 
@@ -226,6 +238,7 @@ router.put("/prompts/:id/toggle-default", authenticate, async (req: ExpressReque
 // POST /api/ai/settings/initialize
 router.post("/initialize", authenticate, async (_req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(_req, res)) return;
     const defaultProviders = [
       { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1", isActive: true },
       { name: "Google Gemini", code: "gemini", baseUrl: null, isActive: true },
@@ -274,6 +287,7 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
 // PUT /api/ai/settings/providers/:id
 router.put("/providers/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    if (!requireAdmin(req, res)) return;
     const { base_url } = req.body;
     await prisma?.aiProvider.update({
       where: { id: BigInt(req.params.id) },

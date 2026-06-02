@@ -2,6 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { handleError } from "../lib/utils.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -53,9 +54,8 @@ router.post("/sessions", authenticate, async (req: ExpressRequest, res: ExpressR
     if (entity_type) data.entityType = entity_type;
     if (entity_uid) data.entityUid = entity_uid;
     if (project_id !== undefined) {
-      const pid = Number(project_id);
-      if (isNaN(pid)) return res.status(400).json({ error: "Invalid project_id" });
-      data.projectId = BigInt(pid);
+      if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+      data.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
     }
 
     const session = await prisma?.aiChatSession.create({ data });
@@ -103,13 +103,8 @@ router.put("/sessions/:uid", authenticate, async (req: ExpressRequest, res: Expr
     const updatePayload: Record<string, any> = { updatedAt: new Date() };
     if (title !== undefined) updatePayload.title = title;
     if (project_id !== undefined) {
-      if (project_id === null) {
-        updatePayload.projectId = null;
-      } else {
-        const pid = Number(project_id);
-        if (isNaN(pid)) return res.status(400).json({ error: "Invalid project_id" });
-        updatePayload.projectId = BigInt(pid);
-      }
+      if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+      updatePayload.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
     }
 
     const existing = await prisma?.aiChatSession.findFirst({

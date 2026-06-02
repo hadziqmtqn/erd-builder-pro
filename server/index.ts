@@ -1,6 +1,6 @@
-// BigInt serialization fix for Prisma — JSON.stringify cannot handle BigInt by default
-// Prisma returns BigInt for BIGSERIAL columns; this converts to number automatically.
-(BigInt.prototype as any).toJSON = function () { return Number(this); };
+// BigInt serialization fix for Prisma — JSON.stringify cannot handle BigInt by default.
+// Keep them as strings so IDs are never rounded beyond JS safe integer range.
+(BigInt.prototype as any).toJSON = function () { return this.toString(); };
 
 import express from "express";
 import cors from "cors";

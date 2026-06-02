@@ -218,6 +218,12 @@ Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in
 - [`src/hooks/useTrashHandlers.ts`](./src/hooks/useTrashHandlers.ts): `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
 - [`src/components/modals/MoveToTrashAlert.tsx`](./src/components/modals/MoveToTrashAlert.tsx): `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
 
+## Prisma Migration Security Guardrails
+
+- **Project ownership must be verified before writing `project_id`**: use `resolveOwnedProjectId()` from [`server/lib/security.ts`](./server/lib/security.ts) so user-owned documents cannot be attached to another user's project.
+- **Global AI tables are admin-only for writes**: `ai_providers`, `ai_models`, and default/system prompt toggles are restricted through `requireAdmin()` in [`server/lib/security.ts`](./server/lib/security.ts). Regular users may manage only their own `user_ai_configs` and custom prompts.
+- **BigInt JSON serialization stays lossless**: Prisma `BIGINT` values are serialized as strings in [`server/index.ts`](./server/index.ts) to avoid rounding IDs beyond JavaScript safe integer range. Frontend code should treat IDs as opaque strings where possible.
+
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
 
@@ -455,6 +461,7 @@ src/components/ai/
 - **`JWT_SECRET` removed** — was previously exported from `server/lib/config.ts` but never used by auth middleware. Supabase manages its own JWT signing keys.
 - **Login flow**: `POST /api/login` → `supabase.auth.signInWithPassword({ email, password })` → returns session JWT → set as `Set-Cookie: token=...` → subsequent requests carry cookie → middleware calls `supabase.auth.getUser(token)` to identify user.
 - **Reason Supabase Auth works**: The `SUPABASE_SERVICE_ROLE_KEY` server-side Supabase client can call `supabase.auth.getUser(token)` to verify any valid Supabase JWT. No local secret needed.
+- **Edge auth helper**: [`server/lib/edge-auth.ts`](./server/lib/edge-auth.ts) now mirrors the same Supabase-token verification path and no longer relies on a custom signed JWT secret.
 
 ## Login Fix Pattern (Second Round-Trip Bug)
 
@@ -1300,28 +1307,26 @@ All wrapped in try/catch (fail silent). Core CRUD works without them. `VITE_SUPA
 
 ### Full Migration: Supabase → Pure PostgreSQL
 
-Replace all Supabase dependencies with direct PostgreSQL (`pg`/`pg-pool`), custom auth, and native Realtime.
+Replace all Supabase database dependencies with direct PostgreSQL (`pg`/`pg-pool`) while keeping Supabase Auth as the identity source.
 
 **Scope**:
-- **Auth**: `supabase.auth.signInWithPassword()` → bcrypt + JWT sign/verify. New table `public.users` (id UUID, email, password_hash, name, created_at). `JWT_SECRET` env var. Cookie stays same shape.
+- **Auth**: keep Supabase Auth as the source of truth. Session JWTs are issued by Supabase and stored in an httpOnly cookie. No local admin credentials or custom JWT secret.
 - **DB client**: `server/lib/config.ts` → `new Pool({ connectionString })`. All 16+ server route files: `supabase.from('x')` → `pg.query('SELECT ...')`.
 - **RLS**: `auth.uid()` → `current_setting('app.user_id')::uuid` or application-layer filter in Express routes.
 - **Remaining frontend Supabase calls** (`aiEntityContext/*.ts`, `AIChatPanel.tsx` mention/siblings): migrate to `apiFetch` backend endpoints (pattern already established).
 - **Realtime** (`useRealtimeSync.ts`): optional — replace Supabase Realtime with `pg LISTEN/NOTIFY` + WebSocket relay, or keep Supabase Realtime as standalone service.
-- **Edge config** (`server/lib/edge-config.ts`): remove. `api/ai-proxy.ts` replaces inline `createClient()` with `apiFetch` to main Express server.
+- **Edge config** (`server/lib/edge-config.ts`): keep only the minimal Supabase server credentials needed for edge helpers; no admin email/password or custom JWT secret.
 
 **Migration steps**:
 1. Setup `pg` pool + test connection
-2. Create `users` table + seed from Supabase `auth.users`
-3. Implement bcrypt + JWT auth
-4. Migrate one route file (e.g. `notes.ts`) → test end-to-end
-5. Batch the rest
-6. Update foreign keys from `REFERENCES auth.users(id)` → `REFERENCES public.users(id)`
-7. RLS rewrite (`auth.uid()` → `current_setting(...)`)
-8. Testing + security audit
-9. Realtime migration (optional)
+2. Migrate one route file (e.g. `notes.ts`) → test end-to-end
+3. Batch the rest
+4. Update foreign keys from `REFERENCES auth.users(id)` to application-owned foreign keys where needed
+5. RLS rewrite (`auth.uid()` → `current_setting(...)`)
+6. Testing + security audit
+7. Realtime migration (optional)
 
-**Risk**: existing JWT tokens will be invalid on deploy — all users forced logout. Table `auth.users` needs data copy + FK re-point.
+**Risk**: changing the DB layer can still break auth-adjacent flows and FK assumptions, but Supabase-issued session tokens remain valid as long as the auth domain is unchanged.
 
 **Estimated effort**: ~12-17 days.
 

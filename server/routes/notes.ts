@@ -6,6 +6,7 @@ import { handleError } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -72,12 +73,15 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 router.post("/", authenticate, validate(createNoteSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { title, content, project_id } = req.body;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+    const userId = (req as any).user.id;
+    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
     const note = await prisma?.note.create({
       data: {
         title,
         content: content || "",
-        projectId: project_id != null ? BigInt(project_id) : null,
-        userId: (req as any).user.id,
+        projectId: resolvedProjectId,
+        userId,
       },
     });
     res.json(note);
@@ -184,16 +188,18 @@ router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
 router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { title, content, project_id } = req.body;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const existing = await prisma?.note.findFirst({
       where: { uid: req.params.uid, userId: (req as any).user.id },
     });
     if (!existing) return res.status(404).json({ error: "Note not found" });
 
+    const userId = (req as any).user.id;
     const updateData: any = { updatedAt: new Date() };
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
-    if (project_id !== undefined) updateData.projectId = project_id != null ? BigInt(project_id) : null;
+    if (project_id !== undefined) updateData.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
 
     await prisma?.note.update({
       where: { id: existing.id },

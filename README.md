@@ -52,7 +52,7 @@
 ## 🏗️ Getting Started
 
 ### � Documentation
-For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https://docs.erd.bekenweb.com)
+For detailed guides and tutorials, visit: [https://docs.erdbuilderpro.com](https://docs.erdbuilderpro.com)
 
 ### 📋 Prerequisites
 - **Node.js**: v20+ 
@@ -74,25 +74,10 @@ For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https:
    ```
 
 3. **Configure Environment**:
-   Create a `.env` file in the root directory:
-   ```bash
-   # Backend Config
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-   R2_ACCOUNT_ID=your_cloudflare_id
-   R2_ACCESS_KEY_ID=your_access_key
-   R2_SECRET_ACCESS_KEY=your_secret_key
-   R2_BUCKET_NAME=your_bucket_name
-   R2_PUBLIC_URL=your_public_cdn_url
-   
-   # Frontend Config (Vite)
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_anon_key
-   VITE_ENABLE_GUEST_MODE=true
-   
-   # Server
-   PORT=3000
-   ```
+   Create a `.env` file in the root directory and follow the configuration guide:
+   [https://docs.erdbuilderpro.com/configuration/env-variables](https://docs.erdbuilderpro.com/configuration/env-variables)
+
+   Use [`./.env.example`](./.env.example) as the local template. Do not commit real secret values into the repo or README.
 
 4. **Start Development**:
    ```bash
@@ -110,7 +95,7 @@ docker run -d --name erd-builder-pro -p 3000:3000 \
   bekenweb/erd-builder-pro:latest
 ```
 
-> Isi `.env` mengacu pada [`.env.example`](./.env.example). Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) sudah baked-in di image — gunakan tag yang sesuai atau build sendiri dengan `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
+> Fill `.env` based on the [env configuration docs](https://docs.erdbuilderpro.com/configuration/env-variables) and [`.env.example`](./.env.example). Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are baked into the image — use the appropriate tag or build your own with `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
 
 Available tags: [`latest`](https://hub.docker.com/r/bekenweb/erd-builder-pro/tags), versioned (`v1.2.3`), and commit SHA (`2bbc233`).
 

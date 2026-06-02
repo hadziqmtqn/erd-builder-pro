@@ -4,6 +4,7 @@ import { authenticate } from "../lib/middleware.js";
 import { validate, createFlowchartSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { prisma } from "../lib/prisma.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -88,12 +89,15 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 router.post("/", authenticate, validate(createFlowchartSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { title, data, project_id } = req.body;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+    const userId = (req as any).user.id;
+    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
     const inserted = await prisma?.flowchart.create({
       data: {
         title,
         data: data || '{"nodes":[], "edges":[]}',
-        projectId: project_id != null ? BigInt(project_id) : null,
-        userId: (req as any).user.id,
+        projectId: resolvedProjectId,
+        userId,
       },
     });
     res.json(inserted);
@@ -207,11 +211,14 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
   try {
     const { uid } = req.params;
     const { title, data, project_id } = req.body;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const updateData: any = { updatedAt: new Date() };
     if (title !== undefined) updateData.title = title;
     if (data !== undefined) updateData.data = data;
-    if (project_id !== undefined) updateData.projectId = project_id != null ? BigInt(project_id) : null;
+    if (project_id !== undefined) {
+      updateData.projectId = await resolveOwnedProjectId(prisma, (req as any).user.id, project_id);
+    }
 
     const existing = await prisma?.flowchart.findFirst({
       where: { uid, userId: (req as any).user.id },
