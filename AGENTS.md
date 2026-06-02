@@ -160,6 +160,26 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - React.memo on NotesView
 - **Auto-update AGENTS.md**: after completing any feature/improvement/fix, proactively update this file with relevant new patterns, components, and mechanisms — no need to wait for user to ask
 
+### ERD Edge Handle Persistence
+
+- `useERDSession.ts` now preserves user-picked ERD edge handles during node drags and rerenders.
+- The old behavior that recomputed `sourceHandle`/`targetHandle` from node `x` positions was removed because it snapped edges back to the default side after reconnecting.
+- Current rule: keep explicit handles if they exist, and only fill in missing handles when an edge has no handle IDs yet.
+- Semantic direction still matters: if the source column is PK and the target column is not, the edge is flipped so the arrow continues to point toward the PK side.
+
+### ERD Edge Deduplication
+
+- One relation must map to one edge.
+- `useERDSession.ts` now dedupes edges with a canonical relation key built from both endpoints: `source node + source column` and `target node + target column`, sorted before comparison.
+- `onConnect` blocks inserting a new edge when the same relation already exists and shows a short info toast instead of creating a duplicate line.
+- The central edge reconciliation effect also dedupes, so duplicates introduced through reconnect/import/restore paths are removed automatically.
+
+### ERD Handle Hover Visibility
+
+- `EntityNode.tsx` handle dots are hidden by default and only become visible on hover/focus.
+- Do not keep FK handles semi-visible at rest; that leaves a faint dot behind after the cursor leaves the row.
+- The handle should rely on `opacity-0` plus hover/focus classes, not a permanent opacity override.
+
 ## UUID vs Numeric ID (Delete/Restore)
 
 All document types (flowchart, notes, drawings, erd/diagram) have hooks with `delete*`, `restore*`, and `delete*Permanent` functions that accept a `uid: string` parameter.
@@ -456,7 +476,7 @@ src/components/ai/
 ### ERD Edge Reconnection
 
 - **`defaultEdgeOptions.reconnectable: true`** in `ERDView.tsx:361` enables edge endpoint dragging
-- **`onReconnect` handler** (`ERDView.tsx:513`): validates type match, calls `takeSnapshot` for undo, then uses a single **atomic functional `setEdges`** — removes old edge via filter, adds new edge via `addEdge` on the filtered array. This prevents race conditions where `onConnect` (called separately) would write back stale `edges` containing the old edge.
+- **`onReconnect` handler** (`ERDView.tsx:513`): validates type match, calls `takeSnapshot` for undo, then uses a single **atomic `reconnectEdge(oldEdge, connection, eds)`** from `@xyflow/system`. This preserves all old edge properties (reconnectable, markerEnd, type, animated) while updating source/target/handles. Uses `shouldReplaceId: true` (default) to generate a fresh edge ID from the connection.
 - **Bug fixed**: previously `onReconnect` called `setEdges(filter)` then `onConnect(connection)`. The `onConnect` closure had stale `edges` (still including old edge), so `addEdge` returned edges with old edge re-included. The second `setEdges` from `onConnect` overwrote the filter — causing the edge to snap back to original position.
 - **4 handles per column**: each column has `col-{id}-target` (left), `col-{id}-source-l` (left), `col-{id}-source` (right), `col-{id}-target-r` (right). When reconnecting to the opposite side, the new handle ID is automatically used.
 - **Handle visibility for FK columns** (`EntityNode.tsx`): FK columns (`_is_fk = true`) have handles always semi-visible (`!opacity-60`) instead of `opacity-0` — users can see where connections exist without hovering. Size increased to `!w-2 !h-2` (8px) from 6px. Non-FK columns remain hidden until hover.

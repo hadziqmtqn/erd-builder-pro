@@ -276,6 +276,43 @@ export function useERDSession(
     }
   }, [clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
 
+  const extractColumnIdFromHandle = useCallback((handle?: string) => {
+    if (!handle) return null;
+    return handle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+  }, []);
+
+  const getRelationKey = useCallback((edge: Edge) => {
+    const sourceColId = extractColumnIdFromHandle(edge.sourceHandle);
+    const targetColId = extractColumnIdFromHandle(edge.targetHandle);
+    if (!sourceColId || !targetColId) return null;
+
+    const endpointA = `${edge.source}:${sourceColId}`;
+    const endpointB = `${edge.target}:${targetColId}`;
+    return [endpointA, endpointB].sort().join('::');
+  }, [extractColumnIdFromHandle]);
+
+  const dedupeEdgesByRelation = useCallback((inputEdges: Edge[]) => {
+    const seen = new Map<string, Edge>();
+    let hasDuplicates = false;
+
+    for (const edge of inputEdges) {
+      const key = getRelationKey(edge);
+      if (!key) {
+        seen.set(`__raw__:${edge.id}`, edge);
+        continue;
+      }
+
+      if (seen.has(key)) {
+        hasDuplicates = true;
+        continue;
+      }
+
+      seen.set(key, edge);
+    }
+
+    return hasDuplicates ? Array.from(seen.values()) : inputEdges;
+  }, [getRelationKey]);
+
   const onConnect: OnConnect = useCallback((params) => {
     if (isPublicView) return;
 
@@ -298,11 +335,18 @@ export function useERDSession(
       }
     }
 
+    const candidate = { ...params, animated: false, type: 'smoothstep', label: '1:N' } as Edge;
+    const candidateKey = getRelationKey(candidate);
+    if (candidateKey && edges.some(edge => getRelationKey(edge) === candidateKey)) {
+      toast.info('Relation already exists');
+      return;
+    }
+
     takeSnapshot(nodes, edges);
-    const newEdges = addEdge({ ...params, animated: false, type: 'smoothstep', label: '1:N' }, edges);
+    const newEdges = dedupeEdgesByRelation(addEdge(candidate, edges));
     setEdges(newEdges);
     options?.broadcastEdgesUpdate?.(newEdges);
-  }, [setEdges, isPublicView, nodes, takeSnapshot, edges, options?.broadcastEdgesUpdate]);
+  }, [setEdges, isPublicView, nodes, takeSnapshot, edges, options?.broadcastEdgesUpdate, dedupeEdgesByRelation, getRelationKey]);
 
   const getUniqueName = (baseName: string, currentNodes: Node<Entity>[]) => {
     let name = baseName;
@@ -434,6 +478,44 @@ export function useERDSession(
     setSelectedEdgeId(null);
   };
 
+  const resolveEdgeHandles = useCallback((
+    edge: Edge,
+    sourceNode: Node<Entity>,
+    targetNode: Node<Entity>,
+  ): Edge => {
+    const sourceColId = edge.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+    const targetColId = edge.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+
+    if (!sourceColId || !targetColId) return edge;
+
+    const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
+    const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
+
+    // Keep the semantic direction stable: arrows still point to the PK side.
+    if (sourceCol && targetCol && sourceCol.is_pk && !targetCol.is_pk) {
+      return {
+        ...edge,
+        source: edge.target,
+        target: edge.source,
+        sourceHandle: edge.targetHandle || `col-${targetColId}-source`,
+        targetHandle: edge.sourceHandle || `col-${sourceColId}-target`,
+      };
+    }
+
+    // Preserve any user-selected handles. Only fall back when the edge
+    // does not yet have explicit handle IDs.
+    if (edge.sourceHandle && edge.targetHandle) return edge;
+
+    const sx = sourceNode.position.x || 0;
+    const tx = targetNode.position.x || 0;
+
+    return {
+      ...edge,
+      sourceHandle: edge.sourceHandle || (sx < tx ? `col-${sourceColId}-source` : `col-${sourceColId}-source-l`),
+      targetHandle: edge.targetHandle || (sx < tx ? `col-${targetColId}-target` : `col-${targetColId}-target-r`),
+    };
+  }, []);
+
   useEffect(() => {
     const edgeHash = JSON.stringify(edges.map(e => ({ s: e.source, sh: e.sourceHandle, t: e.target, th: e.targetHandle })));
     
@@ -444,44 +526,23 @@ export function useERDSession(
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
         if (!sourceNode || !targetNode) return edge;
-        
-        const sourceColId = edge.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
-        const targetColId = edge.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
-        
-        if (!sourceColId || !targetColId) return edge;
 
-        const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
-        const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
+        const resolved = resolveEdgeHandles(edge, sourceNode, targetNode);
+        if (
+          resolved.source !== edge.source ||
+          resolved.target !== edge.target ||
+          resolved.sourceHandle !== edge.sourceHandle ||
+          resolved.targetHandle !== edge.targetHandle
+        ) {
+          isChanged = true;
+          return resolved;
+        }
 
-        // Step 1: Fix direction — arrow should point TO the PK column.
-        // If source column is PK and target is NOT PK, edge direction is reversed.
-        if (sourceCol && targetCol && sourceCol.is_pk && !targetCol.is_pk) {
-          isChanged = true;
-          return {
-            ...edge,
-            source: edge.target,
-            target: edge.source,
-            sourceHandle: `col-${targetColId}-source`,
-            targetHandle: `col-${sourceColId}-target`,
-          };
-        }
-        
-        // Step 2: Smart positioning — choose the nearest handle based on node positions.
-        // For edge paths to look clean, the handle on the SIDE FACING the other node is used.
-        const sx = sourceNode.position.x || 0;
-        const tx = targetNode.position.x || 0;
-        const smartSourceHandle = sx < tx ? `col-${sourceColId}-source` : `col-${sourceColId}-source-l`;
-        const smartTargetHandle = sx < tx ? `col-${targetColId}-target` : `col-${targetColId}-target-r`;
-        
-        if (edge.sourceHandle !== smartSourceHandle || edge.targetHandle !== smartTargetHandle) {
-          isChanged = true;
-          return { ...edge, sourceHandle: smartSourceHandle, targetHandle: smartTargetHandle };
-        }
-        
         return edge;
       });
       
-      return isChanged ? newEds : eds;
+      const deduped = dedupeEdgesByRelation(isChanged ? newEds : eds);
+      return deduped === eds ? eds : deduped;
     });
 
     // Centralized FK Detection (optimized — avoids JSON.stringify)
@@ -516,11 +577,12 @@ export function useERDSession(
         return anyNodeDataChanged ? nextNodes : nds;
       });
     }
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [nodes, edges, resolveEdgeHandles, setNodes, setEdges, dedupeEdgesByRelation]);
 
-  // Auto-reposition edge handles when a node finishes dragging
+  // Reconcile edge handles after a node finishes dragging.
+  // Existing user-selected handles stay intact; only missing handles are filled in.
   const onNodeDragStop = useCallback(() => {
-    const currentNodes = getNodes();
+    const currentNodes = getNodes() as Node<Entity>[];
     const currentEdges = getEdges();
     
     setEdges(eds => {
@@ -530,26 +592,24 @@ export function useERDSession(
         const targetNode = currentNodes.find(n => n.id === edge.target);
         if (!sourceNode || !targetNode) return edge;
 
-        const sourceColId = edge.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
-        const targetColId = edge.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
-        if (!sourceColId || !targetColId) return edge;
-
-        const sx = sourceNode.position.x || 0;
-        const tx = targetNode.position.x || 0;
-        const smartSourceHandle = sx < tx ? `col-${sourceColId}-source` : `col-${sourceColId}-source-l`;
-        const smartTargetHandle = sx < tx ? `col-${targetColId}-target` : `col-${targetColId}-target-r`;
-
-        if (edge.sourceHandle !== smartSourceHandle || edge.targetHandle !== smartTargetHandle) {
+        const resolved = resolveEdgeHandles(edge, sourceNode, targetNode);
+        if (
+          resolved.source !== edge.source ||
+          resolved.target !== edge.target ||
+          resolved.sourceHandle !== edge.sourceHandle ||
+          resolved.targetHandle !== edge.targetHandle
+        ) {
           isChanged = true;
-          return { ...edge, sourceHandle: smartSourceHandle, targetHandle: smartTargetHandle };
+          return resolved;
         }
         return edge;
       });
-      return isChanged ? newEds : eds;
+      const deduped = dedupeEdgesByRelation(isChanged ? newEds : eds);
+      return deduped === eds ? eds : deduped;
     });
     
     takeSnapshot(currentNodes as Node<Entity>[], currentEdges);
-  }, [setEdges, takeSnapshot, getNodes, getEdges]);
+  }, [setEdges, takeSnapshot, getNodes, getEdges, resolveEdgeHandles, dedupeEdgesByRelation]);
 
   const handleMoveEnd = useCallback((_: any, v: Viewport) => {
     if (!isPublicView && !isInitializingRef.current) {

@@ -47,9 +47,8 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
   }), [borderColor]);
 
   const handleBaseClass = useMemo(() => cn(
-    '!w-2 !h-2 !border-none cursor-crosshair transition-opacity duration-150',
-    isFk ? '!opacity-60 group-hover:!opacity-100' : 'opacity-0 group-hover:opacity-100'
-  ), [isFk]);
+    '!w-2 !h-2 !border-none cursor-crosshair opacity-0 group-hover:!opacity-100 group-focus-within:!opacity-100 transition-opacity duration-150',
+  ), []);
 
   const rowBgClass = useMemo(() => {
     if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
