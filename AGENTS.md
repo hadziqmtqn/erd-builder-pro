@@ -453,6 +453,15 @@ src/components/ai/
 - **`useERDSession`** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
 - **`useDiagrams`** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts)): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
 
+### ERD Edge Reconnection
+
+- **`defaultEdgeOptions.reconnectable: true`** in `ERDView.tsx:361` enables edge endpoint dragging
+- **`onReconnect` handler** (`ERDView.tsx:513`): validates type match, calls `takeSnapshot` for undo, then uses a single **atomic functional `setEdges`** — removes old edge via filter, adds new edge via `addEdge` on the filtered array. This prevents race conditions where `onConnect` (called separately) would write back stale `edges` containing the old edge.
+- **Bug fixed**: previously `onReconnect` called `setEdges(filter)` then `onConnect(connection)`. The `onConnect` closure had stale `edges` (still including old edge), so `addEdge` returned edges with old edge re-included. The second `setEdges` from `onConnect` overwrote the filter — causing the edge to snap back to original position.
+- **4 handles per column**: each column has `col-{id}-target` (left), `col-{id}-source-l` (left), `col-{id}-source` (right), `col-{id}-target-r` (right). When reconnecting to the opposite side, the new handle ID is automatically used.
+- **Handle visibility for FK columns** (`EntityNode.tsx`): FK columns (`_is_fk = true`) have handles always semi-visible (`!opacity-60`) instead of `opacity-0` — users can see where connections exist without hovering. Size increased to `!w-2 !h-2` (8px) from 6px. Non-FK columns remain hidden until hover.
+- **Files**: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):513-529, [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx):55-84
+
 ### ERD → AI Flow
 1. `ERDView` passes `{ nodes, edges, selectedNode }` context to `AIActionButton`
 2. `AIActions.ts` builds prompt via `erdTableList()` + `erdRelationships()` → text representation

@@ -10,7 +10,8 @@ import {
   Node,
   Edge,
   MarkerType,
-  useReactFlow
+  useReactFlow,
+  addEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Plus, Upload, Undo2, Redo2, LayoutGrid } from 'lucide-react';
@@ -524,8 +525,11 @@ const ERDViewComponent = ({
                 return;
               }
             }
-            setEdges(eds => eds.filter(e => e.id !== oldEdge.id));
-            onConnect(connection);
+            takeSnapshot?.(nodes, edges);
+            setEdges(eds => {
+              const withoutOld = eds.filter(e => e.id !== oldEdge.id);
+              return addEdge({ ...connection, animated: false, type: 'smoothstep', label: '1:N' }, withoutOld);
+            });
           }}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClickLocal}

@@ -1,5 +1,8 @@
 # 💎 ERD Builder Pro
 
+> [!WARNING]
+> **ERD Builder Pro** is under active development and not yet stable — features and config may still change. Give the repo a Star ⭐ and Watch 👀 it to get notified the moment a release lands.
+
 <div align="center">
 
 [![Docker Hub](https://img.shields.io/badge/docker-available-blue?logo=docker)](https://hub.docker.com/r/bekenweb/erd-builder-pro)

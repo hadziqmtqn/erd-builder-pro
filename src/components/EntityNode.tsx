@@ -46,6 +46,11 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
     top: '50%', right: '-4px', transform: 'translate(50%, -50%)', backgroundColor: borderColor, zIndex: 50,
   }), [borderColor]);
 
+  const handleBaseClass = useMemo(() => cn(
+    '!w-2 !h-2 !border-none cursor-crosshair transition-opacity duration-150',
+    isFk ? '!opacity-60 group-hover:!opacity-100' : 'opacity-0 group-hover:opacity-100'
+  ), [isFk]);
+
   const rowBgClass = useMemo(() => {
     if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
     if (diffState === 'deleted') return 'bg-red-500/10 hover:bg-red-500/15 line-through opacity-50 border-b border-red-500/20';
@@ -58,28 +63,28 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
         type="target"
         position={Position.Left}
         id={`col-${col.id}-target`}
-        className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+        className={handleBaseClass}
         style={leftStyle}
       />
       <Handle
         type="source"
         position={Position.Left}
         id={`col-${col.id}-source-l`}
-        className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+        className={handleBaseClass}
         style={leftStyle}
       />
       <Handle
         type="source"
         position={Position.Right}
         id={`col-${col.id}-source`}
-        className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+        className={handleBaseClass}
         style={rightStyle}
       />
       <Handle
         type="target"
         position={Position.Right}
         id={`col-${col.id}-target-r`}
-        className="!w-1.5 !h-1.5 !border-none cursor-crosshair transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+        className={handleBaseClass}
         style={rightStyle}
       />
 
