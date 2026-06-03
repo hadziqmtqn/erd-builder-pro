@@ -32,6 +32,16 @@ export const getActiveFilter = () => {
 };
 
 /**
+ * Convert a project_id string to the correct type for Prisma queries.
+ * SQLite uses Int, PostgreSQL uses BigInt.
+ */
+export function toProjectId(projectId: string): number | bigint {
+ const url = process.env.DATABASE_URL || "";
+ const isSqlite = url.startsWith("file:") || url.endsWith(".db");
+ return isSqlite ? Number(projectId) : BigInt(projectId);
+}
+
+/**
  * Build a Prisma `where` clause that matches by `uid` (UUID) or numeric `id`.
  * Both PostgreSQL (BigInt) and SQLite (Int) use autoincrement ids internally,
  * while `uid` is the user-facing stable identifier. This dual-lookup allows

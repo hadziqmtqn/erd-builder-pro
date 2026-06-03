@@ -813,6 +813,15 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Backend can import directly from `shared/types` when it gets its own repo
 - Covers: ERD entities, documents (Diagram/Note/Drawing/Flowchart), AI integration (Provider/Model/Config/Chat), projects, audit
 
+## Workspace Filtering (Sidebar)
+
+Workspace/sidebar filtering menggunakan `project.uid` sebagai key identifier. Alur:
+
+- Sidebar → `handleWorkspaceClick(project.uid)` → `handleViewChange(view, true, uid)` → navigasi ke `/table/{view}?workspace={uid}`
+- `useTableViewPagination` membaca `selectedWorkspaceUid` dari URL params → lookup project by `uid` di `projects[]` → dapat `project.id` (numeric) → fetch API dengan `project_id=${id}`
+- Server `POST /api/projects` di [`server/routes/projects.ts`](./server/routes/projects.ts) HARUS generate `uid: randomUUID()` agar workspace baru bisa difilter. Kalau `uid` null, proyek tidak akan muncul di lookup filter.
+- Backfill data existing: `prisma.project.updateMany({ where: { uid: null }, data: { uid: crypto.randomUUID() } })`
+
 ## AGENTS.md File References Convention
 
 - All `src/` file paths in AGENTS.md use relative `./` links with backtick formatting: `` [`src/path/file.ts`](./src/path/file.ts) ``
@@ -859,6 +868,32 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **`res.on("close")` vs `req.on("close")`**: Use `res.on("close")` to detect client disconnect. `req.on("close")` fires prematurely when the POST body is finished reading by `express.json()`, which causes `AbortController.abort()` to be called before the fetch to the AI provider can connect.
 - **30s timeout**: Safety timeout to prevent the provider fetch from hanging forever.
 - **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
+
+## AI Session UID Handling (SQLite vs PostgreSQL)
+
+SQLite schema lacks `@default(uuid())` on `uid` columns → sessions created with `uid: null`. This causes frontend failures when code expects `session.uid` to always be a string.
+
+### Server Fixes
+
+- **`POST /sessions`** ([`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts)): explicitly sets `uid: randomUUID()` on create so SQLite sessions always have a UUID.
+- **`uidOrIdWhere(uid, userId)`** ([`server/lib/utils.ts`](./server/lib/utils.ts)): helper for all `:uid` routes — matches by `uid` OR `id` (numeric fallback for existing null-uid sessions). Applied to: GET/DELETE/PUT `/sessions/:uid`, GET `/sessions/:uid/messages`.
+- **POST `/messages`** (`ai-chat.ts`): session lookup uses `OR [{ uid: sid }, { id: numericId }]` — handles both `session.uid` and `session.id` as `session_id` payload.
+- **Backfill** ([`server/lib/startup-migration.ts`](./server/lib/startup-migration.ts)): `aiChatSession` added to `backfillUids()` — assigns UUID to existing null-uid sessions on server restart.
+
+### Frontend Fixes
+
+- All `session_id: currentSession.id` → `session_id: currentSession.uid ?? currentSession.id` in [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts) (5 occurrences).
+
+## AI Proxy Status Code Safety
+
+- **`server/routes/ai.ts`** returns **502 Bad Gateway** (not pass-through status) for upstream provider errors — prevents the global 401 interceptor in [`src/main.tsx`](./src/main.tsx) from dispatching `auth:unauthorized` and reloading/redirecting to `/`.
+- The global interceptor (`main.tsx:28`) treats any 401 on `/api/*` as session expiry → `auth:unauthorized` event → `useAuth` clears auth state → `App.tsx` redirects to login. AI provider 401 must not leak through.
+
+## AI Config API Key Mask Safety
+
+- [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) masks `apiKey` as `'***'` in GET/POST `/configs` responses.
+- **Server-side guard**: `POST /configs` update/create branch ignores `api_key` if value is `'***'` — prevents accidentally overwriting the real key when user clicks Save without changing the field. Real key stays in DB.
+- **Test Connection moved server-side**: `POST /api/ai/settings/configs/test` endpoint at `ai-settings.ts` — reads real API key from DB, calls provider, returns success/failure. Frontend `handleTestConnection` in [`src/hooks/useAIProviders.ts`](./src/hooks/useAIProviders.ts) sends only `{ provider_code, model_identifier }`, no key in request body. Eliminates `Bearer ***` bug.
 
 ## @Mentions as Clickable Links in Chat
 
@@ -1388,3 +1423,26 @@ client/
 2. Create shared ability definitions
 3. Apply to Express routes as middleware
 4. Apply to React UI components (conditionals, <Can> filter)
+
+## Performance Optimizations — Initial Load Speed
+
+### Root Cause
+Post-login spinner (5-8s) caused by:
+1. **Projects endpoint eager-loads ALL children** (`server/routes/projects.ts:66-96`): `include` with `diagrams`, `notes` (with `content` column!), `drawings`, `flowcharts` for every project — returns MBs of unnecessary data
+2. **Notes/Drawings/Diagrams list endpoints return ALL columns** — including `content` (rich text HTML), `data` (diagram JSON, drawing JSON)
+3. **DashboardRoute full-page spinner**: waited for ALL 5 fetches (projects, notes, diagrams, drawings, flowcharts) to complete before rendering anything
+4. **Duplicate pagination fetch**: `useTableViewPagination` fired a redundant fetch for the current view type on initial mount (dashboard route)
+
+### Fixes Applied
+
+#### Server-Side (Biggest Impact)
+- **Projects endpoint** ([`server/routes/projects.ts`](./server/routes/projects.ts)): removed `include` that eager-loaded all children (diagrams, notes, drawings, flowcharts) per project. Now returns only project metadata. The frontend already gets children from individual fetches.
+- **Notes list** ([`server/routes/notes.ts`](./server/routes/notes.ts)): added explicit `select` — `content` column excluded (was returning full rich text HTML for every note in list).
+- **Diagrams list** ([`server/routes/diagrams.ts`](./server/routes/diagrams.ts)): added explicit `select` — `data` column excluded.
+- **Drawings list** ([`server/routes/drawings.ts`](./server/routes/drawings.ts)): added explicit `select` — `data` column excluded.
+- **Flowcharts list** ([`server/routes/flowcharts.ts`](./server/routes/flowcharts.ts)): narrowed `project` include to only `{ name, uid, id }` instead of all columns.
+- All list endpoint `project` includes narrowed to `{ select: { name: true, uid: true, id: true } }` instead of `{ project: true }`.
+
+#### Client-Side
+- **DashboardRoute** ([`src/routes/DashboardRoute.tsx`](./src/routes/DashboardRoute.tsx)): removed full-page loading spinner on initial mount. Dashboard renders immediately — stat cards (0), recent docs (empty), workspace (empty) fill in progressively as data arrives.
+- **useTableViewPagination** ([`src/hooks/useTableViewPagination.ts`](./src/hooks/useTableViewPagination.ts)): added `isTableView` guard (`pathname.startsWith('/table/')`) — pagination fetches now only fire on actual table routes, not on dashboard or editor routes. Eliminates redundant duplicate fetch on initial mount.

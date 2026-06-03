@@ -648,7 +648,7 @@ export function WorkspaceProvider({
   const triggerPendingErdDiff = useCallback(() => setPendingErdDiffTrigger(k => k + 1), []);
   const [tableLoadingState, setTableLoadingState] = useState<'idle' | 'loading'>('idle');
   useTableViewPagination({
-    view, hasActiveItem, isAuthenticated, isPublicView,
+    view, pathname: location.pathname, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid: tableSearchParams.get('workspace'),
     tableSearchParams, projects,
     fileSearchQuery: debouncedFileSearchQuery,
@@ -702,6 +702,7 @@ export function WorkspaceProvider({
       setSidebarViewState(newView);
     }
     if (showTable) {
+      setTableLoadingState('loading');
       setActiveNoteUid(null);
       setActiveDrawingId(null);
       setActiveDiagramId(null);

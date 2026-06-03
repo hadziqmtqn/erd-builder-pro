@@ -1,7 +1,8 @@
+import { randomUUID } from "crypto";
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
-import { handleError } from "../lib/utils.js";
+import { handleError, toProjectId, uidOrIdWhere } from "../lib/utils.js";
 import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
@@ -21,11 +22,11 @@ router.get("/sessions", authenticate, async (req: ExpressRequest, res: ExpressRe
 
     if (hasProject && hasEntity) {
       where.OR = [
-        { projectId: BigInt(projectId) },
+        { projectId: toProjectId(projectId) },
         { projectId: null, entityType, entityUid }
       ];
     } else if (hasProject) {
-      where.projectId = BigInt(projectId);
+      where.projectId = toProjectId(projectId);
     } else if (hasEntity) {
       where.projectId = null;
       where.entityType = entityType;
@@ -50,7 +51,7 @@ router.post("/sessions", authenticate, async (req: ExpressRequest, res: ExpressR
     const userId = (req as any).user.id;
     const { entity_type, entity_uid, project_id } = req.body;
 
-    const data: any = { title: "New Conversation", userId };
+    const data: any = { title: "New Conversation", userId, uid: randomUUID() };
     if (entity_type) data.entityType = entity_type;
     if (entity_uid) data.entityUid = entity_uid;
     if (project_id !== undefined) {
@@ -69,7 +70,7 @@ router.post("/sessions", authenticate, async (req: ExpressRequest, res: ExpressR
 router.get("/sessions/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const session = await prisma?.aiChatSession.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id }
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id)
     });
     if (!session) return res.status(404).json({ error: "Session not found" });
     res.json(session);
@@ -83,7 +84,7 @@ router.delete("/sessions/:uid", authenticate, async (req: ExpressRequest, res: E
   try {
     const userId = (req as any).user.id;
     const session = await prisma?.aiChatSession.findFirst({
-      where: { uid: req.params.uid, userId },
+      where: uidOrIdWhere(req.params.uid, userId),
     });
     if (!session) return res.status(404).json({ error: "Session not found" });
     await prisma?.aiChatSession.delete({
@@ -108,7 +109,7 @@ router.put("/sessions/:uid", authenticate, async (req: ExpressRequest, res: Expr
     }
 
     const existing = await prisma?.aiChatSession.findFirst({
-      where: { uid: req.params.uid, userId },
+      where: uidOrIdWhere(req.params.uid, userId),
       select: { id: true },
     });
     if (!existing) return res.status(404).json({ error: "Session not found" });
@@ -131,7 +132,7 @@ router.get("/sessions/:uid/messages", authenticate, async (req: ExpressRequest, 
     const limit = parseInt(req.query.limit as string) || 30;
 
     const session = await prisma?.aiChatSession.findFirst({
-      where: { uid: req.params.uid, userId },
+      where: uidOrIdWhere(req.params.uid, userId),
       select: { id: true }
     });
 
@@ -164,8 +165,16 @@ router.post("/messages", authenticate, async (req: ExpressRequest, res: ExpressR
       return res.status(400).json({ error: "Missing required fields: session_id, role, content" });
     }
 
+    const sid = String(session_id);
+    const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
     const session = await prisma?.aiChatSession.findFirst({
-      where: { uid: session_id, userId },
+      where: {
+        userId,
+        OR: [
+          { uid: sid },
+          ...(numericId !== undefined ? [{ id: numericId }] : []),
+        ],
+      },
       select: { id: true },
     });
     if (!session) return res.status(404).json({ error: "Session not found" });

@@ -17,9 +17,9 @@
     "db:generate:sqlite": "prisma generate --schema=prisma/schema.sqlite.prisma",
     "db:migrate:sqlite": "cross-env DATABASE_URL=file:./data.db prisma migrate dev --schema=prisma/schema.sqlite.prisma",
     "db:seed:sqlite": "cross-env DATABASE_URL=file:./data.db tsx prisma/seed.sqlite.ts",
-    "dev:tauri:servers": "concurrently -n api,client \"npm run dev:desktop\" \"npm run dev:client -- --port 5173\"",
+    "dev:tauri:servers": "concurrently -n api,client \"npm run dev:desktop\" \"VITE_API_URL=http://localhost:3099 npm run dev:client -- --port 3098\"",
     "dev:tauri": "export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev",
-    "dev:desktop": "npm run db:generate:sqlite && cross-env DATABASE_URL=file:./data.db NODE_ENV=development tsx watch server/run.ts"
+    "dev:desktop": "npm run db:generate:sqlite && cross-env PORT=3099 DATABASE_URL=file:./data.db NODE_ENV=development tsx watch server/run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1020.0",

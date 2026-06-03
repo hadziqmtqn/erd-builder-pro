@@ -113,8 +113,10 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      logger.error({ err: errBody }, `AI provider error (${response.status})`);
-      return res.status(response.status).json({
+      logger.error({ err: errBody, status: response.status }, "AI provider error");
+      // Use 502 Bad Gateway — upstream provider failure, not an auth error.
+      // The global 401 interceptor in the frontend must NOT catch this.
+      return res.status(502).json({
         error: `AI provider error (${response.status})`,
       });
     }

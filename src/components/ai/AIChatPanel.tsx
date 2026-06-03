@@ -436,7 +436,7 @@ export const AIChatPanel = ({
                 <>
                   {paginatedSessions.map((session) => (
                     <SessionItem
-                      key={session.uid}
+                      key={session.uid ?? session.id}
                       session={session}
                       isActive={currentSession?.uid === session.uid}
                       onClick={() => {

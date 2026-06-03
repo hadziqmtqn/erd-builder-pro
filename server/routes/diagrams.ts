@@ -54,10 +54,23 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     const [data, total] = await Promise.all([
       prisma.diagram.findMany({
         where,
-        include: { project: true },
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: limit,
+        select: {
+          id: true,
+          uid: true,
+          name: true,
+          projectId: true,
+          isPublic: true,
+          shareToken: true,
+          expiryDate: true,
+          createdAt: true,
+          updatedAt: true,
+          isDeleted: true,
+          userId: true,
+          project: { select: { name: true, uid: true, id: true } },
+        },
       }),
       prisma.diagram.count({ where }),
     ]);

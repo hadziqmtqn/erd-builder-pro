@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 // instead of creating a new connection pool per request.
 const globalForPrisma = globalThis as typeof globalThis & {
   __prisma?: PrismaClient;
+  __prismaWarmed?: boolean;
 };
 
 function isSqlite(url: string): boolean {
@@ -28,7 +29,7 @@ function buildPrismaUrl(): string {
   try {
     const url = new URL(baseUrl);
     if (!url.searchParams.has("connection_limit")) {
-      url.searchParams.set("connection_limit", "3");
+      url.searchParams.set("connection_limit", "10");
     }
     if (!url.searchParams.has("pgbouncer")) {
       url.searchParams.set("pgbouncer", "true");
@@ -51,6 +52,15 @@ try {
       : ["error"],
   });
   globalForPrisma.__prisma = prisma;
+
+  // Warm up the Prisma connection pool on startup so the first page load
+  // doesn't pay the cold-start penalty of establishing connections.
+  if (!globalForPrisma.__prismaWarmed) {
+    globalForPrisma.__prismaWarmed = true;
+    if (prisma && !isSqlite(buildPrismaUrl())) {
+      prisma.$queryRawUnsafe('SELECT 1').catch(() => {});
+    }
+  }
 } catch (err) {
   console.error("Failed to initialize Prisma client:", err);
 }

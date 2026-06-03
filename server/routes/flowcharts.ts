@@ -2,7 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { supabase } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createFlowchartSchema } from "../lib/validation.js";
-import { handleError, getSafeUpdate, uidOrIdWhere } from "../lib/utils.js";
+import { handleError, getSafeUpdate, uidOrIdWhere, toProjectId } from "../lib/utils.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveOwnedProjectId } from "../lib/security.js";
 
@@ -32,7 +32,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     if (projectId === "null") {
       conditions.push({ projectId: null });
     } else if (projectId && projectId !== "all" && !isNaN(parseInt(projectId))) {
-      conditions.push({ projectId: BigInt(parseInt(projectId)) });
+      conditions.push({ projectId: toProjectId(projectId) });
     }
 
     // Filter out flowcharts belonging to deleted projects
@@ -68,7 +68,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
           updatedAt: true,
           isDeleted: true,
           userId: true,
-          project: true,
+          project: { select: { name: true, uid: true, id: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: offset,

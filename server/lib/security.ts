@@ -1,7 +1,11 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
+import { isDesktopMode } from "./config.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
+  // Desktop mode is single-user — local user is always the admin.
+  if (isDesktopMode()) return true;
+
   const user = (req as any).user;
   if (!user) return false;
 

@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiFetch } from '../lib/api';
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState<boolean>(false);
+  const retryRef = useRef(0);
 
   const checkAuth = useCallback(async () => {
     // If we're already in guest mode in this session, don't check API
@@ -33,10 +34,14 @@ export function useAuth() {
         setIsGuest(false);
         setUser(null);
       }
+      retryRef.current = 0;
     } catch (err) {
-      setIsAuthenticated(false);
-      setIsGuest(false);
-      setUser(null);
+      // Network error (e.g. server restarting) — keep current auth state,
+      // don't log the user out. Retry with backoff up to 3 times.
+      if (retryRef.current < 3) {
+        retryRef.current++;
+        setTimeout(() => checkAuth(), 1500 * retryRef.current);
+      }
     }
   }, []);
 

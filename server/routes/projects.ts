@@ -5,6 +5,7 @@ import { authenticate } from "../lib/middleware.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -15,10 +16,6 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     const q = req.query.q as string;
     const userId = (req as any).user.id;
     const searchLower = q?.trim().toLowerCase();
-
-    const childSelect = {
-      id: true, uid: true, updatedAt: true, createdAt: true, isDeleted: true, projectId: true,
-    } as const;
 
     let whereClause: Record<string, any> = { userId, isDeleted: false };
 
@@ -65,28 +62,6 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
     const [projects, total] = await Promise.all([
       prisma?.project.findMany({
         where: whereClause,
-        include: {
-          diagrams: {
-            where: { isDeleted: false },
-            orderBy: { createdAt: 'desc' },
-            select: { ...childSelect, name: true },
-          },
-          notes: {
-            where: { isDeleted: false },
-            orderBy: { createdAt: 'desc' },
-            select: { ...childSelect, title: true, content: true },
-          },
-          drawings: {
-            where: { isDeleted: false },
-            orderBy: { createdAt: 'desc' },
-            select: { ...childSelect, title: true },
-          },
-          flowcharts: {
-            where: { isDeleted: false },
-            orderBy: { createdAt: 'desc' },
-            select: { ...childSelect, title: true },
-          },
-        },
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: limit,
@@ -94,28 +69,14 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
       prisma?.project.count({ where: whereClause }),
     ]);
 
-    const projectsWithFiles = (projects || []).map((project: any) => {
-      let diagrams = project.diagrams || [];
-      let notes = project.notes || [];
-      let drawings = project.drawings || [];
-      let flowcharts = project.flowcharts || [];
-
-      if (searchLower) {
-        diagrams = diagrams.filter((f: any) => f.name?.toLowerCase().includes(searchLower));
-        notes = notes.filter((f: any) => f.title?.toLowerCase().includes(searchLower));
-        drawings = drawings.filter((f: any) => f.title?.toLowerCase().includes(searchLower));
-        flowcharts = flowcharts.filter((f: any) => f.title?.toLowerCase().includes(searchLower));
-      }
-
-      return {
-        ...project,
-        diagrams,
-        notes,
-        drawings,
-        flowcharts,
-        files_count: diagrams.length + notes.length + drawings.length + flowcharts.length,
-      };
-    });
+    const projectsWithFiles = (projects || []).map((project: any) => ({
+      ...project,
+      diagrams: [],
+      notes: [],
+      drawings: [],
+      flowcharts: [],
+      files_count: 0,
+    }));
 
     const uncategorizedBase = { projectId: null, userId, isDeleted: false } as const;
     const uDiagramFilter: Record<string, any> = { ...uncategorizedBase };
@@ -157,7 +118,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     const { name } = req.body;
     const userId = (req as any).user.id;
     const project = await prisma?.project.create({
-      data: { name, userId },
+      data: { name, userId, uid: randomUUID() },
     });
     if (!project) return res.status(500).json({ error: "Failed to create project" });
     res.json(project);

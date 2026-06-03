@@ -228,8 +228,8 @@ UNION ALL
 SELECT id, 'gemini-1.5-flash', 'Gemini 1.5 Flash' FROM ai_providers WHERE code = 'gemini'
 ON CONFLICT DO NOTHING;
 
--- Seed AI Rules (reference only — replace user_id with actual UUID from auth.users)
--- The app creates empty defaults on first access; these are optional.
+-- Seed AI Rules (reference only — auto-seeded server-side in ai-rules.ts:GET)
+-- The server seeds defaults on first access when no record exists.
 INSERT INTO user_ai_rules (user_id, view_type, content, is_enabled)
 SELECT
     id,

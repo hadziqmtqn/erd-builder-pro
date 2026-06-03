@@ -290,7 +290,7 @@ export function useAIChat(
     // Optimistic user message
     const tempUserMsg: AIChatMessage = {
       id: `temp-${Date.now()}`,
-      session_id: currentSession.id,
+      session_id: currentSession.uid ?? currentSession.id,
       role: 'user',
       content: trimmed,
       selection_text: selectionText || null,
@@ -315,7 +315,7 @@ export function useAIChat(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
+            session_id: currentSession.uid ?? currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
           }),
         });
         if (!res.ok) throw new Error('Failed to save message');
@@ -421,7 +421,7 @@ export function useAIChat(
 
       // Add streaming placeholder
       setMessages(prev => [...prev, {
-        id: 'streaming', session_id: currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
+        id: 'streaming', session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
       } as AIChatMessage]);
 
       // Call AI
@@ -441,7 +441,7 @@ export function useAIChat(
       // Finalize message
       const finalAiMsg: AIChatMessage = {
         id: `ai-${Date.now()}`,
-        session_id: currentSession.id,
+        session_id: currentSession.uid ?? currentSession.id,
         role: 'assistant',
         content: accumulatedResponse,
         created_at: new Date().toISOString(),
@@ -461,7 +461,7 @@ export function useAIChat(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: currentSession.id, role: 'assistant', content: accumulatedResponse,
+            session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: accumulatedResponse,
           }),
         });
         if (!saveAIRes.ok) throw new Error('Failed to save AI response');

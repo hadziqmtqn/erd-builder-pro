@@ -43,21 +43,23 @@ router.post("/configs", authenticate, async (req: ExpressRequest, res: ExpressRe
   try {
     const userId = getUserId(req);
     const { provider_id, api_key, selected_model_id, is_enabled } = req.body;
-    const providerId = provider_id;
+    const providerId = Number(provider_id);
+    if (!providerId) return res.status(400).json({ error: 'provider_id is required' });
+    const selectedModelId = selected_model_id != null ? Number(selected_model_id) || null : null;
 
     const data = await prisma?.userAiConfig.upsert({
       where: { userId_providerId: { userId, providerId } },
       create: {
         userId,
         providerId,
-        apiKey: api_key,
-        selectedModelId: selected_model_id,
+        apiKey: (api_key && api_key !== '***') ? api_key : null,
+        selectedModelId: selectedModelId ?? undefined,
         isEnabled: is_enabled ?? true,
       },
       update: {
-        apiKey: api_key,
-        selectedModelId: selected_model_id,
-        isEnabled: is_enabled ?? true,
+        ...(api_key && api_key !== '***' ? { apiKey: api_key } : {}),
+        selectedModelId: selectedModelId ?? undefined,
+        isEnabled: is_enabled ?? undefined,
         updatedAt: new Date(),
       }
     });
@@ -84,9 +86,11 @@ router.post("/models", authenticate, async (req: ExpressRequest, res: ExpressRes
   try {
     if (!requireAdmin(req, res)) return;
     const { provider_id, model_identifier, display_name } = req.body;
+    const providerId = Number(provider_id);
+    if (providerId && Number.isNaN(providerId)) return res.status(400).json({ error: "Invalid provider_id" });
     const data = await prisma?.aiModel.create({
       data: {
-        providerId: provider_id,
+        providerId: providerId || null,
         modelIdentifier: model_identifier,
         displayName: display_name,
         isActive: true,
@@ -103,12 +107,14 @@ router.put("/models/:id", authenticate, async (req: ExpressRequest, res: Express
   try {
     if (!requireAdmin(req, res)) return;
     const { provider_id, model_identifier, display_name } = req.body;
+    const providerId = Number(provider_id);
+    if (providerId && Number.isNaN(providerId)) return res.status(400).json({ error: "Invalid provider_id" });
     const modelId = Number(req.params.id);
     if (Number.isNaN(modelId)) return res.status(400).json({ error: "Invalid model id" });
     await prisma?.aiModel.update({
       where: { id: modelId as any },
       data: {
-        providerId: provider_id,
+        providerId: providerId || null,
         modelIdentifier: model_identifier,
         displayName: display_name,
       }
@@ -286,10 +292,82 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
   }
 });
 
+// POST /api/ai/settings/configs/test — server-side test connection
+router.post("/configs/test", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  try {
+    const userId = getUserId(req);
+    const { provider_code, model_identifier } = req.body;
+    if (!provider_code) return res.status(400).json({ error: "provider_code is required" });
+
+    const config = await prisma?.userAiConfig.findFirst({
+      where: { userId, isEnabled: true },
+      include: { provider: true },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!config || !config.apiKey) {
+      return res.status(400).json({ error: "No API key configured for this user" });
+    }
+
+    const provider = config.provider;
+    const modelId = model_identifier || (provider_code === "openai" ? "gpt-4o-mini" : "gemini-1.5-flash");
+
+    if (provider_code === "openai" || provider_code === "openai_compatible") {
+      let baseUrl = provider?.baseUrl || "https://api.openai.com/v1";
+      baseUrl = baseUrl.replace(/\/+$/, "");
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: "user", content: "hi" }],
+          max_tokens: 5,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        return res.status(400).json({
+          error: errData.error?.message || `API Error: ${response.status} ${response.statusText}`,
+        });
+      }
+      return res.json({ success: true });
+    }
+
+    if (provider_code === "gemini") {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${config.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: "hi" }] }] }),
+          signal: AbortSignal.timeout(15000),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        return res.status(400).json({
+          error: errData.error?.message || `API Error: ${response.status} ${response.statusText}`,
+        });
+      }
+      return res.json({ success: true });
+    }
+
+    return res.status(400).json({ error: `Unsupported provider: ${provider_code}` });
+  } catch (err: any) {
+    handleError(res, err, "Connection test failed");
+  }
+});
+
 // PUT /api/ai/settings/providers/:id
+// Regular users may update the base URL for OpenAI Compatible providers.
 router.put("/providers/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    if (!requireAdmin(req, res)) return;
     const { base_url } = req.body;
     await prisma?.aiProvider.update({
       where: { id: Number(req.params.id) as any },

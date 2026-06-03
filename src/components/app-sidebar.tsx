@@ -157,8 +157,9 @@ export const AppSidebar = React.memo(({
   // Filtered non-deleted projects
   const activeProjects = projects.filter(p => !p.is_deleted);
 
-  const handleWorkspaceClick = (uid: string | null) => {
-    onViewChange(view, true, uid);
+  const handleWorkspaceClick = (uid: string | null | undefined, fallbackId?: number | string) => {
+    const id = uid ?? (fallbackId != null ? String(fallbackId) : null);
+    onViewChange(view, true, id);
   };
 
   return (
@@ -226,7 +227,7 @@ export const AppSidebar = React.memo(({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="All Workspaces"
-                  isActive={selectedWorkspaceUid === null}
+                  isActive={selectedWorkspaceUid === null || selectedWorkspaceUid === ''}
                   onClick={() => handleWorkspaceClick(null)}
                 >
                   <Folder className="h-4 w-4 shrink-0" />
@@ -247,8 +248,8 @@ export const AppSidebar = React.memo(({
                   <SidebarMenuItem key={project.uid ?? project.id}>
                     <SidebarMenuButton
                       tooltip={project.name}
-                      isActive={selectedWorkspaceUid === project.uid}
-                      onClick={() => handleWorkspaceClick(project.uid ?? null)}
+                      isActive={selectedWorkspaceUid === project.uid || String(selectedWorkspaceUid ?? '') === String(project.id ?? '')}
+                      onClick={() => handleWorkspaceClick(project.uid, project.id)}
                     >
                       <Folder className="h-4 w-4 shrink-0" />
                       <span className="truncate flex-1 text-left">{project.name}</span>

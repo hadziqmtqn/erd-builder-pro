@@ -49,7 +49,9 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useAISettings } from '@/hooks/useAISettings';
+import { useAIProviders } from '@/hooks/useAIProviders';
+import { useAIModels } from '@/hooks/useAIModels';
+import { useAIPrompts } from '@/hooks/useAIPrompts';
 import { APISettingsTab } from '@/components/ai/APISettingsTab';
 import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
@@ -68,25 +70,33 @@ export function SettingsModal() {
   const {
     providers,
     configs,
-    models,
-    prompts,
-    isSaving,
     isTesting,
-    newModel,
-    editingModelId,
-    setNewModel,
+    isSaving: isSavingProviders,
     handleSaveConfig,
     handleTestConnection,
+    updateProviderLocal,
+    updateConfigLocal,
+  } = useAIProviders();
+
+  const {
+    models,
+    newModel,
+    editingModelId,
+    isSaving: isSavingModels,
+    setNewModel,
     handleAddModel,
     handleDeleteModel,
+    startEditingModel,
+    cancelEdit,
+  } = useAIModels();
+
+  const {
+    prompts,
+    isSaving: isSavingPrompts,
     handleSavePrompt,
     handleDeletePrompt,
     togglePromptDefault,
-    updateProviderLocal,
-    updateConfigLocal,
-    startEditingModel,
-    cancelEdit
-  } = useAISettings();
+  } = useAIPrompts();
 
   const navGroups = [
     {
@@ -226,10 +236,10 @@ export function SettingsModal() {
                     providers={providers}
                     configs={configs}
                     models={models}
-                    isSaving={isSaving}
+                    isSaving={isSavingProviders}
                     isTesting={isTesting}
                     onSave={handleSaveConfig}
-                    onTest={handleTestConnection}
+                    onTest={(code) => handleTestConnection(code, Object.values(models).flat())}
                     onUpdateProvider={updateProviderLocal}
                     onUpdateConfig={updateConfigLocal}
                   />
@@ -243,7 +253,7 @@ export function SettingsModal() {
                     models={Object.values(models).flat()}
                     newModel={newModel}
                     editingModelId={editingModelId}
-                    isSaving={isSaving}
+                    isSaving={isSavingModels}
                     onSetNewModel={setNewModel}
                     onAddModel={handleAddModel}
                     onEditModel={startEditingModel}
@@ -257,7 +267,7 @@ export function SettingsModal() {
                 <div className="p-8">
                   <DefaultPromptsTab 
                     prompts={prompts}
-                    isSaving={isSaving}
+                    isSaving={isSavingPrompts}
                     onSave={handleSavePrompt}
                     onDelete={handleDeletePrompt}
                     onToggleDefault={togglePromptDefault}
