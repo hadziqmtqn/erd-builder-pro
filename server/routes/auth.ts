@@ -1,5 +1,5 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, isDesktopMode } from "../lib/config.js";
+import { supabase, isDesktopMode, useLocalAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { validate, loginSchema } from "../lib/validation.js";
 import { logger } from "../lib/logger.js";
@@ -15,7 +15,7 @@ const router = Router();
 
 // Auth Config (Public)
 router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
-  res.json({ supabaseAuth: !isDesktopMode() });
+  res.json({ supabaseAuth: !useLocalAuth() });
 });
 
 // Login
@@ -26,8 +26,8 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
   const isProd = process.env.NODE_ENV === "production";
 
   try {
-    if (isDesktopMode()) {
-      // ── Desktop mode: verify against local SQLite User table ──
+    if (useLocalAuth()) {
+      // ── Local auth mode: verify against local User table ──
       if (!prisma) {
         return res.status(500).json({ error: "Database not available" });
       }
@@ -64,9 +64,9 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
 
       const token = await createSession((user as any).id, (user as any).email, (user as any).name);
       const isSecure = isProd && req.protocol === 'https';
-      // In desktop mode, make cookie accessible to the client side for proper session persistence across reloads
+      // In local auth mode, make cookie accessible to the client side for proper session persistence across reloads
       res.cookie("token", token, {
-        httpOnly: !isDesktopMode(),
+        httpOnly: !useLocalAuth(),
         secure: isSecure,
         sameSite: "lax",
         path: "/",
@@ -186,13 +186,13 @@ router.post("/desktop-login", async (req: ExpressRequest, res: ExpressResponse) 
 // Logout
 router.post("/logout", async (req: ExpressRequest, res: ExpressResponse) => {
   const token = req.cookies.token as string | undefined;
-  if (isDesktopMode() && token) {
+  if (useLocalAuth() && token) {
     await deleteSession(token);
   }
   const isProd = process.env.NODE_ENV === "production";
   const isSecure = isProd && req.protocol === 'https';
   res.clearCookie("token", {
-    httpOnly: !isDesktopMode(),
+    httpOnly: !useLocalAuth(),
     secure: isSecure,
     sameSite: "lax",
   });
@@ -207,7 +207,7 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
   }
 
   try {
-    if (isDesktopMode()) {
+    if (useLocalAuth()) {
       const session = await getSession(token);
       if (!session) {
         return res.json({ authenticated: false });

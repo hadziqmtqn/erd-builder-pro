@@ -33,12 +33,15 @@ export const getActiveFilter = () => {
 
 /**
  * Convert a project_id string to the correct type for Prisma queries.
- * SQLite uses Int, PostgreSQL uses BigInt.
+ * SQLite and local PostgreSQL use Int; Supabase PostgreSQL uses BigInt.
  */
 export function toProjectId(projectId: string): number | bigint {
  const url = process.env.DATABASE_URL || "";
  const isSqlite = url.startsWith("file:") || url.endsWith(".db");
- return isSqlite ? Number(projectId) : BigInt(projectId);
+ const isSupabasePg = url.startsWith("postgresql://") && !!process.env.SUPABASE_URL;
+ if (isSqlite) return Number(projectId);
+ if (isSupabasePg) return BigInt(projectId);
+ return Number(projectId);
 }
 
 /**

@@ -21,9 +21,20 @@ export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
 
 export function isDesktopMode(): boolean {
   const dbUrl = process.env.DATABASE_URL || "";
-  // If DATABASE_URL is not set, assume we are running in packaged desktop mode (e.g., Tauri) where a local SQLite DB will be used.
-  // This covers cases where the environment variable is stripped from the bundled app.
   return dbUrl === "" || dbUrl.startsWith("file:") || dbUrl.endsWith(".db");
+}
+
+/** True when using local PostgreSQL (no Supabase auth). */
+export function isLocalPostgres(): boolean {
+  const dbUrl = process.env.DATABASE_URL || "";
+  if (isDesktopMode()) return false;
+  // PostgreSQL URL without SUPABASE_URL → local auth
+  return dbUrl.startsWith("postgresql://") && !process.env.SUPABASE_URL;
+}
+
+/** True when auth is handled locally (desktop/SQLite or local PostgreSQL). */
+export function useLocalAuth(): boolean {
+  return isDesktopMode() || isLocalPostgres();
 }
 
 // Initialize Supabase

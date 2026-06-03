@@ -19,19 +19,17 @@ export async function createSession(userId: string, email: string, name: string 
   const token = randomUUID();
 
   // Clean expired sessions for this user
-  const cutoff = new Date(Date.now() - SESSION_EXPIRY_MS).toISOString();
+  const cutoff = new Date(Date.now() - SESSION_EXPIRY_MS);
   try {
-    await prisma?.$executeRawUnsafe(
-      `DELETE FROM sessions WHERE user_id = ? AND created_at < ?`,
-      userId, cutoff
-    );
+    await prisma?.session.deleteMany({
+      where: { userId, createdAt: { lt: cutoff } },
+    });
   } catch { /* ignore cleanup errors */ }
 
   try {
-    await prisma?.$executeRawUnsafe(
-      `INSERT INTO sessions (token, user_id, email, name, created_at) VALUES (?, ?, ?, ?, datetime('now'))`,
-      token, userId, email, name
-    );
+    await prisma?.session.create({
+      data: { token, userId, email, name },
+    });
   } catch (err) {
     console.error("Failed to create session:", err);
   }
@@ -41,21 +39,20 @@ export async function createSession(userId: string, email: string, name: string 
 
 export async function getSession(token: string) {
   try {
-    const rows = await prisma?.$queryRawUnsafe<{ token: string; user_id: string; email: string; name: string | null; created_at: string }[]>(
-      `SELECT token, user_id, email, name, created_at FROM sessions WHERE token = ?`,
-      token
-    );
-    if (!rows || rows.length === 0) return undefined;
+    const row = await prisma?.session.findFirst({
+      where: { token },
+      select: { userId: true, email: true, name: true, createdAt: true },
+    });
 
-    const row = rows[0];
-    const createdAt = new Date(row.created_at + 'Z');
-    const age = Date.now() - createdAt.getTime();
+    if (!row) return undefined;
+
+    const age = Date.now() - row.createdAt.getTime();
     if (age > SESSION_EXPIRY_MS) {
-      await prisma?.$executeRawUnsafe(`DELETE FROM sessions WHERE token = ?`, token).catch(() => {});
+      await prisma?.session.deleteMany({ where: { token } }).catch(() => {});
       return undefined;
     }
 
-    return { userId: row.user_id, email: row.email, name: row.name, createdAt };
+    return { userId: row.userId, email: row.email, name: row.name, createdAt: row.createdAt };
   } catch {
     return undefined;
   }
@@ -63,6 +60,6 @@ export async function getSession(token: string) {
 
 export async function deleteSession(token: string): Promise<void> {
   try {
-    await prisma?.$executeRawUnsafe(`DELETE FROM sessions WHERE token = ?`, token);
+    await prisma?.session.deleteMany({ where: { token } });
   } catch { /* ignore */ }
 }

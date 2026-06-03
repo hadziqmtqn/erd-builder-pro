@@ -794,6 +794,46 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **Vite proxy** (`vite.config.ts:20`): `/api` proxied to `VITE_API_URL || http://localhost:3000` for standalone dev
 - **No `Content-Type` auto-setting** — upload calls (FormData) work without override
 
+## Database Mode Detection
+
+Three database modes, chosen by `DATABASE_URL`:
+
+| Mode | Detection | Auth | ID type | Schema |
+|------|-----------|------|---------|--------|
+| **Desktop/SQLite** | `file:` or `.db` in URL | Local (desktop-auth.ts) | `Int` | `schema.sqlite.prisma` |
+| **Local PostgreSQL** | `postgresql://` URL + no `SUPABASE_URL` | Local (same as desktop) | `Int` | `schema.pg.prisma` |
+| **Supabase PostgreSQL** | `postgresql://` URL + `SUPABASE_URL` set | Supabase Auth (JWT) | `BigInt` | `schema.prisma` |
+
+### Detection helpers ([`server/lib/config.ts`](./server/lib/config.ts)):
+- `isDesktopMode()` — SQLite URL patterns
+- `isLocalPostgres()` — PostgreSQL URL without `SUPABASE_URL`
+- `useLocalAuth()` — `isDesktopMode() || isLocalPostgres()` — used in auth routes
+
+### Key server files handling local PostgreSQL:
+- [`server/lib/middleware.ts`](./server/lib/middleware.ts): `authenticate` + `checkSupabase` skip Supabase when `useLocalAuth()` is true
+- [`server/routes/auth.ts`](./server/routes/auth.ts): all `isDesktopMode()` → `useLocalAuth()` so local PostgreSQL uses the same email/password auth path
+- [`server/lib/prisma.ts`](./server/lib/prisma.ts): skips `connection_limit`/`pgbouncer` pooler params for local PostgreSQL
+- [`server/lib/utils.ts`](./server/lib/utils.ts): `toProjectId()` returns `Number()` for both SQLite and local PostgreSQL, `BigInt()` only for Supabase PostgreSQL
+- [`server/lib/security.ts`](./server/lib/security.ts): `isAdminUser()` uses `useLocalAuth()` — local PostgreSQL user is always admin (same as desktop)
+- [`server/lib/desktop-auth.ts`](./server/lib/desktop-auth.ts): rewritten to use Prisma `session` model instead of raw SQL — works on both SQLite and PostgreSQL (no `?`/`$1` placeholder mismatch)
+
+### Schema for local PostgreSQL ([`prisma/schema.pg.prisma`](./prisma/schema.pg.prisma)):
+- Based on `schema.sqlite.prisma` — local User model with `email`/`password`/`name`
+- `provider = "postgresql"` with no `schemas` line (uses `public` schema only)
+- Int IDs (same as SQLite) — simpler than Supabase's BigInt
+- No Supabase auth tables (identities, sessions, mfa_factors, etc.)
+- Includes `Session` model (auth sessions table) — also added to `schema.sqlite.prisma`
+- Generate: `npm run db:generate:pg:local`
+- Migrate/push: `npm run db:push:pg:local`
+- Seed: `npm run db:seed:pg:local`
+- Run: `npm run dev:pg:local`
+
+### .env setup for local PostgreSQL:
+```
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/erd_builder_pro"
+# No SUPABASE_URL — triggers local auth mode
+```
+
 ## Server Architecture (Standalone)
 
 - **`server/index.ts`**: Pure Express app setup (middleware + routes) — no listen, no Vite. Exports `app`

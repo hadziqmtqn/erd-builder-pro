@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { isLocalPostgres } from "./config.js";
 
 // Serverless (Vercel) global cache — reuses PrismaClient across warm invocations
 // instead of creating a new connection pool per request.
@@ -24,7 +25,11 @@ function buildPrismaUrl(): string {
     // SQLite: no pool configuration needed
     return baseUrl;
   }
-  // PostgreSQL (Vercel/Supabase): limit connection pool to avoid exhausting
+  if (isLocalPostgres()) {
+    // Local PostgreSQL: use URL as-is (no Supabase pooler params)
+    return baseUrl;
+  }
+  // Supabase PostgreSQL: limit connection pool to avoid exhausting
   // Supabase's 15-connection pooler limit when multiple Vercel instances run.
   try {
     const url = new URL(baseUrl);

@@ -1,5 +1,5 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import { supabase, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, isDesktopMode } from "./config.js";
+import { supabase, isDesktopMode, isLocalPostgres } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 
 // Auth Middleware
@@ -10,7 +10,7 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
   }
 
   try {
-    if (isDesktopMode()) {
+    if (isDesktopMode() || isLocalPostgres()) {
       const session = await getSession(token);
       if (!session) {
         return res.status(401).json({ error: "Invalid session" });
@@ -31,10 +31,10 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
   }
 };
 
-// Supabase health check middleware — skipped in desktop mode
+// Supabase health check middleware — skipped in desktop and local PG mode
 export const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   if (!supabase) {
-    if (isDesktopMode()) return next();
+    if (isDesktopMode() || isLocalPostgres()) return next();
     return res.status(500).json({ 
       error: "Supabase configuration is missing or invalid. Please check your environment variables."
     });

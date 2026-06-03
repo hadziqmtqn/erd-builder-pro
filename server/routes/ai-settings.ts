@@ -252,7 +252,7 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
     const defaultProviders = [
       { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1", isActive: true },
       { name: "Google Gemini", code: "gemini", baseUrl: null, isActive: true },
-      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://api.sumopod.com/v1", isActive: true }
+      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.sumopod.com/v1", isActive: true }
     ];
 
     await prisma?.aiProvider.createMany({
@@ -275,6 +275,10 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
           modelsToInsert.push(
             { providerId: p.id, modelIdentifier: "gemini-1.5-pro", displayName: "Gemini 1.5 Pro", isActive: true },
             { providerId: p.id, modelIdentifier: "gemini-1.5-flash", displayName: "Gemini 1.5 Flash", isActive: true }
+          );
+        } else if (p.code === "openai_compatible") {
+          modelsToInsert.push(
+            { providerId: p.id, modelIdentifier: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", isActive: true }
           );
         }
       });

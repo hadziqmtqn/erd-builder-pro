@@ -1,23 +1,19 @@
-// ──────────────────────────────────────────────
-// SQLite-compatible Prisma schema for desktop mode
-// Stripped of PostgreSQL-specific features:
-//  - No auth schema models (desktop uses local auth)
-//  - No @db.Uuid, @db.VarChar, @db.Timestamptz annotations
-//  - No schemas (SQLite has no schema concept)
-//  - Int instead of BigInt for auto-increment IDs
-//  - Added local User model (not from auth schema)
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────
+// PostgreSQL-compatible Prisma schema for local development
+// Uses a local User model (no Supabase auth dependency).
+// Int IDs for simplicity — BigInt is not needed for local use.
+// ──────────────────────────────────────────────────────────
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ── Local user model (desktop auth, not Supabase auth) ──
+// ── Local user model (no Supabase auth) ──
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -37,7 +33,8 @@ model User {
   aiChatSessions  AiChatSession[]
   aiSystemPrompts AiSystemPrompt[]
   userAiRules     UserAiRule[]
-  sessions        Session[]
+
+  sessions      Session[]
 
   @@map("users")
 }
@@ -63,7 +60,7 @@ model Project {
   name      String
   userId    String?   @map("user_id")
   color     String?   @default("#6366f1")
-  isDeleted Boolean?  @default(false) @map("is_deleted")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
   deletedAt DateTime? @map("deleted_at")
   createdAt DateTime? @default(now()) @map("created_at")
   updatedAt DateTime? @default(now()) @map("updated_at")

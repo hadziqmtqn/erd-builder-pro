@@ -32,7 +32,7 @@ async function main() {
   const providerDefs = [
     { name: 'OpenAI', code: 'openai', baseUrl: 'https://api.openai.com/v1' },
     { name: 'Google Gemini', code: 'gemini', baseUrl: null },
-    { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://api.sumopod.com/v1' },
+    { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://ai.sumopod.com/v1' },
   ];
 
   for (const p of providerDefs) {
@@ -52,6 +52,7 @@ async function main() {
   // ── AI Models (re-create per provider for determinism) ──
   const openai = await prisma.aiProvider.findUnique({ where: { code: 'openai' } });
   const gemini = await prisma.aiProvider.findUnique({ where: { code: 'gemini' } });
+  const openaiCompat = await prisma.aiProvider.findUnique({ where: { code: 'openai_compatible' } });
 
   if (openai) {
     await prisma.aiModel.deleteMany({ where: { providerId: openai.id } });
@@ -74,6 +75,16 @@ async function main() {
       ],
     });
     console.log('  ✓ Gemini models: Gemini 1.5 Pro, Gemini 1.5 Flash');
+  }
+
+  if (openaiCompat) {
+    await prisma.aiModel.deleteMany({ where: { providerId: openaiCompat.id } });
+    await prisma.aiModel.createMany({
+      data: [
+        { providerId: openaiCompat.id, modelIdentifier: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', contextWindow: 128000, isActive: true },
+      ],
+    });
+    console.log('  ✓ OpenAI Compatible models: DeepSeek V4 Flash');
   }
 
   // ── Default system prompt ──
