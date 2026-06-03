@@ -62,7 +62,7 @@ export const ExportAllDialog = ({
 
   const generatedCode = React.useMemo(() => {
     if (!isSchemaTab) return '';
-    return generateAllTablesCode(activeTab as AllExportFormat, nodes, edges, fileName);
+    return generateAllTablesCode(activeTab as AllExportFormat, nodes, edges, fileName) + '\n\n';
   }, [activeTab, nodes, edges, fileName, isSchemaTab]);
 
   const codeMirrorExtensions = React.useMemo(() => {
@@ -151,15 +151,15 @@ export const ExportAllDialog = ({
             </TabsList>
           </DialogHeader>
 
-          <DialogBody className="p-0 overflow-hidden bg-[#0d1117] relative min-h-[300px]">
+          <DialogBody className="p-0 bg-[#0d1117] relative min-h-[300px] max-h-[65vh] overflow-y-auto">
             {isSchemaTab ? (
-              <>
+              <div className="h-full min-h-[300px]">
                 <CodeMirror
                   value={generatedCode}
                   extensions={codeMirrorExtensions}
                   theme={oneDark}
                   readOnly
-                  height="600px"
+                  height="100%"
                   basicSetup={{
                     lineNumbers: true,
                     foldGutter: false,
@@ -169,10 +169,10 @@ export const ExportAllDialog = ({
                     closeBrackets: false,
                     indentOnInput: false,
                   }}
-                  className="text-[13px] text-white/90"
+                  className="text-[13px] text-white/90 h-full"
                   style={{ minHeight: '300px' }}
                 />
-              </>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full py-16 px-6 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5">

@@ -5,7 +5,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || "";
 
 // R2 Config
 export const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
@@ -38,10 +39,11 @@ export function useLocalAuth(): boolean {
 }
 
 // Initialize Supabase
+const SUPABASE_CLIENT_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 export let supabase: any = null;
 try {
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  if (SUPABASE_URL && SUPABASE_CLIENT_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_CLIENT_KEY);
   }
 } catch (err) {
   console.error("Failed to initialize Supabase client:", err);

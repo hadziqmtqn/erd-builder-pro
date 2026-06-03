@@ -116,19 +116,19 @@ export const GeneratedCodeModal = ({
             </TabsList>
           </DialogHeader>
           
-          <div className="p-0 overflow-hidden bg-[#050508] relative">
+          <DialogBody className="p-0 bg-[#050508] relative max-h-[65vh] overflow-y-auto">
             <div className="absolute top-4 right-6 px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-white/20 uppercase tracking-widest z-10">
               {currentLanguage}
             </div>
             
             {Object.entries(generatedCode).map(([key, code]) => (
-              <TabsContent key={key} value={key} className="mt-0">
-                <pre className="p-6 overflow-auto max-h-[600px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
+              <TabsContent key={key} value={key} className="mt-0 h-full">
+                <pre className="p-6 overflow-auto h-full text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
                   <code className="text-white/90 block">{code}</code>
                 </pre>
               </TabsContent>
             ))}
-          </div>
+          </DialogBody>
         </Tabs>
 
         <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
