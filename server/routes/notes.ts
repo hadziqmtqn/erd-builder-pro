@@ -2,7 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createNoteSchema } from "../lib/validation.js";
-import { handleError } from "../lib/utils.js";
+import { handleError, uidOrIdWhere } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
@@ -72,7 +72,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
 router.post("/", authenticate, validate(createNoteSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { title, content, project_id } = req.body;
+    const { title, content, project_id, uid } = req.body;
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
     const userId = (req as any).user.id;
     const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
@@ -82,6 +82,7 @@ router.post("/", authenticate, validate(createNoteSchema), async (req: ExpressRe
         content: content || "",
         projectId: resolvedProjectId,
         userId,
+        ...(uid ? { uid } : {}),
       },
     });
     res.json(note);
@@ -143,7 +144,7 @@ router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: Express
     const { is_public, share_token, expiry_date } = req.body;
 
     const currentNote = await prisma?.note.findFirst({
-      where: { uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(uid, (req as any).user.id),
     });
 
     if (!currentNote) return res.status(404).json({ error: "Note not found" });
@@ -176,7 +177,7 @@ router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: Express
 router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const note = await prisma?.note.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!note) return res.status(404).json({ error: "Note not found" });
     res.json(note);
@@ -191,7 +192,7 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const existing = await prisma?.note.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Note not found" });
 
@@ -215,7 +216,7 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
 router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const existing = await prisma?.note.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Note not found" });
 
@@ -236,7 +237,7 @@ router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRes
 router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const existing = await prisma?.note.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Note not found" });
 
@@ -257,7 +258,7 @@ router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: Expr
 router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const note = await prisma?.note.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
       select: { content: true, id: true },
     });
 

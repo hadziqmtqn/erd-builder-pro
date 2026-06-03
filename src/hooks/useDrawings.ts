@@ -140,15 +140,16 @@ export function useDrawings(isGuest: boolean = false) {
     }
 
     try {
+      const drawingUid = crypto.randomUUID();
       const res = await apiFetch('/api/drawings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "" }),
+        body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "", uid: drawingUid }),
       });
       if (res.ok) {
         const newDrawing = await res.json();
         if (!newDrawing.uid) {
-          newDrawing.uid = crypto.randomUUID();
+          newDrawing.uid = drawingUid;
         }
         setDrawings(prev => [newDrawing, ...prev]);
         toast.success('Drawing created successfully');

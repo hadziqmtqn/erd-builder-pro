@@ -1,25 +1,22 @@
-import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { PREVIEW_CHARS, EntityContextData } from './types';
 
 export async function fetchNote(uid: string) {
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from('notes')
-    .select('title, content, project_id')
-    .eq('uid', uid)
-    .single();
-
-  if (error || !data) return null;
-
-  const contentPreview = data.content
-    ? data.content.slice(0, PREVIEW_CHARS)
-    : '(empty)';
-
-  return {
-    title: data.title,
-    projectId: data.project_id,
-    summary: `Title: ${data.title}\nContent preview:\n${contentPreview}`,
-  };
+  try {
+    const res = await apiFetch(`/api/notes/${uid}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const contentPreview = data.content
+      ? data.content.slice(0, PREVIEW_CHARS)
+      : '(empty)';
+    return {
+      title: data.title,
+      projectId: data.project_id,
+      summary: `Title: ${data.title}\nContent preview:\n${contentPreview}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function buildNoteContext(data: EntityContextData): string | null {

@@ -27,6 +27,28 @@ export const getSafeUpdate = (is_deleted: boolean) => {
 export const getActiveFilter = () => {
   // Logic: (is_deleted is false) AND (project_id is null OR projects.is_deleted is false)
   // In Supabase, this is often best handled by individual .eq('is_deleted', false) 
-  // followed by a JS filter if the DB schema doesn't support complex joins easily.
+  // followed by a JS filter if the DB doesn't support complex joins easily.
   // BUT we can use .or() for more advanced filtering if needed.
 };
+
+/**
+ * Build a Prisma `where` clause that matches by `uid` (UUID) or numeric `id`.
+ * Both PostgreSQL (BigInt) and SQLite (Int) use autoincrement ids internally,
+ * while `uid` is the user-facing stable identifier. This dual-lookup allows
+ * callers that pass numeric IDs (e.g. from desktop SQLite or legacy drafts)
+ * to still find the record.
+ */
+export function uidOrIdWhere(identifier: string, userId?: string, extra: Record<string, any> = {}) {
+  const numericId = /^\d+$/.test(identifier) ? Number(identifier) : undefined;
+  const where: any = {
+    OR: [
+      { uid: identifier },
+      ...(numericId !== undefined ? [{ id: numericId }] : []),
+    ],
+    ...extra,
+  };
+  if (userId) {
+    where.userId = userId;
+  }
+  return where;
+}

@@ -6,12 +6,25 @@ const globalForPrisma = globalThis as typeof globalThis & {
   __prisma?: PrismaClient;
 };
 
+function isSqlite(url: string): boolean {
+  return url.startsWith("file:") || url.endsWith(".db");
+}
+
 function buildPrismaUrl(): string {
   const baseUrl = process.env.DATABASE_URL || "";
-  // In serverless (Vercel), multiple concurrent instances each create their own pool.
-  // Without limiting `connection_limit`, Prisma defaults to 10 connections per instance.
-  // Combined with Supabase's pooler limit of 15, even 2 concurrent instances can exhaust it.
-  // `pgbouncer=true` ensures compatibility with PgBouncer in session/transaction mode.
+  // If no DATABASE_URL is provided (e.g., packaged desktop app), fallback to a local SQLite DB
+  if (!baseUrl) {
+    // Use an absolute path to ensure the same DB file across launches
+    const path = require('path');
+    const dbPath = path.resolve(process.cwd(), 'data.db');
+    return `file:${dbPath}`;
+  }
+  if (isSqlite(baseUrl)) {
+    // SQLite: no pool configuration needed
+    return baseUrl;
+  }
+  // PostgreSQL (Vercel/Supabase): limit connection pool to avoid exhausting
+  // Supabase's 15-connection pooler limit when multiple Vercel instances run.
   try {
     const url = new URL(baseUrl);
     if (!url.searchParams.has("connection_limit")) {
@@ -22,7 +35,6 @@ function buildPrismaUrl(): string {
     }
     return url.toString();
   } catch {
-    // If DATABASE_URL is invalid, let Prisma handle the error natively
     return baseUrl;
   }
 }

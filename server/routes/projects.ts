@@ -24,31 +24,32 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
     if (q && q.trim()) {
       const searchTerm = q.trim();
+      const containsFilter = (value: string) => ({ contains: value } as any);
 
       const [dMatches, nMatches, drMatches, fMatches] = await Promise.all([
         prisma?.diagram.findMany({
-          where: { name: { contains: searchTerm, mode: 'insensitive' }, userId, projectId: { not: null }, isDeleted: false },
+          where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
           select: { projectId: true },
         }),
         prisma?.note.findMany({
-          where: { title: { contains: searchTerm, mode: 'insensitive' }, userId, projectId: { not: null }, isDeleted: false },
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
           select: { projectId: true },
         }),
         prisma?.drawing.findMany({
-          where: { title: { contains: searchTerm, mode: 'insensitive' }, userId, projectId: { not: null }, isDeleted: false },
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
           select: { projectId: true },
         }),
         prisma?.flowchart.findMany({
-          where: { title: { contains: searchTerm, mode: 'insensitive' }, userId, projectId: { not: null }, isDeleted: false },
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
           select: { projectId: true },
         }),
       ]);
 
-      const matchingProjectIds = new Set<bigint>([
-        ...(dMatches || []).map(m => m.projectId).filter(Boolean) as bigint[],
-        ...(nMatches || []).map(m => m.projectId).filter(Boolean) as bigint[],
-        ...(drMatches || []).map(m => m.projectId).filter(Boolean) as bigint[],
-        ...(fMatches || []).map(m => m.projectId).filter(Boolean) as bigint[],
+      const matchingProjectIds = new Set<number>([
+        ...(dMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(nMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(drMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(fMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
       ]);
 
       if (matchingProjectIds.size > 0) {
@@ -169,7 +170,7 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
   try {
     const { name } = req.body;
     await prisma?.project.updateMany({
-      where: { id: BigInt(req.params.id), userId: (req as any).user.id },
+      where: { id: Number(req.params.id), userId: (req as any).user.id },
       data: { name },
     });
     res.json({ success: true });
@@ -180,7 +181,7 @@ router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressRespons
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const projectId = BigInt(req.params.id);
+    const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
     const now = new Date();
 
@@ -208,7 +209,7 @@ router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResp
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const projectId = BigInt(req.params.id);
+    const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
 
     await prisma?.project.updateMany({
@@ -235,7 +236,7 @@ router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: Expre
 
 router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const projectId = BigInt(req.params.id);
+    const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
 
     const diagrams = await prisma?.diagram.findMany({
@@ -293,6 +294,64 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
     res.json({ success: true });
   } catch (err: any) {
     handleError(res, err, "Failed to permanently delete project");
+  }
+});
+
+// ── Siblings endpoint — returns all project files for AI context ──
+router.get("/:id/siblings", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  try {
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+
+    const [notes, diagrams, flowcharts, drawings] = await Promise.all([
+      prisma.note.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, content: true, updatedAt: true },
+      }),
+      prisma.diagram.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { id: true, uid: true, name: true, updatedAt: true },
+      }),
+      prisma.flowchart.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, data: true, updatedAt: true },
+      }),
+      prisma.drawing.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, updatedAt: true },
+      }),
+    ]);
+
+    // Fetch entities + columns for all diagrams
+    const diagramIds = diagrams.map(d => d.id);
+    const entities = diagramIds.length > 0
+      ? await prisma.entity.findMany({ where: { diagramId: { in: diagramIds } } })
+      : [];
+    const entityIds = entities.map(e => e.id);
+    const columns = entityIds.length > 0
+      ? await prisma.column.findMany({ where: { entityId: { in: entityIds } } })
+      : [];
+
+    const colsByEntity: Record<string, typeof columns> = {};
+    for (const col of columns) {
+      if (!colsByEntity[col.entityId!]) colsByEntity[col.entityId!] = [];
+      colsByEntity[col.entityId!].push(col);
+    }
+
+    const diagramsWithEntities = diagrams.map(d => ({
+      ...d,
+      entities: entities
+        .filter(e => e.diagramId === d.id)
+        .map(e => ({
+          ...e,
+          columns: colsByEntity[e.id] || [],
+        })),
+    }));
+
+    res.json({ notes, diagrams: diagramsWithEntities, flowcharts, drawings });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch siblings");
   }
 });
 

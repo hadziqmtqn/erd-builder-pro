@@ -26,15 +26,17 @@ export const resolveOwnedProjectId = async (
   prisma: PrismaClient,
   userId: string,
   projectId: unknown,
-): Promise<bigint | null> => {
+): Promise<number | null> => {
   if (projectId === null || projectId === undefined || projectId === "" || projectId === "null") {
     return null;
   }
 
-  let parsed: bigint;
-  try {
-    parsed = typeof projectId === "bigint" ? projectId : BigInt(String(projectId));
-  } catch {
+  if (typeof projectId !== "number" && typeof projectId !== "string" && typeof projectId !== "bigint") {
+    throw new Error("Invalid project_id");
+  }
+
+  const parsed = Number(projectId);
+  if (!Number.isFinite(parsed)) {
     throw new Error("Invalid project_id");
   }
 
@@ -47,5 +49,5 @@ export const resolveOwnedProjectId = async (
     throw new Error("Project not found");
   }
 
-  return project.id;
+  return Number(project.id);
 };

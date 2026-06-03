@@ -19,6 +19,13 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 export const GITHUB_REPO_OWNER = process.env.GITHUB_REPO_OWNER || "";
 export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
 
+export function isDesktopMode(): boolean {
+  const dbUrl = process.env.DATABASE_URL || "";
+  // If DATABASE_URL is not set, assume we are running in packaged desktop mode (e.g., Tauri) where a local SQLite DB will be used.
+  // This covers cases where the environment variable is stripped from the bundled app.
+  return dbUrl === "" || dbUrl.startsWith("file:") || dbUrl.endsWith(".db");
+}
+
 // Initialize Supabase
 export let supabase: any = null;
 try {

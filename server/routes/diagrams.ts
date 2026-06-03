@@ -3,7 +3,7 @@ import { supabase } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
-import { handleError, getSafeUpdate } from "../lib/utils.js";
+import { handleError, getSafeUpdate, uidOrIdWhere } from "../lib/utils.js";
 import { logger } from "../lib/logger.js";
 import { resolveOwnedProjectId } from "../lib/security.js";
 
@@ -167,7 +167,7 @@ router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: Express
     const { is_public, share_token, expiry_date } = req.body;
 
     const currentDiagram = await prisma.diagram.findFirst({
-      where: { uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(uid, (req as any).user.id),
     });
 
     if (!currentDiagram) return res.status(404).json({ error: "Diagram not found" });
@@ -201,14 +201,8 @@ router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
   try {
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
-    const identifier = req.params.uid;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-
     const diagram = await prisma.diagram.findFirst({
-      where: {
-        ...(isUuid ? { uid: identifier } : !isNaN(Number(identifier)) ? { id: Number(identifier) } : {}),
-        userId: (req as any).user.id,
-      },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -244,7 +238,7 @@ router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRes
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const diagram = await prisma.diagram.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -269,7 +263,7 @@ router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: Expr
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const diagram = await prisma.diagram.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -294,7 +288,7 @@ router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: 
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
 
     const diagram = await prisma.diagram.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -315,7 +309,7 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
 
     const { name } = req.body;
     const diagram = await prisma.diagram.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -337,7 +331,7 @@ router.put("/:uid/project", authenticate, async (req: ExpressRequest, res: Expre
 
     const { project_id } = req.body;
     const diagram = await prisma.diagram.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
@@ -606,7 +600,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
     });
 
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const shouldAudit = !lastAudit || new Date(lastAudit.createdAt) < fiveMinutesAgo;
+    const shouldAudit = !lastAudit || (lastAudit.createdAt && new Date(lastAudit.createdAt) < fiveMinutesAgo);
 
     if (shouldAudit) {
       await prisma.entityChange.create({
@@ -615,12 +609,12 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
           entityId: String(diagramId),
           version: updatedDiagram?.version ?? (currentDiagram.version ?? 0) + 1,
           userId,
-          changes: {
+          changes: JSON.stringify({
             entities,
             relationships,
             viewport,
             name: currentDiagram.name,
-          },
+          }),
           changeType: 'update',
         },
       });

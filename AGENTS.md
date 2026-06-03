@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v4, `react-router-dom` v7 for routing, Supabase (Postgres) for persistence, Cloudflare R2 for asset storage.
+ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v4, `react-router-dom` v7 for routing, Supabase (Postgres) for persistence, Cloudflare R2 for asset storage. All frontend DB access goes through `apiFetch` → Express → Prisma — no direct Supabase client in the frontend.
 
 ## State Management
 
@@ -223,6 +223,10 @@ Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in
 - **Project ownership must be verified before writing `project_id`**: use `resolveOwnedProjectId()` from [`server/lib/security.ts`](./server/lib/security.ts) so user-owned documents cannot be attached to another user's project.
 - **Global AI tables are admin-only for writes**: `ai_providers`, `ai_models`, and default/system prompt toggles are restricted through `requireAdmin()` in [`server/lib/security.ts`](./server/lib/security.ts). Regular users may manage only their own `user_ai_configs` and custom prompts.
 - **BigInt JSON serialization stays lossless**: Prisma `BIGINT` values are serialized as strings in [`server/index.ts`](./server/index.ts) to avoid rounding IDs beyond JavaScript safe integer range. Frontend code should treat IDs as opaque strings where possible.
+
+## Desktop Login Bootstrap
+
+- **Desktop Tauri login can bootstrap the first local user automatically**: in [`server/routes/auth.ts`](./server/routes/auth.ts), if `isDesktopMode()` is true and the SQLite `users` table is empty, the first successful email/password login creates a local user with a hashed password before issuing a session cookie. This prevents fresh desktop installs from getting stuck on `Invalid credentials` when the bundled SQLite database is empty or newly created.
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
@@ -446,13 +450,11 @@ src/components/ai/
   - [`src/hooks/aiChat/syncSessionProjectId.ts`](./src/hooks/aiChat/syncSessionProjectId.ts) — project ID sync
   - [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts) — default prompt fetch
 - **Most database calls migrated** — AI Chat CRUD, AI Settings, and core app operations go through `apiFetch` → Express server → server supabase client (`SUPABASE_URL` env).
-- **Remaining direct Supabase calls** (frontend still imports `@/lib/supabase`):
-  - [`src/hooks/aiEntityContext/siblings.ts`](./src/hooks/aiEntityContext/siblings.ts): `fetchProjectEntities`, `fetchSiblings`
-  - [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts), `note.ts`, `flowchart.ts`, `drawing.ts`: entity context fetching
-  - [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx): mention resolution (notes, entities, columns)
-  - [`src/hooks/useRealtimeSync.ts`](./src/hooks/useRealtimeSync.ts): realtime subscriptions
-- All remaining calls are **wrapped in try/catch** and fail silently — core CRUD works without them.
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are **optional** — needed only for AI context, mentions, and realtime.
+- **Frontend Supabase fully migrated to `apiFetch`** — `src/lib/supabase.ts` deleted. All frontend Supabase calls (entity context, AIChatPanel mentions, realtime sync) now go through `apiFetch` → Express server → Prisma → database. No `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` required in the frontend.
+  - [`src/hooks/aiEntityContext/siblings.ts`](./src/hooks/aiEntityContext/siblings.ts), `diagram.ts`, `note.ts`, `flowchart.ts`, `drawing.ts` — use `apiFetch('/api/projects/:id/siblings')` or `apiFetch('/api/diagrams/:uid')` etc.
+  - [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx) — mention resolution uses `apiFetch('/api/notes/:uid')` and `apiFetch('/api/diagrams/:uid')`
+  - [`src/hooks/useRealtimeSync.ts`](./src/hooks/useRealtimeSync.ts) — stubbed to no-op (Supabase Broadcast removed; auto-save handles persistence)
+  - **Key insight**: desktop (Tauri) build will have zero Supabase frontend dependency
 - **Guest mode safety**: AI Chat uses `isGuestCheck()` guards at the top of every function — all online API calls are skipped in guest mode, using IndexedDB (`localPersistence`) instead. AI Settings is never accessible in guest mode (Settings menu hidden in `NavUser`), plus `fetchData`/`fetchModelsData`/`fetchPromptsData` all have `if (isGuest) return` guards.
 
 ## Server Auth (Supabase Auth — No Custom JWT)
@@ -775,12 +777,18 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## API Client (Migration Ready)
 
-- **`src/lib/api.ts`**: Centralized API helper with `API_BASE_URL` (from `VITE_API_URL` env var) and `apiFetch()` wrapper
+- **`src/lib/api.ts`**: Centralized API helper with `API_BASE_URL` and `apiFetch()` wrapper
   ```ts
-  export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${API_BASE_URL}${input}`, { credentials: 'include', ...init });
+  function isTauri(): boolean {
+    return typeof window !== 'undefined' &&
+      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
   }
+  export const API_BASE_URL: string = import.meta.env.VITE_API_URL ||
+    (import.meta.env.DEV && !isTauri() ? '' : 'http://localhost:3000');
   ```
+  - **Browser dev**: `API_BASE_URL = ''` → requests go through Vite proxy (`/api` → `localhost:3000`)
+  - **Tauri dev / production**: `API_BASE_URL = 'http://localhost:3000'` → direct absolute URL (avoids CORS cross-origin from `tauri://localhost`)
+  - **Override**: set `VITE_API_URL=https://api.server.com` in `.env`
 - All `fetch('/api/...')` calls replaced with `apiFetch('/api/...')` — when repos split, set `VITE_API_URL=https://api.server.com` and all calls redirect
 - **Global 401 interceptor** (`main.tsx:12`): patched to detect API calls by checking `API_BASE_URL` prefix in addition to relative `/api/` paths
 - **Vite proxy** (`vite.config.ts:20`): `/api` proxied to `VITE_API_URL || http://localhost:3000` for standalone dev
@@ -1292,16 +1300,33 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 | **H7. Prompt ownership** | `ai-settings.ts:138,167,179` | POST/DELETE/TOGGLE-DEFAULT now scope to `OR: [{ userId }, { userId: null }]` — users can only modify own prompts or system prompts. |
 | **H11. projectId validation** | `ai-chat.ts:54,94` | `project_id` validated via `Number()` + `isNaN()` before `BigInt()`. Non-numeric returns 400. |
 
-### Remaining (Frontend Supabase Direct Calls)
+### Vercel Production Fixes
 
-These files call `supabase.from('*')` directly from the frontend, bypassing server auth. Security relies on Supabase RLS:
+| Issue | File | Fix |
+|-------|------|-----|
+| **express-rate-limit crash** | `server/index.ts:28-29` | Added `app.set('trust proxy', 1)` — Vercel sets `X-Forwarded-For` but Express default `trust proxy: false` caused `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`. |
+| **Prisma connection pool exhaustion** | `server/lib/prisma.ts` | Added `globalThis.__prisma` caching (reuse client across warm invocations) + `connection_limit=3` and `pgbouncer=true` in `DATABASE_URL` via `buildPrismaUrl()`. Prevents `(EMAXCONNSESSION) max clients reached in session mode - pool_size: 15` when multiple Vercel instances spin up. |
+| **`.env` encryption** | — | `dotenvx`-encrypted `.env` not decrypted in serverless — Vercel env vars must be set manually in Project Settings. |
 
-- `src/hooks/aiEntityContext/siblings.ts` — fetches diagrams, notes, flowcharts, drawings by project
-- `src/hooks/aiEntityContext/diagram.ts` / `note.ts` / `drawing.ts` / `flowchart.ts` — entity context
-- `src/components/ai/AIChatPanel.tsx:273-278` — fetches note content by uid for @mentions
-- `src/hooks/useRealtimeSync.ts` — realtime subscriptions
+### Phase 4 Complete: Frontend Supabase Fully Removed
 
-All wrapped in try/catch (fail silent). Core CRUD works without them. `VITE_SUPABASE_URL` optional. Recommended migration to `apiFetch` backend endpoints.
+**All frontend Supabase direct calls have been migrated to `apiFetch` backend endpoints:**
+
+| File | Old | New |
+|------|-----|-----|
+| `aiEntityContext/siblings.ts` | `supabase.from('notes/diagrams/...')` (5 queries) | `apiFetch('/api/projects/:id/siblings')` |
+| `aiEntityContext/diagram.ts` | `supabase.from('diagrams/entities/columns/relationships')` | `apiFetch('/api/diagrams/:uid')` |
+| `aiEntityContext/note.ts` | `supabase.from('notes')` | `apiFetch('/api/notes/:uid')` |
+| `aiEntityContext/flowchart.ts` | `supabase.from('flowcharts')` | `apiFetch('/api/flowcharts/:uid')` |
+| `aiEntityContext/drawing.ts` | `supabase.from('drawings')` | `apiFetch('/api/drawings/:uid')` |
+| `AIChatPanel.tsx` | `supabase.from('notes/entities/columns')` | `apiFetch('/api/notes/:uid')` / `apiFetch('/api/diagrams/:uid')` |
+| `useRealtimeSync.ts` | `supabase.channel()` Broadcast | Stubbed to no-op |
+
+**Deleted**: `src/lib/supabase.ts` — no longer needed. `@supabase/supabase-js` dependency only used server-side.
+
+**New endpoint**: `GET /api/projects/:id/siblings` at `server/routes/projects.ts:300` — returns `{ notes, diagrams (with entities+columns), flowcharts, drawings }` for a project. Used by `siblings.ts` and `buildSiblingContext`.
+
+**Security note**: All entity context and mention data is now served through authenticated Express endpoints (same JWT auth), eliminating the RLS-dependency concern.
 
 ## Future Plans
 
@@ -1313,7 +1338,7 @@ Replace all Supabase database dependencies with direct PostgreSQL (`pg`/`pg-pool
 - **Auth**: keep Supabase Auth as the source of truth. Session JWTs are issued by Supabase and stored in an httpOnly cookie. No local admin credentials or custom JWT secret.
 - **DB client**: `server/lib/config.ts` → `new Pool({ connectionString })`. All 16+ server route files: `supabase.from('x')` → `pg.query('SELECT ...')`.
 - **RLS**: `auth.uid()` → `current_setting('app.user_id')::uuid` or application-layer filter in Express routes.
-- **Remaining frontend Supabase calls** (`aiEntityContext/*.ts`, `AIChatPanel.tsx` mention/siblings): migrate to `apiFetch` backend endpoints (pattern already established).
+- **Frontend Supabase fully migrated to `apiFetch`** — `src/lib/supabase.ts` deleted. All frontend Supabase calls go through Express backend endpoints. `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` no longer needed.
 - **Realtime** (`useRealtimeSync.ts`): optional — replace Supabase Realtime with `pg LISTEN/NOTIFY` + WebSocket relay, or keep Supabase Realtime as standalone service.
 - **Edge config** (`server/lib/edge-config.ts`): keep only the minimal Supabase server credentials needed for edge helpers; no admin email/password or custom JWT secret.
 

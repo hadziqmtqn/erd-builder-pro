@@ -11,7 +11,7 @@ import { MinimizedBar } from './MinimizedBar';
 import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import type { AIChatSession } from '@/types';
 
 interface MentionFile {
@@ -255,8 +255,6 @@ export const AIChatPanel = ({
     const seenUids = new Set<string>();
     let context = '';
 
-    if (!supabase) return { context: '', seenUids };
-
     for (const match of matches) {
       const name = match[1];
       const file = mentionFiles.find(f => f.name.toLowerCase() === name.toLowerCase());
@@ -270,12 +268,11 @@ export const AIChatPanel = ({
           if (note?.content) {
             content = note.content;
           } else {
-            const { data } = await supabase
-              .from('notes')
-              .select('content')
-              .eq('uid', file.uid)
-              .single();
-            content = (data as Record<string, any>)?.content || '';
+            const res = await apiFetch(`/api/notes/${file.uid}`);
+            if (res.ok) {
+              const data = await res.json();
+              content = data.content || '';
+            }
           }
         } else if (file.type === 'flowchart') {
           const fc = flowcharts.find(f => String(f.id) === String(file.uid) || String(f.uid) === String(file.uid));
@@ -300,28 +297,14 @@ export const AIChatPanel = ({
             }
           }
         } else if (file.type === 'diagram') {
-          const diagram = diagrams.find(d => String(d.id) === String(file.uid) || String(d.uid) === String(file.uid));
-          if (diagram) {
-            const { data: entities } = await supabase
-              .from('entities')
-              .select('id, name')
-              .eq('diagram_id', diagram.id);
-            if (entities && entities.length > 0) {
-              const entityIds = entities.map(e => e.id);
-              const { data: columns } = await supabase
-                .from('columns')
-                .select('entity_id, name, type, is_pk')
-                .in('entity_id', entityIds);
-              
-              const colsByEntity: Record<string | number, any[]> = {};
-              for (const col of columns || []) {
-                if (!colsByEntity[col.entity_id]) colsByEntity[col.entity_id] = [];
-                colsByEntity[col.entity_id].push(col);
-              }
-
-              const entityLines = entities.map(e => {
-                const colStr = (colsByEntity[e.id] || [])
-                  .map(c => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}`)
+          const res = await apiFetch(`/api/diagrams/${file.uid}`);
+          if (res.ok) {
+            const diagram = await res.json();
+            const entities = diagram.entities || [];
+            if (entities.length > 0) {
+              const entityLines = entities.map((e: any) => {
+                const colStr = (e.columns || [])
+                  .map((c: any) => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}`)
                   .join(', ');
                 return `    - Table: ${e.name} (${colStr})`;
               }).join('\n');

@@ -142,15 +142,16 @@ export function useFlowcharts(isGuest: boolean = false) {
     }
 
     try {
+      const flowchartUid = crypto.randomUUID();
       const res = await apiFetch('/api/flowcharts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "" }),
+        body: JSON.stringify({ title, project_id: effectiveProjectId, data: data || "", uid: flowchartUid }),
       });
       if (res.ok) {
         const newFlowchart = await res.json();
         if (!newFlowchart.uid) {
-          newFlowchart.uid = crypto.randomUUID();
+          newFlowchart.uid = flowchartUid;
         }
         setFlowcharts(prev => [newFlowchart, ...prev]);
         toast.success('Flowchart created successfully');

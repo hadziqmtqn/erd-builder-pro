@@ -46,6 +46,9 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const { isGuest, setIsSettingsOpen, setSettingsTab } = useWorkspace()
 
+  const isDesktop = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+
   if (!user) return null;
 
   const email = user.email || "";
@@ -143,15 +146,17 @@ export function NavUser({
               
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem 
-                onClick={() => isOnline && onLogout()} 
-                disabled={!isOnline}
-                className={`cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
-                title={!isOnline ? "Logging out while offline may cause data loss of unsynced changes" : ""}
-              >
-                <LogOut className="mr-2 size-4" />
-                Log out
-              </DropdownMenuItem>
+              {!isDesktop && (
+                <DropdownMenuItem 
+                  onClick={() => isOnline && onLogout()} 
+                  disabled={!isOnline}
+                  className={`cursor-pointer ${!isOnline && 'opacity-50 cursor-not-allowed'}`}
+                  title={!isOnline ? "Logging out while offline may cause data loss of unsynced changes" : ""}
+                >
+                  <LogOut className="mr-2 size-4" />
+                  Log out
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>

@@ -19,28 +19,33 @@ export const aiProxySchema = z.object({
   baseUrl: z.string().url().max(512).optional(),
 });
 
+const projectIdField = z.union([z.number(), z.string()]).nullable().optional();
+
 export const createDiagramSchema = z.object({
   name: z.string().min(1).max(255),
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: projectIdField,
   uid: z.string().uuid().optional(),
 });
 
 export const createNoteSchema = z.object({
   title: z.string().min(1).max(255),
   content: z.string().max(10_000_000).optional(),
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: projectIdField,
+  uid: z.string().uuid().optional(),
 });
 
 export const createDrawingSchema = z.object({
   title: z.string().min(1).max(255),
   data: z.string().max(10_000_000).optional(),
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: projectIdField,
+  uid: z.string().uuid().optional(),
 });
 
 export const createFlowchartSchema = z.object({
   title: z.string().min(1).max(255),
   data: z.string().max(10_000_000).optional(),
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: projectIdField,
+  uid: z.string().uuid().optional(),
 });
 
 export const uploadSchema = z.object({

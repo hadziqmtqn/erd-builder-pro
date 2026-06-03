@@ -30,6 +30,29 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [autoLogging, setAutoLogging] = useState(false);
+
+  // Desktop mode: auto-login via /api/desktop-login
+  useEffect(() => {
+    const isTauri = typeof window !== 'undefined' &&
+      (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__;
+    if (!isTauri) return;
+
+    setAutoLogging(true);
+    (async () => {
+      try {
+        const res = await apiFetch('/api/desktop-login', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          onLogin(data.user);
+        } else {
+          setAutoLogging(false);
+        }
+      } catch {
+        setAutoLogging(false);
+      }
+    })();
+  }, [onLogin]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -59,11 +82,34 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       }
     } catch (err) {
       console.error('Login error:', err);
-      toast.error("An unexpected error occurred");
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
+
+  if (autoLogging) {
+    return (
+      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+        <div className="w-full max-w-sm">
+          <div className={cn("flex flex-col gap-6")}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Starting Desktop Mode...</CardTitle>
+                <CardDescription>
+                  Connecting to local server
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center py-8">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">

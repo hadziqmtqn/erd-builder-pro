@@ -1,5 +1,3 @@
-import { supabase } from '@/lib/supabase';
-
 export interface EntityContext {
   entityType: string;
   entityUid: string;

@@ -1,72 +1,49 @@
-import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { MAX_CHARS_TOTAL, EntityContextData } from './types';
 
 export async function fetchDiagram(uid: string) {
-  if (!supabase) return null;
-  const { data: diagram, error } = await supabase
-    .from('diagrams')
-    .select('id, name, project_id')
-    .eq('uid', uid)
-    .single();
+  try {
+    const res = await apiFetch(`/api/diagrams/${uid}`);
+    if (!res.ok) return null;
+    const diagram = await res.json();
 
-  if (error || !diagram) return null;
+    // diagram now includes entities (with columns) and relationships
+    const entities = diagram.entities || [];
+    const relationships = diagram.relationships || [];
 
-  const { data: entities } = await supabase
-    .from('entities')
-    .select('id, name, color')
-    .eq('diagram_id', diagram.id);
+    const parts: string[] = [`Title: ${diagram.name}`];
 
-  const entityIds = entities?.map(e => e.id) || [];
-
-  const { data: columns } = entityIds.length > 0
-    ? await supabase
-        .from('columns')
-        .select('entity_id, name, type, is_pk')
-        .in('entity_id', entityIds)
-    : { data: [] };
-
-  const columnsByEntity: Record<string, { entity_id: string; name: string; type: string; is_pk: boolean }[]> = {};
-  for (const col of columns || []) {
-    if (!columnsByEntity[col.entity_id]) columnsByEntity[col.entity_id] = [];
-    const entry = col as { entity_id: string; name: string; type: string; is_pk: boolean };
-    columnsByEntity[col.entity_id].push(entry);
-  }
-
-  const { data: relationships } = await supabase
-    .from('relationships')
-    .select('source_entity_id, target_entity_id, type, label')
-    .eq('diagram_id', diagram.id);
-
-  const parts: string[] = [`Title: ${diagram.name}`];
-
-  parts.push(`\nTables (${entities?.length || 0}):`);
-  for (const entity of entities || []) {
-    const entityCols = columnsByEntity[entity.id] || [];
-    const colsStr = entityCols
-      .map(c => {
-        const pk = c.is_pk ? ' 🔑' : '';
-        return `  - ${c.name}: ${c.type}${pk}`;
-      })
-      .join('\n');
-    parts.push(`\n  ${entity.name} (${entityCols.length} columns):\n${colsStr}`);
-  }
-
-  if (relationships && relationships.length > 0) {
-    parts.push(`\nRelationships (${relationships.length}):`);
-    for (const rel of relationships) {
-      const src = entities?.find(e => e.id === rel.source_entity_id)?.name || rel.source_entity_id;
-      const tgt = entities?.find(e => e.id === rel.target_entity_id)?.name || rel.target_entity_id;
-      parts.push(`  ${src} → ${tgt} (${rel.type || 'one-to-many'})`);
+    parts.push(`\nTables (${entities.length}):`);
+    for (const entity of entities) {
+      const entityCols = entity.columns || [];
+      const colsStr = entityCols
+        .map((c: any) => {
+          const pk = c.is_pk ? ' 🔑' : '';
+          return `  - ${c.name}: ${c.type}${pk}`;
+        })
+        .join('\n');
+      parts.push(`\n  ${entity.name} (${entityCols.length} columns):\n${colsStr}`);
     }
+
+    if (relationships.length > 0) {
+      parts.push(`\nRelationships (${relationships.length}):`);
+      for (const rel of relationships) {
+        const src = entities.find((e: any) => String(e.id) === String(rel.source_entity_id))?.name || rel.source_entity_id;
+        const tgt = entities.find((e: any) => String(e.id) === String(rel.target_entity_id))?.name || rel.target_entity_id;
+        parts.push(`  ${src} → ${tgt} (${rel.type || 'one-to-many'})`);
+      }
+    }
+
+    const summary = parts.join('\n').slice(0, MAX_CHARS_TOTAL);
+
+    return {
+      title: diagram.name,
+      projectId: diagram.project_id,
+      summary,
+    };
+  } catch {
+    return null;
   }
-
-  const summary = parts.join('\n').slice(0, MAX_CHARS_TOTAL);
-
-  return {
-    title: diagram.name,
-    projectId: diagram.project_id,
-    summary,
-  };
 }
 
 function extractHandleId(handle: string | null | undefined): string | null {

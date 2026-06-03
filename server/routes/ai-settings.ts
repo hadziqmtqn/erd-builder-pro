@@ -103,8 +103,10 @@ router.put("/models/:id", authenticate, async (req: ExpressRequest, res: Express
   try {
     if (!requireAdmin(req, res)) return;
     const { provider_id, model_identifier, display_name } = req.body;
+    const modelId = Number(req.params.id);
+    if (Number.isNaN(modelId)) return res.status(400).json({ error: "Invalid model id" });
     await prisma?.aiModel.update({
-      where: { id: BigInt(req.params.id) },
+      where: { id: modelId as any },
       data: {
         providerId: provider_id,
         modelIdentifier: model_identifier,
@@ -121,8 +123,10 @@ router.put("/models/:id", authenticate, async (req: ExpressRequest, res: Express
 router.delete("/models/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     if (!requireAdmin(req, res)) return;
+    const modelId = Number(req.params.id);
+    if (Number.isNaN(modelId)) return res.status(400).json({ error: "Invalid model id" });
     await prisma?.aiModel.delete({
-      where: { id: BigInt(req.params.id) }
+      where: { id: modelId as any }
     });
     res.json({ success: true });
   } catch (err: any) {
@@ -246,8 +250,7 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
     ];
 
     await prisma?.aiProvider.createMany({
-      data: defaultProviders,
-      skipDuplicates: true
+      data: defaultProviders
     });
 
     const providers = await prisma?.aiProvider.findMany({
@@ -272,8 +275,7 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
 
       if (modelsToInsert.length > 0) {
         await prisma?.aiModel.createMany({
-          data: modelsToInsert,
-          skipDuplicates: true
+          data: modelsToInsert
         });
       }
     }
@@ -290,7 +292,7 @@ router.put("/providers/:id", authenticate, async (req: ExpressRequest, res: Expr
     if (!requireAdmin(req, res)) return;
     const { base_url } = req.body;
     await prisma?.aiProvider.update({
-      where: { id: BigInt(req.params.id) },
+      where: { id: Number(req.params.id) as any },
       data: { baseUrl: base_url }
     });
     res.json({ success: true });

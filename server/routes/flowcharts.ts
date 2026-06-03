@@ -2,7 +2,7 @@ import { Router, Request as ExpressRequest, Response as ExpressResponse } from "
 import { supabase } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createFlowchartSchema } from "../lib/validation.js";
-import { handleError, getSafeUpdate } from "../lib/utils.js";
+import { handleError, getSafeUpdate, uidOrIdWhere } from "../lib/utils.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveOwnedProjectId } from "../lib/security.js";
 
@@ -88,7 +88,7 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
 
 router.post("/", authenticate, validate(createFlowchartSchema), async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { title, data, project_id } = req.body;
+    const { title, data, project_id, uid } = req.body;
     if (!prisma) return res.status(500).json({ error: "Database connection not available" });
     const userId = (req as any).user.id;
     const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
@@ -98,6 +98,7 @@ router.post("/", authenticate, validate(createFlowchartSchema), async (req: Expr
         data: data || '{"nodes":[], "edges":[]}',
         projectId: resolvedProjectId,
         userId,
+        ...(uid ? { uid } : {}),
       },
     });
     res.json(inserted);
@@ -165,7 +166,7 @@ router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: Express
     const { is_public, share_token, expiry_date } = req.body;
 
     const currentFlowchart = await prisma?.flowchart.findFirst({
-      where: { uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(uid, (req as any).user.id),
     });
 
     if (!currentFlowchart) return res.status(404).json({ error: "Flowchart not found" });
@@ -198,7 +199,7 @@ router.put("/:uid/share", authenticate, async (req: ExpressRequest, res: Express
 router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const flowchart = await prisma?.flowchart.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!flowchart) return res.status(404).json({ error: "Flowchart not found" });
     res.json(flowchart);
@@ -221,7 +222,7 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
     }
 
     const existing = await prisma?.flowchart.findFirst({
-      where: { uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Flowchart not found" });
 
@@ -239,7 +240,7 @@ router.put("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
 router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const existing = await prisma?.flowchart.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Flowchart not found" });
 
@@ -257,7 +258,7 @@ router.delete("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRes
 router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const existing = await prisma?.flowchart.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Flowchart not found" });
 
@@ -275,7 +276,7 @@ router.post("/:uid/restore", authenticate, async (req: ExpressRequest, res: Expr
 router.delete("/:uid/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const existing = await prisma?.flowchart.findFirst({
-      where: { uid: req.params.uid, userId: (req as any).user.id },
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id),
     });
     if (!existing) return res.status(404).json({ error: "Flowchart not found" });
 

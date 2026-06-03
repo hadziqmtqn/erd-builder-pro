@@ -55,7 +55,22 @@ const allowedOrigins = process.env.CORS_ORIGINS
   : ["http://localhost:5173", "http://localhost:3000"];
 
 app.use(cors({
-  origin: process.env.NODE_ENV === "production" ? allowedOrigins : true,
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+    // Allow any localhost origin (dev tools) or tauri:// custom protocol origins
+    if (
+      origin.startsWith("tauri://") ||
+      origin.startsWith("http://localhost:") ||
+      origin.startsWith("http://127.0.0.1:") ||
+      process.env.NODE_ENV !== "production" ||
+      allowedOrigins.includes(origin)
+    ) {
+      return callback(null, true);
+    }
+    callback(new Error("Not allowed by CORS"));
+  },
   credentials: true
 }));
 
