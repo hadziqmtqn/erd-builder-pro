@@ -4,7 +4,7 @@ function isTauri(): boolean {
 }
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV && !isTauri() ? '' : 'http://localhost:3099');
+  (isTauri() ? 'http://localhost:3099' : '');
 
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_BASE_URL}${input}`, {
