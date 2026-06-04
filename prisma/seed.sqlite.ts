@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { scryptSync, randomBytes } from 'crypto';
 
 function hashPassword(password: string): string {
@@ -7,7 +8,10 @@ function hashPassword(password: string): string {
   return `${salt}:${hash}`;
 }
 
-const prisma = new PrismaClient();
+const url = process.env.DATABASE_URL || 'file:./data.db';
+const prisma = new PrismaClient({
+  adapter: new PrismaBetterSqlite3({ url }),
+});
 
 async function main() {
   console.log('Seeding SQLite database...');

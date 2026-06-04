@@ -188,6 +188,7 @@ export interface WorkspaceContextValue {
   undo: () => void;
   redo: () => void;
   addEntity: () => void;
+  duplicateEntity: (id: string) => void;
   deleteEntity: (id: string) => void;
   deleteEdge: (id: string) => void;
   handleEdgeUpdate: (edgeId: string, label: string) => void;

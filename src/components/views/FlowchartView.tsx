@@ -355,7 +355,10 @@ export const FlowchartView = React.memo(({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isReadOnly) return;
       const target = e.target as HTMLElement;
+      // Skip if typing in input/textarea OR inside SearchableTypeSelect dropdown
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      // Check data-keyboard-trap on target itself (portal elements won't have ancestors)
+      if (target.hasAttribute?.('data-keyboard-trap')) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNodeId) { deleteNode(); return; }
         if (selectedEdgeId) { deleteEdge(); return; }

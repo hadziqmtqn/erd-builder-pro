@@ -622,6 +622,7 @@ const ERDViewComponent = ({
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={defaultEdgeOptions}
+          deleteKeyCode={null}
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />

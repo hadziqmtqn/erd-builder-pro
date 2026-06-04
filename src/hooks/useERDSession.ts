@@ -11,7 +11,7 @@ import {
   useReactFlow 
 } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Entity, Diagram, DraftType } from '../types';
+import { Entity, Column, Diagram, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
 import { useRealtimeSync } from './useRealtimeSync';
@@ -520,6 +520,56 @@ export function useERDSession(
     options?.onDeleteEntity?.(id);
   }, [setNodes, setEdges, takeSnapshot, nodes, edges, options?.broadcastEdgesUpdate, options?.onDeleteEntity]);
 
+  const duplicateEntity = useCallback((sourceId: string) => {
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    if (!sourceNode) return;
+
+    // Generate new entity ID
+    const newId = Math.random().toString(36).substring(2, 11);
+    // Get unique name (e.g., "users" -> "users_1" if "users" exists)
+    const uniqueName = getUniqueName(sourceNode.data.name, nodes);
+
+    // Deep clone columns with NEW column IDs so the duplicate is fully independent.
+    // Reset _is_fk because the new entity has no outgoing edges.
+    const clonedColumns: Column[] = sourceNode.data.columns.map((col) => ({
+      id: Math.random().toString(36).substring(2, 11),
+      name: col.name,
+      type: col.type,
+      is_pk: col.is_pk,
+      is_nullable: col.is_nullable,
+      enum_values: col.enum_values,
+      sort_order: col.sort_order,
+      _is_fk: false,
+    }));
+
+    // Position the new entity offset from the source so it's visible (not overlapping)
+    const newEntity: Entity = {
+      id: newId,
+      name: uniqueName,
+      x: sourceNode.data.x + 60,
+      y: sourceNode.data.y + 120,
+      color: sourceNode.data.color,
+      columns: clonedColumns,
+    };
+    const newNode: Node<Entity> = {
+      id: newId,
+      type: 'entity',
+      position: { x: newEntity.x, y: newEntity.y },
+      data: newEntity,
+    };
+
+    takeSnapshot(nodes, edges);
+    setNodes((nds) => {
+      const next = nds.concat(newNode);
+      options?.broadcastNodeUpdate?.(newNode.id, newNode.data);
+      return next;
+    });
+    setSelectedNodeId(newId);
+    toast.success(`Duplicated as "${uniqueName}"`, {
+      description: `${clonedColumns.length} column${clonedColumns.length === 1 ? '' : 's'} copied. Relationships were not duplicated.`,
+    });
+  }, [nodes, takeSnapshot, setNodes, setSelectedNodeId, options?.broadcastNodeUpdate]);
+
   const handleEdgeUpdate = (edgeId: string, label: string) => {
     takeSnapshot(nodes, edges);
     const nextEdges = edges.map((edge) => edge.id === edgeId ? { ...edge, label } : edge);
@@ -794,6 +844,7 @@ export function useERDSession(
     selectedEdgeId, setSelectedEdgeId,
     onConnect,
     addEntity,
+    duplicateEntity,
     updateEntity,
     deleteEntity,
     handleEdgeUpdate,

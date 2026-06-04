@@ -232,7 +232,7 @@ export function WorkspaceProvider({
     edges, setEdges, onEdgesChange,
     selectedNodeId, setSelectedNodeId,
     selectedEdgeId, setSelectedEdgeId,
-    onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, handleEdgeFlip, deleteEdge,
+    onConnect, addEntity, duplicateEntity, updateEntity, deleteEntity, handleEdgeUpdate, handleEdgeFlip, deleteEdge,
     handleDiagramSelect: selectDiagram, viewportRef,
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
     onNodeDragStop, onMoveEnd,
@@ -924,7 +924,7 @@ export function WorkspaceProvider({
 
     onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
-    selectedEntity, canUndo, canRedo, undo, redo, addEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
+    selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
@@ -1004,7 +1004,7 @@ export function WorkspaceProvider({
     // ERD helpers
     onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
-    selectedEntity, canUndo, canRedo, undo, redo, addEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
+    selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,

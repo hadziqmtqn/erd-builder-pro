@@ -132,6 +132,42 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - Deps = `[isOpen]` intentionally — effect only fires on dialog open/close, not on `activeDocument` changes while open (preserves user selection mid-edit)
 - Both Edit and Create dialog instances in `AppLayout.tsx` share the same `renameProjectId`/`setRenameProjectId` state
 
+## Searchable Type Select (ERD Column Type Dropdown)
+
+- **Problem**: 40+ SQL data types in `COLUMN_TYPES` ([`src/lib/utils.ts:8-28`](./src/lib/utils.ts)) — flat dropdown was hard to scan.
+- **Solution**: New [`SearchableTypeSelect`](./src/components/SearchableTypeSelect.tsx) component — wraps base-ui's `Select` with a sticky search input at the top of the popup.
+- **Behavior**:
+  - Auto-focus search input when popup opens (10ms delay so popup mounts first)
+  - Filter `COLUMN_TYPES` case-insensitive substring match as user types
+  - Empty state: `No types match "..."` message
+  - **Enter** in search input → select first filtered item + close
+  - **Escape** → close
+  - Up/Down arrow keys still navigate items (base-ui default)
+  - Search resets on close (handled in `useEffect` on `open` state)
+  - Search input is `sticky top-0` with border-bottom so it stays visible while scrolling
+  - `onPointerDown` / `onClick` / `onKeyDown` stopPropagation prevents base-ui from intercepting clicks/keys inside the input
+- **Critical fix — focus-out close**: base-ui's `Select` fires `onOpenChange(false, { reason: 'focus-out' })` when focus moves from the trigger to the search Input. Since the Input is INSIDE the popup, this is a false positive that closes the dropdown mid-typing. Fix: in `onOpenChange`, call `eventDetails.cancel()` when reason is `'focus-out'` to override base-ui's default close. Real outside clicks (`'outside-press'`) and Escape still close normally. See [base-ui SelectRoot.d.ts:143](./node_modules/@base-ui/react/esm/select/root/SelectRoot.d.ts) for full reason list.
+- **Wired into**: [`PropertiesPanel.tsx`](./src/components/PropertiesPanel.tsx) — replaced the plain `<Select>` for column type. Other column properties (PK, NotNull) keep their own buttons.
+- **Unused imports cleaned**: removed `Select*` and `COLUMN_TYPES` from `PropertiesPanel.tsx` imports (now lives inside `SearchableTypeSelect`).
+
+## ERD Table Duplicate
+
+- **Feature**: Right-click dropdown on any ERD table → **Duplicate** clones the table with all its columns but a unique name (e.g., `users` → `users_1`). Relationships are **NOT** duplicated.
+- **File**: [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx) — `handleDuplicate` handler, `Copy` (Lucide) menu item between Edit and Delete Table.
+- **Logic**: [`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts) `duplicateEntity(sourceId)`:
+  1. Find source node by id
+  2. Generate new entity id (random 9-char) + use existing `getUniqueName(baseName, nodes)` for unique name with `_1`, `_2` suffix pattern
+  3. Deep-clone columns with **NEW** column ids (so duplicate is fully independent — no shared state with source)
+  4. Reset `_is_fk: false` on all cloned columns (new entity has no outgoing edges)
+  5. Position offset from source: `+60px` x, `+120px` y (visible but not overlapping)
+  6. Same color as source (preserves visual identity)
+  7. `takeSnapshot` for undo support
+  8. `setSelectedNodeId(newId)` so the new entity becomes selected
+  9. Toast: `Duplicated as "{name}" — N columns copied. Relationships were not duplicated.`
+- **Context wiring**: `duplicateEntity` exposed in [`WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx) interface + threaded through [`WorkspaceProvider.tsx`](./src/providers/WorkspaceProvider.tsx) (3 places: destructure line 235, context value lines 927/1007).
+- **Read-only mode**: `isReadOnly` (public view or diff mode) hides the dropdown — Duplicate unavailable in those modes.
+- **Auto-save**: `setNodes` triggers the auto-save effect automatically (no manual `saveDiagram` call needed).
+
 ## Removed Features
 
 - **Replace Selected** — removed entirely (context: `selectionRange`, `setSelectionRange`, `replaceSelectedText`, `registerReplaceSelected`; UI: Scissors button in AIChatPanel; handler in TiptapEditor/NotesView). The `insertContentAt` + `marked.parse` combo failed because `marked.parse` wraps in `<p>` (block) which can't be inserted inline — schema rejects nested paragraphs.
@@ -553,6 +589,13 @@ src/components/ai/
 ### Key Hooks
 - **`useERDSession`** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
 - **`useDiagrams`** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts)): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
+
+### ERD Keyboard Shortcuts
+
+- **Table deletion**: ReactFlow built-in Backspace/Delete shortcuts are **disabled** via `deleteKeyCode={null}` prop in `ERDView.tsx`
+- **Reason**: Prevents accidental table deletion when typing in dropdowns (e.g., SearchableTypeSelect column type search) or modal inputs
+- **Delete table**: Users MUST use explicit dropdown menu action "Delete Table" in EntityNode — requires confirmation dialog
+- **Undo/Redo**: Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (redo) — registered in `useERDSession.ts`
 
 ### ERD Edge Reconnection
 

@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect, useMemo, CSSProperties } from 'react';
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
-import { MoreHorizontal, Pencil, Trash2, Database, AlertTriangle } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Database, AlertTriangle, Copy } from 'lucide-react';
 import { Entity } from '../types';
 import { cn } from '../lib/utils';
 import {
@@ -121,7 +121,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
 });
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
-  const { isPublicView } = useWorkspace();
+  const { isPublicView, duplicateEntity } = useWorkspace();
   const isReadOnly = isPublicView || !!data.isDiffMode;
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -151,6 +151,13 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.stopPropagation();
     if (isReadOnly) return;
     setShowDeleteConfirm(true);
+  };
+
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isReadOnly) return;
+    duplicateEntity(data.id);
   };
 
   const confirmDelete = () => {
@@ -259,6 +266,10 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
                 <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
                   <Pencil className="w-4 h-4 mr-2" />
                   Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                  <Copy className="w-4 h-4 mr-2" />
+                  Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
