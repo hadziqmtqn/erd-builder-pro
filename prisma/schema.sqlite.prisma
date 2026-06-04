@@ -14,7 +14,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 // ── Local user model (desktop auth, not Supabase auth) ──

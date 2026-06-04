@@ -318,11 +318,11 @@ export function useERDSession(
 
     const sourceNode = nodes.find(n => n.id === params.source);
     const targetNode = nodes.find(n => n.id === params.target);
-    
+
     if (sourceNode && targetNode && params.sourceHandle && params.targetHandle) {
       const sourceColId = params.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
       const targetColId = params.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
-      
+
       const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
       const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
       
@@ -337,16 +337,42 @@ export function useERDSession(
 
     const candidate = { ...params, animated: false, type: 'smoothstep', label: '1:N' } as Edge;
     const candidateKey = getRelationKey(candidate);
-    if (candidateKey && edges.some(edge => getRelationKey(edge) === candidateKey)) {
-      toast.info('Relation already exists');
-      return;
+    if (candidateKey) {
+      // === EXACT DUPLICATE (same source col + same target col) ===
+      // Block re-creating an identical relation.
+      if (edges.some(edge => getRelationKey(edge) === candidateKey)) {
+        toast.info('Relation already exists');
+        return;
+      }
+
+      // === STRICT FK RULE: 1 FK column = max 1 PK ===
+      // Block polymorphic associations (one FK relating to two PKs).
+      // Multiple FKs in one source table going to different target tables
+      // are still allowed (different source columns produce different keys).
+      const sourceColId = extractColumnIdFromHandle(candidate.sourceHandle);
+      if (sourceColId) {
+        const sourceKey = `${candidate.source}:${sourceColId}`;
+        const conflictingEdge = edges.find(edge => {
+          const eSrcId = extractColumnIdFromHandle(edge.sourceHandle);
+          if (!eSrcId) return false;
+          return `${edge.source}:${eSrcId}` === sourceKey;
+        });
+        if (conflictingEdge) {
+          const targetTable = nodes.find(n => n.id === conflictingEdge.target);
+          toast.error('FK already related', {
+            description: `This column is already related to ${targetTable?.data.name || 'another table'}. One FK column can only point to one PK.`,
+            duration: 4000,
+          });
+          return;
+        }
+      }
     }
 
     takeSnapshot(nodes, edges);
     const newEdges = dedupeEdgesByRelation(addEdge(candidate, edges));
     setEdges(newEdges);
     options?.broadcastEdgesUpdate?.(newEdges);
-  }, [setEdges, isPublicView, nodes, takeSnapshot, edges, options?.broadcastEdgesUpdate, dedupeEdgesByRelation, getRelationKey]);
+  }, [setEdges, isPublicView, nodes, takeSnapshot, edges, options?.broadcastEdgesUpdate, dedupeEdgesByRelation, getRelationKey, extractColumnIdFromHandle]);
 
   const getUniqueName = (baseName: string, currentNodes: Node<Entity>[]) => {
     let name = baseName;

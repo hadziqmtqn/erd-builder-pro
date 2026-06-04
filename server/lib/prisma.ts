@@ -1,34 +1,34 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { isLocalPostgres } from "./config.js";
+import path from "node:path";
 
-// Serverless (Vercel) global cache — reuses PrismaClient across warm invocations
-// instead of creating a new connection pool per request.
-const globalForPrisma = globalThis as typeof globalThis & {
-  __prisma?: PrismaClient;
-  __prismaWarmed?: boolean;
-};
+declare global {
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined;
+  // eslint-disable-next-line no-var
+  var __prismaWarmed: boolean | undefined;
+}
 
-function isSqlite(url: string): boolean {
+function isSqliteUrl(url: string): boolean {
   return url.startsWith("file:") || url.endsWith(".db");
 }
 
-function buildPrismaUrl(): string {
-  const baseUrl = process.env.DATABASE_URL || "";
-  // If no DATABASE_URL is provided (e.g., packaged desktop app), fallback to a local SQLite DB
-  if (!baseUrl) {
-    // Use an absolute path to ensure the same DB file across launches
-    const path = require('path');
-    const dbPath = path.resolve(process.cwd(), 'data.db');
-    return `file:${dbPath}`;
+function resolveDatabaseUrl(): string {
+  if (!process.env.DATABASE_URL) {
+    return `file:${path.resolve(process.cwd(), "data.db")}`;
   }
-  if (isSqlite(baseUrl)) {
-    // SQLite: no pool configuration needed
-    return baseUrl;
-  }
+  return process.env.DATABASE_URL;
+}
+
+function buildPrismaPgOptions(): { connectionString: string } {
+  const baseUrl = resolveDatabaseUrl();
+
   if (isLocalPostgres()) {
-    // Local PostgreSQL: use URL as-is (no Supabase pooler params)
-    return baseUrl;
+    return { connectionString: baseUrl };
   }
+
   // Supabase PostgreSQL: limit connection pool to avoid exhausting
   // Supabase's 15-connection pooler limit when multiple Vercel instances run.
   try {
@@ -39,35 +39,44 @@ function buildPrismaUrl(): string {
     if (!url.searchParams.has("pgbouncer")) {
       url.searchParams.set("pgbouncer", "true");
     }
-    return url.toString();
+    return { connectionString: url.toString() };
   } catch {
-    return baseUrl;
+    return { connectionString: baseUrl };
   }
 }
 
-let prisma: PrismaClient | null = null;
+function createPrismaClient(): PrismaClient {
+  const url = resolveDatabaseUrl();
+  const adapter = isSqliteUrl(url)
+    ? new PrismaBetterSqlite3({ url })
+    : new PrismaPg(buildPrismaPgOptions());
 
-try {
-  prisma = globalForPrisma.__prisma ?? new PrismaClient({
-    datasources: {
-      db: { url: buildPrismaUrl() },
-    },
+  return new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === "development"
       ? ["warn", "error"]
       : ["error"],
   });
-  globalForPrisma.__prisma = prisma;
+}
+
+let prisma: PrismaClient;
+
+try {
+  prisma = globalThis.__prisma ?? createPrismaClient();
+  globalThis.__prisma = prisma;
 
   // Warm up the Prisma connection pool on startup so the first page load
   // doesn't pay the cold-start penalty of establishing connections.
-  if (!globalForPrisma.__prismaWarmed) {
-    globalForPrisma.__prismaWarmed = true;
-    if (prisma && !isSqlite(buildPrismaUrl())) {
-      prisma.$queryRawUnsafe('SELECT 1').catch(() => {});
+  if (!globalThis.__prismaWarmed) {
+    globalThis.__prismaWarmed = true;
+    const url = resolveDatabaseUrl();
+    if (prisma && !isSqliteUrl(url)) {
+      prisma.$queryRawUnsafe("SELECT 1").catch(() => {});
     }
   }
 } catch (err) {
   console.error("Failed to initialize Prisma client:", err);
+  throw err;
 }
 
 export { prisma };

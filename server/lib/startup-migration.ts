@@ -2,7 +2,7 @@ import { prisma } from "./prisma.js";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.js";
 
-type PrismaRecord = { id: number } | { id: string };
+type PrismaRecord = { id: number | bigint | string };
 
 async function backfillModelUids<T extends PrismaRecord>(
   name: string,
@@ -29,33 +29,33 @@ export async function backfillUids(): Promise<void> {
   try {
     await backfillModelUids(
       "project",
-      () => prisma!.project.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.project.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.project.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.project.update({ where: { id: id as never }, data: { uid } }),
     );
     await backfillModelUids(
       "diagram",
-      () => prisma!.diagram.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.diagram.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.diagram.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.diagram.update({ where: { id: id as never }, data: { uid } }),
     );
     await backfillModelUids(
       "note",
-      () => prisma!.note.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.note.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.note.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.note.update({ where: { id: id as never }, data: { uid } }),
     );
     await backfillModelUids(
       "drawing",
-      () => prisma!.drawing.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.drawing.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.drawing.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.drawing.update({ where: { id: id as never }, data: { uid } }),
     );
     await backfillModelUids(
       "flowchart",
-      () => prisma!.flowchart.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.flowchart.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.flowchart.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.flowchart.update({ where: { id: id as never }, data: { uid } }),
     );
     await backfillModelUids(
       "aiChatSession",
-      () => prisma!.aiChatSession.findMany({ where: { uid: null }, select: { id: true } }) as Promise<{ id: number }[]>,
-      (id, uid) => prisma!.aiChatSession.update({ where: { id: id as number }, data: { uid } }),
+      () => prisma!.aiChatSession.findMany({ where: { uid: null }, select: { id: true } }),
+      (id, uid) => prisma!.aiChatSession.update({ where: { id: id as never }, data: { uid } }),
     );
   } catch (err) {
     logger.error({ err }, "Failed to backfill uids");

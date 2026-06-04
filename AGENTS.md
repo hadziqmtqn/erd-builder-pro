@@ -174,6 +174,15 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - `onConnect` blocks inserting a new edge when the same relation already exists and shows a short info toast instead of creating a duplicate line.
 - The central edge reconciliation effect also dedupes, so duplicates introduced through reconnect/import/restore paths are removed automatically.
 
+### ERD Edge Strict FK Rule (1 FK = max 1 PK)
+
+- **Polymorphic associations are NOT allowed**: one FK column can only point to one PK.
+- **Multiple FKs in 1 table → different tables are allowed**: each FK column is a separate slot, so `addresses.user_id` → `users.id` and `addresses.employee_id` → `employees.id` both work.
+- `onConnect` enforces two checks ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)):
+  1. **Exact duplicate** (same source col + same target col): blocked with `'Relation already exists'` toast.
+  2. **1 FK → 2 PKs** (same source col, different target table): blocked with `'FK already related'` error toast naming the conflicting table.
+- AI/SQL import path enforces the same rule in [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) `applyToErdContent` second pass — tracks `usedSourceColumns` set and skips any FK where the source column is already wired.
+
 ### ERD Handle Hover Visibility
 
 - `EntityNode.tsx` handle dots are hidden by default and only become visible on hover/focus.
@@ -217,6 +226,52 @@ Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in
 - [`src/routes/TableRoute.tsx`](./src/routes/TableRoute.tsx): `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
 - [`src/hooks/useTrashHandlers.ts`](./src/hooks/useTrashHandlers.ts): `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
 - [`src/components/modals/MoveToTrashAlert.tsx`](./src/components/modals/MoveToTrashAlert.tsx): `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
+
+## Prisma 7 Migration (Adapter Pattern)
+
+Upgraded `@prisma/client` + `prisma` CLI to **v7.8.0**. v7 has breaking changes — `datasource.url` is removed, driver adapters are mandatory.
+
+### Key Changes
+
+- **`prisma.config.ts`** (new, [`prisma.config.ts`](./prisma.config.ts)): single config with env-based schema switching via `DB_VARIANT` (`supabase` / `pg` / `sqlite`). Uses `defineConfig` + `env("DATABASE_URL")` from `prisma/config`. Replaces `--schema=...` CLI flag.
+- **`datasource.url` removed** from all 3 schema files ([`prisma/schema.prisma`](./prisma/schema.prisma), [`prisma/schema.pg.prisma`](./prisma/schema.pg.prisma), [`prisma/schema.sqlite.prisma`](./prisma/schema.sqlite.prisma)) — only `provider` + `schemas`/table-mapping remain in datasource block.
+- **Adapter pattern** mandatory in v7. New `server/lib/prisma.ts`:
+  - PostgreSQL: `new PrismaPg({ connectionString })` from `@prisma/adapter-pg`
+  - SQLite: `new PrismaBetterSqlite3({ url })` from `@prisma/adapter-better-sqlite3`
+  - Adapter is selected at runtime by detecting `file:` prefix in `DATABASE_URL`
+- **`previewFeatures = ["driverAdapters"]`** removed (no longer needed — driver adapters are the default in v7).
+- **Package.json scripts** now use `DB_VARIANT=...` env var instead of `--schema=...` flag. Example: `cross-env DB_VARIANT=supabase prisma generate` replaces `prisma generate --schema=prisma/schema.prisma`.
+
+### New client constructor pattern
+
+```ts
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaClient } from "@prisma/client";
+
+const adapter = url.startsWith("file:") || url.endsWith(".db")
+  ? new PrismaBetterSqlite3({ url })
+  : new PrismaPg({ connectionString: urlWithPoolParams });
+
+const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
+```
+
+- `datasources: { db: { url } }` and `datasourceUrl: ...` are **removed in v7** — adapter is the only way.
+- `new PrismaClient()` (no args) **throws** in v7.
+
+### BigInt/number type compatibility
+
+`server/lib/startup-migration.ts` `backfillUids()` now uses `type PrismaRecord = { id: number | bigint | string }` and casts `id as never` for `where: { id }` clauses. v7's stricter type checking rejects the old `as number` cast because Supabase schema has `bigint` IDs while SQLite/PG-local have `number` IDs.
+
+### Known v7 type quirks
+
+- **`prisma.session` not found in Supabase client** ([`server/lib/desktop-auth.ts`](./server/lib/desktop-auth.ts)) — pre-existing lint error (also fails in v6). Desktop-only code uses `prisma.session` which exists in the SQLite-generated client but not the Supabase-generated client. Fix would require renaming the `Session` model. Left as-is to keep migration scope tight; only the dev runtime path matters.
+
+### Deps added
+
+- `@prisma/adapter-pg@7.8.0` (PostgreSQL driver adapter)
+- `@prisma/adapter-better-sqlite3@7.8.0` (SQLite driver adapter)
+- Peer deps `pg` and `better-sqlite3` auto-installed.
 
 ## Prisma Migration Security Guardrails
 
