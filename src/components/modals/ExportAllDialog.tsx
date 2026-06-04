@@ -123,7 +123,7 @@ export const ExportAllDialog = ({
         className="bg-[#0f0f14] border-white/10 text-white shadow-2xl"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
           <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">
             <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
             <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
@@ -151,7 +151,7 @@ export const ExportAllDialog = ({
             </TabsList>
           </DialogHeader>
 
-          <DialogBody className="p-0 bg-[#0d1117] relative min-h-[300px] max-h-[65vh] overflow-y-auto">
+          <DialogBody className="p-0 bg-[#0d1117] relative flex-1 min-h-0 overflow-y-auto">
             {isSchemaTab ? (
               <div className="h-full min-h-[300px]">
                 <CodeMirror

@@ -98,7 +98,7 @@ export const GeneratedCodeModal = ({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
           <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">
             <DialogTitle className="text-xl font-bold tracking-tight">Generate Code Schema</DialogTitle>
             <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
@@ -116,7 +116,7 @@ export const GeneratedCodeModal = ({
             </TabsList>
           </DialogHeader>
           
-          <DialogBody className="p-0 bg-[#050508] relative max-h-[65vh] overflow-y-auto">
+          <DialogBody className="p-0 bg-[#050508] relative flex-1 min-h-0 overflow-y-auto">
             <div className="absolute top-4 right-6 px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-white/20 uppercase tracking-widest z-10">
               {currentLanguage}
             </div>
@@ -129,45 +129,45 @@ export const GeneratedCodeModal = ({
               </TabsContent>
             ))}
           </DialogBody>
-        </Tabs>
 
-        <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
-          <div className="flex items-center gap-2 mr-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={downloadFile}
-              className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold"
+          <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
+            <div className="flex items-center gap-2 mr-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadFile}
+                className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold"
+              >
+                <Download className="w-3.5 h-3.5 mr-2" />
+                Download
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyToClipboard}
+                className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold min-w-[90px]"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 mr-2" />
+                    Copy
+                  </>
+                )}
+              </Button>
+            </div>
+            <Button 
+              onClick={() => onOpenChange(false)} 
+              className="h-9 px-6 bg-white text-black hover:bg-white/90 font-bold"
             >
-              <Download className="w-3.5 h-3.5 mr-2" />
-              Download
+              Close
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={copyToClipboard}
-              className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold min-w-[90px]"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 mr-2" />
-                  Copy
-                </>
-              )}
-            </Button>
-          </div>
-          <Button 
-            onClick={() => onOpenChange(false)} 
-            className="h-9 px-6 bg-white text-black hover:bg-white/90 font-bold"
-          >
-            Close
-          </Button>
-        </DialogFooter>
+          </DialogFooter>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

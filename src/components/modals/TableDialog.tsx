@@ -116,7 +116,7 @@ export const TableDialog = ({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v)} className="flex flex-col h-full overflow-hidden">
+        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v)} className="flex flex-col h-full overflow-hidden min-h-0">
           <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
             <div className="flex items-center justify-between pr-8">
               <div className="space-y-1 text-left">
