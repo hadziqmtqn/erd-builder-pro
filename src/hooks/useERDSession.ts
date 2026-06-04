@@ -276,7 +276,7 @@ export function useERDSession(
     }
   }, [clearHistory, setNodes, setEdges, setSelectedNodeId, setViewport]);
 
-  const extractColumnIdFromHandle = useCallback((handle?: string) => {
+  const extractColumnIdFromHandle = useCallback((handle?: string | null) => {
     if (!handle) return null;
     return handle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
   }, []);
@@ -292,25 +292,27 @@ export function useERDSession(
   }, [extractColumnIdFromHandle]);
 
   const dedupeEdgesByRelation = useCallback((inputEdges: Edge[]) => {
-    const seen = new Map<string, Edge>();
+    const seenKeys = new Set<string>();
+    const rawEdges: Edge[] = [];
     let hasDuplicates = false;
 
     for (const edge of inputEdges) {
       const key = getRelationKey(edge);
       if (!key) {
-        seen.set(`__raw__:${edge.id}`, edge);
+        rawEdges.push(edge);
         continue;
       }
 
-      if (seen.has(key)) {
+      if (seenKeys.has(key)) {
         hasDuplicates = true;
         continue;
       }
 
-      seen.set(key, edge);
+      seenKeys.add(key);
+      rawEdges.push(edge);
     }
 
-    return hasDuplicates ? Array.from(seen.values()) : inputEdges;
+    return hasDuplicates ? rawEdges : inputEdges;
   }, [getRelationKey]);
 
   const onConnect: OnConnect = useCallback((params) => {
@@ -325,7 +327,7 @@ export function useERDSession(
 
       const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
       const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
-      
+
       if (sourceCol && targetCol && sourceCol.type !== targetCol.type) {
         toast.error(`Type Mismatch`, {
           description: `Cannot connect ${sourceCol.type} to ${targetCol.type}. Relationships must have matching data types.`,
@@ -337,25 +339,54 @@ export function useERDSession(
 
     const candidate = { ...params, animated: false, type: 'smoothstep', label: '1:N' } as Edge;
     const candidateKey = getRelationKey(candidate);
-    if (candidateKey) {
+    if (candidateKey && sourceNode && targetNode) {
       // === EXACT DUPLICATE (same source col + same target col) ===
-      // Block re-creating an identical relation.
-      if (edges.some(edge => getRelationKey(edge) === candidateKey)) {
+      // Block re-creating an identical relation. Use BOTH column ID and
+      // column NAME to make the check robust against stale IDs.
+      const cSrcId = extractColumnIdFromHandle(candidate.sourceHandle);
+      const cTgtId = extractColumnIdFromHandle(candidate.targetHandle);
+      const cSrcName = sourceNode.data.columns.find((c: any) => c.id === cSrcId)?.name?.toLowerCase();
+      const cTgtName = targetNode.data.columns.find((c: any) => c.id === cTgtId)?.name?.toLowerCase();
+      const cSrcNameKey = cSrcName ? `${candidate.source}:${cSrcName}` : null;
+      const cTgtNameKey = cTgtName ? `${candidate.target}:${cTgtName}` : null;
+
+      const duplicateById = edges.some(edge => getRelationKey(edge) === candidateKey);
+      const duplicateByName = cSrcNameKey && cTgtNameKey
+        ? edges.some(edge => {
+            const eNode = nodes.find(n => n.id === edge.source);
+            const eTgtNode = nodes.find(n => n.id === edge.target);
+            if (!eNode || !eTgtNode) return false;
+            const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+            const eTgtId2 = extractColumnIdFromHandle(edge.targetHandle);
+            const eSrcName = eNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+            const eTgtName = eTgtNode.data.columns.find((c: any) => c.id === eTgtId2)?.name?.toLowerCase();
+            if (!eSrcName || !eTgtName) return false;
+            const eSrcNameKey = `${edge.source}:${eSrcName}`;
+            const eTgtNameKey = `${edge.target}:${eTgtName}`;
+            // Symmetric: A→B same as B→A
+            return (eSrcNameKey === cSrcNameKey && eTgtNameKey === cTgtNameKey) ||
+                   (eSrcNameKey === cTgtNameKey && eTgtNameKey === cSrcNameKey);
+          })
+        : false;
+
+      if (duplicateById || duplicateByName) {
         toast.info('Relation already exists');
         return;
       }
 
       // === STRICT FK RULE: 1 FK column = max 1 PK ===
       // Block polymorphic associations (one FK relating to two PKs).
-      // Multiple FKs in one source table going to different target tables
-      // are still allowed (different source columns produce different keys).
-      const sourceColId = extractColumnIdFromHandle(candidate.sourceHandle);
-      if (sourceColId) {
-        const sourceKey = `${candidate.source}:${sourceColId}`;
+      // Use column NAME (more reliable than ID) to identify the column.
+      if (cSrcName) {
+        const sourceNameKey = `${sourceNode.data.name.toLowerCase()}:${cSrcName}`;
         const conflictingEdge = edges.find(edge => {
-          const eSrcId = extractColumnIdFromHandle(edge.sourceHandle);
-          if (!eSrcId) return false;
-          return `${edge.source}:${eSrcId}` === sourceKey;
+          const eSrcNode = nodes.find(n => n.id === edge.source);
+          if (!eSrcNode) return false;
+          const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+          if (!eSrcId2) return false;
+          const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+          if (!eSrcName) return false;
+          return `${eSrcNode.data.name.toLowerCase()}:${eSrcName}` === sourceNameKey;
         });
         if (conflictingEdge) {
           const targetTable = nodes.find(n => n.id === conflictingEdge.target);
@@ -496,7 +527,7 @@ export function useERDSession(
     options?.broadcastEdgesUpdate?.(nextEdges);
   };
 
-  const toggleEdgeSide = useCallback((handleId?: string) => {
+  const toggleEdgeSide = useCallback((handleId?: string | null) => {
     if (!handleId) return handleId;
     if (handleId.endsWith('-source')) return handleId.replace(/-source$/, '-source-l');
     if (handleId.endsWith('-source-l')) return handleId.replace(/-source-l$/, '-source');
@@ -545,27 +576,65 @@ export function useERDSession(
     const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
 
     // Keep the semantic direction stable: arrows still point to the PK side.
+    // When the user drags from PK → FK, flip the edge so FK → PK, AND
+    // recompute the handle IDs with the correct `-source`/`-target` suffix
+    // based on the (new) source/target X positions. Copying the old handles
+    // verbatim leaves mismatched suffixes (e.g. `-target` on a source side),
+    // which makes the edge invisible on the canvas even though it exists in state.
     if (sourceCol && targetCol && sourceCol.is_pk && !targetCol.is_pk) {
+      const flippedSourceNode = targetNode; // homebases becomes new source
+      const flippedTargetNode = sourceNode; // institutions becomes new target
+      const flippedSourceColId = targetColId; // institution_id
+      const flippedTargetColId = sourceColId; // id
+      const sx = flippedSourceNode.position.x || 0;
+      const tx = flippedTargetNode.position.x || 0;
       return {
         ...edge,
         source: edge.target,
         target: edge.source,
-        sourceHandle: edge.targetHandle || `col-${targetColId}-source`,
-        targetHandle: edge.sourceHandle || `col-${sourceColId}-target`,
+        sourceHandle: sx < tx
+          ? `col-${flippedSourceColId}-source`
+          : `col-${flippedSourceColId}-source-l`,
+        targetHandle: sx < tx
+          ? `col-${flippedTargetColId}-target`
+          : `col-${flippedTargetColId}-target-r`,
       };
     }
 
-    // Preserve any user-selected handles. Only fall back when the edge
-    // does not yet have explicit handle IDs.
-    if (edge.sourceHandle && edge.targetHandle) return edge;
+    // Detect malformed handles left over from older flip logic — only flag
+    // suffixes that are IMPOSSIBLE for the given side, not a user-chosen
+    // alternative side. The source side allows `-source` OR `-source-l`
+    // (right or left), and the target side allows `-target` OR `-target-r`.
+    // Reconnecting an edge endpoint to a different side (onReconnect) must
+    // be preserved here.
+    const sourceHasImpossibleSuffix = edge.sourceHandle
+      ? edge.sourceHandle.endsWith('-target') || edge.sourceHandle.endsWith('-target-r')
+      : false;
+    const targetHasImpossibleSuffix = edge.targetHandle
+      ? edge.targetHandle.endsWith('-source') || edge.targetHandle.endsWith('-source-l')
+      : false;
 
+    // Preserve any user-selected handles IF both sides have valid suffixes
+    // (including the side choice they picked via onReconnect).
+    if (edge.sourceHandle && edge.targetHandle && !sourceHasImpossibleSuffix && !targetHasImpossibleSuffix) {
+      return edge;
+    }
+
+    // Otherwise (malformed suffixes or missing handles), fall through to
+    // recompute. The X position gives a sensible default side.
     const sx = sourceNode.position.x || 0;
     const tx = targetNode.position.x || 0;
+    const defaultSourceSuffix = sx < tx ? '-source' : '-source-l';
+    const defaultTargetSuffix = sx < tx ? '-target' : '-target-r';
 
     return {
       ...edge,
-      sourceHandle: edge.sourceHandle || (sx < tx ? `col-${sourceColId}-source` : `col-${sourceColId}-source-l`),
-      targetHandle: edge.targetHandle || (sx < tx ? `col-${targetColId}-target` : `col-${targetColId}-target-r`),
+      sourceHandle: edge.sourceHandle
+        ? edge.sourceHandle.replace(/-(source|target)(-(l|r))?$/, defaultSourceSuffix)
+        : `col-${sourceColId}${defaultSourceSuffix}`,
+      targetHandle: edge.targetHandle
+        ? edge.targetHandle.replace(/-(source|target)(-(l|r))?$/, defaultTargetSuffix)
+        : `col-${targetColId}${defaultTargetSuffix}`,
     };
   }, []);
 
@@ -615,7 +684,9 @@ export function useERDSession(
           const nodeFks = fkMap[node.id] || new Set();
           let nodeChanged = false;
           const newColumns = node.data.columns.map(col => {
-            const isFk = nodeFks.has(col.id);
+            // A column cannot be both PK and FK. If it's marked as PK, force
+            // the FK status off so the FK badge disappears from the UI.
+            const isFk = !col.is_pk && nodeFks.has(col.id);
             if (col._is_fk !== isFk) nodeChanged = true;
             return { ...col, _is_fk: isFk };
           });
@@ -738,6 +809,10 @@ export function useERDSession(
     isItemLoading,
     saveCounter,
     onNodeDragStop,
-    onMoveEnd: handleMoveEnd
+    onMoveEnd: handleMoveEnd,
+    // Expose helpers for use in ERDView's onReconnect
+    extractColumnIdFromHandle,
+    getRelationKey,
+    dedupeEdgesByRelation,
   };
 }

@@ -18,9 +18,10 @@ export function DiagramEditorRoute() {
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     handleOpenImportModal,
-    viewportRef, saveDiagram, triggerDebouncedSync, 
+    viewportRef, saveDiagram, triggerDebouncedSync,
     isERDItemLoading, handleDiagramSelect,
     pendingErdDiffTrigger,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
   } = ctx;
 
   // Safety net: URL has id but context hasn't synced yet
@@ -110,6 +111,9 @@ export function DiagramEditorRoute() {
         saveDiagram={saveDiagram}
         triggerDebouncedSync={triggerDebouncedSync}
         pendingErdDiffTrigger={pendingErdDiffTrigger}
+        extractColumnIdFromHandle={extractColumnIdFromHandle}
+        getRelationKey={getRelationKey}
+        dedupeEdgesByRelation={dedupeEdgesByRelation}
       />
   );
 }

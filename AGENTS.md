@@ -172,15 +172,18 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - One relation must map to one edge.
 - `useERDSession.ts` now dedupes edges with a canonical relation key built from both endpoints: `source node + source column` and `target node + target column`, sorted before comparison.
 - `onConnect` blocks inserting a new edge when the same relation already exists and shows a short info toast instead of creating a duplicate line.
+- **Dual-check** (id + name): the duplicate check uses BOTH column ID (extracted from `sourceHandle`) AND column NAME (looked up from `sourceNode.data.columns`). The name fallback is critical — it makes the check robust against stale IDs and ensures columns with the same name across different tables don't cause false positives. Symmetric match (A→B same as B→A) is honored for both ID and name keys.
 - The central edge reconciliation effect also dedupes, so duplicates introduced through reconnect/import/restore paths are removed automatically.
+- **Bug fix (dedupeEdgesByRelation)**: the old implementation stored edges with null relation keys under a synthetic key (`__raw__:${edge.id}`). On deduplication, it returned `Array.from(seen.values())` which dropped ALL null-key edges (not just duplicates). Fixed: null-key edges are collected in a separate array and always kept; deduplication only removes duplicate valid-key edges. The dedupe logic also now guards against case where new edge has valid key but existing null-key edge should be detected as dupe — all edges with valid keys go through the same `seenKeys` Set check.
+- **`onReconnect` validation**: the ReactFlow `onReconnect` handler in `ERDView.tsx` now applies the same duplicate check (ID key + name key, symmetric) and FK rule (1 FK = max 1 PK) as `onConnect`. Previously `onReconnect` only checked type mismatch and bypassed all duplicate/FK validation, allowing users to reconnect an edge to an already-occupied column slot. The helper functions (`extractColumnIdFromHandle`, `getRelationKey`, `dedupeEdgesByRelation`) are exposed from `useERDSession` and threaded through `WorkspaceProvider` → `DiagramEditorRoute` → `ERDView` for reuse.
 
 ### ERD Edge Strict FK Rule (1 FK = max 1 PK)
 
 - **Polymorphic associations are NOT allowed**: one FK column can only point to one PK.
 - **Multiple FKs in 1 table → different tables are allowed**: each FK column is a separate slot, so `addresses.user_id` → `users.id` and `addresses.employee_id` → `employees.id` both work.
 - `onConnect` enforces two checks ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)):
-  1. **Exact duplicate** (same source col + same target col): blocked with `'Relation already exists'` toast.
-  2. **1 FK → 2 PKs** (same source col, different target table): blocked with `'FK already related'` error toast naming the conflicting table.
+  1. **Exact duplicate** (same source col + same target col): blocked with `'Relation already exists'` toast. Uses name-based key as a fallback to be robust against stale column IDs.
+  2. **1 FK → 2 PKs** (same source col, different target table): blocked with `'FK already related'` error toast naming the conflicting table. Source identity uses `sourceNode.data.name + ':' + sourceColumnName` (lowercased) — much more reliable than column ID lookup.
 - AI/SQL import path enforces the same rule in [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) `applyToErdContent` second pass — tracks `usedSourceColumns` set and skips any FK where the source column is already wired.
 
 ### ERD Handle Hover Visibility
@@ -194,6 +197,14 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - `useERDSession.ts` exposes `handleEdgeFlip(edgeId)` to move one selected ERD edge to the opposite side without affecting other edges.
 - The flip toggles the stored `sourceHandle`/`targetHandle` suffixes only, so the logical relation remains the same while the rendered side changes.
 - `RelationshipPropertiesPanel.tsx` now includes a `Move Edge Side` button for the selected edge.
+
+### ERD Edge Handle Suffix Self-Heal
+
+- **Critical bug fix**: when user drags from PK to FK, `resolveEdgeHandles` flips the edge (source ↔ target) to keep arrows pointing at the PK side. The OLD implementation just copied `edge.targetHandle` → new `sourceHandle` and vice versa, leaving mismatched suffixes (e.g. `col-X-target` on a source side, `col-Y-source` on a target side). React Flow silently fails to render such edges → data IS saved but UI shows nothing → retry triggers "Relation already exists" because the edge is in local state.
+- **Fix** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts) `resolveEdgeHandles`):
+  1. After the flip, recompute `sourceHandle`/`targetHandle` suffixes from the (new) source/target X positions (`-source`/`-source-l` for source, `-target`/`-target-r` for target).
+  2. Self-heal existing broken edges: detect when `sourceHandle` ends with a TARGET suffix (`-target`/`-target-r`) OR `targetHandle` ends with a SOURCE suffix (`-source`/`-source-l`) — these are IMPOSSIBLE for their side and indicate a broken edge from older code. Rewrite the suffix via `replace(/-(source|target)(-(l|r))?$/, expectedSuffix)` while keeping the column ID intact.
+  3. **Preserve user choice**: do NOT overwrite a valid side-alternative suffix. The source side allows `-source` (right) OR `-source-l` (left), and the target side allows `-target` (left) OR `-target-r` (right). When the user reconnects an edge endpoint to a different side via `onReconnect`, that selection is preserved across renders.
 
 ## UUID vs Numeric ID (Delete/Restore)
 

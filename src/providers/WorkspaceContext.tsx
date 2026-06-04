@@ -205,6 +205,11 @@ export interface WorkspaceContextValue {
   onNodeDragStop: any;
   onMoveEnd: any;
 
+  // ERD session helpers (for ERDView's onReconnect validation)
+  extractColumnIdFromHandle?: (handle?: string | null) => string | null;
+  getRelationKey?: (edge: any) => string | null;
+  dedupeEdgesByRelation?: (edges: any[]) => any[];
+
   // Refs
   viewportRef: any;
   lastLoadedDiagramIdRef: React.MutableRefObject<any>;

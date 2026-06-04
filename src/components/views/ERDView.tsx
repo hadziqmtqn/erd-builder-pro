@@ -64,6 +64,10 @@ interface ERDViewProps {
   saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
+  // Exposed helpers from useERDSession for onReconnect validation
+  extractColumnIdFromHandle?: (handle?: string | null) => string | null;
+  getRelationKey?: (edge: Edge) => string | null;
+  dedupeEdgesByRelation?: (edges: Edge[]) => Edge[];
 }
 
 
@@ -99,6 +103,9 @@ const ERDViewComponent = ({
   saveDiagram,
   triggerDebouncedSync,
   pendingErdDiffTrigger,
+  extractColumnIdFromHandle,
+  getRelationKey,
+  dedupeEdgesByRelation,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
@@ -525,9 +532,79 @@ const ERDViewComponent = ({
                 toast.error('Type Mismatch', { description: `Cannot reconnect ${srcCol.type} to ${tgtCol.type}` });
                 return;
               }
+
+              // ─── Duplicate relation check ────────────────────────────
+              if (extractColumnIdFromHandle && getRelationKey) {
+                const srcColId = extractColumnIdFromHandle(connection.sourceHandle);
+                const tgtColId = extractColumnIdFromHandle(connection.targetHandle);
+                if (srcColId && tgtColId) {
+                  const srcName = srcCol?.name?.toLowerCase();
+                  const tgtName = tgtCol?.name?.toLowerCase();
+                  const cSrcNameKey = srcName ? `${connection.source}:${srcName}` : null;
+                  const cTgtNameKey = tgtName ? `${connection.target}:${tgtName}` : null;
+
+                  const isDuplicate = edges.some(edge => {
+                    if (edge.id === oldEdge.id) return false; // skip self
+                    const key = getRelationKey(edge);
+                    if (!key) return false;
+                    // Check by ID key
+                    const newKey = `${[connection.source, connection.target].sort().join(':')}:${[srcColId, tgtColId].sort().join(':')}`;
+                    if (key === newKey) return true;
+                    // Check by name key (symmetric)
+                    if (cSrcNameKey && cTgtNameKey) {
+                      const eSrcNode = nodes.find(n => n.id === edge.source);
+                      const eTgtNode = nodes.find(n => n.id === edge.target);
+                      if (eSrcNode && eTgtNode) {
+                        const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+                        const eTgtId2 = extractColumnIdFromHandle(edge.targetHandle);
+                        const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+                        const eTgtName = eTgtNode.data.columns.find((c: any) => c.id === eTgtId2)?.name?.toLowerCase();
+                        if (eSrcName && eTgtName) {
+                          const eSrcNameKey = `${edge.source}:${eSrcName}`;
+                          const eTgtNameKey = `${edge.target}:${eTgtName}`;
+                          return (eSrcNameKey === cSrcNameKey && eTgtNameKey === cTgtNameKey) ||
+                                 (eSrcNameKey === cTgtNameKey && eTgtNameKey === cSrcNameKey);
+                        }
+                      }
+                    }
+                    return false;
+                  });
+
+                  if (isDuplicate) {
+                    toast.info('Relation already exists');
+                    return;
+                  }
+                }
+              }
+
+              // ─── FK already related check ──────────────────────────
+              if (extractColumnIdFromHandle && srcCol?.name) {
+                const srcColId = extractColumnIdFromHandle(connection.sourceHandle);
+                const srcNameKey = `${sourceNode.data.name.toLowerCase()}:${srcCol.name.toLowerCase()}`;
+                const conflictingEdge = edges.find(edge => {
+                  if (edge.id === oldEdge.id) return false;
+                  const eSrcNode = nodes.find(n => n.id === edge.source);
+                  if (!eSrcNode) return false;
+                  const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+                  if (!eSrcId2) return false;
+                  const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+                  if (!eSrcName) return false;
+                  return `${eSrcNode.data.name.toLowerCase()}:${eSrcName}` === srcNameKey;
+                });
+                if (conflictingEdge) {
+                  const targetTable = nodes.find(n => n.id === conflictingEdge.target);
+                  toast.error('FK already related', {
+                    description: `This column is already related to ${targetTable?.data.name || 'another table'}. One FK column can only point to one PK.`,
+                    duration: 4000,
+                  });
+                  return;
+                }
+              }
             }
             takeSnapshot?.(nodes, edges);
-            setEdges(eds => reconnectEdge(oldEdge, connection, eds));
+            const newEds = reconnectEdge(oldEdge, connection, edges);
+            const deduped = dedupeEdgesByRelation ? dedupeEdgesByRelation(newEds) : newEds;
+            setEdges(deduped);
           }}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClickLocal}
@@ -727,7 +804,10 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.canUndo === next.canUndo &&
     prev.canRedo === next.canRedo &&
     prev.onMoveEnd === next.onMoveEnd &&
-    prev.pendingErdDiffTrigger === next.pendingErdDiffTrigger
+    prev.pendingErdDiffTrigger === next.pendingErdDiffTrigger &&
+    prev.extractColumnIdFromHandle === next.extractColumnIdFromHandle &&
+    prev.getRelationKey === next.getRelationKey &&
+    prev.dedupeEdgesByRelation === next.dedupeEdgesByRelation
   );
 });
 

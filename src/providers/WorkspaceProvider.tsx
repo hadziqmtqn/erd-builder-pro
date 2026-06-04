@@ -236,6 +236,7 @@ export function WorkspaceProvider({
     handleDiagramSelect: selectDiagram, viewportRef,
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
     onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
   } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions);
 
   // Effective ID for realtime sync
@@ -928,6 +929,7 @@ export function WorkspaceProvider({
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
 
     viewportRef, lastLoadedDiagramIdRef,
 
@@ -1007,6 +1009,7 @@ export function WorkspaceProvider({
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
     viewportRef, lastLoadedDiagramIdRef,
     syncDrafts, triggerDebouncedSync, broadcastMessage, setIsLocalSaving, hasPendingSyncs, syncError,
     isInstallable, installApp,
