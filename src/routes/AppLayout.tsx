@@ -82,6 +82,7 @@ function AppLayoutInner() {
     fetchTrash,
     triggerTableRefresh,
     setTableLoadingState,
+    setIsSettingsOpen,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
     selectedEntity, deleteEntity, deleteEdge,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,
@@ -174,6 +175,29 @@ function AppLayoutInner() {
       ? `${activeFileName} | ERD Builder Pro`
       : 'ERD Builder Pro';
   }, [activeFileName]);
+
+  // ── Desktop-only keyboard shortcut: CMD+, (macOS) / CTRL+, (Win/Linux) → open Settings
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isTauri = !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
+    if (!isTauri) return;
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const accel = isMac ? e.metaKey : e.ctrlKey;
+      if (accel && e.key === ',') {
+        e.preventDefault();
+        setIsSettingsOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [setIsSettingsOpen]);
 
   return (
     <>

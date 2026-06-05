@@ -1,4 +1,4 @@
-import {StrictMode} from 'react';
+import {StrictMode, useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -8,6 +8,11 @@ import App from './App.tsx';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
 import { API_BASE_URL } from './lib/api';
+
+// Detect Tauri and add data attribute for CSS targeting
+if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+  document.body.setAttribute('data-tauri', 'true');
+}
 
 // Global Fetch Interceptor to handle 401 Unauthorized globally
 const originalFetch = window.fetch;

@@ -177,6 +177,65 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 
 > **IMPORTANT**: All AGENTS.md content must be written in **English only**. No other languages allowed.
 
+### Desktop Keyboard Shortcut: Settings (CMD+, / CTRL+,)
+
+- Listener registered in [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx) via `useEffect`
+- **Tauri-only**: returns early if `!window.__TAURI__ && !window.__TAURI_INTERNALS__` — never fires on web
+- **Platform-aware**: `navigator.platform.includes('mac')` → `metaKey`; else `ctrlKey`
+- **Key**: `,` (comma). `preventDefault()` to avoid browser quirks
+- **Input guard**: skips when `e.target` is `INPUT`/`TEXTAREA`/`contentEditable` — won't fire while typing in any field
+- Calls `setIsSettingsOpen(true)` from `WorkspaceContext` (not directly opening dialog) — preserves active tab, lets the dialog open with whatever tab was last selected
+
+### Account Update — Mode-Aware (Desktop / Web Pure PG / Web Supabase)
+
+Three modes detected via `/api/auth-config` (read-only public endpoint):
+
+| Mode | `supabaseAuth` | `isDesktop` | `isLocalPostgres` | `supportsPasswordUpdate` | Behavior |
+|------|----------------|-------------|-------------------|--------------------------|----------|
+| **Desktop (Tauri)** | `false` | `true` | `false` | `false` | Edit name + email, **no password** (fixed at install) |
+| **Web Pure PG** | `false` | `false` | `true` | `true` | Edit name + email + password (verified by current password) |
+| **Web Supabase** | `true` | `false` | `false` | `false` | **Read-only display** (blue info banner explains) |
+
+**Files**:
+- [`src/components/ai/AccountTab.tsx`](./src/components/ai/AccountTab.tsx) — form UI, fetches `/api/auth-config` once on mount, manages local form state
+- [`server/routes/auth.ts`](./server/routes/auth.ts): `PUT /api/account` — `authenticate` + `validate(updateAccountSchema)`, `useLocalAuth()` guard
+- [`server/lib/validation.ts`](./server/lib/validation.ts): `updateAccountSchema` — at least one of name/email/newPassword required
+- [`server/routes/auth.ts`](./server/routes/auth.ts): extended `GET /api/auth-config` with `isDesktop`, `isLocalPostgres`, `supportsPasswordUpdate`
+
+**Server logic**:
+- `useLocalAuth()` false → 403 "managed by your auth provider"
+- `newPassword` provided + `!isLocalPostgres()` → 400 "not available in desktop mode"
+- Email/password change → `currentPassword` required, `verifyPassword()` check
+- Email change → uniqueness check (excluding current user)
+- On success → `prisma.user.update({ where: { id: userId }, data })`
+- Frontend calls `checkAuth()` after success to sync `user_metadata` with updated email/name
+
+**`/me` reads from User table, not Session**:
+- For local auth, `GET /api/me` originally returned `session.email` / `session.name` (set at login). After account update, `/me` returned stale session data even though `User` table was correctly updated.
+- Fix: in [`server/routes/auth.ts`](./server/routes/auth.ts) `/me` handler, after `getSession(token)` succeeds, do `prisma.user.findFirst({ where: { id: session.userId }, select: { id, email, name } })` and return those values. Session table is now used only for token verification + ownership, not for profile data.
+
+**User name field convention across auth modes**:
+- **Supabase Auth** returns `user.user_metadata.full_name` and `user.user_metadata.avatar_url` (Supabase's own convention).
+- **Local auth** (desktop SQLite + web pure PG) returns `user.user_metadata.name` (our convention, set at login from `email.split('@')[0]` and updated via account settings).
+- **Components reading user display name** MUST check both fields: `user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User"`. See [`src/components/ai/AccountTab.tsx`](./src/components/ai/AccountTab.tsx) and [`src/components/nav-user.tsx`](./src/components/nav-user.tsx) for the canonical pattern.
+- A previous bug: `nav-user.tsx` only checked `full_name`, so local-auth users always saw their email prefix in the sidebar (e.g., "erfan" instead of "John Doe") — even after updating their name through AccountTab. Always check both fields.
+
+**Client UI**:
+- Mode banners: blue (Supabase read-only), amber (desktop no password), green (pure PG full)
+- Save button disabled when no changes or `isSaving`
+- Show/Hide password toggle (Eye/EyeOff) — disabled in desktop mode
+- `hasChanges` derived: name OR email OR newPassword differ from `user.*`
+- Toast: success on save, error with server message on failure
+
+### Tauri Titlebar (Native, with `theme: "Dark"`)
+
+- **Decision**: Use native Tauri titlebar (`decorations: true`) + `theme: "Dark"` on macOS to get a dark gray native titlebar matching the app's dark theme.
+- **Config** ([`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json)): `"decorations": true, "theme": "Dark"`. Do NOT add `transparent: true` or `titleBarStyle: "Transparent"` — they break vibrancy layering (body has opaque `bg-background`, so NSVisualEffectView would be hidden).
+- **No `MacOSTitleBar` component**: `src/components/MacOSTitleBar.tsx` was deleted. Custom titlebar (with `app-region: drag/no-drag` + WebKit buttons) had bugs: Tauri 2 ignores `data-tauri-drag-region="false"` value (checks presence only), `app-region: no-drag` doesn't reliably override parent drag for `mousedown`, `WKWebView.allowsBackForwardNavigationGestures` caused 3-finger trackpad swipe lag.
+- **No `window-vibrancy` crate**: Removed from `Cargo.toml`. macOS NSVisualEffectView requires transparent body, but `body { @apply overflow-hidden bg-background }` is opaque — the blur would be invisible. Avoided complexity in favor of stable native titlebar.
+- **Body rounded corners** ([`src/index.css`](./src/index.css)): `body[data-tauri] { border-radius: 12px; overflow: hidden }` + `body[data-tauri] #root { border-radius: 12px; overflow: hidden }` — gives the app a macOS-style rounded window.
+- **No `isTauri` runtime check in `AppLayout`**: with native titlebar, no JS-side customization is needed; the spacer that previously added `app-region: drag` for the titlebar is gone.
+
 ### Refactoring & Modularity
 
 - **Split on sight**: when a function/component takes on >1 responsibility, has a boolean parameter that changes behavior, or exceeds ~400 lines — split/refactor immediately. Do not postpone.
@@ -313,6 +372,17 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 ### Known v7 type quirks
 
 - **`prisma.session` not found in Supabase client** ([`server/lib/desktop-auth.ts`](./server/lib/desktop-auth.ts)) — pre-existing lint error (also fails in v6). Desktop-only code uses `prisma.session` which exists in the SQLite-generated client but not the Supabase-generated client. Fix would require renaming the `Session` model. Left as-is to keep migration scope tight; only the dev runtime path matters.
+
+### Prisma Client Cache Stale After Schema Switch
+
+- **Symptom**: switching from `npm run dev:api` (supabase) to `npm run tauri dev` (sqlite) and the server crashes with:
+  ```
+  PrismaClientInitializationError: The Driver Adapter `@prisma/adapter-better-sqlite3`, based on `sqlite`,
+  is not compatible with the provider `postgres` specified in the Prisma schema.
+  ```
+  Even though `prisma generate` logs "Prisma schema loaded from prisma/schema.sqlite.prisma" and "Generated Prisma Client".
+- **Cause**: Prisma 7's incremental generator keeps the old engine binary in `node_modules/.prisma/client/` when switching between schemas. The log says it regenerated, but the actual `index.js` still has `activeProvider: "postgres"`.
+- **Fix** ([`package.json`](./package.json)): `dev:desktop` now does `rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && cross-env ...`. The `rm -rf` clears the stale engine binary before regeneration. Without it, the new generator sometimes produces a no-op because the old engine is still there.
 
 ### Deps added
 

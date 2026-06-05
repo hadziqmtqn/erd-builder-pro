@@ -13,12 +13,15 @@
     "windows": [
       {
         "title": "ERD Builder Pro",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "theme": "Dark"
       }
     ],
     "security": {

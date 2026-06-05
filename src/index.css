@@ -21,6 +21,17 @@
     @apply overflow-hidden bg-background text-foreground;
   }
 
+  /* Tauri desktop app rounded corners */
+  body[data-tauri] {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  
+  body[data-tauri] #root {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }

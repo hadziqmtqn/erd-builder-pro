@@ -52,7 +52,7 @@ export function NavUser({
   if (!user) return null;
 
   const email = user.email || "";
-  const name = user.user_metadata?.full_name || email.split('@')[0] || "User";
+  const name = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User";
   const avatar = user.user_metadata?.avatar_url || "";
   const initials = name.substring(0, 2).toUpperCase();
 

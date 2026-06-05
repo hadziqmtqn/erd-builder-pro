@@ -56,6 +56,7 @@ import { APISettingsTab } from '@/components/ai/APISettingsTab';
 import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
 import { AIRulesTab } from '@/components/ai/AIRulesTab';
+import { AccountTab } from '@/components/ai/AccountTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
 
@@ -285,16 +286,20 @@ export function SettingsModal() {
                 </div>
               )}
 
+              {settingsTab === 'account' && (
+                <AccountTab />
+              )}
+
               {settingsTab === 'changelog' && (
                 <div className="h-full">
                   <ChangelogView />
                 </div>
               )}
 
-              {(settingsTab === 'account' || settingsTab === 'appearance') && (
+              {settingsTab === 'appearance' && (
                 <div className="p-12 flex flex-col items-center justify-center h-full text-center space-y-4">
                   <div className="p-4 bg-muted/20 rounded-full">
-                    {settingsTab === 'account' ? <User className="size-8 text-muted-foreground/40" /> : <Palette className="size-8 text-muted-foreground/40" />}
+                    <Palette className="size-8 text-muted-foreground/40" />
                   </div>
                   <div className="space-y-1">
                     <h3 className="font-semibold text-lg">{getTabLabel(settingsTab)}</h3>

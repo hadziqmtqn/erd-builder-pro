@@ -64,6 +64,16 @@ export const projectSchema = z.object({
   name: z.string().min(1).max(255),
 });
 
+export const updateAccountSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).max(255).optional(),
+  currentPassword: z.string().min(1).max(128).optional(),
+  newPassword: z.string().min(6).max(128).optional(),
+}).refine(
+  (data) => data.name || data.email || data.newPassword,
+  { message: "At least one of name, email, or newPassword must be provided" }
+);
+
 // --- Middleware helper ---
 
 export function validate(schema: z.ZodSchema) {

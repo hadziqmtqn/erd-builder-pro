@@ -1,8 +1,10 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, isDesktopMode, useLocalAuth } from "../lib/config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
-import { validate, loginSchema } from "../lib/validation.js";
+import { authenticate } from "../lib/middleware.js";
+import { validate, loginSchema, updateAccountSchema } from "../lib/validation.js";
 import { logger } from "../lib/logger.js";
+import { handleError } from "../lib/utils.js";
 import {
   hashPassword,
   verifyPassword,
@@ -15,7 +17,12 @@ const router = Router();
 
 // Auth Config (Public)
 router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
-  res.json({ supabaseAuth: !useLocalAuth() });
+  res.json({
+    supabaseAuth: !useLocalAuth(),
+    isDesktop: isDesktopMode(),
+    isLocalPostgres: isLocalPostgres(),
+    supportsPasswordUpdate: isLocalPostgres(), // web pure PG only; desktop skips password
+  });
 });
 
 // Login
@@ -212,12 +219,21 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
       if (!session) {
         return res.json({ authenticated: false });
       }
+      // Read user record (not session) so /me returns fresh name/email
+      // after account updates. The session is only used for auth verification.
+      const user = await prisma.user.findFirst({
+        where: { id: session.userId } as any,
+        select: { id: true, email: true, name: true },
+      });
+      if (!user) {
+        return res.json({ authenticated: false });
+      }
       return res.json({
         authenticated: true,
         user: {
-          id: session.userId,
-          email: session.email,
-          user_metadata: { name: session.name },
+          id: (user as any).id,
+          email: (user as any).email,
+          user_metadata: { name: (user as any).name },
         },
       });
     }
@@ -229,6 +245,90 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
     res.json({ authenticated: true, user });
   } catch {
     res.json({ authenticated: false });
+  }
+});
+
+// Update Account (local auth only)
+router.put("/account", authenticate, validate(updateAccountSchema), async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!useLocalAuth()) {
+    return res.status(403).json({ error: "Account is managed by your auth provider and cannot be changed here" });
+  }
+  if (!prisma) {
+    return res.status(500).json({ error: "Database not available" });
+  }
+
+  const userId = (req as any).user.id;
+  const { name, email, currentPassword, newPassword } = req.body as {
+    name?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  };
+
+  try {
+    const user = await prisma.user.findFirst({ where: { id: userId } as any });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // If changing email or password, require verified current password
+    const requiresCurrentPassword = !!(email || newPassword);
+    if (requiresCurrentPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Current password is required to change email or password" });
+      }
+      const storedPassword = (user as any).password || (user as any).encrypted_password || "";
+      if (!verifyPassword(currentPassword, storedPassword)) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+    }
+
+    // Password update is web-pure-PG only; desktop users cannot change password
+    if (newPassword && !isLocalPostgres()) {
+      return res.status(400).json({ error: "Password update is not available in desktop mode" });
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (typeof name === "string" && name.trim().length > 0) {
+      updateData.name = name.trim();
+    }
+    if (typeof email === "string" && email.trim().length > 0) {
+      const normalizedEmail = email.trim().toLowerCase();
+      const existing = await prisma.user.findFirst({
+        where: { email: normalizedEmail, NOT: { id: userId } } as any,
+      });
+      if (existing) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+      updateData.email = normalizedEmail;
+    }
+    if (typeof newPassword === "string" && newPassword.length > 0) {
+      updateData.password = hashPassword(newPassword);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId } as any,
+      data: updateData,
+      select: { id: true, email: true, name: true },
+    });
+
+    logger.info({ userId, fields: Object.keys(updateData) }, "Account updated");
+
+    return res.json({
+      success: true,
+      user: {
+        id: (updated as any).id,
+        email: (updated as any).email,
+        user_metadata: { name: (updated as any).name },
+      },
+    });
+  } catch (err) {
+    handleError(res, err, "Failed to update account");
+    return;
   }
 });
 
