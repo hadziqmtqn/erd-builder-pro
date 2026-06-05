@@ -49,26 +49,48 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS — restrict to specific origins in production
+// CORS — configurable via CORS_ORIGINS env var
+// In production, Vercel domains (*.vercel.app) are allowed by default
+// Set CORS_ORIGINS="https://yourdomain.com,https://www.yourdomain.com" for custom domains
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map(s => s.trim())
-  : ["http://localhost:5173", "http://localhost:3000"];
+  : [];
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
       return callback(null, true);
     }
-    // Allow any localhost origin (dev tools) or tauri:// custom protocol origins
+    
+    // Dev mode: allow all origins
+    if (process.env.NODE_ENV !== "production") {
+      return callback(null, true);
+    }
+    
+    // Tauri desktop: allow custom protocol
+    if (origin.startsWith("tauri://")) {
+      return callback(null, true);
+    }
+    
+    // Localhost: allow for local testing
     if (
-      origin.startsWith("tauri://") ||
       origin.startsWith("http://localhost:") ||
-      origin.startsWith("http://127.0.0.1:") ||
-      process.env.NODE_ENV !== "production" ||
-      allowedOrigins.includes(origin)
+      origin.startsWith("http://127.0.0.1:")
     ) {
       return callback(null, true);
     }
+    
+    // Vercel domains: allow all *.vercel.app subdomains
+    const url = new URL(origin);
+    if (url.hostname.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
+    
+    // Custom domains: check CORS_ORIGINS env var
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
     callback(new Error("Not allowed by CORS"));
   },
   credentials: true
