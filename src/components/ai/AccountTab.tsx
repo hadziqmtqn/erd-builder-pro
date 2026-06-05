@@ -15,7 +15,7 @@ type AuthConfig = {
 };
 
 export function AccountTab() {
-  const { user, isGuest, checkAuth } = useAuth();
+  const { user, isGuest, setUser } = useAuth();
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
@@ -121,10 +121,10 @@ export function AccountTab() {
       }
 
       const data = await res.json();
-      // Sync local auth state with updated user
+      // Sync auth state immediately with the response so the sidebar/nav
+      // reflect the new name/email without a reload (avoids an extra /me round-trip)
       if (data.user) {
-        // Trigger a re-fetch so user.user_metadata reflects the new name/email
-        await checkAuth();
+        setUser(data.user);
       }
 
       setCurrentPassword('');

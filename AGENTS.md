@@ -220,6 +220,12 @@ Three modes detected via `/api/auth-config` (read-only public endpoint):
 - **Components reading user display name** MUST check both fields: `user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User"`. See [`src/components/ai/AccountTab.tsx`](./src/components/ai/AccountTab.tsx) and [`src/components/nav-user.tsx`](./src/components/nav-user.tsx) for the canonical pattern.
 - A previous bug: `nav-user.tsx` only checked `full_name`, so local-auth users always saw their email prefix in the sidebar (e.g., "erfan" instead of "John Doe") — even after updating their name through AccountTab. Always check both fields.
 
+**`useAuth` is now a Context-based hook (not a regular hook)**:
+- The original `useAuth` was a regular hook — each call created its own `useState` for `user`, `isAuthenticated`, `isGuest`. This meant `AccountTab`'s `setUser` did not affect `WorkspaceProvider`'s `user` state, so the sidebar/nav-user wouldn't update after account changes without a page reload.
+- **Fix** ([`src/hooks/useAuth.tsx`](./src/hooks/useAuth.tsx)): now exports `AuthProvider` (wraps the entire app in [`main.tsx`](./src/main.tsx)) and `useAuth()` consumes a shared `AuthContext`. All `useAuth()` calls share the same state.
+- **`setUser` is exposed**: callers can update the user state directly with response data, avoiding extra `/api/me` round-trips. Used by `AccountTab` to immediately sync the sidebar after `PUT /api/account` returns.
+- File renamed `.ts` → `.tsx` because `AuthProvider` returns JSX. All existing imports (`'./hooks/useAuth'`, `'@/hooks/useAuth'`) work without modification — TypeScript resolves `.tsx` automatically.
+
 **Client UI**:
 - Mode banners: blue (Supabase read-only), amber (desktop no password), green (pure PG full)
 - Save button disabled when no changes or `isSaving`

@@ -1,14 +1,27 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { apiFetch } from '../lib/api';
 
-export function useAuth() {
+type AuthContextValue = {
+  isAuthenticated: boolean | null;
+  user: any;
+  isGuest: boolean;
+  setUser: (user: any) => void;
+  setIsAuthenticated: (auth: boolean | null) => void;
+  checkAuth: () => Promise<void>;
+  handleLogin: (userData?: any) => void;
+  handleGuestLogin: () => void;
+  handleLogout: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const retryRef = useRef(0);
 
   const checkAuth = useCallback(async () => {
-    // If we're already in guest mode in this session, don't check API
     if (sessionStorage.getItem('auth_mode') === 'guest') {
       setIsAuthenticated(true);
       setIsGuest(true);
@@ -36,8 +49,6 @@ export function useAuth() {
       }
       retryRef.current = 0;
     } catch (err) {
-      // Network error (e.g. server restarting) — keep current auth state,
-      // don't log the user out. Retry with backoff up to 3 times.
       if (retryRef.current < 3) {
         retryRef.current++;
         setTimeout(() => checkAuth(), 1500 * retryRef.current);
@@ -97,15 +108,29 @@ export function useAuth() {
     }
   }, [isGuest]);
 
-  return {
-    isAuthenticated,
-    isGuest,
-    user,
-    setIsAuthenticated,
-    checkAuth,
-    handleLogin,
-    handleGuestLogin,
-    handleLogout
-  };
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        user,
+        isGuest,
+        setUser,
+        setIsAuthenticated,
+        checkAuth,
+        handleLogin,
+        handleGuestLogin,
+        handleLogout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return ctx;
+}

@@ -5,6 +5,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import App from './App.tsx';
+import { AuthProvider } from './hooks/useAuth';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
 import { API_BASE_URL } from './lib/api';
@@ -56,8 +57,10 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <ReactFlowProvider>
         <TooltipProvider>
-          <App />
-          <Toaster position="top-center" />
+          <AuthProvider>
+            <App />
+            <Toaster position="top-center" />
+          </AuthProvider>
         </TooltipProvider>
       </ReactFlowProvider>
     </BrowserRouter>
