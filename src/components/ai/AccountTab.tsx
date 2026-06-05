@@ -19,6 +19,10 @@ export function AccountTab() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
+  // Detect if running in Tauri (desktop app) - client-side detection
+  const isTauriApp = typeof window !== 'undefined' && 
+    !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -81,10 +85,11 @@ export function AccountTab() {
 
   const isReadOnly = config.supabaseAuth;
 
-  const hasChanges =
-    name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
-    email !== (user.email || '') ||
-    newPassword.length > 0;
+  const hasChanges = isTauriApp
+    ? name !== (user.user_metadata?.name || user.user_metadata?.full_name || '')
+    : name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
+      email !== (user.email || '') ||
+      newPassword.length > 0;
 
   const handleSave = async () => {
     if (isReadOnly) return;
@@ -92,6 +97,44 @@ export function AccountTab() {
       toast.info('No changes to save');
       return;
     }
+    
+    // Desktop app (Tauri): only allow name changes
+    if (isTauriApp) {
+      const newName = name.trim();
+      const oldName = (user.user_metadata?.name || user.user_metadata?.full_name || '').trim();
+      if (newName === oldName) {
+        toast.info('No changes to save');
+        return;
+      }
+      
+      setIsSaving(true);
+      try {
+        const res = await apiFetch('/api/account', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to update account');
+        }
+
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+        }
+
+        toast.success('Account name updated successfully');
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update account');
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+    
+    // Web local auth mode: allow name, email, password changes
     const wantsEmailChange = email !== (user.email || '');
     const wantsPasswordChange = newPassword.length > 0;
     if ((wantsEmailChange || wantsPasswordChange) && !currentPassword) {
@@ -142,9 +185,11 @@ export function AccountTab() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-zinc-100">Account</h2>
         <p className="text-sm text-zinc-400 mt-1">
-          Update your profile information. {isReadOnly
+          {isReadOnly
             ? 'Your account is managed by your authentication provider.'
-            : 'Changes are saved to your local profile.'}
+            : isTauriApp
+            ? 'Update your account name. Email and password are fixed at install time.'
+            : 'Update your profile information. Changes are saved to your local profile.'}
         </p>
       </div>
 
@@ -157,11 +202,11 @@ export function AccountTab() {
         </div>
       )}
 
-      {!isReadOnly && config.isDesktop && (
+      {!isReadOnly && isTauriApp && (
         <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-start gap-2">
           <Info className="size-4 text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-200/80">
-            Desktop mode: name and email can be updated here. Password is fixed at install time and cannot be changed.
+            Desktop mode: only account name can be updated. Email and password are configured during installation.
           </p>
         </div>
       )}
@@ -182,114 +227,116 @@ export function AccountTab() {
           />
         </Field>
 
-        <Field>
-          <FieldLabel htmlFor="account-email">Email</FieldLabel>
-          <Input
-            id="account-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={isReadOnly || isSaving}
-            placeholder="you@example.com"
-            maxLength={255}
-          />
-          <FieldDescription>
-            {isReadOnly
-              ? 'Managed by your auth provider'
-              : 'Changing your email requires your current password'}
-          </FieldDescription>
-        </Field>
+        {!isReadOnly && !isTauriApp && (
+          <>
+            <Field>
+              <FieldLabel htmlFor="account-email">Email</FieldLabel>
+              <Input
+                id="account-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isSaving}
+                placeholder="you@example.com"
+                maxLength={255}
+              />
+              <FieldDescription>
+                Changing your email requires your current password
+              </FieldDescription>
+            </Field>
+          </>
+        )}
+
+        {!isReadOnly && !isTauriApp && (
+          <div className="border-t border-border/40 pt-6 mt-2">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                  <Lock className="size-3.5" />
+                  Change Password
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {config.supportsPasswordUpdate
+                    ? 'Enter your current password and a new password to update.'
+                    : 'Password changes are not available in this mode.'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPasswords((v) => !v)}
+                disabled={!config.supportsPasswordUpdate}
+                className="text-xs"
+              >
+                {showPasswords ? <EyeOff className="size-3.5 mr-1" /> : <Eye className="size-3.5 mr-1" />}
+                {showPasswords ? 'Hide' : 'Show'}
+              </Button>
+            </div>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="account-current-password">
+                  <ShieldCheck className="size-3.5 inline mr-1.5" />
+                  Current Password
+                </FieldLabel>
+                <Input
+                  id="account-current-password"
+                  type={showPasswords ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={!config.supportsPasswordUpdate || isSaving}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="account-new-password">New Password</FieldLabel>
+                <Input
+                  id="account-new-password"
+                  type={showPasswords ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={!config.supportsPasswordUpdate || isSaving}
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                  minLength={6}
+                  maxLength={128}
+                />
+                {!config.supportsPasswordUpdate && (
+                  <FieldDescription>
+                    Password update is disabled in this build.
+                  </FieldDescription>
+                )}
+              </Field>
+            </FieldGroup>
+          </div>
+        )}
 
         {!isReadOnly && (
-          <>
-            <div className="border-t border-border/40 pt-6 mt-2">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                    <Lock className="size-3.5" />
-                    Change Password
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    {config.supportsPasswordUpdate
-                      ? 'Enter your current password and a new password to update.'
-                      : 'Password changes are not available in this mode.'}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowPasswords((v) => !v)}
-                  disabled={!config.supportsPasswordUpdate}
-                  className="text-xs"
-                >
-                  {showPasswords ? <EyeOff className="size-3.5 mr-1" /> : <Eye className="size-3.5 mr-1" />}
-                  {showPasswords ? 'Hide' : 'Show'}
-                </Button>
-              </div>
-
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="account-current-password">
-                    <ShieldCheck className="size-3.5 inline mr-1.5" />
-                    Current Password
-                  </FieldLabel>
-                  <Input
-                    id="account-current-password"
-                    type={showPasswords ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    disabled={!config.supportsPasswordUpdate || isSaving}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="account-new-password">New Password</FieldLabel>
-                  <Input
-                    id="account-new-password"
-                    type={showPasswords ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    disabled={!config.supportsPasswordUpdate || isSaving}
-                    placeholder="At least 6 characters"
-                    autoComplete="new-password"
-                    minLength={6}
-                    maxLength={128}
-                  />
-                  {!config.supportsPasswordUpdate && (
-                    <FieldDescription>
-                      Password update is disabled in this build.
-                    </FieldDescription>
-                  )}
-                </Field>
-              </FieldGroup>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <Button
-                onClick={handleSave}
-                disabled={isSaving || isReadOnly || !hasChanges}
-                className="min-w-[140px]"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="size-3.5 mr-2 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    <Save className="size-3.5 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-              {hasChanges && !isSaving && (
-                <span className="text-xs text-muted-foreground">You have unsaved changes</span>
+          <div className="flex items-center gap-2 pt-2">
+            <Button
+              onClick={handleSave}
+              disabled={isSaving || isReadOnly || !hasChanges}
+              className="min-w-[140px]"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="size-3.5 mr-2 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Save className="size-3.5 mr-2" />
+                  Save Changes
+                </>
               )}
-            </div>
-          </>
+            </Button>
+            {hasChanges && !isSaving && (
+              <span className="text-xs text-muted-foreground">You have unsaved changes</span>
+            )}
+          </div>
         )}
       </FieldGroup>
     </div>

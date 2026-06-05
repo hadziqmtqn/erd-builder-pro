@@ -28,12 +28,9 @@ export const useAIProviders = () => {
 
       if (configsRes.ok) {
         const configData: UserAIConfig[] = await configsRes.json();
-        console.debug('[AIProviders] configs from server:', JSON.stringify(configData));
-        console.debug('[AIProviders] providers from server:', JSON.stringify(provData));
         const configMap: Record<string, UserAIConfig> = {};
         configData.forEach(c => {
           const provider = provData.find(p => String(p.id) === String(c.provider_id));
-          console.debug(`[AIProviders] matching config provider_id=${c.provider_id} (${typeof c.provider_id}) with provider id=${provData.map(p => `${p.id}(${typeof p.id})`).join(', ')} ->`, provider?.code || 'NO MATCH');
           if (provider) configMap[provider.code] = c;
         });
         setConfigs(configMap);
