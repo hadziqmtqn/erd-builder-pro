@@ -18,8 +18,7 @@ import {
   FolderOpen,
   RotateCcw,
   Pencil,
-  Check,
-  X
+  RotateCcwKey
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from '@/hooks/useAuth';
+import { RestoreBackupDialog, type RestoreProgress } from '@/components/modals/RestoreBackupDialog';
 
 interface BackupRecord {
   id: string;
@@ -47,9 +47,10 @@ interface BackupRecord {
 }
 
 interface BackupFolderSettings {
+  supports_local_folder: boolean;
   custom_folder: string | null;
-  default_folder: string;
-  effective_folder: string;
+  default_folder: string | null;
+  effective_folder: string | null;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -68,6 +69,14 @@ export const BackupsView = () => {
   const [folderDraft, setFolderDraft] = useState('');
   const [isSavingFolder, setIsSavingFolder] = useState(false);
   const [isPickingFolder, setIsPickingFolder] = useState(false);
+
+  // Restore dialog state
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<BackupRecord | null>(null);
+  // Track whether a restore is currently in flight so we can lock the restore
+  // button on every row (preventing double-restore from a second click) and
+  // gate `openRestoreDialog` from opening a second dialog mid-restore.
+  const [restoreInProgress, setRestoreInProgress] = useState(false);
 
   const isTauri = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
@@ -221,7 +230,7 @@ export const BackupsView = () => {
     setIsCreating(true);
     try {
       const name = `Backup_${format(new Date(), 'yyyyMMdd_HHmm')}`;
-      
+
       const res = await apiFetch('/api/backups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -244,6 +253,140 @@ export const BackupsView = () => {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const openRestoreDialog = (backup: BackupRecord) => {
+    if (restoreInProgress) return; // prevent opening a 2nd dialog mid-restore
+    if (backup.status !== 'completed' || !backup.file_path) return;
+    setRestoreTarget(backup);
+    setRestoreDialogOpen(true);
+  };
+
+  const performRestore = async (onProgress?: (event: RestoreProgress) => void) => {
+    if (!restoreTarget) throw new Error('No backup selected');
+    setRestoreInProgress(true);
+    try {
+      let res: Response;
+      try {
+        // Direct fetch (not apiFetch) — we need streaming body access.
+        // apiFetch is a thin wrapper, but the streaming path here must
+        // consume the body via getReader() to parse NDJSON progress events.
+        res = await fetch(`/api/backups/${restoreTarget.id}/restore`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { Accept: 'application/x-ndjson' },
+        });
+      } catch (err: any) {
+        // Network / fetch error (server unreachable, CORS, etc.)
+        toast.error('Could not reach the server', {
+          description: err?.message || 'Please check your connection and try again.',
+        });
+        throw err;
+      }
+
+      // Pre-flight validation failures come back as plain JSON (status >= 400,
+      // Content-Type is application/json). The streaming NDJSON path is only
+      // taken once all pre-flight checks pass (see server route).
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/x-ndjson')) {
+        const err = await res.json().catch(() => ({}));
+        const message = err?.error || `Restore failed (HTTP ${res.status})`;
+        toast.error(message, {
+          description: `Could not restore "${restoreTarget.name}".`,
+        });
+        throw new Error(message);
+      }
+
+      // ── Stream NDJSON progress events ──
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Response body is not readable');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: { auto_backup_id: string; auto_backup_name: string; message: string } | null = null;
+      let streamError: { message: string; auto_backup_name?: string } | null = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const event = JSON.parse(trimmed);
+              if (event.type === 'progress') {
+                onProgress?.({
+                  phase: event.phase,
+                  percent: event.percent,
+                  message: event.message,
+                });
+              } else if (event.type === 'done') {
+                finalResult = {
+                  auto_backup_id: event.auto_backup_id,
+                  auto_backup_name: event.auto_backup_name,
+                  message: event.message,
+                };
+              } else if (event.type === 'error') {
+                streamError = {
+                  message: event.error,
+                  auto_backup_name: event.auto_backup_name,
+                };
+              }
+            } catch {
+              // Skip malformed lines
+            }
+          }
+        }
+      } catch (err: any) {
+        // Stream read error (connection drop mid-restore)
+        toast.error('Connection lost during restore', {
+          description:
+            'The server connection was interrupted. The pre-restore safety backup is still on disk — check the backup list.',
+        });
+        throw err;
+      }
+
+      if (streamError) {
+        const preRestoreName = streamError.auto_backup_name;
+        toast.error(streamError.message, {
+          description: preRestoreName
+            ? `Your current data is preserved in pre-restore backup "${preRestoreName}". Use it to roll back.`
+            : `Could not restore "${restoreTarget.name}".`,
+          duration: preRestoreName ? 10000 : undefined,
+        });
+        throw new Error(streamError.message);
+      }
+
+      if (!finalResult) {
+        throw new Error('Restore completed without a final result event');
+      }
+
+      return finalResult;
+    } finally {
+      // Refresh list AFTER restore completes (success or failure) so the
+      // user sees the new pre-restore backup entry — but NOT during the
+      // restore operation itself, which would cause the list to flicker
+      // (Processing → Completed) and confuse the user.
+      void fetchBackups();
+      setRestoreInProgress(false);
+    }
+  };
+
+  const handleRestoreSuccess = (result: { auto_backup_id: string; auto_backup_name: string }) => {
+    toast.success('Database restored successfully.', {
+      description: `Pre-restore safety backup "${result.auto_backup_name}" was created in case you need to roll back.`,
+      duration: 10000,
+      action: {
+        label: 'Reload',
+        onClick: () => window.location.reload(),
+      },
+    });
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -295,118 +438,121 @@ export const BackupsView = () => {
         </div>
       </div>
 
-      {/* Storage location panel */}
-      <div className="px-6 py-3 border-b bg-muted/30 shrink-0">
-        {isEditingFolder ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Folder className="w-3.5 h-3.5 shrink-0" />
-              <span className="font-medium text-foreground/80">Set backup folder</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                value={folderDraft}
-                onChange={(e) => setFolderDraft(e.target.value)}
-                placeholder="Target folder path (e.g. /Users/john/Documents/Backups)"
-                className="h-8 text-xs font-mono"
-                disabled={isSavingFolder}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void saveFolder(folderDraft.trim() || null);
-                  if (e.key === 'Escape') cancelEditFolder();
-                }}
-                autoFocus
-              />
-              {isTauri && (
+      {/* Storage location panel — hidden in cloud (Supabase) mode because
+          backups are written to R2 via GitHub Action, not the user's filesystem. */}
+      {folderSettings?.supports_local_folder && (
+        <div className="px-6 py-3 border-b bg-muted/30 shrink-0">
+          {isEditingFolder ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Folder className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-medium text-foreground/80">Set backup folder</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={folderDraft}
+                  onChange={(e) => setFolderDraft(e.target.value)}
+                  placeholder="Target folder path (e.g. /Users/john/Documents/Backups)"
+                  className="h-8 text-xs font-mono"
+                  disabled={isSavingFolder}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveFolder(folderDraft.trim() || null);
+                    if (e.key === 'Escape') cancelEditFolder();
+                  }}
+                  autoFocus
+                />
+                {isTauri && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={browseForFolder}
+                    disabled={isSavingFolder || isPickingFolder}
+                    className="h-8 px-2.5 text-xs shrink-0"
+                    title="Browse for folder"
+                  >
+                    {isPickingFolder ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+                        Browse
+                      </>
+                    )}
+                  </Button>
+                )}
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={browseForFolder}
-                  disabled={isSavingFolder || isPickingFolder}
-                  className="h-8 px-2.5 text-xs shrink-0"
-                  title="Browse for folder"
+                  onClick={() => void saveFolder(folderDraft.trim() || null)}
+                  disabled={isSavingFolder}
+                  className="h-8 px-3 text-xs shrink-0"
+                  title="Save"
                 >
-                  {isPickingFolder ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <>
-                      <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
-                      Browse
-                    </>
-                  )}
+                  {isSavingFolder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
                 </Button>
-              )}
-              <Button
-                size="sm"
-                onClick={() => void saveFolder(folderDraft.trim() || null)}
-                disabled={isSavingFolder}
-                className="h-8 px-3 text-xs shrink-0"
-                title="Save"
-              >
-                {isSavingFolder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={cancelEditFolder}
-                disabled={isSavingFolder}
-                className="h-8 px-2 text-xs shrink-0"
-                title="Cancel"
-              >
-                Cancel
-              </Button>
-            </div>
-            {folderSettings?.default_folder && folderDraft !== folderSettings.default_folder && (
-              <p className="text-[11px] text-muted-foreground">
-                Default location: <code className="text-[11px] font-mono">{folderSettings.default_folder}</code>
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-                <Folder className="w-3.5 h-3.5 shrink-0" />
-                <span className="font-medium text-foreground/80">Storage location</span>
-                {folderSettings?.custom_folder && (
-                  <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/20">
-                    Custom
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={startEditFolder}
-                  className="h-7 px-2 text-xs"
+                  onClick={cancelEditFolder}
+                  disabled={isSavingFolder}
+                  className="h-8 px-2 text-xs shrink-0"
+                  title="Cancel"
                 >
-                  <Pencil className="w-3 h-3 mr-1" />
-                  Change
+                  Cancel
                 </Button>
-                {folderSettings?.custom_folder && (
+              </div>
+              {folderSettings?.default_folder && folderDraft !== folderSettings.default_folder && (
+                <p className="text-[11px] text-muted-foreground">
+                  Default location: <code className="text-[11px] font-mono">{folderSettings.default_folder}</code>
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                  <Folder className="w-3.5 h-3.5 shrink-0" />
+                  <span className="font-medium text-foreground/80">Storage location</span>
+                  {folderSettings?.custom_folder && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      Custom
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => void saveFolder(null)}
-                    disabled={isSavingFolder}
+                    onClick={startEditFolder}
                     className="h-7 px-2 text-xs"
-                    title="Reset to default"
                   >
-                    <RotateCcw className="w-3 h-3 mr-1" />
-                    Reset
+                    <Pencil className="w-3 h-3 mr-1" />
+                    Change
                   </Button>
-                )}
+                  {folderSettings?.custom_folder && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void saveFolder(null)}
+                      disabled={isSavingFolder}
+                      className="h-7 px-2 text-xs"
+                      title="Reset to default"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      Reset
+                    </Button>
+                  )}
+                </div>
               </div>
+              <code
+                className="text-xs font-mono text-foreground/80 break-all pl-5"
+                title={folderSettings?.effective_folder ?? undefined}
+              >
+                {folderSettings?.effective_folder || 'Loading…'}
+              </code>
             </div>
-            <code
-              className="text-xs font-mono text-foreground/80 break-all pl-5"
-              title={folderSettings?.effective_folder}
-            >
-              {folderSettings?.effective_folder || 'Loading…'}
-            </code>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
@@ -465,7 +611,7 @@ export const BackupsView = () => {
                         {backup.status === 'pending' && (
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 gap-1.5">
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Processing
+                            {backup.name.startsWith('PreRestore_') ? 'Creating safety backup' : 'Processing'}
                           </Badge>
                         )}
                         {backup.status === 'failed' && (
@@ -502,6 +648,28 @@ export const BackupsView = () => {
                               ) : (
                                 <Download className="h-3.5 w-3.5" />
                               )
+                            ) : (
+                              <Lock className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path && !restoreInProgress ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 dark:text-amber-500 dark:hover:text-amber-400' : 'text-muted-foreground opacity-50'}`}
+                            disabled={backup.status !== 'completed' || !backup.file_path || restoreInProgress}
+                            onClick={() => openRestoreDialog(backup)}
+                            title={
+                              restoreInProgress
+                                ? 'Restore already in progress...'
+                                : backup.status !== 'completed'
+                                  ? 'Backup still in progress...'
+                                  : !backup.file_path
+                                    ? 'File path not recorded'
+                                    : 'Restore database from this backup'
+                            }
+                          >
+                            {backup.status === 'completed' && backup.file_path && !restoreInProgress ? (
+                              <RotateCcwKey className="h-3.5 w-3.5" />
                             ) : (
                               <Lock className="h-3.5 w-3.5" />
                             )}
@@ -568,6 +736,22 @@ export const BackupsView = () => {
           )}
         </div>
       </div>
+
+      <RestoreBackupDialog
+        isOpen={restoreDialogOpen}
+        onOpenChange={setRestoreDialogOpen}
+        backup={
+          restoreTarget
+            ? {
+                id: restoreTarget.id,
+                name: restoreTarget.name,
+                created_at: restoreTarget.created_at,
+              }
+            : null
+        }
+        onConfirm={performRestore}
+        onSuccess={handleRestoreSuccess}
+      />
     </div>
   );
 };

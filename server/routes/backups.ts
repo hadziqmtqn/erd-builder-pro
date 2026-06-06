@@ -10,9 +10,10 @@ import {
   getDefaultBackupDir,
   getBackupDirForUser,
   ensureBackupDir,
+  restoreLocalBackup,
 } from "../lib/local-backup.js";
 import { createReadStream } from "fs";
-import { stat } from "fs/promises";
+import { access, stat } from "fs/promises";
 import path from "path";
 import { z } from "zod";
 
@@ -27,13 +28,27 @@ const folderSchema = z.object({
 /**
  * GET /api/backups/settings/folder
  * Returns the user's configured backup folder and the default fallback.
+ * In Supabase mode (cloud), `supports_local_folder: false` and all path fields
+ * are null — backups are written to R2 via GitHub Action, not the user's
+ * filesystem, so the "Storage location" panel is hidden in the UI.
  */
 router.get(
   "/settings/folder",
   authenticate,
   async (req: ExpressRequest, res: ExpressResponse) => {
     const user = (req as any).user;
+    const supportsLocalFolder = useLocalAuth();
     try {
+      if (!supportsLocalFolder) {
+        // Cloud mode: skip prisma lookup entirely — the field is local-only.
+        return res.json({
+          supports_local_folder: false,
+          custom_folder: null,
+          default_folder: null,
+          effective_folder: null,
+        });
+      }
+
       const pref = await prisma?.userPreference.findUnique({
         where: { userId: user.id },
         select: { backupFolder: true },
@@ -47,6 +62,7 @@ router.get(
       // but returning snake_case directly keeps the response identical and avoids
       // double-underscore artifacts if a value happens to contain a capital letter).
       res.json({
+        supports_local_folder: true,
         custom_folder: customFolder,
         default_folder: defaultFolder,
         effective_folder: effectiveFolder,
@@ -70,6 +86,14 @@ router.put(
   "/settings/folder",
   authenticate,
   async (req: ExpressRequest, res: ExpressResponse) => {
+    // Cloud mode (Supabase): backup folder is local-only. The UI hides the
+    // panel entirely, but a direct API call should still be rejected.
+    if (!useLocalAuth()) {
+      return res.status(403).json({
+        error: "Backup folder is not configurable in cloud mode",
+      });
+    }
+
     const user = (req as any).user;
     const parsed = folderSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -311,6 +335,111 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
   } catch (error: any) {
     logger.error({ err: error }, "Backup create error:");
     res.status(500).json({ error: "Failed to create backup" });
+  }
+});
+
+// Restore database from a backup (desktop / local PostgreSQL only).
+// Streams progress events as NDJSON so the client can render a live
+// progress bar. The final line is either `{ "type": "done", ... }` on
+// success or `{ "type": "error", ... }` on failure.
+router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+
+  // Switch to NDJSON streaming — once we send a progress event we
+  // can't downgrade to a regular JSON error response. Pre-flight
+  // validation (ownership, status, file-exists) must be done FIRST
+  // and any error returned as plain JSON before we commit to streaming.
+  try {
+    // 1. Verify ownership
+    const backup = await prisma?.backup.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!backup) {
+      return res.status(404).json({ error: "Backup record not found" });
+    }
+
+    if (!backup.filePath) {
+      return res.status(400).json({ error: "Backup has no file associated" });
+    }
+
+    if (backup.status !== "completed") {
+      return res.status(400).json({ error: "Only completed backups can be restored" });
+    }
+
+    // 2. Only local mode supports restore (desktop SQLite / local PG).
+    if (!useLocalAuth()) {
+      return res.status(400).json({ error: "Restore is only available in local mode" });
+    }
+
+    // 3. Verify the file still exists on disk
+    try {
+      await access(backup.filePath);
+    } catch {
+      return res.status(404).json({ error: "Backup file not found on disk" });
+    }
+  } catch (error: any) {
+    // Pre-flight validation failure — return plain JSON (not streamed)
+    logger.error({ err: error }, "Restore pre-flight error:");
+    return res.status(500).json({ error: error.message || "Restore failed" });
+  }
+
+  // ── All pre-flight checks passed. Switch to NDJSON streaming. ──
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // disable proxy buffering
+  res.flushHeaders?.();
+
+  const send = (event: object) => {
+    try {
+      res.write(JSON.stringify(event) + "\n");
+    } catch (err) {
+      logger.warn({ err }, "Failed to write NDJSON event");
+    }
+  };
+
+  let backupRecord: { id: string; filePath: string } | null = null;
+  try {
+    // Re-fetch for the streaming phase (small redundant query, but keeps
+    // the pre-flight block above simple and free of side-effects).
+    backupRecord = await prisma?.backup.findFirst({
+      where: { id, userId: user.id },
+    });
+    if (!backupRecord?.filePath) {
+      send({ type: "error", error: "Backup record not found" });
+      return res.end();
+    }
+
+    const { autoBackupId, autoBackupName } = await restoreLocalBackup(
+      backupRecord.filePath,
+      user.id,
+      (progress) => send({ type: "progress", ...progress }),
+      id
+    );
+
+    send({
+      type: "done",
+      success: true,
+      auto_backup_id: autoBackupId,
+      auto_backup_name: autoBackupName,
+      message:
+        "Database restored successfully. A pre-restore safety backup was created in case you need to roll back. You may need to re-login if the restored user data no longer matches your current session.",
+    });
+    res.end();
+  } catch (error: any) {
+    logger.error({ err: error }, "Restore error:");
+    const preRestoreId = error?.autoBackupId;
+    const preRestoreName = error?.autoBackupName;
+    send({
+      type: "error",
+      error: error.message || "Failed to restore backup",
+      ...(preRestoreId && preRestoreName
+        ? { auto_backup_id: preRestoreId, auto_backup_name: preRestoreName }
+        : {}),
+    });
+    res.end();
   }
 });
 

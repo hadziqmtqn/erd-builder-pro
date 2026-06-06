@@ -381,14 +381,19 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 ### Prisma Client Cache Stale After Schema Switch
 
-- **Symptom**: switching from `npm run dev:api` (supabase) to `npm run tauri dev` (sqlite) and the server crashes with:
+- **Symptom A (most common)**: switching from `npm run dev:api` (Supabase) to `npm run dev:pg:local` (local PG), the first Prisma query fails with:
   ```
-  PrismaClientInitializationError: The Driver Adapter `@prisma/adapter-better-sqlite3`, based on `sqlite`,
-  is not compatible with the provider `postgres` specified in the Prisma schema.
+  PrismaClientKnownRequestError: The table `auth.users` does not exist in the current database.
+  Invalid `prisma.user.findFirst()` invocation
   ```
-  Even though `prisma generate` logs "Prisma schema loaded from prisma/schema.sqlite.prisma" and "Generated Prisma Client".
-- **Cause**: Prisma 7's incremental generator keeps the old engine binary in `node_modules/.prisma/client/` when switching between schemas. The log says it regenerated, but the actual `index.js` still has `activeProvider: "postgres"`.
-- **Fix** ([`package.json`](./package.json)): `dev:desktop` now does `rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && cross-env ...`. The `rm -rf` clears the stale engine binary before regeneration. Without it, the new generator sometimes produces a no-op because the old engine is still there.
+  Login page on web local mode returns HTTP 500. The 500 is the catch-all in [`server/routes/auth.ts`](./server/routes/auth.ts) wrapping a `P2021` Prisma error. The actual error lives in `logs/server.log` (pino destination).
+- **Symptom B**: switching to desktop Tauri mode, server crashes on startup with `PrismaClientInitializationError: The Driver Adapter ... is not compatible with the provider ... specified in the Prisma schema.`
+- **Cause**: Prisma 7's incremental generator keeps the old engine binary in `node_modules/.prisma/client/` when switching between schemas. The log says "Generated Prisma Client" but the actual `index.js` / `schema.prisma` still references the old schema (Supabase's `auth.users` table when the user expects local PG's `public.users`).
+- **Fix** ([`package.json`](./package.json)): every dev script that regenerates the Prisma client now does `rm -rf node_modules/.prisma/client` first:
+  - `dev:desktop`: `rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && ...`
+  - `dev:pg:local`: `rm -rf node_modules/.prisma/client && npm run db:generate:pg:local && ...`
+  The `rm -rf` clears the stale engine binary before regeneration. Without it, the new generator sometimes produces a no-op because the old engine is still there.
+- **Manual recovery if symptoms appear**: `rm -rf node_modules/.prisma/client && npm run db:generate:pg:local` (or whichever variant is needed) + restart the dev server. Also restart VS Code TS server if editor shows stale `prisma.session` errors.
 
 ### Deps added
 
@@ -1400,6 +1405,105 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   ```
 - **Path requirement**: must be an absolute path. Relative paths are not resolved — pass the stored absolute path from the DB.
 
+## Backup Restore (Local Mode Only)
+
+- **Use case**: User picks a previous backup from the Backups list and asks the server to overwrite the current database with the backup contents. Destructive — the current DB is replaced. **Local mode only** (desktop SQLite / local PostgreSQL); Supabase mode returns 400.
+- **Files**:
+  - Server restore logic: [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup(absolutePath, userId)`.
+  - API: [`server/routes/backups.ts`](./server/routes/backups.ts) `POST /api/backups/:id/restore`.
+  - UI dialog: [`src/components/modals/RestoreBackupDialog.tsx`](./src/components/modals/RestoreBackupDialog.tsx).
+  - Wired into: [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) (Restore button + state).
+
+### Safety net: pre-restore auto-backup
+
+Before overwriting the DB, `restoreLocalBackup` always creates a `PreRestore_<timestamp>` backup of the **current** state. This is the rollback path — if the restore goes wrong or the user picks the wrong backup, they can restore the pre-restore backup to get back to where they were.
+
+- The record is created in the DB with `status: 'pending'` BEFORE the file is written.
+- After `createLocalBackup` returns, the record is updated to `status: 'completed'` + `file_path`/`file_size`.
+- If the pre-restore backup itself fails, the whole restore aborts with an error — **never proceed to overwrite the DB if there's no rollback path**.
+- The pre-restore record is also renamed to `PreRestore_<timestamp>` for clarity in the UI (default name is `Backup_<uuid>_<timestamp>`).
+
+### SQLite restore mechanics
+
+The `.sql.gz` backup is decompressed to a temp `.decompressed` file, then:
+
+1. `prisma.$disconnect()` — must release the file lock on the live `data.db` before overwriting it.
+2. Open the decompressed backup with `new Database(tempPath, { readonly: true })`.
+3. Use `sourceDb.backup(liveDbPath)` to copy data FROM temp → live DB. better-sqlite3's `backup()` API is the recommended SQLite-native way — it handles WAL, locking, and incremental copy.
+4. Close the source db, unlink the temp file.
+5. Prisma lazy-reconnects on the next query (better-sqlite3 re-opens the file).
+
+**Why `.decompressed` suffix and not `.db`**: if the restore is interrupted (process kill, OOM, etc.) the leftover file is clearly identifiable as incomplete — never mistaken for a valid backup.
+
+### PostgreSQL restore mechanics
+
+`execAsync(\`psql "${dbUrl}" -f "${tempDbPath}" --quiet\`)` — runs the SQL dump against the live database. `--quiet` suppresses the per-statement output.
+
+**`pgUrlForCli()` strips Prisma query params** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts)): `DATABASE_URL` from Prisma's adapter includes `?schema=public`, but `pg_dump`/`psql` reject unknown query params with `invalid URI query parameter: "schema"`. Helper uses `URL` API to delete the `schema` param (and any other Prisma-specific ones) before passing to the CLIs. Used in both `backupPostgreSQL` and `restoreLocalBackup`.
+
+### Re-login after restore
+
+After a full DB replace, the session table is also restored. If the restored user table no longer contains the current user, the user is silently logged out. The dialog and success toast both warn about this; the toast has a `Reload` action that forces a page reload to re-fetch auth state.
+
+### Restore confirmation dialog (`RestoreBackupDialog.tsx`)
+
+- **Type-to-confirm** UX (GitHub pattern): user must type the exact backup name to enable the Restore button. Prevents accidental destructive clicks.
+- **Auto-focus** the input when the dialog opens (50ms delay so the dialog mounts first).
+- **Enter** in input triggers confirm (when name matches).
+- **Loading state**: Confirm button shows spinner + "Restoring…", Cancel disabled, dialog not closable mid-restore.
+- **Error handling**: on error, the dialog stays open so the user can retry or cancel. The caller (`performRestore` in `BackupsView`) throws — the dialog's `try/catch` keeps state intact, and the caller shows a separate error toast.
+- **Safety callout**: green-bordered "safety backup will be created first" callout to reassure the user.
+- **Backup info card**: shows the backup name + creation date so the user verifies they're restoring the right one.
+
+### Backend response shape
+
+`POST /api/backups/:id/restore` returns on success:
+```json
+{
+  "success": true,
+  "auto_backup_id": "uuid-of-pre-restore",
+  "auto_backup_name": "PreRestore_2024-...",
+  "message": "Database restored successfully. ..."
+}
+```
+
+The `auto_backup_*` fields are surfaced in the success toast so the user can find the rollback backup by name in the list.
+
+**Error response (destructive step failed AFTER safety backup was created)** — the route at [`server/routes/backups.ts`](./server/routes/backups.ts) catches the thrown error and forwards the pre-restore identity in the response body:
+```json
+{
+  "error": "unexpected end of file. Your current data is preserved in pre-restore backup \"PreRestore_2024-...\".",
+  "auto_backup_id": "uuid-of-pre-restore",
+  "auto_backup_name": "PreRestore_2024-..."
+}
+```
+The error message always includes the pre-restore name when the safety backup was created. The client reads `err.auto_backup_name` from the response and shows it in the error toast: *"Your current data is preserved in pre-restore backup X. Use it to roll back."*
+
+### Restore failure coverage (decompress + replace in one try/catch)
+
+The full destructive path in [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup` is wrapped in a single try/catch so any failure (corrupt gzip file, bad SQL in pg_dump, locked DB file, missing prisma adapter, etc.) is attributed to the pre-restore safety backup. The wrapped error carries `autoBackupId` + `autoBackupName` properties that the route forwards to the client.
+
+### Restore in-flight lock (UI)
+
+[`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) tracks a `restoreInProgress: boolean` state that:
+- Disables the restore button on **every row** while a restore is running (Lock icon + "Restore already in progress..." tooltip)
+- Gates `openRestoreDialog` so a second click on a different row's restore button is a no-op while the first dialog is still up
+- Cleared in the `finally` block of `performRestore` — regardless of success/failure
+
+This prevents two restores from racing (which would create two pre-restore backups and the second destructive replace would clobber the first).
+
+### Auto-refresh + badge label after restore
+
+`BackupsView` calls `void fetchBackups()` in the `finally` of `performRestore` so the list shows the new pre-restore entry (or updated status) without a manual page refresh. The `Processing` status badge differentiates pre-restore entries: `name.startsWith('PreRestore_')` shows **"Creating safety backup"** instead of the generic **"Processing"** — so the user understands why a new entry appeared after clicking Restore.
+
+### Bug Fix: Backup Status Becomes "Pending" After Restore
+
+- **Bug**: After restoring a `Completed` backup, its status changed to `Pending` in the list.
+- **Root cause**: The restore process replaces the entire database with the backup snapshot. In that snapshot, the backup record's `status` was still `pending` (initial state before the async backup process set it to `completed`). After `fetchBackups()` re-queried the restored database, the stale `pending` status was displayed.
+- **Fix** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup`): Added optional `originalBackupId` parameter. After the database is replaced and Prisma reconnects, the function runs `prisma.backup.update({ where: { id: originalBackupId }, data: { status: "completed" } })` to restore the correct status.
+- **Wiring** ([`server/routes/backups.ts`](./server/routes/backups.ts)): The route handler now passes `id` (the backup being restored) as `originalBackupId` to `restoreLocalBackup`.
+- **Graceful fallback**: If the backup record doesn't exist in the restored database (e.g. it was created after the backup snapshot), the update fails silently with a `logger.warn`.
+
 ## Absolute File Path Storage (Local Backups)
 
 - `Backup.file_path` stores the **absolute filesystem path** of the gzipped backup (not relative). Set at backup creation time in [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `createLocalBackup()`.
@@ -1409,7 +1513,11 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
 
 ## Custom Backup Folder (Per-User)
 
-- **Schema**: New `UserPreference` model added to all 3 Prisma schemas (Supabase, PG local, SQLite). One-to-one with `User` (`userId @unique`). Stores `backupFolder String?`. Auto-pushed to local SQLite via `npm run db:push:sqlite` (or `db:push:pg:local` for local PG). Supabase migrations need a manual SQL migration.
+- **Schema**: `UserPreference` model added to all 3 Prisma schemas (Supabase, PG local, SQLite) and to [`supabase_schema.sql`](./supabase_schema.sql) (with RLS policies: SELECT/INSERT/UPDATE/DELETE scoped to `auth.uid() = user_id`). One-to-one with `User` (`userId @unique`). Stores `backupFolder String? @map("backup_folder")`. Auto-pushed to local SQLite via `npm run db:push:sqlite` (or `db:push:pg:local` for local PG). Supabase migrations need a manual run of `supabase_schema.sql`.
+- **Local-only field**: `backupFolder` is only meaningful in local modes (desktop SQLite / local PG) where backups are written to a user-controlled local filesystem path. In **Supabase mode**, backups go through a GitHub Action → Cloudflare R2, so the field is ignored. The application:
+  - API `GET /settings/folder` returns `supports_local_folder: false` + null paths in cloud mode → UI hides the entire "Storage location" panel.
+  - API `PUT /settings/folder` returns 403 in cloud mode (defense in depth — UI already hides the panel).
+  - Prisma schema comment `// Container for per-user settings. The backup_folder field is only used in local modes...` in `supabase_schema.sql:295-298` documents the intent.
 - **Server resolver** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts)):
   - `getDefaultBackupDir()` — OS-aware: macOS/Linux → `${os.homedir()}/ERD Builder Pro`, Windows → `${os.homedir()}/Documents/ERD Builder Pro`.
   - `getBackupDirForUser(userId)` — reads `UserPreference.backupFolder`. If set: resolves absolute path (relative → `${homedir()}/<path>`). If null → returns `getDefaultBackupDir()`.
@@ -1417,11 +1525,11 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - `createLocalBackup(backupId, userId)` — now returns `{ filePath, fileSize, fullPath }`. Stored `filePath` is the **absolute filesystem path** (not relative) — see **Absolute File Path Storage (Local Backups)** above. This is what enables `revealItemInDir()` in Tauri even after the user changes their backup folder setting.
   - `getBackupFilePath(relativePath, userId)` — async (now takes `userId`).
 - **API** ([`server/routes/backups.ts`](./server/routes/backups.ts)):
-  - `GET /api/backups/settings/folder` → `{ customFolder, defaultFolder, effectiveFolder }`. All three returned so the client can show the active path, the OS default, and whether a custom value is in effect.
-  - `PUT /api/backups/settings/folder` body `{ folder: string | null }` (null = reset). Validates: shell metacharacter blacklist (`` ` $ \ ; < > | & ``), `ensureBackupDir` probe to confirm writability, upserts `UserPreference` row.
+  - `GET /api/backups/settings/folder` → `{ supportsLocalFolder, customFolder, defaultFolder, effectiveFolder }`. `supportsLocalFolder: false` in cloud mode (skips prisma lookup entirely). In local mode, all three paths returned so the client can show the active path, the OS default, and whether a custom value is in effect.
+  - `PUT /api/backups/settings/folder` body `{ folder: string | null }` (null = reset). Returns 403 in cloud mode. Validates: shell metacharacter blacklist (`` ` $ \ ; < > | & ``), `ensureBackupDir` probe to confirm writability, upserts `UserPreference` row.
 - **UI** ([`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx)):
-  - New "Storage location" panel between header and table, with `Folder` icon.
-  - Shows full path in monospace font. `Custom` amber badge when `customFolder` is set.
+  - "Storage location" panel between header and table, **conditionally rendered** with `{folderSettings?.supports_local_folder && (...)}` — invisible to Supabase users.
+  - When visible: `Folder` icon, full path in monospace font, `Custom` amber badge when `customFolder` is set.
   - `Change` button → input field with Enter to save / Escape to cancel. `Reset` button (only when custom) → puts back to OS default.
   - **Native folder picker (Tauri only)**: `Browse` button (`FolderOpen` icon) next to the input opens the OS-native folder picker via `@tauri-apps/plugin-dialog`'s `open({ directory: true })`. Hidden on web (browsers don't expose a native folder picker). Pre-fills `defaultPath` with the current `effectiveFolder` so the dialog opens at the right place.
   - Toast description in download now uses `effectiveFolder` instead of the OS Downloads dir. Web fallback message preserved if `effectiveFolder` is somehow null.
