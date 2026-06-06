@@ -46,6 +46,8 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-os": "^2.3.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@tiptap/extension-bubble-menu": "^3.22.0",
     "@tiptap/extension-color": "^3.22.2",
     "@tiptap/extension-image": "^3.22.0",
@@ -110,6 +112,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
     "@tauri-apps/cli": "^2.11.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/diff-match-patch": "^1.0.36",

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from "@/lib/api";
-import { 
-  Database, 
-  Download, 
-  Plus, 
-  CheckCircle2, 
-  XCircle, 
+import { downloadDir } from '@tauri-apps/api/path';
+import {
+  Database,
+  Download,
+  Plus,
+  CheckCircle2,
+  XCircle,
   Loader2,
   Lock,
   ChevronLeft,
@@ -75,11 +76,37 @@ export const BackupsView = () => {
     }
   }, [page, user]);
 
-  const handleDownload = (backup: BackupRecord) => {
+  const isTauri = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+
+  const handleDownload = async (backup: BackupRecord) => {
     if (backup.status !== 'completed' || !backup.file_path) return;
-    
-    // Trigger download di tab yang sama tanpa flicker tab baru
+
+    const filename = `${backup.name}.sql.gz`;
+
+    // Trigger download (sama tab, tanpa flicker tab baru)
     window.location.href = `/api/backups/${backup.id}/download`;
+
+    // Resolve target directory (Tauri desktop: OS-aware via downloadDir()).
+    // Falls back to the web browser's default Downloads folder outside Tauri.
+    let savedDir = '';
+    if (isTauri) {
+      try {
+        savedDir = await downloadDir();
+      } catch (err) {
+        console.error('Failed to resolve download dir:', err);
+      }
+    }
+
+    const fullPath = savedDir ? `${savedDir}/${filename}` : filename;
+    const description = savedDir
+      ? `File saved to ${fullPath}`
+      : 'File saved to your browser\'s default Downloads folder.';
+
+    toast.success(`Backup "${backup.name}" downloaded successfully.`, {
+      description,
+      duration: 6000,
+    });
   };
 
   const handleCreateBackup = async () => {
@@ -242,7 +269,7 @@ export const BackupsView = () => {
                             size="icon" 
                             className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground opacity-50'}`}
                             disabled={backup.status !== 'completed' || !backup.file_path}
-                            onClick={() => handleDownload(backup)}
+                            onClick={() => void handleDownload(backup)}
                             title={
                               backup.status !== 'completed' ? 'Backup still in progress...' : 
                               !backup.file_path ? 'File path not recorded' : 

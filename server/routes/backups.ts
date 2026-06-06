@@ -1,9 +1,12 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME, useLocalAuth } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
+import { createLocalBackup, getBackupFilePath } from "../lib/local-backup.js";
+import { createReadStream } from "fs";
+import { stat } from "fs/promises";
 
 const router = Router();
 
@@ -51,11 +54,37 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
       return res.status(400).json({ error: "File has not been uploaded yet" });
     }
 
+    // 2. Local mode: serve from filesystem
+    if (useLocalAuth()) {
+      try {
+        const fullPath = getBackupFilePath(backup.filePath);
+        const stats = await stat(fullPath);
+
+        res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
+        res.setHeader('Content-Type', 'application/gzip');
+        res.setHeader('Content-Length', stats.size.toString());
+
+        const fileStream = createReadStream(fullPath);
+        fileStream.pipe(res);
+
+        fileStream.on('error', (err) => {
+          logger.error({ err, path: fullPath }, "File stream error");
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Failed to stream file" });
+          }
+        });
+      } catch (fsError: any) {
+        logger.error({ err: fsError, path: backup.filePath }, "Local file read error");
+        return res.status(404).json({ error: "Backup file not found on disk" });
+      }
+      return;
+    }
+
+    // 3. Cloud mode: fetch from R2
     if (!s3Client || !R2_BUCKET_NAME) {
       return res.status(500).json({ error: "Storage is not configured on the server" });
     }
 
-    // 2. Fetch from R2
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: backup.filePath,
@@ -64,7 +93,6 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
     try {
       const response = await s3Client.send(command);
       
-      // 3. Stream to response
       res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
       res.setHeader('Content-Type', 'application/gzip');
       
@@ -86,7 +114,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
   }
 });
 
-// Create backup record and trigger GitHub Action
+// Create backup record and trigger backup process
 router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const user = (req as any).user;
   const { name } = req.body;
@@ -105,27 +133,58 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
       throw new Error("Failed to create backup record");
     }
 
-    // 2. Trigger GitHub Action via Repository Dispatch
-    if (GITHUB_TOKEN && GITHUB_REPO_OWNER && GITHUB_REPO_NAME) {
-      await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/dispatches`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'ERD-Builder-Pro'
-          },
-          body: JSON.stringify({
-            event_type: 'database-backup',
-            client_payload: {
-              backup_id: backupRecord.id,
-              user_id: user.id
-            }
-          })
+    // 2. Execute backup based on mode
+    if (useLocalAuth()) {
+      // Local mode: execute backup in background
+      logger.info({ backupId: backupRecord.id, mode: 'local' }, "Starting local backup process");
+      
+      // Run backup asynchronously without blocking response
+      (async () => {
+        try {
+          const { filePath, fileSize } = await createLocalBackup(backupRecord.id, user.id);
+          
+          await prisma?.backup.update({
+            where: { id: backupRecord.id },
+            data: {
+              filePath,
+              fileSize,
+              status: 'completed',
+            },
+          });
+
+          logger.info({ backupId: backupRecord.id, filePath, fileSize }, "Local backup completed");
+        } catch (error: any) {
+          logger.error({ err: error, backupId: backupRecord.id }, "Local backup failed");
+          
+          await prisma?.backup.update({
+            where: { id: backupRecord.id },
+            data: { status: 'failed' },
+          });
         }
-      ).catch(err => logger.error({ err }, "==> GitHub Trigger Failed"));
+      })();
+    } else {
+      // Cloud mode: trigger GitHub Action via Repository Dispatch
+      if (GITHUB_TOKEN && GITHUB_REPO_OWNER && GITHUB_REPO_NAME) {
+        await fetch(
+          `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/dispatches`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'ERD-Builder-Pro'
+            },
+            body: JSON.stringify({
+              event_type: 'database-backup',
+              client_payload: {
+                backup_id: backupRecord.id,
+                user_id: user.id
+              }
+            })
+          }
+        ).catch(err => logger.error({ err }, "==> GitHub Trigger Failed"));
+      }
     }
 
     res.json(backupRecord);

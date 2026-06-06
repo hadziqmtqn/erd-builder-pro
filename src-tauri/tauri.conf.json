@@ -38,5 +38,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/hadziqmtqn/erd-builder-pro/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENGM0U0RTI0Mjg4RDVBNjIKUldSaVdvMG9KRTQrejZNNkZ5ZThFdnczZjByUVZqRklXamRpNUNwUHRTTHdyWnhtbXc5eWZLVlIK"
+    }
   }
 }

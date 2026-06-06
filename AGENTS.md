@@ -1376,6 +1376,16 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
 - **UI Update**: Previously, some views used a large spinner (`w-10 h-10`) while others used a small spinner (`w-6 h-6`). This has been standardized across the entire application.
 - **Implementation**: All loading states (including `<AppInitialization>`, editor routes, and views) now use the same uniform small spinner design: `className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"`.
 
+## Backup Download Toast (Cross-OS Desktop)
+
+- [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) `handleDownload` now shows a success toast after the user clicks the download icon.
+- The toast `description` includes the resolved save path so users know where the `.sql.gz` landed:
+  - **Tauri desktop** (any OS — macOS, Windows, Linux): uses `downloadDir()` from `@tauri-apps/api/path` which returns the OS-specific default download folder (e.g. `/Users/meowpush/Downloads`, `C:\Users\<user>\Downloads`, `/home/<user>/Downloads`). Path is built as `${downloadDir}/${backup.name}.sql.gz`.
+  - **Web fallback** (non-Tauri): uses a generic message ("File saved to your browser's default Downloads folder.") because the browser sandbox does not expose the user's actual download path.
+- Tauri detection reuses the existing pattern: `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`.
+- `window.location.href = /api/backups/.../download` continues to drive the actual download stream (server serves the file via `Content-Disposition: attachment`). The download and the toast fire in parallel — toast is shown after `downloadDir()` resolves (or instantly on web if not in Tauri).
+- Toast duration is `6000ms` so the path remains visible long enough for the user to read/copy it.
+
 ## Global vs Item Loading State Fix (Infinite Spinner)
 
 - **Bug**: `isLoading` from `WorkspaceContext` is an aggregate of all background fetches (`isProjectsLoading || isDiagramsLoading || ...`). Binding the main canvas overlay spinner to this global state caused the spinner to hang indefinitely if any single background request (like fetching projects during a tab reload) got stuck or delayed.
