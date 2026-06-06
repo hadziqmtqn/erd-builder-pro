@@ -1378,13 +1378,34 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
 
 ## Backup Download Toast (Cross-OS Desktop)
 
-- [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) `handleDownload` now shows a success toast after the user clicks the download icon.
-- The toast `description` includes the resolved save path so users know where the `.sql.gz` landed:
-  - **Tauri desktop** (any OS — macOS, Windows, Linux): uses `downloadDir()` from `@tauri-apps/api/path` which returns the OS-specific default download folder (e.g. `/Users/meowpush/Downloads`, `C:\Users\<user>\Downloads`, `/home/<user>/Downloads`). Path is built as `${downloadDir}/${backup.name}.sql.gz`.
-  - **Web fallback** (non-Tauri): uses a generic message ("File saved to your browser's default Downloads folder.") because the browser sandbox does not expose the user's actual download path.
-- Tauri detection reuses the existing pattern: `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`.
-- `window.location.href = /api/backups/.../download` continues to drive the actual download stream (server serves the file via `Content-Disposition: attachment`). The download and the toast fire in parallel — toast is shown after `downloadDir()` resolves (or instantly on web if not in Tauri).
-- Toast duration is `6000ms` so the path remains visible long enough for the user to read/copy it.
+- [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) `handleDownload` behavior differs by platform:
+  - **Tauri desktop**: reveals the backup file in the OS file manager via `revealItemInDir()` from `@tauri-apps/plugin-opener`. Since the file is already on local disk (server wrote it directly to the user's configured folder), there's no need to stream it through the WebView. The absolute path is stored in `Backup.file_path` at creation time so this works even if the user later changed their backup folder setting.
+  - **Web**: streams the file via `Content-Disposition: attachment` (the server reads the file and serves it as a download).
+- **Button icon** also changes by platform: Tauri uses `ExternalLink` icon, web uses `Download`. Title attribute shows "Show in folder" vs "Download backup".
+- Tauri detection: `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`.
+- Toast on Tauri: `"Revealed in file manager."` with the full path as description (6000ms). On web: `"Backup \"X\" downloaded successfully."`.
+
+## Tauri Opener Plugin (Reveal in File Manager)
+
+- **Plugin setup** (4 places):
+  1. **Rust crate** ([`src-tauri/Cargo.toml`](./src-tauri/Cargo.toml)): `tauri-plugin-opener = "2"`.
+  2. **Plugin registration** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): `.plugin(tauri_plugin_opener::init())` in `tauri::Builder::default()` chain.
+  3. **NPM package** ([`package.json`](./package.json)): `@tauri-apps/plugin-opener@^2.5.4`.
+  4. **Capability** ([`src-tauri/capabilities/default.json`](./src-tauri/capabilities/default.json)): `"opener:default"` in `permissions` array.
+- **Usage**:
+  ```ts
+  import { revealItemInDir } from '@tauri-apps/plugin-opener';
+  await revealItemInDir('/absolute/path/to/file.sql.gz');
+  // Opens Finder/Explorer/Files with the file selected
+  ```
+- **Path requirement**: must be an absolute path. Relative paths are not resolved — pass the stored absolute path from the DB.
+
+## Absolute File Path Storage (Local Backups)
+
+- `Backup.file_path` stores the **absolute filesystem path** of the gzipped backup (not relative). Set at backup creation time in [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `createLocalBackup()`.
+- **Why absolute (not relative)**: enables `revealItemInDir()` to work correctly even after the user changes their backup folder setting. The file's location at creation time is "frozen" in the DB.
+- `getBackupFilePath()` is now a passthrough (kept async for API stability) — it just returns the stored path directly.
+- The download endpoint still uses this path to stream the file. For cloud mode (R2), `file_path` is the S3 key (unchanged).
 
 ## Custom Backup Folder (Per-User)
 
@@ -1393,7 +1414,7 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - `getDefaultBackupDir()` — OS-aware: macOS/Linux → `${os.homedir()}/ERD Builder Pro`, Windows → `${os.homedir()}/Documents/ERD Builder Pro`.
   - `getBackupDirForUser(userId)` — reads `UserPreference.backupFolder`. If set: resolves absolute path (relative → `${homedir()}/<path>`). If null → returns `getDefaultBackupDir()`.
   - `ensureBackupDir(dir)` — recursive `mkdir` if missing.
-  - `createLocalBackup(backupId, userId)` — now returns `{ filePath, fileSize, fullPath }`. Stored `filePath` is **relative to the user's backup dir**, so the user can change their folder later without losing access to old backups (as long as the old folder is still mounted).
+  - `createLocalBackup(backupId, userId)` — now returns `{ filePath, fileSize, fullPath }`. Stored `filePath` is the **absolute filesystem path** (not relative) — see **Absolute File Path Storage (Local Backups)** above. This is what enables `revealItemInDir()` in Tauri even after the user changes their backup folder setting.
   - `getBackupFilePath(relativePath, userId)` — async (now takes `userId`).
 - **API** ([`server/routes/backups.ts`](./server/routes/backups.ts)):
   - `GET /api/backups/settings/folder` → `{ customFolder, defaultFolder, effectiveFolder }`. All three returned so the client can show the active path, the OS default, and whether a custom value is in effect.

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from "@/lib/api";
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import {
   Database,
   Download,
+  ExternalLink,
   Plus,
   CheckCircle2,
   XCircle,
@@ -45,9 +47,9 @@ interface BackupRecord {
 }
 
 interface BackupFolderSettings {
-  customFolder: string | null;
-  defaultFolder: string;
-  effectiveFolder: string;
+  custom_folder: string | null;
+  default_folder: string;
+  effective_folder: string;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -115,7 +117,7 @@ export const BackupsView = () => {
   const startEditFolder = () => {
     // Pre-fill with the current active path (custom if set, else default)
     // so the user edits from where they are, not from scratch.
-    setFolderDraft(folderSettings?.effectiveFolder ?? folderSettings?.defaultFolder ?? '');
+    setFolderDraft(folderSettings?.effective_folder ?? folderSettings?.default_folder ?? '');
     setIsEditingFolder(true);
   };
 
@@ -132,7 +134,7 @@ export const BackupsView = () => {
         directory: true,
         multiple: false,
         title: 'Select backup folder',
-        defaultPath: folderDraft || folderSettings?.effectiveFolder || undefined,
+        defaultPath: folderDraft || folderSettings?.effective_folder || undefined,
       });
       if (typeof selected === 'string' && selected) {
         setFolderDraft(selected);
@@ -173,21 +175,35 @@ export const BackupsView = () => {
     }
   };
 
-  const handleDownload = (backup: BackupRecord) => {
+  const handleDownload = async (backup: BackupRecord) => {
     if (backup.status !== 'completed' || !backup.file_path) return;
 
-    // Trigger download (sama tab, tanpa flicker tab baru)
+    // Desktop (Tauri): the file is already on local disk — reveal it in the
+    // OS file manager instead of streaming it back through the WebView.
+    // `file_path` is stored as an absolute path at backup-creation time,
+    // so this still works even if the user changed their backup folder later.
+    if (isTauri) {
+      try {
+        await revealItemInDir(backup.file_path);
+        toast.success(`Revealed in file manager.`, {
+          description: backup.file_path,
+          duration: 6000,
+        });
+      } catch (err) {
+        console.error('Failed to reveal in folder:', err);
+        toast.error('Failed to open file location', {
+          description: backup.file_path,
+        });
+      }
+      return;
+    }
+
+    // Web: stream the file via Content-Disposition download.
     window.location.href = `/api/backups/${backup.id}/download`;
 
-    // The server serves the file from the user's configured backup folder.
-    // In a regular browser the file is then re-saved to the OS Downloads dir;
-    // in Tauri the WebView keeps the Content-Disposition path but the OS
-    // download manager may still relocate it. Either way, the file's
-    // canonical location is the server-side backup folder.
-    const targetDir = folderSettings?.effectiveFolder;
-    const filename = `${backup.name}.sql.gz`;
+    const targetDir = folderSettings?.effective_folder;
     const description = targetDir
-      ? `File saved to ${targetDir}/${filename}`
+      ? `File saved to ${targetDir}/${backup.name}.sql.gz`
       : 'File downloaded to your browser.';
 
     toast.success(`Backup "${backup.name}" downloaded successfully.`, {
@@ -339,9 +355,9 @@ export const BackupsView = () => {
                 Cancel
               </Button>
             </div>
-            {folderSettings?.defaultFolder && folderDraft !== folderSettings.defaultFolder && (
+            {folderSettings?.default_folder && folderDraft !== folderSettings.default_folder && (
               <p className="text-[11px] text-muted-foreground">
-                Default location: <code className="text-[11px] font-mono">{folderSettings.defaultFolder}</code>
+                Default location: <code className="text-[11px] font-mono">{folderSettings.default_folder}</code>
               </p>
             )}
           </div>
@@ -351,7 +367,7 @@ export const BackupsView = () => {
               <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
                 <Folder className="w-3.5 h-3.5 shrink-0" />
                 <span className="font-medium text-foreground/80">Storage location</span>
-                {folderSettings?.customFolder && (
+                {folderSettings?.custom_folder && (
                   <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/20">
                     Custom
                   </Badge>
@@ -367,7 +383,7 @@ export const BackupsView = () => {
                   <Pencil className="w-3 h-3 mr-1" />
                   Change
                 </Button>
-                {folderSettings?.customFolder && (
+                {folderSettings?.custom_folder && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -384,9 +400,9 @@ export const BackupsView = () => {
             </div>
             <code
               className="text-xs font-mono text-foreground/80 break-all pl-5"
-              title={folderSettings?.effectiveFolder}
+              title={folderSettings?.effective_folder}
             >
-              {folderSettings?.effectiveFolder || 'Loading…'}
+              {folderSettings?.effective_folder || 'Loading…'}
             </code>
           </div>
         )}
@@ -464,20 +480,28 @@ export const BackupsView = () => {
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground opacity-50'}`}
                             disabled={backup.status !== 'completed' || !backup.file_path}
-                            onClick={() => handleDownload(backup)}
+                            onClick={() => void handleDownload(backup)}
                             title={
-                              backup.status !== 'completed' ? 'Backup still in progress...' : 
-                              !backup.file_path ? 'File path not recorded' : 
-                              'Download backup'
+                              backup.status !== 'completed'
+                                ? 'Backup still in progress...'
+                                : !backup.file_path
+                                  ? 'File path not recorded'
+                                  : isTauri
+                                    ? 'Show in folder'
+                                    : 'Download backup'
                             }
                           >
                             {backup.status === 'completed' && backup.file_path ? (
-                              <Download className="h-3.5 w-3.5" />
+                              isTauri ? (
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5" />
+                              )
                             ) : (
                               <Lock className="h-3.5 w-3.5" />
                             )}

@@ -70,7 +70,9 @@ export async function ensureBackupDir(dir: string): Promise<void> {
 
 /**
  * Create a database backup (SQLite or PostgreSQL)
- * Returns the path (relative to the user's backup dir) and the file size.
+ * Returns the absolute filesystem path of the gzipped backup file and its size.
+ * The absolute path is stored in DB so the file is locatable even if the
+ * user later changes their backup folder setting.
  */
 export async function createLocalBackup(
   backupId: string,
@@ -85,10 +87,10 @@ export async function createLocalBackup(
 
   if (isDesktopMode()) {
     // SQLite backup
-    return await backupSQLite(outputPath, backupDir);
+    return await backupSQLite(outputPath);
   } else if (isLocalPostgres()) {
     // PostgreSQL backup
-    return await backupPostgreSQL(outputPath, backupDir);
+    return await backupPostgreSQL(outputPath);
   } else {
     throw new Error("Local backup not supported for Supabase mode");
   }
@@ -98,8 +100,7 @@ export async function createLocalBackup(
  * Backup SQLite database using better-sqlite3 (no CLI required)
  */
 async function backupSQLite(
-  outputPath: string,
-  backupDir: string
+  outputPath: string
 ): Promise<{ filePath: string; fileSize: number; fullPath: string }> {
   const dbUrl = process.env.DATABASE_URL || "";
 
@@ -145,7 +146,7 @@ async function backupSQLite(
     logger.info({ outputPath, size }, "SQLite backup completed");
 
     return {
-      filePath: path.relative(backupDir, outputPath),
+      filePath: outputPath,
       fileSize: size,
       fullPath: outputPath,
     };
@@ -159,8 +160,7 @@ async function backupSQLite(
  * Backup PostgreSQL database
  */
 async function backupPostgreSQL(
-  outputPath: string,
-  backupDir: string
+  outputPath: string
 ): Promise<{ filePath: string; fileSize: number; fullPath: string }> {
   const dbUrl = process.env.DATABASE_URL || "";
 
@@ -192,7 +192,7 @@ async function backupPostgreSQL(
     logger.info({ outputPath, size }, "PostgreSQL backup completed");
 
     return {
-      filePath: path.relative(backupDir, outputPath),
+      filePath: outputPath,
       fileSize: size,
       fullPath: outputPath,
     };
@@ -203,14 +203,13 @@ async function backupPostgreSQL(
 }
 
 /**
- * Get the full path to a backup file for a specific user.
- * The stored `filePath` is relative to the user's backup dir; this joins it
- * with the resolved (possibly custom) directory for the user.
+ * Get the filesystem path for a backup file.
+ * Since `filePath` is now stored as an absolute path, this is a passthrough
+ * (kept async for API stability with existing call sites).
  */
 export async function getBackupFilePath(
-  relativePath: string,
-  userId: string
+  absolutePath: string,
+  _userId: string
 ): Promise<string> {
-  const backupDir = await getBackupDirForUser(userId);
-  return path.join(backupDir, relativePath);
+  return absolutePath;
 }

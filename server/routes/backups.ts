@@ -43,10 +43,13 @@ router.get(
       const defaultFolder = getDefaultBackupDir();
       const effectiveFolder = await getBackupDirForUser(user.id);
 
+      // Wire format is snake_case (camelToSnake middleware auto-converts camelCase,
+      // but returning snake_case directly keeps the response identical and avoids
+      // double-underscore artifacts if a value happens to contain a capital letter).
       res.json({
-        customFolder,
-        defaultFolder,
-        effectiveFolder,
+        custom_folder: customFolder,
+        default_folder: defaultFolder,
+        effective_folder: effectiveFolder,
       });
     } catch (error: any) {
       logger.error({ err: error }, "Get backup folder error:");
@@ -116,9 +119,9 @@ router.put(
 
       const effectiveFolder = await getBackupDirForUser(user.id);
       res.json({
-        customFolder: resolvedPath,
-        defaultFolder: getDefaultBackupDir(),
-        effectiveFolder,
+        custom_folder: resolvedPath,
+        default_folder: getDefaultBackupDir(),
+        effective_folder: effectiveFolder,
       });
     } catch (error: any) {
       logger.error({ err: error }, "Update backup folder error:");
