@@ -1,50 +1,94 @@
 import { exec } from "child_process";
 import { promisify } from "util";
-import { mkdir, copyFile, access, stat as fsStat, unlink } from "fs/promises";
+import { mkdir, access, stat as fsStat, unlink } from "fs/promises";
 import { createReadStream, createWriteStream } from "fs";
 import { createGzip } from "zlib";
 import { pipeline } from "stream/promises";
 import path from "path";
+import os from "os";
 import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres } from "./config.js";
+import { prisma } from "./prisma.js";
 import Database from "better-sqlite3";
 
 const execAsync = promisify(exec);
 
-export const BACKUPS_DIR = path.resolve(process.cwd(), "backups");
+/**
+ * App-specific folder name (display name) appended to user's home directory
+ * when no custom backup folder is set.
+ */
+const APP_FOLDER_NAME = "ERD Builder Pro";
 
 /**
- * Ensure backups directory exists
+ * Cross-platform default backup directory.
+ * - macOS / Linux: `~/ERD Builder Pro`
+ * - Windows: `~\Documents\ERD Builder Pro` (Windows convention)
  */
-export async function ensureBackupsDir(): Promise<void> {
+export function getDefaultBackupDir(): string {
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    return path.join(home, "Documents", APP_FOLDER_NAME);
+  }
+  return path.join(home, APP_FOLDER_NAME);
+}
+
+/**
+ * Resolve the effective backup directory for a user.
+ * - If user has a custom `backupFolder` in `UserPreference`, return that (resolved to absolute).
+ * - Otherwise, return the OS-aware default (`~/ERD Builder Pro`).
+ * - Null DB → default (no preference row yet).
+ */
+export async function getBackupDirForUser(userId: string): Promise<string> {
   try {
-    await access(BACKUPS_DIR);
+    const pref = await prisma?.userPreference.findUnique({
+      where: { userId },
+      select: { backupFolder: true },
+    });
+    const custom = pref?.backupFolder?.trim();
+    if (custom) {
+      // Resolve relative paths against the user's home directory.
+      if (path.isAbsolute(custom)) return custom;
+      return path.resolve(os.homedir(), custom);
+    }
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to read user backup preference");
+  }
+  return getDefaultBackupDir();
+}
+
+/**
+ * Ensure the backup directory exists (creates it recursively if missing).
+ */
+export async function ensureBackupDir(dir: string): Promise<void> {
+  try {
+    await access(dir);
   } catch {
-    await mkdir(BACKUPS_DIR, { recursive: true });
-    logger.info({ path: BACKUPS_DIR }, "Created backups directory");
+    await mkdir(dir, { recursive: true });
+    logger.info({ path: dir }, "Created backup directory");
   }
 }
 
 /**
  * Create a database backup (SQLite or PostgreSQL)
- * Returns the path to the gzipped backup file
+ * Returns the path (relative to the user's backup dir) and the file size.
  */
 export async function createLocalBackup(
   backupId: string,
   userId: string
-): Promise<{ filePath: string; fileSize: number }> {
-  await ensureBackupsDir();
+): Promise<{ filePath: string; fileSize: number; fullPath: string }> {
+  const backupDir = await getBackupDirForUser(userId);
+  await ensureBackupDir(backupDir);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup_${backupId}_${timestamp}.sql.gz`;
-  const outputPath = path.join(BACKUPS_DIR, filename);
+  const outputPath = path.join(backupDir, filename);
 
   if (isDesktopMode()) {
     // SQLite backup
-    return await backupSQLite(outputPath);
+    return await backupSQLite(outputPath, backupDir);
   } else if (isLocalPostgres()) {
     // PostgreSQL backup
-    return await backupPostgreSQL(outputPath);
+    return await backupPostgreSQL(outputPath, backupDir);
   } else {
     throw new Error("Local backup not supported for Supabase mode");
   }
@@ -53,9 +97,12 @@ export async function createLocalBackup(
 /**
  * Backup SQLite database using better-sqlite3 (no CLI required)
  */
-async function backupSQLite(outputPath: string): Promise<{ filePath: string; fileSize: number }> {
+async function backupSQLite(
+  outputPath: string,
+  backupDir: string
+): Promise<{ filePath: string; fileSize: number; fullPath: string }> {
   const dbUrl = process.env.DATABASE_URL || "";
-  
+
   // Extract file path from DATABASE_URL (e.g., "file:./data.db")
   let dbPath = dbUrl.replace(/^file:/, "").trim();
   if (!dbPath.endsWith(".db")) {
@@ -73,7 +120,7 @@ async function backupSQLite(outputPath: string): Promise<{ filePath: string; fil
 
     // Create temporary backup using better-sqlite3 (no CLI required)
     const tempPath = outputPath.replace(".gz", "");
-    
+
     const db = new Database(dbPath, { readonly: true });
     try {
       // Use SQLite backup API via better-sqlite3
@@ -98,8 +145,9 @@ async function backupSQLite(outputPath: string): Promise<{ filePath: string; fil
     logger.info({ outputPath, size }, "SQLite backup completed");
 
     return {
-      filePath: path.relative(BACKUPS_DIR, outputPath),
+      filePath: path.relative(backupDir, outputPath),
       fileSize: size,
+      fullPath: outputPath,
     };
   } catch (error: any) {
     logger.error({ err: error, dbPath }, "SQLite backup failed");
@@ -110,7 +158,10 @@ async function backupSQLite(outputPath: string): Promise<{ filePath: string; fil
 /**
  * Backup PostgreSQL database
  */
-async function backupPostgreSQL(outputPath: string): Promise<{ filePath: string; fileSize: number }> {
+async function backupPostgreSQL(
+  outputPath: string,
+  backupDir: string
+): Promise<{ filePath: string; fileSize: number; fullPath: string }> {
   const dbUrl = process.env.DATABASE_URL || "";
 
   logger.info({ outputPath }, "Starting PostgreSQL backup");
@@ -118,7 +169,7 @@ async function backupPostgreSQL(outputPath: string): Promise<{ filePath: string;
   try {
     // Create temporary uncompressed backup using pg_dump
     const tempPath = outputPath.replace(".gz", "");
-    
+
     // pg_dump will use DATABASE_URL environment variable
     await execAsync(`pg_dump "${dbUrl}" > "${tempPath}"`, {
       env: { ...process.env },
@@ -141,8 +192,9 @@ async function backupPostgreSQL(outputPath: string): Promise<{ filePath: string;
     logger.info({ outputPath, size }, "PostgreSQL backup completed");
 
     return {
-      filePath: path.relative(BACKUPS_DIR, outputPath),
+      filePath: path.relative(backupDir, outputPath),
       fileSize: size,
+      fullPath: outputPath,
     };
   } catch (error: any) {
     logger.error({ err: error }, "PostgreSQL backup failed");
@@ -151,8 +203,14 @@ async function backupPostgreSQL(outputPath: string): Promise<{ filePath: string;
 }
 
 /**
- * Get the full path to a backup file
+ * Get the full path to a backup file for a specific user.
+ * The stored `filePath` is relative to the user's backup dir; this joins it
+ * with the resolved (possibly custom) directory for the user.
  */
-export function getBackupFilePath(relativePath: string): string {
-  return path.join(BACKUPS_DIR, relativePath);
+export async function getBackupFilePath(
+  relativePath: string,
+  userId: string
+): Promise<string> {
+  const backupDir = await getBackupDirForUser(userId);
+  return path.join(backupDir, relativePath);
 }

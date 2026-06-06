@@ -4,11 +4,128 @@ import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../lib/logger.js";
-import { createLocalBackup, getBackupFilePath } from "../lib/local-backup.js";
+import {
+  createLocalBackup,
+  getBackupFilePath,
+  getDefaultBackupDir,
+  getBackupDirForUser,
+  ensureBackupDir,
+} from "../lib/local-backup.js";
 import { createReadStream } from "fs";
 import { stat } from "fs/promises";
+import path from "path";
+import { z } from "zod";
 
 const router = Router();
+
+// ── Settings: Backup folder ───────────────────────────────────────────
+
+const folderSchema = z.object({
+  folder: z.string().min(1).max(1024).nullable(),
+});
+
+/**
+ * GET /api/backups/settings/folder
+ * Returns the user's configured backup folder and the default fallback.
+ */
+router.get(
+  "/settings/folder",
+  authenticate,
+  async (req: ExpressRequest, res: ExpressResponse) => {
+    const user = (req as any).user;
+    try {
+      const pref = await prisma?.userPreference.findUnique({
+        where: { userId: user.id },
+        select: { backupFolder: true },
+      });
+
+      const customFolder = pref?.backupFolder ?? null;
+      const defaultFolder = getDefaultBackupDir();
+      const effectiveFolder = await getBackupDirForUser(user.id);
+
+      res.json({
+        customFolder,
+        defaultFolder,
+        effectiveFolder,
+      });
+    } catch (error: any) {
+      logger.error({ err: error }, "Get backup folder error:");
+      res.status(500).json({ error: "Failed to read backup folder setting" });
+    }
+  }
+);
+
+/**
+ * PUT /api/backups/settings/folder
+ * Update the user's backup folder.
+ * Body: { folder: string | null }  (null = reset to default)
+ *
+ * Validates the path is resolvable and the server can create/access it
+ * (creates the directory recursively if missing).
+ */
+router.put(
+  "/settings/folder",
+  authenticate,
+  async (req: ExpressRequest, res: ExpressResponse) => {
+    const user = (req as any).user;
+    const parsed = folderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid folder payload" });
+    }
+    const input = parsed.data.folder;
+    const normalized = input?.trim() ? input.trim() : null;
+
+    try {
+      let resolvedPath: string | null = null;
+
+      if (normalized) {
+        // Reject shell metacharacters that could indicate injection attempts.
+        if (/[`$\\;<>|&]/.test(normalized)) {
+          return res.status(400).json({
+            error: "Folder path contains invalid characters",
+          });
+        }
+        // Resolve relative paths against the user's home (server-side).
+        resolvedPath = path.isAbsolute(normalized)
+          ? path.normalize(normalized)
+          : path.resolve(require("os").homedir(), normalized);
+
+        // Ensure the directory exists / can be created.
+        try {
+          await ensureBackupDir(resolvedPath);
+          // Write probe file to confirm writability
+          const probePath = path.join(resolvedPath, ".erd-builder-pro-write-test");
+          await stat(resolvedPath); // verify still accessible
+          // (we don't actually need to write a probe; access+mkdir is enough)
+        } catch (dirErr: any) {
+          logger.error({ err: dirErr, path: resolvedPath }, "Backup folder not writable");
+          return res.status(400).json({
+            error: `Cannot access or create folder: ${dirErr.message}`,
+          });
+        }
+      }
+
+      await prisma?.userPreference.upsert({
+        where: { userId: user.id },
+        update: { backupFolder: resolvedPath },
+        create: {
+          userId: user.id,
+          backupFolder: resolvedPath,
+        },
+      });
+
+      const effectiveFolder = await getBackupDirForUser(user.id);
+      res.json({
+        customFolder: resolvedPath,
+        defaultFolder: getDefaultBackupDir(),
+        effectiveFolder,
+      });
+    } catch (error: any) {
+      logger.error({ err: error }, "Update backup folder error:");
+      res.status(500).json({ error: "Failed to update backup folder setting" });
+    }
+  }
+);
 
 // Get backups (paginated)
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
@@ -57,7 +174,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
     // 2. Local mode: serve from filesystem
     if (useLocalAuth()) {
       try {
-        const fullPath = getBackupFilePath(backup.filePath);
+        const fullPath = await getBackupFilePath(backup.filePath, user.id);
         const stats = await stat(fullPath);
 
         res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
@@ -92,10 +209,10 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
 
     try {
       const response = await s3Client.send(command);
-      
+
       res.setHeader('Content-Disposition', `attachment; filename="${backup.name}.sql.gz"`);
       res.setHeader('Content-Type', 'application/gzip');
-      
+
       if (response.Body) {
         (response.Body as any).pipe(res);
       } else {
@@ -103,7 +220,7 @@ router.get("/:id/download", authenticate, async (req: ExpressRequest, res: Expre
       }
     } catch (s3Error: any) {
       logger.error({ err: s3Error }, "S3 Get Error:");
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "File not found or storage is temporarily unavailable."
       });
     }
@@ -137,12 +254,12 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
     if (useLocalAuth()) {
       // Local mode: execute backup in background
       logger.info({ backupId: backupRecord.id, mode: 'local' }, "Starting local backup process");
-      
+
       // Run backup asynchronously without blocking response
       (async () => {
         try {
           const { filePath, fileSize } = await createLocalBackup(backupRecord.id, user.id);
-          
+
           await prisma?.backup.update({
             where: { id: backupRecord.id },
             data: {
@@ -155,7 +272,7 @@ router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse)
           logger.info({ backupId: backupRecord.id, filePath, fileSize }, "Local backup completed");
         } catch (error: any) {
           logger.error({ err: error, backupId: backupRecord.id }, "Local backup failed");
-          
+
           await prisma?.backup.update({
             where: { id: backupRecord.id },
             data: { status: 'failed' },

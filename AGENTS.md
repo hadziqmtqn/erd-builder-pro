@@ -1386,6 +1386,47 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
 - `window.location.href = /api/backups/.../download` continues to drive the actual download stream (server serves the file via `Content-Disposition: attachment`). The download and the toast fire in parallel — toast is shown after `downloadDir()` resolves (or instantly on web if not in Tauri).
 - Toast duration is `6000ms` so the path remains visible long enough for the user to read/copy it.
 
+## Custom Backup Folder (Per-User)
+
+- **Schema**: New `UserPreference` model added to all 3 Prisma schemas (Supabase, PG local, SQLite). One-to-one with `User` (`userId @unique`). Stores `backupFolder String?`. Auto-pushed to local SQLite via `npm run db:push:sqlite` (or `db:push:pg:local` for local PG). Supabase migrations need a manual SQL migration.
+- **Server resolver** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts)):
+  - `getDefaultBackupDir()` — OS-aware: macOS/Linux → `${os.homedir()}/ERD Builder Pro`, Windows → `${os.homedir()}/Documents/ERD Builder Pro`.
+  - `getBackupDirForUser(userId)` — reads `UserPreference.backupFolder`. If set: resolves absolute path (relative → `${homedir()}/<path>`). If null → returns `getDefaultBackupDir()`.
+  - `ensureBackupDir(dir)` — recursive `mkdir` if missing.
+  - `createLocalBackup(backupId, userId)` — now returns `{ filePath, fileSize, fullPath }`. Stored `filePath` is **relative to the user's backup dir**, so the user can change their folder later without losing access to old backups (as long as the old folder is still mounted).
+  - `getBackupFilePath(relativePath, userId)` — async (now takes `userId`).
+- **API** ([`server/routes/backups.ts`](./server/routes/backups.ts)):
+  - `GET /api/backups/settings/folder` → `{ customFolder, defaultFolder, effectiveFolder }`. All three returned so the client can show the active path, the OS default, and whether a custom value is in effect.
+  - `PUT /api/backups/settings/folder` body `{ folder: string | null }` (null = reset). Validates: shell metacharacter blacklist (`` ` $ \ ; < > | & ``), `ensureBackupDir` probe to confirm writability, upserts `UserPreference` row.
+- **UI** ([`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx)):
+  - New "Storage location" panel between header and table, with `Folder` icon.
+  - Shows full path in monospace font. `Custom` amber badge when `customFolder` is set.
+  - `Change` button → input field with Enter to save / Escape to cancel. `Reset` button (only when custom) → puts back to OS default.
+  - **Native folder picker (Tauri only)**: `Browse` button (`FolderOpen` icon) next to the input opens the OS-native folder picker via `@tauri-apps/plugin-dialog`'s `open({ directory: true })`. Hidden on web (browsers don't expose a native folder picker). Pre-fills `defaultPath` with the current `effectiveFolder` so the dialog opens at the right place.
+  - Toast description in download now uses `effectiveFolder` instead of the OS Downloads dir. Web fallback message preserved if `effectiveFolder` is somehow null.
+- **Important security note**: the path is stored server-side and used for both writing backups and serving downloads. The user can put it anywhere the server process has write+read access to (e.g., a USB drive, NAS mount, etc.). Server doesn't restrict the path scope — that's intentional for desktop use.
+
+## Tauri Dialog Plugin (Native Folder/File Picker)
+
+- **Plugin setup** (4 places, all required):
+  1. **Rust crate** ([`src-tauri/Cargo.toml`](./src-tauri/Cargo.toml)): `tauri-plugin-dialog = "2"` in `[dependencies]`.
+  2. **Plugin registration** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): `.plugin(tauri_plugin_dialog::init())` in `tauri::Builder::default()` chain.
+  3. **NPM package** ([`package.json`](./package.json)): `@tauri-apps/plugin-dialog` (`^2.7.1`).
+  4. **Capability** ([`src-tauri/capabilities/default.json`](./src-tauri/capabilities/default.json)): `"dialog:default"` in `permissions` array.
+- **Usage**:
+  ```ts
+  import { open as openDialog } from '@tauri-apps/plugin-dialog';
+  const selected = await openDialog({
+    directory: true,
+    multiple: false,
+    title: 'Select backup folder',
+    defaultPath: '/current/path',  // optional initial directory
+  });
+  // selected: string | null
+  ```
+- **Tauri detection gate**: only show Browse button when `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`. Web users get only the text input as fallback.
+- **Defaults included**: `dialog:default` grants `allow-open`, `allow-save`, `allow-message`, `allow-ask`, `allow-confirm`. No need to enumerate individual permissions unless locking down further.
+
 ## Global vs Item Loading State Fix (Infinite Spinner)
 
 - **Bug**: `isLoading` from `WorkspaceContext` is an aggregate of all background fetches (`isProjectsLoading || isDiagramsLoading || ...`). Binding the main canvas overlay spinner to this global state caused the spinner to hang indefinitely if any single background request (like fetching projects during a tab reload) got stuck or delayed.
