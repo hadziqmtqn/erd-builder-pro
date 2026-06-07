@@ -21,9 +21,10 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String?
-  password  String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
+  password      String
+  isSuperAdmin  Boolean? @map("is_super_admin")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @map("updated_at")
 
   diagrams        Diagram[]
   notes           Note[]

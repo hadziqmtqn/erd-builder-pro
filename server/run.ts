@@ -21,6 +21,6 @@ if (isProd) {
   }
 }
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, "127.0.0.1", () => {
   console.log(`Server running on http://localhost:${PORT} [${isProd ? "production" : "development"}]`);
 });

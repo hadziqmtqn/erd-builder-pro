@@ -617,7 +617,7 @@ src/components/ai/
 - **Fix**: Moved all AI Settings CRUD (providers, configs, models, prompts, initialize) to server API at `/api/ai/settings/*`.
 - **Server file**: [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) — Express router with `authenticate` middleware, mounted at `app.use("/api/ai/settings", aiSettingsRouter)` in [`server/index.ts`](./server/index.ts).
 - **Client file**: [`src/hooks/useAISettings.ts`](./src/hooks/useAISettings.ts) — rewritten to use `apiFetch` for all calls instead of direct `supabase` client. No `VITE_SUPABASE_URL` dependency.
-- **Route list**: `GET/POST /configs`, `GET/POST /models`, `PUT/DELETE /models/:id`, `GET/POST /prompts`, `DELETE /prompts/:id`, `PUT /prompts/:id/toggle-default`, `POST /initialize`, `PUT /providers/:id`, `GET /providers`.
+- **Route list**: `GET/POST /configs`, `GET/POST /models`, `PUT/DELETE /models/:id`, `GET /configs`, `GET /prompts/default`, `DELETE /prompts/:id`, `PUT /prompts/:id/toggle-default`, `POST /initialize`, `PUT /providers/:id`, `GET /providers`.
 - **No conflict**: Express router for `/api/ai` (proxy, `/api/ai/proxy`) and `/api/ai/settings` (settings) are separate mount points — no path overlap.
 - **Targeted fetch optimization**: `fetchModelsData()` and `fetchPromptsData()` replace `fetchData()` calls in model/prompt handlers — avoids re-fetching providers/configs on every CRUD operation.
 
@@ -828,7 +828,7 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 5. **`selectedGroupNodeIds` stable empty set**: uses `emptySetRef` (`useRef(new Set<string>())`) instead of `new Set<string>()` when `!selectedGroup` — prevents creating a new Set reference on every render, which used to force `memoizedNodes` useMemo to recompute on every non-drag re-render (AIActionContext sync, saveFlowchart state update), cascading into unnecessary React Flow reconciliation of all nodes.
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
-- Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
+- Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes`, not on every data sync — prevents auto-save cycle from closing modal dialogs.
 - Init effect **skips loading default `initialNodes`/`initialEdges` when `pending_create_flowchart_json` or `pending_update_flowchart_json` exists in localStorage** — prevents brief flash of dummy flowchart before AI content replaces it (`FlowchartView.tsx:321`).
 - **`pendingContentAppliedRef` — Guest mode Create Flowchart content not appearing fix** ([`FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)): ref set to `true` by pending effect after applying AI content. Init effect guards `setNodes`/`setEdges` with `if (!pendingContentAppliedRef.current)` to prevent overwriting canvas when `activeFlowchart.data` transitions from `undefined` → `''` (after `selectFlowchart` resolves in Guest mode). Ref reset to `false` in init effect's `flowchartChanged` block when navigating to a different flowchart.
 - **`saveFlowchart` Guest mode React state sync** ([`useFlowcharts.ts`](./src/hooks/useFlowcharts.ts):277-283): after saving to IndexedDB, calls `setFlowcharts` to update `activeFlowchart.data` immediately — without this, the workspace context never reflects the saved data until auto-save fires or page reloads.
@@ -938,7 +938,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 
 
-**Special instructions for Edit Columns prompt:**
+**Special instructions for Edit Columns prompt**:
 - When multiple tables selected, prompt shows ALL selected tables with column structures
 - Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Click the **Append** button to apply changes to the admins table.")
 - Multi-table JSON format: `{"table_name": {"mutations": [...]}}` — per-table key, not an array of sets
@@ -1604,7 +1604,7 @@ All `String.prototype.substr()` (deprecated) replaced with `substring()`:
 
 Unified dialog for all ERD export (schema + visual). Replaces submenu Export in `NavActionsMenu` (previously 3 callbacks: `onExportSQL`, `onExportPDF`, `onExportImage`) with a single `onExportAll` callback.
 
-**Format tabs:**
+**Format tabs**:
 - **Schema group**: MySQL, PostgreSQL, Laravel Migration, Laravel Model, TypeScript, Prisma, Zod — generated via `src/lib/sql-generator-all.ts` (bulk generation from `src/lib/sql-generator.ts` per-entity functions)
 - **Visual group**: PDF, SVG — with `Experimental` badge (`FlaskConical` icon + amber styling)
 
@@ -1627,7 +1627,7 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 - `getExtension(format)` — file extension per format.
 - Filenames use singularized PascalCase matching generated code (e.g. `User.php`, `User.ts`). Migration filenames keep plural per Laravel convention (`create_users_table.php`).
 
-**Generator best-practice fixes:**
+**Generator best-practice fixes**:
 - `generateLaravelMigration`: `$table->enum()` → `$table->string()` (Laravel 11+ removed `enum` support). FK constraints now generated inline via `$table->foreign()->references()->on()` using `buildEntityFkMap()`.
 - `generateLaravelModel`: adds `protected $table = '{table}'` when singularized model name differs from table name (e.g. `User` vs `users`) — prevents Eloquent pluralization mismatch.
 - `generateTypeScript`: `created_at`/`updated_at` no longer hardcoded — only appended if absent from entity columns.
@@ -1635,15 +1635,15 @@ SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
 - `generateZod`: `z.string()` → `z.string().uuid()` for UUID types, `z.string().datetime()` for datetime/timestamp, `z.string().date()` for date, `z.record(z.unknown())` for json. Schema variable name uses singular camelCase (`userSchema`), filename `UserSchema.ts`.
 - `toPascalCase(name, shouldSingularize?)` exported from `sql-generator.ts` — supports `shouldSingularize` parameter. Used by `sql-generator-all.ts` for filename generation.
 
-**Key behaviors:**
+**Key behaviors**:
 - Visual tabs: description + `Generate PDF/SVG` button that calls `onExportPDF`/`onExportImage` callback (from `useImageExporter.ts`)
 - Dialog only appears for `view === 'erd'` (guard in `AppLayout.tsx`)
 - `NavActionsMenu` ERD Export submenu replaced with a single "Export All" item → `onExportAll` → `setIsExportAllOpen(true)`
 
-**File changes:**
+**File changes**:
 - **NEW** [`src/components/modals/ExportAllDialog.tsx`](./src/components/modals/ExportAllDialog.tsx) — dialog component
 - **NEW** [`src/lib/sql-generator-all.ts`](./src/lib/sql-generator-all.ts) — bulk schema generation, per-file export, FK extraction
-- **MODIFIED** [`src/lib/sql-generator.ts`](./src/lib/sql-generator.ts) — `generateLaravelMigration` FK + string() fix, `generateLaravelModel` `$table` fix, conditional timestamps, Zod type improvements, exported `toPascalCase`
+- **MODIFIED** [`src/lib/sql-generator.ts`](./src/lib/sql-generator.ts) — `generateLaravelMigration`: `z.string()` → `z.string().uuid()` for UUID types, `z.string().datetime()` for datetime/timestamp, `z.string().date()` for date, `z.record(z.unknown())` for json. Schema variable name uses singular camelCase (`userSchema`), filename `UserSchema.ts`.
 - **MODIFIED** [`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx) — `onExportAll` prop + single menu item
 - **MODIFIED** [`src/components/MainHeader.tsx`](./src/components/MainHeader.tsx) — `onExportAll` prop pass-through
 - **MODIFIED** [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx) — `isExportAllOpen` state + `ExportAllDialog` render
@@ -1851,3 +1851,105 @@ Post-login spinner (5-8s) caused by:
 #### Client-Side
 - **DashboardRoute** ([`src/routes/DashboardRoute.tsx`](./src/routes/DashboardRoute.tsx)): removed full-page loading spinner on initial mount. Dashboard renders immediately — stat cards (0), recent docs (empty), workspace (empty) fill in progressively as data arrives.
 - **useTableViewPagination** ([`src/hooks/useTableViewPagination.ts`](./src/hooks/useTableViewPagination.ts)): added `isTableView` guard (`pathname.startsWith('/table/')`) — pagination fetches now only fire on actual table routes, not on dashboard or editor routes. Eliminates redundant duplicate fetch on initial mount.
+````
+This is the description of what the code block changes:
+<changeDescription>
+Add desktop build configuration section at end of AGENTS.md
+</changeDescription>
+
+This is the code block that represents the suggested code change:
+````markdown
+## Desktop Build Configuration (Tauri DMG)
+
+### Architecture
+
+The desktop app (Tauri v2) bundles three components:
+1. **Frontend** — React + Vite → `dist/` (static HTML/JS/CSS)
+2. **Backend** — Express.js + Prisma → `dist-server/index.js` (bundled via esbuild)
+3. **Native dependencies** — `better-sqlite3`, `@prisma/client`, `@prisma/adapter-better-sqlite3`, Prisma engine → `dist-server/node_modules/`
+
+### Build Pipeline
+
+**Trigger**: `npm run build:desktop` (called from `tauri.conf.json` `beforeBuildCommand`)
+
+**Script**: [`scripts/build-server.js`](./scripts/build-server.js)
+1. Bundles `server/run.ts` + all imports via esbuild → `dist-server/index.js`
+2. Externalizes native modules (better-sqlite3, @prisma/*, prisma)
+3. Copies runtime node_modules to `dist-server/node_modules/`:
+   - `.prisma/client/` (Prisma generated client + engine binaries)
+   - `@prisma/` (adapter packages + client runtime)
+   - `better-sqlite3/` (SQLite native addon)
+   - Optionally `pg/` + `@prisma/adapter-pg/` (PostgreSQL — kept for local PG mode)
+4. Copies `prisma/schema.sqlite.prisma` → `dist-server/prisma/schema.prisma`
+5. Generates `prisma-client-index.js` shim for Prisma client resolution
+
+### Tauri Config
+
+**File**: [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json)
+- `beforeBuildCommand`: `"npm run build:desktop"` — runs esbuild bundler + Prisma generate + Vite
+- `bundle.resources`: `["dist-server/**"]` — includes the bundled server in the .app bundle
+- Server is launched at runtime via `std::process::Command::new("node")`
+
+### Rust Backend (Server Launch)
+
+**File**: [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)
+
+On app startup (release mode only):
+1. Resolves resource directory → finds `dist-server/index.js`
+2. Resolves app data directory → creates it if missing
+3. Spawns Node.js child process with:
+   - `NODE_PATH` → bundled node_modules path (for native modules)
+   - `DATABASE_URL` → `file:{app_data_dir}/data.db` (SQLite DB in app data dir)
+   - `PORT` → `3000`
+   - `current_dir` → app data directory
+4. Manages `ServerProcess` state (Mutex<Option<Child>>)
+5. On app exit (`RunEvent::Exit`): kills child process
+
+The server auto-creates the SQLite database on first Prisma query.
+
+### Database Location
+
+- **Development**: `DATABASE_URL=file:./data.db` — in project root
+- **Production (Tauri DMG)**: `~/Library/Application Support/com.erdbuilderpro.app/data.db` (auto-resolved by `app.path().app_data_dir()`)
+- The first Prisma query (`prisma.$connect()`) auto-creates the `data.db` file using better-sqlite3
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| [`scripts/build-server.js`](./scripts/build-server.js) | esbuild server bundler + native module copier |
+| [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
+| [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: spawns Node.js server, kills on exit |
+| [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
+
+### Build & Release Commands
+
+```bash
+# Development (hot-reload)
+npm run dev:tauri
+
+# Production build (DMG)
+npm run build:desktop          # step 1: bundle server + frontend
+npx tauri build                # step 2: build DMG (sign, notarize, package)
+
+# Or one command:
+npx tauri build                # runs beforeBuildCommand → build:desktop automatically
+```
+
+### Important Notes
+
+- **`node` must be available**: The bundled app spawns `node` at runtime. If the user doesn't have Node.js installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
+- **better-sqlite3 is native**: This module compiles a `.node` native addon during `npm install`. It MUST be external from esbuild and copied as-is to `dist-server/node_modules/`. The `.prisma/client/` folder contains the Prisma engine binary (`libquery_engine-*`), also native.
+- **esbuild NOT in package.json**: `build-server.js` calls `require('esbuild')` — if esbuild is not installed, use `npx esbuild` or install via `npm install -D esbuild`.
+
+### Prisma 7 CLI `db push` — `--url` flag required
+
+- **Symptom**: First launch of the bundled DMG hangs at "Preparing…" forever; `~/Library/Logs/com.erdbuilderpro.app/server.log` shows:
+  ```
+  Prisma schema loaded from ../../../../../Applications/ERD Builder Pro.app/Contents/Resources/dist-server/prisma/schema.prisma.
+  Error: The datasource.url property is required in your Prisma config file when using prisma db push.
+  ```
+- **Root cause**: Prisma 7 removed `datasource.url` from `schema.prisma` files. The CLI now requires either a `prisma.config.ts` (with `datasource.url`) or an explicit `--url` flag. The Rust spawn sets `DATABASE_URL` env var, but Prisma 7's CLI does NOT read it from env — it only reads from the config file or the `--url` flag.
+- **Fix** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): added `.arg("--url")` + `.arg(format!("file:{}", db_path.display()))` to the `prisma db push` invocation. No `prisma.config.ts` bundling needed (which would require `dotenv` + transpilation overhead).
+- **Why not bundle a `prisma.config.js`**: a config file would need absolute paths (since `cwd` = app data dir, not project root) and would be re-loaded on every CLI call. The `--url` flag is the simplest, most portable solution.
+- **Symptom 2 — `Loaded Prisma config from prisma.config.ts.` message**: harmless. Prisma 7 looks for `prisma.config.{ts,js,mjs}` in `cwd`; when not found, it falls back to `--url` / env. The error appears only when NEITHER config URL NOR `--url` is provided.

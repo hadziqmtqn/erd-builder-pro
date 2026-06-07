@@ -161,7 +161,7 @@ router.post("/desktop-login", async (req: ExpressRequest, res: ExpressResponse) 
           email: desktopEmail,
           name: "Local User",
           password: hashPassword("desktop-local-pass"),
-          ...(userCount === 0 ? { is_super_admin: true } : {}),
+          ...(userCount === 0 ? { isSuperAdmin: true } : {}),
         } as any,
       });
     }

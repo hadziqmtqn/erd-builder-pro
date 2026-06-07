@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3098",
     "beforeDevCommand": "npm run dev:tauri:servers",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:desktop"
   },
   "app": {
     "windows": [
@@ -37,7 +37,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../dist-server/index.js": "dist-server/index.js",
+      "../dist-server/node_modules": "dist-server/node_modules",
+      "../dist-server/prisma": "dist-server/prisma"
+    }
   },
   "plugins": {
     "updater": {
