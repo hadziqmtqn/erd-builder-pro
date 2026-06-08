@@ -59,7 +59,7 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-let prisma: PrismaClient;
+let prisma: PrismaClient | null = null;
 
 try {
   prisma = globalThis.__prisma ?? createPrismaClient();
@@ -76,7 +76,12 @@ try {
   }
 } catch (err) {
   console.error("Failed to initialize Prisma client:", err);
-  throw err;
+  // CRITICAL: DO NOT throw here. A Prisma init failure must NOT crash the
+  // Node.js server process. The server should start without Prisma so that
+  // health-check endpoints (/api/me, etc.) can return graceful error responses
+  // instead of the frontend seeing a hanging connection.
+  // When prisma is null, all route handlers will safely return errors.
+  prisma = null;
 }
 
 export { prisma };

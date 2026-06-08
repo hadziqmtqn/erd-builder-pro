@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, setAuthToken, clearAuthToken } from '../lib/api';
 
 type AuthContextValue = {
   isAuthenticated: boolean | null;
@@ -37,21 +37,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(true);
           setIsGuest(false);
           setUser(data.user);
+          retryRef.current = 0;
+          return;
         } else {
           setIsAuthenticated(false);
           setIsGuest(false);
           setUser(null);
+          // Token in localStorage is invalid — clear it
+          clearAuthToken();
         }
       } else {
         setIsAuthenticated(false);
         setIsGuest(false);
         setUser(null);
+        clearAuthToken();
       }
       retryRef.current = 0;
     } catch (err) {
-      if (retryRef.current < 3) {
+      const isTauri = typeof window !== 'undefined' &&
+        !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+      // In Tauri mode the Node.js server starts asynchronously — retry
+      // indefinitely with exponential backoff until it becomes reachable.
+      // The server-side GET /api/me will auto-login once available.
+      const maxRetries = isTauri ? Infinity : 3;
+      if (retryRef.current < maxRetries) {
         retryRef.current++;
-        setTimeout(() => checkAuth(), 1500 * retryRef.current);
+        const delay = isTauri
+          ? Math.min(1500 * Math.pow(1.5, retryRef.current - 1), 10000)
+          : 1500 * retryRef.current;
+        setTimeout(() => checkAuth(), delay);
       }
     }
   }, []);
@@ -88,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    clearAuthToken();
     if (isGuest) {
       setIsAuthenticated(false);
       setIsGuest(false);

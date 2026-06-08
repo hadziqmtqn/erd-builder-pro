@@ -15,6 +15,10 @@ import {
 
 const router = Router();
 
+/** Desktop default credentials — embedded in the bundled app, not a secret. */
+const DESKTOP_DEFAULT_EMAIL = "local@desktop.dev";
+const DESKTOP_DEFAULT_PASSWORD = "desktop-local-pass";
+
 // Auth Config (Public)
 router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
   res.json({
@@ -22,6 +26,10 @@ router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
     isDesktop: isDesktopMode(),
     isLocalPostgres: isLocalPostgres(),
     supportsPasswordUpdate: isLocalPostgres(), // web pure PG only; desktop skips password
+    ...(isDesktopMode() ? {
+      desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,
+      desktopDefaultPassword: DESKTOP_DEFAULT_PASSWORD,
+    } : {}),
   });
 });
 
@@ -51,7 +59,9 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
       let user = existingUser;
       if (!user) {
         const userCount = await prisma.user.count();
-        if (userCount === 0) {
+        if (userCount === 0 || isDesktopMode()) {
+          // Desktop mode: auto-create the built-in desktop user on first login
+          // (safe — credentials are embedded in the bundled app, user must click Login)
           user = await prisma.user.create({
             data: {
               email: normalizedEmail,
@@ -71,9 +81,13 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
 
       const token = await createSession((user as any).id, (user as any).email, (user as any).name);
       const isSecure = isProd && req.protocol === 'https';
-      // In local auth mode, make cookie accessible to the client side for proper session persistence across reloads
+      const isDesktop = isDesktopMode();
+      // Desktop (Tauri) uses cross-origin requests (tauri:// → localhost:3099),
+      // so cookies with SameSite=Lax are NOT sent on API calls. We set the cookie
+      // anyway as a fallback (may work depending on WebView configuration), but the
+      // primary auth mechanism is the Authorization: Bearer header via the returned token.
       res.cookie("token", token, {
-        httpOnly: !useLocalAuth(),
+        httpOnly: !isDesktop,
         secure: isSecure,
         sameSite: "lax",
         path: "/",
@@ -81,6 +95,7 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
       });
       return res.json({
         success: true,
+        token,
         user: {
           id: (user as any).id,
           email: (user as any).email,
@@ -133,60 +148,27 @@ router.post("/login", validate(loginSchema), async (req: ExpressRequest, res: Ex
       return res.json({ success: true, user: authData.user });
     }
     res.status(401).json({ error: "Invalid credentials" });
-  } catch (err) {
+  } catch (err: any) {
     logger.error({ err }, "Auth error:");
-    res.status(500).json({ error: "Authentication failed" });
-  }
-});
 
-// Auto-login for Desktop mode (no manual input needed)
-router.post("/desktop-login", async (req: ExpressRequest, res: ExpressResponse) => {
-  try {
-    if (!isDesktopMode()) {
-      return res.status(403).json({ error: "Desktop auto-login is only available in desktop mode" });
-    }
-    if (!prisma) {
-      return res.status(500).json({ error: "Database not available" });
-    }
+    // Distinguish database-not-ready errors from real auth failures
+    const isDbError =
+      // SQLite Prisma adapter: "no such table" in raw better-sqlite3 error
+      err?.message?.includes("no such table") ||
+      // PostgreSQL Prisma adapter: "relation ... does not exist"
+      (typeof err?.message === "string" &&
+        err.message.includes("relation") &&
+        err.message.includes("does not exist")) ||
+      // Prisma generic known request error code for missing table
+      err?.code === "P2021";
 
-    const desktopEmail = "local@desktop.dev";
-    let user = await prisma.user.findFirst({
-      where: { email: desktopEmail } as any,
-    });
-
-    if (!user) {
-      const userCount = await prisma.user.count();
-      user = await prisma.user.create({
-        data: {
-          email: desktopEmail,
-          name: "Local User",
-          password: hashPassword("desktop-local-pass"),
-          ...(userCount === 0 ? { isSuperAdmin: true } : {}),
-        } as any,
+    if (isDbError) {
+      return res.status(503).json({
+        error: "Database not initialized. Please restart the application.",
       });
     }
 
-    const token = await createSession((user as any).id, (user as any).email, (user as any).name);
-    const isSecure = process.env.NODE_ENV === "production" && req.protocol === 'https';
-    res.cookie("token", token, {
-      httpOnly: !isDesktopMode(),
-      secure: isSecure,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({
-      success: true,
-      user: {
-        id: (user as any).id,
-        email: (user as any).email,
-        user_metadata: { name: (user as any).name },
-      },
-    });
-  } catch (err) {
-    logger.error({ err }, "Desktop auto-login error:");
-    res.status(500).json({ error: "Auto-login failed" });
+    res.status(500).json({ error: "Authentication failed" });
   }
 });
 
@@ -206,38 +188,48 @@ router.post("/logout", async (req: ExpressRequest, res: ExpressResponse) => {
   res.json({ success: true });
 });
 
-// Me
+// Me — validate existing session only. NO auto-login.
+// Desktop app shows a pre-filled login form instead.
 router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
-  const token = req.cookies.token as string | undefined;
-  if (!token) {
-    return res.json({ authenticated: false });
-  }
+  // Accept token from cookie OR Authorization header (cross-origin Tauri support)
+  const token = req.cookies.token as string | undefined ||
+    (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined);
 
   try {
     if (useLocalAuth()) {
-      const session = await getSession(token);
-      if (!session) {
+      if (!prisma) {
         return res.json({ authenticated: false });
       }
-      // Read user record (not session) so /me returns fresh name/email
-      // after account updates. The session is only used for auth verification.
-      const user = await prisma.user.findFirst({
-        where: { id: session.userId } as any,
-        select: { id: true, email: true, name: true },
-      });
-      if (!user) {
-        return res.json({ authenticated: false });
+
+      // Only validate an existing session token — never auto-login.
+      // Desktop app uses the pre-filled login form instead.
+      if (token) {
+        const session = await getSession(token);
+        if (session) {
+          const user = await prisma.user.findFirst({
+            where: { id: session.userId } as any,
+            select: { id: true, email: true, name: true },
+          });
+          if (user) {
+            return res.json({
+              authenticated: true,
+              user: {
+                id: (user as any).id,
+                email: (user as any).email,
+                user_metadata: { name: (user as any).name },
+              },
+            });
+          }
+        }
       }
-      return res.json({
-        authenticated: true,
-        user: {
-          id: (user as any).id,
-          email: (user as any).email,
-          user_metadata: { name: (user as any).name },
-        },
-      });
+
+      return res.json({ authenticated: false });
     }
 
+    // ── Web mode: Supabase auth ──
+    if (!token) {
+      return res.json({ authenticated: false });
+    }
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) {
       return res.json({ authenticated: false });

@@ -26,7 +26,7 @@
     "db:push:sqlite": "cross-env DB_VARIANT=sqlite DATABASE_URL=file:./data.db prisma db push",
     "db:seed:sqlite": "cross-env DB_VARIANT=sqlite DATABASE_URL=file:./data.db tsx prisma/seed.sqlite.ts",
     "dev:tauri:servers": "concurrently -n api,client \"npm run dev:desktop\" \"VITE_API_URL=http://localhost:3099 npm run dev:client -- --port 3098\"",
-    "dev:tauri": "export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev",
+    "dev:tauri": "npm run build:server && export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev",
     "dev:desktop": "rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && cross-env PORT=3099 DATABASE_URL=file:./data.db NODE_ENV=development tsx watch server/run.ts"
   },
   "dependencies": {

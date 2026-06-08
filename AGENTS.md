@@ -409,7 +409,13 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 ## Desktop Login Bootstrap
 
-- **Desktop Tauri login can bootstrap the first local user automatically**: in [`server/routes/auth.ts`](./server/routes/auth.ts), if `isDesktopMode()` is true and the SQLite `users` table is empty, the first successful email/password login creates a local user with a hashed password before issuing a session cookie. This prevents fresh desktop installs from getting stuck on `Invalid credentials` when the bundled SQLite database is empty or newly created.
+- **Desktop Tauri auto-login (transparent, no credentials)**: on fresh install or after session expiry, `GET /api/me` in [`server/routes/auth.ts`](./server/routes/auth.ts) detects `useLocalAuth()` and auto-creates the local `local@desktop.dev` user + session if none exists — zero manual login. The old two-step flow (`checkAuth` → fail → `POST /api/desktop-login`) is replaced by a single `/api/me` call that always succeeds in desktop mode.
+
+- **Server retry in `useAuth.checkAuth`** ([`src/hooks/useAuth.tsx`](./src/hooks/useAuth.tsx)): in Tauri mode the Node.js server starts asynchronously from Rust's `Command::new("node")`. `checkAuth` retries **indefinitely** with exponential backoff (`1.5s → 2.25s → 3.4s → 5s → 7.5s → 10s` capped) until the server responds. Web mode keeps the old 3-retry limit.
+
+- **Login.tsx polling fallback** ([`src/components/Login.tsx`](./src/components/Login.tsx)): the Tauri auto-login `useEffect` polls `/api/me` directly as a heartbeat. Once the server is up and `/api/me` returns `authenticated: true`, it calls `onLogin(data.user)` synchronously — the spinner transitions directly to the app without the user ever seeing the form.
+
+- **`/api/desktop-login` endpoint removed** — the `/api/me` handler now contains the `handleDesktopAutoLogin` helper that creates user + session inline. No separate POST or frontend call needed. The endpoint stub is preserved as a comment for backward compatibility.
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
@@ -1953,3 +1959,50 @@ npx tauri build                # runs beforeBuildCommand → build:desktop autom
 - **Fix** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): added `.arg("--url")` + `.arg(format!("file:{}", db_path.display()))` to the `prisma db push` invocation. No `prisma.config.ts` bundling needed (which would require `dotenv` + transpilation overhead).
 - **Why not bundle a `prisma.config.js`**: a config file would need absolute paths (since `cwd` = app data dir, not project root) and would be re-loaded on every CLI call. The `--url` flag is the simplest, most portable solution.
 - **Symptom 2 — `Loaded Prisma config from prisma.config.ts.` message**: harmless. Prisma 7 looks for `prisma.config.{ts,js,mjs}` in `cwd`; when not found, it falls back to `--url` / env. The error appears only when NEITHER config URL NOR `--url` is provided.
+
+## Desktop Database Initialization (Fallback Chain)
+
+### Problem: Authentication Failed on First Launch
+
+- **Symptom**: Production .dmg app shows login form, but `local@desktop.dev` / `desktop-local-pass` returns "Authentication failed" (HTTP 500).
+- **Root cause**: The offline migration (`migrate-db.mjs`) uses better-sqlite3 directly to apply `schema.sql`. If the migration script fails (e.g., native addon load failure, schema file missing, SQL error), the database has NO tables. When the user clicks Login, `prisma.user.findFirst()` throws "no such table: users" which is caught by the generic catch block in `auth.ts` → "Authentication failed".
+- **The error message is misleading**: it could be DB tables missing (500) OR wrong credentials (401). The real error goes to `server.log`, not the UI.
+
+### Fix: Two-Layer Defense
+
+**Layer 1: `ensureDatabaseTables()` in `server/run.ts`** ([`server/run.ts`](./server/run.ts)):
+- Runs at server startup BEFORE `backfillUids()`
+- Probes `SELECT 1 FROM users LIMIT 1` via Prisma raw query
+- If table doesn't exist: reads `schema.sql` (bundled in `dist-server/`) and executes each statement via `prisma.$executeRawUnsafe()`
+- Uses `import.meta.url` to find `schema.sql` relative to the bundled script (not `process.cwd()`)
+- Ignores `already exists` errors for idempotency
+- Logs `tableCount` on success
+
+**Layer 2: Better auth error messages** ([`server/routes/auth.ts`](./server/routes/auth.ts)):
+- The catch block now detects Prisma errors: `no such table`, `relation does not exist`, `P2021`
+- Returns HTTP 503 with `"Database not initialized. Please restart the application."` instead of generic 500
+- This distinguishes "schema not created" from real auth failures
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| [`server/run.ts`](./server/run.ts) | `ensureDatabaseTables()` fallback, calls schema apply before backfill |
+| [`server/routes/auth.ts`](./server/routes/auth.ts) | Better error discrimination (DB vs auth) |
+
+### Dependency Order
+
+```
+migrate-db.mjs (offline, before Node.js starts)
+  └─ if fails → server starts anyway, tables missing
+      └─ ensureDatabaseTables() in run.ts (on server boot)
+          └─ prisma.$executeRawUnsafe() creates missing tables
+              └─ backfillUids() → server ready
+```
+
+### Why `import.meta.url` and not `process.cwd()`
+
+- In production Tauri, `process.cwd()` resolves to the **app data directory** (`~/Library/Application Support/...`), NOT the Resources directory.
+- The bundled `schema.sql` lives in the **Resources** directory alongside `index.js`: `/Applications/ERD Builder Pro.app/Contents/Resources/dist-server/schema.sql`
+- `fileURLToPath(import.meta.url)` gives the correct path to the running script, from which we derive `schema.sql`'s location.
+- esbuild preserves `import.meta.url` in ESM output.

@@ -154,68 +154,50 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
       .unwrap_or_else(|| std::process::Stdio::null())
   };
 
-  // Before starting the server, run `prisma db push` to apply the schema
-  // to the freshly-created (empty) SQLite database. Without this the server
-  // starts but every query fails with "table does not exist".
+  // Before starting the server, apply the SQLite schema using the lightweight
+  // offline migration script. This replaces `prisma db push` (which would
+  // require bundling the 41MB prisma CLI), using a pre-generated schema.sql
+  // that is applied via better-sqlite3 directly.
   let db_path = app_data_dir.join("data.db");
   let needs_migration = !db_path.exists()
     || std::fs::metadata(&db_path).map(|m| m.len() == 0).unwrap_or(true);
 
   if needs_migration {
     log::info!(
-      "Running Prisma db push to initialize SQLite schema at {}",
+      "Running offline migration to initialize SQLite schema at {}",
       db_path.display()
     );
 
-    // `prisma db push` ships inside `node_modules/prisma/build/index.js` —
-    // we invoke it through node with the right env. Same code path as the
-    // Prisma CLI, just driven from Rust so we don't need a shell.
-    let prisma_cli = bundled_nm.join("prisma/build/index.js");
-    let prisma_schema = resource_dir.join("dist-server/prisma/schema.prisma");
+    let migrate_script = resource_dir.join("dist-server/migrate-db.mjs");
 
-    if !prisma_cli.exists() {
+    if !migrate_script.exists() {
       log::warn!(
-        "Prisma CLI not found at {:?} — skipping db push (server may fail)",
-        prisma_cli
+        "Migration script not found at {:?} — skipping db init (server may fail)",
+        migrate_script
       );
     } else {
       let migration_stdout = open_log();
-      let migration_stderr = open_log();
 
       let output = Command::new(&node_bin)
-        .arg(&prisma_cli)
-        .arg("db")
-        .arg("push")
-        .arg("--accept-data-loss")
-        .arg("--schema")
-        .arg(&prisma_schema)
-        // Prisma 7 removed `datasource.url` from schema files. The CLI
-        // now requires either a `prisma.config.ts` (with `datasource.url`)
-        // or an explicit `--url` flag at invocation. Bundling a config
-        // file is heavy (it needs dotenv + path resolution), so we pass
-        // the URL directly via the flag — no config file required.
-        .arg("--url")
-        .arg(format!("file:{}", db_path.display()))
+        .arg(&migrate_script)
+        .arg(db_path.to_string_lossy().to_string())
         .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
-        .env("DATABASE_URL", format!("file:{}", db_path.display()))
         .current_dir(&app_data_dir)
         .stdout(migration_stdout)
-        .stderr(migration_stderr)
+        .stderr(std::process::Stdio::piped())
         .output()
-        .map_err(|e| format!("Failed to run prisma db push: {}", e))?;
+        .map_err(|e| format!("Failed to run migration script: {}", e))?;
 
       if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-          "Prisma db push failed (exit {:?}):\nstdout: {}\nstderr: {}",
+        log::error!(
+          "Database migration failed (exit {:?}) — attempting to start server anyway: {}",
           output.status.code(),
-          stdout,
           stderr
-        )
-        .into());
+        );
+      } else {
+        log::info!("Database schema applied successfully via offline migration");
       }
-      log::info!("Prisma schema applied successfully");
     }
   }
 

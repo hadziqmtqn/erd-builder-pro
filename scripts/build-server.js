@@ -10,27 +10,69 @@
  * and must be available in node_modules at runtime. The build copies only
  * the minimal set of required node_modules for these externals.
  *
+ * The `prisma` CLI package is intentionally NOT included. Desktop uses a
+ * lightweight migrate-db.mjs script + pre-generated schema.sql instead.
+ *
  * Usage: node scripts/build-server.js
  */
 
 import { build } from "esbuild";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { execSync } from "child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const OUT_DIR = resolve(ROOT, "dist-server");
 
 // Native / Prisma modules that CANNOT be bundled by esbuild
+// NOTE: `prisma` CLI is intentionally excluded — it's heavy (~41MB + 150MB deps)
+// and only needed for `prisma db push`. We ship migrate-db.mjs instead.
 const EXTERNAL = [
   "@prisma/client",
   "@prisma/adapter-pg",
   "@prisma/adapter-better-sqlite3",
   "better-sqlite3",
   "pg",
-  "prisma",
 ];
+
+// Packages to NEVER copy — these are transitive deps of the `prisma` CLI
+// that aren't needed at runtime. SDK internals etc. that would bloat the bundle.
+const BLOCKLIST = new Set([
+  "prisma",
+  "@prisma/studio-core",
+  "@prisma/engines",
+  "@prisma/dev",
+  "@prisma/config",
+  "@prisma/query-plan-executor",
+  "@prisma/streams-local",
+  "@prisma/studio-server",
+  "@prisma/fetch-engine",
+  "chart.js",
+  "effect",
+  "fast-check",
+  "pure-rand",
+  "mysql2",
+  "postgres",
+  "@electric-sql",
+  "@electric-sql/pglite",
+  "@electric-sql/pglite-socket",
+  "@electric-sql/pglite-tools",
+  "hono",
+  "@hono/node-server",
+  "@hono",
+  "foreground-child",
+  "get-port-please",
+  "foreground-child",
+  "pg-cloudflare",
+  "jackspeak",
+  "path-scurry",
+  "signal-exit",
+  "c12",
+  "deepmerge-ts",
+  "empathic",
+]);
 
 async function main() {
   console.log("🧹 Cleaning dist-server/");
@@ -77,6 +119,21 @@ async function main() {
 
   function copyPackage(pkgName) {
     if (visited.has(pkgName)) return;
+
+    // Skip blacklisted packages (transitive deps of prisma CLI etc.)
+    if (BLOCKLIST.has(pkgName)) {
+      visited.add(pkgName);
+      console.log(`   (blocklisted: ${pkgName})`);
+      return;
+    }
+
+    // Skip TypeScript type definition packages — never needed at runtime
+    if (pkgName.startsWith("@types/")) {
+      visited.add(pkgName);
+      console.log(`   (skipped types: ${pkgName})`);
+      return;
+    }
+
     visited.add(pkgName);
 
     const src = resolve(ROOT, "node_modules", pkgName);
@@ -93,7 +150,24 @@ async function main() {
       force: true,
       filter: (srcPath) => {
         const base = srcPath.split("/").pop() || "";
-        return !base.startsWith(".") || base === ".prisma" || base === ".bin";
+        // Skip source maps in all packages
+        if (base.endsWith(".js.map") || base.endsWith(".mjs.map")) return false;
+        // Skip hidden files
+        if (base.startsWith(".") && base !== ".prisma" && base !== ".bin") return false;
+        // For @prisma/client/runtime, keep only core files + SQLite WASM
+        if (pkgName === "@prisma/client" && srcPath.includes("/runtime/")) {
+          // Keep: client.*, index-browser.*, wasm-compiler-edge.*
+          if (
+            base.startsWith("client.") ||
+            base.startsWith("index-browser.") ||
+            base.startsWith("wasm-compiler-edge.")
+          ) return true;
+          // Keep SQLite engine variants only
+          if (base.includes("sqlite")) return true;
+          // Skip all other DB engines and source maps
+          return false;
+        }
+        return true;
       },
     });
     console.log(`   → node_modules/${pkgName}`);
@@ -130,6 +204,48 @@ async function main() {
     mkdirSync(prismaOut, { recursive: true });
     copyFileSync(schemaSrc, resolve(prismaOut, "schema.prisma"));
     console.log("   → prisma/schema.prisma");
+  }
+
+  // 4. Generate offline migration SQL from Prisma schema.
+  //
+  // This replaces the need for `prisma db push` at runtime, which would
+  // require bundling the 41MB prisma CLI + ~150MB of its transitive deps.
+  // The generated schema.sql is applied by migrate-db.mjs using better-sqlite3.
+  console.log("🔧 Generating offline migration schema...");
+  const schemaSqlPath = resolve(OUT_DIR, "schema.sql");
+  const prismaSchemaSrc = resolve(ROOT, "prisma/schema.sqlite.prisma");
+  let schemaSql;
+  try {
+    // prisma outputs the SQL to stdout; warnings go to stderr (discarded).
+    // execSync with encoding='utf8' returns stdout as a plain string directly
+    const result = execSync(
+      `npx prisma migrate diff --from-empty --to-schema "${prismaSchemaSrc}" --script 2>/dev/null`,
+      { cwd: ROOT, encoding: "utf8", shell: true, timeout: 30000 }
+    );
+    schemaSql = (typeof result === "string" ? result : result.stdout || "").trim();
+  } catch (err) {
+    // Fallback: use pre-generated schema.sql from scripts/
+    const fallbackPath = resolve(ROOT, "scripts/schema.sql");
+    if (existsSync(fallbackPath)) {
+      schemaSql = readFileSync(fallbackPath, "utf8");
+      console.log("   ⚠️  prisma migrate diff failed, using pre-generated fallback");
+    } else {
+      console.error("   ❌ Failed to generate schema.sql and no fallback found");
+      process.exit(1);
+    }
+  }
+  if (schemaSql) {
+    writeFileSync(schemaSqlPath, schemaSql + "\n", "utf8");
+    console.log(`   → schema.sql (${schemaSql.split("\n").length} lines)`);
+  }
+
+  // 5. Copy the offline migration script
+  const migrateSrc = resolve(ROOT, "scripts/migrate-db.mjs");
+  if (existsSync(migrateSrc)) {
+    copyFileSync(migrateSrc, resolve(OUT_DIR, "migrate-db.mjs"));
+    console.log("   → migrate-db.mjs");
+  } else {
+    console.warn("   ⚠️  scripts/migrate-db.mjs not found");
   }
 
   console.log("✅ Server build complete!");

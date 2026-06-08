@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { scryptSync, randomBytes } from 'crypto';
 
@@ -8,13 +10,24 @@ function hashPassword(password: string): string {
   return `${salt}:${hash}`;
 }
 
-const url = process.env.DATABASE_URL || 'file:./data.db';
-const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url }),
-});
+function isSqliteUrl(url: string): boolean {
+  return url.startsWith('file:') || url.endsWith('.db');
+}
+
+const rawUrl = process.env.DATABASE_URL || 'file:./data.db';
+
+function resolveAdapter(): { adapter: PrismaBetterSqlite3 | PrismaPg; dbType: string } {
+  if (isSqliteUrl(rawUrl)) {
+    return { adapter: new PrismaBetterSqlite3({ url: rawUrl }), dbType: 'SQLite' };
+  }
+  return { adapter: new PrismaPg({ connectionString: rawUrl }), dbType: 'PostgreSQL' };
+}
+
+const { adapter, dbType } = resolveAdapter();
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log('Seeding SQLite database...');
+  console.log(`Seeding ${dbType} database...`);
 
   // ── Admin user ──
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@local.dev';

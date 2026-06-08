@@ -8,7 +8,7 @@ import App from './App.tsx';
 import { AuthProvider } from './hooks/useAuth';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
-import { API_BASE_URL } from './lib/api';
+import { API_BASE_URL, clearAuthToken } from './lib/api';
 
 // Detect Tauri and add data attribute for CSS targeting
 if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -32,6 +32,7 @@ window.fetch = async (...args) => {
   const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
   
   if (response.status === 401 && isApiRoute && !isAuthRoute && navigator.onLine && !isGuest) {
+    clearAuthToken();
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   
