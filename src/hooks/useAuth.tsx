@@ -34,6 +34,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated) {
+          // Store token from auto-login (desktop mode) or login response
+          if (data.token) setAuthToken(data.token);
           setIsAuthenticated(true);
           setIsGuest(false);
           setUser(data.user);
@@ -43,7 +45,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(false);
           setIsGuest(false);
           setUser(null);
-          // Token in localStorage is invalid — clear it
           clearAuthToken();
         }
       } else {

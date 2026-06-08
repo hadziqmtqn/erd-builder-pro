@@ -415,7 +415,24 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 - **Login.tsx polling fallback** ([`src/components/Login.tsx`](./src/components/Login.tsx)): the Tauri auto-login `useEffect` polls `/api/me` directly as a heartbeat. Once the server is up and `/api/me` returns `authenticated: true`, it calls `onLogin(data.user)` synchronously — the spinner transitions directly to the app without the user ever seeing the form.
 
-- **`/api/desktop-login` endpoint removed** — the `/api/me` handler now contains the `handleDesktopAutoLogin` helper that creates user + session inline. No separate POST or frontend call needed. The endpoint stub is preserved as a comment for backward compatibility.
+- **`/api/desktop-login` endpoint removed** — the `/api/me` handler now contains the `ensureDesktopUser` helper that creates user + session inline. No separate POST or frontend call needed.
+
+### Desktop Auto-Login (`/api/me`)
+
+**`ensureDesktopUser()`** in [`server/routes/auth.ts`](./server/routes/auth.ts):199 — creates `local@desktop.dev` user + session if none exist, returns token + user. Called by `/api/me` when no valid session exists in desktop mode.
+
+**Flow**:
+1. App loads → `checkAuth()` → `GET /api/me`
+2. Server: no valid token → `ensureDesktopUser()` creates/finds `local@desktop.dev` → creates session → returns `{ authenticated: true, token, user }`
+3. Frontend: `useAuth.tsx` stores `data.token` via `setAuthToken()` → app transitions to dashboard
+4. No login form ever shown in Tauri mode
+
+**Login.tsx desktop mode**: [`src/components/Login.tsx`](./src/components/Login.tsx) — if Tauri, renders a minimal spinner + pings `/api/me` until auto-login succeeds (pure fallback; should never mount in normal flow because `checkAuth()` resolves before `isAuthenticated` transitions from `null`).
+- Old polling logic (pre-fill desktop credentials, server-ready detection) removed.
+- `onLogin` prop signature: `(userData?: any) => void` — `/api/me` response passed directly.
+- Web mode (non-Tauri) preserves the full login form unchanged.
+
+**Server**: cookie is set with `sameSite: "lax"`, `httpOnly: !isDesktopMode()` (not httpOnly on desktop so Tauri WebView cross-origin cookie works). Token also returned in body for `Authorization: Bearer` header flow.
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.

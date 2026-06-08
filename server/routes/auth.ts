@@ -188,8 +188,45 @@ router.post("/logout", async (req: ExpressRequest, res: ExpressResponse) => {
   res.json({ success: true });
 });
 
-// Me — validate existing session only. NO auto-login.
-// Desktop app shows a pre-filled login form instead.
+/**
+ * Auto-create the desktop default user and session (local auth mode only).
+ * Used by /me to enable transparent login on first launch.
+ * The credentials constant is defined above alongside /auth-config.
+ */
+async function ensureDesktopUser(): Promise<{ user: any; token: string } | null> {
+  if (!prisma || !useLocalAuth()) return null;
+
+  try {
+    let user = await prisma.user.findFirst({
+      where: { email: DESKTOP_DEFAULT_EMAIL } as any,
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email: DESKTOP_DEFAULT_EMAIL,
+          name: "Local User",
+          password: hashPassword(DESKTOP_DEFAULT_PASSWORD),
+        } as any,
+      });
+    }
+
+    const token = await createSession(
+      (user as any).id,
+      (user as any).email,
+      (user as any).name,
+    );
+
+    return {
+      user: { id: (user as any).id, email: (user as any).email, user_metadata: { name: (user as any).name } },
+      token,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Me — validate existing session or auto-login in desktop mode.
 router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
   // Accept token from cookie OR Authorization header (cross-origin Tauri support)
   const token = req.cookies.token as string | undefined ||
@@ -201,8 +238,7 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
         return res.json({ authenticated: false });
       }
 
-      // Only validate an existing session token — never auto-login.
-      // Desktop app uses the pre-filled login form instead.
+      // 1. If valid token exists → return authenticated
       if (token) {
         const session = await getSession(token);
         if (session) {
@@ -221,6 +257,25 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
             });
           }
         }
+      }
+
+      // 2. No valid session → auto-login (desktop single-user mode)
+      const result = await ensureDesktopUser();
+      if (result) {
+        const isProd = process.env.NODE_ENV === "production";
+        const isSecure = isProd && req.protocol === 'https';
+        res.cookie("token", result.token, {
+          httpOnly: !isDesktopMode(),
+          secure: isSecure,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+        return res.json({
+          authenticated: true,
+          token: result.token,
+          user: result.user,
+        });
       }
 
       return res.json({ authenticated: false });

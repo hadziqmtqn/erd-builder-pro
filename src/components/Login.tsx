@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { apiFetch, setAuthToken } from "@/lib/api";
@@ -24,62 +24,56 @@ interface LoginProps {
   onGuestLogin?: () => void;
 }
 
-
 export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [serverReady, setServerReady] = useState(false);
-  const [waitingServer, setWaitingServer] = useState(false);
-  const [pollAttempts, setPollAttempts] = useState(0);
 
-  // Desktop mode: wait for the backend server (starts async from Rust).
-  // Once the server is up, fetch the pre-configured desktop credentials
-  // so the user only needs to click "Login" (no typing required).
+  // Desktop mode (Tauri) uses auto-login via /api/me — login form should never show.
+  // The AppInitialization spinner handles the /api/me call. If somehow the login page
+  // mounts in Tauri mode, silently poll /api/me for auto-login.
+  const isTauri = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const pollRef = useRef(true);
+
   useEffect(() => {
-    const isTauri = typeof window !== 'undefined' &&
-      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
     if (!isTauri) return;
 
-    setWaitingServer(true);
-
     let cancelled = false;
-    let delay = 500;
-    let attempts = 0;
     const poll = async () => {
-      while (!cancelled) {
+      while (!cancelled && pollRef.current) {
         try {
-          const res = await apiFetch('/api/auth-config');
+          const res = await apiFetch('/api/me');
           if (res.ok) {
             const data = await res.json();
-            if (!cancelled) {
-              if (data.desktopDefaultEmail) {
-                setEmail(data.desktopDefaultEmail);
-              }
-              if (data.desktopDefaultPassword) {
-                setPassword(data.desktopDefaultPassword);
-              }
-              setServerReady(true);
-              setWaitingServer(false);
+            if (data.authenticated && !cancelled) {
+              if (data.token) setAuthToken(data.token);
+              onLogin(data.user);
+              return;
             }
-            return;
           }
         } catch {
-          // Server not ready yet
+          // server not ready yet
         }
-        if (!cancelled) {
-          await new Promise(r => setTimeout(r, delay));
-          delay = Math.min(delay * 1.5, 5000);
-          attempts++;
-          if (!cancelled) setPollAttempts(attempts);
-        }
+        if (!cancelled) await new Promise(r => setTimeout(r, 1000));
       }
     };
-
     poll();
     return () => { cancelled = true; };
-  }, []);
+  }, [isTauri, onLogin]);
+
+  // In desktop mode, never show the form — wait for auto-login silently
+  if (isTauri) {
+    return (
+      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Connecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -101,7 +95,6 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       });
       if (res.ok) {
         const data = await res.json();
-        // Store auth token for cross-origin Tauri requests (Authorization header)
         if (data.token) setAuthToken(data.token);
         onLogin(data.user);
         toast.success("Welcome back!");
@@ -118,32 +111,6 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
     }
   };
 
-  if (waitingServer) {
-    return (
-      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-        <div className="w-full max-w-sm">
-          <div className={cn("flex flex-col gap-6")}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Starting Desktop Mode...</CardTitle>
-                <CardDescription>
-                  {pollAttempts > 20
-                    ? "The server is taking longer than expected. If this persists, try restarting the application."
-                    : pollAttempts > 10
-                      ? "Still waiting for the local server..."
-                      : "Connecting to local server"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-center py-8">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
@@ -152,9 +119,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
             <CardHeader>
               <CardTitle>Login to your account</CardTitle>
               <CardDescription>
-                {serverReady
-                  ? "Your desktop account is ready. Click Login to continue."
-                  : "Enter your email below to login to your account"}
+                Enter your email below to login to your account
               </CardDescription>
             </CardHeader>
             <CardContent>
