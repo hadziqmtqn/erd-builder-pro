@@ -1,3 +1,4 @@
+import { useState } from "react"
 import {
   ChevronsUpDown,
   LogOut,
@@ -5,6 +6,7 @@ import {
   Trash2,
   Settings,
   MessageSquarePlus,
+  Download,
 } from "lucide-react"
 
 import {
@@ -29,6 +31,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useWorkspace } from "../providers/WorkspaceContext"
 import { AppView } from "../types"
+import { GuestExportDialog } from "@/components/ai/GuestExportDialog"
 
 export function NavUser({
   user,
@@ -60,6 +63,8 @@ export function NavUser({
     setSettingsTab(tab);
     setIsSettingsOpen(true);
   };
+
+  const [guestExportOpen, setGuestExportOpen] = useState(false);
 
   return (
     <>
@@ -108,7 +113,15 @@ export function NavUser({
               <DropdownMenuSeparator />
 
               <DropdownMenuGroup>
-                {!isGuest && (
+                {isGuest ? (
+                  <DropdownMenuItem 
+                    onClick={() => setGuestExportOpen(true)}
+                    className="cursor-pointer"
+                  >
+                    <Download className="mr-2 size-4" />
+                    Backup Data
+                  </DropdownMenuItem>
+                ) : (
                   <DropdownMenuItem 
                     onClick={() => isOnline && handleOpenSettings('account')}
                     className="cursor-pointer"
@@ -161,6 +174,8 @@ export function NavUser({
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
+
+      <GuestExportDialog open={guestExportOpen} onOpenChange={setGuestExportOpen} />
     </>
   )
 }
