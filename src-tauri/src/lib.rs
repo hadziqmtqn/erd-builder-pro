@@ -65,20 +65,59 @@ pub fn run() {
 /// so `Command::new("node")` fails with "No such file or directory" even when
 /// the user has Node installed. We probe common install locations instead.
 fn find_node_executable() -> Option<String> {
-  let candidates = [
-    // Intel + Apple Silicon Homebrew
+  // Static well-known paths
+  let static_candidates = [
+    // Apple Silicon Homebrew
     "/opt/homebrew/bin/node",
+    // Intel Homebrew / official installer
     "/usr/local/bin/node",
-    // nvm (default location, but real path varies by user — best effort)
-    // System installs
+    // System install (unusual on macOS)
     "/usr/bin/node",
-    // macPorts
+    // MacPorts
     "/opt/local/bin/node",
   ];
 
-  for path in &candidates {
+  for path in &static_candidates {
     if std::path::Path::new(path).exists() {
       return Some(path.to_string());
+    }
+  }
+
+  // Dynamic paths that need the user's home directory
+  let home = std::env::var("HOME").ok();
+
+  if let Some(home) = &home {
+    // nvm — probe the actual current version link and the latest installed version
+    let nvm_current = format!("{}/.nvm/versions/node/current/bin/node", home);
+    if std::path::Path::new(&nvm_current).exists() {
+      return Some(nvm_current);
+    }
+
+    // fnm — uses a symlink at .fnm/current
+    let fnm_current = format!("{}/.fnm/current/bin/node", home);
+    if std::path::Path::new(&fnm_current).exists() {
+      return Some(fnm_current);
+    }
+
+    // Volta
+    let volta = format!("{}/.volta/bin/node", home);
+    if std::path::Path::new(&volta).exists() {
+      return Some(volta);
+    }
+
+    // nvm — fallback glob for latest installed version (no symlink case)
+    let nvm_dir = format!("{}/.nvm/versions/node", home);
+    if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+      let mut versions: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().join("bin/node").exists())
+        .map(|e| e.path().join("bin/node").to_string_lossy().to_string())
+        .collect();
+      // Sort descending so the latest version is first
+      versions.sort_by(|a, b| b.cmp(a));
+      if let Some(latest) = versions.into_iter().next() {
+        return Some(latest);
+      }
     }
   }
 
@@ -124,7 +163,11 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   // Locate the Node.js binary — must work even when launched from Finder/Dock
   // where PATH is empty.
   let node_bin = find_node_executable().ok_or_else(|| {
-    "Node.js not found. Please install Node.js (https://nodejs.org) and try again."
+    "Node.js not found. The app probes: Homebrew (/opt/homebrew/bin, /usr/local/bin), \
+     nvm (~/.nvm/versions/node/*/bin), fnm (~/.fnm/current/bin), \
+     Volta (~/.volta/bin), MacPorts (/opt/local/bin), and PATH. \
+     If you use a different version manager, install Node.js from https://nodejs.org \
+     or create a symlink at one of these locations."
   })?;
 
   log::info!(

@@ -1954,6 +1954,17 @@ The desktop app (Tauri v2) bundles three components:
 4. Copies `prisma/schema.sqlite.prisma` → `dist-server/prisma/schema.prisma`
 5. Generates `prisma-client-index.js` shim for Prisma client resolution
 
+### CRITICAL: Native Modules are Architecture-Specific
+
+- `better-sqlite3` compiles a `.node` native addon during `npm install` — **this binary is architecture-specific** (ARM64 vs x86_64).
+- `@prisma/client` downloads the Prisma engine binary during `prisma generate` — **also architecture-specific**.
+- **Cross-compilation trap**: building x86_64 DMG on an ARM64 runner via `--target x86_64-apple-darwin` bundles **ARM64 native addons** into the x86_64 DMG. The app then crashes at runtime because Node.js (x86_64) cannot load ARM64 `.node` files.
+- **Fix**: Always build each architecture on its native runner:
+  - `macos-latest` (ARM64) → builds native ARM64 DMG
+  - `macos-13` (Intel) → builds native x86_64 DMG
+  - Each `npm ci` installs the correct native addons for its runner's arch.
+  - See [`.github/workflows/build.yml`](./.github/workflows/build.yml) matrix strategy.
+
 ### Tauri Config
 
 **File**: [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json)
@@ -1971,18 +1982,49 @@ On app startup (release mode only):
 3. Spawns Node.js child process with:
    - `NODE_PATH` → bundled node_modules path (for native modules)
    - `DATABASE_URL` → `file:{app_data_dir}/data.db` (SQLite DB in app data dir)
-   - `PORT` → `3000`
+   - `PORT` → `3099`
    - `current_dir` → app data directory
 4. Manages `ServerProcess` state (Mutex<Option<Child>>)
 5. On app exit (`RunEvent::Exit`): kills child process
 
 The server auto-creates the SQLite database on first Prisma query.
 
+### Node.js Discovery
+
+**`find_node_executable()`** in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) probes these paths (in order):
+1. `/opt/homebrew/bin/node` — Apple Silicon Homebrew
+2. `/usr/local/bin/node` — Intel Homebrew / official installer
+3. `/usr/bin/node` — System install (rare)
+4. `/opt/local/bin/node` — MacPorts
+5. `~/.nvm/versions/node/current/bin/node` — nvm (via symlink)
+6. `~/.fnm/current/bin/node` — fnm
+7. `~/.volta/bin/node` — Volta
+8. `~/.nvm/versions/node/*/bin/node` — nvm (glob fallback, latest version)
+9. `which node` — PATH lookup (only works in dev mode with shell PATH)
+
+If none found: server doesn't start, error logged to `server-start-error.log`.
+
 ### Database Location
 
 - **Development**: `DATABASE_URL=file:./data.db` — in project root
 - **Production (Tauri DMG)**: `~/Library/Application Support/com.erdbuilderpro.app/data.db` (auto-resolved by `app.path().app_data_dir()`)
 - The first Prisma query (`prisma.$connect()`) auto-creates the `data.db` file using better-sqlite3
+
+### GitHub Actions Build Matrix
+
+**File**: [`.github/workflows/build.yml`](./.github/workflows/build.yml)
+
+```yaml
+strategy:
+  matrix:
+    os:
+      - ubuntu-latest
+      - windows-latest
+      - macos-latest      # ARM64 (Apple Silicon)
+      - macos-13          # x86_64 (Intel)
+```
+
+Each runner builds natively (no `--target` flag). The release job merges both DMGs and generates `latest.json` with platform entries for both `darwin-aarch64` and `darwin-x86_64`.
 
 ### Key Files
 
@@ -1992,6 +2034,7 @@ The server auto-creates the SQLite database on first Prisma query.
 | [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
 | [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: spawns Node.js server, kills on exit |
 | [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
+| [`.github/workflows/build.yml`](./.github/workflows/build.yml) | CI/CD: matrix builds, artifact upload, release |
 
 ### Build & Release Commands
 
@@ -2000,18 +2043,20 @@ The server auto-creates the SQLite database on first Prisma query.
 npm run dev:tauri
 
 # Production build (DMG)
-npm run build:desktop          # step 1: bundle server + frontend
-npx tauri build                # step 2: build DMG (sign, notarize, package)
-
-# Or one command:
 npx tauri build                # runs beforeBuildCommand → build:desktop automatically
+
+# CI release (GitHub Actions)
+git tag v2.x.x
+git push origin v2.x.x          # triggers Build & Release workflow
 ```
 
 ### Important Notes
 
-- **`node` must be available**: The bundled app spawns `node` at runtime. If the user doesn't have Node.js installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
-- **better-sqlite3 is native**: This module compiles a `.node` native addon during `npm install`. It MUST be external from esbuild and copied as-is to `dist-server/node_modules/`. The `.prisma/client/` folder contains the Prisma engine binary (`libquery_engine-*`), also native.
+- **`node` must be available on user's machine**: The bundled app spawns `node` at runtime. If Node.js isn't installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
+- **`macos-13` is Intel x86_64**: GitHub Actions `macos-13` runner uses macOS 13 Ventura on Intel hardware. `macos-latest` currently maps to `macos-15` Sequoia on Apple Silicon.
+- **Native addons must match target arch**: `beforeBuildCommand` picks up native modules from the runner's `node_modules/`, which were compiled for that runner's arch. This is why cross-arch compilation on a single runner is impossible for this project.
 - **esbuild NOT in package.json**: `build-server.js` calls `require('esbuild')` — if esbuild is not installed, use `npx esbuild` or install via `npm install -D esbuild`.
+- **Supports both Apple Silicon and Intel from a single release**: The release job DMGs into a single GitHub Release with both `_aarch64.dmg` and `_x86_64.dmg`, plus a `latest.json` for Tauri's built-in updater.
 
 ### Prisma 7 CLI `db push` — `--url` flag required
 
