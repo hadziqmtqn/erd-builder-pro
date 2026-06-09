@@ -141,11 +141,11 @@ A huge thank you to our sponsors for providing the infrastructure and tools that
 
 <div align="center">
   <a href="https://www.idcloudhost.com" target="_blank">
-    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
+    <img src="/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
   </a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://doktainer.com" target="_blank">
-    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
+    <img src="/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
   </a>
 </div>
 
