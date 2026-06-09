@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { EntityContextData } from './types';
 
 export const SHAPE_MEANINGS: Record<string, string> = {
@@ -24,35 +24,35 @@ const SHAPE_HINTS: Record<string, string> = {
 };
 
 export async function fetchFlowchart(uid: string) {
-  const { data, error } = await supabase
-    .from('flowcharts')
-    .select('title, data, project_id')
-    .eq('uid', uid)
-    .single();
-
-  if (error || !data) return null;
-
-  let nodesSummary = '(empty)';
   try {
-    const parsed = JSON.parse(data.data || '{}');
-    const nodes = parsed.nodes || [];
-    if (Array.isArray(nodes) && nodes.length > 0) {
-      const names = nodes
-        .map((n: any) => n.data?.label || n.label || n.id || 'node')
-        .filter(Boolean);
-      nodesSummary = names.length > 0
-        ? names.slice(0, 30).join(' → ')
-        : `${nodes.length} nodes`;
-    }
-  } catch {
-    nodesSummary = '(unparseable data)';
-  }
+    const res = await apiFetch(`/api/flowcharts/${uid}`);
+    if (!res.ok) return null;
+    const data = await res.json();
 
-  return {
-    title: data.title,
-    projectId: data.project_id,
-    summary: `Title: ${data.title}\nNodes: ${nodesSummary}`,
-  };
+    let nodesSummary = '(empty)';
+    try {
+      const parsed = JSON.parse(data.data || '{}');
+      const nodes = parsed.nodes || [];
+      if (Array.isArray(nodes) && nodes.length > 0) {
+        const names = nodes
+          .map((n: any) => n.data?.label || n.label || n.id || 'node')
+          .filter(Boolean);
+        nodesSummary = names.length > 0
+          ? names.slice(0, 30).join(' → ')
+          : `${nodes.length} nodes`;
+      }
+    } catch {
+      nodesSummary = '(unparseable data)';
+    }
+
+    return {
+      title: data.title,
+      projectId: data.project_id,
+      summary: `Title: ${data.title}\nNodes: ${nodesSummary}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function buildFlowchartContext(data: EntityContextData): string | null {

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, setAuthToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,12 +24,56 @@ interface LoginProps {
   onGuestLogin?: () => void;
 }
 
-
 export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Desktop mode (Tauri) uses auto-login via /api/me — login form should never show.
+  // The AppInitialization spinner handles the /api/me call. If somehow the login page
+  // mounts in Tauri mode, silently poll /api/me for auto-login.
+  const isTauri = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const pollRef = useRef(true);
+
+  useEffect(() => {
+    if (!isTauri) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled && pollRef.current) {
+        try {
+          const res = await apiFetch('/api/me');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.authenticated && !cancelled) {
+              if (data.token) setAuthToken(data.token);
+              onLogin(data.user);
+              return;
+            }
+          }
+        } catch {
+          // server not ready yet
+        }
+        if (!cancelled) await new Promise(r => setTimeout(r, 1000));
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [isTauri, onLogin]);
+
+  // In desktop mode, never show the form — wait for auto-login silently
+  if (isTauri) {
+    return (
+      <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Connecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,6 +95,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       });
       if (res.ok) {
         const data = await res.json();
+        if (data.token) setAuthToken(data.token);
         onLogin(data.user);
         toast.success("Welcome back!");
       } else {
@@ -59,7 +104,8 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       }
     } catch (err) {
       console.error('Login error:', err);
-      toast.error("An unexpected error occurred");
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

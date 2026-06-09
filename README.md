@@ -1,5 +1,8 @@
 # 💎 ERD Builder Pro
 
+> [!WARNING]
+> **ERD Builder Pro** is under active development and not yet stable — features and config may still change. Give the repo a Star ⭐ and Watch 👀 it to get notified the moment a release lands.
+
 <div align="center">
 
 [![Docker Hub](https://img.shields.io/badge/docker-available-blue?logo=docker)](https://hub.docker.com/r/bekenweb/erd-builder-pro)
@@ -49,7 +52,7 @@
 ## 🏗️ Getting Started
 
 ### � Documentation
-For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https://docs.erd.bekenweb.com)
+For detailed guides and tutorials, visit: [https://docs.erdbuilderpro.com](https://docs.erdbuilderpro.com)
 
 ### 📋 Prerequisites
 - **Node.js**: v20+ 
@@ -71,25 +74,10 @@ For detailed guides and tutorials, visit: [https://docs.erd.bekenweb.com](https:
    ```
 
 3. **Configure Environment**:
-   Create a `.env` file in the root directory:
-   ```bash
-   # Backend Config
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-   R2_ACCOUNT_ID=your_cloudflare_id
-   R2_ACCESS_KEY_ID=your_access_key
-   R2_SECRET_ACCESS_KEY=your_secret_key
-   R2_BUCKET_NAME=your_bucket_name
-   R2_PUBLIC_URL=your_public_cdn_url
-   
-   # Frontend Config (Vite)
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_anon_key
-   VITE_ENABLE_GUEST_MODE=true
-   
-   # Server
-   PORT=3000
-   ```
+   Create a `.env` file in the root directory and follow the configuration guide:
+   [https://docs.erdbuilderpro.com/configuration/env-variables](https://docs.erdbuilderpro.com/configuration/env-variables)
+
+   Use [`./.env.example`](./.env.example) as the local template. Do not commit real secret values into the repo or README.
 
 4. **Start Development**:
    ```bash
@@ -107,7 +95,7 @@ docker run -d --name erd-builder-pro -p 3000:3000 \
   bekenweb/erd-builder-pro:latest
 ```
 
-> Isi `.env` mengacu pada [`.env.example`](./.env.example). Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) sudah baked-in di image — gunakan tag yang sesuai atau build sendiri dengan `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
+> Fill `.env` based on the [env configuration docs](https://docs.erdbuilderpro.com/configuration/env-variables) and [`.env.example`](./.env.example). Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are baked into the image — use the appropriate tag or build your own with `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
 
 Available tags: [`latest`](https://hub.docker.com/r/bekenweb/erd-builder-pro/tags), versioned (`v1.2.3`), and commit SHA (`2bbc233`).
 
@@ -121,6 +109,50 @@ Run the production server:
 ```bash
 npm run start
 ```
+
+### 🧪 Testing
+
+The project uses [Vitest](https://vitest.dev/) for unit testing with a focus on core logic — SQL parsers, schema diff engine, auto-layout algorithms, and code generators.
+
+**Test commands**:
+```bash
+npm test            # Run all tests once
+npm run test:watch  # Run in watch mode during development
+```
+
+**Test structure**:
+```
+src/lib/__tests__/
+├── sqlParser.test.ts          # SQL DDL parser (17 tests)
+├── schema-diff.test.ts        # Schema comparison engine (8 tests)
+├── autoLayoutERD.test.ts      # ERD auto-layout algorithm (12 tests)
+├── autoLayoutFlowchart.test.ts # Flowchart auto-layout algorithm (12 tests)
+├── sql-generator.test.ts      # Code generation for 7 dialects (39 tests)
+└── sql-generator-all.test.ts  # Bulk export & FK extraction (19 tests)
+```
+
+**Coverage areas**: SQL DDL parsing across PostgreSQL/MySQL/SQLite dialects, schema diff & merge resolution, directed-graph auto-layout (BFS layering, cycle detection, diamond decision branching), and multi-dialect code generation (MySQL, PostgreSQL, Laravel, TypeScript, Prisma, Zod).
+
+---
+
+## 🤝 Sponsors
+
+A huge thank you to our sponsors for providing the infrastructure and tools that make this project possible:
+
+<div align="center">
+  <a href="https://www.idcloudhost.com" target="_blank">
+    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
+  </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://doktainer.com" target="_blank">
+    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
+  </a>
+</div>
+
+| Sponsor | Support |
+|---------|---------|
+| [**IDCloudhost**](https://www.idcloudhost.com) | Virtual machine infrastructure for deployment and cloud hosting. |
+| [**Doktainer**](https://doktainer.com) | App template platform with Docker panel for streamlined container management. |
 
 ---
 

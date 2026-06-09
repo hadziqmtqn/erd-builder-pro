@@ -1,71 +1,49 @@
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 import { MAX_CHARS_TOTAL, EntityContextData } from './types';
 
 export async function fetchDiagram(uid: string) {
-  const { data: diagram, error } = await supabase
-    .from('diagrams')
-    .select('id, name, project_id')
-    .eq('uid', uid)
-    .single();
+  try {
+    const res = await apiFetch(`/api/diagrams/${uid}`);
+    if (!res.ok) return null;
+    const diagram = await res.json();
 
-  if (error || !diagram) return null;
+    // diagram now includes entities (with columns) and relationships
+    const entities = diagram.entities || [];
+    const relationships = diagram.relationships || [];
 
-  const { data: entities } = await supabase
-    .from('entities')
-    .select('id, name, color')
-    .eq('diagram_id', diagram.id);
+    const parts: string[] = [`Title: ${diagram.name}`];
 
-  const entityIds = entities?.map(e => e.id) || [];
-
-  const { data: columns } = entityIds.length > 0
-    ? await supabase
-        .from('columns')
-        .select('entity_id, name, type, is_pk')
-        .in('entity_id', entityIds)
-    : { data: [] };
-
-  const columnsByEntity: Record<string, { entity_id: string; name: string; type: string; is_pk: boolean }[]> = {};
-  for (const col of columns || []) {
-    if (!columnsByEntity[col.entity_id]) columnsByEntity[col.entity_id] = [];
-    const entry = col as { entity_id: string; name: string; type: string; is_pk: boolean };
-    columnsByEntity[col.entity_id].push(entry);
-  }
-
-  const { data: relationships } = await supabase
-    .from('relationships')
-    .select('source_entity_id, target_entity_id, type, label')
-    .eq('diagram_id', diagram.id);
-
-  const parts: string[] = [`Title: ${diagram.name}`];
-
-  parts.push(`\nTables (${entities?.length || 0}):`);
-  for (const entity of entities || []) {
-    const entityCols = columnsByEntity[entity.id] || [];
-    const colsStr = entityCols
-      .map(c => {
-        const pk = c.is_pk ? ' 🔑' : '';
-        return `  - ${c.name}: ${c.type}${pk}`;
-      })
-      .join('\n');
-    parts.push(`\n  ${entity.name} (${entityCols.length} columns):\n${colsStr}`);
-  }
-
-  if (relationships && relationships.length > 0) {
-    parts.push(`\nRelationships (${relationships.length}):`);
-    for (const rel of relationships) {
-      const src = entities?.find(e => e.id === rel.source_entity_id)?.name || rel.source_entity_id;
-      const tgt = entities?.find(e => e.id === rel.target_entity_id)?.name || rel.target_entity_id;
-      parts.push(`  ${src} → ${tgt} (${rel.type || 'one-to-many'})`);
+    parts.push(`\nTables (${entities.length}):`);
+    for (const entity of entities) {
+      const entityCols = entity.columns || [];
+      const colsStr = entityCols
+        .map((c: any) => {
+          const pk = c.is_pk ? ' 🔑' : '';
+          return `  - ${c.name}: ${c.type}${pk}`;
+        })
+        .join('\n');
+      parts.push(`\n  ${entity.name} (${entityCols.length} columns):\n${colsStr}`);
     }
+
+    if (relationships.length > 0) {
+      parts.push(`\nRelationships (${relationships.length}):`);
+      for (const rel of relationships) {
+        const src = entities.find((e: any) => String(e.id) === String(rel.source_entity_id))?.name || rel.source_entity_id;
+        const tgt = entities.find((e: any) => String(e.id) === String(rel.target_entity_id))?.name || rel.target_entity_id;
+        parts.push(`  ${src} → ${tgt} (${rel.type || 'one-to-many'})`);
+      }
+    }
+
+    const summary = parts.join('\n').slice(0, MAX_CHARS_TOTAL);
+
+    return {
+      title: diagram.name,
+      projectId: diagram.project_id,
+      summary,
+    };
+  } catch {
+    return null;
   }
-
-  const summary = parts.join('\n').slice(0, MAX_CHARS_TOTAL);
-
-  return {
-    title: diagram.name,
-    projectId: diagram.project_id,
-    summary,
-  };
 }
 
 function extractHandleId(handle: string | null | undefined): string | null {
@@ -116,10 +94,16 @@ Rules:
 4. Foreign keys can be inline in CREATE TABLE (REFERENCES) or as ALTER TABLE ... ADD FOREIGN KEY
 5. If the user asks to create an ERD or database from scratch, generate the complete SQL DDL with all tables
 6. If the user asks for an explanation, you may include a brief description before or after the SQL block
-7. Support standard SQL types: BIGINT, INT, VARCHAR(n), TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, UUID, JSONB, etc.
+7. Use STANDARD PORTABLE SQL types — avoid database-specific keywords:
+   - Use BIGINT for primary keys (NOT BIGSERIAL, SERIAL, or AUTO_INCREMENT)
+   - Use INT for integer, VARCHAR(n) for strings, TEXT for long text, BOOLEAN for booleans
+   - Use TIMESTAMP for datetime, DATE for date, DECIMAL(p,s) for decimals
+   - Use UUID for UUID columns, JSONB for JSON data
+   - DEFAULT values like NOW() and NULL are safe and portable
 8. You MAY split SQL into multiple \`\`\`sql blocks if that is clearer, but one block per set of related tables is preferred
 9. When telling the user to apply the SQL to their diagram, do NOT say "click Append/Replace". Instead, say "click the Database button below this message" or "use the SQL → ERD button" — the app shows a dedicated Database icon button (not Append/Replace) when SQL is detected in your response.
 10. Use ENGLISH for ALL table names and column names by default (e.g. \`users\`, \`posts\`, \`email\`, \`created_at\`). Only use the user's language if they explicitly ask (e.g. "gunakan bahasa Indonesia"). This keeps the schema portable and follows database conventions.
+11. If the user explicitly asks for a specific database dialect (e.g. "MySQL", "PostgreSQL", "use BIGSERIAL"), you may use that dialect's syntax. Otherwise stick to the portable defaults above.
 
 Example:
 \`\`\`sql

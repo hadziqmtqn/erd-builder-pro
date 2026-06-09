@@ -1,13 +1,27 @@
-import { useState, useCallback, useEffect } from 'react';
-import { apiFetch } from '../lib/api';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { apiFetch, setAuthToken, clearAuthToken } from '../lib/api';
 
-export function useAuth() {
+type AuthContextValue = {
+  isAuthenticated: boolean | null;
+  user: any;
+  isGuest: boolean;
+  setUser: (user: any) => void;
+  setIsAuthenticated: (auth: boolean | null) => void;
+  checkAuth: () => Promise<void>;
+  handleLogin: (userData?: any) => void;
+  handleGuestLogin: () => void;
+  handleLogout: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState<boolean>(false);
+  const retryRef = useRef(0);
 
   const checkAuth = useCallback(async () => {
-    // If we're already in guest mode in this session, don't check API
     if (sessionStorage.getItem('auth_mode') === 'guest') {
       setIsAuthenticated(true);
       setIsGuest(true);
@@ -20,23 +34,40 @@ export function useAuth() {
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated) {
+          // Store token from auto-login (desktop mode) or login response
+          if (data.token) setAuthToken(data.token);
           setIsAuthenticated(true);
           setIsGuest(false);
           setUser(data.user);
+          retryRef.current = 0;
+          return;
         } else {
           setIsAuthenticated(false);
           setIsGuest(false);
           setUser(null);
+          clearAuthToken();
         }
       } else {
         setIsAuthenticated(false);
         setIsGuest(false);
         setUser(null);
+        clearAuthToken();
       }
+      retryRef.current = 0;
     } catch (err) {
-      setIsAuthenticated(false);
-      setIsGuest(false);
-      setUser(null);
+      const isTauri = typeof window !== 'undefined' &&
+        !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+      // In Tauri mode the Node.js server starts asynchronously — retry
+      // indefinitely with exponential backoff until it becomes reachable.
+      // The server-side GET /api/me will auto-login once available.
+      const maxRetries = isTauri ? Infinity : 3;
+      if (retryRef.current < maxRetries) {
+        retryRef.current++;
+        const delay = isTauri
+          ? Math.min(1500 * Math.pow(1.5, retryRef.current - 1), 10000)
+          : 1500 * retryRef.current;
+        setTimeout(() => checkAuth(), delay);
+      }
     }
   }, []);
 
@@ -72,6 +103,7 @@ export function useAuth() {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    clearAuthToken();
     if (isGuest) {
       setIsAuthenticated(false);
       setIsGuest(false);
@@ -92,15 +124,29 @@ export function useAuth() {
     }
   }, [isGuest]);
 
-  return {
-    isAuthenticated,
-    isGuest,
-    user,
-    setIsAuthenticated,
-    checkAuth,
-    handleLogin,
-    handleGuestLogin,
-    handleLogout
-  };
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        user,
+        isGuest,
+        setUser,
+        setIsAuthenticated,
+        checkAuth,
+        handleLogin,
+        handleGuestLogin,
+        handleLogout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return ctx;
+}

@@ -9,6 +9,8 @@ import { MoveToTrashAlert } from '@/components/modals/MoveToTrashAlert';
 import { DeleteEntityAlert } from '@/components/modals/DeleteEntityAlert';
 import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
 import { DuplicateDocumentDialog } from '@/components/modals/DuplicateDocumentDialog';
+import { ExportAllDialog } from '@/components/modals/ExportAllDialog';
+import { ImportSQLModal } from '@/components/modals/ImportSQLModal';
 import { TablePropertiesModal } from '@/components/modals/TablePropertiesModal';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
 import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
@@ -26,6 +28,7 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { useTauriWindowPersistence } from '@/hooks/useTauriWindowPersistence';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
@@ -35,6 +38,7 @@ import { AIChatToggle } from '@/components/ai/AIChatToggle';
 function AppLayoutInner() {
   const location = useLocation();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isExportAllOpen, setIsExportAllOpen] = useState(false);
   const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
 
   // ─── Derive AI entity context from current route ─────
@@ -62,6 +66,7 @@ function AppLayoutInner() {
     handleWorkspaceFilter, selectedWorkspaceUid,
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
+    handleOpenImportModal, isImportModalOpen, setIsImportModalOpen,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
     handleDuplicate,
     syncError, isSyncing, isLocalSaving, isRefreshing, hasPendingSyncs, syncDrafts,
@@ -78,6 +83,7 @@ function AppLayoutInner() {
     fetchTrash,
     triggerTableRefresh,
     setTableLoadingState,
+    setIsSettingsOpen,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
     selectedEntity, deleteEntity, deleteEdge,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,
@@ -102,6 +108,7 @@ function AppLayoutInner() {
     tableDeleteDoc, setTableDeleteDoc,
     executeDuplicate, confirmPermanentDelete,
     handleEdgeUpdate: handleEdgeUpdate2,
+    handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
 
@@ -163,12 +170,38 @@ function AppLayoutInner() {
     return ent?.project_id ?? null;
   }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
 
+  // ── Persist Tauri window size/position ──
+  useTauriWindowPersistence();
+
   // ── Update browser tab title ──
   useEffect(() => {
     document.title = activeFileName
       ? `${activeFileName} | ERD Builder Pro`
       : 'ERD Builder Pro';
   }, [activeFileName]);
+
+  // ── Desktop-only keyboard shortcut: CMD+, (macOS) / CTRL+, (Win/Linux) → open Settings
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isTauri = !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
+    if (!isTauri) return;
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const accel = isMac ? e.metaKey : e.ctrlKey;
+      if (accel && e.key === ',') {
+        e.preventDefault();
+        setIsSettingsOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [setIsSettingsOpen]);
 
   return (
     <>
@@ -220,6 +253,7 @@ function AppLayoutInner() {
           updatedAt={activeDocument?.updated_at}
           onDelete={handleHeaderDelete}
           onRename={handleHeaderRename}
+           onExportAll={() => setIsExportAllOpen(true)}
           onExportSQL={handleHeaderExportSQL}
           onExportPDF={handleHeaderExportPDF}
           onExportImage={handleHeaderExportImage}
@@ -356,6 +390,7 @@ function AppLayoutInner() {
             selectedEdge={edges.find(e => e.id === selectedEdgeId) || null}
             nodes={nodes}
             handleEdgeUpdate={handleEdgeUpdate2}
+            handleEdgeFlip={handleEdgeFlip2}
             deleteEdge={deleteEdge}
           />
         )}
@@ -377,6 +412,36 @@ function AppLayoutInner() {
           executeDuplicate={executeDuplicate}
           isRefreshing={isRefreshing}
         />
+
+        {view === 'erd' && (
+          <>
+            <ExportAllDialog
+              open={isExportAllOpen}
+              onOpenChange={setIsExportAllOpen}
+              nodes={nodes}
+              edges={edges}
+              fileName={activeFileName || 'Untitled'}
+              onExportPDF={handleHeaderExportPDF}
+              onExportImage={handleHeaderExportImage}
+            />
+            <ImportSQLModal
+              isOpen={isImportModalOpen}
+              onOpenChange={setIsImportModalOpen}
+              nodes={nodes}
+              edges={edges}
+              setNodes={setNodes}
+              setEdges={setEdges}
+              activeDiagramId={activeDiagramId}
+              takeSnapshot={takeSnapshot}
+              saveDiagram={saveDiagram}
+              triggerDebouncedSync={triggerDebouncedSync}
+              broadcastMessage={broadcastMessage}
+              setIsLocalSaving={setIsLocalSaving}
+              viewportRef={viewportRef}
+              lastLoadedDiagramIdRef={lastLoadedDiagramIdRef}
+            />
+          </>
+        )}
 
         {/* AI Assistant — only on file feature pages */}
         {showAIChat && isAIOpen && (

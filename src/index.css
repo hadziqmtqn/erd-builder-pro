@@ -21,6 +21,17 @@
     @apply overflow-hidden bg-background text-foreground;
   }
 
+  /* Tauri desktop app rounded corners */
+  body[data-tauri] {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  
+  body[data-tauri] #root {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -836,16 +847,5 @@ ul[data-type="taskList"] li[data-checked="true"]>div>p {
   .diff-hunk-header {
     background-color: #f3f4f6;
     color: #374151;
-  }
-}
-
-@keyframes pulse-green {
-  0%, 100% {
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
-    border-color: #10b981;
-  }
-  50% {
-    box-shadow: 0 0 28px rgba(16, 185, 129, 0.85);
-    border-color: #34d399;
   }
 }

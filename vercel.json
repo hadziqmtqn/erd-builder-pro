@@ -2,6 +2,10 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/api/ai/proxy",
+      "destination": "/api/ai-proxy.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },
@@ -9,5 +13,10 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/ai-proxy.ts": {
+      "maxDuration": 30
+    }
+  }
 }

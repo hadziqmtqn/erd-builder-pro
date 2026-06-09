@@ -1,0 +1,59 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "ERD Builder Pro",
+  "version": "2.1.4",
+  "identifier": "com.erdbuilderpro.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:3098",
+    "beforeDevCommand": "npm run dev:tauri:servers",
+    "beforeBuildCommand": "npm run build:desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ERD Builder Pro",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../dist-server/index.js": "dist-server/index.js",
+      "../dist-server/migrate-db.mjs": "dist-server/migrate-db.mjs",
+      "../dist-server/schema.sql": "dist-server/schema.sql",
+      "../dist-server/node_modules": "dist-server/node_modules",
+      "../dist-server/prisma": "dist-server/prisma"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/hadziqmtqn/erd-builder-pro/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzODZCODk0MzUxMUU1MUEKUldRYTVSRTFsTGlHRTR1dVROaURLZmRqS2pyYlRiZU5PcDFiZ1RBOG0weFlsZ25uZXU1ckRSRlQK"
+    }
+  }
+}

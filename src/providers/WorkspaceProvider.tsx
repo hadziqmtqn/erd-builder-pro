@@ -232,10 +232,11 @@ export function WorkspaceProvider({
     edges, setEdges, onEdgesChange,
     selectedNodeId, setSelectedNodeId,
     selectedEdgeId, setSelectedEdgeId,
-    onConnect, addEntity, updateEntity, deleteEntity, handleEdgeUpdate, deleteEdge,
+    onConnect, addEntity, duplicateEntity, updateEntity, deleteEntity, handleEdgeUpdate, handleEdgeFlip, deleteEdge,
     handleDiagramSelect: selectDiagram, viewportRef,
     undo, redo, canUndo, canRedo, takeSnapshot, isItemLoading: isERDItemLoading, saveCounter,
     onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
   } = useERDSession(isPublicView, isGuest, isAuthenticated, () => {}, erdOptions);
 
   // Effective ID for realtime sync
@@ -648,7 +649,7 @@ export function WorkspaceProvider({
   const triggerPendingErdDiff = useCallback(() => setPendingErdDiffTrigger(k => k + 1), []);
   const [tableLoadingState, setTableLoadingState] = useState<'idle' | 'loading'>('idle');
   useTableViewPagination({
-    view, hasActiveItem, isAuthenticated, isPublicView,
+    view, pathname: location.pathname, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid: tableSearchParams.get('workspace'),
     tableSearchParams, projects,
     fileSearchQuery: debouncedFileSearchQuery,
@@ -702,6 +703,7 @@ export function WorkspaceProvider({
       setSidebarViewState(newView);
     }
     if (showTable) {
+      setTableLoadingState('loading');
       setActiveNoteUid(null);
       setActiveDrawingId(null);
       setActiveDiagramId(null);
@@ -922,11 +924,12 @@ export function WorkspaceProvider({
 
     onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
-    selectedEntity, canUndo, canRedo, undo, redo, addEntity, deleteEntity, deleteEdge, handleEdgeUpdate,
+    selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
 
     viewportRef, lastLoadedDiagramIdRef,
 
@@ -1001,11 +1004,12 @@ export function WorkspaceProvider({
     // ERD helpers
     onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, setSelectedNodeId, selectedEdgeId, setSelectedEdgeId,
-    selectedEntity, canUndo, canRedo, undo, redo, addEntity, deleteEntity, deleteEdge, handleEdgeUpdate,
+    selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
     viewportRef, lastLoadedDiagramIdRef,
     syncDrafts, triggerDebouncedSync, broadcastMessage, setIsLocalSaving, hasPendingSyncs, syncError,
     isInstallable, installApp,

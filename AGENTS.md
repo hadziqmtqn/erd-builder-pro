@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v4, `react-router-dom` v7 for routing, Supabase (Postgres) for persistence, Cloudflare R2 for asset storage.
+ERD Builder Pro — React 18 + Vite 6 + Express.js. Frontend uses Tailwind CSS v4, `react-router-dom` v7 for routing, Supabase (Postgres) for persistence, Cloudflare R2 for asset storage. All frontend DB access goes through `apiFetch` → Express → Prisma — no direct Supabase client in the frontend.
 
 ## State Management
 
@@ -94,7 +94,7 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 
 **Why use ref**: `sendMessage` is a `useCallback` with limited deps (`currentSession`, `messages`, `entityContextText`, `entityContext`). `projectId` cannot be a dependency because it would re-create the callback every time a file moves project. The ref (`projectIdRef`) breaks the dependency chain — its value is always read fresh inside the callback without needing re-creation.
 
-**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):73-74 (ref + effect), :417-434 (sync logic), :441 (sibling context menggunakan `liveProjectId`)
+**File**: [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts):73-74 (ref + effect), :417-434 (sync logic), :441 (sibling context using `liveProjectId`)
 
 ### AI Chat @Mentions (File Referencing)
 
@@ -132,12 +132,124 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - Deps = `[isOpen]` intentionally — effect only fires on dialog open/close, not on `activeDocument` changes while open (preserves user selection mid-edit)
 - Both Edit and Create dialog instances in `AppLayout.tsx` share the same `renameProjectId`/`setRenameProjectId` state
 
+## Searchable Type Select (ERD Column Type Dropdown)
+
+- **Problem**: 40+ SQL data types in `COLUMN_TYPES` ([`src/lib/utils.ts:8-28`](./src/lib/utils.ts)) — flat dropdown was hard to scan.
+- **Solution**: New [`SearchableTypeSelect`](./src/components/SearchableTypeSelect.tsx) component — wraps base-ui's `Select` with a sticky search input at the top of the popup.
+- **Behavior**:
+  - Auto-focus search input when popup opens (10ms delay so popup mounts first)
+  - Filter `COLUMN_TYPES` case-insensitive substring match as user types
+  - Empty state: `No types match "..."` message
+  - **Enter** in search input → select first filtered item + close
+  - **Escape** → close
+  - Up/Down arrow keys still navigate items (base-ui default)
+  - Search resets on close (handled in `useEffect` on `open` state)
+  - Search input is `sticky top-0` with border-bottom so it stays visible while scrolling
+  - `onPointerDown` / `onClick` / `onKeyDown` stopPropagation prevents base-ui from intercepting clicks/keys inside the input
+- **Critical fix — focus-out close**: base-ui's `Select` fires `onOpenChange(false, { reason: 'focus-out' })` when focus moves from the trigger to the search Input. Since the Input is INSIDE the popup, this is a false positive that closes the dropdown mid-typing. Fix: in `onOpenChange`, call `eventDetails.cancel()` when reason is `'focus-out'` to override base-ui's default close. Real outside clicks (`'outside-press'`) and Escape still close normally. See [base-ui SelectRoot.d.ts:143](./node_modules/@base-ui/react/esm/select/root/SelectRoot.d.ts) for full reason list.
+- **Wired into**: [`PropertiesPanel.tsx`](./src/components/PropertiesPanel.tsx) — replaced the plain `<Select>` for column type. Other column properties (PK, NotNull) keep their own buttons.
+- **Unused imports cleaned**: removed `Select*` and `COLUMN_TYPES` from `PropertiesPanel.tsx` imports (now lives inside `SearchableTypeSelect`).
+
+## ERD Table Duplicate
+
+- **Feature**: Right-click dropdown on any ERD table → **Duplicate** clones the table with all its columns but a unique name (e.g., `users` → `users_1`). Relationships are **NOT** duplicated.
+- **File**: [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx) — `handleDuplicate` handler, `Copy` (Lucide) menu item between Edit and Delete Table.
+- **Logic**: [`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts) `duplicateEntity(sourceId)`:
+  1. Find source node by id
+  2. Generate new entity id (random 9-char) + use existing `getUniqueName(baseName, nodes)` for unique name with `_1`, `_2` suffix pattern
+  3. Deep-clone columns with **NEW** column ids (so duplicate is fully independent — no shared state with source)
+  4. Reset `_is_fk: false` on all cloned columns (new entity has no outgoing edges)
+  5. Position offset from source: `+60px` x, `+120px` y (visible but not overlapping)
+  6. Same color as source (preserves visual identity)
+  7. `takeSnapshot` for undo support
+  8. `setSelectedNodeId(newId)` so the new entity becomes selected
+  9. Toast: `Duplicated as "{name}" — N columns copied. Relationships were not duplicated.`
+- **Context wiring**: `duplicateEntity` exposed in [`WorkspaceContext.tsx`](./src/providers/WorkspaceContext.tsx) interface + threaded through [`WorkspaceProvider.tsx`](./src/providers/WorkspaceProvider.tsx) (3 places: destructure line 235, context value lines 927/1007).
+- **Read-only mode**: `isReadOnly` (public view or diff mode) hides the dropdown — Duplicate unavailable in those modes.
+- **Auto-save**: `setNodes` triggers the auto-save effect automatically (no manual `saveDiagram` call needed).
+
 ## Removed Features
 
 - **Replace Selected** — removed entirely (context: `selectionRange`, `setSelectionRange`, `replaceSelectedText`, `registerReplaceSelected`; UI: Scissors button in AIChatPanel; handler in TiptapEditor/NotesView). The `insertContentAt` + `marked.parse` combo failed because `marked.parse` wraps in `<p>` (block) which can't be inserted inline — schema rejects nested paragraphs.
 - **`applyColorScheme`** — removed from `flowchartActions.ts`. The function mapping label → hex color was never wired to any action and was deemed not in line with best practice (colors should not be forced per label by AI).
 
 ## Notable Conventions
+
+> **IMPORTANT**: All AGENTS.md content must be written in **English only**. No other languages allowed.
+
+### Desktop Keyboard Shortcut: Settings (CMD+, / CTRL+,)
+
+- Listener registered in [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx) via `useEffect`
+- **Tauri-only**: returns early if `!window.__TAURI__ && !window.__TAURI_INTERNALS__` — never fires on web
+- **Platform-aware**: `navigator.platform.includes('mac')` → `metaKey`; else `ctrlKey`
+- **Key**: `,` (comma). `preventDefault()` to avoid browser quirks
+- **Input guard**: skips when `e.target` is `INPUT`/`TEXTAREA`/`contentEditable` — won't fire while typing in any field
+- Calls `setIsSettingsOpen(true)` from `WorkspaceContext` (not directly opening dialog) — preserves active tab, lets the dialog open with whatever tab was last selected
+
+### Account Update — Mode-Aware (Desktop / Web Pure PG / Web Supabase)
+
+Three modes detected via `/api/auth-config` (read-only public endpoint):
+
+| Mode | `supabaseAuth` | `isDesktop` | `isLocalPostgres` | `supportsPasswordUpdate` | Behavior |
+|------|----------------|-------------|-------------------|--------------------------|----------|
+| **Desktop (Tauri)** | `false` | `true` | `false` | `false` | Edit name + email, **no password** (fixed at install) |
+| **Web Pure PG** | `false` | `false` | `true` | `true` | Edit name + email + password (verified by current password) |
+| **Web Supabase** | `true` | `false` | `false` | `false` | **Read-only display** (blue info banner explains) |
+
+**Files**:
+- [`src/components/ai/AccountTab.tsx`](./src/components/ai/AccountTab.tsx) — form UI, fetches `/api/auth-config` once on mount, manages local form state
+- [`server/routes/auth.ts`](./server/routes/auth.ts): `PUT /api/account` — `authenticate` + `validate(updateAccountSchema)`, `useLocalAuth()` guard
+- [`server/lib/validation.ts`](./server/lib/validation.ts): `updateAccountSchema` — at least one of name/email/newPassword required
+- [`server/routes/auth.ts`](./server/routes/auth.ts): extended `GET /api/auth-config` with `isDesktop`, `isLocalPostgres`, `supportsPasswordUpdate`
+
+**Server logic**:
+- `useLocalAuth()` false → 403 "managed by your auth provider"
+- `newPassword` provided + `!isLocalPostgres()` → 400 "not available in desktop mode"
+- Email/password change → `currentPassword` required, `verifyPassword()` check
+- Email change → uniqueness check (excluding current user)
+- On success → `prisma.user.update({ where: { id: userId }, data })`
+- Frontend calls `checkAuth()` after success to sync `user_metadata` with updated email/name
+
+**`/me` reads from User table, not Session**:
+- For local auth, `GET /api/me` originally returned `session.email` / `session.name` (set at login). After account update, `/me` returned stale session data even though `User` table was correctly updated.
+- Fix: in [`server/routes/auth.ts`](./server/routes/auth.ts) `/me` handler, after `getSession(token)` succeeds, do `prisma.user.findFirst({ where: { id: session.userId }, select: { id, email, name } })` and return those values. Session table is now used only for token verification + ownership, not for profile data.
+
+**User name field convention across auth modes**:
+- **Supabase Auth** returns `user.user_metadata.full_name` and `user.user_metadata.avatar_url` (Supabase's own convention).
+- **Local auth** (desktop SQLite + web pure PG) returns `user.user_metadata.name` (our convention, set at login from `email.split('@')[0]` and updated via account settings).
+- **Components reading user display name** MUST check both fields: `user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User"`. See [`src/components/ai/AccountTab.tsx`](./src/components/ai/AccountTab.tsx) and [`src/components/nav-user.tsx`](./src/components/nav-user.tsx) for the canonical pattern.
+- A previous bug: `nav-user.tsx` only checked `full_name`, so local-auth users always saw their email prefix in the sidebar (e.g., "erfan" instead of "John Doe") — even after updating their name through AccountTab. Always check both fields.
+
+**`useAuth` is now a Context-based hook (not a regular hook)**:
+- The original `useAuth` was a regular hook — each call created its own `useState` for `user`, `isAuthenticated`, `isGuest`. This meant `AccountTab`'s `setUser` did not affect `WorkspaceProvider`'s `user` state, so the sidebar/nav-user wouldn't update after account changes without a page reload.
+- **Fix** ([`src/hooks/useAuth.tsx`](./src/hooks/useAuth.tsx)): now exports `AuthProvider` (wraps the entire app in [`main.tsx`](./src/main.tsx)) and `useAuth()` consumes a shared `AuthContext`. All `useAuth()` calls share the same state.
+- **`setUser` is exposed**: callers can update the user state directly with response data, avoiding extra `/api/me` round-trips. Used by `AccountTab` to immediately sync the sidebar after `PUT /api/account` returns.
+- File renamed `.ts` → `.tsx` because `AuthProvider` returns JSX. All existing imports (`'./hooks/useAuth'`, `'@/hooks/useAuth'`) work without modification — TypeScript resolves `.tsx` automatically.
+
+**Client UI**:
+- Mode banners: blue (Supabase read-only), amber (desktop no password), green (pure PG full)
+- Save button disabled when no changes or `isSaving`
+- Show/Hide password toggle (Eye/EyeOff) — disabled in desktop mode
+- `hasChanges` derived: name OR email OR newPassword differ from `user.*`
+- Toast: success on save, error with server message on failure
+
+### Tauri Titlebar (Native, with `theme: "Dark"`)
+
+- **Decision**: Use native Tauri titlebar (`decorations: true`) + `theme: "Dark"` on macOS to get a dark gray native titlebar matching the app's dark theme.
+- **Config** ([`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json)): `"decorations": true, "theme": "Dark"`. Do NOT add `transparent: true` or `titleBarStyle: "Transparent"` — they break vibrancy layering (body has opaque `bg-background`, so NSVisualEffectView would be hidden).
+- **No `MacOSTitleBar` component**: `src/components/MacOSTitleBar.tsx` was deleted. Custom titlebar (with `app-region: drag/no-drag` + WebKit buttons) had bugs: Tauri 2 ignores `data-tauri-drag-region="false"` value (checks presence only), `app-region: no-drag` doesn't reliably override parent drag for `mousedown`, `WKWebView.allowsBackForwardNavigationGestures` caused 3-finger trackpad swipe lag.
+- **No `window-vibrancy` crate**: Removed from `Cargo.toml`. macOS NSVisualEffectView requires transparent body, but `body { @apply overflow-hidden bg-background }` is opaque — the blur would be invisible. Avoided complexity in favor of stable native titlebar.
+- **Body rounded corners** ([`src/index.css`](./src/index.css)): `body[data-tauri] { border-radius: 12px; overflow: hidden }` + `body[data-tauri] #root { border-radius: 12px; overflow: hidden }` — gives the app a macOS-style rounded window.
+- **No `isTauri` runtime check in `AppLayout`**: with native titlebar, no JS-side customization is needed; the spacer that previously added `app-region: drag` for the titlebar is gone.
+
+### Refactoring & Modularity
+
+- **Split on sight**: when a function/component takes on >1 responsibility, has a boolean parameter that changes behavior, or exceeds ~400 lines — split/refactor immediately. Do not postpone.
+- **Max ~400 lines per file**: if exceeded, extract logic into a separate file/module with a clear name.
+- **One responsibility per function/component**: avoid boolean `isX` parameters that alter internal flow. Use separate functions or strategy pattern.
+- **Extract logic from components**: business/heavy computation logic must not live inside React components. Extract to `src/lib/` or `src/hooks/`.
+- **Consistent naming**: extracted files must follow existing patterns. E.g. extract from `AIChatPanel.tsx` → `src/components/ai/ChatMessages.tsx`.
+- **No god objects**: Context/Provider must not hold all state. Separate by domain.
 
 - `onChange` handler in `NotesEditor` defined **inline** (no `useCallback`), causing TiptapEditor's `handleUpdate` effect to re-register every render. This is intentional but fragile.
 - `handleNoteChange` stable via `useCallback` in `useNoteChangeHandler`
@@ -148,6 +260,52 @@ Every time user sends a message in AI Chat, `sendMessage` in `useAIChat.ts` does
 - `cleanIdentifier()` (local to `erdActions.ts`): strips backticks/quotes/brackets from SQL identifiers, e.g. `` `users` `` → `users`
 - React.memo on NotesView
 - **Auto-update AGENTS.md**: after completing any feature/improvement/fix, proactively update this file with relevant new patterns, components, and mechanisms — no need to wait for user to ask
+
+### ERD Edge Handle Persistence
+
+- `useERDSession.ts` now preserves user-picked ERD edge handles during node drags and rerenders.
+- The old behavior that recomputed `sourceHandle`/`targetHandle` from node `x` positions was removed because it snapped edges back to the default side after reconnecting.
+- Current rule: keep explicit handles if they exist, and only fill in missing handles when an edge has no handle IDs yet.
+- Semantic direction still matters: if the source column is PK and the target column is not, the edge is flipped so the arrow continues to point toward the PK side.
+
+### ERD Edge Deduplication
+
+- One relation must map to one edge.
+- `useERDSession.ts` now dedupes edges with a canonical relation key built from both endpoints: `source node + source column` and `target node + target column`, sorted before comparison.
+- `onConnect` blocks inserting a new edge when the same relation already exists and shows a short info toast instead of creating a duplicate line.
+- **Dual-check** (id + name): the duplicate check uses BOTH column ID (extracted from `sourceHandle`) AND column NAME (looked up from `sourceNode.data.columns`). The name fallback is critical — it makes the check robust against stale IDs and ensures columns with the same name across different tables don't cause false positives. Symmetric match (A→B same as B→A) is honored for both ID and name keys.
+- The central edge reconciliation effect also dedupes, so duplicates introduced through reconnect/import/restore paths are removed automatically.
+- **Bug fix (dedupeEdgesByRelation)**: the old implementation stored edges with null relation keys under a synthetic key (`__raw__:${edge.id}`). On deduplication, it returned `Array.from(seen.values())` which dropped ALL null-key edges (not just duplicates). Fixed: null-key edges are collected in a separate array and always kept; deduplication only removes duplicate valid-key edges. The dedupe logic also now guards against case where new edge has valid key but existing null-key edge should be detected as dupe — all edges with valid keys go through the same `seenKeys` Set check.
+- **`onReconnect` validation**: the ReactFlow `onReconnect` handler in `ERDView.tsx` now applies the same duplicate check (ID key + name key, symmetric) and FK rule (1 FK = max 1 PK) as `onConnect`. Previously `onReconnect` only checked type mismatch and bypassed all duplicate/FK validation, allowing users to reconnect an edge to an already-occupied column slot. The helper functions (`extractColumnIdFromHandle`, `getRelationKey`, `dedupeEdgesByRelation`) are exposed from `useERDSession` and threaded through `WorkspaceProvider` → `DiagramEditorRoute` → `ERDView` for reuse.
+
+### ERD Edge Strict FK Rule (1 FK = max 1 PK)
+
+- **Polymorphic associations are NOT allowed**: one FK column can only point to one PK.
+- **Multiple FKs in 1 table → different tables are allowed**: each FK column is a separate slot, so `addresses.user_id` → `users.id` and `addresses.employee_id` → `employees.id` both work.
+- `onConnect` enforces two checks ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)):
+  1. **Exact duplicate** (same source col + same target col): blocked with `'Relation already exists'` toast. Uses name-based key as a fallback to be robust against stale column IDs.
+  2. **1 FK → 2 PKs** (same source col, different target table): blocked with `'FK already related'` error toast naming the conflicting table. Source identity uses `sourceNode.data.name + ':' + sourceColumnName` (lowercased) — much more reliable than column ID lookup.
+- AI/SQL import path enforces the same rule in [`src/components/ai/actions/erdActions.ts`](./src/components/ai/actions/erdActions.ts) `applyToErdContent` second pass — tracks `usedSourceColumns` set and skips any FK where the source column is already wired.
+
+### ERD Handle Hover Visibility
+
+- `EntityNode.tsx` handle dots are hidden by default and only become visible on hover/focus.
+- Do not keep FK handles semi-visible at rest; that leaves a faint dot behind after the cursor leaves the row.
+- The handle should rely on `opacity-0` plus hover/focus classes, not a permanent opacity override.
+
+### ERD Edge Side Reposition
+
+- `useERDSession.ts` exposes `handleEdgeFlip(edgeId)` to move one selected ERD edge to the opposite side without affecting other edges.
+- The flip toggles the stored `sourceHandle`/`targetHandle` suffixes only, so the logical relation remains the same while the rendered side changes.
+- `RelationshipPropertiesPanel.tsx` now includes a `Move Edge Side` button for the selected edge.
+
+### ERD Edge Handle Suffix Self-Heal
+
+- **Critical bug fix**: when user drags from PK to FK, `resolveEdgeHandles` flips the edge (source ↔ target) to keep arrows pointing at the PK side. The OLD implementation just copied `edge.targetHandle` → new `sourceHandle` and vice versa, leaving mismatched suffixes (e.g. `col-X-target` on a source side, `col-Y-source` on a target side). React Flow silently fails to render such edges → data IS saved but UI shows nothing → retry triggers "Relation already exists" because the edge is in local state.
+- **Fix** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts) `resolveEdgeHandles`):
+  1. After the flip, recompute `sourceHandle`/`targetHandle` suffixes from the (new) source/target X positions (`-source`/`-source-l` for source, `-target`/`-target-r` for target).
+  2. Self-heal existing broken edges: detect when `sourceHandle` ends with a TARGET suffix (`-target`/`-target-r`) OR `targetHandle` ends with a SOURCE suffix (`-source`/`-source-l`) — these are IMPOSSIBLE for their side and indicate a broken edge from older code. Rewrite the suffix via `replace(/-(source|target)(-(l|r))?$/, expectedSuffix)` while keeping the column ID intact.
+  3. **Preserve user choice**: do NOT overwrite a valid side-alternative suffix. The source side allows `-source` (right) OR `-source-l` (left), and the target side allows `-target` (left) OR `-target-r` (right). When the user reconnects an edge endpoint to a different side via `onReconnect`, that selection is preserved across renders.
 
 ## UUID vs Numeric ID (Delete/Restore)
 
@@ -180,6 +338,116 @@ Every `delete*` function must call `set*Total(prev => Math.max(0, prev - 1))` in
 - [`src/routes/TableRoute.tsx`](./src/routes/TableRoute.tsx): `makeDeleteHandler` — sets `setTableDeleteDoc(item)` so MoveToTrashAlert gets the correct `activeDocument`
 - [`src/hooks/useTrashHandlers.ts`](./src/hooks/useTrashHandlers.ts): `handleTrashRestoreDiagram` fixed to use `file.uid ?? file.id` (was `file.id` only)
 - [`src/components/modals/MoveToTrashAlert.tsx`](./src/components/modals/MoveToTrashAlert.tsx): `handleConfirm` — added `'erd'` and `'notes'` to UUID-first extraction (`activeDocument?.uid ?? activeDocument?.id`), was only for flowchart/drawings
+
+## Prisma 7 Migration (Adapter Pattern)
+
+Upgraded `@prisma/client` + `prisma` CLI to **v7.8.0**. v7 has breaking changes — `datasource.url` is removed, driver adapters are mandatory.
+
+### Key Changes
+
+- **`prisma.config.ts`** (new, [`prisma.config.ts`](./prisma.config.ts)): single config with env-based schema switching via `DB_VARIANT` (`supabase` / `pg` / `sqlite`). Uses `defineConfig` + `env("DATABASE_URL")` from `prisma/config`. Replaces `--schema=...` CLI flag.
+- **`datasource.url` removed** from all 3 schema files ([`prisma/schema.prisma`](./prisma/schema.prisma), [`prisma/schema.pg.prisma`](./prisma/schema.pg.prisma), [`prisma/schema.sqlite.prisma`](./prisma/schema.sqlite.prisma)) — only `provider` + `schemas`/table-mapping remain in datasource block.
+- **Adapter pattern** mandatory in v7. New `server/lib/prisma.ts`:
+  - PostgreSQL: `new PrismaPg({ connectionString })` from `@prisma/adapter-pg`
+  - SQLite: `new PrismaBetterSqlite3({ url })` from `@prisma/adapter-better-sqlite3`
+  - Adapter is selected at runtime by detecting `file:` prefix in `DATABASE_URL`
+- **`previewFeatures = ["driverAdapters"]`** removed (no longer needed — driver adapters are the default in v7).
+- **Package.json scripts** now use `DB_VARIANT=...` env var instead of `--schema=...` flag. Example: `cross-env DB_VARIANT=supabase prisma generate` replaces `prisma generate --schema=prisma/schema.prisma`.
+
+### New client constructor pattern
+
+```ts
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaClient } from "@prisma/client";
+
+const adapter = url.startsWith("file:") || url.endsWith(".db")
+  ? new PrismaBetterSqlite3({ url })
+  : new PrismaPg({ connectionString: urlWithPoolParams });
+
+const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
+```
+
+- `datasources: { db: { url } }` and `datasourceUrl: ...` are **removed in v7** — adapter is the only way.
+- `new PrismaClient()` (no args) **throws** in v7.
+
+### BigInt/number type compatibility
+
+`server/lib/startup-migration.ts` `backfillUids()` now uses `type PrismaRecord = { id: number | bigint | string }` and casts `id as never` for `where: { id }` clauses. v7's stricter type checking rejects the old `as number` cast because Supabase schema has `bigint` IDs while SQLite/PG-local have `number` IDs.
+
+### Known v7 type quirks
+
+- **`prisma.session` not found in Supabase client** ([`server/lib/desktop-auth.ts`](./server/lib/desktop-auth.ts)) — pre-existing lint error (also fails in v6). Desktop-only code uses `prisma.session` which exists in the SQLite-generated client but not the Supabase-generated client. Fix would require renaming the `Session` model. Left as-is to keep migration scope tight; only the dev runtime path matters.
+
+### Prisma Client Cache Stale After Schema Switch
+
+- **Symptom A (most common)**: switching from `npm run dev:api` (Supabase) to `npm run dev:pg:local` (local PG), the first Prisma query fails with:
+  ```
+  PrismaClientKnownRequestError: The table `auth.users` does not exist in the current database.
+  Invalid `prisma.user.findFirst()` invocation
+  ```
+  Login page on web local mode returns HTTP 500. The 500 is the catch-all in [`server/routes/auth.ts`](./server/routes/auth.ts) wrapping a `P2021` Prisma error. The actual error lives in `logs/server.log` (pino destination).
+- **Symptom B**: switching to desktop Tauri mode, server crashes on startup with `PrismaClientInitializationError: The Driver Adapter ... is not compatible with the provider ... specified in the Prisma schema.`
+- **Cause**: Prisma 7's incremental generator keeps the old engine binary in `node_modules/.prisma/client/` when switching between schemas. The log says "Generated Prisma Client" but the actual `index.js` / `schema.prisma` still references the old schema (Supabase's `auth.users` table when the user expects local PG's `public.users`).
+- **Fix** ([`package.json`](./package.json)): every dev script that regenerates the Prisma client now does `rm -rf node_modules/.prisma/client` first:
+  - `dev:desktop`: `rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && ...`
+  - `dev:pg:local`: `rm -rf node_modules/.prisma/client && npm run db:generate:pg:local && ...`
+  The `rm -rf` clears the stale engine binary before regeneration. Without it, the new generator sometimes produces a no-op because the old engine is still there.
+- **Manual recovery if symptoms appear**: `rm -rf node_modules/.prisma/client && npm run db:generate:pg:local` (or whichever variant is needed) + restart the dev server. Also restart VS Code TS server if editor shows stale `prisma.session` errors.
+
+### Deps added
+
+- `@prisma/adapter-pg@7.8.0` (PostgreSQL driver adapter)
+- `@prisma/adapter-better-sqlite3@7.8.0` (SQLite driver adapter)
+- Peer deps `pg` and `better-sqlite3` auto-installed.
+
+## Prisma Migration Security Guardrails
+
+- **Project ownership must be verified before writing `project_id`**: use `resolveOwnedProjectId()` from [`server/lib/security.ts`](./server/lib/security.ts) so user-owned documents cannot be attached to another user's project.
+- **Global AI tables are admin-only for writes**: `ai_providers`, `ai_models`, and default/system prompt toggles are restricted through `requireAdmin()` in [`server/lib/security.ts`](./server/lib/security.ts). Regular users may manage only their own `user_ai_configs` and custom prompts.
+- **BigInt JSON serialization stays lossless**: Prisma `BIGINT` values are serialized as strings in [`server/index.ts`](./server/index.ts) to avoid rounding IDs beyond JavaScript safe integer range. Frontend code should treat IDs as opaque strings where possible.
+
+## Desktop Login Bootstrap
+
+- **Desktop Tauri auto-login (transparent, no credentials)**: on fresh install or after session expiry, `GET /api/me` in [`server/routes/auth.ts`](./server/routes/auth.ts) detects `useLocalAuth()` and auto-creates the local `local@desktop.dev` user + session if none exists — zero manual login. The old two-step flow (`checkAuth` → fail → `POST /api/desktop-login`) is replaced by a single `/api/me` call that always succeeds in desktop mode.
+
+- **Server retry in `useAuth.checkAuth`** ([`src/hooks/useAuth.tsx`](./src/hooks/useAuth.tsx)): in Tauri mode the Node.js server starts asynchronously from Rust's `Command::new("node")`. `checkAuth` retries **indefinitely** with exponential backoff (`1.5s → 2.25s → 3.4s → 5s → 7.5s → 10s` capped) until the server responds. Web mode keeps the old 3-retry limit.
+
+- **Login.tsx polling fallback** ([`src/components/Login.tsx`](./src/components/Login.tsx)): the Tauri auto-login `useEffect` polls `/api/me` directly as a heartbeat. Once the server is up and `/api/me` returns `authenticated: true`, it calls `onLogin(data.user)` synchronously — the spinner transitions directly to the app without the user ever seeing the form.
+
+- **`/api/desktop-login` endpoint removed** — the `/api/me` handler now contains the `ensureDesktopUser` helper that creates user + session inline. No separate POST or frontend call needed.
+
+### Desktop Window Persistence
+
+- `useTauriWindowPersistence()` hook in [`src/hooks/useTauriWindowPersistence.ts`](./src/hooks/useTauriWindowPersistence.ts) saves/restores window size (`width`, `height`) and position (`x`, `y`) to `localStorage` under key `tauri_window_state`.
+- Wired in `AppLayout.tsx` — runs only when `window.__TAURI__` is detected.
+- Uses dynamic `import('@tauri-apps/api/window')` to avoid breaking web builds.
+- Restores on mount, saves on `onResized` and `onMoved` events.
+
+### Desktop AI Seed Data (Startup)
+
+- `seedAIProviders()` in [`server/run.ts`](./server/run.ts) runs on every server startup.
+- Checks `aiProvider.count()` first — if providers already exist, skips seeding.
+- Creates 3 providers (OpenAI, Google Gemini, OpenAI Compatible), their models, and the "Simple & Direct" default system prompt.
+- Mirrors `prisma/seed.sqlite.ts` but runs inline in the server startup path (no CLI seed needed).
+- Failures are non-fatal (logged as warning).
+
+### Desktop Auto-Login (`/api/me`)
+
+**`ensureDesktopUser()`** in [`server/routes/auth.ts`](./server/routes/auth.ts):199 — creates `local@desktop.dev` user + session if none exist, returns token + user. Called by `/api/me` when no valid session exists in desktop mode.
+
+**Flow**:
+1. App loads → `checkAuth()` → `GET /api/me`
+2. Server: no valid token → `ensureDesktopUser()` creates/finds `local@desktop.dev` → creates session → returns `{ authenticated: true, token, user }`
+3. Frontend: `useAuth.tsx` stores `data.token` via `setAuthToken()` → app transitions to dashboard
+4. No login form ever shown in Tauri mode
+
+**Login.tsx desktop mode**: [`src/components/Login.tsx`](./src/components/Login.tsx) — if Tauri, renders a minimal spinner + pings `/api/me` until auto-login succeeds (pure fallback; should never mount in normal flow because `checkAuth()` resolves before `isAuthenticated` transitions from `null`).
+- Old polling logic (pre-fill desktop credentials, server-ready detection) removed.
+- `onLogin` prop signature: `(userData?: any) => void` — `/api/me` response passed directly.
+- Web mode (non-Tauri) preserves the full login form unchanged.
+
+**Server**: cookie is set with `sameSite: "lax"`, `httpOnly: !isDesktopMode()` (not httpOnly on desktop so Tauri WebView cross-origin cookie works). Token also returned in body for `Authorization: Bearer` header flow.
 
 ### Stale Table List After Delete (Pagination Refresh)
 After a Move-to-Trash, the table list shows stale data (missing/empty slots) because `delete*` functions only mutate local state — they don't re-fetch the current page from the server. The previous fix (`onAfterDelete` → `handleViewChange`) only navigates to `/table/<view>`, which is a no-op when already on page 1.
@@ -387,7 +655,7 @@ src/components/ai/
 - **Fix**: Moved all AI Settings CRUD (providers, configs, models, prompts, initialize) to server API at `/api/ai/settings/*`.
 - **Server file**: [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) — Express router with `authenticate` middleware, mounted at `app.use("/api/ai/settings", aiSettingsRouter)` in [`server/index.ts`](./server/index.ts).
 - **Client file**: [`src/hooks/useAISettings.ts`](./src/hooks/useAISettings.ts) — rewritten to use `apiFetch` for all calls instead of direct `supabase` client. No `VITE_SUPABASE_URL` dependency.
-- **Route list**: `GET/POST /configs`, `GET/POST /models`, `PUT/DELETE /models/:id`, `GET/POST /prompts`, `DELETE /prompts/:id`, `PUT /prompts/:id/toggle-default`, `POST /initialize`, `PUT /providers/:id`, `GET /providers`.
+- **Route list**: `GET/POST /configs`, `GET/POST /models`, `PUT/DELETE /models/:id`, `GET /configs`, `GET /prompts/default`, `DELETE /prompts/:id`, `PUT /prompts/:id/toggle-default`, `POST /initialize`, `PUT /providers/:id`, `GET /providers`.
 - **No conflict**: Express router for `/api/ai` (proxy, `/api/ai/proxy`) and `/api/ai/settings` (settings) are separate mount points — no path overlap.
 - **Targeted fetch optimization**: `fetchModelsData()` and `fetchPromptsData()` replace `fetchData()` calls in model/prompt handlers — avoids re-fetching providers/configs on every CRUD operation.
 
@@ -403,13 +671,11 @@ src/components/ai/
   - [`src/hooks/aiChat/syncSessionProjectId.ts`](./src/hooks/aiChat/syncSessionProjectId.ts) — project ID sync
   - [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts) — default prompt fetch
 - **Most database calls migrated** — AI Chat CRUD, AI Settings, and core app operations go through `apiFetch` → Express server → server supabase client (`SUPABASE_URL` env).
-- **Remaining direct Supabase calls** (frontend still imports `@/lib/supabase`):
-  - [`src/hooks/aiEntityContext/siblings.ts`](./src/hooks/aiEntityContext/siblings.ts): `fetchProjectEntities`, `fetchSiblings`
-  - [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts), `note.ts`, `flowchart.ts`, `drawing.ts`: entity context fetching
-  - [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx): mention resolution (notes, entities, columns)
-  - [`src/hooks/useRealtimeSync.ts`](./src/hooks/useRealtimeSync.ts): realtime subscriptions
-- All remaining calls are **wrapped in try/catch** and fail silently — core CRUD works without them.
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are **optional** — needed only for AI context, mentions, and realtime.
+- **Frontend Supabase fully migrated to `apiFetch`** — `src/lib/supabase.ts` deleted. All frontend Supabase calls (entity context, AIChatPanel mentions, realtime sync) now go through `apiFetch` → Express server → Prisma → database. No `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` required in the frontend.
+  - [`src/hooks/aiEntityContext/siblings.ts`](./src/hooks/aiEntityContext/siblings.ts), `diagram.ts`, `note.ts`, `flowchart.ts`, `drawing.ts` — use `apiFetch('/api/projects/:id/siblings')` or `apiFetch('/api/diagrams/:uid')` etc.
+  - [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx) — mention resolution uses `apiFetch('/api/notes/:uid')` and `apiFetch('/api/diagrams/:uid')`
+  - [`src/hooks/useRealtimeSync.ts`](./src/hooks/useRealtimeSync.ts) — stubbed to no-op (Supabase Broadcast removed; auto-save handles persistence)
+  - **Key insight**: desktop (Tauri) build will have zero Supabase frontend dependency
 - **Guest mode safety**: AI Chat uses `isGuestCheck()` guards at the top of every function — all online API calls are skipped in guest mode, using IndexedDB (`localPersistence`) instead. AI Settings is never accessible in guest mode (Settings menu hidden in `NavUser`), plus `fetchData`/`fetchModelsData`/`fetchPromptsData` all have `if (isGuest) return` guards.
 
 ## Server Auth (Supabase Auth — No Custom JWT)
@@ -418,6 +684,7 @@ src/components/ai/
 - **`JWT_SECRET` removed** — was previously exported from `server/lib/config.ts` but never used by auth middleware. Supabase manages its own JWT signing keys.
 - **Login flow**: `POST /api/login` → `supabase.auth.signInWithPassword({ email, password })` → returns session JWT → set as `Set-Cookie: token=...` → subsequent requests carry cookie → middleware calls `supabase.auth.getUser(token)` to identify user.
 - **Reason Supabase Auth works**: The `SUPABASE_SERVICE_ROLE_KEY` server-side Supabase client can call `supabase.auth.getUser(token)` to verify any valid Supabase JWT. No local secret needed.
+- **Edge auth helper**: [`server/lib/edge-auth.ts`](./server/lib/edge-auth.ts) now mirrors the same Supabase-token verification path and no longer relies on a custom signed JWT secret.
 
 ## Login Fix Pattern (Second Round-Trip Bug)
 
@@ -441,6 +708,22 @@ src/components/ai/
 ### Key Hooks
 - **`useERDSession`** ([`src/hooks/useERDSession.ts`](./src/hooks/useERDSession.ts)): State management using `useNodesState<Node<Entity>>` and `useEdgesState<Edge>` from XYFlow. Exposes: `addEntity()`, `updateEntity(entity)`, `deleteEntity(id)`, `handleEdgeUpdate()`, `deleteEdge()`, `onConnect`, `undo/redo`, `takeSnapshot`
 - **`useDiagrams`** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts)): Diagram metadata CRUD (list, create, rename, delete), persist entities/columns as JSON to DB
+
+### ERD Keyboard Shortcuts
+
+- **Table deletion**: ReactFlow built-in Backspace/Delete shortcuts are **disabled** via `deleteKeyCode={null}` prop in `ERDView.tsx`
+- **Reason**: Prevents accidental table deletion when typing in dropdowns (e.g., SearchableTypeSelect column type search) or modal inputs
+- **Delete table**: Users MUST use explicit dropdown menu action "Delete Table" in EntityNode — requires confirmation dialog
+- **Undo/Redo**: Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (redo) — registered in `useERDSession.ts`
+
+### ERD Edge Reconnection
+
+- **`defaultEdgeOptions.reconnectable: true`** in `ERDView.tsx:361` enables edge endpoint dragging
+- **`onReconnect` handler** (`ERDView.tsx:513`): validates type match, calls `takeSnapshot` for undo, then uses a single **atomic `reconnectEdge(oldEdge, connection, eds)`** from `@xyflow/system`. This preserves all old edge properties (reconnectable, markerEnd, type, animated) while updating source/target/handles. Uses `shouldReplaceId: true` (default) to generate a fresh edge ID from the connection.
+- **Bug fixed**: previously `onReconnect` called `setEdges(filter)` then `onConnect(connection)`. The `onConnect` closure had stale `edges` (still including old edge), so `addEdge` returned edges with old edge re-included. The second `setEdges` from `onConnect` overwrote the filter — causing the edge to snap back to original position.
+- **4 handles per column**: each column has `col-{id}-target` (left), `col-{id}-source-l` (left), `col-{id}-source` (right), `col-{id}-target-r` (right). When reconnecting to the opposite side, the new handle ID is automatically used.
+- **Handle visibility for FK columns** (`EntityNode.tsx`): FK columns (`_is_fk = true`) have handles always semi-visible (`!opacity-60`) instead of `opacity-0` — users can see where connections exist without hovering. Size increased to `!w-2 !h-2` (8px) from 6px. Non-FK columns remain hidden until hover.
+- **Files**: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx):513-529, [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx):55-84
 
 ### ERD → AI Flow
 1. `ERDView` passes `{ nodes, edges, selectedNode }` context to `AIActionButton`
@@ -583,7 +866,7 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 5. **`selectedGroupNodeIds` stable empty set**: uses `emptySetRef` (`useRef(new Set<string>())`) instead of `new Set<string>()` when `!selectedGroup` — prevents creating a new Set reference on every render, which used to force `memoizedNodes` useMemo to recompute on every non-drag re-render (AIActionContext sync, saveFlowchart state update), cascading into unnecessary React Flow reconciliation of all nodes.
 - `isEditingEdgeRef` skips auto-save while ConnectorPropertiesModal is open — prevents auto-save cascade on every keystroke when editing edge labels. On modal close, a flush save fires automatically to persist pending changes.
 - `isEditingNodeRef` skips auto-save while SymbolPropertiesModal is open — same pattern as edge editing to prevent dialog close on keystroke
-- Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes**, not on every data sync — prevents auto-save cycle from closing modal dialogs.
+- Init effect (`useEffect` dep `[activeFlowchartId, activeFlowchart.data]`) **only clears `selectedNodeId`/`selectedEdgeId` when flowchart ID changes`, not on every data sync — prevents auto-save cycle from closing modal dialogs.
 - Init effect **skips loading default `initialNodes`/`initialEdges` when `pending_create_flowchart_json` or `pending_update_flowchart_json` exists in localStorage** — prevents brief flash of dummy flowchart before AI content replaces it (`FlowchartView.tsx:321`).
 - **`pendingContentAppliedRef` — Guest mode Create Flowchart content not appearing fix** ([`FlowchartView.tsx`](./src/components/views/FlowchartView.tsx)): ref set to `true` by pending effect after applying AI content. Init effect guards `setNodes`/`setEdges` with `if (!pendingContentAppliedRef.current)` to prevent overwriting canvas when `activeFlowchart.data` transitions from `undefined` → `''` (after `selectFlowchart` resolves in Guest mode). Ref reset to `false` in init effect's `flowchartChanged` block when navigating to a different flowchart.
 - **`saveFlowchart` Guest mode React state sync** ([`useFlowcharts.ts`](./src/hooks/useFlowcharts.ts):277-283): after saving to IndexedDB, calls `setFlowcharts` to update `activeFlowchart.data` immediately — without this, the workspace context never reflects the saved data until auto-save fires or page reloads.
@@ -609,6 +892,8 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 - **Filter `select` changes**: `handleNodesChangeLocal` in ERDView filters out `type: 'select'` changes before forwarding to React Flow (mirrors FlowchartView pattern) — prevents selection-only events from cascading through styledNodes/styledEdges
 - **Targeted memo comparator**: replaced `JSON.stringify` in `ERDView.memo` comparator with field-by-field comparison (`nodesEqual`/`edgesEqual` functions) — avoids serializing 90+ columns on every parent re-render
 - **FK detection optimization**: replaced `JSON.stringify(newColumns) !== JSON.stringify(node.data.columns)` with inline `_is_fk !== isFk` comparison in `useERDSession.ts`
+- **Auto layout spacing tuning**: `src/lib/autoLayoutERD.ts` now uses a much smaller width estimate per column (`BASE_TABLE_WIDTH = 220`, `COL_TO_WIDTH_ESTIMATE = 6`) and clamps horizontal spacing with `MIN_HORIZONTAL_SPACING = 280` plus a smaller padding. Vertical layer spacing is also reduced (`+72`) so ERD tables sit closer together overall while still avoiding overlap for wider tables.
+- **Flowchart auto layout**: `src/lib/autoLayoutFlowchart.ts` — BFS from Start nodes, diamond decision branch offset (`BRANCH_OFFSET = 280`), convergence centering for multi-source nodes. Used by `FlowchartView` toolbar "Auto Layout" button.
 
 ### Per-Table Dialog: `TableDialog`
 
@@ -633,6 +918,7 @@ Multiple fixes prevent cascading re-renders on every drag frame:
 - **`maxIter` guard**: `collectDescendants(id, outgoing, exclude, maxIter=200)` prevents infinite BFS loops from malformed graphs.
 - **Sugiyama BFS capped**: `maxBFSIter = newNodes.length * 3` prevents infinite loop on cyclic graphs (back-edges). The original `while (queue.length > 0)` never terminates when the graph has cycles (e.g. `n4→n2→n3→n4` loop) because each cycle pass re-queues all cycle nodes with higher layers, growing the queue unboundedly.
 - **Fast-path positions**: if ALL AI-provided nodes have `position` with `x`/`y` numbers, `buildFlowchartLayout` uses them directly and skips the Sugiyama layout entirely — eliminates the layout bottleneck for AI responses that include positions.
+- **Symbol-aware manual Auto Layout**: [`src/lib/autoLayoutFlowchart.ts`](./src/lib/autoLayoutFlowchart.ts) now returns `{ nodes, edges }` instead of nodes only. It assigns diamond decision branches with semantic `Yes`/`No` side placement, spreads other branches by shape-aware column offsets, and recalculates `sourceHandle`/`targetHandle` so branch arrows do not flip sides after layout.
 
 ### Flowchart AI Content Safety Guards
 
@@ -690,7 +976,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 
 
-**Special instructions for Edit Columns prompt:**
+**Special instructions for Edit Columns prompt**:
 - When multiple tables selected, prompt shows ALL selected tables with column structures
 - Instructs AI to respond with JSON + a user-facing message after the code block (e.g., "Click the **Append** button to apply changes to the admins table.")
 - Multi-table JSON format: `{"table_name": {"mutations": [...]}}` — per-table key, not an array of sets
@@ -719,16 +1005,62 @@ The prompt is built as a **prefix of the user message** (not system message) —
 
 ## API Client (Migration Ready)
 
-- **`src/lib/api.ts`**: Centralized API helper with `API_BASE_URL` (from `VITE_API_URL` env var) and `apiFetch()` wrapper
+- **`src/lib/api.ts`**: Centralized API helper with `API_BASE_URL` and `apiFetch()` wrapper
   ```ts
-  export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${API_BASE_URL}${input}`, { credentials: 'include', ...init });
+  function isTauri(): boolean {
+    return typeof window !== 'undefined' &&
+      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
   }
+  export const API_BASE_URL: string = import.meta.env.VITE_API_URL ||
+    (import.meta.env.DEV && !isTauri() ? '' : 'http://localhost:3000');
   ```
+  - **Browser dev**: `API_BASE_URL = ''` → requests go through Vite proxy (`/api` → `localhost:3000`)
+  - **Tauri dev / production**: `API_BASE_URL = 'http://localhost:3000'` → direct absolute URL (avoids CORS cross-origin from `tauri://localhost`)
+  - **Override**: set `VITE_API_URL=https://api.server.com` in `.env`
 - All `fetch('/api/...')` calls replaced with `apiFetch('/api/...')` — when repos split, set `VITE_API_URL=https://api.server.com` and all calls redirect
 - **Global 401 interceptor** (`main.tsx:12`): patched to detect API calls by checking `API_BASE_URL` prefix in addition to relative `/api/` paths
 - **Vite proxy** (`vite.config.ts:20`): `/api` proxied to `VITE_API_URL || http://localhost:3000` for standalone dev
 - **No `Content-Type` auto-setting** — upload calls (FormData) work without override
+
+## Database Mode Detection
+
+Three database modes, chosen by `DATABASE_URL`:
+
+| Mode | Detection | Auth | ID type | Schema |
+|------|-----------|------|---------|--------|
+| **Desktop/SQLite** | `file:` or `.db` in URL | Local (desktop-auth.ts) | `Int` | `schema.sqlite.prisma` |
+| **Local PostgreSQL** | `postgresql://` URL + no `SUPABASE_URL` | Local (same as desktop) | `Int` | `schema.pg.prisma` |
+| **Supabase PostgreSQL** | `postgresql://` URL + `SUPABASE_URL` set | Supabase Auth (JWT) | `BigInt` | `schema.prisma` |
+
+### Detection helpers ([`server/lib/config.ts`](./server/lib/config.ts)):
+- `isDesktopMode()` — SQLite URL patterns
+- `isLocalPostgres()` — PostgreSQL URL without `SUPABASE_URL`
+- `useLocalAuth()` — `isDesktopMode() || isLocalPostgres()` — used in auth routes
+
+### Key server files handling local PostgreSQL:
+- [`server/lib/middleware.ts`](./server/lib/middleware.ts): `authenticate` + `checkSupabase` skip Supabase when `useLocalAuth()` is true
+- [`server/routes/auth.ts`](./server/routes/auth.ts): all `isDesktopMode()` → `useLocalAuth()` so local PostgreSQL uses the same email/password auth path
+- [`server/lib/prisma.ts`](./server/lib/prisma.ts): skips `connection_limit`/`pgbouncer` pooler params for local PostgreSQL
+- [`server/lib/utils.ts`](./server/lib/utils.ts): `toProjectId()` returns `Number()` for both SQLite and local PostgreSQL, `BigInt()` only for Supabase PostgreSQL
+- [`server/lib/security.ts`](./server/lib/security.ts): `isAdminUser()` uses `useLocalAuth()` — local PostgreSQL user is always admin (same as desktop)
+- [`server/lib/desktop-auth.ts`](./server/lib/desktop-auth.ts): rewritten to use Prisma `session` model instead of raw SQL — works on both SQLite and PostgreSQL (no `?`/`$1` placeholder mismatch)
+
+### Schema for local PostgreSQL ([`prisma/schema.pg.prisma`](./prisma/schema.pg.prisma)):
+- Based on `schema.sqlite.prisma` — local User model with `email`/`password`/`name`
+- `provider = "postgresql"` with no `schemas` line (uses `public` schema only)
+- Int IDs (same as SQLite) — simpler than Supabase's BigInt
+- No Supabase auth tables (identities, sessions, mfa_factors, etc.)
+- Includes `Session` model (auth sessions table) — also added to `schema.sqlite.prisma`
+- Generate: `npm run db:generate:pg:local`
+- Migrate/push: `npm run db:push:pg:local`
+- Seed: `npm run db:seed:pg:local`
+- Run: `npm run dev:pg:local`
+
+### .env setup for local PostgreSQL:
+```
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/erd_builder_pro"
+# No SUPABASE_URL — triggers local auth mode
+```
 
 ## Server Architecture (Standalone)
 
@@ -748,6 +1080,15 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **`src/types.ts`**: Re-exports everything from `../shared/types` — all existing imports continue to work
 - Backend can import directly from `shared/types` when it gets its own repo
 - Covers: ERD entities, documents (Diagram/Note/Drawing/Flowchart), AI integration (Provider/Model/Config/Chat), projects, audit
+
+## Workspace Filtering (Sidebar)
+
+Workspace/sidebar filtering menggunakan `project.uid` sebagai key identifier. Alur:
+
+- Sidebar → `handleWorkspaceClick(project.uid)` → `handleViewChange(view, true, uid)` → navigasi ke `/table/{view}?workspace={uid}`
+- `useTableViewPagination` membaca `selectedWorkspaceUid` dari URL params → lookup project by `uid` di `projects[]` → dapat `project.id` (numeric) → fetch API dengan `project_id=${id}`
+- Server `POST /api/projects` di [`server/routes/projects.ts`](./server/routes/projects.ts) HARUS generate `uid: randomUUID()` agar workspace baru bisa difilter. Kalau `uid` null, proyek tidak akan muncul di lookup filter.
+- Backfill data existing: `prisma.project.updateMany({ where: { uid: null }, data: { uid: crypto.randomUUID() } })`
 
 ## AGENTS.md File References Convention
 
@@ -795,6 +1136,32 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - **`res.on("close")` vs `req.on("close")`**: Use `res.on("close")` to detect client disconnect. `req.on("close")` fires prematurely when the POST body is finished reading by `express.json()`, which causes `AbortController.abort()` to be called before the fetch to the AI provider can connect.
 - **30s timeout**: Safety timeout to prevent the provider fetch from hanging forever.
 - **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
+
+## AI Session UID Handling (SQLite vs PostgreSQL)
+
+SQLite schema lacks `@default(uuid())` on `uid` columns → sessions created with `uid: null`. This causes frontend failures when code expects `session.uid` to always be a string.
+
+### Server Fixes
+
+- **`POST /sessions`** ([`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts)): explicitly sets `uid: randomUUID()` on create so SQLite sessions always have a UUID.
+- **`uidOrIdWhere(uid, userId)`** ([`server/lib/utils.ts`](./server/lib/utils.ts)): helper for all `:uid` routes — matches by `uid` OR `id` (numeric fallback for existing null-uid sessions). Applied to: GET/DELETE/PUT `/sessions/:uid`, GET `/sessions/:uid/messages`.
+- **POST `/messages`** (`ai-chat.ts`): session lookup uses `OR [{ uid: sid }, { id: numericId }]` — handles both `session.uid` and `session.id` as `session_id` payload.
+- **Backfill** ([`server/lib/startup-migration.ts`](./server/lib/startup-migration.ts)): `aiChatSession` added to `backfillUids()` — assigns UUID to existing null-uid sessions on server restart.
+
+### Frontend Fixes
+
+- All `session_id: currentSession.id` → `session_id: currentSession.uid ?? currentSession.id` in [`src/hooks/useAIChat.ts`](./src/hooks/useAIChat.ts) (5 occurrences).
+
+## AI Proxy Status Code Safety
+
+- **`server/routes/ai.ts`** returns **502 Bad Gateway** (not pass-through status) for upstream provider errors — prevents the global 401 interceptor in [`src/main.tsx`](./src/main.tsx) from dispatching `auth:unauthorized` and reloading/redirecting to `/`.
+- The global interceptor (`main.tsx:28`) treats any 401 on `/api/*` as session expiry → `auth:unauthorized` event → `useAuth` clears auth state → `App.tsx` redirects to login. AI provider 401 must not leak through.
+
+## AI Config API Key Mask Safety
+
+- [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) masks `apiKey` as `'***'` in GET/POST `/configs` responses.
+- **Server-side guard**: `POST /configs` update/create branch ignores `api_key` if value is `'***'` — prevents accidentally overwriting the real key when user clicks Save without changing the field. Real key stays in DB.
+- **Test Connection moved server-side**: `POST /api/ai/settings/configs/test` endpoint at `ai-settings.ts` — reads real API key from DB, calls provider, returns success/failure. Frontend `handleTestConnection` in [`src/hooks/useAIProviders.ts`](./src/hooks/useAIProviders.ts) sends only `{ provider_code, model_identifier }`, no key in request body. Eliminates `Bearer ***` bug.
 
 ## @Mentions as Clickable Links in Chat
 
@@ -849,15 +1216,7 @@ The prompt is built as a **prefix of the user message** (not system message) —
        - Set more compact heading and paragraph margins (`margin-bottom: 10px` for `p`, `margin-top: 20px` / `margin-bottom: 8px` for `h2`).
        - Added `li p { margin-bottom: 0; }` rule so paragraphs inside list items do not duplicate bottom margin.
 
-## Phase 3: Living Flowcharts Simulation & Visual Schema Diffing
-
-- **Living Flowcharts (AI Logic Simulation Sandbox)**:
-  - **Logic Execution Sandbox**: Allows users to attach JavaScript code snippets behind flowchart symbols via `SymbolPropertiesModal` (stored in node data as `code`). Simulation executes in-browser using `new Function('context', ...)` to isolate input/output variables to a JSON `context` object.
-  - **Interactive Simulation Controls**: Added **"Simulate Flow"** button on the top toolbar. When clicked, the sandbox panel slides in from the right side of the canvas to test JSON input and view execution logs.
-  - **Dynamic Path & Node Visuals**: During simulation, the flow animates in real-time. Active nodes glow amber and pulse, visited nodes glow emerald, connectors turn solid green/orange and animate to trace the traversal.
-  - **Conditional Branch Selection**: If a decision node (diamond) has multiple outgoing edges, the executor automatically follows the branch whose label matches the return value of the JS code. If no code or no matching branch exists, simulation pauses and the log panel provides branch-button options for manual selection to continue tracing.
-
-- **Visual Schema Diffing & Merge Resolution (Git-style Database Design)**:
+## Phase 3: Visual Schema Diffing & Merge Resolution (Git-style Database Design)
   - **Schema Diff Engine**: Utility [`src/lib/schema-diff.ts`](./src/lib/schema-diff.ts) compares old ERD schema against proposed new SQL DDL schema from AI. It marks nodes/tables with `diffState` (`'new' | 'modified' | 'deleted'`) and individual columns with the same flags.
   - **Visual Diff Highlights**: On the ERD canvas, new tables render with bright green borders (plus "NEW" badge and emerald glow), modified tables render with amber borders ("MOD" badge), and deleted tables render with faded red borders ("DEL" badge, low opacity). New columns prefixed with `+` in green, removed columns struck through in red.
   - **Conflict & Merge Resolution Panel**: Floating toolbar at the bottom of the canvas showing a change summary (e.g., "2 New, 1 Mod, 0 Del"). Users can open a **Checklist Panel** to review details and select which tables to approve for merging.
@@ -873,6 +1232,9 @@ The prompt is built as a **prefix of the user message** (not system message) —
 - Covers **"create ERD from scratch"** scenario: rule #5 explicitly tells AI to generate complete SQL DDL when user asks to create an ERD from nothing
 - Enforces ` ```sql ` code block wrapping: plain text/HTML tables will NOT be parsed
 - Schema design rules (no duplicate columns, FK references) moved to a separate bottom section
+- **Portable SQL types (default)**: AI instructed to use dialect-neutral, portable types by default — `BIGINT` for PKs (NOT `BIGSERIAL`/`SERIAL`/`AUTO_INCREMENT`), `INT`, `VARCHAR(n)`, `TEXT`, `BOOLEAN`, `TIMESTAMP`, `DECIMAL`, `UUID`. This ensures parsed ERD types match across export dialects.
+- **Dialect override**: Rule #11 in `diagram.ts` allows dialect-specific syntax (PostgreSQL, MySQL, etc.) **if the user explicitly asks for it**. Both the ERD context prompt (`diagram.ts`) and the Technical Rules (`buildSystemMessages.ts`) enforce the same portable-by-default, dialect-on-request policy.
+- **Files**: [`src/hooks/aiEntityContext/diagram.ts`](./src/hooks/aiEntityContext/diagram.ts), [`src/hooks/aiChat/buildSystemMessages.ts`](./src/hooks/aiChat/buildSystemMessages.ts)
 
 ## Content-Aware Action Buttons (AI Chat)
 
@@ -1041,10 +1403,196 @@ This prevents the auto-save effect from scheduling its 800ms timeout when `handl
   - **Files**: [`src/components/ai/NoteFromTextDialog.tsx`](./src/components/ai/NoteFromTextDialog.tsx), [`src/components/ai/ChatMessages.tsx`](./src/components/ai/ChatMessages.tsx), [`src/components/views/NotesView.tsx`](./src/components/views/NotesView.tsx), [`src/components/ai/AIChatPanel.tsx`](./src/components/ai/AIChatPanel.tsx), [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx)
 - **AssistantMessageActions**: Notes button (`FileText` icon) always visible across ALL views. Replace/Append buttons hidden on Notes view (`contentCheckType === 'none'` → `showApplyButtons` is false). User opens NoteFromTextDialog via Notes button.
 
+## AI Rules (Per-View Configurable)
+
+- **`server/routes/ai-rules.ts`**: `GET/PUT /api/ai/rules/:viewType` — validates `'erd'|'notes'|'flowchart'`, upserts per `(user_id, view_type)`.
+- **`src/hooks/useAIRules.ts`**: fetch/save rules per view type, guest fallback via localStorage.
+- **`src/components/ai/AIRulesTab.tsx`**: 3 sub-tabs (ERD, Notes, Flowchart) with textarea, save button, disable toggle.
+- **`src/components/modals/SettingsModal.tsx`**: tab "AI Rules" (`ListChecks` icon) in Feature group, renders `<AIRulesTab />`.
+- **`useAIChat.ts`**: injects view rules into system prompt with override instruction — "if user explicitly requests something contradicting a rule, follow user's direct instruction."
+- **`AIChatPanel.tsx`**: maps `entityType` → `currentViewType` (`note→notes`, `diagram→erd`, `flowchart→flowchart`), passes to `useAIChat`.
+- **DB table**: `user_ai_rules` (UUID PK, FK `auth.users`, `view_type` CHECK, unique per user+view) with RLS policy and `updated_at` trigger.
+- **Files**: [`src/hooks/useAIRules.ts`](./src/hooks/useAIRules.ts), [`src/components/ai/AIRulesTab.tsx`](./src/components/ai/AIRulesTab.tsx), [`server/routes/ai-rules.ts`](./server/routes/ai-rules.ts)
+
 ## Spinner Style Standardization
 
 - **UI Update**: Previously, some views used a large spinner (`w-10 h-10`) while others used a small spinner (`w-6 h-6`). This has been standardized across the entire application.
 - **Implementation**: All loading states (including `<AppInitialization>`, editor routes, and views) now use the same uniform small spinner design: `className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"`.
+
+## Backup Download Toast (Cross-OS Desktop)
+
+- [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) `handleDownload` behavior differs by platform:
+  - **Tauri desktop**: reveals the backup file in the OS file manager via `revealItemInDir()` from `@tauri-apps/plugin-opener`. Since the file is already on local disk (server wrote it directly to the user's configured folder), there's no need to stream it through the WebView. The absolute path is stored in `Backup.file_path` at creation time so this works even if the user later changed their backup folder setting.
+  - **Web**: streams the file via `Content-Disposition: attachment` (the server reads the file and serves it as a download).
+- **Button icon** also changes by platform: Tauri uses `ExternalLink` icon, web uses `Download`. Title attribute shows "Show in folder" vs "Download backup".
+- Tauri detection: `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`.
+- Toast on Tauri: `"Revealed in file manager."` with the full path as description (6000ms). On web: `"Backup \"X\" downloaded successfully."`.
+
+## Tauri Opener Plugin (Reveal in File Manager)
+
+- **Plugin setup** (4 places):
+  1. **Rust crate** ([`src-tauri/Cargo.toml`](./src-tauri/Cargo.toml)): `tauri-plugin-opener = "2"`.
+  2. **Plugin registration** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): `.plugin(tauri_plugin_opener::init())` in `tauri::Builder::default()` chain.
+  3. **NPM package** ([`package.json`](./package.json)): `@tauri-apps/plugin-opener@^2.5.4`.
+  4. **Capability** ([`src-tauri/capabilities/default.json`](./src-tauri/capabilities/default.json)): `"opener:default"` in `permissions` array.
+- **Usage**:
+  ```ts
+  import { revealItemInDir } from '@tauri-apps/plugin-opener';
+  await revealItemInDir('/absolute/path/to/file.sql.gz');
+  // Opens Finder/Explorer/Files with the file selected
+  ```
+- **Path requirement**: must be an absolute path. Relative paths are not resolved — pass the stored absolute path from the DB.
+
+## Backup Restore (Local Mode Only)
+
+- **Use case**: User picks a previous backup from the Backups list and asks the server to overwrite the current database with the backup contents. Destructive — the current DB is replaced. **Local mode only** (desktop SQLite / local PostgreSQL); Supabase mode returns 400.
+- **Files**:
+  - Server restore logic: [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup(absolutePath, userId)`.
+  - API: [`server/routes/backups.ts`](./server/routes/backups.ts) `POST /api/backups/:id/restore`.
+  - UI dialog: [`src/components/modals/RestoreBackupDialog.tsx`](./src/components/modals/RestoreBackupDialog.tsx).
+  - Wired into: [`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) (Restore button + state).
+
+### Safety net: pre-restore auto-backup
+
+Before overwriting the DB, `restoreLocalBackup` always creates a `PreRestore_<timestamp>` backup of the **current** state. This is the rollback path — if the restore goes wrong or the user picks the wrong backup, they can restore the pre-restore backup to get back to where they were.
+
+- The record is created in the DB with `status: 'pending'` BEFORE the file is written.
+- After `createLocalBackup` returns, the record is updated to `status: 'completed'` + `file_path`/`file_size`.
+- If the pre-restore backup itself fails, the whole restore aborts with an error — **never proceed to overwrite the DB if there's no rollback path**.
+- The pre-restore record is also renamed to `PreRestore_<timestamp>` for clarity in the UI (default name is `Backup_<uuid>_<timestamp>`).
+
+### SQLite restore mechanics
+
+The `.sql.gz` backup is decompressed to a temp `.decompressed` file, then:
+
+1. `prisma.$disconnect()` — must release the file lock on the live `data.db` before overwriting it.
+2. Open the decompressed backup with `new Database(tempPath, { readonly: true })`.
+3. Use `sourceDb.backup(liveDbPath)` to copy data FROM temp → live DB. better-sqlite3's `backup()` API is the recommended SQLite-native way — it handles WAL, locking, and incremental copy.
+4. Close the source db, unlink the temp file.
+5. Prisma lazy-reconnects on the next query (better-sqlite3 re-opens the file).
+
+**Why `.decompressed` suffix and not `.db`**: if the restore is interrupted (process kill, OOM, etc.) the leftover file is clearly identifiable as incomplete — never mistaken for a valid backup.
+
+### PostgreSQL restore mechanics
+
+`execAsync(\`psql "${dbUrl}" -f "${tempDbPath}" --quiet\`)` — runs the SQL dump against the live database. `--quiet` suppresses the per-statement output.
+
+**`pgUrlForCli()` strips Prisma query params** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts)): `DATABASE_URL` from Prisma's adapter includes `?schema=public`, but `pg_dump`/`psql` reject unknown query params with `invalid URI query parameter: "schema"`. Helper uses `URL` API to delete the `schema` param (and any other Prisma-specific ones) before passing to the CLIs. Used in both `backupPostgreSQL` and `restoreLocalBackup`.
+
+### Re-login after restore
+
+After a full DB replace, the session table is also restored. If the restored user table no longer contains the current user, the user is silently logged out. The dialog and success toast both warn about this; the toast has a `Reload` action that forces a page reload to re-fetch auth state.
+
+### Restore confirmation dialog (`RestoreBackupDialog.tsx`)
+
+- **Type-to-confirm** UX (GitHub pattern): user must type the exact backup name to enable the Restore button. Prevents accidental destructive clicks.
+- **Auto-focus** the input when the dialog opens (50ms delay so the dialog mounts first).
+- **Enter** in input triggers confirm (when name matches).
+- **Loading state**: Confirm button shows spinner + "Restoring…", Cancel disabled, dialog not closable mid-restore.
+- **Error handling**: on error, the dialog stays open so the user can retry or cancel. The caller (`performRestore` in `BackupsView`) throws — the dialog's `try/catch` keeps state intact, and the caller shows a separate error toast.
+- **Safety callout**: green-bordered "safety backup will be created first" callout to reassure the user.
+- **Backup info card**: shows the backup name + creation date so the user verifies they're restoring the right one.
+
+### Backend response shape
+
+`POST /api/backups/:id/restore` returns on success:
+```json
+{
+  "success": true,
+  "auto_backup_id": "uuid-of-pre-restore",
+  "auto_backup_name": "PreRestore_2024-...",
+  "message": "Database restored successfully. ..."
+}
+```
+
+The `auto_backup_*` fields are surfaced in the success toast so the user can find the rollback backup by name in the list.
+
+**Error response (destructive step failed AFTER safety backup was created)** — the route at [`server/routes/backups.ts`](./server/routes/backups.ts) catches the thrown error and forwards the pre-restore identity in the response body:
+```json
+{
+  "error": "unexpected end of file. Your current data is preserved in pre-restore backup \"PreRestore_2024-...\".",
+  "auto_backup_id": "uuid-of-pre-restore",
+  "auto_backup_name": "PreRestore_2024-..."
+}
+```
+The error message always includes the pre-restore name when the safety backup was created. The client reads `err.auto_backup_name` from the response and shows it in the error toast: *"Your current data is preserved in pre-restore backup X. Use it to roll back."*
+
+### Restore failure coverage (decompress + replace in one try/catch)
+
+The full destructive path in [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup` is wrapped in a single try/catch so any failure (corrupt gzip file, bad SQL in pg_dump, locked DB file, missing prisma adapter, etc.) is attributed to the pre-restore safety backup. The wrapped error carries `autoBackupId` + `autoBackupName` properties that the route forwards to the client.
+
+### Restore in-flight lock (UI)
+
+[`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx) tracks a `restoreInProgress: boolean` state that:
+- Disables the restore button on **every row** while a restore is running (Lock icon + "Restore already in progress..." tooltip)
+- Gates `openRestoreDialog` so a second click on a different row's restore button is a no-op while the first dialog is still up
+- Cleared in the `finally` block of `performRestore` — regardless of success/failure
+
+This prevents two restores from racing (which would create two pre-restore backups and the second destructive replace would clobber the first).
+
+### Auto-refresh + badge label after restore
+
+`BackupsView` calls `void fetchBackups()` in the `finally` of `performRestore` so the list shows the new pre-restore entry (or updated status) without a manual page refresh. The `Processing` status badge differentiates pre-restore entries: `name.startsWith('PreRestore_')` shows **"Creating safety backup"** instead of the generic **"Processing"** — so the user understands why a new entry appeared after clicking Restore.
+
+### Bug Fix: Backup Status Becomes "Pending" After Restore
+
+- **Bug**: After restoring a `Completed` backup, its status changed to `Pending` in the list.
+- **Root cause**: The restore process replaces the entire database with the backup snapshot. In that snapshot, the backup record's `status` was still `pending` (initial state before the async backup process set it to `completed`). After `fetchBackups()` re-queried the restored database, the stale `pending` status was displayed.
+- **Fix** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `restoreLocalBackup`): Added optional `originalBackupId` parameter. After the database is replaced and Prisma reconnects, the function runs `prisma.backup.update({ where: { id: originalBackupId }, data: { status: "completed" } })` to restore the correct status.
+- **Wiring** ([`server/routes/backups.ts`](./server/routes/backups.ts)): The route handler now passes `id` (the backup being restored) as `originalBackupId` to `restoreLocalBackup`.
+- **Graceful fallback**: If the backup record doesn't exist in the restored database (e.g. it was created after the backup snapshot), the update fails silently with a `logger.warn`.
+
+## Absolute File Path Storage (Local Backups)
+
+- `Backup.file_path` stores the **absolute filesystem path** of the gzipped backup (not relative). Set at backup creation time in [`server/lib/local-backup.ts`](./server/lib/local-backup.ts) `createLocalBackup()`.
+- **Why absolute (not relative)**: enables `revealItemInDir()` to work correctly even after the user changes their backup folder setting. The file's location at creation time is "frozen" in the DB.
+- `getBackupFilePath()` is now a passthrough (kept async for API stability) — it just returns the stored path directly.
+- The download endpoint still uses this path to stream the file. For cloud mode (R2), `file_path` is the S3 key (unchanged).
+
+## Custom Backup Folder (Per-User)
+
+- **Schema**: `UserPreference` model added to all 3 Prisma schemas (Supabase, PG local, SQLite) and to [`supabase_schema.sql`](./supabase_schema.sql) (with RLS policies: SELECT/INSERT/UPDATE/DELETE scoped to `auth.uid() = user_id`). One-to-one with `User` (`userId @unique`). Stores `backupFolder String? @map("backup_folder")`. Auto-pushed to local SQLite via `npm run db:push:sqlite` (or `db:push:pg:local` for local PG). Supabase migrations need a manual run of `supabase_schema.sql`.
+- **Local-only field**: `backupFolder` is only meaningful in local modes (desktop SQLite / local PG) where backups are written to a user-controlled local filesystem path. In **Supabase mode**, backups go through a GitHub Action → Cloudflare R2, so the field is ignored. The application:
+  - API `GET /settings/folder` returns `supports_local_folder: false` + null paths in cloud mode → UI hides the entire "Storage location" panel.
+  - API `PUT /settings/folder` returns 403 in cloud mode (defense in depth — UI already hides the panel).
+  - Prisma schema comment `// Container for per-user settings. The backup_folder field is only used in local modes...` in `supabase_schema.sql:295-298` documents the intent.
+- **Server resolver** ([`server/lib/local-backup.ts`](./server/lib/local-backup.ts)):
+  - `getDefaultBackupDir()` — OS-aware: macOS/Linux → `${os.homedir()}/ERD Builder Pro`, Windows → `${os.homedir()}/Documents/ERD Builder Pro`.
+  - `getBackupDirForUser(userId)` — reads `UserPreference.backupFolder`. If set: resolves absolute path (relative → `${homedir()}/<path>`). If null → returns `getDefaultBackupDir()`.
+  - `ensureBackupDir(dir)` — recursive `mkdir` if missing.
+  - `createLocalBackup(backupId, userId)` — now returns `{ filePath, fileSize, fullPath }`. Stored `filePath` is the **absolute filesystem path** (not relative) — see **Absolute File Path Storage (Local Backups)** above. This is what enables `revealItemInDir()` in Tauri even after the user changes their backup folder setting.
+  - `getBackupFilePath(relativePath, userId)` — async (now takes `userId`).
+- **API** ([`server/routes/backups.ts`](./server/routes/backups.ts)):
+  - `GET /api/backups/settings/folder` → `{ supportsLocalFolder, customFolder, defaultFolder, effectiveFolder }`. `supportsLocalFolder: false` in cloud mode (skips prisma lookup entirely). In local mode, all three paths returned so the client can show the active path, the OS default, and whether a custom value is in effect.
+  - `PUT /api/backups/settings/folder` body `{ folder: string | null }` (null = reset). Returns 403 in cloud mode. Validates: shell metacharacter blacklist (`` ` $ \ ; < > | & ``), `ensureBackupDir` probe to confirm writability, upserts `UserPreference` row.
+- **UI** ([`src/components/views/BackupsView.tsx`](./src/components/views/BackupsView.tsx)):
+  - "Storage location" panel between header and table, **conditionally rendered** with `{folderSettings?.supports_local_folder && (...)}` — invisible to Supabase users.
+  - When visible: `Folder` icon, full path in monospace font, `Custom` amber badge when `customFolder` is set.
+  - `Change` button → input field with Enter to save / Escape to cancel. `Reset` button (only when custom) → puts back to OS default.
+  - **Native folder picker (Tauri only)**: `Browse` button (`FolderOpen` icon) next to the input opens the OS-native folder picker via `@tauri-apps/plugin-dialog`'s `open({ directory: true })`. Hidden on web (browsers don't expose a native folder picker). Pre-fills `defaultPath` with the current `effectiveFolder` so the dialog opens at the right place.
+  - Toast description in download now uses `effectiveFolder` instead of the OS Downloads dir. Web fallback message preserved if `effectiveFolder` is somehow null.
+- **Important security note**: the path is stored server-side and used for both writing backups and serving downloads. The user can put it anywhere the server process has write+read access to (e.g., a USB drive, NAS mount, etc.). Server doesn't restrict the path scope — that's intentional for desktop use.
+
+## Tauri Dialog Plugin (Native Folder/File Picker)
+
+- **Plugin setup** (4 places, all required):
+  1. **Rust crate** ([`src-tauri/Cargo.toml`](./src-tauri/Cargo.toml)): `tauri-plugin-dialog = "2"` in `[dependencies]`.
+  2. **Plugin registration** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): `.plugin(tauri_plugin_dialog::init())` in `tauri::Builder::default()` chain.
+  3. **NPM package** ([`package.json`](./package.json)): `@tauri-apps/plugin-dialog` (`^2.7.1`).
+  4. **Capability** ([`src-tauri/capabilities/default.json`](./src-tauri/capabilities/default.json)): `"dialog:default"` in `permissions` array.
+- **Usage**:
+  ```ts
+  import { open as openDialog } from '@tauri-apps/plugin-dialog';
+  const selected = await openDialog({
+    directory: true,
+    multiple: false,
+    title: 'Select backup folder',
+    defaultPath: '/current/path',  // optional initial directory
+  });
+  // selected: string | null
+  ```
+- **Tauri detection gate**: only show Browse button when `!!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__)`. Web users get only the text input as fallback.
+- **Defaults included**: `dialog:default` grants `allow-open`, `allow-save`, `allow-message`, `allow-ask`, `allow-confirm`. No need to enumerate individual permissions unless locking down further.
 
 ## Global vs Item Loading State Fix (Infinite Spinner)
 
@@ -1086,4 +1634,407 @@ All `String.prototype.substr()` (deprecated) replaced with `substring()`:
 ### `as any` audit
 
 - **25 `as any` casts across 15 files** replaced with precise types (`as const`, `Record<string, any>`, intersection types, proper function overloads).
-- **13 remaining** are true dispensasi: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).
+- **13 remaining** are true exceptions: 9 window globals (mammoth, JSZip, htmlDocx, marked), 2 window flags (`currentSyncIsSilent`), 1 legacy enum migration (`deleteDraft('diagram')`), 1 library-imposed (Tiptap tippyOptions).
+
+## ERD Export All Dialog
+
+**File**: [`src/components/modals/ExportAllDialog.tsx`](./src/components/modals/ExportAllDialog.tsx)
+
+Unified dialog for all ERD export (schema + visual). Replaces submenu Export in `NavActionsMenu` (previously 3 callbacks: `onExportSQL`, `onExportPDF`, `onExportImage`) with a single `onExportAll` callback.
+
+**Format tabs**:
+- **Schema group**: MySQL, PostgreSQL, Laravel Migration, Laravel Model, TypeScript, Prisma, Zod — generated via `src/lib/sql-generator-all.ts` (bulk generation from `src/lib/sql-generator.ts` per-entity functions)
+- **Visual group**: PDF, SVG — with `Experimental` badge (`FlaskConical` icon + amber styling)
+
+**CodeMirror viewer**: Schema tabs use `@uiw/react-codemirror` read-only editor with `oneDark` theme (matching Import SQL dialog). Installed `@codemirror/lang-javascript` and `@codemirror/lang-php` for TypeScript/Zod/Prisma and Laravel tabs respectively.
+
+**Per-file .zip export** (non-SQL formats): Laravel Migration, Laravel Model, TypeScript, Prisma, Zod generate one file per table, downloaded as `.zip` via `jszip`. File structure:
+- `migrations/create_{table}_table.php`
+- `models/{Model}.php`
+- `{Model}.ts`
+- `schema.prisma` (single file, all tables)
+
+SQL formats (MySQL, PostgreSQL) remain single `.sql` file download.
+
+**Copy button behavior**: Enabled only for SQL tabs (MySQL, PostgreSQL). Disabled (`opacity-30 cursor-not-allowed`) for per-file format tabs (Laravel, TypeScript, Prisma, Zod) — each format generates multiple files, making clipboard copy meaningless.
+
+**Bulk generator** ([`src/lib/sql-generator-all.ts`](./src/lib/sql-generator-all.ts)):
+- `generateAllTablesFiles(format, nodes, edges)` — returns `ExportFile[]` per table (name + content). Used by .zip export via `jszip`.
+- `generateAllTablesCode(format, nodes, edges, fileName)` — returns single concatenated string. Used by CodeMirror display for SQL formats.
+- `buildEntityFkMap(entities, edges)` — extracts FK relationships from edges, returns `Map<string, {col, refTable, refCol}[]>`. Used by both `generateAlterTableFKs()` (SQL) and `generateLaravelMigration()` inline FK constraints.
+- `getExtension(format)` — file extension per format.
+- Filenames use singularized PascalCase matching generated code (e.g. `User.php`, `User.ts`). Migration filenames keep plural per Laravel convention (`create_users_table.php`).
+
+**Generator best-practice fixes**:
+- `generateLaravelMigration`: `$table->enum()` → `$table->string()` (Laravel 11+ removed `enum` support). FK constraints now generated inline via `$table->foreign()->references()->on()` using `buildEntityFkMap()`.
+- `generateLaravelModel`: adds `protected $table = '{table}'` when singularized model name differs from table name (e.g. `User` vs `users`) — prevents Eloquent pluralization mismatch.
+- `generateTypeScript`: `created_at`/`updated_at` no longer hardcoded — only appended if absent from entity columns.
+- `generatePrisma`: timestamp fields no longer hardcoded — same conditional append.
+- `generateZod`: `z.string()` → `z.string().uuid()` for UUID types, `z.string().datetime()` for datetime/timestamp, `z.string().date()` for date, `z.record(z.unknown())` for json. Schema variable name uses singular camelCase (`userSchema`), filename `UserSchema.ts`.
+- `toPascalCase(name, shouldSingularize?)` exported from `sql-generator.ts` — supports `shouldSingularize` parameter. Used by `sql-generator-all.ts` for filename generation.
+
+**Key behaviors**:
+- Visual tabs: description + `Generate PDF/SVG` button that calls `onExportPDF`/`onExportImage` callback (from `useImageExporter.ts`)
+- Dialog only appears for `view === 'erd'` (guard in `AppLayout.tsx`)
+- `NavActionsMenu` ERD Export submenu replaced with a single "Export All" item → `onExportAll` → `setIsExportAllOpen(true)`
+
+**File changes**:
+- **NEW** [`src/components/modals/ExportAllDialog.tsx`](./src/components/modals/ExportAllDialog.tsx) — dialog component
+- **NEW** [`src/lib/sql-generator-all.ts`](./src/lib/sql-generator-all.ts) — bulk schema generation, per-file export, FK extraction
+- **MODIFIED** [`src/lib/sql-generator.ts`](./src/lib/sql-generator.ts) — `generateLaravelMigration`: `z.string()` → `z.string().uuid()` for UUID types, `z.string().datetime()` for datetime/timestamp, `z.string().date()` for date, `z.record(z.unknown())` for json. Schema variable name uses singular camelCase (`userSchema`), filename `UserSchema.ts`.
+- **MODIFIED** [`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx) — `onExportAll` prop + single menu item
+- **MODIFIED** [`src/components/MainHeader.tsx`](./src/components/MainHeader.tsx) — `onExportAll` prop pass-through
+- **MODIFIED** [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx) — `isExportAllOpen` state + `ExportAllDialog` render
+
+## Import SQL Moved to ERD Toolbar
+
+- `onImportSQL` prop added to `ERDView` — triggers `handleOpenImportModal` from `DiagramEditorRoute`
+- Import SQL button (Upload icon) rendered in floating toolbar next to Add Table button — visible only on ERD view
+- Removed from `NavActionsMenu`, `MainHeader`, `AppLayout` prop chain
+- **Files**: [`src/components/views/ERDView.tsx`](./src/components/views/ERDView.tsx), [`src/components/NavActionsMenu.tsx`](./src/components/NavActionsMenu.tsx), [`src/components/MainHeader.tsx`](./src/components/MainHeader.tsx), [`src/routes/AppLayout.tsx`](./src/routes/AppLayout.tsx), [`src/routes/DiagramEditorRoute.tsx`](./src/routes/DiagramEditorRoute.tsx)
+
+## SQL Parser: `cleanIdentifier()` Lowercase Fix
+
+- **Bug**: SQL keyword `action` used as column name (`ALTER TABLE users ADD COLUMN action VARCHAR(50)`) — lexer tokenized `action` as `KEYWORD` (uppercased `ACTION`), column name stored as `ACTION` instead of `action`. When AI-generated SQL referencing `action` arrived, parser couldn't match columns by name (`ACTION` ≠ `action`).
+- **Fix**: `cleanIdentifier()` in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) now lowercases output. Safe because unquoted SQL identifiers are case-insensitive; quoted identifiers (`"Users"`) have quotes stripped by the same function.
+- **Files**: `sqlParser.ts:9`
+
+## SQL Parser: `BIGSERIAL` → `BIGINT` Normalize Fix
+
+- **Bug**: `normalizeType()` in [`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts) mapped `BIGSERIAL`, `SERIAL`, and `SMALLSERIAL` all to `INT`. This caused FK type mismatch when AI generated `id BIGSERIAL` (parsed as `INT`) referencing `assigned_to_id BIGINT` — ERD type validation rejected the connection.
+- **Fix** ([`src/lib/sqlParser.ts`](./src/lib/sqlParser.ts):30-32): Split into individual mappings — `SERIAL → INT`, `BIGSERIAL → BIGINT`, `SMALLSERIAL → SMALLINT`. Same fix applied to `erdActions.ts:388` (`applyToErdContent` normalizer).
+- **Files**: `sqlParser.ts:30-32`, `erdActions.ts:388-390`
+
+## EntityNode Double-Click Tooltip
+
+- Added `title="Double-click to edit table"` on ERD table header div in [`src/components/EntityNode.tsx`](./src/components/EntityNode.tsx)
+- Hidden when `isReadOnly` (shared/public view or diff mode)
+- Helps users discover the table editing flow without hunting through context menus
+
+## Security Hardening
+
+**Packages added**: `express-rate-limit`, `helmet`, `zod`
+
+### Phase 1 — Critical + High Fixes
+
+- **CORS restricted** (`server/index.ts:31-33`): `origin: true` replaced with explicit allowlist via `CORS_ORIGINS` env var (comma-separated). Production uses the allowlist; development keeps `origin: true`.
+- **Rate limiting** (`server/index.ts:36-68`): 4 rate limiters — global (200 req/min), auth (10 req/min), AI proxy (30 req/min), upload (20 req/min). All use `express-rate-limit` with standard headers.
+- **Trash endpoint scoped** (`server/routes/common.ts:26-33`): `GET /api/trash` now filters by `user_id = (req as any).user.id` — previously returned ALL users' deleted items.
+- **`GEMINI_API_KEY` removed from client bundle** (`vite.config.ts:12`): was embedded via Vite `define` but never used in frontend code — pure secret leak.
+- **Upload DELETE ownership check** (`server/routes/common.ts:113-133`): key must start with `erd-builder-pro/` prefix. Multer limits: 10MB max, allowed MIME types (JPEG, PNG, GIF, WebP, SVG, PDF). Multer error handler catches size/type violations.
+- **AI proxy**: kept unauthenticated (guest mode has no session cookie) — abuse mitigated by 30 req/min rate limiter.
+
+### Phase 2 — Medium Fixes
+
+- **Public route owner bypass fixed** (`diagrams.ts:89-96`, `notes.ts:93-101`, `drawings.ts:93-100`, `flowcharts.ts:92-99`): `isOwner` now checks `user.id === document.user_id` — previously ANY authenticated user bypassed share_token.
+- **Zod input validation** (`server/lib/validation.ts`): schemas for login, AI proxy, document CRUD, upload, delete. `validate()` middleware on critical endpoints: `POST /api/login`, `POST /api/ai/proxy`, `POST /api/diagrams`, `POST /api/notes`, `POST /api/drawings`, `POST /api/flowcharts`, `POST /api/upload`, `DELETE /api/upload`.
+- **Helmet** (`server/index.ts:22`): `helmet()` middleware adds security headers (CSP, X-Frame-Options, X-Content-Type-Options, etc.).
+- **Body limit reduced**: `express.json({ limit: "5mb" })` (was 50MB).
+- **Logout cookie fixed** (`server/routes/auth.ts:82`): `sameSite: "lax"` (was inconsistent `"none"` when secure).
+
+### Phase 3 — Low Fixes
+
+- **Error message sanitization** (`server/lib/utils.ts`): `handleError()` no longer leaks `error.message` or `details` to client. Auth login returns generic "Invalid credentials". AI proxy logs provider errors server-side only. Upload/delete errors return generic messages.
+- **CSP**: handled by `helmet()` middleware.
+
+### Remaining (Manual)
+
+- **Supabase RLS audit**: frontend `aiEntityContext/*.ts` files make direct Supabase queries bypassing server auth. Security depends entirely on RLS policies being correctly configured. Verify RLS on: `diagrams`, `notes`, `drawings`, `flowcharts`, `entities`, `columns`, `relationships`, `projects`, `ai_chat_sessions`, `ai_chat_messages`.
+
+## Prisma camelCase → Snake_case Bridge (Middleware)
+
+- **Problem**: After migrating all 11 server route files from `supabase.from()` to Prisma, the frontend stopped receiving ERD edges (relationships). PR in database but invisible on canvas.
+- **Root cause**: Prisma uses `@map` directives to map camelCase model fields (`sourceEntityId`, `diagramId`) to snake_case DB columns (`source_entity_id`, `diagram_id`). When Prisma returns query results, the field names are camelCase — but the entire frontend codebase expects snake_case because the original Supabase API returned snake_case. The XYFlow edge builder looked for `edge.source_entity_id` which was `undefined`.
+- **Same issue affects all models**: `Entity.diagramId`, `Column.isPk`/`isNullable`/`sortOrder`/`enumValues`, `Relationship.sourceEntityId`/`targetEntityId`/`sourceColumnId`/`targetColumnId`/`sourceHandle`/`targetHandle`, `Diagram.isDeleted`/`projectId`/`viewportX`, and all `createdAt`/`updatedAt` timestamps.
+- **Fix** ([`server/index.ts`](./server/index.ts)): Added a response middleware that intercepts `res.json()` and recursively converts all object keys from camelCase to snake_case. The `camelToSnake` function:
+  - Recursively traverses objects and arrays
+  - Uses `.replace(/[A-Z]/g, letter => '_' + letter.toLowerCase())` for key conversion
+  - Preserves Dates, primitives, null/undefined as-is
+  - Is transparent to route handlers (they use clean camelCase in Prisma queries)
+  - Is transparent to frontend (continues receiving snake_case as before)
+- **Auth routes unaffected**: Supabase user objects from `supabase.auth.getUser()` are already snake_case (`app_metadata`, `user_metadata`, `created_at`), so no spurious conversion occurs. Even if a key like `emailConfirmedAt` existed, converting to `email_confirmed_at` is equivalent (PostgreSQL convention).
+- **Alternative considered**: Editing every route handler to map field names on each response was rejected — too many touch points. Changing the Prisma schema to use snake_case field names directly (removing all `@map`) would require renaming all fields in every Prisma query across 11 files.
+- **Chosen approach**: Single middleware in `server/index.ts:110-127`. One function, zero changes to route handlers or frontend. All 15+ server route files continue using clean camelCase in Prisma queries.
+
+## Security Hardening, Phase 4 — Audit Fixes
+
+### Critical Fixes
+
+| Issue | File | Fix |
+|-------|------|-----|
+| **C1. AI Chat ownership** | `ai-chat.ts` | All session endpoints (`GET /sessions/:uid`, `DELETE`, `PUT`, `GET /:uid/messages`, `POST /messages`) now add `userId: (req as any).user.id` to `where` clauses. Uses `findFirst` with `userId` instead of `findUnique` on `uid` alone. |
+| **C2. API key leak** | `ai-chat.ts:174` | `/api/ai/chat/config` no longer returns `apiKey`. Proxy looks up key server-side from authenticated user's session. Response returns only `{ baseUrl, model }`. |
+| **C3. AI proxy config** | `ai.ts:44-56` | Removed un-scoped `...(userId ? { userId } : {})` fallback that returned any user's config. Now: (a) if `apiKey` provided → BYOK mode; (b) if no `apiKey` → extracts `userId` from cookie/body → scopes config lookup to that user → rejects unauthenticated requests without API key. |
+| **C4. Projects create** | `projects.ts:157` | Added `const userId = (req as any).user.id;` — was `ReferenceError` (variable never defined). |
+| **C5. Project permanent delete** | `projects.ts:294` | Replaced `err.message` leak with `handleError()`. |
+
+### High Severity Fixes
+
+| Issue | File | Fix |
+|-------|------|-----|
+| **H4. err.message leaks** | 11 files, 17+ routes | All `res.status(500).json({ error: err.message })` replaced with `handleError(res, err, "Generic message")`. Only exception: `common.ts` multer file-filter error (user-facing message). |
+| **H5. Drawing ownership** | `drawings.ts:178,198,214` | Added `userId` check on PUT/DELETE/RESTORE via `findFirst({ where: { uid, userId } })` before mutating. Permanent delete already correct. |
+| **H6. Configs API key** | `ai-settings.ts:23,55` | `GET/POST /configs` now mask `apiKey` in responses (`'***'`). Key stays server-side for proxy lookup. |
+| **H7. Prompt ownership** | `ai-settings.ts:138,167,179` | POST/DELETE/TOGGLE-DEFAULT now scope to `OR: [{ userId }, { userId: null }]` — users can only modify own prompts or system prompts. |
+| **H11. projectId validation** | `ai-chat.ts:54,94` | `project_id` validated via `Number()` + `isNaN()` before `BigInt()`. Non-numeric returns 400. |
+
+### Vercel Production Fixes
+
+| Issue | File | Fix |
+|-------|------|-----|
+| **express-rate-limit crash** | `server/index.ts:28-29` | Added `app.set('trust proxy', 1)` — Vercel sets `X-Forwarded-For` but Express default `trust proxy: false` caused `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`. |
+| **Prisma connection pool exhaustion** | `server/lib/prisma.ts` | Added `globalThis.__prisma` caching (reuse client across warm invocations) + `connection_limit=3` and `pgbouncer=true` in `DATABASE_URL` via `buildPrismaUrl()`. Prevents `(EMAXCONNSESSION) max clients reached in session mode - pool_size: 15` when multiple Vercel instances spin up. |
+| **`.env` encryption** | — | `dotenvx`-encrypted `.env` not decrypted in serverless — Vercel env vars must be set manually in Project Settings. |
+
+### Phase 4 Complete: Frontend Supabase Fully Removed
+
+**All frontend Supabase direct calls have been migrated to `apiFetch` backend endpoints:**
+
+| File | Old | New |
+|------|-----|-----|
+| `aiEntityContext/siblings.ts` | `supabase.from('notes/diagrams/...')` (5 queries) | `apiFetch('/api/projects/:id/siblings')` |
+| `aiEntityContext/diagram.ts` | `supabase.from('diagrams/entities/columns/relationships')` | `apiFetch('/api/diagrams/:uid')` |
+| `aiEntityContext/note.ts` | `supabase.from('notes')` | `apiFetch('/api/notes/:uid')` |
+| `aiEntityContext/flowchart.ts` | `supabase.from('flowcharts')` | `apiFetch('/api/flowcharts/:uid')` |
+| `aiEntityContext/drawing.ts` | `supabase.from('drawings')` | `apiFetch('/api/drawings/:uid')` |
+| `AIChatPanel.tsx` | `supabase.from('notes/entities/columns')` | `apiFetch('/api/notes/:uid')` / `apiFetch('/api/diagrams/:uid')` |
+| `useRealtimeSync.ts` | `supabase.channel()` Broadcast | Stubbed to no-op |
+
+**Deleted**: `src/lib/supabase.ts` — no longer needed. `@supabase/supabase-js` dependency only used server-side.
+
+**New endpoint**: `GET /api/projects/:id/siblings` at `server/routes/projects.ts:300` — returns `{ notes, diagrams (with entities+columns), flowcharts, drawings }` for a project. Used by `siblings.ts` and `buildSiblingContext`.
+
+**Security note**: All entity context and mention data is now served through authenticated Express endpoints (same JWT auth), eliminating the RLS-dependency concern.
+
+## Future Plans
+
+### Full Migration: Supabase → Pure PostgreSQL
+
+Replace all Supabase database dependencies with direct PostgreSQL (`pg`/`pg-pool`) while keeping Supabase Auth as the identity source.
+
+**Scope**:
+- **Auth**: keep Supabase Auth as the source of truth. Session JWTs are issued by Supabase and stored in an httpOnly cookie. No local admin credentials or custom JWT secret.
+- **DB client**: `server/lib/config.ts` → `new Pool({ connectionString })`. All 16+ server route files: `supabase.from('x')` → `pg.query('SELECT ...')`.
+- **RLS**: `auth.uid()` → `current_setting('app.user_id')::uuid` or application-layer filter in Express routes.
+- **Frontend Supabase fully migrated to `apiFetch`** — `src/lib/supabase.ts` deleted. All frontend Supabase calls go through Express backend endpoints. `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` no longer needed.
+- **Realtime** (`useRealtimeSync.ts`): optional — replace Supabase Realtime with `pg LISTEN/NOTIFY` + WebSocket relay, or keep Supabase Realtime as standalone service.
+- **Edge config** (`server/lib/edge-config.ts`): keep only the minimal Supabase server credentials needed for edge helpers; no admin email/password or custom JWT secret.
+
+**Migration steps**:
+1. Setup `pg` pool + test connection
+2. Migrate one route file (e.g. `notes.ts`) → test end-to-end
+3. Batch the rest
+4. Update foreign keys from `REFERENCES auth.users(id)` to application-owned foreign keys where needed
+5. RLS rewrite (`auth.uid()` → `current_setting(...)`)
+6. Testing + security audit
+7. Realtime migration (optional)
+
+**Risk**: changing the DB layer can still break auth-adjacent flows and FK assumptions, but Supabase-issued session tokens remain valid as long as the auth domain is unchanged.
+
+**Estimated effort**: ~12-17 days.
+
+### Role & Permission System (CASL)
+
+Integrate CASL for unified permission enforcement across server middleware and client UI.
+
+**Architecture**:
+```
+shared/
+  abilities.ts          ← defineAbilityFor(user) — single source of truth
+  types.ts              ← Subject + Action types
+
+server/
+  middleware/
+    authorize.ts        ← ability.cannot() → 403
+
+client/
+  components/
+    Can.tsx             ← <Can I="update" a="Note"> render children
+  hooks/
+    useAbility.ts       ← ability from context
+```
+
+**Tables needed** (in `public` schema):
+- `roles` (id UUID, name TEXT, description TEXT)
+- `role_permissions` (id UUID, role_id FK, action TEXT, subject TEXT, conditions JSONB)
+- `user_roles` (user_id FK, role_id FK)
+
+**CASL vs native decision**: Native Express middleware sufficient for server-only. CASL recommended because app needs **UI-side enforcement** (show/hide buttons, filter lists) — single ability definition syncs both layers. Also handles complex resource-level conditions (`user can update note if userId === note.author_id`).
+
+**Implementation order** (post-migration):
+1. Add `@casl/ability` + `@casl/react`
+2. Create shared ability definitions
+3. Apply to Express routes as middleware
+4. Apply to React UI components (conditionals, <Can> filter)
+
+## Performance Optimizations — Initial Load Speed
+
+### Root Cause
+Post-login spinner (5-8s) caused by:
+1. **Projects endpoint eager-loads ALL children** (`server/routes/projects.ts:66-96`): `include` with `diagrams`, `notes` (with `content` column!), `drawings`, `flowcharts` for every project — returns MBs of unnecessary data
+2. **Notes/Drawings/Diagrams list endpoints return ALL columns** — including `content` (rich text HTML), `data` (diagram JSON, drawing JSON)
+3. **DashboardRoute full-page spinner**: waited for ALL 5 fetches (projects, notes, diagrams, drawings, flowcharts) to complete before rendering anything
+4. **Duplicate pagination fetch**: `useTableViewPagination` fired a redundant fetch for the current view type on initial mount (dashboard route)
+
+### Fixes Applied
+
+#### Server-Side (Biggest Impact)
+- **Projects endpoint** ([`server/routes/projects.ts`](./server/routes/projects.ts)): removed `include` that eager-loaded all children (diagrams, notes, drawings, flowcharts) per project. Now returns only project metadata. The frontend already gets children from individual fetches.
+- **Notes list** ([`server/routes/notes.ts`](./server/routes/notes.ts)): added explicit `select` — `content` column excluded (was returning full rich text HTML for every note in list).
+- **Diagrams list** ([`server/routes/diagrams.ts`](./server/routes/diagrams.ts)): added explicit `select` — `data` column excluded.
+- **Drawings list** ([`server/routes/drawings.ts`](./server/routes/drawings.ts)): added explicit `select` — `data` column excluded.
+- **Flowcharts list** ([`server/routes/flowcharts.ts`](./server/routes/flowcharts.ts)): narrowed `project` include to only `{ name, uid, id }` instead of all columns.
+- All list endpoint `project` includes narrowed to `{ select: { name: true, uid: true, id: true } }` instead of `{ project: true }`.
+
+#### Client-Side
+- **DashboardRoute** ([`src/routes/DashboardRoute.tsx`](./src/routes/DashboardRoute.tsx)): removed full-page loading spinner on initial mount. Dashboard renders immediately — stat cards (0), recent docs (empty), workspace (empty) fill in progressively as data arrives.
+- **useTableViewPagination** ([`src/hooks/useTableViewPagination.ts`](./src/hooks/useTableViewPagination.ts)): added `isTableView` guard (`pathname.startsWith('/table/')`) — pagination fetches now only fire on actual table routes, not on dashboard or editor routes. Eliminates redundant duplicate fetch on initial mount.
+````
+This is the description of what the code block changes:
+<changeDescription>
+Add desktop build configuration section at end of AGENTS.md
+</changeDescription>
+
+This is the code block that represents the suggested code change:
+````markdown
+## Desktop Build Configuration (Tauri DMG)
+
+### Architecture
+
+The desktop app (Tauri v2) bundles three components:
+1. **Frontend** — React + Vite → `dist/` (static HTML/JS/CSS)
+2. **Backend** — Express.js + Prisma → `dist-server/index.js` (bundled via esbuild)
+3. **Native dependencies** — `better-sqlite3`, `@prisma/client`, `@prisma/adapter-better-sqlite3`, Prisma engine → `dist-server/node_modules/`
+
+### Build Pipeline
+
+**Trigger**: `npm run build:desktop` (called from `tauri.conf.json` `beforeBuildCommand`)
+
+**Script**: [`scripts/build-server.js`](./scripts/build-server.js)
+1. Bundles `server/run.ts` + all imports via esbuild → `dist-server/index.js`
+2. Externalizes native modules (better-sqlite3, @prisma/*, prisma)
+3. Copies runtime node_modules to `dist-server/node_modules/`:
+   - `.prisma/client/` (Prisma generated client + engine binaries)
+   - `@prisma/` (adapter packages + client runtime)
+   - `better-sqlite3/` (SQLite native addon)
+   - Optionally `pg/` + `@prisma/adapter-pg/` (PostgreSQL — kept for local PG mode)
+4. Copies `prisma/schema.sqlite.prisma` → `dist-server/prisma/schema.prisma`
+5. Generates `prisma-client-index.js` shim for Prisma client resolution
+
+### Tauri Config
+
+**File**: [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json)
+- `beforeBuildCommand`: `"npm run build:desktop"` — runs esbuild bundler + Prisma generate + Vite
+- `bundle.resources`: `["dist-server/**"]` — includes the bundled server in the .app bundle
+- Server is launched at runtime via `std::process::Command::new("node")`
+
+### Rust Backend (Server Launch)
+
+**File**: [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)
+
+On app startup (release mode only):
+1. Resolves resource directory → finds `dist-server/index.js`
+2. Resolves app data directory → creates it if missing
+3. Spawns Node.js child process with:
+   - `NODE_PATH` → bundled node_modules path (for native modules)
+   - `DATABASE_URL` → `file:{app_data_dir}/data.db` (SQLite DB in app data dir)
+   - `PORT` → `3000`
+   - `current_dir` → app data directory
+4. Manages `ServerProcess` state (Mutex<Option<Child>>)
+5. On app exit (`RunEvent::Exit`): kills child process
+
+The server auto-creates the SQLite database on first Prisma query.
+
+### Database Location
+
+- **Development**: `DATABASE_URL=file:./data.db` — in project root
+- **Production (Tauri DMG)**: `~/Library/Application Support/com.erdbuilderpro.app/data.db` (auto-resolved by `app.path().app_data_dir()`)
+- The first Prisma query (`prisma.$connect()`) auto-creates the `data.db` file using better-sqlite3
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| [`scripts/build-server.js`](./scripts/build-server.js) | esbuild server bundler + native module copier |
+| [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
+| [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: spawns Node.js server, kills on exit |
+| [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
+
+### Build & Release Commands
+
+```bash
+# Development (hot-reload)
+npm run dev:tauri
+
+# Production build (DMG)
+npm run build:desktop          # step 1: bundle server + frontend
+npx tauri build                # step 2: build DMG (sign, notarize, package)
+
+# Or one command:
+npx tauri build                # runs beforeBuildCommand → build:desktop automatically
+```
+
+### Important Notes
+
+- **`node` must be available**: The bundled app spawns `node` at runtime. If the user doesn't have Node.js installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
+- **better-sqlite3 is native**: This module compiles a `.node` native addon during `npm install`. It MUST be external from esbuild and copied as-is to `dist-server/node_modules/`. The `.prisma/client/` folder contains the Prisma engine binary (`libquery_engine-*`), also native.
+- **esbuild NOT in package.json**: `build-server.js` calls `require('esbuild')` — if esbuild is not installed, use `npx esbuild` or install via `npm install -D esbuild`.
+
+### Prisma 7 CLI `db push` — `--url` flag required
+
+- **Symptom**: First launch of the bundled DMG hangs at "Preparing…" forever; `~/Library/Logs/com.erdbuilderpro.app/server.log` shows:
+  ```
+  Prisma schema loaded from ../../../../../Applications/ERD Builder Pro.app/Contents/Resources/dist-server/prisma/schema.prisma.
+  Error: The datasource.url property is required in your Prisma config file when using prisma db push.
+  ```
+- **Root cause**: Prisma 7 removed `datasource.url` from `schema.prisma` files. The CLI now requires either a `prisma.config.ts` (with `datasource.url`) or an explicit `--url` flag. The Rust spawn sets `DATABASE_URL` env var, but Prisma 7's CLI does NOT read it from env — it only reads from the config file or the `--url` flag.
+- **Fix** ([`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)): added `.arg("--url")` + `.arg(format!("file:{}", db_path.display()))` to the `prisma db push` invocation. No `prisma.config.ts` bundling needed (which would require `dotenv` + transpilation overhead).
+- **Why not bundle a `prisma.config.js`**: a config file would need absolute paths (since `cwd` = app data dir, not project root) and would be re-loaded on every CLI call. The `--url` flag is the simplest, most portable solution.
+- **Symptom 2 — `Loaded Prisma config from prisma.config.ts.` message**: harmless. Prisma 7 looks for `prisma.config.{ts,js,mjs}` in `cwd`; when not found, it falls back to `--url` / env. The error appears only when NEITHER config URL NOR `--url` is provided.
+
+## Desktop Database Initialization (Fallback Chain)
+
+### Problem: Authentication Failed on First Launch
+
+- **Symptom**: Production .dmg app shows login form, but `local@desktop.dev` / `desktop-local-pass` returns "Authentication failed" (HTTP 500).
+- **Root cause**: The offline migration (`migrate-db.mjs`) uses better-sqlite3 directly to apply `schema.sql`. If the migration script fails (e.g., native addon load failure, schema file missing, SQL error), the database has NO tables. When the user clicks Login, `prisma.user.findFirst()` throws "no such table: users" which is caught by the generic catch block in `auth.ts` → "Authentication failed".
+- **The error message is misleading**: it could be DB tables missing (500) OR wrong credentials (401). The real error goes to `server.log`, not the UI.
+
+### Fix: Two-Layer Defense
+
+**Layer 1: `ensureDatabaseTables()` in `server/run.ts`** ([`server/run.ts`](./server/run.ts)):
+- Runs at server startup BEFORE `backfillUids()`
+- Probes `SELECT 1 FROM users LIMIT 1` via Prisma raw query
+- If table doesn't exist: reads `schema.sql` (bundled in `dist-server/`) and executes each statement via `prisma.$executeRawUnsafe()`
+- Uses `import.meta.url` to find `schema.sql` relative to the bundled script (not `process.cwd()`)
+- Ignores `already exists` errors for idempotency
+- Logs `tableCount` on success
+
+**Layer 2: Better auth error messages** ([`server/routes/auth.ts`](./server/routes/auth.ts)):
+- The catch block now detects Prisma errors: `no such table`, `relation does not exist`, `P2021`
+- Returns HTTP 503 with `"Database not initialized. Please restart the application."` instead of generic 500
+- This distinguishes "schema not created" from real auth failures
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| [`server/run.ts`](./server/run.ts) | `ensureDatabaseTables()` fallback, calls schema apply before backfill |
+| [`server/routes/auth.ts`](./server/routes/auth.ts) | Better error discrimination (DB vs auth) |
+
+### Dependency Order
+
+```
+migrate-db.mjs (offline, before Node.js starts)
+  └─ if fails → server starts anyway, tables missing
+      └─ ensureDatabaseTables() in run.ts (on server boot)
+          └─ prisma.$executeRawUnsafe() creates missing tables
+              └─ backfillUids() → server ready
+```
+
+### Why `import.meta.url` and not `process.cwd()`
+
+- In production Tauri, `process.cwd()` resolves to the **app data directory** (`~/Library/Application Support/...`), NOT the Resources directory.
+- The bundled `schema.sql` lives in the **Resources** directory alongside `index.js`: `/Applications/ERD Builder Pro.app/Contents/Resources/dist-server/schema.sql`
+- `fileURLToPath(import.meta.url)` gives the correct path to the running script, from which we derive `schema.sql`'s location.
+- esbuild preserves `import.meta.url` in ESM output.

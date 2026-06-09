@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
+import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 
@@ -10,20 +11,28 @@ export function DiagramEditorRoute() {
   const { id } = useParams<{ id: string }>();
 
   const {
-    nodes, edges, isPublicView, publicData, activeDiagramId, activeDiagram,
+    nodes, edges, setNodes, isPublicView, publicData, activeDiagramId, activeDiagram,
     onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, addEntity, undo, redo, canUndo, canRedo,
     takeSnapshot, onNodeDragStop, onMoveEnd,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
     handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
-    isLoading, viewportRef, saveDiagram, triggerDebouncedSync, broadcastMessage,
-    setIsLocalSaving, lastLoadedDiagramIdRef,
+    handleOpenImportModal,
+    viewportRef, saveDiagram, triggerDebouncedSync,
     isERDItemLoading, handleDiagramSelect,
     pendingErdDiffTrigger,
+    extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
   } = ctx;
 
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
+
+  const handleAutoLayout = useCallback(() => {
+    if (!nodes || nodes.length === 0) return;
+    const repositions = autoLayoutERD(nodes, edges);
+    takeSnapshot?.(nodes, edges);
+    setNodes(repositions);
+  }, [nodes, edges, setNodes, takeSnapshot]);
   useEffect(() => {
     if (isPublicView || !id) return;
     if (processedUrlRef.current) return;
@@ -85,6 +94,8 @@ export function DiagramEditorRoute() {
         onPaneClick={handlePaneClick}
         onMove={handleMove}
         addEntity={addEntity}
+        onImportSQL={handleOpenImportModal}
+        onAutoLayout={handleAutoLayout}
         handleExportSQL={handleWorkspaceExportSQL}
         handleExportPDF={handleWorkspaceExportPDF}
         handleExportImage={handleWorkspaceExportImage}
@@ -100,6 +111,9 @@ export function DiagramEditorRoute() {
         saveDiagram={saveDiagram}
         triggerDebouncedSync={triggerDebouncedSync}
         pendingErdDiffTrigger={pendingErdDiffTrigger}
+        extractColumnIdFromHandle={extractColumnIdFromHandle}
+        getRelationKey={getRelationKey}
+        dedupeEdgesByRelation={dedupeEdgesByRelation}
       />
   );
 }

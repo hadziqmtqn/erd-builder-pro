@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { localPersistence } from '../lib/localPersistence';
 import { DraftType } from '../types';
 import { toast } from 'sonner';
+import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion, updateCachedDiagramVersion, clearCachedDiagramVersion, refreshDiagramVersion } from '../lib/diagramVersioning';
 
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
@@ -151,7 +152,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
 
               if (endpoint) {
                 const lastUpdated = draft.updated_at;
-                const res = await fetch(endpoint, {
+                const res = await apiFetch(endpoint, {
                   method: draft.type === DraftType.ERD ? 'POST' : 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(body),

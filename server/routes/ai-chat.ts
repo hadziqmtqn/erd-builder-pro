@@ -1,6 +1,9 @@
+import { randomUUID } from "crypto";
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
+import { handleError, toProjectId, uidOrIdWhere } from "../lib/utils.js";
+import { resolveOwnedProjectId } from "../lib/security.js";
 
 const router = Router();
 
@@ -12,34 +15,33 @@ router.get("/sessions", authenticate, async (req: ExpressRequest, res: ExpressRe
     const entityType = req.query.entity_type as string | undefined;
     const entityUid = req.query.entity_uid as string | undefined;
 
-    let query = supabase
-      .from("ai_chat_sessions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false });
-
     const hasProject = !!projectId;
     const hasEntity = !!entityType && !!entityUid;
 
+    let where: any = { userId };
+
     if (hasProject && hasEntity) {
-      // Project-scoped sessions + orphan sessions from this file
-      query = query.or(
-        `project_id.eq.${projectId},and(project_id.is.null,entity_type.eq.${entityType},entity_uid.eq.${entityUid})`
-      );
+      where.OR = [
+        { projectId: toProjectId(projectId) },
+        { projectId: null, entityType, entityUid }
+      ];
     } else if (hasProject) {
-      query = query.eq("project_id", projectId);
+      where.projectId = toProjectId(projectId);
     } else if (hasEntity) {
-      query = query.is("project_id", null).eq("entity_type", entityType).eq("entity_uid", entityUid);
+      where.projectId = null;
+      where.entityType = entityType;
+      where.entityUid = entityUid;
     } else {
-      // No filters provided — return empty instead of leaking orphan sessions
       return res.json([]);
     }
 
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    const data = await prisma?.aiChatSession.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' }
+    });
     res.json(data || []);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to fetch sessions");
   }
 });
 
@@ -49,110 +51,145 @@ router.post("/sessions", authenticate, async (req: ExpressRequest, res: ExpressR
     const userId = (req as any).user.id;
     const { entity_type, entity_uid, project_id } = req.body;
 
-    const payload: any = { title: "New Conversation", user_id: userId };
-    if (entity_type) payload.entity_type = entity_type;
-    if (entity_uid) payload.entity_uid = entity_uid;
-    if (project_id) payload.project_id = project_id;
+    const data: any = { title: "New Conversation", userId, uid: randomUUID() };
+    if (entity_type) data.entityType = entity_type;
+    if (entity_uid) data.entityUid = entity_uid;
+    if (project_id !== undefined) {
+      if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+      data.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
+    }
 
-    const { data, error } = await supabase
-      .from("ai_chat_sessions")
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    const session = await prisma?.aiChatSession.create({ data });
+    res.json(session);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to create session");
   }
 });
 
 // GET /api/ai/chat/sessions/:uid
 router.get("/sessions/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { data, error } = await supabase
-      .from("ai_chat_sessions")
-      .select("*")
-      .eq("uid", req.params.uid)
-      .single();
-    if (error) return res.status(404).json({ error: "Session not found" });
-    res.json(data);
+    const session = await prisma?.aiChatSession.findFirst({
+      where: uidOrIdWhere(req.params.uid, (req as any).user.id)
+    });
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    res.json(session);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to fetch session");
   }
 });
 
 // DELETE /api/ai/chat/sessions/:uid
 router.delete("/sessions/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { error } = await supabase.from("ai_chat_sessions").delete().eq("uid", req.params.uid);
-    if (error) return res.status(500).json({ error: error.message });
+    const userId = (req as any).user.id;
+    const session = await prisma?.aiChatSession.findFirst({
+      where: uidOrIdWhere(req.params.uid, userId),
+    });
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    await prisma?.aiChatSession.delete({
+      where: { id: session.id }
+    });
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to delete session");
   }
 });
 
-// PUT /api/ai/chat/sessions/:id
-router.put("/sessions/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+// PUT /api/ai/chat/sessions/:uid
+router.put("/sessions/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { title, project_id, updated_at } = req.body;
-    const updatePayload: Record<string, any> = { updated_at: updated_at || new Date().toISOString() };
+    const userId = (req as any).user.id;
+    const { title, project_id } = req.body;
+    const updatePayload: Record<string, any> = { updatedAt: new Date() };
     if (title !== undefined) updatePayload.title = title;
-    if (project_id !== undefined) updatePayload.project_id = project_id;
+    if (project_id !== undefined) {
+      if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+      updatePayload.projectId = await resolveOwnedProjectId(prisma, userId, project_id);
+    }
 
-    const { data, error } = await supabase
-      .from("ai_chat_sessions")
-      .update(updatePayload)
-      .eq("id", req.params.id)
-      .select()
-      .single();
+    const existing = await prisma?.aiChatSession.findFirst({
+      where: uidOrIdWhere(req.params.uid, userId),
+      select: { id: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Session not found" });
 
-    if (error) return res.status(500).json({ error: error.message });
+    const data = await prisma?.aiChatSession.update({
+      where: { id: existing.id },
+      data: updatePayload
+    });
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to update session");
   }
 });
 
-// GET /api/ai/chat/sessions/:id/messages
-router.get("/sessions/:id/messages", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+// GET /api/ai/chat/sessions/:uid/messages
+router.get("/sessions/:uid/messages", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    const userId = (req as any).user.id;
     const offset = parseInt(req.query.offset as string) || 0;
     const limit = parseInt(req.query.limit as string) || 30;
 
-    const { data, error, count } = await supabase
-      .from("ai_chat_messages")
-      .select("*", { count: "exact", head: false })
-      .eq("session_id", req.params.id)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    const session = await prisma?.aiChatSession.findFirst({
+      where: uidOrIdWhere(req.params.uid, userId),
+      select: { id: true }
+    });
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ data: data || [], count: count || 0 });
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const [data, total] = await Promise.all([
+      prisma?.aiChatMessage.findMany({
+        where: { sessionId: session.id },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma?.aiChatMessage.count({
+        where: { sessionId: session.id }
+      })
+    ]);
+
+    res.json({ data: data || [], count: total || 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to fetch messages");
   }
 });
 
 // POST /api/ai/chat/messages
 router.post("/messages", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
+    const userId = (req as any).user.id;
     const { session_id, role, content, selection_text } = req.body;
     if (!session_id || !role || !content) {
       return res.status(400).json({ error: "Missing required fields: session_id, role, content" });
     }
 
-    const { data, error } = await supabase
-      .from("ai_chat_messages")
-      .insert([{ session_id, role, content, selection_text: selection_text || null }])
-      .select()
-      .single();
+    const sid = String(session_id);
+    const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
+    const session = await prisma?.aiChatSession.findFirst({
+      where: {
+        userId,
+        OR: [
+          { uid: sid },
+          ...(numericId !== undefined ? [{ id: numericId }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    if (!session) return res.status(404).json({ error: "Session not found" });
 
-    if (error) return res.status(500).json({ error: error.message });
+    const data = await prisma?.aiChatMessage.create({
+      data: {
+        sessionId: session.id,
+        role,
+        content,
+        selectionText: selection_text || null,
+      }
+    });
     res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to create message");
   }
 });
 
@@ -161,52 +198,33 @@ router.get("/config", authenticate, async (req: ExpressRequest, res: ExpressResp
   try {
     const userId = (req as any).user.id;
 
-    const { data: configData, error: configError } = await supabase
-      .from("user_ai_configs")
-      .select("*, ai_providers(*)")
-      .eq("is_enabled", true)
-      .not("selected_model_id", "is", null)
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(1);
+    const config = await prisma?.userAiConfig.findFirst({
+      where: { userId, isEnabled: true, selectedModelId: { not: null } },
+      include: { provider: true, selectedModel: true },
+      orderBy: { updatedAt: 'desc' }
+    });
 
-    if (configError) return res.status(500).json({ error: configError.message });
-
-    if (!configData || configData.length === 0) {
+    if (!config) {
       return res.status(400).json({ error: "No AI provider configured. Go to Settings > AI to configure." });
     }
 
-    const config = configData[0];
-    const provider = config.ai_providers;
-    const resolvedBaseUrl = provider?.base_url || "https://api.openai.com/v1";
-    const resolvedApiKey = config.api_key;
-
-    const { data: modelData } = await supabase
-      .from("ai_models")
-      .select("model_identifier")
-      .eq("id", config.selected_model_id)
-      .single();
-
     res.json({
-      baseUrl: resolvedBaseUrl,
-      apiKey: resolvedApiKey,
-      model: modelData?.model_identifier || "gpt-4o-mini",
+      baseUrl: config.provider?.baseUrl || "https://api.openai.com/v1",
+      model: config.selectedModel?.modelIdentifier || "gpt-4o-mini",
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to fetch AI config");
   }
 });
 
 // GET /api/ai/chat/prompts/default
 router.get("/prompts/default", authenticate, async (_req: ExpressRequest, res: ExpressResponse) => {
   try {
-    const { data } = await supabase
-      .from("ai_system_prompts")
-      .select("content")
-      .eq("is_default", true)
-      .limit(1);
-
-    res.json({ content: data && data.length > 0 ? data[0].content : null });
+    const prompt = await prisma?.aiSystemPrompt.findFirst({
+      where: { isDefault: true },
+      select: { content: true }
+    });
+    res.json({ content: prompt?.content || null });
   } catch {
     res.json({ content: null });
   }

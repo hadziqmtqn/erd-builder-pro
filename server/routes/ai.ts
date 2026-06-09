@@ -1,9 +1,13 @@
 import { Router } from "express";
-import { supabase } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
+import { validate, aiProxySchema } from "../lib/validation.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
-router.post("/proxy", async (req, res) => {
+// NOTE: No auth middleware here — guest mode sends requests without a session cookie.
+// Abuse is mitigated by rate limiting applied in server/index.ts.
+router.post("/proxy", validate(aiProxySchema), async (req, res) => {
   let aborted = false;
   const controller = new AbortController();
 
@@ -23,50 +27,68 @@ router.post("/proxy", async (req, res) => {
   }, 30_000);
 
   try {
-    let { messages, model, apiKey, baseUrl } = req.body;
+    let { messages, model, apiKey, baseUrl, userId } = req.body;
 
     if (!messages) {
       clearTimeout(timeout);
       return res.status(400).json({ error: "Missing required fields: messages" });
     }
 
-    // When no apiKey is provided (Guest mode), look up the default config from Supabase
+    // When no apiKey is provided, look up config from DB
     if (!apiKey) {
-      if (!supabase) {
-        clearTimeout(timeout);
-        return res.status(500).json({ error: "Supabase not configured on server" });
+      // Attempt to get userId from session cookie if not provided in body
+      if (!userId) {
+        try {
+          const { supabase } = await import("../lib/config.js");
+          const token = req.cookies?.token;
+          if (token) {
+            const { data: { user } } = await supabase.auth.getUser(token);
+            if (user) userId = user.id;
+          }
+        } catch {}
       }
 
-      const { data: configData, error: configError } = await supabase
-        .from("user_ai_configs")
-        .select("*, ai_providers(*)")
-        .eq("is_enabled", true)
-        .not("selected_model_id", "is", null)
-        .order("updated_at", { ascending: false })
-        .limit(1);
-
-      if (configError) {
+      if (!prisma) {
         clearTimeout(timeout);
-        console.error("AI proxy: Failed to fetch default config:", configError);
+        return res.status(500).json({ error: "Database not configured on server" });
+      }
+
+      try {
+        // Authenticated: scope config lookup to user's own config
+        // Guest (no userId): use first enabled system config as fallback
+        const where: any = {
+          isEnabled: true,
+          selectedModelId: { not: null },
+        };
+        if (userId) {
+          where.userId = userId;
+        }
+
+        const config = await prisma.userAiConfig.findFirst({
+          where,
+          include: { provider: true },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        if (!config) {
+          clearTimeout(timeout);
+          return res.status(400).json({ error: "No AI provider configured. Configure AI in Settings." });
+        }
+
+        apiKey = config.apiKey;
+        baseUrl = baseUrl || config.provider?.baseUrl || "https://api.openai.com/v1";
+
+        if (!model && config.selectedModelId) {
+          const modelData = await prisma.aiModel.findFirst({
+            where: { id: config.selectedModelId },
+            select: { modelIdentifier: true },
+          });
+          model = modelData?.modelIdentifier || "gpt-4o-mini";
+        }
+      } catch (dbErr) {
+        clearTimeout(timeout);
+        logger.error({ err: dbErr }, "AI proxy: Failed to fetch default config:");
         return res.status(500).json({ error: "Failed to fetch AI configuration" });
-      }
-
-      if (!configData || configData.length === 0) {
-        clearTimeout(timeout);
-        return res.status(400).json({ error: "No AI provider configured on the server" });
-      }
-
-      const config = configData[0];
-      apiKey = config.api_key;
-      baseUrl = baseUrl || config.ai_providers?.base_url || "https://api.openai.com/v1";
-
-      if (!model && config.selected_model_id) {
-        const { data: modelData } = await supabase
-          .from("ai_models")
-          .select("model_identifier")
-          .eq("id", config.selected_model_id)
-          .single();
-        model = modelData?.model_identifier || "gpt-4o-mini";
       }
     }
 
@@ -91,9 +113,11 @@ router.post("/proxy", async (req, res) => {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => "");
-      return res.status(response.status).json({
+      logger.error({ err: errBody, status: response.status }, "AI provider error");
+      // Use 502 Bad Gateway — upstream provider failure, not an auth error.
+      // The global 401 interceptor in the frontend must NOT catch this.
+      return res.status(502).json({
         error: `AI provider error (${response.status})`,
-        details: errBody || response.statusText,
       });
     }
 
@@ -137,9 +161,9 @@ router.post("/proxy", async (req, res) => {
     }
   } catch (err: any) {
     if (aborted) return;
-    console.error("AI proxy error:", err);
+    logger.error({ err: err }, "AI proxy error:");
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message || "Internal server error" });
+      res.status(500).json({ error: "AI proxy error" });
     }
   }
 });

@@ -2,19 +2,13 @@ import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
 import { Entity, Column } from '../types';
-import { COLUMN_TYPES, cn } from '../lib/utils';
+import { cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
+import { ColumnTypeSelect } from './ColumnTypeSelect';
 
 interface PropertiesPanelProps {
   selectedEntity: Entity | null;
@@ -332,21 +326,10 @@ export default function PropertiesPanel({
 
                   <div className="flex items-center gap-2">
                     <div className="flex-1">
-                      <Select
+                      <ColumnTypeSelect
                         value={col.type}
-                        onValueChange={(value) => updateColumnSync(col.id, { type: value ?? '' }, true)}
-                      >
-                        <SelectTrigger className="h-8 text-[11px] font-medium bg-background/50 border-border/50">
-                          <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent className="z-[1100]">
-                          {COLUMN_TYPES.map(type => (
-                            <SelectItem key={type} value={type} className="text-[11px]">
-                              {type}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        onValueChange={(value) => updateColumnSync(col.id, { type: value }, true)}
+                      />
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">

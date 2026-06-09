@@ -8,8 +8,6 @@ import {
   Copy,
   Download,
   Upload,
-  Database,
-  FileText,
   Image as ImageIcon,
   BarChart3
 } from 'lucide-react';
@@ -34,6 +32,7 @@ interface NavActionsMenuProps {
   onRename?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
+  onExportAll?: () => void;
   onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
   onExportPDF?: () => void;
   onExportImage?: () => void;
@@ -93,6 +92,7 @@ export const NavActionsMenu = ({
   onRename,
   onDelete,
   onDuplicate,
+  onExportAll,
   onExportSQL,
   onExportPDF,
   onExportImage,
@@ -228,51 +228,13 @@ export const NavActionsMenu = ({
           {documentType === 'erd' && !isPublicView && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
-                  <Download className="h-4 w-4 text-muted-foreground" />
-                  <span>Export</span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-52 p-1">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SQL Format</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={() => onExportSQL?.('postgresql')} 
-                      className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-                    >
-                      <Database className="h-4 w-4 text-blue-400" />
-                      <span>To PostgreSQL</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => onExportSQL?.('mysql')} 
-                      className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-                    >
-                      <Database className="h-4 w-4 text-orange-400" />
-                      <span>To MySQL</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">Visual Format</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={onExportPDF} 
-                      className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-                    >
-                      <FileText className="h-4 w-4 text-red-400" />
-                      <span>As PDF</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={onExportImage} 
-                      className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-                    >
-                      <ImageIcon className="h-4 w-4 text-purple-400" />
-                      <span>As Image (SVG)</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+              <DropdownMenuItem 
+                onClick={onExportAll}
+                className="gap-2 cursor-pointer"
+              >
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <span>Export All</span>
+              </DropdownMenuItem>
             </>
           )}
 

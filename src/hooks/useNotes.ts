@@ -138,15 +138,16 @@ export function useNotes(isGuest: boolean = false) {
     }
 
     try {
+      const noteUid = crypto.randomUUID();
       const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, project_id: effectiveProjectId, content: content || "" }),
+        body: JSON.stringify({ title, project_id: effectiveProjectId, content: content || "", uid: noteUid }),
       });
       if (res.ok) {
         const newNote = await res.json();
         if (!newNote.uid) {
-          newNote.uid = crypto.randomUUID();
+          newNote.uid = noteUid;
         }
         setNotes(prev => [newNote, ...prev]);
         toast.success('Note created successfully');

@@ -1,63 +1,109 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import pkg from '../../package.json';
+import { check } from '@tauri-apps/plugin-updater';
 
-const GITHUB_REPO = 'hadziqmtqn/erd-builder-pro';
-const CURRENT_VERSION = pkg.version;
-
-export function useUpdateCheck(onUpdateAvailable?: (version: string) => void) {
+export function useUpdateCheck() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
+    // Only run in Tauri environment
+    if (!(window as any).__TAURI__) return;
+
     const checkUpdate = async () => {
       try {
-        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-        if (!response.ok) return;
-
-        const data = await response.json();
-        const newestVersion = data.tag_name.replace('v', '');
-
-        if (newestVersion !== CURRENT_VERSION && isVersionNewer(newestVersion, CURRENT_VERSION)) {
+        const update = await check();
+        
+        if (update?.available) {
           setHasUpdate(true);
-          setLatestVersion(newestVersion);
+          setLatestVersion(update.version);
 
           toast.info('Pembaruan Tersedia', {
-            description: `Versi baru (v${newestVersion}) sudah tersedia dengan fitur terbaru. Klik di bawah untuk melihat rinciannya.`,
-            duration: 15000,
+            description: `Versi baru (v${update.version}) sudah tersedia dengan fitur terbaru.`,
+            duration: Infinity, // Don't auto-dismiss
             action: {
-              label: 'Lihat Perubahan',
-              onClick: () => {
-                if (onUpdateAvailable) {
-                  onUpdateAvailable(newestVersion);
-                } else {
-                  window.open(data.html_url, '_blank');
-                }
-              }
+              label: 'Update Sekarang',
+              onClick: () => handleUpdate(update),
             },
           });
         }
       } catch (error) {
-        // Silently ignore — GitHub API rate limits are expected in dev
+        console.error('Update check failed:', error);
       }
     };
 
+    // Check 5 seconds after app starts
     const timer = setTimeout(checkUpdate, 5000);
     return () => clearTimeout(timer);
   }, []);
 
-  return { hasUpdate, latestVersion };
+  const handleUpdate = async (update: any) => {
+    if (isDownloading) return;
+    
+    setIsDownloading(true);
+    const toastId = toast.loading('Mengunduh pembaruan...', {
+      description: 'Mohon tunggu, sedang mengunduh versi terbaru.',
+    });
+
+    try {
+      // Download and install update
+      let downloaded = 0;
+      let contentLength = 0;
+
+      await update.downloadAndInstall((event: any) => {
+        switch (event.event) {
+          case 'Started':
+            contentLength = event.data.contentLength || 0;
+            toast.loading('Mengunduh pembaruan...', {
+              id: toastId,
+              description: `0% - ${formatBytes(contentLength)}`,
+            });
+            break;
+          case 'Progress':
+            downloaded += event.data.chunkLength;
+            const percent = Math.round((downloaded / contentLength) * 100);
+            toast.loading(`Mengunduh pembaruan... ${percent}%`, {
+              id: toastId,
+              description: `${formatBytes(downloaded)} / ${formatBytes(contentLength)}`,
+            });
+            break;
+          case 'Finished':
+            toast.success('Pembaruan berhasil diunduh!', {
+              id: toastId,
+              description: 'Silakan restart aplikasi untuk menerapkan pembaruan.',
+              duration: Infinity,
+              action: {
+                label: 'Tutup Aplikasi',
+                onClick: () => {
+                  // User will manually reopen the app
+                  (window as any).__TAURI__.app.exit();
+                },
+              },
+            });
+            break;
+        }
+      });
+
+      setIsDownloading(false);
+
+    } catch (error: any) {
+      console.error('Update failed:', error);
+      toast.error('Pembaruan gagal', {
+        id: toastId,
+        description: error.message || 'Terjadi kesalahan saat mengunduh pembaruan.',
+      });
+      setIsDownloading(false);
+    }
+  };
+
+  return { hasUpdate, latestVersion, isDownloading };
 }
 
-function isVersionNewer(newV: string, currentV: string) {
-  const n = newV.split('.').map(Number);
-  const c = currentV.split('.').map(Number);
-
-  for (let i = 0; i < Math.max(n.length, c.length); i++) {
-    const nv = n[i] || 0;
-    const cv = c[i] || 0;
-    if (nv > cv) return true;
-    if (nv < cv) return false;
-  }
-  return false;
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }

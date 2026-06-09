@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Link2 } from 'lucide-react';
+import { Trash2, Link2, ArrowLeftRight } from 'lucide-react';
 import { Edge, Node } from '@xyflow/react';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface RelationshipPropertiesPanelProps {
   selectedEdge: Edge | null;
   nodes: Node<Entity>[];
   onUpdateEdge: (edgeId: string, label: string) => void;
+  onFlipEdge: (edgeId: string) => void;
   onDeleteEdge: (id: string) => void;
 }
 
@@ -24,6 +25,7 @@ export default function RelationshipPropertiesPanel({
   selectedEdge, 
   nodes,
   onUpdateEdge, 
+  onFlipEdge,
   onDeleteEdge 
 }: RelationshipPropertiesPanelProps) {
   if (!selectedEdge) return null;
@@ -69,18 +71,6 @@ export default function RelationshipPropertiesPanel({
             </SelectContent>
           </Select>
         </div>
-
-        <div className="pt-4">
-          <Button 
-            variant="destructive" 
-            size="sm" 
-            className="w-full h-9 text-xs font-bold gap-2"
-            onClick={() => onDeleteEdge(selectedEdge.id)}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Delete Relationship
-          </Button>
-        </div>
       </div>
       
       <div className="rounded-xl bg-muted/20 p-4 border border-border/40">
@@ -94,6 +84,27 @@ export default function RelationshipPropertiesPanel({
             <span className="text-[11px] font-mono text-white font-bold">{getDisplayName(selectedEdge.target, selectedEdge.targetHandle)}</span>
           </div>
         </div>
+      </div>
+
+      <div className="pt-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full h-9 text-xs font-bold gap-2 mb-2 bg-background/60 border-white/10"
+          onClick={() => onFlipEdge(selectedEdge.id)}
+        >
+          <ArrowLeftRight className="w-3.5 h-3.5" />
+          Move Edge Side
+        </Button>
+        <Button 
+          variant="destructive" 
+          size="sm" 
+          className="w-full h-9 text-xs font-bold gap-2"
+          onClick={() => onDeleteEdge(selectedEdge.id)}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete Relationship
+        </Button>
       </div>
     </div>
   );

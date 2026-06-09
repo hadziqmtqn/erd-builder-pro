@@ -1,30 +1,18 @@
-import * as jose from "jose";
-import { JWT_SECRET } from "./edge-config.js";
+import { getEdgeSupabase } from "./edge-config.js";
 
-// Convert secret string to Uint8Array for jose
-const secret = new TextEncoder().encode(JWT_SECRET);
-
-/**
- * Verify a JWT token on Vercel Edge Runtime using 'jose'
- */
 export async function verifyEdgeToken(token: string) {
   try {
-    const { payload } = await jose.jwtVerify(token, secret);
-    return payload;
+    const supabase = getEdgeSupabase();
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return null;
+    return user;
   } catch (error) {
     return null;
   }
 }
 
-/**
- * Sign a JWT token on Vercel Edge Runtime using 'jose'
- */
 export async function signEdgeToken(payload: any) {
-  return await new jose.SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("24h")
-    .sign(secret);
+  throw new Error("Custom JWT signing is disabled. Supabase Auth issues session tokens.");
 }
 
 /**

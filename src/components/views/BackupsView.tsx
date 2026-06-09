@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from "@/lib/api";
-import { 
-  Database, 
-  Download, 
-  Plus, 
-  CheckCircle2, 
-  XCircle, 
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import {
+  Database,
+  Download,
+  ExternalLink,
+  Plus,
+  CheckCircle2,
+  XCircle,
   Loader2,
   Lock,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Folder,
+  FolderOpen,
+  RotateCcw,
+  Pencil,
+  RotateCcwKey
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import {
@@ -22,9 +30,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from '@/hooks/useAuth';
+import { RestoreBackupDialog, type RestoreProgress } from '@/components/modals/RestoreBackupDialog';
 
 interface BackupRecord {
   id: string;
@@ -36,6 +46,13 @@ interface BackupRecord {
   file_size: number | null;
 }
 
+interface BackupFolderSettings {
+  supports_local_folder: boolean;
+  custom_folder: string | null;
+  default_folder: string | null;
+  effective_folder: string | null;
+}
+
 const ITEMS_PER_PAGE = 10;
 
 export const BackupsView = () => {
@@ -45,6 +62,24 @@ export const BackupsView = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Backup folder settings
+  const [folderSettings, setFolderSettings] = useState<BackupFolderSettings | null>(null);
+  const [isEditingFolder, setIsEditingFolder] = useState(false);
+  const [folderDraft, setFolderDraft] = useState('');
+  const [isSavingFolder, setIsSavingFolder] = useState(false);
+  const [isPickingFolder, setIsPickingFolder] = useState(false);
+
+  // Restore dialog state
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<BackupRecord | null>(null);
+  // Track whether a restore is currently in flight so we can lock the restore
+  // button on every row (preventing double-restore from a second click) and
+  // gate `openRestoreDialog` from opening a second dialog mid-restore.
+  const [restoreInProgress, setRestoreInProgress] = useState(false);
+
+  const isTauri = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const fetchBackups = async () => {
     if (!user) return;
@@ -72,14 +107,118 @@ export const BackupsView = () => {
   useEffect(() => {
     if (user) {
       fetchBackups();
+      fetchFolderSettings();
     }
   }, [page, user]);
 
-  const handleDownload = (backup: BackupRecord) => {
+  const fetchFolderSettings = async () => {
+    try {
+      const res = await apiFetch('/api/backups/settings/folder');
+      if (res.ok) {
+        const json = await res.json();
+        setFolderSettings(json);
+      }
+    } catch (error) {
+      console.error('Failed to fetch folder settings:', error);
+    }
+  };
+
+  const startEditFolder = () => {
+    // Pre-fill with the current active path (custom if set, else default)
+    // so the user edits from where they are, not from scratch.
+    setFolderDraft(folderSettings?.effective_folder ?? folderSettings?.default_folder ?? '');
+    setIsEditingFolder(true);
+  };
+
+  const cancelEditFolder = () => {
+    setIsEditingFolder(false);
+    setFolderDraft('');
+  };
+
+  const browseForFolder = async () => {
+    if (!isTauri) return;
+    setIsPickingFolder(true);
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: 'Select backup folder',
+        defaultPath: folderDraft || folderSettings?.effective_folder || undefined,
+      });
+      if (typeof selected === 'string' && selected) {
+        setFolderDraft(selected);
+      }
+    } catch (err) {
+      console.error('Failed to open folder picker:', err);
+      toast.error('Failed to open folder picker');
+    } finally {
+      setIsPickingFolder(false);
+    }
+  };
+
+  const saveFolder = async (folder: string | null) => {
+    setIsSavingFolder(true);
+    try {
+      const res = await apiFetch('/api/backups/settings/folder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setFolderSettings(json);
+        setIsEditingFolder(false);
+        toast.success(
+          folder
+            ? 'Backup folder updated.'
+            : 'Backup folder reset to default.'
+        );
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update folder');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update folder');
+    } finally {
+      setIsSavingFolder(false);
+    }
+  };
+
+  const handleDownload = async (backup: BackupRecord) => {
     if (backup.status !== 'completed' || !backup.file_path) return;
-    
-    // Trigger download di tab yang sama tanpa flicker tab baru
+
+    // Desktop (Tauri): the file is already on local disk — reveal it in the
+    // OS file manager instead of streaming it back through the WebView.
+    // `file_path` is stored as an absolute path at backup-creation time,
+    // so this still works even if the user changed their backup folder later.
+    if (isTauri) {
+      try {
+        await revealItemInDir(backup.file_path);
+        toast.success(`Revealed in file manager.`, {
+          description: backup.file_path,
+          duration: 6000,
+        });
+      } catch (err) {
+        console.error('Failed to reveal in folder:', err);
+        toast.error('Failed to open file location', {
+          description: backup.file_path,
+        });
+      }
+      return;
+    }
+
+    // Web: stream the file via Content-Disposition download.
     window.location.href = `/api/backups/${backup.id}/download`;
+
+    const targetDir = folderSettings?.effective_folder;
+    const description = targetDir
+      ? `File saved to ${targetDir}/${backup.name}.sql.gz`
+      : 'File downloaded to your browser.';
+
+    toast.success(`Backup "${backup.name}" downloaded successfully.`, {
+      description,
+      duration: 6000,
+    });
   };
 
   const handleCreateBackup = async () => {
@@ -91,7 +230,7 @@ export const BackupsView = () => {
     setIsCreating(true);
     try {
       const name = `Backup_${format(new Date(), 'yyyyMMdd_HHmm')}`;
-      
+
       const res = await apiFetch('/api/backups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,6 +253,140 @@ export const BackupsView = () => {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const openRestoreDialog = (backup: BackupRecord) => {
+    if (restoreInProgress) return; // prevent opening a 2nd dialog mid-restore
+    if (backup.status !== 'completed' || !backup.file_path) return;
+    setRestoreTarget(backup);
+    setRestoreDialogOpen(true);
+  };
+
+  const performRestore = async (onProgress?: (event: RestoreProgress) => void) => {
+    if (!restoreTarget) throw new Error('No backup selected');
+    setRestoreInProgress(true);
+    try {
+      let res: Response;
+      try {
+        // Direct fetch (not apiFetch) — we need streaming body access.
+        // apiFetch is a thin wrapper, but the streaming path here must
+        // consume the body via getReader() to parse NDJSON progress events.
+        res = await fetch(`/api/backups/${restoreTarget.id}/restore`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { Accept: 'application/x-ndjson' },
+        });
+      } catch (err: any) {
+        // Network / fetch error (server unreachable, CORS, etc.)
+        toast.error('Could not reach the server', {
+          description: err?.message || 'Please check your connection and try again.',
+        });
+        throw err;
+      }
+
+      // Pre-flight validation failures come back as plain JSON (status >= 400,
+      // Content-Type is application/json). The streaming NDJSON path is only
+      // taken once all pre-flight checks pass (see server route).
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/x-ndjson')) {
+        const err = await res.json().catch(() => ({}));
+        const message = err?.error || `Restore failed (HTTP ${res.status})`;
+        toast.error(message, {
+          description: `Could not restore "${restoreTarget.name}".`,
+        });
+        throw new Error(message);
+      }
+
+      // ── Stream NDJSON progress events ──
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Response body is not readable');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: { auto_backup_id: string; auto_backup_name: string; message: string } | null = null;
+      let streamError: { message: string; auto_backup_name?: string } | null = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const event = JSON.parse(trimmed);
+              if (event.type === 'progress') {
+                onProgress?.({
+                  phase: event.phase,
+                  percent: event.percent,
+                  message: event.message,
+                });
+              } else if (event.type === 'done') {
+                finalResult = {
+                  auto_backup_id: event.auto_backup_id,
+                  auto_backup_name: event.auto_backup_name,
+                  message: event.message,
+                };
+              } else if (event.type === 'error') {
+                streamError = {
+                  message: event.error,
+                  auto_backup_name: event.auto_backup_name,
+                };
+              }
+            } catch {
+              // Skip malformed lines
+            }
+          }
+        }
+      } catch (err: any) {
+        // Stream read error (connection drop mid-restore)
+        toast.error('Connection lost during restore', {
+          description:
+            'The server connection was interrupted. The pre-restore safety backup is still on disk — check the backup list.',
+        });
+        throw err;
+      }
+
+      if (streamError) {
+        const preRestoreName = streamError.auto_backup_name;
+        toast.error(streamError.message, {
+          description: preRestoreName
+            ? `Your current data is preserved in pre-restore backup "${preRestoreName}". Use it to roll back.`
+            : `Could not restore "${restoreTarget.name}".`,
+          duration: preRestoreName ? 10000 : undefined,
+        });
+        throw new Error(streamError.message);
+      }
+
+      if (!finalResult) {
+        throw new Error('Restore completed without a final result event');
+      }
+
+      return finalResult;
+    } finally {
+      // Refresh list AFTER restore completes (success or failure) so the
+      // user sees the new pre-restore backup entry — but NOT during the
+      // restore operation itself, which would cause the list to flicker
+      // (Processing → Completed) and confuse the user.
+      void fetchBackups();
+      setRestoreInProgress(false);
+    }
+  };
+
+  const handleRestoreSuccess = (result: { auto_backup_id: string; auto_backup_name: string }) => {
+    toast.success('Database restored successfully.', {
+      description: `Pre-restore safety backup "${result.auto_backup_name}" was created in case you need to roll back.`,
+      duration: 10000,
+      action: {
+        label: 'Reload',
+        onClick: () => window.location.reload(),
+      },
+    });
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -150,8 +423,8 @@ export const BackupsView = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
-          <Button 
-            onClick={handleCreateBackup} 
+          <Button
+            onClick={handleCreateBackup}
             disabled={isCreating}
             size="sm"
           >
@@ -164,6 +437,122 @@ export const BackupsView = () => {
           </Button>
         </div>
       </div>
+
+      {/* Storage location panel — hidden in cloud (Supabase) mode because
+          backups are written to R2 via GitHub Action, not the user's filesystem. */}
+      {folderSettings?.supports_local_folder && (
+        <div className="px-6 py-3 border-b bg-muted/30 shrink-0">
+          {isEditingFolder ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Folder className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-medium text-foreground/80">Set backup folder</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={folderDraft}
+                  onChange={(e) => setFolderDraft(e.target.value)}
+                  placeholder="Target folder path (e.g. /Users/john/Documents/Backups)"
+                  className="h-8 text-xs font-mono"
+                  disabled={isSavingFolder}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveFolder(folderDraft.trim() || null);
+                    if (e.key === 'Escape') cancelEditFolder();
+                  }}
+                  autoFocus
+                />
+                {isTauri && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={browseForFolder}
+                    disabled={isSavingFolder || isPickingFolder}
+                    className="h-8 px-2.5 text-xs shrink-0"
+                    title="Browse for folder"
+                  >
+                    {isPickingFolder ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+                        Browse
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => void saveFolder(folderDraft.trim() || null)}
+                  disabled={isSavingFolder}
+                  className="h-8 px-3 text-xs shrink-0"
+                  title="Save"
+                >
+                  {isSavingFolder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={cancelEditFolder}
+                  disabled={isSavingFolder}
+                  className="h-8 px-2 text-xs shrink-0"
+                  title="Cancel"
+                >
+                  Cancel
+                </Button>
+              </div>
+              {folderSettings?.default_folder && folderDraft !== folderSettings.default_folder && (
+                <p className="text-[11px] text-muted-foreground">
+                  Default location: <code className="text-[11px] font-mono">{folderSettings.default_folder}</code>
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                  <Folder className="w-3.5 h-3.5 shrink-0" />
+                  <span className="font-medium text-foreground/80">Storage location</span>
+                  {folderSettings?.custom_folder && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      Custom
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={startEditFolder}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <Pencil className="w-3 h-3 mr-1" />
+                    Change
+                  </Button>
+                  {folderSettings?.custom_folder && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void saveFolder(null)}
+                      disabled={isSavingFolder}
+                      className="h-7 px-2 text-xs"
+                      title="Reset to default"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      Reset
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <code
+                className="text-xs font-mono text-foreground/80 break-all pl-5"
+                title={folderSettings?.effective_folder ?? undefined}
+              >
+                {folderSettings?.effective_folder || 'Loading…'}
+              </code>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
@@ -222,7 +611,7 @@ export const BackupsView = () => {
                         {backup.status === 'pending' && (
                           <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 gap-1.5">
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Processing
+                            {backup.name.startsWith('PreRestore_') ? 'Creating safety backup' : 'Processing'}
                           </Badge>
                         )}
                         {backup.status === 'failed' && (
@@ -237,20 +626,50 @@ export const BackupsView = () => {
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path ? 'text-primary hover:text-primary hover:bg-primary/10' : 'text-muted-foreground opacity-50'}`}
                             disabled={backup.status !== 'completed' || !backup.file_path}
-                            onClick={() => handleDownload(backup)}
+                            onClick={() => void handleDownload(backup)}
                             title={
-                              backup.status !== 'completed' ? 'Backup still in progress...' : 
-                              !backup.file_path ? 'File path not recorded' : 
-                              'Download backup'
+                              backup.status !== 'completed'
+                                ? 'Backup still in progress...'
+                                : !backup.file_path
+                                  ? 'File path not recorded'
+                                  : isTauri
+                                    ? 'Show in folder'
+                                    : 'Download backup'
                             }
                           >
                             {backup.status === 'completed' && backup.file_path ? (
-                              <Download className="h-3.5 w-3.5" />
+                              isTauri ? (
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5" />
+                              )
+                            ) : (
+                              <Lock className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-8 w-8 ${backup.status === 'completed' && backup.file_path && !restoreInProgress ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 dark:text-amber-500 dark:hover:text-amber-400' : 'text-muted-foreground opacity-50'}`}
+                            disabled={backup.status !== 'completed' || !backup.file_path || restoreInProgress}
+                            onClick={() => openRestoreDialog(backup)}
+                            title={
+                              restoreInProgress
+                                ? 'Restore already in progress...'
+                                : backup.status !== 'completed'
+                                  ? 'Backup still in progress...'
+                                  : !backup.file_path
+                                    ? 'File path not recorded'
+                                    : 'Restore database from this backup'
+                            }
+                          >
+                            {backup.status === 'completed' && backup.file_path && !restoreInProgress ? (
+                              <RotateCcwKey className="h-3.5 w-3.5" />
                             ) : (
                               <Lock className="h-3.5 w-3.5" />
                             )}
@@ -317,6 +736,22 @@ export const BackupsView = () => {
           )}
         </div>
       </div>
+
+      <RestoreBackupDialog
+        isOpen={restoreDialogOpen}
+        onOpenChange={setRestoreDialogOpen}
+        backup={
+          restoreTarget
+            ? {
+                id: restoreTarget.id,
+                name: restoreTarget.name,
+                created_at: restoreTarget.created_at,
+              }
+            : null
+        }
+        onConfirm={performRestore}
+        onSuccess={handleRestoreSuccess}
+      />
     </div>
   );
 };

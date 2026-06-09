@@ -292,6 +292,20 @@ CREATE TABLE IF NOT EXISTS backups (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- User Preferences Table
+-- Container for per-user settings. The `backup_folder` field is only used in
+-- local modes (desktop SQLite / local PostgreSQL) where backups are written to
+-- a user-controlled local filesystem path. In Supabase mode, backups go through
+-- a GitHub Action → R2, so this field is ignored — the application UI hides
+-- the "Storage location" panel entirely in cloud mode.
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    backup_folder TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Enable RLS for all main tables
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE diagrams ENABLE ROW LEVEL SECURITY;
@@ -299,6 +313,7 @@ ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE drawings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flowcharts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE backups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Projects Policies
 CREATE POLICY "Users can view their own projects" ON projects FOR SELECT USING (auth.uid() = user_id);
@@ -338,6 +353,12 @@ CREATE POLICY "Users can delete their own flowcharts" ON flowcharts FOR DELETE U
 CREATE POLICY "Users can view their own backups" ON backups FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert their own backups" ON backups FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Service role can update backups" ON backups FOR UPDATE USING (true);
+
+-- User Preferences Policies
+CREATE POLICY "Users can view their own preferences" ON user_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert their own preferences" ON user_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update their own preferences" ON user_preferences FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own preferences" ON user_preferences FOR DELETE USING (auth.uid() = user_id);
 
 -- Entity Changes Policies (Safety measures even if triggers are disabled)
 ALTER TABLE entity_changes ENABLE ROW LEVEL SECURITY;

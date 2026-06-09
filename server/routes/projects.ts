@@ -1,224 +1,229 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase, s3Client, R2_BUCKET_NAME } from "../lib/config.js";
+import { prisma } from "../lib/prisma.js";
+import { s3Client, R2_BUCKET_NAME } from "../lib/config.js";
 import { authenticate } from "../lib/middleware.js";
 import { handleError, getSafeUpdate } from "../lib/utils.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { logger } from "../lib/logger.js";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
 router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const limit = parseInt(req.query.limit as string) || 10;
-  const offset = parseInt(req.query.offset as string) || 0;
-  const q = req.query.q as string;
-
-  let query = supabase
-    .from("projects")
-    .select(`
-      *,
-      diagrams(id, uid, name, updated_at, created_at, is_deleted, project_id),
-      notes(id, uid, title, content, updated_at, created_at, is_deleted, project_id),
-      drawings(id, uid, title, updated_at, created_at, is_deleted, project_id),
-      flowcharts(id, uid, title, updated_at, created_at, is_deleted, project_id)
-    `, { count: 'exact' })
-    .eq("is_deleted", false)
-    .eq("user_id", (req as any).user.id);
-
-  if (q && q.trim()) {
-    const searchTerm = `%${q.trim()}%`;
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const q = req.query.q as string;
     const userId = (req as any).user.id;
-    
-    // Find project IDs that have matching children
-    const [dMatches, nMatches, drMatches, fMatches] = await Promise.all([
-      supabase.from("diagrams").select("project_id").ilike("name", searchTerm).eq("user_id", userId).not("project_id", "is", null).eq("is_deleted", false),
-      supabase.from("notes").select("project_id").ilike("title", searchTerm).eq("user_id", userId).not("project_id", "is", null).eq("is_deleted", false),
-      supabase.from("drawings").select("project_id").ilike("title", searchTerm).eq("user_id", userId).not("project_id", "is", null).eq("is_deleted", false),
-      supabase.from("flowcharts").select("project_id").ilike("title", searchTerm).eq("user_id", userId).not("project_id", "is", null).eq("is_deleted", false),
-    ]);
+    const searchLower = q?.trim().toLowerCase();
 
-    const matchingProjectIds = new Set([
-      ...(dMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
-      ...(nMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
-      ...(drMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
-      ...(fMatches.data?.map((m: { project_id: number | null }) => m.project_id) || []),
-    ]);
+    let whereClause: Record<string, any> = { userId, isDeleted: false };
 
-    if (matchingProjectIds.size > 0) {
-      query = query.or(`name.ilike.${searchTerm},id.in.(${Array.from(matchingProjectIds).join(",")})`);
-    } else {
-      query = query.ilike("name", searchTerm);
-    }
-  }
+    if (q && q.trim()) {
+      const searchTerm = q.trim();
+      const containsFilter = (value: string) => ({ contains: value } as any);
 
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
-    .order("created_at", { foreignTable: "diagrams", ascending: false })
-    .order("created_at", { foreignTable: "notes", ascending: false })
-    .order("created_at", { foreignTable: "drawings", ascending: false })
-    .order("created_at", { foreignTable: "flowcharts", ascending: false })
-    .range(offset, offset + limit - 1);
+      const [dMatches, nMatches, drMatches, fMatches] = await Promise.all([
+        prisma?.diagram.findMany({
+          where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+          select: { projectId: true },
+        }),
+        prisma?.note.findMany({
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+          select: { projectId: true },
+        }),
+        prisma?.drawing.findMany({
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+          select: { projectId: true },
+        }),
+        prisma?.flowchart.findMany({
+          where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+          select: { projectId: true },
+        }),
+      ]);
 
-  if (error) return handleError(res, error, "Supabase error fetching projects");
-  
-  const searchLower = q?.trim().toLowerCase();
+      const matchingProjectIds = new Set<number>([
+        ...(dMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(nMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(drMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+        ...(fMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+      ]);
 
-  // Filter out deleted items and apply in-memory search filter for nested items
-  const projectsWithFiles = (data || []).map((project: any) => {
-    let diagrams = (project.diagrams || []).filter((f: any) => !f.is_deleted);
-    let notes = (project.notes || []).filter((f: any) => !f.is_deleted);
-    let drawings = (project.drawings || []).filter((f: any) => !f.is_deleted);
-    let flowcharts = (project.flowcharts || []).filter((f: any) => !f.is_deleted);
-    
-    if (searchLower) {
-      diagrams = diagrams.filter((f: any) => f.name.toLowerCase().includes(searchLower));
-      notes = notes.filter((f: any) => f.title.toLowerCase().includes(searchLower));
-      drawings = drawings.filter((f: any) => f.title.toLowerCase().includes(searchLower));
-      flowcharts = flowcharts.filter((f: any) => f.title.toLowerCase().includes(searchLower));
+      if (matchingProjectIds.size > 0) {
+        whereClause.OR = [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { id: { in: Array.from(matchingProjectIds) } },
+        ];
+      } else {
+        whereClause.name = { contains: searchTerm, mode: 'insensitive' };
+      }
     }
 
-    return {
+    const [projects, total] = await Promise.all([
+      prisma?.project.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma?.project.count({ where: whereClause }),
+    ]);
+
+    const projectsWithFiles = (projects || []).map((project: any) => ({
       ...project,
-      diagrams,
-      notes,
-      drawings,
-      flowcharts,
-      files_count: diagrams.length + notes.length + drawings.length + flowcharts.length
-    };
-  });
-  
-  // Also fetch Uncategorized files (project_id is null)
-  const userId = (req as any).user.id;
-  let uDQuery = supabase.from("diagrams").select("id, uid, name, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uNQuery = supabase.from("notes").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uDrQuery = supabase.from("drawings").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
-  let uFQuery = supabase.from("flowcharts").select("id, uid, title, updated_at, is_deleted, project_id").is("project_id", null).eq("is_deleted", false).eq("user_id", userId);
+      diagrams: [],
+      notes: [],
+      drawings: [],
+      flowcharts: [],
+      files_count: 0,
+    }));
 
-  if (searchLower) {
-    uDQuery = uDQuery.ilike("name", `%${searchLower}%`);
-    uNQuery = uNQuery.ilike("title", `%${searchLower}%`);
-    uDrQuery = uDrQuery.ilike("title", `%${searchLower}%`);
-    uFQuery = uFQuery.ilike("title", `%${searchLower}%`);
+    const uncategorizedBase = { projectId: null, userId, isDeleted: false } as const;
+    const uDiagramFilter: Record<string, any> = { ...uncategorizedBase };
+    const uNoteFilter: Record<string, any> = { ...uncategorizedBase };
+    const uDrawFilter: Record<string, any> = { ...uncategorizedBase };
+    const uFlowFilter: Record<string, any> = { ...uncategorizedBase };
+
+    if (searchLower) {
+      uDiagramFilter.name = { contains: searchLower, mode: 'insensitive' };
+      uNoteFilter.title = { contains: searchLower, mode: 'insensitive' };
+      uDrawFilter.title = { contains: searchLower, mode: 'insensitive' };
+      uFlowFilter.title = { contains: searchLower, mode: 'insensitive' };
+    }
+
+    const [uDiagrams, uNotes, uDrawings, uFlowcharts] = await Promise.all([
+      prisma?.diagram.findMany({ where: uDiagramFilter, orderBy: { createdAt: 'desc' }, select: { id: true, uid: true, name: true, updatedAt: true, isDeleted: true, projectId: true } }),
+      prisma?.note.findMany({ where: uNoteFilter, orderBy: { createdAt: 'desc' }, select: { id: true, uid: true, title: true, updatedAt: true, isDeleted: true, projectId: true } }),
+      prisma?.drawing.findMany({ where: uDrawFilter, orderBy: { createdAt: 'desc' }, select: { id: true, uid: true, title: true, updatedAt: true, isDeleted: true, projectId: true } }),
+      prisma?.flowchart.findMany({ where: uFlowFilter, orderBy: { createdAt: 'desc' }, select: { id: true, uid: true, title: true, updatedAt: true, isDeleted: true, projectId: true } }),
+    ]);
+
+    res.json({
+      data: projectsWithFiles,
+      uncategorized: {
+        diagrams: uDiagrams || [],
+        notes: uNotes || [],
+        drawings: uDrawings || [],
+        flowcharts: uFlowcharts || [],
+      },
+      total: total || 0,
+    });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch projects");
   }
-
-  const [uDiagrams, uNotes, uDrawings, uFlowcharts] = await Promise.all([
-    uDQuery.order("created_at", { ascending: false }),
-    uNQuery.order("created_at", { ascending: false }),
-    uDrQuery.order("created_at", { ascending: false }),
-    uFQuery.order("created_at", { ascending: false }),
-  ]);
-  
-  res.json({ 
-    data: projectsWithFiles, 
-    uncategorized: {
-      diagrams: uDiagrams.data || [],
-      notes: uNotes.data || [],
-      drawings: uDrawings.data || [],
-      flowcharts: uFlowcharts.data || []
-    },
-    total: count
-  });
 });
 
 router.post("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { name } = req.body;
-  const { data, error } = await supabase
-    .from("projects")
-    .insert([{ name, user_id: (req as any).user.id }])
-    .select()
-    .single();
-
-  if (error) return handleError(res, error, "Failed to create project");
-  res.json(data);
+  try {
+    const { name } = req.body;
+    const userId = (req as any).user.id;
+    const project = await prisma?.project.create({
+      data: { name, userId, uid: randomUUID() },
+    });
+    if (!project) return res.status(500).json({ error: "Failed to create project" });
+    res.json(project);
+  } catch (err: any) {
+    handleError(res, err, "Failed to create project");
+  }
 });
 
 router.put("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const { name } = req.body;
-  const { error } = await supabase
-    .from("projects")
-    .update({ name })
-    .eq("id", req.params.id)
-    .eq("user_id", (req as any).user.id);
-
-  if (error) return handleError(res, error, "Failed to update project");
-  res.json({ success: true });
+  try {
+    const { name } = req.body;
+    await prisma?.project.updateMany({
+      where: { id: Number(req.params.id), userId: (req as any).user.id },
+      data: { name },
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to update project");
+  }
 });
 
 router.delete("/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const projectId = req.params.id;
-  const update = getSafeUpdate(true);
-  const userId = (req as any).user.id;
-
-  const { error } = await supabase
-    .from("projects")
-    .update(update)
-    .eq("id", projectId)
-    .eq("user_id", userId);
-
-  if (error) return handleError(res, error, "Failed to delete project");
-
-  // Cascading soft delete
   try {
-    await Promise.all([
-      supabase.from("diagrams").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("notes").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("drawings").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
-    ]);
-  } catch (err) {
-    console.error("Cascading soft delete failed:", err);
-  }
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+    const now = new Date();
 
-  res.json({ success: true });
+    await prisma?.project.updateMany({
+      where: { id: projectId, userId },
+      data: { isDeleted: true, deletedAt: now },
+    });
+
+    try {
+      await Promise.all([
+        prisma?.diagram.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+        prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+        prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+        prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+      ]);
+    } catch (err) {
+      logger.error({ err }, "Cascading soft delete failed:");
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to delete project");
+  }
 });
 
 router.post("/:id/restore", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const projectId = req.params.id;
-  const update = getSafeUpdate(false);
-  const userId = (req as any).user.id;
-
-  const { error } = await supabase
-    .from("projects")
-    .update(update)
-    .eq("id", projectId)
-    .eq("user_id", userId);
-
-  if (error) return handleError(res, error, "Failed to restore project");
-
-  // Cascading restore
   try {
-    await Promise.all([
-      supabase.from("diagrams").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("notes").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("drawings").update(update).eq("project_id", projectId).eq("user_id", userId),
-      supabase.from("flowcharts").update(update).eq("project_id", projectId).eq("user_id", userId),
-    ]);
-  } catch (err) {
-    console.error("Cascading restore failed:", err);
-  }
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
 
-  res.json({ success: true });
+    await prisma?.project.updateMany({
+      where: { id: projectId, userId },
+      data: { isDeleted: false, deletedAt: null },
+    });
+
+    try {
+      await Promise.all([
+        prisma?.diagram.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+        prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+        prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+        prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+      ]);
+    } catch (err) {
+      logger.error({ err }, "Cascading restore failed:");
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    handleError(res, err, "Failed to restore project");
+  }
 });
 
 router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
-  const projectId = req.params.id;
-  const userId = (req as any).user.id;
-
   try {
-    const { data: diagrams } = await supabase.from("diagrams").select("id").eq("project_id", projectId).eq("user_id", userId);
-    const diagramIds = diagrams?.map((f: { id: number }) => f.id) || [];
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+
+    const diagrams = await prisma?.diagram.findMany({
+      where: { projectId, userId },
+      select: { id: true },
+    });
+    const diagramIds = diagrams?.map(d => d.id) || [];
 
     if (diagramIds.length > 0) {
-      await supabase.from("relationships").delete().in("diagram_id", diagramIds);
-      const { data: entities } = await supabase.from("entities").select("id").in("diagram_id", diagramIds);
-      const entityIds = entities?.map((e: { id: number }) => e.id) || [];
+      await prisma?.relationship.deleteMany({ where: { diagramId: { in: diagramIds } } });
+      const entities = await prisma?.entity.findMany({
+        where: { diagramId: { in: diagramIds } },
+        select: { id: true },
+      });
+      const entityIds = entities?.map(e => e.id) || [];
       if (entityIds.length > 0) {
-        await supabase.from("columns").delete().in("entity_id", entityIds);
+        await prisma?.column.deleteMany({ where: { entityId: { in: entityIds } } });
       }
-      await supabase.from("entities").delete().in("diagram_id", diagramIds);
-      await supabase.from("diagrams").delete().in("id", diagramIds);
+      await prisma?.entity.deleteMany({ where: { diagramId: { in: diagramIds } } });
+      await prisma?.diagram.deleteMany({ where: { id: { in: diagramIds } } });
     }
 
-    // Delete images from notes before deleting notes
-    const { data: notes } = await supabase.from("notes").select("content").eq("project_id", projectId).eq("user_id", userId);
+    const notes = await prisma?.note.findMany({
+      where: { projectId, userId },
+      select: { content: true },
+    });
     if (notes && notes.length > 0 && s3Client && R2_BUCKET_NAME) {
       for (const note of notes) {
         if (note.content) {
@@ -234,7 +239,7 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
                   Key: key,
                 }));
               } catch (err) {
-                console.error("Failed to delete image from R2 during project deletion:", err);
+                logger.error({ err }, "Failed to delete image from R2 during project deletion:");
               }
             }
           }
@@ -242,14 +247,72 @@ router.delete("/:id/permanent", authenticate, async (req: ExpressRequest, res: E
       }
     }
 
-    await supabase.from("notes").delete().eq("project_id", projectId).eq("user_id", userId);
-    await supabase.from("drawings").delete().eq("project_id", projectId).eq("user_id", userId);
-    await supabase.from("flowcharts").delete().eq("project_id", projectId).eq("user_id", userId);
-    await supabase.from("projects").delete().eq("id", projectId).eq("user_id", userId);
+    await prisma?.note.deleteMany({ where: { projectId, userId } });
+    await prisma?.drawing.deleteMany({ where: { projectId, userId } });
+    await prisma?.flowchart.deleteMany({ where: { projectId, userId } });
+    await prisma?.project.deleteMany({ where: { id: projectId, userId } });
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    handleError(res, err, "Failed to permanently delete project");
+  }
+});
+
+// ── Siblings endpoint — returns all project files for AI context ──
+router.get("/:id/siblings", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  try {
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+    if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+
+    const [notes, diagrams, flowcharts, drawings] = await Promise.all([
+      prisma.note.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, content: true, updatedAt: true },
+      }),
+      prisma.diagram.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { id: true, uid: true, name: true, updatedAt: true },
+      }),
+      prisma.flowchart.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, data: true, updatedAt: true },
+      }),
+      prisma.drawing.findMany({
+        where: { projectId, userId, isDeleted: false },
+        select: { uid: true, title: true, updatedAt: true },
+      }),
+    ]);
+
+    // Fetch entities + columns for all diagrams
+    const diagramIds = diagrams.map(d => d.id);
+    const entities = diagramIds.length > 0
+      ? await prisma.entity.findMany({ where: { diagramId: { in: diagramIds } } })
+      : [];
+    const entityIds = entities.map(e => e.id);
+    const columns = entityIds.length > 0
+      ? await prisma.column.findMany({ where: { entityId: { in: entityIds } } })
+      : [];
+
+    const colsByEntity: Record<string, typeof columns> = {};
+    for (const col of columns) {
+      if (!colsByEntity[col.entityId!]) colsByEntity[col.entityId!] = [];
+      colsByEntity[col.entityId!].push(col);
+    }
+
+    const diagramsWithEntities = diagrams.map(d => ({
+      ...d,
+      entities: entities
+        .filter(e => e.diagramId === d.id)
+        .map(e => ({
+          ...e,
+          columns: colsByEntity[e.id] || [],
+        })),
+    }));
+
+    res.json({ notes, diagrams: diagramsWithEntities, flowcharts, drawings });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch siblings");
   }
 });
 

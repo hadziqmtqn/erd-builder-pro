@@ -9,7 +9,6 @@ import {
   fallbackSystemPrompt,
   buildTechnicalRules,
   fetchUserSystemPrompt,
-  resolveAiConfig,
   callAiStream,
   persistGuestMessages,
   persistGuestTitle,
@@ -46,6 +45,7 @@ export function useAIChat(
   entityContextText?: string | null,
   onStreamComplete?: (response: string) => void,
   projectId?: number | string | null,
+  viewType?: string | null,
 ): UseAIChatReturn {
   const auth = useAuth();
   const [sessions, setSessions] = useState<AIChatSession[]>([]);
@@ -193,7 +193,7 @@ export function useAIChat(
       setCurrentSession(session);
       messageOffsetRef.current = 0;
 
-      const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.id}/messages?offset=0&limit=${PAGE_SIZE}`);
+      const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${PAGE_SIZE}`);
       if (!msgRes.ok) throw new Error('Failed to load messages');
       const { data: msgData, count } = await msgRes.json();
 
@@ -215,7 +215,7 @@ export function useAIChat(
 
     try {
       const offset = messageOffsetRef.current;
-      const msgRes = await apiFetch(`/api/ai/chat/sessions/${currentSession.id}/messages?offset=${offset}&limit=${PAGE_SIZE}`);
+      const msgRes = await apiFetch(`/api/ai/chat/sessions/${currentSession.uid}/messages?offset=${offset}&limit=${PAGE_SIZE}`);
       if (!msgRes.ok) throw new Error('Failed to load more messages');
       const { data } = await msgRes.json();
 
@@ -262,14 +262,14 @@ export function useAIChat(
 
   // ─── Messaging (Auto-title) ──────────────────────────
 
-  const autoTitleSession = useCallback(async (sessionId: string | number, title: string, isGuest: boolean) => {
+  const autoTitleSession = useCallback(async (sessionUid: string, title: string, isGuest: boolean) => {
     setCurrentSession(prev => prev ? { ...prev, title } : prev);
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title } : s));
+    setSessions(prev => prev.map(s => s.uid === sessionUid ? { ...s, title } : s));
 
     if (isGuest) {
-      await persistGuestTitle(sessionId as string, title);
+      await persistGuestTitle(sessionUid, title);
     } else {
-      await apiFetch(`/api/ai/chat/sessions/${sessionId}`, {
+      await apiFetch(`/api/ai/chat/sessions/${sessionUid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
@@ -290,7 +290,7 @@ export function useAIChat(
     // Optimistic user message
     const tempUserMsg: AIChatMessage = {
       id: `temp-${Date.now()}`,
-      session_id: currentSession.id,
+      session_id: currentSession.uid ?? currentSession.id,
       role: 'user',
       content: trimmed,
       selection_text: selectionText || null,
@@ -304,7 +304,7 @@ export function useAIChat(
       const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
       if (isFirstMessage) {
         const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
-        autoTitleSession(currentSession.id, title, true);
+        autoTitleSession(currentSession.uid, title, true);
       }
     }
 
@@ -315,7 +315,7 @@ export function useAIChat(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
+            session_id: currentSession.uid ?? currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
           }),
         });
         if (!res.ok) throw new Error('Failed to save message');
@@ -323,7 +323,7 @@ export function useAIChat(
         const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
         if (isFirstMessage) {
           const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
-          autoTitleSession(currentSession.id, title, false);
+          autoTitleSession(currentSession.uid, title, false);
         }
       } catch {
         toast.error('Failed to save message');
@@ -334,9 +334,10 @@ export function useAIChat(
 
     // ─── Build messages & call AI ─────────────────────
     try {
-      // Resolve AI config
+      // Resolve AI config — all modes now delegate config resolution to the proxy (avoids double Vercel cold start)
       const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined } =
-        isGuest ? { baseUrl: undefined, apiKey: undefined, model: undefined } : await resolveAiConfig();
+        { baseUrl: undefined, apiKey: undefined, model: undefined };
+      const userId = isGuest ? undefined : auth.user?.id;
 
       // Build system messages
       const apiMessages: { role: string; content: string }[] = [];
@@ -349,6 +350,35 @@ export function useAIChat(
       apiMessages.push({ role: 'system', content: systemPrompt });
       apiMessages.push({ role: 'system', content: 'Always respond in the same language the user is communicating in.' });
       apiMessages.push({ role: 'system', content: buildTechnicalRules() });
+
+      // View-specific AI rules (per-view configurable instructions)
+      if (viewType && !isGuest) {
+        try {
+          const rulesRes = await apiFetch(`/api/ai/rules/${viewType}`);
+          if (rulesRes.ok) {
+            const rulesData = await rulesRes.json();
+            if (rulesData.content && rulesData.is_enabled) {
+              apiMessages.push({
+                role: 'system',
+                content: `[AI Rules for ${viewType.toUpperCase()} view]\n${rulesData.content}\n\nIMPORTANT: The rules above are guidelines. If the user explicitly requests something that contradicts a rule, follow the user's direct instruction.`
+              });
+            }
+          }
+        } catch {}
+      } else if (viewType && isGuest) {
+        try {
+          const stored = localStorage.getItem(`ai_rules_${viewType}`);
+          if (stored) {
+            const rulesData = JSON.parse(stored);
+            if (rulesData.content && rulesData.is_enabled !== false) {
+              apiMessages.push({
+                role: 'system',
+                content: `[AI Rules for ${viewType.toUpperCase()} view]\n${rulesData.content}\n\nIMPORTANT: The rules above are guidelines. If the user explicitly requests something that contradicts a rule, follow the user's direct instruction.`
+              });
+            }
+          }
+        } catch {}
+      }
 
       // Previous messages
       const previousMessages = messages.filter(m => !m.id.toString().startsWith('temp-'));
@@ -391,7 +421,7 @@ export function useAIChat(
 
       // Add streaming placeholder
       setMessages(prev => [...prev, {
-        id: 'streaming', session_id: currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
+        id: 'streaming', session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
       } as AIChatMessage]);
 
       // Call AI
@@ -404,13 +434,14 @@ export function useAIChat(
             if (last?.id === 'streaming') return [...prev.slice(0, -1), { ...last, content: last.content + token }];
             return prev;
           });
-        }
+        },
+        userId
       );
 
       // Finalize message
       const finalAiMsg: AIChatMessage = {
         id: `ai-${Date.now()}`,
-        session_id: currentSession.id,
+        session_id: currentSession.uid ?? currentSession.id,
         role: 'assistant',
         content: accumulatedResponse,
         created_at: new Date().toISOString(),
@@ -430,21 +461,23 @@ export function useAIChat(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: currentSession.id, role: 'assistant', content: accumulatedResponse,
+            session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: accumulatedResponse,
           }),
         });
         if (!saveAIRes.ok) throw new Error('Failed to save AI response');
 
-        await apiFetch(`/api/ai/chat/sessions/${currentSession.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updated_at: new Date().toISOString() }),
-        });
+        // Optimistic local state update
         setSessions(prev => {
           const updated = prev.map(s => s.id === currentSession.id ? { ...s, updated_at: new Date().toISOString() } : s);
           updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
           return updated;
         });
+        // Fire-and-forget: sync timestamp on server
+        apiFetch(`/api/ai/chat/sessions/${currentSession.uid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updated_at: new Date().toISOString() }),
+        }).catch(() => {});
       }
 
       if (onStreamCompleteRef.current) onStreamCompleteRef.current(accumulatedResponse);

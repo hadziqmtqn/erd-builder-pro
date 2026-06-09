@@ -8,7 +8,8 @@ import {
   Palette,
   Settings,
   Brain,
-  Library
+  Library,
+  ListChecks
 } from 'lucide-react';
 import {
   Dialog,
@@ -48,10 +49,14 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useAISettings } from '@/hooks/useAISettings';
+import { useAIProviders } from '@/hooks/useAIProviders';
+import { useAIModels } from '@/hooks/useAIModels';
+import { useAIPrompts } from '@/hooks/useAIPrompts';
 import { APISettingsTab } from '@/components/ai/APISettingsTab';
 import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
+import { AIRulesTab } from '@/components/ai/AIRulesTab';
+import { AccountTab } from '@/components/ai/AccountTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
 
@@ -66,25 +71,33 @@ export function SettingsModal() {
   const {
     providers,
     configs,
-    models,
-    prompts,
-    isSaving,
     isTesting,
-    newModel,
-    editingModelId,
-    setNewModel,
+    isSaving: isSavingProviders,
     handleSaveConfig,
     handleTestConnection,
+    updateProviderLocal,
+    updateConfigLocal,
+  } = useAIProviders();
+
+  const {
+    models,
+    newModel,
+    editingModelId,
+    isSaving: isSavingModels,
+    setNewModel,
     handleAddModel,
     handleDeleteModel,
+    startEditingModel,
+    cancelEdit,
+  } = useAIModels();
+
+  const {
+    prompts,
+    isSaving: isSavingPrompts,
     handleSavePrompt,
     handleDeletePrompt,
     togglePromptDefault,
-    updateProviderLocal,
-    updateConfigLocal,
-    startEditingModel,
-    cancelEdit
-  } = useAISettings();
+  } = useAIPrompts();
 
   const navGroups = [
     {
@@ -99,6 +112,7 @@ export function SettingsModal() {
       items: [
         { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
         { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
+        { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
         { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
       ]
     },
@@ -223,10 +237,10 @@ export function SettingsModal() {
                     providers={providers}
                     configs={configs}
                     models={models}
-                    isSaving={isSaving}
+                    isSaving={isSavingProviders}
                     isTesting={isTesting}
                     onSave={handleSaveConfig}
-                    onTest={handleTestConnection}
+                    onTest={(code) => handleTestConnection(code, Object.values(models).flat())}
                     onUpdateProvider={updateProviderLocal}
                     onUpdateConfig={updateConfigLocal}
                   />
@@ -240,7 +254,7 @@ export function SettingsModal() {
                     models={Object.values(models).flat()}
                     newModel={newModel}
                     editingModelId={editingModelId}
-                    isSaving={isSaving}
+                    isSaving={isSavingModels}
                     onSetNewModel={setNewModel}
                     onAddModel={handleAddModel}
                     onEditModel={startEditingModel}
@@ -254,12 +268,16 @@ export function SettingsModal() {
                 <div className="p-8">
                   <DefaultPromptsTab 
                     prompts={prompts}
-                    isSaving={isSaving}
+                    isSaving={isSavingPrompts}
                     onSave={handleSavePrompt}
                     onDelete={handleDeletePrompt}
                     onToggleDefault={togglePromptDefault}
                   />
                 </div>
+              )}
+
+              {settingsTab === 'ai-rules' && (
+                <AIRulesTab />
               )}
 
               {settingsTab === 'backups' && (
@@ -268,16 +286,20 @@ export function SettingsModal() {
                 </div>
               )}
 
+              {settingsTab === 'account' && (
+                <AccountTab />
+              )}
+
               {settingsTab === 'changelog' && (
                 <div className="h-full">
                   <ChangelogView />
                 </div>
               )}
 
-              {(settingsTab === 'account' || settingsTab === 'appearance') && (
+              {settingsTab === 'appearance' && (
                 <div className="p-12 flex flex-col items-center justify-center h-full text-center space-y-4">
                   <div className="p-4 bg-muted/20 rounded-full">
-                    {settingsTab === 'account' ? <User className="size-8 text-muted-foreground/40" /> : <Palette className="size-8 text-muted-foreground/40" />}
+                    <Palette className="size-8 text-muted-foreground/40" />
                   </div>
                   <div className="space-y-1">
                     <h3 className="font-semibold text-lg">{getTabLabel(settingsTab)}</h3>

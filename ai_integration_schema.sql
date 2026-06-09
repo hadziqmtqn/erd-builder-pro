@@ -76,6 +76,20 @@ CREATE TABLE IF NOT EXISTS ai_system_prompts (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 7. AI Rules Table (NEW)
+-- Per-view custom rules injected as system instructions.
+-- Uniqueness per user per view type ensures clean upsert.
+CREATE TABLE IF NOT EXISTS user_ai_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    view_type TEXT NOT NULL CHECK (view_type IN ('erd', 'notes', 'flowchart')),
+    content TEXT NOT NULL DEFAULT '',
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, view_type)
+);
+
 -- ==========================================
 -- SECURITY: ROW LEVEL SECURITY (RLS)
 -- ==========================================
@@ -87,6 +101,9 @@ ALTER TABLE user_ai_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_system_prompts ENABLE ROW LEVEL SECURITY;
+
+-- 7b. Enable RLS on AI Rules
+ALTER TABLE user_ai_rules ENABLE ROW LEVEL SECURITY;
 
 -- Policies for ai_providers & ai_models (Publicly readable by authenticated users)
 CREATE POLICY "Users can view active providers" 
@@ -144,6 +161,14 @@ TO public
 USING (true)
 WITH CHECK (true);
 
+-- Policies for user_ai_rules
+CREATE POLICY "Users can manage own AI rules" 
+ON user_ai_rules
+FOR ALL
+TO public
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
 -- ==========================================
 -- TRIGGERS
 -- ==========================================
@@ -165,6 +190,20 @@ DROP TRIGGER IF EXISTS single_default_prompt_trigger ON ai_system_prompts;
 CREATE TRIGGER single_default_prompt_trigger
 BEFORE INSERT OR UPDATE ON ai_system_prompts
 FOR EACH ROW EXECUTE FUNCTION handle_single_default_prompt();
+
+-- Trigger to auto-update updated_at on user_ai_rules
+CREATE OR REPLACE FUNCTION update_ai_rules_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS ai_rules_updated_at_trigger ON user_ai_rules;
+CREATE TRIGGER ai_rules_updated_at_trigger
+BEFORE UPDATE ON user_ai_rules
+FOR EACH ROW EXECUTE FUNCTION update_ai_rules_timestamp();
 
 -- ==========================================
 -- INITIAL DATA: SEEDING
@@ -188,3 +227,18 @@ SELECT id, 'gemini-1.5-pro', 'Gemini 1.5 Pro' FROM ai_providers WHERE code = 'ge
 UNION ALL
 SELECT id, 'gemini-1.5-flash', 'Gemini 1.5 Flash' FROM ai_providers WHERE code = 'gemini'
 ON CONFLICT DO NOTHING;
+
+-- Seed AI Rules (reference only — auto-seeded server-side in ai-rules.ts:GET)
+-- The server seeds defaults on first access when no record exists.
+INSERT INTO user_ai_rules (user_id, view_type, content, is_enabled)
+SELECT
+    id,
+    unnest(ARRAY['erd', 'notes', 'flowchart']),
+    unnest(ARRAY[
+        '- Setiap tabel harus memiliki kolom created_at dan updated_at dengan tipe TIMESTAMP.\n- Gunakan snake_case untuk semua penamaan tabel dan kolom.\n- Setiap tabel harus memiliki PRIMARY KEY bernama id dengan tipe BIGSERIAL.\n- Gunakan FOREIGN KEY yang konsisten dengan nama kolom berakhiran _id.\n- Hindari ENUM — gunakan VARCHAR dengan CHECK constraint.\n- Tambahkan kolom deleted_at untuk soft delete pada tabel master.',
+        '- Gunakan bahasa Indonesia untuk isi catatan.\n- Struktur: gunakan heading, bullet points, dan code block.\n- Setiap catatan harus memiliki summary di awal.\n- Gunakan bahasa formal dan hindari slang.',
+        '- Gunakan label singkat dan jelas (maks 3 kata per simbol).\n- Setiap diagram harus memiliki minimal satu Start dan satu End node.\n- Beri nama yang deskriptif pada setiap cabang (decision label).'
+    ]),
+    true
+FROM auth.users
+ON CONFLICT (user_id, view_type) DO NOTHING;

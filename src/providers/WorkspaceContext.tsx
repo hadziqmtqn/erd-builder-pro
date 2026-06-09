@@ -188,9 +188,11 @@ export interface WorkspaceContextValue {
   undo: () => void;
   redo: () => void;
   addEntity: () => void;
+  duplicateEntity: (id: string) => void;
   deleteEntity: (id: string) => void;
   deleteEdge: (id: string) => void;
   handleEdgeUpdate: (edgeId: string, label: string) => void;
+  handleEdgeFlip: (edgeId: string) => void;
   handleNodeClick: any;
   handleNodeDoubleClick: any;
   handleEdgeClick: any;
@@ -203,6 +205,11 @@ export interface WorkspaceContextValue {
   takeSnapshot: any;
   onNodeDragStop: any;
   onMoveEnd: any;
+
+  // ERD session helpers (for ERDView's onReconnect validation)
+  extractColumnIdFromHandle?: (handle?: string | null) => string | null;
+  getRelationKey?: (edge: any) => string | null;
+  dedupeEdgesByRelation?: (edges: any[]) => any[];
 
   // Refs
   viewportRef: any;

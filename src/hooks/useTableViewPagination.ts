@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 // ──────────────────────────────────────────
 export interface UseTableViewPaginationParams {
   view: string;
+  pathname: string;
   hasActiveItem: boolean;
   isAuthenticated: boolean | null;
   isPublicView: boolean;
@@ -37,13 +38,27 @@ export interface UseTableViewPaginationParams {
  */
 export function useTableViewPagination(params: UseTableViewPaginationParams) {
   const {
-    view, hasActiveItem, isAuthenticated, isPublicView,
+    view, pathname, hasActiveItem, isAuthenticated, isPublicView,
     selectedWorkspaceUid, tableSearchParams, projects,
     fileSearchQuery = '',
     fetchNotes, fetchDiagrams, fetchFlowcharts, fetchDrawings,
     tableRefreshKey,
     tableLoadingState, setTableLoadingState,
   } = params;
+
+  // Only fetch paginated data when on an actual table route — skip on dashboard
+  // and editor routes where the initial fetch already provides the data.
+  const isTableView = pathname.startsWith('/table/');
+
+  // Resolve workspace filter identifier (uid or numeric id) to a project id
+  // for the API call. Falls back to id when uid is null (e.g. SQLite).
+  function resolveProjectId(uid: string | null): string | number | null {
+    if (!uid) return 'all';
+    const p = projects?.find((proj: any) =>
+      proj.uid === uid || String(proj.id) === uid
+    );
+    return p ? p.id : 'all';
+  }
 
   const handles = { notes: fetchNotes, erd: fetchDiagrams, flowchart: fetchFlowcharts, drawings: fetchDrawings };
 
@@ -69,42 +84,30 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
   // 🗂 Server-side pagination: fetch notes
   useEffect(() => {
     const h = handles.notes;
-    const isTableMode = view === 'notes' && !hasActiveItem;
+    const isTableMode = view === 'notes' && !hasActiveItem && isTableView;
     if (!isTableMode || !isAuthenticated || isPublicView) return;
 
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
+    const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     triggerFetch(h, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch erd
   useEffect(() => {
-    const isTableMode = view === 'erd' && !hasActiveItem;
+    const isTableMode = view === 'erd' && !hasActiveItem && isTableView;
     if (!isTableMode || !isAuthenticated || isPublicView) return;
 
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
+    const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     triggerFetch(fetchDiagrams, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch flowcharts
   useEffect(() => {
-    const isTableMode = view === 'flowchart' && !hasActiveItem;
+    const isTableMode = view === 'flowchart' && !hasActiveItem && isTableView;
     if (!isTableMode || !isAuthenticated || isPublicView) return;
 
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
+    const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     const isUserAction = tableLoadingState === 'loading';
     const options = isUserAction ? { page: pageNum } : { silent: true, page: pageNum };
@@ -116,14 +119,10 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
 
   // 🗂 Server-side pagination: fetch drawings
   useEffect(() => {
-    const isTableMode = view === 'drawings' && !hasActiveItem;
+    const isTableMode = view === 'drawings' && !hasActiveItem && isTableView;
     if (!isTableMode || !isAuthenticated || isPublicView) return;
 
-    let projId: string | number | null = 'all';
-    if (selectedWorkspaceUid) {
-      const p = projects?.find((proj: any) => proj.uid === selectedWorkspaceUid);
-      projId = p ? p.id : null;
-    }
+    const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     triggerFetch(fetchDrawings, projId, pageNum, {});
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);

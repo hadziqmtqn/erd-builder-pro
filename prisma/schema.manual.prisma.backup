@@ -1,0 +1,398 @@
+// Prisma schema for ERD Builder Pro
+// Generated from supabase_schema.sql + ai_integration_schema.sql
+//
+// Usage:
+//   npx prisma db pull --force   -- overwrite with live Supabase schema
+//   npx prisma generate          -- generate Prisma client
+//   npx prisma db push           -- push schema changes to database
+//   npx prisma migrate dev       -- create migration files
+
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  schemas   = ["public", "auth"]
+}
+
+// ==========================================
+// Supabase Auth (read-only, from auth schema)
+// ==========================================
+
+model User {
+  id                String    @id @default(uuid())
+  email             String?
+  phone             String?
+  createdAt         DateTime  @map("created_at")
+  updatedAt         DateTime  @map("updated_at")
+  emailConfirmedAt  DateTime? @map("email_confirmed_at")
+  lastSignInAt      DateTime? @map("last_sign_in_at")
+  rawAppMetaData    Json?     @map("raw_app_meta_data")
+  rawUserMetaData   Json?     @map("raw_user_meta_data")
+  isSuperAdmin      Boolean?  @map("is_super_admin")
+  role              String?
+  confirmedAt       DateTime? @map("confirmed_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  projects          Project[]
+  diagrams          Diagram[]
+  notes             Note[]
+  drawings          Drawing[]
+  flowcharts        Flowchart[]
+  entityChanges     EntityChange[]
+  backups           Backup[]
+  aiConfigs         UserAiConfig[]
+  aiSessions        AiChatSession[]
+  aiRules           UserAiRule[]
+
+  @@schema("auth")
+  @@map("users")
+}
+
+// ==========================================
+// Core Documents
+// ==========================================
+
+model Project {
+  id        Int       @id @default(autoincrement())
+  uid       String    @unique @default(uuid())
+  name      String
+  userId    String?   @map("user_id")
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  isPublic  Boolean   @default(false) @map("is_public")
+  shareToken     String?  @map("share_token")
+  expiryDate     DateTime? @map("expiry_date")
+
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  diagrams  Diagram[]
+  notes     Note[]
+  drawings  Drawing[]
+  flowcharts Flowchart[]
+  aiSessions AiChatSession[]
+
+  @@schema("public")
+  @@map("projects")
+}
+
+model Diagram {
+  id            Int       @id @default(autoincrement())
+  uid           String    @unique @default(uuid())
+  name          String
+  userId        String?   @map("user_id")
+  projectId     Int?      @map("project_id")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @map("updated_at")
+  viewportX     Float     @default(0) @map("viewport_x")
+  viewportY     Float     @default(0) @map("viewport_y")
+  viewportZoom  Float     @default(1.0) @map("viewport_zoom")
+  isPublic      Boolean   @default(false) @map("is_public")
+  shareToken    String?   @map("share_token")
+  expiryDate    DateTime? @map("expiry_date")
+  publishedAt   DateTime? @map("published_at")
+  version       Int       @default(0) @map("_version")
+
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  entities      Entity[]
+  relationships Relationship[]
+
+  @@schema("public")
+  @@map("diagrams")
+}
+
+model Note {
+  id          Int       @id @default(autoincrement())
+  uid         String    @unique @default(uuid())
+  title       String
+  content     String    @default("")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+  isPublic    Boolean   @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  version     Int       @default(0) @map("_version")
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("notes")
+}
+
+model Drawing {
+  id          Int       @id @default(autoincrement())
+  uid         String    @unique @default(uuid())
+  title       String
+  data        String    @default("[]")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+  isPublic    Boolean   @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  version     Int       @default(0) @map("_version")
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("drawings")
+}
+
+model Flowchart {
+  id          Int       @id @default(autoincrement())
+  uid         String    @unique @default(uuid())
+  title       String
+  data        String    @default("{\"nodes\":[], \"edges\":[]}")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+  isPublic    Boolean   @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  version     Int       @default(0) @map("_version")
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("flowcharts")
+}
+
+// ==========================================
+// ERD Diagram Data (client-generated TEXT IDs)
+// ==========================================
+
+model Entity {
+  id        String   @id
+  diagramId Int?     @map("diagram_id")
+  name      String
+  x         Float    @default(0)
+  y         Float    @default(0)
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  diagram           Diagram?       @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  columns           Column[]
+  relationshipsFrom Relationship[] @relation("source_entity")
+  relationshipsTo   Relationship[] @relation("target_entity")
+
+  @@schema("public")
+  @@map("entities")
+}
+
+model Column {
+  id         String  @id
+  entityId   String? @map("entity_id")
+  name       String
+  type       String
+  isPk       Boolean @default(false) @map("is_pk")
+  isNullable Boolean @default(true) @map("is_nullable")
+  enumValues String? @map("enum_values")
+  sortOrder  Int     @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  entity   Entity? @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("columns")
+}
+
+model Relationship {
+  id              String  @id
+  diagramId       Int?    @map("diagram_id")
+  sourceEntityId  String? @map("source_entity_id")
+  targetEntityId  String? @map("target_entity_id")
+  sourceColumnId  String? @map("source_column_id")
+  targetColumnId  String? @map("target_column_id")
+  sourceHandle    String? @map("source_handle")
+  targetHandle    String? @map("target_handle")
+  type            String  @default("one-to-many")
+  label           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  diagram      Diagram? @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sourceEntity Entity?  @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  targetEntity Entity?  @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("relationships")
+}
+
+// ==========================================
+// Audit / History
+// ==========================================
+
+model EntityChange {
+  id         Int      @id @default(autoincrement())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  version    Int
+  userId     String?  @map("user_id")
+  changes    Json
+  changeType String   @default("update") @map("change_type")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([entityType, entityId, version(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([entityId])
+  @@schema("public")
+  @@map("entity_changes")
+}
+
+model Backup {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  name      String
+  status    String   @default("pending")
+  filePath  String?  @map("file_path")
+  fileSize  BigInt?  @map("file_size")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("backups")
+}
+
+// ==========================================
+// AI Integration
+// ==========================================
+
+model AiProvider {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  baseUrl   String?  @map("base_url")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  models      AiModel[]
+  userConfigs UserAiConfig[]
+
+  @@schema("public")
+  @@map("ai_providers")
+}
+
+model AiModel {
+  id               Int      @id @default(autoincrement())
+  providerId       Int?     @map("provider_id")
+  modelIdentifier  String   @map("model_identifier")
+  displayName      String   @map("display_name")
+  contextWindow    Int?     @map("context_window")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  provider    AiProvider?    @relation(fields: [providerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  userConfigs UserAiConfig[]
+
+  @@schema("public")
+  @@map("ai_models")
+}
+
+model UserAiConfig {
+  id              Int      @id @default(autoincrement())
+  userId          String   @map("user_id")
+  providerId      Int?     @map("provider_id")
+  selectedModelId Int?     @map("selected_model_id")
+  apiKey          String   @map("api_key")
+  isEnabled       Boolean  @default(true) @map("is_enabled")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  provider       AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  selectedModel  AiModel?     @relation(fields: [selectedModelId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([userId, providerId])
+  @@schema("public")
+  @@map("user_ai_configs")
+}
+
+model AiChatSession {
+  id         Int      @id @default(autoincrement())
+  uid        String   @unique @default(uuid())
+  userId     String?  @map("user_id")
+  projectId  Int?     @map("project_id")
+  entityType String?  @map("entity_type")
+  entityUid  String?  @map("entity_uid")
+  title      String   @default("New Conversation")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  user     User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  project  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  messages AiChatMessage[]
+
+  @@schema("public")
+  @@map("ai_chat_sessions")
+}
+
+model AiChatMessage {
+  id            Int      @id @default(autoincrement())
+  sessionId     Int      @map("session_id")
+  role          String
+  content       String
+  selectionText String?  @map("selection_text")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  session AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+  @@map("ai_chat_messages")
+}
+
+model AiSystemPrompt {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  content   String
+  category  String   @default("custom") @db.VarChar(50)
+  isDefault Boolean  @default(false) @map("is_default")
+  isBuiltIn Boolean  @default(false) @map("is_built_in")
+  userId    String?  @map("user_id") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@schema("public")
+  @@map("ai_system_prompts")
+}
+
+model UserAiRule {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  viewType  String   @map("view_type")
+  content   String   @default("")
+  isEnabled Boolean  @default(true) @map("is_enabled")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, viewType])
+  @@schema("public")
+  @@map("user_ai_rules")
+}

@@ -1,13 +1,19 @@
-import {StrictMode} from 'react';
+import {StrictMode, useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import App from './App.tsx';
+import { AuthProvider } from './hooks/useAuth';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
-import { API_BASE_URL } from './lib/api';
+import { API_BASE_URL, clearAuthToken } from './lib/api';
+
+// Detect Tauri and add data attribute for CSS targeting
+if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+  document.body.setAttribute('data-tauri', 'true');
+}
 
 // Global Fetch Interceptor to handle 401 Unauthorized globally
 const originalFetch = window.fetch;
@@ -26,22 +32,25 @@ window.fetch = async (...args) => {
   const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
   
   if (response.status === 401 && isApiRoute && !isAuthRoute && navigator.onLine && !isGuest) {
+    clearAuthToken();
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   
   return response;
 };
 
-// Register Service Worker for Offline Assets Caching
+// Register Service Worker for Offline Assets Caching (production only)
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((registrationError) => {
-      // Keep only severe registration error logging or remove it too?
-      // User asked to remove experiment logs, but keeping error logging is usually good practice.
-      // However, to be thorough as requested:
-      // console.error('SW registration failed: ', registrationError);
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isDev) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(r => r.unregister());
     });
-  });
+  } else {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
 }
 
 createRoot(document.getElementById('root')!).render(
@@ -49,8 +58,10 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <ReactFlowProvider>
         <TooltipProvider>
-          <App />
-          <Toaster position="top-center" />
+          <AuthProvider>
+            <App />
+            <Toaster position="top-center" />
+          </AuthProvider>
         </TooltipProvider>
       </ReactFlowProvider>
     </BrowserRouter>

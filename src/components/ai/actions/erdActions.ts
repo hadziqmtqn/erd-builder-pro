@@ -385,7 +385,9 @@ function parseAlterTableAddColumn(sql: string): Map<string, Column[]> {
       else if (rawType.startsWith('CHAR')) rawType = 'CHAR';
       else if (rawType.startsWith('VARBINARY')) rawType = 'VARBINARY';
       else if (rawType.startsWith('VARCHAR')) rawType = 'VARCHAR';
-      else if (rawType === 'SERIAL' || rawType === 'BIGSERIAL') rawType = 'INT';
+      else if (rawType === 'SERIAL') rawType = 'INT';
+      else if (rawType === 'BIGSERIAL') rawType = 'BIGINT';
+      else if (rawType === 'SMALLSERIAL') rawType = 'SMALLINT';
       else if (rawType === 'INTEGER') rawType = 'INT';
       else if (rawType === 'DOUBLE PRECISION') rawType = 'DOUBLE';
       else if (rawType === 'CHARACTER VARYING') rawType = 'VARCHAR';
@@ -484,12 +486,19 @@ export function applyToErdContent(
       // and ALTER TABLE FK constraints that mention tables created in the same SQL.
       const nameToId = new Map(mergedNodes.map(n => [n.data.name.toLowerCase(), n.id]));
       const existingEdgeKeys = new Set<string>();
+      // Track which source columns are already wired up — enforces the strict rule
+      // that one FK column can only point to one PK (no polymorphic associations).
+      const usedSourceColumns = new Set<string>();
+      const extractColIdFromHandle = (h?: string | null) =>
+        h ? h.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : null;
       for (const e of mergedEdges) {
         const sNode = mergedNodes.find(n => n.id === e.source);
         const tNode = mergedNodes.find(n => n.id === e.target);
         if (sNode && tNode) {
           existingEdgeKeys.add(`${sNode.data.name.toLowerCase()}-${tNode.data.name.toLowerCase()}`);
         }
+        const sColId = extractColIdFromHandle(e.sourceHandle);
+        if (sColId) usedSourceColumns.add(`${e.source}:${sColId}`);
       }
 
       const additionalEdges: Edge[] = [];
@@ -509,6 +518,9 @@ export function applyToErdContent(
         const tCol = tNode.data.columns.find(c => c.name.toLowerCase() === targetColName.toLowerCase());
         if (!sCol || !tCol) return;
 
+        // Strict rule: 1 FK column = max 1 PK. Skip if this source column is already wired.
+        if (usedSourceColumns.has(`${sId}:${sCol.id}`)) return;
+
         additionalEdges.push({
           id: `e-${sId}-${tId}-${Math.random()}`,
           source: sId,
@@ -520,6 +532,7 @@ export function applyToErdContent(
           animated: false,
         });
         existingEdgeKeys.add(edgeKey);
+        usedSourceColumns.add(`${sId}:${sCol.id}`);
       };
 
       // A) Table-level & Inline FOREIGN KEY constraints parsed from CREATE TABLE

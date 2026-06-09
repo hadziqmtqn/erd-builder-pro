@@ -139,24 +139,16 @@ export function DashboardRoute() {
       .slice(0, 4);
   }, [ctx.projects, ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts]);
 
+  // Show spinner only on subsequent reloads after initial data has arrived once.
+  // First load renders immediately — data populates progressively as fetches complete.
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const isLoading = ctx.isLoading || ctx.isProjectsLoading;
 
-  // Once the first load cycle completes, lock it so no subsequent refetch
-  // causes a loading flicker
   useEffect(() => {
     if (!isLoading) {
       setInitialLoadDone(true);
     }
   }, [isLoading]);
-
-  if (!initialLoadDone && isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full w-full flex-col gap-6 overflow-y-auto p-6">

@@ -17,8 +17,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2, Undo2, Redo2, Move, Play } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Plus, Loader2, Undo2, Redo2, Move, LayoutGrid } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -40,6 +39,7 @@ import { applyToFlowchartContent, previewFlowchartContent, applyInsertBetween, a
 import { FlowchartPreviewModal } from '@/components/flowchart/FlowchartPreviewModal';
 import { FlowchartExportModal } from '@/components/flowchart/FlowchartExportModal';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
+import { autoLayoutFlowchart } from '@/lib/autoLayoutFlowchart';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import type { FlowchartExportHandler } from '@/providers/WorkspaceContext';
 
@@ -96,205 +96,13 @@ export const FlowchartView = React.memo(({
   const { takeSnapshot, undo, redo, canUndo, canRedo } = useUndoRedo();
   const pendingApplyModeRef = React.useRef<'append' | 'insert' | 'replace'>('append');
 
-  // ─── Simulation Sandbox States ───────────────────────
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulationContext, setSimulationContext] = useState<string>('{\n  "amount": 150,\n  "role": "admin",\n  "status": "pending",\n  "tries": 0\n}');
-  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-  const [visitedNodeIds, setVisitedNodeIds] = useState<string[]>([]);
-  const [visitedEdgeIds, setVisitedEdgeIds] = useState<string[]>([]);
-  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
-  const [simError, setSimError] = useState<string | null>(null);
-  const [showSimPanel, setShowSimPanel] = useState(false);
-
-  const startSimulationMode = () => {
-    setIsSimulating(true);
-    setShowSimPanel(true);
-    setActiveNodeId(null);
-    setVisitedNodeIds([]);
-    setVisitedEdgeIds([]);
-    setSimulationLogs(['Simulation sandbox opened. Customize input variables below and click "Start Run".']);
-    setSimError(null);
-  };
-
-  const stopSimulationMode = () => {
-    setIsSimulating(false);
-    setShowSimPanel(false);
-    setActiveNodeId(null);
-    setVisitedNodeIds([]);
-    setVisitedEdgeIds([]);
-    setSimError(null);
-  };
-
-  const handleStepSimulation = useCallback(() => {
-    setSimError(null);
-
-    // 1. Initial State: Start at the "Start" node
-    if (!activeNodeId) {
-      const startNode = nodes.find(n => n.data.label.trim().toLowerCase().includes('start')) || 
-                        nodes.find(n => n.data.shape === 'oval') ||
-                        nodes[0];
-      
-      if (!startNode) {
-        toast.error('No symbols found on canvas to simulate');
-        return;
-      }
-
-      try {
-        JSON.parse(simulationContext);
-      } catch (err) {
-        const msg = 'Invalid Input JSON: ' + (err as Error).message;
-        setSimError(msg);
-        toast.error('Simulation Input JSON error');
-        return;
-      }
-
-      setActiveNodeId(startNode.id);
-      setVisitedNodeIds([]);
-      setVisitedEdgeIds([]);
-      setSimulationLogs([
-        `[START] Simulation initialized.`,
-        `[STEP] Starting at node: "${startNode.data.label}" (${startNode.data.shape})`
-      ]);
-      return;
-    }
-
-    // 2. Running State: Process current node
-    const currentNode = nodes.find(n => n.id === activeNodeId);
-    if (!currentNode) {
-      setSimError('Active node not found');
-      return;
-    }
-
-    let contextObj = {};
-    try {
-      contextObj = JSON.parse(simulationContext);
-    } catch (err) {
-      setSimError('Failed to parse variables: ' + (err as Error).message);
-      return;
-    }
-
-    let resultBranch: any = null;
-    if (currentNode.data.code && String(currentNode.data.code).trim()) {
-      try {
-        const runner = new Function('context', `
-          const run = (context) => {
-            ${currentNode.data.code}
-          };
-          return run(context);
-        `);
-        resultBranch = runner(contextObj);
-        setSimulationContext(JSON.stringify(contextObj, null, 2));
-      } catch (err) {
-        const errMsg = 'Error executing code: ' + (err as Error).message;
-        setSimulationLogs(prev => [...prev, `[ERROR] ${errMsg}`]);
-        setSimError(errMsg);
-        return;
-      }
-    }
-
-    const outgoingEdges = edges.filter(e => e.source === activeNodeId);
-
-    if (outgoingEdges.length === 0) {
-      setSimulationLogs(prev => [
-        ...prev, 
-        `[LOG] Processed node: "${currentNode.data.label}"`,
-        `[END] Reached end node. Simulation completed successfully.`
-      ]);
-      setVisitedNodeIds(prev => [...prev, activeNodeId]);
-      setActiveNodeId(null);
-      toast.success('Simulation Finished!');
-      return;
-    }
-
-    let selectedEdge: Edge | null = null;
-
-    if (outgoingEdges.length === 1) {
-      selectedEdge = outgoingEdges[0];
-    } else {
-      if (resultBranch !== null && resultBranch !== undefined) {
-        selectedEdge = outgoingEdges.find(e => 
-          String(e.label || '').trim().toLowerCase() === String(resultBranch).trim().toLowerCase()
-        ) || null;
-
-        if (!selectedEdge) {
-          setSimulationLogs(prev => [
-            ...prev,
-            `[WARNING] Code returned "${resultBranch}", but no matching connector label was found.`
-          ]);
-        }
-      }
-    }
-
-    if (selectedEdge) {
-      const targetNode = nodes.find(n => n.id === selectedEdge!.target);
-      const nextLabel = targetNode ? targetNode.data.label : 'Unknown';
-      const branchText = selectedEdge.label ? ` via branch "${selectedEdge.label}"` : '';
-
-      setSimulationLogs(prev => [
-        ...prev,
-        `[LOG] Processed: "${currentNode.data.label}"`,
-        `[STEP] Moving to "${nextLabel}"${branchText}`
-      ]);
-
-      const prevActiveId = activeNodeId;
-      setVisitedNodeIds(prev => [...prev, prevActiveId]);
-      setVisitedEdgeIds(prev => [...prev, selectedEdge!.id]);
-      setActiveNodeId(selectedEdge.target);
-    } else {
-      setSimulationLogs(prev => [
-        ...prev,
-        `[PAUSE] Multiple paths available from "${currentNode.data.label}". Please select a connector manually below.`
-      ]);
-    }
-  }, [activeNodeId, nodes, edges, simulationContext]);
-
-  const handleResetSimulation = () => {
-    setActiveNodeId(null);
-    setVisitedNodeIds([]);
-    setVisitedEdgeIds([]);
-    setSimulationLogs(['Simulation reset. Ready to start again.']);
-    setSimError(null);
-  };
-
-  const pausedBranches = useMemo(() => {
-    if (!activeNodeId) return [];
-    const outgoing = edges.filter(e => e.source === activeNodeId);
-    if (outgoing.length <= 1) return [];
-    return outgoing;
-  }, [activeNodeId, edges]);
-
-  const handleManualBranchSelect = (edge: Edge) => {
-    const targetNode = nodes.find(n => n.id === edge.target);
-    const nextLabel = targetNode ? targetNode.data.label : 'Unknown';
-    const branchText = edge.label ? ` via branch "${edge.label}"` : '';
-
-    setSimulationLogs(prev => [
-      ...prev,
-      `[MANUAL] Followed branch "${edge.label || 'Unnamed Branch'}"`,
-      `[STEP] Moving to "${nextLabel}"${branchText}`
-    ]);
-
-    const prevActiveId = activeNodeId;
-    setVisitedNodeIds(prev => prevActiveId ? [...prev, prevActiveId] : prev);
-    setVisitedEdgeIds(prev => [...prev, edge.id]);
-    setActiveNodeId(edge.target);
-  };
-
-  const handleUndo = useCallback(() => {
-    const previousState = undo(nodesRef.current, edgesRef.current);
-    if (previousState) {
-      setNodes(previousState.nodes);
-      setEdges(previousState.edges);
-    }
-  }, [undo, setNodes, setEdges]);
-
-  const handleRedo = useCallback(() => {
-    const nextState = redo(nodesRef.current, edgesRef.current);
-    if (nextState) {
-      setNodes(nextState.nodes);
-      setEdges(nextState.edges);
-    }
-  }, [redo, setNodes, setEdges]);
+  const handleAutoLayout = useCallback(() => {
+    if (nodes.length === 0) return;
+    const repositions = autoLayoutFlowchart(nodes, edges);
+    takeSnapshot(nodesRef.current, edgesRef.current);
+    setNodes(repositions.nodes);
+    setEdges(repositions.edges);
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot]);
   nodesRef.current = nodes;
   edgesRef.current = edges;
 
@@ -547,7 +355,10 @@ export const FlowchartView = React.memo(({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isReadOnly) return;
       const target = e.target as HTMLElement;
+      // Skip if typing in input/textarea OR inside SearchableTypeSelect dropdown
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      // Check data-keyboard-trap on target itself (portal elements won't have ancestors)
+      if (target.hasAttribute?.('data-keyboard-trap')) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNodeId) { deleteNode(); return; }
         if (selectedEdgeId) { deleteEdge(); return; }
@@ -697,23 +508,9 @@ export const FlowchartView = React.memo(({
       const isGroupMember = selectedGroupNodeIds.has(n.id);
       const selected = isSelected || isGroupMember;
       
-      const nodeToMap = !!n.selected === selected ? n : { ...n, selected };
-
-      if (!isSimulating) return nodeToMap;
-
-      const isActive = nodeToMap.id === activeNodeId;
-      const isVisited = visitedNodeIds.includes(nodeToMap.id);
-
-      return {
-        ...nodeToMap,
-        data: {
-          ...nodeToMap.data,
-          isSimulationActive: isActive,
-          isSimulationVisited: isVisited,
-        }
-      };
+      return !!n.selected === selected ? n : { ...n, selected };
     });
-  }, [nodes, selectedNodeId, selectedGroupNodeIds, isSimulating, activeNodeId, visitedNodeIds]);
+  }, [nodes, selectedNodeId, selectedGroupNodeIds]);
 
   const handleNodesChange = useCallback(
     (changes: any[]) => {
@@ -934,21 +731,6 @@ export const FlowchartView = React.memo(({
 
     let baseEdge = e;
 
-    if (isSimulating) {
-      const isVisited = visitedEdgeIds.includes(e.id);
-      const isActive = activeNodeId && (e.source === activeNodeId || e.target === activeNodeId);
-      
-      baseEdge = {
-        ...e,
-        animated: !!(isVisited || isActive),
-        style: isVisited
-          ? { stroke: '#10b981', strokeWidth: 3 }
-          : isActive
-            ? { stroke: '#f59e0b', strokeWidth: 3 }
-            : e.style,
-      };
-    }
-
     if (!isHovered && !isSelected) return baseEdge;
 
     const overrideMarker = (marker: any) => {
@@ -962,7 +744,7 @@ export const FlowchartView = React.memo(({
       style: isSelected ? { stroke: '#ffffff', strokeWidth: 2.5 } : baseEdge.style,
       markerEnd: isSelected ? overrideMarker(baseEdge.markerEnd) : baseEdge.markerEnd,
     };
-  }), [edges, hoveredEdgeId, selectedEdgeId, isSimulating, visitedEdgeIds, activeNodeId]);
+  }), [edges, hoveredEdgeId, selectedEdgeId]);
 
   // ── EARLY RETURN (setelah semua hooks) ──
   if (showLoader) {
@@ -982,7 +764,7 @@ export const FlowchartView = React.memo(({
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
             <JumpToNode nodes={nodes} label="Symbol" />
-            {canvasGroups.length > 0 && !isSimulating && (
+            {canvasGroups.length > 0 && (
               <>
                 <div className="w-px h-6 bg-border mx-0.5" />
                 <Select value={selectedGroup ?? ''} onValueChange={(val) => { setSelectedGroup(val || null); setSelectedNodeId(null); }}>
@@ -998,36 +780,25 @@ export const FlowchartView = React.memo(({
                 </Select>
               </>
             )}
-            {!isSimulating && (
-              <>
-                <div className="w-px h-6 bg-border mx-0.5" />
-                <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-                  <Plus className="w-4 h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Add Symbol</span>
-                </Button>
-              </>
-            )}
+            <>
+              <div className="w-px h-6 bg-border mx-0.5" />
+              <Button onClick={handleAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+                <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Auto Layout</span>
+              </Button>
+              <div className="w-px h-6 bg-border mx-0.5" />
+              <Button onClick={() => setIsAddingNode(true)} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Add Symbol</span>
+              </Button>
+            </>
             <div className="w-px h-6 bg-border mx-0.5" />
-            <Button 
-              onClick={isSimulating ? stopSimulationMode : startSimulationMode} 
-              size="sm" 
-              variant={isSimulating ? "destructive" : "outline"}
-              className={cn("h-9 px-3.5 font-bold cursor-pointer transition-all", isSimulating ? "" : "hover:bg-white/5 border-white/10 text-zinc-300")}
-            >
-              <Play className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-              {isSimulating ? "Exit Sim" : "Simulate Flow"}
+            <Button onClick={() => undo(nodesRef.current, edgesRef.current)} disabled={!canUndo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Undo">
+              <Undo2 className="w-4 h-4" />
             </Button>
-            {!isSimulating && (
-              <>
-                <div className="w-px h-6 bg-border mx-0.5" />
-                <Button onClick={handleUndo} disabled={!canUndo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Undo">
-                  <Undo2 className="w-4 h-4" />
-                </Button>
-                <Button onClick={handleRedo} disabled={!canRedo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Redo">
-                  <Redo2 className="w-4 h-4" />
-                </Button>
-              </>
-            )}
+            <Button onClick={() => redo(nodesRef.current, edgesRef.current)} disabled={!canRedo} size="sm" variant="ghost" className="h-9 w-9 p-0 cursor-pointer" title="Redo">
+              <Redo2 className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       )}
@@ -1044,22 +815,22 @@ export const FlowchartView = React.memo(({
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
-          onNodeClick={(e, node) => { if (!isSimulating) setSelectedNodeId(node.id); }}
-          onEdgeClick={(e, edge) => { if (!isSimulating) setSelectedEdgeId(edge.id); }}
-          onEdgeMouseEnter={(e, edge) => { if (!isSimulating) setHoveredEdgeId(edge.id); }}
+          onNodeClick={(e, node) => setSelectedNodeId(node.id)}
+          onEdgeClick={(e, edge) => setSelectedEdgeId(edge.id)}
+          onEdgeMouseEnter={(e, edge) => setHoveredEdgeId(edge.id)}
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
           onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedGroup(null); }}
           fitView
           colorMode="dark"
           onlyRenderVisibleElements={true}
-          nodesDraggable={!isReadOnly && !isSimulating}
-          nodesConnectable={!isReadOnly && !isSimulating}
-          elementsSelectable={!isReadOnly && !isSimulating}
+          nodesDraggable={!isReadOnly}
+          nodesConnectable={!isReadOnly}
+          elementsSelectable={!isReadOnly}
           minZoom={0.1}
           maxZoom={2.5}
           onMove={(e, v) => setViewport(v)}
         >
-          <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly && !isSimulating} />
+          <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
         </ReactFlow>
         {groupBounds && (
@@ -1079,105 +850,6 @@ export const FlowchartView = React.memo(({
               />
             </g>
           </svg>
-        )}
-        {/* Simulation Sandbox Panel overlay */}
-        {showSimPanel && (
-          <div className="absolute right-4 top-24 bottom-6 w-80 bg-[#0f0f14]/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl z-20 flex flex-col overflow-hidden animate-in slide-in-from-right-3 duration-300 pointer-events-auto">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="flex h-2.5 w-2.5 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-200">Simulation Sandbox</span>
-              </div>
-              <button 
-                onClick={stopSimulationMode}
-                className="text-zinc-500 hover:text-zinc-300 text-xs font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-              {/* Input Variables Section */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Input Variables (JSON)</label>
-                <textarea 
-                  value={simulationContext}
-                  onChange={(e) => setSimulationContext(e.target.value)}
-                  disabled={!!activeNodeId}
-                  className="w-full h-32 bg-black/50 border border-white/10 rounded-lg p-2.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-white/20 resize-none disabled:opacity-60"
-                />
-              </div>
-
-              {/* Run Controls */}
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleStepSimulation}
-                  className="flex-1 h-9 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold shadow-md shadow-emerald-500/10"
-                >
-                  {!activeNodeId ? "Start Run" : "Step Forward"}
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={handleResetSimulation}
-                  className="h-9 px-3 bg-white/5 border-white/10 text-zinc-300 hover:text-white"
-                >
-                  Reset
-                </Button>
-              </div>
-
-              {simError && (
-                <div className="p-3 bg-red-950/20 border border-red-500/30 rounded-lg text-[11px] text-red-400 leading-normal font-medium">
-                  {simError}
-                </div>
-              )}
-
-              {/* Logs Area */}
-              <div className="space-y-1.5 flex-1 flex flex-col min-h-0">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Execution Logs</label>
-                <div className="flex-1 bg-black/40 border border-white/5 rounded-lg p-3 text-[11px] font-mono text-zinc-300 overflow-y-auto space-y-2 h-[220px] custom-scrollbar">
-                  {simulationLogs.map((log, idx) => (
-                    <div 
-                      key={idx} 
-                      className={cn(
-                        "leading-normal whitespace-pre-wrap break-all",
-                        log.startsWith("[START]") && "text-emerald-400 font-bold",
-                        log.startsWith("[STEP]") && "text-zinc-200",
-                        log.startsWith("[ERROR]") && "text-red-400",
-                        log.startsWith("[WARNING]") && "text-amber-400",
-                        log.startsWith("[END]") && "text-teal-400 font-bold",
-                        log.startsWith("[PAUSE]") && "text-amber-300 font-bold",
-                        log.startsWith("[MANUAL]") && "text-indigo-400"
-                      )}
-                    >
-                      {log}
-                    </div>
-                  ))}
-
-                  {/* Paused Manual Branch selection buttons */}
-                  {pausedBranches.length > 0 && (
-                    <div className="pt-2 border-t border-white/5 space-y-1.5">
-                      <span className="text-[10px] text-zinc-400 block font-sans">Choose branch path to continue:</span>
-                      <div className="flex flex-col gap-1.5">
-                        {pausedBranches.map(edge => (
-                          <button
-                            key={edge.id}
-                            onClick={() => handleManualBranchSelect(edge)}
-                            className="w-full text-left px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-white/10 rounded-md text-[10px] font-sans font-bold transition-all"
-                          >
-                            → {edge.label || 'Unnamed Branch'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
         )}
       </div>
 

@@ -27,10 +27,13 @@ function normalizeType(typeStr: string): string {
     if (normalized.startsWith('VARCHAR')) return 'VARCHAR';
 
     // Alias handling
-    if (normalized === 'SERIAL' || normalized === 'BIGSERIAL' || normalized === 'SMALLSERIAL') return 'INT';
+if (normalized === 'SERIAL') return 'INT';
+    if (normalized === 'BIGSERIAL') return 'BIGINT';
+    if (normalized === 'SMALLSERIAL') return 'SMALLINT';
     if (normalized === 'INTEGER') return 'INT';
     if (normalized === 'DOUBLE PRECISION') return 'DOUBLE';
     if (normalized === 'BOOLEAN') return 'BOOLEAN';
+    if (normalized === 'ULID') return 'ULID';
     if (normalized === 'DATETIME') return 'TIMESTAMP';
     if (normalized === 'YEAR') return 'INT';
 
@@ -40,7 +43,7 @@ function normalizeType(typeStr: string): string {
 
 function cleanIdentifier(id: string): string {
     if (!id) return '';
-    return id.replace(/["`[\]]/g, '').trim();
+    return id.replace(/["`[\]]/g, '').trim().toLowerCase();
 }
 
 // ─── SQL LEXER & TOKENIZER ────────────────────────────────
@@ -297,13 +300,27 @@ function parseColumnConstraints(stream: TokenStream): InlineColumnConstraints {
   let isNullable = true;
   let refTable: string | undefined;
   let refColumn: string | undefined;
+  let parenDepth = 0;
 
   while (!stream.eof()) {
     const t = stream.peek();
     if (!t) break;
 
-    if (t.type === 'SYMBOL' && (t.value === ',' || t.value === ')' || t.value === ';')) {
-      break;
+    if (t.type === 'SYMBOL') {
+      if (t.value === '(') {
+        parenDepth++;
+        stream.next();
+        continue;
+      }
+      if (t.value === ')') {
+        if (parenDepth === 0) break;
+        parenDepth--;
+        stream.next();
+        continue;
+      }
+      if (parenDepth === 0 && (t.value === ',' || t.value === ';')) {
+        break;
+      }
     }
 
     if (stream.consumeKeyword('PRIMARY')) {

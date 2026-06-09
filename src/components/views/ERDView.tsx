@@ -10,10 +10,12 @@ import {
   Node,
   Edge,
   MarkerType,
-  useReactFlow
+  useReactFlow,
+  addEdge,
+  reconnectEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Undo2, Redo2 } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
@@ -42,6 +44,8 @@ interface ERDViewProps {
   onPaneClick: () => void;
   onMove: (event: any, viewport: any) => void;
   addEntity: () => void;
+  onImportSQL?: () => void;
+  onAutoLayout?: () => void;
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
   onNodeDragStop?: () => void;
 
@@ -60,6 +64,10 @@ interface ERDViewProps {
   saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
+  // Exposed helpers from useERDSession for onReconnect validation
+  extractColumnIdFromHandle?: (handle?: string | null) => string | null;
+  getRelationKey?: (edge: Edge) => string | null;
+  dedupeEdgesByRelation?: (edges: Edge[]) => Edge[];
 }
 
 
@@ -79,6 +87,8 @@ const ERDViewComponent = ({
   onPaneClick,
   onMove,
   addEntity,
+  onImportSQL,
+  onAutoLayout,
   isReadOnly = false,
 
   undo,
@@ -93,6 +103,9 @@ const ERDViewComponent = ({
   saveDiagram,
   triggerDebouncedSync,
   pendingErdDiffTrigger,
+  extractColumnIdFromHandle,
+  getRelationKey,
+  dedupeEdgesByRelation,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
@@ -354,6 +367,7 @@ const ERDViewComponent = ({
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
     animated: false,
+    reconnectable: true,
     markerEnd: {
       type: MarkerType.Arrow,
       width: 15,
@@ -459,6 +473,14 @@ const ERDViewComponent = ({
               <Plus className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Add Table</span>
             </Button>
+            <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+              <Upload className="w-3.5 h-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import SQL</span>
+            </Button>
+            <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+              <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Auto Layout</span>
+            </Button>
 
             <div className="flex items-center gap-0.5 ml-auto">
               <Button 
@@ -497,6 +519,93 @@ const ERDViewComponent = ({
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onReconnect={(oldEdge, connection) => {
+            if (!connection.sourceHandle || !connection.targetHandle) return;
+            const sourceNode = nodes.find(n => n.id === connection.source);
+            const targetNode = nodes.find(n => n.id === connection.target);
+            if (sourceNode && targetNode) {
+              const srcId = String(connection.sourceHandle).replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+              const tgtId = String(connection.targetHandle).replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+              const srcCol = sourceNode.data.columns.find((c: any) => String(c.id ?? c.uid) === srcId);
+              const tgtCol = targetNode.data.columns.find((c: any) => String(c.id ?? c.uid) === tgtId);
+              if (srcCol && tgtCol && srcCol.type !== tgtCol.type) {
+                toast.error('Type Mismatch', { description: `Cannot reconnect ${srcCol.type} to ${tgtCol.type}` });
+                return;
+              }
+
+              // ─── Duplicate relation check ────────────────────────────
+              if (extractColumnIdFromHandle && getRelationKey) {
+                const srcColId = extractColumnIdFromHandle(connection.sourceHandle);
+                const tgtColId = extractColumnIdFromHandle(connection.targetHandle);
+                if (srcColId && tgtColId) {
+                  const srcName = srcCol?.name?.toLowerCase();
+                  const tgtName = tgtCol?.name?.toLowerCase();
+                  const cSrcNameKey = srcName ? `${connection.source}:${srcName}` : null;
+                  const cTgtNameKey = tgtName ? `${connection.target}:${tgtName}` : null;
+
+                  const isDuplicate = edges.some(edge => {
+                    if (edge.id === oldEdge.id) return false; // skip self
+                    const key = getRelationKey(edge);
+                    if (!key) return false;
+                    // Check by ID key
+                    const newKey = `${[connection.source, connection.target].sort().join(':')}:${[srcColId, tgtColId].sort().join(':')}`;
+                    if (key === newKey) return true;
+                    // Check by name key (symmetric)
+                    if (cSrcNameKey && cTgtNameKey) {
+                      const eSrcNode = nodes.find(n => n.id === edge.source);
+                      const eTgtNode = nodes.find(n => n.id === edge.target);
+                      if (eSrcNode && eTgtNode) {
+                        const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+                        const eTgtId2 = extractColumnIdFromHandle(edge.targetHandle);
+                        const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+                        const eTgtName = eTgtNode.data.columns.find((c: any) => c.id === eTgtId2)?.name?.toLowerCase();
+                        if (eSrcName && eTgtName) {
+                          const eSrcNameKey = `${edge.source}:${eSrcName}`;
+                          const eTgtNameKey = `${edge.target}:${eTgtName}`;
+                          return (eSrcNameKey === cSrcNameKey && eTgtNameKey === cTgtNameKey) ||
+                                 (eSrcNameKey === cTgtNameKey && eTgtNameKey === cSrcNameKey);
+                        }
+                      }
+                    }
+                    return false;
+                  });
+
+                  if (isDuplicate) {
+                    toast.info('Relation already exists');
+                    return;
+                  }
+                }
+              }
+
+              // ─── FK already related check ──────────────────────────
+              if (extractColumnIdFromHandle && srcCol?.name) {
+                const srcColId = extractColumnIdFromHandle(connection.sourceHandle);
+                const srcNameKey = `${sourceNode.data.name.toLowerCase()}:${srcCol.name.toLowerCase()}`;
+                const conflictingEdge = edges.find(edge => {
+                  if (edge.id === oldEdge.id) return false;
+                  const eSrcNode = nodes.find(n => n.id === edge.source);
+                  if (!eSrcNode) return false;
+                  const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
+                  if (!eSrcId2) return false;
+                  const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
+                  if (!eSrcName) return false;
+                  return `${eSrcNode.data.name.toLowerCase()}:${eSrcName}` === srcNameKey;
+                });
+                if (conflictingEdge) {
+                  const targetTable = nodes.find(n => n.id === conflictingEdge.target);
+                  toast.error('FK already related', {
+                    description: `This column is already related to ${targetTable?.data.name || 'another table'}. One FK column can only point to one PK.`,
+                    duration: 4000,
+                  });
+                  return;
+                }
+              }
+            }
+            takeSnapshot?.(nodes, edges);
+            const newEds = reconnectEdge(oldEdge, connection, edges);
+            const deduped = dedupeEdgesByRelation ? dedupeEdgesByRelation(newEds) : newEds;
+            setEdges(deduped);
+          }}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClickLocal}
           onNodeDoubleClick={onNodeDoubleClick}
@@ -513,6 +622,7 @@ const ERDViewComponent = ({
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={defaultEdgeOptions}
+          deleteKeyCode={null}
         >
 
           <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
@@ -695,7 +805,10 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.canUndo === next.canUndo &&
     prev.canRedo === next.canRedo &&
     prev.onMoveEnd === next.onMoveEnd &&
-    prev.pendingErdDiffTrigger === next.pendingErdDiffTrigger
+    prev.pendingErdDiffTrigger === next.pendingErdDiffTrigger &&
+    prev.extractColumnIdFromHandle === next.extractColumnIdFromHandle &&
+    prev.getRelationKey === next.getRelationKey &&
+    prev.dedupeEdgesByRelation === next.dedupeEdgesByRelation
   );
 });
 

@@ -25,5 +25,15 @@
     "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo",
     "noEmit": true,
     "types": ["vite/client"]
-  }
+  },
+  "exclude": [
+    "prisma/seed.sqlite.ts",
+    "node_modules",
+    "dist",
+    "dist-server",
+    "backups",
+    "logs",
+    "src-tauri/target",
+    "public"
+  ]
 }

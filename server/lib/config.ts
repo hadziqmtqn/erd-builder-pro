@@ -5,7 +5,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || "";
 
 // R2 Config
 export const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
@@ -19,11 +20,30 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 export const GITHUB_REPO_OWNER = process.env.GITHUB_REPO_OWNER || "";
 export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
 
+export function isDesktopMode(): boolean {
+  const dbUrl = process.env.DATABASE_URL || "";
+  return dbUrl === "" || dbUrl.startsWith("file:") || dbUrl.endsWith(".db");
+}
+
+/** True when using local PostgreSQL (no Supabase auth). */
+export function isLocalPostgres(): boolean {
+  const dbUrl = process.env.DATABASE_URL || "";
+  if (isDesktopMode()) return false;
+  // PostgreSQL URL without SUPABASE_URL → local auth
+  return dbUrl.startsWith("postgresql://") && !process.env.SUPABASE_URL;
+}
+
+/** True when auth is handled locally (desktop/SQLite or local PostgreSQL). */
+export function useLocalAuth(): boolean {
+  return isDesktopMode() || isLocalPostgres();
+}
+
 // Initialize Supabase
+const SUPABASE_CLIENT_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 export let supabase: any = null;
 try {
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  if (SUPABASE_URL && SUPABASE_CLIENT_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_CLIENT_KEY);
   }
 } catch (err) {
   console.error("Failed to initialize Supabase client:", err);
