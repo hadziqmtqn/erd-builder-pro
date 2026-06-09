@@ -29,8 +29,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies and tsx (required for running server)
-RUN npm install --omit=dev && npm install tsx
+# Install production dependencies (skip postinstall — prisma CLI is a devDep)
+RUN npm install --omit=dev --ignore-scripts && npm install tsx
+
+# Copy pre-generated Prisma client from build stage
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.ts ./
 
 # Copy dist from build stage (Vite output)
 COPY --from=build /app/dist ./dist
