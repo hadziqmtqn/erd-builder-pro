@@ -9,7 +9,8 @@ import {
   Settings,
   Brain,
   Library,
-  ListChecks
+  ListChecks,
+  Upload,
 } from 'lucide-react';
 import {
   Dialog,
@@ -59,6 +60,8 @@ import { AIRulesTab } from '@/components/ai/AIRulesTab';
 import { AccountTab } from '@/components/ai/AccountTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
+import { GuestDataManagement } from '@/components/ai/GuestDataManagement';
+import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
   const { 
@@ -78,6 +81,8 @@ export function SettingsModal() {
     updateProviderLocal,
     updateConfigLocal,
   } = useAIProviders();
+
+  const { isGuest } = useAuth();
 
   const {
     models,
@@ -119,6 +124,7 @@ export function SettingsModal() {
     {
       label: "More",
       items: [
+        ...(!isGuest ? [{ id: 'guest-import', label: 'Guest Data Import', icon: <Upload className="size-4" /> }] : []),
         { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
         { id: 'changelog', label: 'What\'s New', icon: <History className="size-4" /> },
       ]
@@ -293,6 +299,18 @@ export function SettingsModal() {
               {settingsTab === 'changelog' && (
                 <div className="h-full">
                   <ChangelogView />
+                </div>
+              )}
+
+              {settingsTab === 'guest-import' && (
+                <div className="p-6 overflow-y-auto h-full">
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold">Guest Data Import</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Import data from a Guest Mode export file into your account.
+                    </p>
+                  </div>
+                  <GuestDataManagement />
                 </div>
               )}
 

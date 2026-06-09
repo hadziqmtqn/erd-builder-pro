@@ -649,6 +649,39 @@ src/components/ai/
 - **`saveDiagram` Guest resource upsert** ([`src/hooks/useDiagrams.ts`](./src/hooks/useDiagrams.ts):362-382): when `localPersistence.getResource` + uid fallback both fail in Guest mode, `saveDiagram` now creates a new resource entry from scratch instead of silently skipping. Prevents data loss when `activeDiagramId` is a UUID that doesn't match the IndexedDB keyPath (which uses `id`, not `uid`).
 - Composite `isLoading` in `WorkspaceProvider.tsx:841` = `isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading`
 
+### Guest Data Export/Import
+
+Allows Guest Mode users to export their IndexedDB data as `.json` and authenticated users to import it into their database.
+
+**Export (Guest Mode UI)**:
+- File: [`src/lib/guestExport.ts`](./src/lib/guestExport.ts) — `exportGuestData()` reads ALL resources from IndexedDB via `localPersistence.getAllResources()` for types: `notes`, `diagram`, `flowchart`, `drawing`, `project`, `ai_chat_session`.
+- AI chat messages are collected from the session's embedded `messages` array.
+- Output: downloadable JSON file `erd-guest-backup-<date>.json` with schema:
+  ```json
+  { "version": "1.0", "exported_at": "...", "application": "ERD Builder Pro",
+    "data": { projects, notes, diagrams, flowcharts, drawings, ai_chat_sessions }
+  }
+  ```
+- UI: [`AccountTab.tsx`](./src/components/ai/AccountTab.tsx) — Guest Mode view shows an "Export My Data" card with `Download` icon + button. The export reads all IndexedDB data and triggers a browser download.
+
+**Import (Server)**:
+- Endpoint: `POST /api/guest/import` at [`server/routes/guest-import.ts`](./server/routes/guest-import.ts) — `authenticate` middleware, additive-only import.
+- Flow:
+  1. **Projects**: matched by name (case-insensitive per user) — existing names skipped, new ones created.
+  2. **Notes/Flowcharts/Drawings**: checked by `uid` — skipped if already exists, otherwise created with project mapping.
+  3. **Diagrams (ERD)**: creates Diagram record + unpacks `entities[]` → Entity + Column records, `relationships[]` → Relationship records.
+  4. **AI Chat**: creates `AiChatSession` + `AiChatMessage` records.
+- All new records get fresh UUIDs (no conflict with existing DB IDs). `skipped_existing` counter tracks dedup.
+- Returns `{ success, summary: { projects, notes, diagrams, entities, columns, relationships, flowcharts, drawings, ai_chat_sessions, ai_chat_messages, skipped_existing } }`.
+
+**Import UI (Authenticated Users)**:
+- File: [`src/components/ai/GuestDataManagement.tsx`](./src/components/ai/GuestDataManagement.tsx) — file upload component with drag/drop area, import progress, summary cards.
+- Dialog: [`SettingsModal.tsx`](./src/components/modals/SettingsModal.tsx) — "Guest Data Import" tab in the "More" nav group (hidden for guests). Shows import area + result summary.
+- Validation: checks `.json` extension, parses structure, confirms `data` field exists.
+- On success: grid of summary cards showing imported counts per type.
+
+**Key design**: ADDITIVE only — never overwrites existing data. Items are deduplicated by `uid` (falls back to name-based matching for projects). Project hierarchy is preserved via name-matching. ERD entities/columns/relationships are reconstructed from the guest diagram's flat arrays.
+
 ## AI Settings API Migration (Server-Only Supabase)
 
 - **Problem**: `useAISettings.ts` called Supabase directly from the frontend (`supabase.from('ai_providers').select(...)`) requiring `VITE_SUPABASE_URL` env var. In Vercel preview where only `SUPABASE_URL` (server) was set, AI settings failed with `TypeError: Load failed`.

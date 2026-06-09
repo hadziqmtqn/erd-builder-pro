@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { User, Lock, Save, Loader2, Info, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { User, Lock, Save, Loader2, Info, Eye, EyeOff, ShieldCheck, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
+import { exportGuestData } from '@/lib/guestExport';
 import { toast } from 'sonner';
 
 type AuthConfig = {
@@ -56,19 +57,7 @@ export function AccountTab() {
   }, [user]);
 
   if (isGuest) {
-    return (
-      <div className="p-12 flex flex-col items-center justify-center h-full text-center space-y-4">
-        <div className="p-4 bg-muted/20 rounded-full">
-          <User className="size-8 text-muted-foreground/40" />
-        </div>
-        <div className="space-y-1">
-          <h3 className="font-semibold text-lg">Guest Mode</h3>
-          <p className="text-sm text-muted-foreground max-w-[280px]">
-            Sign in to manage your account information.
-          </p>
-        </div>
-      </div>
-    );
+    return <GuestModeView />;
   }
 
   if (isLoadingConfig) {
@@ -339,6 +328,93 @@ export function AccountTab() {
           </div>
         )}
       </FieldGroup>
+    </div>
+  );
+}
+
+// ── Guest Mode View ──
+
+function GuestModeView() {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await exportGuestData();
+      toast.success('Guest data exported successfully!');
+    } catch (err: any) {
+      toast.error('Export failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <div className="p-8 flex flex-col items-center justify-center h-full text-center space-y-8">
+      {/* Info */}
+      <div className="space-y-3 max-w-[360px]">
+        <div className="p-4 bg-muted/20 rounded-full inline-flex mx-auto">
+          <User className="size-8 text-muted-foreground/40" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="font-semibold text-lg">Guest Mode</h3>
+          <p className="text-sm text-muted-foreground">
+            You are browsing as a guest. Sign in to manage your account, or export your
+            local data to use in a full account.
+          </p>
+        </div>
+      </div>
+
+      {/* Export Data */}
+      <div className="w-full max-w-sm bg-muted/10 border border-border/40 rounded-xl p-5 text-left">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 bg-amber-500/10 rounded-lg">
+            <Download className="size-4 text-amber-500" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold">Export My Data</h4>
+            <p className="text-[11px] text-muted-foreground">
+              Download all your notes, diagrams, flowcharts, drawings, and AI chat sessions
+              as a JSON file. You can import this file after signing in.
+            </p>
+          </div>
+        </div>
+
+        <Button
+          onClick={handleExport}
+          disabled={isExporting}
+          variant="outline"
+          size="sm"
+          className="w-full"
+        >
+          {isExporting ? (
+            <>
+              <Loader2 className="size-3.5 mr-2 animate-spin" />
+              Exporting…
+            </>
+          ) : (
+            <>
+              <Download className="size-3.5 mr-2" />
+              Export Guest Data
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Sign in prompt */}
+      <p className="text-xs text-muted-foreground">
+        Already have an account?{' '}
+        <button
+          onClick={() => {
+            // Clear guest mode and reload to show login
+            sessionStorage.removeItem('auth_mode');
+            window.location.reload();
+          }}
+          className="text-primary underline hover:no-underline"
+        >
+          Sign in
+        </button>
+      </p>
     </div>
   );
 }
