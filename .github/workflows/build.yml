@@ -123,10 +123,17 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          ARM_DMG=$(ls dmg-output/*_aarch64.dmg 2>/dev/null | head -1)
-          INTEL_DMG=$(ls dmg-output/*_x86_64.dmg 2>/dev/null | head -1)
-          ARM_SIG_FILE=$(ls dmg-output/*_aarch64.dmg.sig 2>/dev/null | head -1)
-          INTEL_SIG_FILE=$(ls dmg-output/*_x86_64.dmg.sig 2>/dev/null | head -1)
+          shopt -s nullglob
+          arm_dmgs=(dmg-output/*_aarch64.dmg)
+          intel_dmgs=(dmg-output/*_x86_64.dmg)
+          arm_sig_files=(dmg-output/*_aarch64.dmg.sig)
+          intel_sig_files=(dmg-output/*_x86_64.dmg.sig)
+          shopt -u nullglob
+
+          ARM_DMG="${arm_dmgs[0]}"
+          INTEL_DMG="${intel_dmgs[0]}"
+          ARM_SIG_FILE="${arm_sig_files[0]}"
+          INTEL_SIG_FILE="${intel_sig_files[0]}"
 
           ARM_DMG_NAME=$(basename "$ARM_DMG")
           INTEL_DMG_NAME=$(basename "$INTEL_DMG")
