@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
 type DbVariant = "supabase" | "pg" | "sqlite";
 
@@ -23,7 +23,9 @@ function resolveDatasourceUrl(): string {
       ? process.env.DATABASE_URL
       : "file:./prisma/data.db";
   }
-  return env("DATABASE_URL");
+  // Gunakan process.env langsung (tidak strict) agar prisma generate tetap jalan
+  // meskipun DATABASE_URL belum tersedia (misal saat npm install di Vercel)
+  return process.env.DATABASE_URL || "";
 }
 
 export default defineConfig({
