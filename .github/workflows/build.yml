@@ -70,14 +70,6 @@ jobs:
           # WINDOWS_SIGN_CERTIFICATE: ${{ secrets.WINDOWS_SIGN_CERTIFICATE }}
           # WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
 
-      - name: List built artifacts
-        shell: bash
-        run: |
-          echo "=== Bundle directory ==="
-          find src-tauri/target/release/bundle -type f 2>/dev/null | head -20
-          echo "=== Signature files ==="
-          find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -10
-
       - name: Generate updater latest.json (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
