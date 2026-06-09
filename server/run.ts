@@ -12,19 +12,106 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
 
 /**
+ * Seed default AI providers, models, and system prompts for fresh desktop installs.
+ * Mirror of prisma/seed.sqlite.ts but runs inline in the startup fallback path.
+ */
+async function seedAIProviders(): Promise<void> {
+  if (!prisma) return;
+
+  try {
+    // Check if any providers exist already
+    const existing = await prisma.aiProvider.count();
+    if (existing > 0) return;
+
+    logger.info("Seeding default AI providers, models, and system prompts");
+
+    // ── AI Providers ──
+    const providerDefs = [
+      { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1" },
+      { name: "Google Gemini", code: "gemini", baseUrl: null },
+      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.sumopod.com/v1" },
+    ];
+
+    for (const p of providerDefs) {
+      await (prisma as any).aiProvider.create({
+        data: { name: p.name, code: p.code, baseUrl: p.baseUrl, isActive: true },
+      });
+    }
+
+    // ── AI Models ──
+    const openai = await (prisma as any).aiProvider.findUnique({ where: { code: "openai" } });
+    const gemini = await (prisma as any).aiProvider.findUnique({ where: { code: "gemini" } });
+    const openaiCompat = await (prisma as any).aiProvider.findUnique({ where: { code: "openai_compatible" } });
+
+    if (openai) {
+      await (prisma as any).aiModel.createMany({
+        data: [
+          { providerId: openai.id, modelIdentifier: "gpt-4o", displayName: "GPT-4o", contextWindow: 128000, isActive: true },
+          { providerId: openai.id, modelIdentifier: "gpt-4o-mini", displayName: "GPT-4o Mini", contextWindow: 128000, isActive: true },
+          { providerId: openai.id, modelIdentifier: "gpt-4-turbo", displayName: "GPT-4 Turbo", contextWindow: 128000, isActive: true },
+        ],
+      });
+    }
+
+    if (gemini) {
+      await (prisma as any).aiModel.createMany({
+        data: [
+          { providerId: gemini.id, modelIdentifier: "gemini-1.5-pro", displayName: "Gemini 1.5 Pro", contextWindow: 1048576, isActive: true },
+          { providerId: gemini.id, modelIdentifier: "gemini-1.5-flash", displayName: "Gemini 1.5 Flash", contextWindow: 1048576, isActive: true },
+        ],
+      });
+    }
+
+    if (openaiCompat) {
+      await (prisma as any).aiModel.createMany({
+        data: [
+          { providerId: openaiCompat.id, modelIdentifier: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", contextWindow: 128000, isActive: true },
+        ],
+      });
+    }
+
+    // ── Default system prompt ──
+    const hasPrompt = await (prisma as any).aiSystemPrompt.count();
+    if (hasPrompt === 0) {
+      await (prisma as any).aiSystemPrompt.create({
+        data: {
+          id: "default-simple-direct",
+          name: "Simple & Direct",
+          content: `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes.
+
+Key capabilities:
+- When discussing database schemas, provide SQL DDL in \`\`\`sql blocks
+- For flowcharts, provide JSON with nodes/edges in \`\`\`json blocks
+- Be concise and direct in your responses
+- Help users design databases, create flowcharts, and take notes`,
+          category: "system",
+          isDefault: true,
+          isBuiltIn: true,
+          userId: null,
+        },
+      });
+    }
+
+    logger.info("Default AI providers seeded successfully");
+  } catch (err) {
+    logger.warn({ err }, "Failed to seed default AI providers (non-fatal)");
+  }
+}
+
+/**
  * For desktop mode (SQLite): if the offline migration didn't run (e.g. first
  * launch before the fix), ensure tables exist by applying schema.sql directly
  * via Prisma raw SQL. This is a fallback — the offline migration script is the
  * primary path.
  */
-async function ensureDatabaseTables(): Promise<void> {
-  if (!prisma || !isDesktopMode()) return;
+async function ensureDatabaseTables(): Promise<boolean> {
+  if (!prisma || !isDesktopMode()) return false;
 
   try {
     // Quick probe: does the users table exist?
     await prisma.$queryRawUnsafe("SELECT 1 FROM users LIMIT 1");
     // Table exists — nothing to do
-    return;
+    return false;
   } catch {
     // Table doesn't exist — try to create from schema.sql
     logger.info("Users table not found — attempting to create from schema.sql");
@@ -36,7 +123,7 @@ async function ensureDatabaseTables(): Promise<void> {
 
   if (!fs.existsSync(schemaPath)) {
     logger.warn({ schemaPath }, "schema.sql not found — cannot create tables");
-    return;
+    return false;
   }
 
   const sql = fs.readFileSync(schemaPath, "utf8");
@@ -65,16 +152,17 @@ async function ensureDatabaseTables(): Promise<void> {
   }
 
   logger.info({ tableCount }, "Database tables created via fallback schema apply");
+  return true;
 }
 
 // Ensure tables exist before backfill (critical for fresh desktop installs).
 // MUST be awaited before app.listen() to prevent login race condition.
 async function startup(): Promise<void> {
-  try {
-    await ensureDatabaseTables();
-  } catch (err) {
-    logger.warn({ err }, "Failed to ensure database tables");
-  }
+  await ensureDatabaseTables();
+
+  // Seed default AI data for desktop mode (providers, models, system prompts).
+  // Safe to call every startup — seedAIProviders checks if data already exists.
+  await seedAIProviders();
 
   try {
     await backfillUids();

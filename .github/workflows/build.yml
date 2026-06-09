@@ -1,0 +1,151 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*' # e.g., v2.1.5, v2.2.0
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libayatana-appindicator3-dev
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri app
+        run: npx tauri build
+        env:
+          # Optional: set your Tauri signing private key as a GitHub secret
+          # Generate with: npx tauri signer generate -w ~/.tauri/app.key
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_SIGN_CERTIFICATE: ${{ secrets.WINDOWS_SIGN_CERTIFICATE }}
+          WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
+
+      - name: List built artifacts
+        shell: bash
+        run: |
+          echo "=== Bundle directory ==="
+          find src-tauri/target/release/bundle -type f 2>/dev/null | head -20
+          echo "=== Signature files ==="
+          find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -10
+
+      - name: Generate updater latest.json (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Find the .dmg and .sig files
+          DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
+          SIG=$(find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -1)
+          DMG_NAME=$(basename "$DMG")
+
+          # Read signature if available
+          SIGNATURE=""
+          if [ -n "$SIG" ]; then
+            SIGNATURE=$(cat "$SIG")
+          fi
+
+          jq -n \
+            --arg v "$VERSION" \
+            --arg date "$DATE" \
+            --arg repo "$REPO" \
+            --arg tag "$TAG" \
+            --arg url "https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}" \
+            --arg sig "$SIGNATURE" \
+            '{
+              version: $v,
+              notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
+              pub_date: $date,
+              platforms: {
+                "darwin-aarch64": { signature: $sig, url: $url },
+                "darwin-x86_64": { signature: $sig, url: $url }
+              }
+            }' > latest.json
+
+          echo "Generated latest.json:"
+          cat latest.json
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ERD Builder Pro ${{ github.ref_name }}
+          body: |
+            ## ERD Builder Pro ${{ github.ref_name }}
+
+            ### 📥 Download
+            Download the appropriate installer for your operating system below.
+
+            ### 🖥️ Supported Platforms
+            - **macOS** (Apple Silicon / Intel) — `.dmg`
+            - **Windows** (x64) — `.msi`
+            - **Linux** (x64) — `.deb` / `.AppImage`
+
+            > [!NOTE]
+            > This is an automated release. See the [changelog](https://docs.erdbuilderpro.com/changelog) for release notes.
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.msi.zip
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/bundle/**/*.tar.gz
+            src-tauri/target/release/bundle/**/*.tar.bz2
+            latest.json

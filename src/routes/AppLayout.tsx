@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { useTauriWindowPersistence } from '@/hooks/useTauriWindowPersistence';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
@@ -168,6 +169,9 @@ function AppLayoutInner() {
     const ent = activeNote || activeDiagram || activeFlowchart || activeDrawing;
     return ent?.project_id ?? null;
   }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
+
+  // ── Persist Tauri window size/position ──
+  useTauriWindowPersistence();
 
   // ── Update browser tab title ──
   useEffect(() => {

@@ -110,6 +110,50 @@ Run the production server:
 npm run start
 ```
 
+### 🧪 Testing
+
+The project uses [Vitest](https://vitest.dev/) for unit testing with a focus on core logic — SQL parsers, schema diff engine, auto-layout algorithms, and code generators.
+
+**Test commands**:
+```bash
+npm test            # Run all tests once
+npm run test:watch  # Run in watch mode during development
+```
+
+**Test structure**:
+```
+src/lib/__tests__/
+├── sqlParser.test.ts          # SQL DDL parser (17 tests)
+├── schema-diff.test.ts        # Schema comparison engine (8 tests)
+├── autoLayoutERD.test.ts      # ERD auto-layout algorithm (12 tests)
+├── autoLayoutFlowchart.test.ts # Flowchart auto-layout algorithm (12 tests)
+├── sql-generator.test.ts      # Code generation for 7 dialects (39 tests)
+└── sql-generator-all.test.ts  # Bulk export & FK extraction (19 tests)
+```
+
+**Coverage areas**: SQL DDL parsing across PostgreSQL/MySQL/SQLite dialects, schema diff & merge resolution, directed-graph auto-layout (BFS layering, cycle detection, diamond decision branching), and multi-dialect code generation (MySQL, PostgreSQL, Laravel, TypeScript, Prisma, Zod).
+
+---
+
+## 🤝 Sponsors
+
+A huge thank you to our sponsors for providing the infrastructure and tools that make this project possible:
+
+<div align="center">
+  <a href="https://www.idcloudhost.com" target="_blank">
+    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
+  </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://doktainer.com" target="_blank">
+    <img src="https://raw.githubusercontent.com/khadziq/erd-builder-pro/main/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
+  </a>
+</div>
+
+| Sponsor | Support |
+|---------|---------|
+| [**IDCloudhost**](https://www.idcloudhost.com) | Virtual machine infrastructure for deployment and cloud hosting. |
+| [**Doktainer**](https://doktainer.com) | App template platform with Docker panel for streamlined container management. |
+
 ---
 
 ## 💖 Support

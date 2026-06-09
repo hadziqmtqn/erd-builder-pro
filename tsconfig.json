@@ -29,6 +29,11 @@
   "exclude": [
     "prisma/seed.sqlite.ts",
     "node_modules",
-    "dist"
+    "dist",
+    "dist-server",
+    "backups",
+    "logs",
+    "src-tauri/target",
+    "public"
   ]
 }

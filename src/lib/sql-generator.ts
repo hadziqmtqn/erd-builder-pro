@@ -120,7 +120,7 @@ export function generatePostgreSQL(entity: Entity): string {
 export function generateLaravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
   const tableName = entity.name.toLowerCase();
   
-  const hasTimestamps = entity.columns.some(c => c.name === 'created_at');
+  const shouldAddTimestamps = !entity.columns.some(c => c.name === 'created_at');
   const hasSoftDeletes = entity.columns.some(c => c.name === 'deleted_at');
   const skipNames = new Set(['created_at', 'updated_at', 'deleted_at']);
 
@@ -183,7 +183,7 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
 
   return `Schema::create('${tableName}', function (Blueprint $table) {
 ${columns}${fkBlock}
-${hasSoftDeletes ? '    $table->softDeletes();' : ''}${hasTimestamps ? '\n    $table->timestamps();' : ''}
+${hasSoftDeletes ? '    $table->softDeletes();' : ''}${shouldAddTimestamps ? '\n    $table->timestamps();' : ''}
 });`;
 }
 
@@ -272,7 +272,8 @@ export function generatePrisma(entity: Entity): string {
 export function generateLaravelModel(entity: Entity): string {
   const className = toPascalCase(entity.name, true);
   const tableName = entity.name.toLowerCase();
-  const needsExplicitTable = className.toLowerCase() !== entity.name.toLowerCase();
+  // Entity name is plural of singularized class name → Laravel auto-resolves
+  const needsExplicitTable = singularize(entity.name) !== className.toLowerCase();
   
   const fillable = entity.columns
     .filter(col => !col.is_pk && !['created_at', 'updated_at'].includes(col.name))

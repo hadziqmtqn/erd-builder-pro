@@ -417,6 +417,21 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 - **`/api/desktop-login` endpoint removed** — the `/api/me` handler now contains the `ensureDesktopUser` helper that creates user + session inline. No separate POST or frontend call needed.
 
+### Desktop Window Persistence
+
+- `useTauriWindowPersistence()` hook in [`src/hooks/useTauriWindowPersistence.ts`](./src/hooks/useTauriWindowPersistence.ts) saves/restores window size (`width`, `height`) and position (`x`, `y`) to `localStorage` under key `tauri_window_state`.
+- Wired in `AppLayout.tsx` — runs only when `window.__TAURI__` is detected.
+- Uses dynamic `import('@tauri-apps/api/window')` to avoid breaking web builds.
+- Restores on mount, saves on `onResized` and `onMoved` events.
+
+### Desktop AI Seed Data (Startup)
+
+- `seedAIProviders()` in [`server/run.ts`](./server/run.ts) runs on every server startup.
+- Checks `aiProvider.count()` first — if providers already exist, skips seeding.
+- Creates 3 providers (OpenAI, Google Gemini, OpenAI Compatible), their models, and the "Simple & Direct" default system prompt.
+- Mirrors `prisma/seed.sqlite.ts` but runs inline in the server startup path (no CLI seed needed).
+- Failures are non-fatal (logged as warning).
+
 ### Desktop Auto-Login (`/api/me`)
 
 **`ensureDesktopUser()`** in [`server/routes/auth.ts`](./server/routes/auth.ts):199 — creates `local@desktop.dev` user + session if none exist, returns token + user. Called by `/api/me` when no valid session exists in desktop mode.
