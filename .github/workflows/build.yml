@@ -27,7 +27,6 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
-          - macos-13
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -67,33 +66,54 @@ jobs:
             libayatana-appindicator3-dev
 
       - name: Build Tauri app (macOS)
-        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: npx tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Rename macOS DMG
-        if: matrix.os == 'macos-latest' || matrix.os == 'macos-13'
+      - name: Rename ARM64 DMG
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dmg-output
-
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            ARCH="aarch64"
-          else
-            ARCH="x86_64"
-          fi
-
-          cp src-tauri/target/release/bundle/dmg/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_${ARCH}.dmg"
+          cp src-tauri/target/release/bundle/dmg/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
           if ls src-tauri/target/release/*.sig 2>/dev/null; then
-            cp src-tauri/target/release/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_${ARCH}.dmg.sig" 2>/dev/null || true
+            cp src-tauri/target/release/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
           fi
-          echo "${ARCH} DMG copied to dmg-output/"
+          echo "ARM64 DMG copied to dmg-output/"
+
+      - name: Add x86_64 Apple target
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Prepare x86_64 native modules (better-sqlite3)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: bash scripts/prepare-x64-native.sh
+
+      - name: Build Tauri app (x86_64)
+        if: matrix.os == 'macos-latest'
+        run: npx tauri build --target x86_64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Rename x86_64 DMG
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+          if ls src-tauri/target/x86_64-apple-darwin/release/*.sig 2>/dev/null; then
+            cp src-tauri/target/x86_64-apple-darwin/release/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
+          fi
+          echo "x86_64 DMG copied to dmg-output/"
 
       - name: Build Tauri app (Linux/Windows)
-        if: matrix.os != 'macos-latest' && matrix.os != 'macos-13'
+        if: matrix.os != 'macos-latest'
         run: npx tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -105,15 +125,18 @@ jobs:
           name: build-${{ matrix.os }}
           path: |
             src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.msi.zip
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/release/bundle/**/*.dmg.sig
+            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.dmg.sig
             src-tauri/target/release/bundle/**/*.msi.sig
             src-tauri/target/release/bundle/**/*.deb.sig
             src-tauri/target/release/bundle/**/*.AppImage.sig
             src-tauri/target/release/*.sig
+            src-tauri/target/x86_64-apple-darwin/release/*.sig
             src-tauri/target/release/bundle/**/*.tar.gz
             src-tauri/target/release/bundle/**/*.tar.bz2
             dmg-output/
@@ -178,9 +201,9 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          # Find signature files from both macOS runners
-          ARM_SIG_FILE=$(find artifacts/build-macos-latest -name "*.dmg.sig" 2>/dev/null | head -1)
-          INTEL_SIG_FILE=$(find artifacts/build-macos-13 -name "*.dmg.sig" 2>/dev/null | head -1)
+          # Find signature files from the single macOS runner (both archs in dmg-output/)
+          ARM_SIG_FILE=$(find artifacts/build-macos-latest -name "*_aarch64.dmg.sig" 2>/dev/null | head -1)
+          INTEL_SIG_FILE=$(find artifacts/build-macos-latest -name "*_x86_64.dmg.sig" 2>/dev/null | head -1)
 
           ARM_SIG=""
           INTEL_SIG=""
@@ -235,8 +258,8 @@ jobs:
             artifacts/build-windows-latest/**/*.msi
             artifacts/build-windows-latest/**/*.msi.zip
             artifacts/build-windows-latest/**/*.sig
-            artifacts/build-macos-latest/**/*.dmg
-            artifacts/build-macos-latest/**/*.sig
-            artifacts/build-macos-13/**/*.dmg
-            artifacts/build-macos-13/**/*.sig
+            artifacts/build-macos-latest/dmg-output/*_aarch64.dmg
+            artifacts/build-macos-latest/dmg-output/*_aarch64.dmg.sig
+            artifacts/build-macos-latest/dmg-output/*_x86_64.dmg
+            artifacts/build-macos-latest/dmg-output/*_x86_64.dmg.sig
             latest.json

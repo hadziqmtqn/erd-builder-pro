@@ -1957,13 +1957,11 @@ The desktop app (Tauri v2) bundles three components:
 ### CRITICAL: Native Modules are Architecture-Specific
 
 - `better-sqlite3` compiles a `.node` native addon during `npm install` — **this binary is architecture-specific** (ARM64 vs x86_64).
-- `@prisma/client` downloads the Prisma engine binary during `prisma generate` — **also architecture-specific**.
-- **Cross-compilation trap**: building x86_64 DMG on an ARM64 runner via `--target x86_64-apple-darwin` bundles **ARM64 native addons** into the x86_64 DMG. The app then crashes at runtime because Node.js (x86_64) cannot load ARM64 `.node` files.
-- **Fix**: Always build each architecture on its native runner:
-  - `macos-latest` (ARM64) → builds native ARM64 DMG
-  - `macos-13` (Intel) → builds native x86_64 DMG
-  - Each `npm ci` installs the correct native addons for its runner's arch.
-  - See [`.github/workflows/build.yml`](./.github/workflows/build.yml) matrix strategy.
+- Prisma 7 with driver adapters uses **WASM engine files** which are architecture-independent — no native Prisma engine binary is needed at runtime.
+- **Cross-compilation trap**: building x86_64 DMG on an ARM64 runner via `--target x86_64-apple-darwin` bundles **ARM64 better-sqlite3 addon** into the x86_64 DMG. Node.js (x86_64) cannot load ARM64 `.node` files → server crashes → "Connecting..." hang.
+- **Fix** ([`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh)): After the ARM64 DMG is built, this script downloads the x86_64 prebuilt `better_sqlite3.node` binary from GitHub Releases (`WiseLibs/better-sqlite3`), replacing the ARM64 binary before the x86_64 Tauri cross-compilation build.
+- The `macos-13` (Intel) GitHub Actions runner is **not available or has very limited capacity** on some plans, so both architectures are built sequentially on a single `macos-latest` (ARM64) runner.
+- See [`.github/workflows/build.yml`](./.github/workflows/build.yml) for the sequential build steps and [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) for the binary swap logic.
 
 ### Tauri Config
 
@@ -2010,9 +2008,11 @@ If none found: server doesn't start, error logged to `server-start-error.log`.
 - **Production (Tauri DMG)**: `~/Library/Application Support/com.erdbuilderpro.app/data.db` (auto-resolved by `app.path().app_data_dir()`)
 - The first Prisma query (`prisma.$connect()`) auto-creates the `data.db` file using better-sqlite3
 
-### GitHub Actions Build Matrix
+### GitHub Actions Build Strategy
 
 **File**: [`.github/workflows/build.yml`](./.github/workflows/build.yml)
+
+Both macOS architectures are built **sequentially on a single `macos-latest` (ARM64) runner**:
 
 ```yaml
 strategy:
@@ -2020,17 +2020,21 @@ strategy:
     os:
       - ubuntu-latest
       - windows-latest
-      - macos-latest      # ARM64 (Apple Silicon)
-      - macos-13          # x86_64 (Intel)
+      - macos-latest      # builds both ARM64 + x86_64 DMGs sequentially
 ```
 
-Each runner builds natively (no `--target` flag). The release job merges both DMGs and generates `latest.json` with platform entries for both `darwin-aarch64` and `darwin-x86_64`.
+Build order on `macos-latest`:
+1. **ARM64 DMG** — `npx tauri build` (standard flow with ARM64 native modules)
+2. **x86_64 DMG** — cross-compiled via `npx tauri build --target x86_64-apple-darwin`, preceded by [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) which swaps the better-sqlite3 binary to x86_64
+
+The release job collects both DMGs from `dmg-output/` and generates a `latest.json` with entries for both `darwin-aarch64` and `darwin-x86_64`.
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
 | [`scripts/build-server.js`](./scripts/build-server.js) | esbuild server bundler + native module copier |
+| [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) | Downloads x86_64 better-sqlite3 binary for cross-compilation |
 | [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
 | [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: spawns Node.js server, kills on exit |
 | [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
