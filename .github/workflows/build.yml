@@ -135,6 +135,7 @@ jobs:
           draft: true
           prerelease: false
           fail_on_unmatched_files: false
+          overwrite: true
           files: |
             src-tauri/target/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.msi
