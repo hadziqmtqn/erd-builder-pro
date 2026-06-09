@@ -13,6 +13,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
+          - macos-13
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -75,7 +76,7 @@ jobs:
           # WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
 
       - name: Generate updater latest.json (macOS)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos-')
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -88,26 +89,48 @@ jobs:
           SIG=$(find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -1)
           DMG_NAME=$(basename "$DMG")
 
+          # Determine architecture from DMG filename
+          if echo "$DMG_NAME" | grep -q "_aarch64"; then
+            SELF_ARCH="darwin-aarch64"
+            OTHER_ARCH="darwin-x86_64"
+            OTHER_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_aarch64/_x86_64/')
+          elif echo "$DMG_NAME" | grep -q "_x86_64"; then
+            SELF_ARCH="darwin-x86_64"
+            OTHER_ARCH="darwin-aarch64"
+            OTHER_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_x86_64/_aarch64/')
+          else
+            SELF_ARCH="darwin-aarch64"
+            OTHER_ARCH="darwin-x86_64"
+            OTHER_DMG_NAME="$DMG_NAME"
+          fi
+
           # Read signature if available
           SIGNATURE=""
           if [ -n "$SIG" ]; then
             SIGNATURE=$(cat "$SIG")
           fi
 
+          SELF_URL="https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}"
+          OTHER_URL="https://github.com/${REPO}/releases/download/${TAG}/${OTHER_DMG_NAME}"
+
           jq -n \
             --arg v "$VERSION" \
             --arg date "$DATE" \
             --arg repo "$REPO" \
             --arg tag "$TAG" \
-            --arg url "https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}" \
-            --arg sig "$SIGNATURE" \
+            --arg self_arch "$SELF_ARCH" \
+            --arg other_arch "$OTHER_ARCH" \
+            --arg self_url "$SELF_URL" \
+            --arg other_url "$OTHER_URL" \
+            --arg self_sig "$SIGNATURE" \
+            --argjson other_sig null \
             '{
               version: $v,
               notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
               pub_date: $date,
               platforms: {
-                "darwin-aarch64": { signature: $sig, url: $url },
-                "darwin-x86_64": { signature: $sig, url: $url }
+                ($self_arch): { signature: $self_sig, url: $self_url },
+                ($other_arch): { signature: $other_sig, url: $other_url }
               }
             }' > latest.json
 
