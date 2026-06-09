@@ -27,7 +27,6 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
-          - macos-14
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -66,13 +65,56 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev
 
-      - name: Build Tauri app
+      - name: Add x86_64 Apple target
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Build Tauri app (ARM64 native)
+        if: matrix.os == 'macos-latest'
         run: npx tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Generate updater latest.json (macOS ARM)
+      - name: Rename ARM64 DMG
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dmg-output
+          cp src-tauri/target/release/bundle/dmg/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
+          if [ -f src-tauri/target/release/*.sig ]; then
+            cp src-tauri/target/release/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
+          fi
+          echo "ARM64 DMG copied to dmg-output/"
+
+      - name: Build Tauri app (x86_64 cross-compile)
+        if: matrix.os == 'macos-latest'
+        run: npx tauri build --target x86_64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Rename x86_64 DMG
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+          if [ -f src-tauri/target/x86_64-apple-darwin/release/*.sig ]; then
+            cp src-tauri/target/x86_64-apple-darwin/release/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
+          fi
+          echo "x86_64 DMG copied to dmg-output/"
+
+      - name: Build Tauri app (Linux/Windows)
+        if: matrix.os != 'macos-latest'
+        run: npx tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Generate updater latest.json (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
@@ -81,15 +123,21 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
-          SIG=$(find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -1)
-          DMG_NAME=$(basename "$DMG")
+          ARM_DMG=$(ls dmg-output/*_aarch64.dmg 2>/dev/null | head -1)
+          INTEL_DMG=$(ls dmg-output/*_x86_64.dmg 2>/dev/null | head -1)
+          ARM_SIG_FILE=$(ls dmg-output/*_aarch64.dmg.sig 2>/dev/null | head -1)
+          INTEL_SIG_FILE=$(ls dmg-output/*_x86_64.dmg.sig 2>/dev/null | head -1)
 
-          INTEL_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_aarch64/_x86_64/')
+          ARM_DMG_NAME=$(basename "$ARM_DMG")
+          INTEL_DMG_NAME=$(basename "$INTEL_DMG")
 
-          SIGNATURE=""
-          if [ -n "$SIG" ]; then
-            SIGNATURE=$(cat "$SIG")
+          ARM_SIG=""
+          INTEL_SIG=""
+          if [ -n "$ARM_SIG_FILE" ]; then
+            ARM_SIG=$(cat "$ARM_SIG_FILE")
+          fi
+          if [ -n "$INTEL_SIG_FILE" ]; then
+            INTEL_SIG=$(cat "$INTEL_SIG_FILE")
           fi
 
           jq -n \
@@ -97,19 +145,21 @@ jobs:
             --arg date "$DATE" \
             --arg repo "$REPO" \
             --arg tag "$TAG" \
-            --arg arm_url "https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}" \
+            --arg arm_url "https://github.com/${REPO}/releases/download/${TAG}/${ARM_DMG_NAME}" \
             --arg intel_url "https://github.com/${REPO}/releases/download/${TAG}/${INTEL_DMG_NAME}" \
-            --arg arm_sig "$SIGNATURE" \
+            --arg arm_sig "$ARM_SIG" \
+            --arg intel_sig "$INTEL_SIG" \
             '{
               version: $v,
               notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
               pub_date: $date,
               platforms: {
                 "darwin-aarch64": { signature: $arm_sig, url: $arm_url },
-                "darwin-x86_64": { signature: null, url: $intel_url }
+                "darwin-x86_64": { signature: $intel_sig, url: $intel_url }
               }
-            }' > latest.json
+            }' > dmg-output/latest.json
 
+          cp dmg-output/latest.json latest.json
           echo "Generated latest.json:"
           cat latest.json
 
@@ -130,6 +180,7 @@ jobs:
             src-tauri/target/release/*.sig
             src-tauri/target/release/bundle/**/*.tar.gz
             src-tauri/target/release/bundle/**/*.tar.bz2
+            dmg-output/
             latest.json
           if-no-files-found: warn
 
@@ -205,6 +256,4 @@ jobs:
             artifacts/build-windows-latest/**/*.sig
             artifacts/build-macos-latest/**/*.dmg
             artifacts/build-macos-latest/**/*.sig
-            artifacts/build-macos-14/**/*.dmg
-            artifacts/build-macos-14/**/*.sig
             artifacts/build-macos-latest/latest.json
