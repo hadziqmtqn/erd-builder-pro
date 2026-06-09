@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   History, 
   ExternalLink, 
@@ -12,7 +12,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { 
@@ -20,7 +20,6 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogDescription,
   DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -95,6 +94,9 @@ export function ChangelogView() {
   }, [currentPage]);
 
   const isFirstPage = currentPage === 1;
+  const latestStableReleaseIdx = isFirstPage
+    ? releases.findIndex(r => !r.prerelease)
+    : -1;
 
   if (loading && releases.length === 0) {
     return (
@@ -156,9 +158,19 @@ export function ChangelogView() {
                 {/* Timeline Dot */}
                 <div className={cn(
                   "absolute -left-[32px] top-1.5 size-8 rounded-full border-4 border-background flex items-center justify-center transition-colors",
-                  isFirstPage && index === 0 ? "bg-primary shadow-[0_0_15px_rgba(var(--primary),0.5)]" : "bg-muted"
+                  index === latestStableReleaseIdx && latestStableReleaseIdx !== -1
+                    ? "bg-primary shadow-[0_0_15px_rgba(var(--primary),0.5)]"
+                    : release.prerelease
+                    ? "bg-amber-500/20 border-amber-500/30"
+                    : "bg-muted"
                 )}>
-                  {isFirstPage && index === 0 ? <Sparkles className="w-4 h-4 text-primary-foreground" /> : <Tag className="w-3 h-3 text-muted-foreground" />}
+                  {index === latestStableReleaseIdx && latestStableReleaseIdx !== -1 ? (
+                    <Sparkles className="w-4 h-4 text-primary-foreground" />
+                  ) : release.prerelease ? (
+                    <Tag className="w-3 h-3 text-amber-400" />
+                  ) : (
+                    <Tag className="w-3 h-3 text-muted-foreground" />
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -166,11 +178,16 @@ export function ChangelogView() {
                     <Badge variant={release.prerelease ? "secondary" : "default"} className="font-mono text-xs px-2 pointer-events-none">
                       v{release.tag_name.replace('v', '')}
                     </Badge>
+                    {release.prerelease && (
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-amber-500/10 text-amber-400 border-amber-500/30">
+                        Pre-release
+                      </Badge>
+                    )}
                     <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <Calendar className="w-3 h-3" />
                       {format(new Date(release.published_at), 'MMMM d, yyyy')}
                     </span>
-                    {isFirstPage && index === 0 && (
+                    {index === latestStableReleaseIdx && latestStableReleaseIdx !== -1 && (
                       <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-primary/5 text-primary border-primary/20">
                         Latest
                       </Badge>
@@ -179,7 +196,11 @@ export function ChangelogView() {
 
                   <Card className={cn(
                     "group transition-all duration-300 hover:border-primary/50 cursor-pointer overflow-hidden backdrop-blur-sm",
-                    isFirstPage && index === 0 ? "bg-primary/5 border-primary/20 shadow-lg shadow-primary/5" : "bg-card/50"
+                    index === latestStableReleaseIdx && latestStableReleaseIdx !== -1
+                      ? "bg-primary/5 border-primary/20 shadow-lg shadow-primary/5"
+                      : release.prerelease
+                      ? "bg-card/30 border-amber-500/10"
+                      : "bg-card/50"
                   )} onClick={() => setSelectedRelease(release)}>
                     <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
                       <div className="space-y-1">
@@ -302,15 +323,21 @@ export function ChangelogView() {
               <DialogHeader>
                 <div className="flex items-center gap-3 mb-2">
                   <Badge className="font-mono text-xs">v{selectedRelease.tag_name.replace('v', '')}</Badge>
+                  {selectedRelease.prerelease ? (
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-amber-500/10 text-amber-400 border-amber-500/30">
+                      Pre-release
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                      Stable
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Calendar className="w-3 h-3" />
                     {format(new Date(selectedRelease.published_at), 'MMMM d, yyyy')}
                   </span>
                 </div>
                 <DialogTitle className="text-2xl">{selectedRelease.name || `Release ${selectedRelease.tag_name}`}</DialogTitle>
-                <DialogDescription className="text-xs">
-                  Status: {selectedRelease.prerelease ? 'Pre-release' : 'Stable Release'}
-                </DialogDescription>
               </DialogHeader>
 
               <DialogBody className="bg-[#0f0f14]/50">

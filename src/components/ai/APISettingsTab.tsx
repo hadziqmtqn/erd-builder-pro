@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Globe, 
   Lock, 
@@ -7,12 +7,13 @@ import {
   RefreshCw, 
   Save,
   Zap,
+  Bot,
   Check
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Select, 
@@ -48,12 +49,26 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
 }) => {
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [selectedProviderCode, setSelectedProviderCode] = useState<string>(
-    providers.length > 0 ? providers[0].code : ''
+    () => {
+      const sorted = [...providers].sort((a, b) => {
+        if (a.code === 'openai_compatible') return -1;
+        if (b.code === 'openai_compatible') return 1;
+        return 0;
+      });
+      return sorted.length > 0 ? sorted[0].code : '';
+    }
   );
 
   const selectedProvider = providers.find(p => p.code === selectedProviderCode);
-  const selectedConfig = configs[selectedProviderCode];
-  const selectedModels = selectedProvider ? (models[selectedProvider.id] || []) : [];
+
+  // Sort providers: openai_compatible first, then the rest
+  const sortedProviders = useMemo(() => {
+    return [...providers].sort((a, b) => {
+      if (a.code === 'openai_compatible') return -1;
+      if (b.code === 'openai_compatible') return 1;
+      return 0;
+    });
+  }, [providers]);
 
   const toggleShowKey = (code: string) => {
     setShowKey(prev => ({ ...prev, [code]: !prev[code] }));
@@ -83,7 +98,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
         >
           <style>{`.w-full.overflow-x-auto::-webkit-scrollbar { display: none; }`}</style>
           <TabsList className="inline-flex w-max min-w-full h-auto p-0 bg-transparent gap-3">
-            {providers.map(provider => (
+            {sortedProviders.map(provider => (
               <TabsTrigger 
                 key={provider.code} 
                 value={provider.code}
@@ -104,10 +119,9 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
           </TabsList>
         </div>
 
-        {providers.map(provider => {
+        {sortedProviders.map(provider => {
           const config = configs[provider.code];
           const providerModels = models[provider.id] || [];
-          const isSelected = selectedProviderCode === provider.code;
           
           return (
             <TabsContent key={provider.code} value={provider.code} className="mt-0">
@@ -124,63 +138,62 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                 <CardContent className="space-y-6 p-4 md:p-6">
                   {/* Base URL for OpenAI Compatible */}
                   {provider.code === 'openai_compatible' && (
-                    <div className="space-y-3">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <Field>
+                      <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+                        <Globe className="size-3" />
                         Base URL
-                      </Label>
-                      <div className="relative group">
-                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-purple-500" />
-                        <Input 
-                          placeholder="https://api.your-provider.com/v1" 
-                          value={provider.base_url || ''} 
-                          onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
-                          className="pl-10 h-12 bg-muted/10 border-border/50 transition-all focus:ring-purple-500/20 text-sm"
-                        />
-                      </div>
-                      <p className="text-[11px] text-muted-foreground ml-1">
+                      </FieldLabel>
+                      <Input 
+                        placeholder="https://api.your-provider.com/v1" 
+                        value={provider.base_url || ''} 
+                        onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
+                        className="h-9 text-sm"
+                      />
+                      <p className="text-[11px] text-muted-foreground/70 mt-1 px-1">
                         Custom endpoint for OpenAI-compatible providers (Ollama, Groq, etc.)
                       </p>
-                    </div>
+                    </Field>
                   )}
 
                   {/* API Key */}
-                  <div className="space-y-3">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <Field>
+                    <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+                      <Lock className="size-3" />
                       API Key
-                    </Label>
-                    <div className="relative group">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-purple-500" />
+                    </FieldLabel>
+                    <div className="relative">
                       <Input 
                         type={showKey[provider.code] ? 'text' : 'password'}
                         placeholder={`Enter your ${provider.name} API Key`}
                         value={config?.api_key || ''}
                         onChange={(e) => onUpdateConfig(provider.code, { api_key: e.target.value })}
-                        className="pl-10 pr-10 h-12 bg-muted/10 border-border/50 transition-all focus:ring-purple-500/20 text-sm"
+                        className="h-9 text-sm pr-10"
                       />
                       <button 
                         type="button"
                         onClick={() => toggleShowKey(provider.code)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       >
                         {showKey[provider.code] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 ml-1">
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 px-1">
                       <Lock className="w-3 h-3" />
                       Your API Key is stored securely and never shared.
                     </div>
-                  </div>
+                  </Field>
 
                   {/* Default Model */}
-                  <div className="space-y-3">
-                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <Field>
+                    <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+                      <Bot className="size-3" />
                       Default Model
-                    </Label>
+                    </FieldLabel>
                     <Select 
                       value={config?.selected_model_id ? String(config?.selected_model_id) : ""} 
                       onValueChange={(val: string | null) => onUpdateConfig(provider.code, { selected_model_id: val || undefined })}
                     >
-                      <SelectTrigger className="h-12 bg-muted/10 border-border/50 transition-all focus:ring-purple-500/20 text-sm">
+                      <SelectTrigger className="h-9 text-sm">
                         <SelectValue>
                           {providerModels.find(m => String(m.id) === String(config?.selected_model_id))?.display_name || "Select a model"}
                         </SelectValue>
@@ -201,7 +214,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                         )}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </Field>
 
                   {/* Enable Provider Checkbox - below Default Model */}
                   <div className="flex items-center gap-3 pt-2">
@@ -216,12 +229,9 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                     >
                       {config?.is_enabled && <Check className="w-3 h-3 text-white" />}
                     </button>
-                    <Label 
-                      htmlFor={`${provider.code}-enabled`}
-                      className="text-sm font-medium cursor-pointer select-none"
-                    >
+                    <span className="text-sm font-medium cursor-pointer select-none">
                       Enable this provider
-                    </Label>
+                    </span>
                   </div>
                 </CardContent>
 

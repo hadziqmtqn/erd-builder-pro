@@ -252,7 +252,7 @@ router.post("/initialize", authenticate, async (_req: ExpressRequest, res: Expre
     const defaultProviders = [
       { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1", isActive: true },
       { name: "Google Gemini", code: "gemini", baseUrl: null, isActive: true },
-      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.sumopod.com/v1", isActive: true }
+      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id", isActive: true }
     ];
 
     await prisma?.aiProvider.createMany({
