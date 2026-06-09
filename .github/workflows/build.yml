@@ -16,6 +16,8 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -137,7 +139,11 @@ jobs:
             src-tauri/target/release/bundle/**/*.msi.zip
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/bundle/**/*.dmg.sig
+            src-tauri/target/release/bundle/**/*.msi.sig
+            src-tauri/target/release/bundle/**/*.deb.sig
+            src-tauri/target/release/bundle/**/*.AppImage.sig
+            src-tauri/target/release/*.sig
             src-tauri/target/release/bundle/**/*.tar.gz
             src-tauri/target/release/bundle/**/*.tar.bz2
             latest.json
