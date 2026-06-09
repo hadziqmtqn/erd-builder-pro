@@ -13,7 +13,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
-          - macos-13
+          - macos-14
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
