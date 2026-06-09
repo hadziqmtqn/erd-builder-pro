@@ -3,7 +3,21 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*' # e.g., v2.1.5, v2.2.0
+      - 'v*' # v2.1.5 (stable, from master)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 2.2.0-rc.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: true
+        type: boolean
+        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -17,14 +31,12 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    permissions:
-      contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -54,29 +66,14 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev
 
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Build Tauri app
         run: npx tauri build
         env:
-          # Required: Tauri signing key for auto-updater signatures
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Optional: Apple code signing (uncomment when you have certificates set up)
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Optional: Windows code signing (uncomment when you have a certificate)
-          # WINDOWS_SIGN_CERTIFICATE: ${{ secrets.WINDOWS_SIGN_CERTIFICATE }}
-          # WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
 
-      - name: Generate updater latest.json (macOS)
-        if: startsWith(matrix.os, 'macos-')
+      - name: Generate updater latest.json (macOS ARM)
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -84,82 +81,43 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          # Find the .dmg and .sig files
           DMG=$(find src-tauri/target/release/bundle -name "*.dmg" -type f 2>/dev/null | head -1)
           SIG=$(find src-tauri/target/release -name "*.sig" -type f 2>/dev/null | head -1)
           DMG_NAME=$(basename "$DMG")
 
-          # Determine architecture from DMG filename
-          if echo "$DMG_NAME" | grep -q "_aarch64"; then
-            SELF_ARCH="darwin-aarch64"
-            OTHER_ARCH="darwin-x86_64"
-            OTHER_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_aarch64/_x86_64/')
-          elif echo "$DMG_NAME" | grep -q "_x86_64"; then
-            SELF_ARCH="darwin-x86_64"
-            OTHER_ARCH="darwin-aarch64"
-            OTHER_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_x86_64/_aarch64/')
-          else
-            SELF_ARCH="darwin-aarch64"
-            OTHER_ARCH="darwin-x86_64"
-            OTHER_DMG_NAME="$DMG_NAME"
-          fi
+          INTEL_DMG_NAME=$(echo "$DMG_NAME" | sed 's/_aarch64/_x86_64/')
 
-          # Read signature if available
           SIGNATURE=""
           if [ -n "$SIG" ]; then
             SIGNATURE=$(cat "$SIG")
           fi
-
-          SELF_URL="https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}"
-          OTHER_URL="https://github.com/${REPO}/releases/download/${TAG}/${OTHER_DMG_NAME}"
 
           jq -n \
             --arg v "$VERSION" \
             --arg date "$DATE" \
             --arg repo "$REPO" \
             --arg tag "$TAG" \
-            --arg self_arch "$SELF_ARCH" \
-            --arg other_arch "$OTHER_ARCH" \
-            --arg self_url "$SELF_URL" \
-            --arg other_url "$OTHER_URL" \
-            --arg self_sig "$SIGNATURE" \
-            --argjson other_sig null \
+            --arg arm_url "https://github.com/${REPO}/releases/download/${TAG}/${DMG_NAME}" \
+            --arg intel_url "https://github.com/${REPO}/releases/download/${TAG}/${INTEL_DMG_NAME}" \
+            --arg arm_sig "$SIGNATURE" \
             '{
               version: $v,
               notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
               pub_date: $date,
               platforms: {
-                ($self_arch): { signature: $self_sig, url: $self_url },
-                ($other_arch): { signature: $other_sig, url: $other_url }
+                "darwin-aarch64": { signature: $arm_sig, url: $arm_url },
+                "darwin-x86_64": { signature: null, url: $intel_url }
               }
             }' > latest.json
 
           echo "Generated latest.json:"
           cat latest.json
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ERD Builder Pro ${{ github.ref_name }}
-          body: |
-            ## ERD Builder Pro ${{ github.ref_name }}
-
-            ### 📥 Download
-            Download the appropriate installer for your operating system below.
-
-            ### 🖥️ Supported Platforms
-            - **macOS** (Apple Silicon / Intel) — `.dmg`
-            - **Windows** (x64) — `.msi`
-            - **Linux** (x64) — `.deb` / `.AppImage`
-
-            > [!NOTE]
-            > This is an automated release. See the [changelog](https://docs.erdbuilderpro.com/changelog) for release notes.
-          draft: true
-          prerelease: false
-          fail_on_unmatched_files: false
-          overwrite: true
-          files: |
+          name: build-${{ matrix.os }}
+          path: |
             src-tauri/target/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.msi.zip
@@ -173,3 +131,80 @@ jobs:
             src-tauri/target/release/bundle/**/*.tar.gz
             src-tauri/target/release/bundle/**/*.tar.bz2
             latest.json
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate release notes
+        id: release_notes
+        shell: bash
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          {
+            echo "### What's Changed"
+            echo ""
+
+            if [ -n "$PREV_TAG" ]; then
+              git log --pretty="- %s" "$PREV_TAG..HEAD" 2>/dev/null || echo "No commits found."
+            else
+              git log --pretty="- %s" 2>/dev/null | head -30 || echo "Initial release."
+            fi
+
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 📥 Download"
+            echo "Download the appropriate installer for your operating system below."
+            echo ""
+            echo "### 🖥️ Supported Platforms"
+            echo "- **macOS** (Apple Silicon / Intel) — \`.dmg\`"
+            echo "- **Windows** (x64) — \`.msi\`"
+            echo "- **Linux** (x64) — \`.deb\` / \`.AppImage\`"
+          } > release-notes.md
+
+          echo "Generated release notes:"
+          cat release-notes.md
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: true
+          prerelease: ${{ github.event.inputs.prerelease == 'true' || contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: false
+          generate_release_notes: false
+          files: |
+            artifacts/build-ubuntu-latest/**/*.deb
+            artifacts/build-ubuntu-latest/**/*.AppImage
+            artifacts/build-ubuntu-latest/**/*.tar.gz
+            artifacts/build-ubuntu-latest/**/*.tar.bz2
+            artifacts/build-ubuntu-latest/**/*.sig
+            artifacts/build-windows-latest/**/*.msi
+            artifacts/build-windows-latest/**/*.msi.zip
+            artifacts/build-windows-latest/**/*.sig
+            artifacts/build-macos-latest/**/*.dmg
+            artifacts/build-macos-latest/**/*.sig
+            artifacts/build-macos-14/**/*.dmg
+            artifacts/build-macos-14/**/*.sig
+            artifacts/build-macos-latest/latest.json
