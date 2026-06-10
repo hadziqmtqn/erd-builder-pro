@@ -2194,14 +2194,17 @@ Docker image supports 3 database modes via **entrypoint script** ([`docker-entry
 ```sh
 # Simplified flow
 if SUPABASE_URL is set  → exec CMD (skip migration)
-if no DATABASE_URL      → SQLite: set file path + schema variant + prisma db push
-if postgresql://        → Local PG: set schema variant + prisma db push
+if no DATABASE_URL      → SQLite: set file path + schema variant + prisma generate + prisma db push
+if postgresql://        → Local PG: set schema variant + prisma generate + prisma db push
 exec CMD
 ```
 
 - `prisma db push --accept-data-loss` dijalankan di entrypoint — membuat/meng-update tabel sesuai schema Prisma.
+- **`prisma generate`** juga dijalankan untuk meregenerasi Prisma client agar sesuai dengan schema variant runtime. Tanpa ini, client yang di-generate saat build (Supabase) akan dipakai untuk SQLite atau PG lokal — menyebabkan error karena struktur model `User` berbeda antar schema.
 - Volume `/app/data` di-mount untuk persistensi SQLite.
 - Supabase mode tidak perlu migrasi karena schema dikelola Supabase.
+
+### Dockerfile Changes
 
 ### Dockerfile Changes
 
