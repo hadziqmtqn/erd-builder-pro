@@ -155,6 +155,11 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   let resource_dir = app.path().resource_dir()?;
   let app_data_dir = app.path().app_data_dir()?;
   std::fs::create_dir_all(&app_data_dir)?;
+  // Cache dir (without spaces) — used for npm rebuild to avoid node-gyp
+  // path-with-spaces bug in Makefile variable expansion.
+  let app_cache_dir = app.path().app_cache_dir()
+    .unwrap_or_else(|_| app_data_dir.join("cache"));
+  std::fs::create_dir_all(&app_cache_dir)?;
 
   // ── Logging helpers ──────────────────────────────────────────────
   let log_dir = {
@@ -183,6 +188,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
   startup_log(&log_dir, &format!("Resource dir:       {}", resource_dir.display()));
   startup_log(&log_dir, &format!("App data dir:       {}", app_data_dir.display()));
+  startup_log(&log_dir, &format!("App cache dir:      {}", app_cache_dir.display()));
   startup_log(&log_dir, &format!("Bundled node_mod:   {}", bundled_nm.display()));
   startup_log(&log_dir, &format!("Server script:      {}", server_script.display()));
 
@@ -311,7 +317,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
       ),
     );
 
-    let rebuild_dir = app_data_dir.join("rebuilt-node-modules");
+    let rebuild_dir = app_cache_dir.join("rebuilt-node-modules");
     let rebuild_nm = rebuild_dir.join("node_modules");
     let rebuild_bs3 = rebuild_nm.join("better-sqlite3");
 

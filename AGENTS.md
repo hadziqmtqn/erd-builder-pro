@@ -1992,10 +1992,8 @@ The desktop app (Tauri v2) bundles three components:
 
 - `better-sqlite3` compiles a `.node` native addon during `npm install` — **this binary is architecture-specific** (ARM64 vs x86_64).
 - Prisma 7 with driver adapters uses **WASM engine files** which are architecture-independent — no native Prisma engine binary is needed at runtime.
-- **Cross-compilation trap**: building x86_64 DMG on an ARM64 runner via `--target x86_64-apple-darwin` bundles **ARM64 better-sqlite3 addon** into the x86_64 DMG. Node.js (x86_64) cannot load ARM64 `.node` files → server crashes → "Connecting..." hang.
-- **Fix** ([`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh)): After the ARM64 DMG is built, this script downloads the x86_64 prebuilt `better_sqlite3.node` binary from GitHub Releases (`WiseLibs/better-sqlite3`), replacing the ARM64 binary before the x86_64 Tauri cross-compilation build.
-- The `macos-13` (Intel) GitHub Actions runner is **not available or has very limited capacity** on some plans, so both architectures are built sequentially on a single `macos-latest` (ARM64) runner.
-- See [`.github/workflows/build.yml`](./.github/workflows/build.yml) for the sequential build steps and [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) for the binary swap logic.
+- **Solution**: Each architecture is built on its **own native runner** in CI — `macos-latest` (ARM64) for `aarch64-apple-darwin`, `macos-13` (Intel) for `x86_64-apple-darwin`. No cross-compilation → no binary compatibility issues.
+- See [`.github/workflows/build.yml`](./.github/workflows/build.yml) for the matrix-based build strategy.
 
 ### Tauri Config
 
@@ -2016,7 +2014,7 @@ On app startup (release mode only), `start_backend_server()` performs **6 logged
 
 **Step 3 — Native module ABI rebuild**: The bundled `better-sqlite3` native addon was compiled on the CI runner (GitHub Actions). If the user's Node.js version differs, `better_sqlite3.node` fails with `NODE_MODULE_VERSION X vs Y`. The app detects this mismatch and auto-rebuilds:
 - Tries `require()` on the `.node` file — if it throws, logs `require_failed` (chicken-and-egg: can't read ABI without loading, can't load due to ABI mismatch)
-- Copies `better-sqlite3/` from the read-only app bundle to writable `{app_data_dir}/rebuilt-node-modules/node_modules/`
+- Copies `better-sqlite3/` from the read-only app bundle to writable `{app_cache_dir}/rebuilt-node-modules/node_modules/` (uses cache dir **without spaces** — `~/Library/Caches/...` instead of `~/Library/Application Support/...` because `node-gyp` Makefiles break on spaces in paths)
 - Runs `npm rebuild better-sqlite3` in that directory — **CRITICAL**: sets `PATH` env var (node's parent dir + `/usr/bin:/bin`) and `npm_config_node_execpath` because Finder/Dock spawns with minimal PATH, causing `npm` to fail with exit 127 (`env: node: No such file or directory`)
 - Verifies the rebuilt addon's ABI matches the user's Node version (via `require().versions?.modules`)
 - Prepends the rebuilt path to `NODE_PATH` so Node resolves it before the bundled copy
@@ -2058,29 +2056,40 @@ If none found: server doesn't start, error logged to `server-start-error.log`.
 
 **File**: [`.github/workflows/build.yml`](./.github/workflows/build.yml)
 
-Both macOS architectures are built **sequentially on a single `macos-latest` (ARM64) runner**:
+Each platform is built on its **native runner** using a `matrix.include` strategy:
 
 ```yaml
 strategy:
   matrix:
-    os:
-      - ubuntu-latest
-      - windows-latest
-      - macos-latest      # builds both ARM64 + x86_64 DMGs sequentially
+    include:
+      - os: ubuntu-latest
+        platform: linux
+      - os: windows-latest
+        platform: windows
+      - os: macos-latest
+        platform: macos-aarch64
+        rust_target: aarch64-apple-darwin
+      - os: macos-13
+        platform: macos-x64
+        rust_target: x86_64-apple-darwin
 ```
 
-Build order on `macos-latest`:
-1. **ARM64 DMG** — `npx tauri build` (standard flow with ARM64 native modules)
-2. **x86_64 DMG** — cross-compiled via `npx tauri build --target x86_64-apple-darwin`, preceded by [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) which swaps the better-sqlite3 binary to x86_64
+Build step on macOS:
+```bash
+npx tauri build --target ${{ matrix.rust_target }}
+```
 
-The release job collects both DMGs from `dmg-output/` and generates a `latest.json` with entries for both `darwin-aarch64` and `darwin-x86_64`.
+- **`macos-latest`** (ARM64, Apple Silicon): compiles `better-sqlite3` natively for ARM64 → `_aarch64.dmg`
+- **`macos-13`** (Intel x86_64): compiles `better-sqlite3` natively for x86_64 → `_x86_64.dmg`
+- **No cross-compilation needed**: Each runner's `npm install` compiles native modules for its own architecture automatically
+- **Artifacts uploaded per-platform**: `build-macos-aarch64`, `build-macos-x64`, `build-linux`, `build-windows`
+- The release job collects all DMGs and generates `latest.json` with entries for both `darwin-aarch64` and `darwin-x86_64`
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
 | [`scripts/build-server.js`](./scripts/build-server.js) | esbuild server bundler + native module copier |
-| [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) | Downloads x86_64 better-sqlite3 binary for cross-compilation |
 | [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
 | [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: 6-step startup with ABI rebuild, spawns Node.js, logs to server-startup.log |
 | [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
@@ -2104,9 +2113,9 @@ git push origin v2.x.x          # triggers Build & Release workflow
 
 - **`node` must be available on user's machine**: The bundled app spawns `node` at runtime. If Node.js isn't installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
 - **`macos-13` is Intel x86_64**: GitHub Actions `macos-13` runner uses macOS 13 Ventura on Intel hardware. `macos-latest` currently maps to `macos-15` Sequoia on Apple Silicon.
-- **Native addons must match target arch**: `beforeBuildCommand` picks up native modules from the runner's `node_modules/`, which were compiled for that runner's arch. This is why cross-arch compilation on a single runner is impossible for this project.
+- **Native addons must match target arch**: `beforeBuildCommand` picks up native modules from the runner's `node_modules/`, which were compiled for that runner's arch. This is why each macOS architecture must be built on its own native runner — no cross-compilation.
 - **esbuild NOT in package.json**: `build-server.js` calls `require('esbuild')` — if esbuild is not installed, use `npx esbuild` or install via `npm install -D esbuild`.
-- **Supports both Apple Silicon and Intel from a single release**: The release job DMGs into a single GitHub Release with both `_aarch64.dmg` and `_x86_64.dmg`, plus a `latest.json` for Tauri's built-in updater.
+- **Supports both Apple Silicon and Intel from a single release**: The release job collects DMGs from both macOS runners into a single GitHub Release with both `_aarch64.dmg` and `_x86_64.dmg`, plus a `latest.json` for Tauri's built-in updater.
 
 ### Prisma 7 CLI `db push` — `--url` flag required
 
