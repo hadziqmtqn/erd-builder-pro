@@ -1992,7 +1992,12 @@ The desktop app (Tauri v2) bundles three components:
 
 - `better-sqlite3` compiles a `.node` native addon during `npm install` — **this binary is architecture-specific** (ARM64 vs x86_64).
 - Prisma 7 with driver adapters uses **WASM engine files** which are architecture-independent — no native Prisma engine binary is needed at runtime.
-- **Solution**: Each architecture is built on its **own native runner** in CI — `macos-latest` (ARM64) for `aarch64-apple-darwin`, `macos-13` (Intel) for `x86_64-apple-darwin`. No cross-compilation → no binary compatibility issues.
+- **CI approach**: Both macOS DMGs are built **sequentially on `macos-latest` (ARM64) runner**:
+  1. `npx tauri build` → ARM64 DMG (native, uses ARM64 better-sqlite3)
+  2. `npm_config_arch=x64 npm rebuild better-sqlite3` → recompile for x86_64
+  3. `npx tauri build --target x86_64-apple-darwin` → x86_64 DMG (cross-compiled, uses x86_64 better-sqlite3)
+- `macos-13` (Intel) runner is avoided due to high demand / long queue times.
+- See [`.github/workflows/build.yml`](./.github/workflows/build.yml) for the sequential build steps.
 - See [`.github/workflows/build.yml`](./.github/workflows/build.yml) for the matrix-based build strategy.
 
 ### Tauri Config
@@ -2056,7 +2061,7 @@ If none found: server doesn't start, error logged to `server-start-error.log`.
 
 **File**: [`.github/workflows/build.yml`](./.github/workflows/build.yml)
 
-Each platform is built on its **native runner** using a `matrix.include` strategy:
+All platforms are built using a `matrix.include` strategy. macOS handles both architectures **sequentially on a single `macos-latest` (ARM64) runner**:
 
 ```yaml
 strategy:
@@ -2067,23 +2072,18 @@ strategy:
       - os: windows-latest
         platform: windows
       - os: macos-latest
-        platform: macos-aarch64
-        rust_target: aarch64-apple-darwin
-      - os: macos-13
-        platform: macos-x64
-        rust_target: x86_64-apple-darwin
+        platform: macos
 ```
 
-Build step on macOS:
-```bash
-npx tauri build --target ${{ matrix.rust_target }}
-```
+Build steps on `macos-latest`:
+1. **ARM64 DMG** — `npx tauri build` (native, uses ARM64 better-sqlite3)
+2. **Rebuild for x86_64** — `npm_config_arch=x64 npm rebuild better-sqlite3` (recompiles native addon for Intel)
+3. **x86_64 DMG** — `npx tauri build --target x86_64-apple-darwin` (cross-compiled Rust + x86_64 better-sqlite3)
 
-- **`macos-latest`** (ARM64, Apple Silicon): compiles `better-sqlite3` natively for ARM64 → `_aarch64.dmg`
-- **`macos-13`** (Intel x86_64): compiles `better-sqlite3` natively for x86_64 → `_x86_64.dmg`
-- **No cross-compilation needed**: Each runner's `npm install` compiles native modules for its own architecture automatically
-- **Artifacts uploaded per-platform**: `build-macos-aarch64`, `build-macos-x64`, `build-linux`, `build-windows`
-- The release job collects all DMGs and generates `latest.json` with entries for both `darwin-aarch64` and `darwin-x86_64`
+**Why sequential on one runner instead of `macos-13`**:
+- `macos-13` (Intel) runners have very limited availability → queue times can exceed 30min
+- Sequential builds add ~25min total but start immediately (no queue)
+- `npm_config_arch=x64` triggers node-gyp to recompile `better-sqlite3` for the target architecture before cross-compilation
 
 ### Key Files
 
@@ -2112,10 +2112,11 @@ git push origin v2.x.x          # triggers Build & Release workflow
 ### Important Notes
 
 - **`node` must be available on user's machine**: The bundled app spawns `node` at runtime. If Node.js isn't installed, the server won't start. Future improvement: compile server with `pkg` or `nexe` into a standalone binary.
-- **`macos-13` is Intel x86_64**: GitHub Actions `macos-13` runner uses macOS 13 Ventura on Intel hardware. `macos-latest` currently maps to `macos-15` Sequoia on Apple Silicon.
-- **Native addons must match target arch**: `beforeBuildCommand` picks up native modules from the runner's `node_modules/`, which were compiled for that runner's arch. This is why each macOS architecture must be built on its own native runner — no cross-compilation.
+- **`npm_config_arch=x64`**: environment variable that makes `node-gyp` (used by `better-sqlite3`) compile for x86_64 architecture even on ARM64 hardware. Applied via `npm rebuild better-sqlite3` on the CI runner.
+- **Cross-compilation works for Rust** (`--target x86_64-apple-darwin`) but NOT for native Node addons — those must be rebuilt separately.
+- **`macos-13` runner is avoided** due to consistently long queue times. Both architectures are built sequentially on `macos-latest`.
 - **esbuild NOT in package.json**: `build-server.js` calls `require('esbuild')` — if esbuild is not installed, use `npx esbuild` or install via `npm install -D esbuild`.
-- **Supports both Apple Silicon and Intel from a single release**: The release job collects DMGs from both macOS runners into a single GitHub Release with both `_aarch64.dmg` and `_x86_64.dmg`, plus a `latest.json` for Tauri's built-in updater.
+- **Supports both Apple Silicon and Intel from a single release**: The sequential build produces both `_aarch64.dmg` and `_x86_64.dmg`, plus a `latest.json` for Tauri's built-in updater.
 
 ### Prisma 7 CLI `db push` — `--url` flag required
 
@@ -2175,3 +2176,77 @@ migrate-db.mjs (offline, before Node.js starts)
 - The bundled `schema.sql` lives in the **Resources** directory alongside `index.js`: `/Applications/ERD Builder Pro.app/Contents/Resources/dist-server/schema.sql`
 - `fileURLToPath(import.meta.url)` gives the correct path to the running script, from which we derive `schema.sql`'s location.
 - esbuild preserves `import.meta.url` in ESM output.
+
+## Docker Deployment (Entrypoint + docker-compose)
+
+### Architecture
+
+Docker image supports 3 database modes via **entrypoint script** ([`docker-entrypoint.sh`](./docker-entrypoint.sh)):
+
+| Mode | Detection | Entrypoint action |
+|------|-----------|-------------------|
+| **SQLite** (default) | No `DATABASE_URL` or `file:` prefix | Sets `DATABASE_URL=file:/app/data/erd-builder.db`, runs `prisma db push` with SQLite schema |
+| **Local PostgreSQL** | `postgresql://` without `SUPABASE_URL` | Regenerates Prisma client for PG schema, runs `prisma db push` |
+| **Supabase PostgreSQL** | `SUPABASE_URL` is set | Skips everything (client already generated at build time) |
+
+### Entrypoint Flow ([`docker-entrypoint.sh`](./docker-entrypoint.sh))
+
+```sh
+# Simplified flow
+if SUPABASE_URL is set  → exec CMD (skip migration)
+if no DATABASE_URL      → SQLite: set file path + schema variant + prisma db push
+if postgresql://        → Local PG: set schema variant + prisma db push
+exec CMD
+```
+
+- `prisma db push --accept-data-loss` dijalankan di entrypoint — membuat/meng-update tabel sesuai schema Prisma.
+- Volume `/app/data` di-mount untuk persistensi SQLite.
+- Supabase mode tidak perlu migrasi karena schema dikelola Supabase.
+
+### Dockerfile Changes
+
+- **`prisma` CLI diinstall di production stage**: `npm install tsx prisma`. Prisma dibutuhkan untuk `prisma db push` dan regenerasi client.
+- **Pre-generated client** masih di-copy sebagai fallback (Supabase mode), tapi akan ditimpa oleh entrypoint untuk mode lain.
+- **Entrypoint** dipasang via `ENTRYPOINT ["docker-entrypoint.sh"]` dengan `CMD ["npm", "start"]` sebagai default.
+
+### docker-compose.yml
+
+File [`docker-compose.yml`](./docker-compose.yml) menyediakan konfigurasi siap pakai:
+
+- **Default SQLite**: volume `erd-data` otomatis di-mount ke `/app/data` — data persist walau container restart.
+- **PostgreSQL**: tinggal uncomment bagian `environment` + `depends_on` + `db` service.
+- **Restart policy**: `unless-stopped`.
+
+### Volume Persistence
+
+- **SQLite**: data disimpan di `/app/data/erd-builder.db` (di dalam volume `erd-data`).
+- **PostgreSQL**: data disimpan di volume `pg-data` untuk `postgres` container.
+- Entrypoint membuat direktori `/app/data` otomatis (`mkdir -p`) sebelum menjalankan migrasi.
+
+### Usage
+
+```bash
+# Mode 1: SQLite (zero-config)
+docker compose up -d
+
+# Mode 2: Local PostgreSQL
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
+# atau edit docker-compose.yml, uncomment bagian PostgreSQL
+
+# Mode 3: Supabase
+docker run -d -p 3000:3000 \
+  -e DATABASE_URL="postgresql://..." \
+  -e SUPABASE_URL="https://project.supabase.co" \
+  -e SUPABASE_SERVICE_ROLE_KEY="..." \
+  erd-builder-pro
+
+# Build dari source
+docker compose build
+docker compose up -d
+```
+
+### Entrypoint vs Desktop Fallback
+
+- Entrypoint menjalankan `prisma db push` yang membuat tabel via Prisma CLI.
+- Server startup (`ensureDatabaseTables()` di `server/run.ts`) tetap jalan sebagai fallback untuk desktop, tapi di Docker tabel sudah dibuat oleh entrypoint.
+- `ensureDatabaseTables()` di Docker hanya nge-probe `SELECT 1 FROM users` dan return true (karena tabel sudah ada).
