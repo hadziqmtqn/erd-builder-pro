@@ -2250,3 +2250,17 @@ docker compose up -d
 - Entrypoint menjalankan `prisma db push` yang membuat tabel via Prisma CLI.
 - Server startup (`ensureDatabaseTables()` di `server/run.ts`) tetap jalan sebagai fallback untuk desktop, tapi di Docker tabel sudah dibuat oleh entrypoint.
 - `ensureDatabaseTables()` di Docker hanya nge-probe `SELECT 1 FROM users` dan return true (karena tabel sudah ada).
+
+### P2002 Fix: PostgreSQL Catalog Conflict on Re-deployment
+
+**Error**: `P2002 - Unique constraint failed on the fields: ('typname','typnamespace')` when `prisma db push` runs on a database that already has tables from a previous deployment.
+
+**Root cause**: PostgreSQL's `pg_type` catalog has a unique constraint on `(typname, typnamespace)`. When `prisma db push` re-runs on an initialized database, Prisma's reconciliation process can trigger a conflict with existing composite types that PostgreSQL auto-creates for each table.
+
+**Fix** ([`docker-entrypoint.sh`](./docker-entrypoint.sh)):
+- **SQLite**: check if the DB file exists (`-f "$DATA_DIR/erd-builder.db"`)
+- **PostgreSQL**: probe for `users` table using `psql "$DATABASE_URL" -c "SELECT 1 FROM users LIMIT 1"`
+- If the database is already initialized, skip `prisma db push` entirely
+- If `prisma db push` still fails (non-zero exit), log a warning and continue starting the server
+
+**Dockerfile dependency**: `postgresql-client` installed via `apk add --no-cache postgresql-client` for `psql` probing.

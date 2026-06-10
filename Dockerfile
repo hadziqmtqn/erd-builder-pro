@@ -40,6 +40,9 @@ COPY package*.json ./
 # prisma CLI is needed at runtime for client regeneration + db push
 RUN npm install --omit=dev --ignore-scripts && npm install tsx prisma
 
+# Install psql for database probing in entrypoint (PostgreSQL mode only)
+RUN apk add --no-cache postgresql-client
+
 # Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/prisma ./prisma

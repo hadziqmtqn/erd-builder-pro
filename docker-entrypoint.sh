@@ -32,11 +32,34 @@ fi
 
 export DB_VARIANT="$SCHEMA_VARIANT"
 
-# ── Migrate + Generate Prisma Client ──
-# Client regeneration is critical because the build stage generates for Supabase,
-# but runtime may use SQLite or local PG.
-echo "Running Prisma schema migration for ${SCHEMA_VARIANT}..."
-npx prisma db push --accept-data-loss
+# ── Check if database is already initialized ──
+# Skip prisma db push when tables already exist to avoid PostgreSQL internal
+# catalog conflict errors (P2002 on pg_type.typname + typnamespace).
+needs_migration=true
+if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
+  # SQLite: check if the data file already exists
+  if [ -f "$DATA_DIR/erd-builder.db" ]; then
+    echo "SQLite database already exists — skipping migration"
+    needs_migration=false
+  fi
+elif [ "$SCHEMA_VARIANT" = "pg" ]; then
+  # PostgreSQL: probe for users table using psql (installed in Dockerfile)
+  if psql "$DATABASE_URL" -c "SELECT 1 FROM users LIMIT 1" >/dev/null 2>&1; then
+    echo "PostgreSQL database already initialized — skipping migration"
+    needs_migration=false
+  fi
+fi
+
+if [ "$needs_migration" = true ]; then
+  echo "Running Prisma schema migration for ${SCHEMA_VARIANT}..."
+  npx prisma db push --accept-data-loss
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    # If migration fails but server might still work (e.g. pre-existing tables),
+    # log the warning and continue
+    echo "WARNING: Migration exit code ${exit_code}. Attempting to start server anyway."
+  fi
+fi
 
 echo "=== Entrypoint complete — starting server ==="
 exec "$@"
