@@ -36,7 +36,7 @@ jobs:
             rust_target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -75,6 +75,7 @@ jobs:
             libayatana-appindicator3-dev
 
       - name: Build Tauri app
+        shell: bash
         run: |
           if [ -n "${{ matrix.rust_target }}" ]; then
             npx tauri build --target ${{ matrix.rust_target }}
