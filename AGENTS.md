@@ -2285,6 +2285,31 @@ docker compose up -d
 
 This is safe to run on every deployment — `CREATE DATABASE` is only executed when the database doesn't exist, and the `pg_database` probe is a read-only check.
 
+### Background Server Pattern (Bad Gateway Fix)
+
+**Problem**: Dokploy's Traefik starts routing to the container as soon as it's "running", but the entrypoint blocks port 3000 during `prisma generate` + `db push` (~42s).
+
+**Fix**: The entrypoint starts the Node server in background **before** running migration. The `/api/health` endpoint returns OK without querying the database, so Traefik sees a healthy container immediately. Migration and seeding run after the server is already accepting traffic.
+
+**Flow ([`docker-entrypoint.sh`](./docker-entrypoint.sh))**:
+```
+Container start
+  ↓
+DB create + prisma generate (blocking, ~26s)
+  ↓
+npm start & (background) → port 3000 opens in ~2-5s
+  ↓
+Health check passes ✅ → Traefik routes traffic
+  ↓
+prisma db push (background, ~9s)
+  ↓
+prisma/seed.sqlite.ts (background, ~3s)
+  ↓
+Server fully operational with DB + seed data
+```
+
+**Signal handling**: `trap` + `wait` pattern ensures Docker `docker stop` sends SIGTERM to the Node process for graceful shutdown.
+
 **Complete PostgreSQL flow**:
 ```
 Entrypoint for postgresql://...

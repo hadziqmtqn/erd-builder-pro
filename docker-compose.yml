@@ -15,17 +15,6 @@ services:
     # depends_on:
     #   - db
 
-  # ── Example: PostgreSQL service ──
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_USER: postgres
-  #     POSTGRES_PASSWORD: postgres
-  #     POSTGRES_DB: erd_builder_pro
-  #   volumes:
-  #     - pg-data:/var/lib/postgresql/data
-  #   restart: unless-stopped
-
 volumes:
   erd-data:
   # pg-data:  # Uncomment for PostgreSQL
