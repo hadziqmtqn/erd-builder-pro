@@ -24,6 +24,27 @@ if [ -z "$DATABASE_URL" ] || echo "$DATABASE_URL" | grep -qE "^(file:|\.db$)"; t
 elif echo "$DATABASE_URL" | grep -q "^postgresql://"; then
   # ── Local PostgreSQL mode ──
   echo "Mode: Local PostgreSQL"
+
+  # Extract database name from URL: postgresql://user:pass@host:port/dbname?params
+  # Split by /, take last segment, strip query params
+  DB_NAME=$(echo "$DATABASE_URL" | awk -F'/' '{print $NF}' | awk -F'?' '{print $1}')
+
+  if [ -n "$DB_NAME" ] && [ "$DB_NAME" != "postgres" ]; then
+    # Build admin URL pointing to the default 'postgres' database (always exists).
+    # Simple string replacement: change only the database path segment, keep query params intact.
+    ADMIN_URL=$(echo "$DATABASE_URL" | sed "s|/$DB_NAME|/postgres|")
+    echo "Ensuring database \"${DB_NAME}\" exists..."
+    if psql "$ADMIN_URL" -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
+      echo "Database \"${DB_NAME}\" already exists"
+    else
+      echo "Creating database \"${DB_NAME}\"..."
+      psql "$ADMIN_URL" -c "CREATE DATABASE \"${DB_NAME}\""
+      echo "Database created successfully"
+    fi
+  else
+    echo "Database name is '${DB_NAME}' — skipping creation (must be the 'postgres' admin database)"
+  fi
+
   SCHEMA_VARIANT="pg"
 else
   echo "WARNING: Unrecognized DATABASE_URL format. Starting without migration."

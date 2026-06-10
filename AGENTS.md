@@ -2264,3 +2264,39 @@ docker compose up -d
 - If `prisma db push` still fails (non-zero exit), log a warning and continue starting the server
 
 **Dockerfile dependency**: `postgresql-client` installed via `apk add --no-cache postgresql-client` for `psql` probing.
+
+### P1003 Fix: Database Does Not Exist on First Deploy
+
+**Error**: `P1003 - database "erd_builder_pro" does not exist` on fresh deployment to Dokploy or any PostgreSQL host.
+
+**Root cause**: `prisma db push` can create TABLES inside an existing database, but it CANNOT create the database itself. PostgreSQL requires the database to exist before any connection can be made.
+
+**Fix** ([`docker-entrypoint.sh`](./docker-entrypoint.sh)): Before `prisma db push`, the entrypoint now:
+
+1. **Extracts database name** from `DATABASE_URL` using `awk`:
+   - `postgresql://user:pass@host:5432/erd_builder_pro?params` → `erd_builder_pro`
+2. **Connects to the default `postgres` admin database** (always exists on any PostgreSQL server)
+3. **Probes** `SELECT 1 FROM pg_database WHERE datname='erd_builder_pro'`
+4. **Creates database** if missing: `CREATE DATABASE "erd_builder_pro"`
+5. Then proceeds with the normal probe → `prisma db push` flow
+
+This is safe to run on every deployment — `CREATE DATABASE` is only executed when the database doesn't exist, and the `pg_database` probe is a read-only check.
+
+**Complete PostgreSQL flow**:
+```
+Entrypoint for postgresql://...
+  ↓
+Extract DB_NAME from URL
+  ↓
+Connect to 'postgres' admin database
+  ↓
+Probe pg_database → DB exists?
+  ├─ YES → skip
+  └─ NO  → CREATE DATABASE
+  ↓
+Probe users table → table exists?
+  ├─ YES → skip prisma db push
+  └─ NO  → prisma db push (creates all tables)
+  ↓
+Start server
+```
