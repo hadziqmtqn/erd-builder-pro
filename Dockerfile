@@ -69,7 +69,9 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Health check for Coolify / orchestrators
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# start-period 120s gives entrypoint time to run (prisma generate + db push ~35s)
+# before health checks start counting failures
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # Entrypoint detects database mode and runs migration before starting
