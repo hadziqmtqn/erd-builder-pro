@@ -340,7 +340,12 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
           // variable is minimal (/usr/bin:/bin). npm needs node on PATH to
           // run its rebuild scripts. We set both PATH and the npm-specific
           // config so child processes can find node regardless of context.
-          let extra_path = node_parent.to_string_lossy().to_string();
+          // Also add bundled node_modules/.bin so `prebuild-install` binary
+          // (needed by better-sqlite3's install script) is found on PATH —
+          // without it, npm falls back to node-gyp which fails to compile
+          // against Node 25+ headers (C++20 syntax in v8 headers).
+          let bin_dir = bundled_nm.join(".bin").to_string_lossy().to_string();
+          let extra_path = format!("{}:{}", node_parent.to_string_lossy(), bin_dir);
           let current_path = std::env::var("PATH").unwrap_or_default();
           let rebuild_path = if current_path.is_empty() {
             format!("{}:/usr/bin:/bin", extra_path)
