@@ -236,28 +236,46 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     .join("better-sqlite3/build/Release/better_sqlite3.node");
   startup_log(&log_dir, &format!("  bundled bs3 path: {}", bundled_bs3_binding.display()));
 
-  let bundled_mod_version = if bundled_bs3_binding.exists() {
-    let content = std::fs::read(&bundled_bs3_binding).unwrap_or_default();
-    // NODE_MODULE_VERSION is stored as a 32-bit LE integer at byte offset 24 (Node-API),
-    // but for N-API it's at a different offset. We use `node -e` to read it instead.
-    // Fallback: parse the file with node
-    String::from_utf8_lossy(
-      &Command::new(&node_bin)
-        .arg("-e")
-        .arg(&format!(
-          "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
-          bundled_bs3_binding.display()
-        ))
-        .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
-        .output()
-        .map(|o| o.stdout)
-        .unwrap_or_default(),
-    )
-    .trim()
-    .to_string()
+  // We try to load the .node file via Node.js to read its NODE_MODULE_VERSION.
+  // If require() fails (ABI mismatch), we catch the error and log it.
+  // The `.node` binary is a native addon — we need Node.js to parse it,
+  // since NODE_MODULE_VERSION is stored in a platform-specific header.
+  let (bundled_mod_version, bundled_require_ok) = if bundled_bs3_binding.exists() {
+    let result = Command::new(&node_bin)
+      .arg("-e")
+      .arg(&format!(
+        "try{{const m=require('{}');console.log(m.versions?.modules||'ok_no_ver')}}catch(e){{console.log('require_failed')}}",
+        bundled_bs3_binding.display()
+      ))
+      .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
+      .output();
+
+    match result {
+      Ok(output) => {
+        let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let is_err = !output.status.success();
+        if is_err || out == "require_failed" {
+          startup_log(&log_dir, "  require() FAILED — ABI mismatch detected (can't load bundled native addon)");
+          if is_err {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.trim().is_empty() {
+              startup_log(&log_dir, &format!("  require stderr: {}", stderr.lines().next().unwrap_or("")));
+            }
+          }
+          ("require_failed".to_string(), false)
+        } else {
+          startup_log(&log_dir, &format!("  require() reports MODULE_VERSION: {}", out));
+          (out, true)
+        }
+      }
+      Err(e) => {
+        startup_log(&log_dir, &format!("  ERROR spawning node to check module: {}", e));
+        ("check_error".to_string(), false)
+      }
+    }
   } else {
     startup_log(&log_dir, "  WARNING: bundled better_sqlite3.node not found");
-    "missing".to_string()
+    ("missing".to_string(), false)
   };
   startup_log(&log_dir, &format!("  bundled MODULE_VERSION: {}", bundled_mod_version));
 
@@ -269,10 +287,20 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   // Fix: copy better-sqlite3 to the writable app data dir and run
   // `npm rebuild` there. The rebuilt addon replaces the bundled one
   // in the NODE_PATH so Node picks it up first.
+  // Derive the node parent directory for PATH manipulation (needed later)
+  let node_parent = std::path::Path::new(&node_bin)
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or_else(|| std::path::PathBuf::from("/usr/local/bin"));
+
   let mut node_path = bundled_nm.to_string_lossy().to_string();
+  // Rebuild needed when:
+  //  - require() failed (ABI mismatch) OR bundled version differs from user's
+  //  - AND user version is known (not empty)
+  //  - AND bundled module file exists (not "missing")
   let needs_rebuild = bundled_mod_version != "missing"
     && !user_mod_version.is_empty()
-    && bundled_mod_version != user_mod_version;
+    && (!bundled_require_ok || bundled_mod_version != user_mod_version);
 
   if needs_rebuild {
     startup_log(
@@ -302,18 +330,36 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
         } else {
           startup_log(&log_dir, "  Copy complete. Running npm rebuild…");
 
-          // Derive npm path (sibling of node)
-          let node_parent = std::path::Path::new(&node_bin)
-            .parent()
-            .unwrap_or(std::path::Path::new("/usr/local/bin"));
-          let npm_bin = node_parent.join("npm");
+          // CRITICAL: When launched from Finder/Dock, the PATH environment
+          // variable is minimal (/usr/bin:/bin). npm needs node on PATH to
+          // run its rebuild scripts. We set both PATH and the npm-specific
+          // config so child processes can find node regardless of context.
+          let extra_path = node_parent.to_string_lossy().to_string();
+          let current_path = std::env::var("PATH").unwrap_or_default();
+          let rebuild_path = if current_path.is_empty() {
+            format!("{}:/usr/bin:/bin", extra_path)
+          } else if !current_path.contains(&extra_path) {
+            format!("{}:{}", extra_path, current_path)
+          } else {
+            current_path
+          };
 
-          let rebuild_result = Command::new(if npm_bin.exists() { &npm_bin } else { std::path::Path::new("npm") })
+          let npm_bin = node_parent.join("npm");
+          let npm_cmd = if npm_bin.exists() { &npm_bin } else { std::path::Path::new("npm") };
+
+          startup_log(&log_dir, &format!("  npm binary: {}", npm_cmd.display()));
+          startup_log(&log_dir, &format!("  rebuild PATH: {}", rebuild_path));
+
+          let mut rebuild_cmd = Command::new(npm_cmd);
+          rebuild_cmd
             .arg("rebuild")
             .arg("better-sqlite3")
             .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
-            .current_dir(&rebuild_dir)
-            .output();
+            .env("PATH", &rebuild_path)
+            .env("npm_config_node_execpath", &node_bin)
+            .current_dir(&rebuild_dir);
+
+          let rebuild_result = rebuild_cmd.output();
 
           match rebuild_result {
             Ok(output) => {

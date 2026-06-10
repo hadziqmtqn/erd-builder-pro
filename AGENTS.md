@@ -2015,9 +2015,10 @@ On app startup (release mode only), `start_backend_server()` performs **6 logged
 **Step 2 — Inspect version**: Logs `node -v` and `process.versions.modules` (NODE_MODULE_VERSION aka ABI).
 
 **Step 3 — Native module ABI rebuild**: The bundled `better-sqlite3` native addon was compiled on the CI runner (GitHub Actions). If the user's Node.js version differs, `better_sqlite3.node` fails with `NODE_MODULE_VERSION X vs Y`. The app detects this mismatch and auto-rebuilds:
+- Tries `require()` on the `.node` file — if it throws, logs `require_failed` (chicken-and-egg: can't read ABI without loading, can't load due to ABI mismatch)
 - Copies `better-sqlite3/` from the read-only app bundle to writable `{app_data_dir}/rebuilt-node-modules/node_modules/`
-- Runs `npm rebuild better-sqlite3` in that directory
-- Verifies the rebuilt addon's ABI matches the user's Node version
+- Runs `npm rebuild better-sqlite3` in that directory — **CRITICAL**: sets `PATH` env var (node's parent dir + `/usr/bin:/bin`) and `npm_config_node_execpath` because Finder/Dock spawns with minimal PATH, causing `npm` to fail with exit 127 (`env: node: No such file or directory`)
+- Verifies the rebuilt addon's ABI matches the user's Node version (via `require().versions?.modules`)
 - Prepends the rebuilt path to `NODE_PATH` so Node resolves it before the bundled copy
 
 **Step 4 — Log pipes**: Opens `server.log` for stdout/stderr capture.
