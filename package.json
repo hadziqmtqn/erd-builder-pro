@@ -23,7 +23,7 @@
     "db:generate:sqlite": "cross-env DB_VARIANT=sqlite prisma generate",
     "db:migrate:pg:local": "cross-env DB_VARIANT=pg prisma migrate dev",
     "db:push:pg:local": "cross-env DB_VARIANT=pg prisma db push",
-    "db:seed:pg:local": "tsx prisma/seed.sqlite.ts",
+    "db:seed:pg:local": "cross-env DB_VARIANT=pg tsx prisma/seed.sqlite.ts",
     "db:migrate:sqlite": "cross-env DB_VARIANT=sqlite prisma migrate dev",
     "db:push:sqlite": "cross-env DB_VARIANT=sqlite DATABASE_URL=file:./data.db prisma db push",
     "db:seed:sqlite": "cross-env DB_VARIANT=sqlite DATABASE_URL=file:./data.db tsx prisma/seed.sqlite.ts",

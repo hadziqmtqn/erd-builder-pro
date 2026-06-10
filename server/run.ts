@@ -29,7 +29,7 @@ async function seedAIProviders(): Promise<void> {
     const providerDefs = [
       { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1" },
       { name: "Google Gemini", code: "gemini", baseUrl: null },
-      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.sumopod.com/v1" },
+      { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id" },
     ];
 
     for (const p of providerDefs) {
@@ -110,8 +110,8 @@ async function ensureDatabaseTables(): Promise<boolean> {
   try {
     // Quick probe: does the users table exist?
     await prisma.$queryRawUnsafe("SELECT 1 FROM users LIMIT 1");
-    // Table exists — nothing to do
-    return false;
+    // Table exists — database is ready, signal caller
+    return true;
   } catch {
     // Table doesn't exist — try to create from schema.sql
     logger.info("Users table not found — attempting to create from schema.sql");
@@ -157,8 +157,25 @@ async function ensureDatabaseTables(): Promise<boolean> {
 
 // Ensure tables exist before backfill (critical for fresh desktop installs).
 // MUST be awaited before app.listen() to prevent login race condition.
+// Startup sequence with robust DB readiness check
 async function startup(): Promise<void> {
-  await ensureDatabaseTables();
+  // Desktop mode only: retry DB readiness in case offline migration hasn't run yet
+  // (SQLite file may not be ready immediately on first launch)
+  if (isDesktopMode()) {
+    const maxRetries = 60; // about 60 seconds total
+    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+    let ready = false;
+    for (let i = 0; i < maxRetries; i++) {
+      ready = await ensureDatabaseTables();
+      console.log(`[startup/db-readiness] attempt ${i + 1}/${maxRetries} - ${ready ? 'READY' : 'PENDING'}`);
+      if (ready) break;
+      await sleep(1000);
+    }
+    if (!ready) {
+      logger.error("Database readiness not achieved within timeout. Exiting.");
+      process.exit(1);
+    }
+  }
 
   // Seed default AI data for desktop mode (providers, models, system prompts).
   // Safe to call every startup — seedAIProviders checks if data already exists.

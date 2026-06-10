@@ -213,7 +213,7 @@ FOR EACH ROW EXECUTE FUNCTION update_ai_rules_timestamp();
 INSERT INTO ai_providers (name, code, base_url) VALUES 
 ('OpenAI', 'openai', 'https://api.openai.com/v1'),
 ('Google Gemini', 'gemini', NULL),
-('OpenAI Compatible', 'openai_compatible', 'https://ai.sumopod.com/v1')
+('OpenAI Compatible', 'openai_compatible', 'https://ai.paas.id')
 ON CONFLICT (code) DO NOTHING;
 
 -- Seed Models

@@ -49,7 +49,7 @@ async function main() {
   const providerDefs = [
     { name: 'OpenAI', code: 'openai', baseUrl: 'https://api.openai.com/v1' },
     { name: 'Google Gemini', code: 'gemini', baseUrl: null },
-    { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://ai.sumopod.com/v1' },
+    { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://ai.paas.id' },
   ];
 
   for (const p of providerDefs) {

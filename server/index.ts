@@ -137,8 +137,8 @@ const uploadLimiter = rateLimit({
 });
 app.use("/api/upload", uploadLimiter);
 
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ limit: "5mb", extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
 // Response field name conversion: Prisma returns camelCase, but frontend expects
@@ -178,7 +178,19 @@ app.use("/api/*", (req, res, next) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  const mem = process.memoryUsage();
+  const usedMb = mem.rss / 1024 / 1024;
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptimeSec: Math.floor(process.uptime()),
+    memoryMB: Math.round(usedMb * 10) / 10
+  });
+});
+
+// Lightweight readiness endpoint to verify server is up for desktop/dev CI
+app.get("/api/ready", (_req, res) => {
+  res.json({ ready: true, timestamp: new Date().toISOString() });
 });
 
 app.use("/api", authRouter);

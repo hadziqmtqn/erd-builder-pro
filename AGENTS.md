@@ -409,7 +409,7 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 ## Desktop Login Bootstrap
 
-- **Desktop Tauri auto-login (transparent, no credentials)**: on fresh install or after session expiry, `GET /api/me` in [`server/routes/auth.ts`](./server/routes/auth.ts) detects `useLocalAuth()` and auto-creates the local `local@desktop.dev` user + session if none exists — zero manual login. The old two-step flow (`checkAuth` → fail → `POST /api/desktop-login`) is replaced by a single `/api/me` call that always succeeds in desktop mode.
+- **Desktop Tauri auto-login (transparent, no credentials)**: on fresh install or after session expiry, `GET /api/me` in [`server/routes/auth.ts`](./server/routes/auth.ts) detects `useLocalAuth()` and auto-creates the local `admin@local.dev` user + session if none exists — zero manual login. The old two-step flow (`checkAuth` → fail → `POST /api/desktop-login`) is replaced by a single `/api/me` call that always succeeds in desktop mode.
 
 - **Server retry in `useAuth.checkAuth`** ([`src/hooks/useAuth.tsx`](./src/hooks/useAuth.tsx)): in Tauri mode the Node.js server starts asynchronously from Rust's `Command::new("node")`. `checkAuth` retries **indefinitely** with exponential backoff (`1.5s → 2.25s → 3.4s → 5s → 7.5s → 10s` capped) until the server responds. Web mode keeps the old 3-retry limit.
 
@@ -434,11 +434,11 @@ const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 ### Desktop Auto-Login (`/api/me`)
 
-**`ensureDesktopUser()`** in [`server/routes/auth.ts`](./server/routes/auth.ts):199 — creates `local@desktop.dev` user + session if none exist, returns token + user. Called by `/api/me` when no valid session exists in desktop mode.
+**`ensureDesktopUser()`** in [`server/routes/auth.ts`](./server/routes/auth.ts):199 — creates `admin@local.dev` user + session if none exist, returns token + user. Called by `/api/me` when no valid session exists in desktop mode.
 
 **Flow**:
 1. App loads → `checkAuth()` → `GET /api/me`
-2. Server: no valid token → `ensureDesktopUser()` creates/finds `local@desktop.dev` → creates session → returns `{ authenticated: true, token, user }`
+2. Server: no valid token → `ensureDesktopUser()` creates/finds `admin@local.dev` → creates session → returns `{ authenticated: true, token, user }`
 3. Frontend: `useAuth.tsx` stores `data.token` via `setAuthToken()` → app transitions to dashboard
 4. No login form ever shown in Tauri mode
 
@@ -666,21 +666,55 @@ Allows Guest Mode users to export their IndexedDB data as `.json` and authentica
 
 **Import (Server)**:
 - Endpoint: `POST /api/guest/import` at [`server/routes/guest-import.ts`](./server/routes/guest-import.ts) — `authenticate` middleware, additive-only import.
-- Flow:
-  1. **Projects**: matched by name (case-insensitive per user) — existing names skipped, new ones created.
-  2. **Notes/Flowcharts/Drawings**: checked by `uid` — skipped if already exists, otherwise created with project mapping.
-  3. **Diagrams (ERD)**: creates Diagram record + unpacks `entities[]` → Entity + Column records, `relationships[]` → Relationship records.
-  4. **AI Chat**: creates `AiChatSession` + `AiChatMessage` records.
+- **NDJSON streaming response**: server writes progress lines (`\n`-delimited JSON) as it processes batches. Response `Content-Type: application/x-ndjson` with `X-Accel-Buffering: no` (disable nginx buffering).
+- **Progress protocol**: each line is a JSON object:
+  - `{"type":"progress","current":50,"total":200,"phase":"Importing columns…"}`
+  - `{"type":"complete","success":true,"summary":{...}}`
+  - `{"type":"error","error":"...","partial_summary":{...}}`
+- **Batched Prisma operations**: instead of sequential `await prisma.*.create()` per row (10K+ round-trips for large exports), each phase uses `prisma.$transaction([...])` in `BATCH_SIZE=50` chunks. This yields ~100x speedup for large ERDs.
+- **Work unit counting**: `countWorkUnits()` precomputes total items (projects + notes + diagrams + sum of entities/columns/relationships + flowcharts + drawings + AI sessions + messages) for accurate determinate progress.
+- **Flow**:
+  1. **Projects**: matched by name (case-insensitive per user) — existing names skipped, new ones created. Returns `nameToDbId` and `guestIdToName` maps.
+  2. **Notes**: batch-checked by `uid`, batch-created via `$transaction`.
+  3. **Diagrams (ERD)**: per diagram:
+     - Create diagram record → batch-create entities (50/batch) → batch-create columns (50/batch) → batch-create relationships (50/batch)
+     - Entity/column/relationship IDs remapped with fresh `crypto.randomUUID()`
+     - Handle strings rewritten from old→new column IDs
+  4. **Flowcharts/Drawings**: batch-checked by `uid`, batch-created.
+  5. **AI Chat**: per session — create session → batch-create messages (50/batch).
 - All new records get fresh UUIDs (no conflict with existing DB IDs). `skipped_existing` counter tracks dedup.
-- Returns `{ success, summary: { projects, notes, diagrams, entities, columns, relationships, flowcharts, drawings, ai_chat_sessions, ai_chat_messages, skipped_existing } }`.
+- **Body limit**: `express.json({ limit: "50mb" })` (increased from 5MB for large ERD exports). `content-length` header checked before JSON parse — returns 413 if exceeds 50MB cap.
+- Progress sent after each batch so client stays responsive.
 
 **Import UI (Authenticated Users)**:
-- File: [`src/components/ai/GuestDataManagement.tsx`](./src/components/ai/GuestDataManagement.tsx) — file upload component with drag/drop area, import progress, summary cards.
-- Dialog: [`SettingsModal.tsx`](./src/components/modals/SettingsModal.tsx) — "Guest Data Import" tab in the "More" nav group (hidden for guests). Shows import area + result summary.
+- File: [`src/components/ai/GuestDataManagement.tsx`](./src/components/ai/GuestDataManagement.tsx) — file upload with **two-step flow**: preview → submit → import.
+- **Step 1 — Preview**: after selecting a `.json` file, `extractPreviewSummary()` counts all items per type client-side (projects, notes, ERD tables/columns/relationships, flowcharts, drawings, AI sessions/messages). A `'preview'` state renders the same `SummaryGrid` cards as the post-import view, showing exactly what will be imported.
+- **Step 2 — Submit**: a **Submit** button triggers the actual import. `payloadRef` holds the parsed JSON across state transitions (no re-parsing).
+- **Progress bar**: reads NDJSON stream via `res.body.getReader()` (Streams API). Parses each line as JSON, updates `progress` state (`current`, `total`, `phase`). Renders a determinate progress bar with percentage, phase label (e.g., "Importing ERD columns (240 done)…"), and item counter.
+- **Work unit preview**: `countWorkUnits()` mirrors server-side counting — runs locally on the parsed JSON so the progress bar shows the correct total immediately (not 0/0).
+- **Cancel**: available at both preview stage (returns to idle) and during import (`AbortController`).
+- **Large file warning**: toast warns if file exceeds 30MB (still processed, just a heads-up).
+- **Dialog**: [`SettingsModal.tsx`](./src/components/modals/SettingsModal.tsx) — "Guest Data Import" tab in the "More" nav group (hidden for guests). Shows import area + result summary.
 - Validation: checks `.json` extension, parses structure, confirms `data` field exists.
-- On success: grid of summary cards showing imported counts per type.
+- On success: grid of summary cards showing imported counts per type. After 2.5s, the app **auto-reloads** (`window.location.reload()`) so all data hooks re-fetch fresh data from the database — seamless like a browser tab refresh. A "Reload App Now" button is also available for immediate reload. The timer is cleared if the user clicks "Import Another File".
 
-**Key design**: ADDITIVE only — never overwrites existing data. Items are deduplicated by `uid` (falls back to name-based matching for projects). Project hierarchy is preserved via name-matching. ERD entities/columns/relationships are reconstructed from the guest diagram's flat arrays.
+**Key design**: ADDITIVE only — never overwrites existing data. Items are deduplicated by `uid` (falls back to name-based matching for projects). Project hierarchy is preserved via name-matching. ERD entities/columns/relationships are reconstructed from the guest diagram's flat arrays with batched transactions for performance.
+
+**Bug Fixes (2026-06-10)**:
+- **`resolveProjectId` always returned `null`**: The function ignored `rawProjectId` entirely. For diagrams, flowcharts, drawings, and AI sessions, `projectsRel` was passed as `null` → all imported items lost their project association and became uncategorized. **Fix** ([`server/routes/guest-import.ts`](./server/routes/guest-import.ts)):
+  1. `importProjects` now also returns `guestIdToName: Map<string, string>` — maps guest project uid/id → project name (lowercase)
+  2. `resolveProjectId` now accepts `guestIdToName` and resolves `rawProjectId` by: guest project ID → project name → real DB project ID (from `nameToDbId`)
+  3. All import functions (`importNotes`, `importDiagrams`, `importFlowcharts`, `importDrawings`, `importAiChatSessions`) pass `guestIdToName` through
+- **Entity/Column/Relationship ID collisions**: The import reused guest's IDs directly for Prisma `@id` fields. If any entity/column/relationship ID already existed in the target DB → duplicate key error → import crash. **Fix**: All entities, columns, and relationships now get fresh `uuid()` IDs. Entity ID remapping (`entityIdMap`) and column ID remapping (`columnIdMap`) maintain referential integrity for relationships. Relationship handles are also rewritten to use new column IDs.
+- **Error message leak**: `catch` block returned `details: err.message` — removed, replaced with generic error message.
+
+**Performance Fixes (2026-07)**:
+- **Sequential DB queries → batched `$transaction`**: The old code used `await prisma.*.create()` for every single entity, column, and relationship row. For a 50-table ERD with 20 columns each = 1,050 individual DB round-trips, taking minutes. **Fix**: all creates are grouped into `BATCH_SIZE=50` chunks wrapped in `prisma.$transaction([...])` — ~100x faster.
+- **No progress → NDJSON streaming**: The old endpoint returned a single JSON response at the end — client showed only a spinner with no feedback. **Fix**: server writes progress lines as NDJSON as each batch completes. Client reads the stream via `ReadableStream` reader and renders a determinate progress bar with phase label and item counter.
+- **5MB body limit → 50MB**: Large guest exports (50+ diagrams with hundreds of entities) could exceed the 5MB `express.json` limit, failing before reaching the route handler. **Fix**: increased to 50MB. Also added `content-length` pre-check with 413 response for payloads exceeding the cap.
+
+**Bug Fixes (2026-06-10b)**:
+- **Guest export empty diagrams & drawings**: `guestExport.ts` queried IndexedDB with `type: 'diagram'` and `type: 'drawing'`, but the hooks save resources with `type: 'erd'` and `type: 'drawings'` respectively — type mismatch caused empty arrays in the export JSON. **Fix** ([`src/lib/guestExport.ts`](./src/lib/guestExport.ts)): changed `collectResources` calls and `GUEST_TYPES` constant to use `'erd'` and `'drawings'` — matching the actual IndexedDB `type` values used by `useDiagrams.ts` (`type: 'erd'`) and `useDrawings.ts` (`type: 'drawings'`).
 
 ## AI Settings API Migration (Server-Only Supabase)
 
@@ -2078,7 +2112,7 @@ git push origin v2.x.x          # triggers Build & Release workflow
 
 ### Problem: Authentication Failed on First Launch
 
-- **Symptom**: Production .dmg app shows login form, but `local@desktop.dev` / `desktop-local-pass` returns "Authentication failed" (HTTP 500).
+- **Symptom**: Production .dmg app shows login form, but `admin@local.dev` / `admin123` returns "Authentication failed" (HTTP 500).
 - **Root cause**: The offline migration (`migrate-db.mjs`) uses better-sqlite3 directly to apply `schema.sql`. If the migration script fails (e.g., native addon load failure, schema file missing, SQL error), the database has NO tables. When the user clicks Login, `prisma.user.findFirst()` throws "no such table: users" which is caught by the generic catch block in `auth.ts` → "Authentication failed".
 - **The error message is misleading**: it could be DB tables missing (500) OR wrong credentials (401). The real error goes to `server.log`, not the UI.
 

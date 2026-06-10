@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { Download, Loader2, User, Database, FileJson, LogOut } from 'lucide-react';
+import { Download, Loader2, User, Database, FileJson } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -36,11 +36,6 @@ export function GuestExportDialog({
     } finally {
       setIsExporting(false);
     }
-  };
-
-  const handleExitToLogin = () => {
-    sessionStorage.removeItem('auth_mode');
-    window.location.reload();
   };
 
   return (
@@ -112,19 +107,15 @@ export function GuestExportDialog({
               <span className="w-full border-t border-border/30" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-background px-2 text-muted-foreground">or</span>
+              <span className="bg-background px-2 text-muted-foreground">Need an account?</span>
             </div>
           </div>
 
-          {/* Sign in */}
+          {/* Sign up hint */}
           <div className="text-center space-y-2">
             <p className="text-xs text-muted-foreground">
-              Already have an account? Sign in to access your data.
+              Sign up or log in from the main page to import your backup.
             </p>
-            <Button variant="outline" size="sm" onClick={handleExitToLogin} className="w-full">
-              <LogOut className="size-3.5 mr-2" />
-              Sign In
-            </Button>
           </div>
         </div>
       </DialogContent>
