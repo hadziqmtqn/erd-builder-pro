@@ -204,7 +204,7 @@ async function main() {
   // correct prebuilt binary. The `prebuild-install` CLI binary must be on
   // PATH for npm's install script to find it.
   const nmOutBin = resolve(nmOut, ".bin");
-  const srcBinDir = resolve(nmOut, "..", ".bin");
+  const srcBinDir = resolve(ROOT, "node_modules", ".bin");
   mkdirSync(nmOutBin, { recursive: true });
   const neededBins = ["prebuild-install"];
   for (const binName of neededBins) {
