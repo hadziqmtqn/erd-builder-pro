@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  erd-builder-pro:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # Volume mount for SQLite — data persists across container restarts
+      - erd-data:/app/data
+    restart: unless-stopped
+    # ── Example: Local PostgreSQL ──
+    # environment:
+    #   - DATABASE_URL=postgresql://postgres:postgres@db:5432/erd_builder_pro
+    # depends_on:
+    #   - db
+
+  # ── Example: PostgreSQL service ──
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres
+  #     POSTGRES_DB: erd_builder_pro
+  #   volumes:
+  #     - pg-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  erd-data:
+  # pg-data:  # Uncomment for PostgreSQL

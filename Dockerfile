@@ -37,9 +37,10 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies (skip postinstall — prisma CLI is a devDep)
-RUN npm install --omit=dev --ignore-scripts && npm install tsx
+# prisma CLI is needed at runtime for client regeneration + db push
+RUN npm install --omit=dev --ignore-scripts && npm install tsx prisma
 
-# Copy pre-generated Prisma client from build stage
+# Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
@@ -53,6 +54,10 @@ COPY --from=build /app/server ./server
 COPY --from=build /app/shared ./shared
 COPY --from=build /app/tsconfig.json ./
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -63,6 +68,9 @@ EXPOSE 3000
 # Health check for Coolify / orchestrators
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+
+# Entrypoint detects database mode and runs migration before starting
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Start the application using tsx as defined in package.json "start" script
 CMD ["npm", "start"]
