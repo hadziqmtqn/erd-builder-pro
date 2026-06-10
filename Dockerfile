@@ -12,10 +12,17 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (skip postinstall — prisma generate needs prisma.config.ts, not yet copied)
+RUN npm install --ignore-scripts
 
-# Copy all source files
+# Copy Prisma files (needed for client generation)
+COPY prisma.config.ts ./
+COPY prisma/ ./prisma/
+
+# Generate Prisma client (Supabase variant — default)
+RUN npx prisma generate
+
+# Copy all remaining source files
 COPY . .
 
 # Build the frontend (Vite)
