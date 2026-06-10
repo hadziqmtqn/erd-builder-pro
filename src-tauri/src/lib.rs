@@ -141,129 +141,347 @@ fn find_node_executable() -> Option<String> {
 /// The server script (`dist-server/index.js`) was compiled by `build-server.js`
 /// and bundled via `tauri.conf.json` → `bundle.resources`.  The SQLite database
 /// is created in the app's data directory on first run.
+///
+/// Key startup steps:
+///   1. Locate `node` on the user's machine
+///   2. Log Node.js version + ABI (NODE_MODULE_VERSION)
+///   3. Detect ABI mismatch with bundled `better-sqlite3` native addon
+///   4. If mismatch: copy `better-sqlite3` to writable data dir & `npm rebuild`
+///   5. Apply offline SQLite migration (`migrate-db.mjs`) if DB is new/empty
+///   6. Spawn the Express server as a child process
+///
+/// All steps log to `server-startup.log` (alongside `server.log`).
 fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
   let resource_dir = app.path().resource_dir()?;
   let app_data_dir = app.path().app_data_dir()?;
-
   std::fs::create_dir_all(&app_data_dir)?;
 
-  // Set NODE_PATH so external requires (Prisma, better-sqlite3, etc.) resolve
-  // to the bundled node_modules inside dist-server/
-  let bundled_nm = resource_dir.join("dist-server/node_modules");
+  // ── Logging helpers ──────────────────────────────────────────────
+  let log_dir = {
+    let d = app.path().app_log_dir()?;
+    std::fs::create_dir_all(&d)?;
+    d
+  };
 
-  let server_script = resource_dir.join("dist-server/index.js");
-  if !server_script.exists() {
-    return Err(format!(
-      "Server script not found at: {}",
-      server_script.display()
-    )
-    .into());
+  /// Append a timestamped line to the startup log.
+  fn startup_log(log_dir: &std::path::Path, msg: &str) {
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", ts, msg);
+    let _ = std::fs::OpenOptions::new()
+      .create(true)
+      .append(true)
+      .open(log_dir.join("server-startup.log"))
+      .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+    // Also emit to the Tauri log (visible in Console.app in dev mode)
+    log::info!("startup: {}", msg);
   }
 
-  // Locate the Node.js binary — must work even when launched from Finder/Dock
-  // where PATH is empty.
+  startup_log(&log_dir, "=== ERD Builder Pro backend startup ===");
+
+  let bundled_nm = resource_dir.join("dist-server/node_modules");
+  let server_script = resource_dir.join("dist-server/index.js");
+
+  startup_log(&log_dir, &format!("Resource dir:       {}", resource_dir.display()));
+  startup_log(&log_dir, &format!("App data dir:       {}", app_data_dir.display()));
+  startup_log(&log_dir, &format!("Bundled node_mod:   {}", bundled_nm.display()));
+  startup_log(&log_dir, &format!("Server script:      {}", server_script.display()));
+
+  if !server_script.exists() {
+    let msg = format!("Server script not found at: {}", server_script.display());
+    startup_log(&log_dir, &format!("FATAL: {}", msg));
+    return Err(msg.into());
+  }
+
+  // ── Step 1: Find Node.js ─────────────────────────────────────────
+  startup_log(&log_dir, "Step 1: Locating Node.js…");
   let node_bin = find_node_executable().ok_or_else(|| {
+    startup_log(&log_dir, "FATAL: Node.js not found");
     "Node.js not found. The app probes: Homebrew (/opt/homebrew/bin, /usr/local/bin), \
      nvm (~/.nvm/versions/node/*/bin), fnm (~/.fnm/current/bin), \
      Volta (~/.volta/bin), MacPorts (/opt/local/bin), and PATH. \
      If you use a different version manager, install Node.js from https://nodejs.org \
      or create a symlink at one of these locations."
   })?;
+  startup_log(&log_dir, &format!("  Node binary: {}", node_bin));
 
-  log::info!(
-    "Starting backend server: node={} script={} (data dir: {})",
-    node_bin,
-    server_script.display(),
-    app_data_dir.display()
-  );
+  // ── Step 2: Inspect Node version + ABI ───────────────────────────
+  startup_log(&log_dir, "Step 2: Inspecting Node.js version…");
 
-  // Pipe stdout/stderr to a log file so we can debug spawn issues from
-  // macOS Console.app. Without this, any server error is invisible.
-  // Each child process needs its own file handle, so we open the log file
-  // separately for the migration step and the server.
+  let node_version = String::from_utf8_lossy(
+    &Command::new(&node_bin)
+      .arg("-v")
+      .output()
+      .map(|o| o.stdout)
+      .unwrap_or_default(),
+  )
+  .trim()
+  .to_string();
+  startup_log(&log_dir, &format!("  node -v: {}", node_version));
+
+  // Get the user's NODE_MODULE_VERSION
+  let user_mod_version = String::from_utf8_lossy(
+    &Command::new(&node_bin)
+      .arg("-e")
+      .arg("console.log(process.versions.modules)")
+      .output()
+      .map(|o| o.stdout)
+      .unwrap_or_default(),
+  )
+  .trim()
+  .to_string();
+  startup_log(&log_dir, &format!("  user  MODULE_VERSION: {}", user_mod_version));
+
+  // Get the bundled better-sqlite3's NODE_MODULE_VERSION
+  let bundled_bs3_binding = bundled_nm
+    .join("better-sqlite3/build/Release/better_sqlite3.node");
+  startup_log(&log_dir, &format!("  bundled bs3 path: {}", bundled_bs3_binding.display()));
+
+  let bundled_mod_version = if bundled_bs3_binding.exists() {
+    let content = std::fs::read(&bundled_bs3_binding).unwrap_or_default();
+    // NODE_MODULE_VERSION is stored as a 32-bit LE integer at byte offset 24 (Node-API),
+    // but for N-API it's at a different offset. We use `node -e` to read it instead.
+    // Fallback: parse the file with node
+    String::from_utf8_lossy(
+      &Command::new(&node_bin)
+        .arg("-e")
+        .arg(&format!(
+          "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
+          bundled_bs3_binding.display()
+        ))
+        .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
+        .output()
+        .map(|o| o.stdout)
+        .unwrap_or_default(),
+    )
+    .trim()
+    .to_string()
+  } else {
+    startup_log(&log_dir, "  WARNING: bundled better_sqlite3.node not found");
+    "missing".to_string()
+  };
+  startup_log(&log_dir, &format!("  bundled MODULE_VERSION: {}", bundled_mod_version));
+
+  // ── Step 3: Rebuild native modules if ABI mismatch ────────────────
+  // The bundled better-sqlite3 was compiled on the CI runner (GitHub
+  // Actions). If the user's Node.js version differs, the native addon
+  // won't load — e.g.  "NODE_MODULE_VERSION 127 vs 141".
+  //
+  // Fix: copy better-sqlite3 to the writable app data dir and run
+  // `npm rebuild` there. The rebuilt addon replaces the bundled one
+  // in the NODE_PATH so Node picks it up first.
+  let mut node_path = bundled_nm.to_string_lossy().to_string();
+  let needs_rebuild = bundled_mod_version != "missing"
+    && !user_mod_version.is_empty()
+    && bundled_mod_version != user_mod_version;
+
+  if needs_rebuild {
+    startup_log(
+      &log_dir,
+      &format!(
+        "Step 3a: ABI MISMATCH — bundled={} user={}. Rebuilding native modules…",
+        bundled_mod_version, user_mod_version
+      ),
+    );
+
+    let rebuild_dir = app_data_dir.join("rebuilt-node-modules");
+    let rebuild_nm = rebuild_dir.join("node_modules");
+    let rebuild_bs3 = rebuild_nm.join("better-sqlite3");
+
+    // Remove any stale previous rebuild
+    let _ = std::fs::remove_dir_all(&rebuild_dir);
+
+    if let Err(e) = std::fs::create_dir_all(&rebuild_nm) {
+      startup_log(&log_dir, &format!("  ERROR creating rebuild dir: {}", e));
+    } else {
+      // Copy better-sqlite3 from bundle to writable dir
+      let src_bs3 = bundled_nm.join("better-sqlite3");
+      if src_bs3.exists() {
+        startup_log(&log_dir, "  Copying better-sqlite3 to writable dir…");
+        if let Err(e) = copy_dir_recursive(&src_bs3, &rebuild_bs3) {
+          startup_log(&log_dir, &format!("  ERROR copying better-sqlite3: {}", e));
+        } else {
+          startup_log(&log_dir, "  Copy complete. Running npm rebuild…");
+
+          // Derive npm path (sibling of node)
+          let node_parent = std::path::Path::new(&node_bin)
+            .parent()
+            .unwrap_or(std::path::Path::new("/usr/local/bin"));
+          let npm_bin = node_parent.join("npm");
+
+          let rebuild_result = Command::new(if npm_bin.exists() { &npm_bin } else { std::path::Path::new("npm") })
+            .arg("rebuild")
+            .arg("better-sqlite3")
+            .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
+            .current_dir(&rebuild_dir)
+            .output();
+
+          match rebuild_result {
+            Ok(output) => {
+              let stdout = String::from_utf8_lossy(&output.stdout);
+              let stderr = String::from_utf8_lossy(&output.stderr);
+              startup_log(&log_dir, &format!("  rebuild exit: {:?}", output.status.code()));
+              if !stdout.trim().is_empty() {
+                startup_log(&log_dir, &format!("  rebuild stdout: {}", stdout.trim()));
+              }
+              if !stderr.trim().is_empty() {
+                startup_log(&log_dir, &format!("  rebuild stderr: {}", stderr.trim()));
+              }
+
+              if output.status.success() {
+                // Verify the rebuilt addon's ABI now matches
+                let rebuilt_bs3 = rebuild_nm.join("better-sqlite3/build/Release/better_sqlite3.node");
+                let rebuilt_mod = String::from_utf8_lossy(
+                  &Command::new(&node_bin)
+                    .arg("-e")
+                    .arg(&format!(
+                      "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
+                      rebuilt_bs3.display()
+                    ))
+                    .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
+                    .output()
+                    .map(|o| o.stdout)
+                    .unwrap_or_default(),
+                )
+                .trim()
+                .to_string();
+
+                startup_log(&log_dir, &format!("  rebuilt MODULE_VERSION: {}", rebuilt_mod));
+
+                if rebuilt_mod == user_mod_version {
+                  // Success — prepend rebuilt path to NODE_PATH
+                  node_path = format!("{}:{}", rebuild_nm.to_string_lossy().to_string(), node_path);
+                  startup_log(&log_dir, "  SUCCESS: Native module rebuilt for user's Node.js version");
+                } else {
+                  startup_log(&log_dir, "  WARNING: Rebuilt module ABI still doesn't match. Server may fail.");
+                }
+              } else {
+                startup_log(&log_dir, "  WARNING: npm rebuild failed. Server may not start.");
+              }
+            }
+            Err(e) => {
+              startup_log(&log_dir, &format!("  ERROR running npm rebuild: {}", e));
+            }
+          }
+        }
+      } else {
+        startup_log(&log_dir, "  WARNING: bundled better-sqlite3 dir not found, can't rebuild");
+      }
+    }
+  } else {
+    startup_log(&log_dir, &format!("Step 3: ABI OK (bundled={}, user={}), no rebuild needed", bundled_mod_version, user_mod_version));
+  }
+
+  // ── Step 4: Pipe setup for server stdout/stderr ──────────────────
+  startup_log(&log_dir, "Step 4: Setting up log pipes…");
+
   let open_log = || -> std::process::Stdio {
-    app.path()
-      .app_log_dir()
+    std::fs::OpenOptions::new()
+      .create(true)
+      .append(true)
+      .open(log_dir.join("server.log"))
       .ok()
-      .and_then(|d| {
-        let _ = std::fs::create_dir_all(&d);
-        std::fs::OpenOptions::new()
-          .create(true)
-          .append(true)
-          .open(d.join("server.log"))
-          .ok()
-      })
       .map(std::process::Stdio::from)
       .unwrap_or_else(|| std::process::Stdio::null())
   };
 
-  // Before starting the server, apply the SQLite schema using the lightweight
-  // offline migration script. This replaces `prisma db push` (which would
-  // require bundling the 41MB prisma CLI), using a pre-generated schema.sql
-  // that is applied via better-sqlite3 directly.
+  // ── Step 5: Offline SQLite migration ─────────────────────────────
+  startup_log(&log_dir, "Step 5: Checking database…");
   let db_path = app_data_dir.join("data.db");
   let needs_migration = !db_path.exists()
     || std::fs::metadata(&db_path).map(|m| m.len() == 0).unwrap_or(true);
 
-  if needs_migration {
-    log::info!(
-      "Running offline migration to initialize SQLite schema at {}",
-      db_path.display()
-    );
+  startup_log(&log_dir, &format!("  DB path:       {}", db_path.display()));
+  startup_log(&log_dir, &format!("  DB exists:     {}", db_path.exists()));
+  startup_log(&log_dir, &format!("  Needs migration: {}", needs_migration));
 
+  if needs_migration {
     let migrate_script = resource_dir.join("dist-server/migrate-db.mjs");
 
     if !migrate_script.exists() {
-      log::warn!(
-        "Migration script not found at {:?} — skipping db init (server may fail)",
-        migrate_script
-      );
+      startup_log(&log_dir, "  WARNING: migrate-db.mjs not found — server may fail to init DB");
     } else {
-      let migration_stdout = open_log();
+      startup_log(&log_dir, "  Running offline migration…");
 
+      let migration_stdout = open_log();
       let output = Command::new(&node_bin)
         .arg(&migrate_script)
         .arg(db_path.to_string_lossy().to_string())
-        .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
+        .env("NODE_PATH", &node_path)
         .current_dir(&app_data_dir)
         .stdout(migration_stdout)
         .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run migration script: {}", e))?;
+        .output();
 
-      if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-          "Database migration failed (exit {:?}) — attempting to start server anyway: {}",
-          output.status.code(),
-          stderr
-        );
-      } else {
-        log::info!("Database schema applied successfully via offline migration");
+      match output {
+        Ok(out) => {
+          let stderr = String::from_utf8_lossy(&out.stderr);
+          if !out.status.success() {
+            startup_log(&log_dir, &format!("  MIGRATION FAILED (exit {:?}): {}", out.status.code(), stderr));
+          } else {
+            startup_log(&log_dir, "  Migration completed successfully");
+          }
+        }
+        Err(e) => {
+          startup_log(&log_dir, &format!("  ERROR running migration: {}", e));
+        }
       }
     }
+  } else {
+    startup_log(&log_dir, "  Database already exists — skipping migration");
   }
+
+  // ── Step 6: Spawn Express server ─────────────────────────────────
+  startup_log(&log_dir, "Step 6: Starting Express server…");
 
   let server_stdout = open_log();
   let server_stderr = open_log();
+
+  startup_log(&log_dir, &format!("  NODE_PATH: {}", node_path));
+  startup_log(&log_dir, &format!("  PORT: 3099"));
 
   let child = Command::new(&node_bin)
     .arg(&server_script)
     .env("NODE_ENV", "production")
     .env("PORT", "3099")
-    .env("NODE_PATH", bundled_nm.to_string_lossy().to_string())
+    .env("NODE_PATH", &node_path)
     .env(
       "DATABASE_URL",
-      format!("file:{}", app_data_dir.join("data.db").display()),
+      format!("file:{}", db_path.display()),
     )
     .current_dir(&app_data_dir)
     .stdout(server_stdout)
     .stderr(server_stderr)
     .spawn()
-    .map_err(|e| format!("Failed to spawn '{}': {}", node_bin, e))?;
+    .map_err(|e| {
+      let msg = format!("Failed to spawn '{}': {}", node_bin, e);
+      startup_log(&log_dir, &format!("FATAL: {}", msg));
+      msg
+    })?;
 
   app.manage(ServerProcess(Mutex::new(Some(child))));
 
+  startup_log(&log_dir, "SUCCESS: Backend server process spawned on port 3099");
+  startup_log(&log_dir, "=== Startup complete ===");
   log::info!("Backend server started on port 3099");
+  Ok(())
+}
+
+// ── Utility: Recursive directory copy ─────────────────────────────────
+
+fn copy_dir_recursive(
+  src: &std::path::Path,
+  dst: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+  std::fs::create_dir_all(dst)?;
+  for entry in std::fs::read_dir(src)? {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+    let dst_path = dst.join(entry.file_name());
+    if ty.is_dir() {
+      copy_dir_recursive(&entry.path(), &dst_path)?;
+    } else {
+      std::fs::copy(entry.path(), &dst_path)?;
+    }
+  }
   Ok(())
 }

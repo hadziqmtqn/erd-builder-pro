@@ -2008,16 +2008,27 @@ The desktop app (Tauri v2) bundles three components:
 
 **File**: [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs)
 
-On app startup (release mode only):
-1. Resolves resource directory → finds `dist-server/index.js`
-2. Resolves app data directory → creates it if missing
-3. Spawns Node.js child process with:
-   - `NODE_PATH` → bundled node_modules path (for native modules)
-   - `DATABASE_URL` → `file:{app_data_dir}/data.db` (SQLite DB in app data dir)
-   - `PORT` → `3099`
-   - `current_dir` → app data directory
-4. Manages `ServerProcess` state (Mutex<Option<Child>>)
-5. On app exit (`RunEvent::Exit`): kills child process
+On app startup (release mode only), `start_backend_server()` performs **6 logged steps**:
+
+**Step 1 — Locate Node.js**: `find_node_executable()` probes paths.
+
+**Step 2 — Inspect version**: Logs `node -v` and `process.versions.modules` (NODE_MODULE_VERSION aka ABI).
+
+**Step 3 — Native module ABI rebuild**: The bundled `better-sqlite3` native addon was compiled on the CI runner (GitHub Actions). If the user's Node.js version differs, `better_sqlite3.node` fails with `NODE_MODULE_VERSION X vs Y`. The app detects this mismatch and auto-rebuilds:
+- Copies `better-sqlite3/` from the read-only app bundle to writable `{app_data_dir}/rebuilt-node-modules/node_modules/`
+- Runs `npm rebuild better-sqlite3` in that directory
+- Verifies the rebuilt addon's ABI matches the user's Node version
+- Prepends the rebuilt path to `NODE_PATH` so Node resolves it before the bundled copy
+
+**Step 4 — Log pipes**: Opens `server.log` for stdout/stderr capture.
+
+**Step 5 — Offline migration**: Runs `migrate-db.mjs` if `data.db` is new or empty (applies `schema.sql` via better-sqlite3).
+
+**Step 6 — Spawn Express server**: Child process with `NODE_PATH`, `DATABASE_URL=file:{data_dir}/data.db`, `PORT=3099`.
+
+**Logging**: Every step writes timestamped entries to `server-startup.log` in the app log directory (`~/Library/Logs/com.erdbuilderpro.app/` on macOS). This file survives across launches (appended, never truncated) so users can diagnose startup issues. The separate `server.log` captures the Node.js server's own stdout/stderr.
+
+**Dependencies**: `chrono = "0.4"` added to `Cargo.toml` for timestamp formatting in startup logs.
 
 The server auto-creates the SQLite database on first Prisma query.
 
@@ -2070,7 +2081,7 @@ The release job collects both DMGs from `dmg-output/` and generates a `latest.js
 | [`scripts/build-server.js`](./scripts/build-server.js) | esbuild server bundler + native module copier |
 | [`scripts/prepare-x64-native.sh`](./scripts/prepare-x64-native.sh) | Downloads x86_64 better-sqlite3 binary for cross-compilation |
 | [`src-tauri/tauri.conf.json`](./src-tauri/tauri.conf.json) | Tauri build config: beforeBuildCommand, resources |
-| [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: spawns Node.js server, kills on exit |
+| [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) | Rust entry: 6-step startup with ABI rebuild, spawns Node.js, logs to server-startup.log |
 | [`package.json`](./package.json) | Scripts: `build:server`, `build:desktop`, `dev:tauri` |
 | [`.github/workflows/build.yml`](./.github/workflows/build.yml) | CI/CD: matrix builds, artifact upload, release |
 
