@@ -53,6 +53,14 @@ fi
 
 export DB_VARIANT="$SCHEMA_VARIANT"
 
+# ── Regenerate Prisma client ──
+# Critical: the build stage generates the client for Supabase schema, but at
+# runtime we may need SQLite or local PG schema. Without regeneration, the
+# client will have the wrong User model (e.g. auth.users fields) causing
+# seed scripts and upsert queries to fail.
+echo "Regenerating Prisma client for ${SCHEMA_VARIANT} schema..."
+npx prisma generate
+
 # ── Check if database is already initialized ──
 # Skip prisma db push when tables already exist to avoid PostgreSQL internal
 # catalog conflict errors (P2002 on pg_type.typname + typnamespace).
