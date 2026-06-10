@@ -66,29 +66,55 @@ npx prisma generate
 # catalog conflict errors (P2002 on pg_type.typname + typnamespace).
 needs_migration=true
 if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
-  # SQLite: check if the data file already exists
   if [ -f "$DATA_DIR/erd-builder.db" ]; then
     echo "SQLite database already exists — skipping migration"
     needs_migration=false
   fi
 elif [ "$SCHEMA_VARIANT" = "pg" ]; then
-  # PostgreSQL: probe for users table using psql (installed in Dockerfile)
   if psql "$DATABASE_URL" -c "SELECT 1 FROM users LIMIT 1" >/dev/null 2>&1; then
     echo "PostgreSQL database already initialized — skipping migration"
     needs_migration=false
   fi
 fi
 
+# ── Start server in background ──
+# This is the KEY fix for Dokploy/Traefik Bad Gateway. By starting the Node
+# server BEFORE running prisma db push, port 3000 opens quickly and Traefik
+# can route traffic immediately. The health endpoint (/api/health) returns
+# OK without querying the database, so it works even before tables exist.
+echo "Starting server in background..."
+npm start &
+SERVER_PID=$!
+
+# Wait for server to be ready on port 3000
+echo "Waiting for server to accept connections..."
+for i in $(seq 1 90); do
+  if wget -q --spider http://localhost:3000/api/health 2>/dev/null; then
+    echo "Server is ready on port 3000"
+    break
+  fi
+  if [ "$i" -eq 90 ]; then
+    echo "WARNING: Server did not become ready within timeout"
+  fi
+  sleep 1
+done
+
+# ── Run migration ──
 if [ "$needs_migration" = true ]; then
   echo "Running Prisma schema migration for ${SCHEMA_VARIANT}..."
-  npx prisma db push --accept-data-loss
-  exit_code=$?
-  if [ $exit_code -ne 0 ]; then
-    # If migration fails but server might still work (e.g. pre-existing tables),
-    # log the warning and continue
-    echo "WARNING: Migration exit code ${exit_code}. Attempting to start server anyway."
-  fi
+  npx prisma db push --accept-data-loss || echo "WARNING: Migration failed, continuing anyway"
 fi
 
-echo "=== Entrypoint complete — starting server ==="
-exec "$@"
+# ── Seed initial data ──
+# Tables now exist (either from this deploy or a previous one). Run the seed
+# script which is fully idempotent — it checks if data already exists before
+# inserting. Safe to run on every deploy.
+echo "Seeding initial data..."
+npx tsx prisma/seed.sqlite.ts || echo "WARNING: Seeding failed (non-fatal)"
+
+# ── Handle Docker stop signals ──
+trap "echo 'Stopping server...'; kill $SERVER_PID 2>/dev/null; exit 0" SIGTERM SIGINT SIGQUIT
+
+echo "=== Entrypoint complete — server running on port 3000 ==="
+# Keep server running in foreground
+wait $SERVER_PID
