@@ -44,7 +44,7 @@ export interface GuestExportMessage {
   created_at?: string | null;
 }
 
-const GUEST_TYPES = ['notes', 'diagram', 'flowchart', 'drawing', 'project', 'ai_chat_session'] as const;
+const GUEST_TYPES = ['notes', 'erd', 'flowchart', 'drawings', 'project', 'ai_chat_session'] as const;
 type GuestResourceType = (typeof GUEST_TYPES)[number];
 
 /**
@@ -82,9 +82,9 @@ export async function buildExportPayload(): Promise<GuestExportPayload> {
   const [projects, notes, diagrams, flowcharts, drawings, sessions] = await Promise.all([
     collectResources('project'),
     collectResources('notes'),
-    collectResources('diagram'),
+    collectResources('erd'),
     collectResources('flowchart'),
-    collectResources('drawing'),
+    collectResources('drawings'),
     collectResources('ai_chat_session'),
   ]);
 

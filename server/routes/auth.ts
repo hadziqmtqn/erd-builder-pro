@@ -16,8 +16,8 @@ import {
 const router = Router();
 
 /** Desktop default credentials — embedded in the bundled app, not a secret. */
-const DESKTOP_DEFAULT_EMAIL = "local@desktop.dev";
-const DESKTOP_DEFAULT_PASSWORD = "desktop-local-pass";
+const DESKTOP_DEFAULT_EMAIL = "admin@local.dev";
+const DESKTOP_DEFAULT_PASSWORD = "admin123";
 
 // Auth Config (Public)
 router.get("/auth-config", (req: ExpressRequest, res: ExpressResponse) => {
@@ -205,7 +205,7 @@ async function ensureDesktopUser(): Promise<{ user: any; token: string } | null>
       user = await prisma.user.create({
         data: {
           email: DESKTOP_DEFAULT_EMAIL,
-          name: "Local User",
+          name: "Admin",
           password: hashPassword(DESKTOP_DEFAULT_PASSWORD),
         } as any,
       });
@@ -259,23 +259,25 @@ router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
         }
       }
 
-      // 2. No valid session → auto-login (desktop single-user mode)
-      const result = await ensureDesktopUser();
-      if (result) {
-        const isProd = process.env.NODE_ENV === "production";
-        const isSecure = isProd && req.protocol === 'https';
-        res.cookie("token", result.token, {
-          httpOnly: !isDesktopMode(),
-          secure: isSecure,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
-        return res.json({
-          authenticated: true,
-          token: result.token,
-          user: result.user,
-        });
+      // 2. No valid session → auto-login (desktop only — web PG shows login form)
+      if (isDesktopMode()) {
+        const result = await ensureDesktopUser();
+        if (result) {
+          const isProd = process.env.NODE_ENV === "production";
+          const isSecure = isProd && req.protocol === 'https';
+          res.cookie("token", result.token, {
+            httpOnly: !isDesktopMode(),
+            secure: isSecure,
+            sameSite: "lax",
+            path: "/",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+          });
+          return res.json({
+            authenticated: true,
+            token: result.token,
+            user: result.user,
+          });
+        }
       }
 
       return res.json({ authenticated: false });
