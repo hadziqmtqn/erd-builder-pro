@@ -30,8 +30,8 @@ async function main() {
   console.log(`Seeding ${dbType} database...`);
 
   // ── Admin user ──
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@local.dev';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminEmail = 'admin@local.dev';
+  const adminPassword = 'admin123';
   const hashedPassword = hashPassword(adminPassword);
 
   const admin = await prisma.user.upsert({

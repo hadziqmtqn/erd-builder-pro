@@ -2,11 +2,12 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { randomBytes, scryptSync } from "node:crypto";
 import app from "./index.js";
 import { backfillUids } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
-import { isDesktopMode } from "./lib/config.js";
+import { isDesktopMode, useLocalAuth } from "./lib/config.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
@@ -180,6 +181,34 @@ async function startup(): Promise<void> {
   // Seed default AI data for desktop mode (providers, models, system prompts).
   // Safe to call every startup — seedAIProviders checks if data already exists.
   await seedAIProviders();
+
+  // Seed admin user for local auth modes (both SQLite and local PostgreSQL).
+  // This runs at startup so the user exists immediately — no need to wait
+  // for the first browser request to /api/me. Credentials match the seed
+  // script and ensureDesktopUser() in auth.ts.
+  if (useLocalAuth() && prisma) {
+    try {
+      const adminEmail = "admin@local.dev";
+      const adminPassword = "admin123";
+      const existing = await prisma.user.findFirst({
+        where: { email: adminEmail } as any,
+      });
+      if (!existing) {
+        const salt = randomBytes(16).toString("hex");
+        const hash = scryptSync(adminPassword, salt, 64).toString("hex");
+        await prisma.user.create({
+          data: {
+            email: adminEmail,
+            name: "Admin",
+            password: `${salt}:${hash}`,
+          } as any,
+        });
+        logger.info({ email: adminEmail }, "Admin user created during startup");
+      }
+    } catch (err) {
+      logger.warn({ err }, "Failed to ensure admin user (non-fatal)");
+    }
+  }
 
   try {
     await backfillUids();

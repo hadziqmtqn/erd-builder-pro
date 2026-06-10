@@ -70,7 +70,7 @@ npm run clean      # Remove dist/
 
 - **Read [`AGENTS.md`](./AGENTS.md)** — contains agent memory about architecture, patterns, bug fixes, and technical decisions. Must be read before making changes.
 - **Understand Guest Mode**: All data hooks (`useNotes`, `useDiagrams`, `useFlowcharts`, `useDrawings`, `useTrash`, `useProjects`, `useAIChat`) use the `isGuestCheck()` pattern — `isGuestRef.current || sessionStorage.getItem('auth_mode') === 'guest'`. Never use raw `if (isGuest)` — it causes stale closures on initial render.
-- **Auth is Supabase-only**: the server verifies Supabase session JWTs from the `httpOnly` `token` cookie. Do not add local `JWT_SECRET`, `ADMIN_EMAIL`, or `ADMIN_PASSWORD` assumptions back into new code.
+- **Auth is Supabase-only**: the server verifies Supabase session JWTs from the `httpOnly` `token` cookie. Do not add local `JWT_SECRET` or custom credential env var assumptions back into new code.
 - **Keep AGENTS.md updated**: After completing a feature/fix, update `AGENTS.md` with any relevant new patterns.
 
 ## Code Style
