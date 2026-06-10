@@ -30,11 +30,7 @@ jobs:
           - os: windows-latest
             platform: windows
           - os: macos-latest
-            platform: macos-aarch64
-            rust_target: aarch64-apple-darwin
-          - os: macos-13
-            platform: macos-x64
-            rust_target: x86_64-apple-darwin
+            platform: macos
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -57,7 +53,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target || '' }}
+          targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -75,46 +71,68 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev
 
-      - name: Build Tauri app
+      - name: Build Tauri app (Linux/Windows)
+        if: matrix.platform != 'macos'
         shell: bash
-        run: |
-          if [ -n "${{ matrix.rust_target }}" ]; then
-            npx tauri build --target ${{ matrix.rust_target }}
-          else
-            npx tauri build
-          fi
+        run: npx tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Rename and collect macOS DMG + signature
-        if: startsWith(matrix.platform, 'macos-')
+      # macOS: build ARM64 first, then rebuild native modules for x86_64, then cross-compile
+      - name: Build Tauri app (ARM64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: npx tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Rebuild better-sqlite3 for x86_64
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: npm_config_arch=x64 npm rebuild better-sqlite3
+
+      - name: Build Tauri app (x86_64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: npx tauri build --target x86_64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Rename and collect macOS DMGs + signatures
+        if: matrix.platform == 'macos'
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          if [ "${{ matrix.platform }}" = "macos-aarch64" ]; then
-            ARCH_SUFFIX="aarch64"
-          else
-            ARCH_SUFFIX="x86_64"
-          fi
-          TARGET_DIR="src-tauri/target/${{ matrix.rust_target }}"
           mkdir -p dmg-output
-          cp "${TARGET_DIR}/release/bundle/dmg"/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_${ARCH_SUFFIX}.dmg"
-          if ls "${TARGET_DIR}/release"/*.sig 2>/dev/null; then
-            cp "${TARGET_DIR}/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_${ARCH_SUFFIX}.dmg.sig" 2>/dev/null || true
+
+          # ARM64 DMG (default target)
+          cp "src-tauri/target/release/bundle/dmg"/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
+          if ls "src-tauri/target/release"/*.sig 2>/dev/null; then
+            cp "src-tauri/target/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
           fi
-          echo "Collected ${ARCH_SUFFIX} DMG to dmg-output/"
+
+          # x86_64 DMG (cross-compiled)
+          cp "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+          if ls "src-tauri/target/x86_64-apple-darwin/release"/*.sig 2>/dev/null; then
+            cp "src-tauri/target/x86_64-apple-darwin/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
+          fi
+
+          echo "Collected DMGs to dmg-output/:"
+          ls -la dmg-output/
 
       - name: Upload macOS artifacts
-        if: startsWith(matrix.platform, 'macos-')
+        if: matrix.platform == 'macos'
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.platform }}
+          name: build-macos
           path: dmg-output/
           if-no-files-found: error
 
       - name: Upload Linux/Windows artifacts
-        if: ${{ !startsWith(matrix.platform, 'macos-') }}
+        if: matrix.platform != 'macos'
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.platform }}
@@ -187,9 +205,9 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-          # Find signature files from separate macOS runner artifacts
-          ARM_SIG_FILE=$(find artifacts/build-macos-aarch64 -name "*.dmg.sig" 2>/dev/null | head -1)
-          INTEL_SIG_FILE=$(find artifacts/build-macos-x64 -name "*.dmg.sig" 2>/dev/null | head -1)
+          # Find signature files from macOS artifact (single dir with both DMGs)
+          ARM_SIG_FILE=$(find artifacts/build-macos -name "*aarch64*.sig" 2>/dev/null | head -1)
+          INTEL_SIG_FILE=$(find artifacts/build-macos -name "*x86_64*.sig" 2>/dev/null | head -1)
 
           ARM_SIG=""
           INTEL_SIG=""
@@ -244,8 +262,8 @@ jobs:
             artifacts/build-windows/**/*.msi
             artifacts/build-windows/**/*.msi.zip
             artifacts/build-windows/**/*.sig
-            artifacts/build-macos-aarch64/*_aarch64.dmg
-            artifacts/build-macos-aarch64/*_aarch64.dmg.sig
-            artifacts/build-macos-x64/*_x86_64.dmg
-            artifacts/build-macos-x64/*_x86_64.dmg.sig
+            artifacts/build-macos/*_aarch64.dmg
+            artifacts/build-macos/*_aarch64.dmg.sig
+            artifacts/build-macos/*_x86_64.dmg
+            artifacts/build-macos/*_x86_64.dmg.sig
             latest.json
