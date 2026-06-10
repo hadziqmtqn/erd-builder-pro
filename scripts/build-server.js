@@ -17,7 +17,7 @@
  */
 
 import { build } from "esbuild";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -195,6 +195,43 @@ async function main() {
   // Then the externals — their transitive deps are pulled in recursively
   for (const ext of EXTERNAL) {
     copyPackage(ext);
+  }
+
+  // 2.5 Copy .bin entries needed for native module rebuild at runtime.
+  // When the user's Node.js version differs from CI (e.g. CI has Node 22,
+  // user has Node 25), the ABI rebuild step in lib.rs runs
+  // `prebuild-install` (via `npm rebuild better-sqlite3`) to download the
+  // correct prebuilt binary. The `prebuild-install` CLI binary must be on
+  // PATH for npm's install script to find it.
+  const nmOutBin = resolve(nmOut, ".bin");
+  const srcBinDir = resolve(nmOut, "..", ".bin");
+  mkdirSync(nmOutBin, { recursive: true });
+  const neededBins = ["prebuild-install"];
+  for (const binName of neededBins) {
+    const srcBin = resolve(srcBinDir, binName);
+    if (existsSync(srcBin)) {
+      // Read the symlink target (e.g. "../prebuild-install/bin.js")
+      // and create an equivalent symlink in the output.
+      // macOS/linux: symlinks work natively.
+      // Windows: requires developer mode but this code path is only
+      // relevant for macOS desktop (native module ABI mismatch).
+      const target = readlinkSync(srcBin, "utf8");
+      const destBin = resolve(nmOutBin, binName);
+      try {
+        symlinkSync(target, destBin);
+        console.log(`   → .bin/${binName} -> ${target}`);
+      } catch (err) {
+        // Fallback: copy the target file directly (lib.rs PATH includes the
+        // .bin dir, so we need the executable to be there somehow)
+        const targetFile = resolve(srcBinDir, "..", target);
+        if (existsSync(targetFile)) {
+          copyFileSync(targetFile, destBin);
+          console.log(`   → .bin/${binName} (file copy, no symlink)`);
+        }
+      }
+    } else {
+      console.warn(`   ⚠️  .bin/${binName} not found in source node_modules`);
+    }
   }
 
   // 3. Copy Prisma schema files (needed by the Prisma engine)
