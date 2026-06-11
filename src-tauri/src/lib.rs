@@ -300,21 +300,17 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     .unwrap_or_else(|| std::path::PathBuf::from("/usr/local/bin"));
 
   let mut node_path = bundled_nm.to_string_lossy().to_string();
-  // Rebuild needed when:
-  //  - require() failed (ABI mismatch) OR bundled version differs from user's
-  //  - AND user version is known (not empty)
-  //  - AND bundled module file exists (not "missing")
-  let needs_rebuild = bundled_mod_version != "missing"
-    && !user_mod_version.is_empty()
-    && (!bundled_require_ok || bundled_mod_version != user_mod_version);
+  // Rebuild needed ONLY when the bundled native addon fails to load.
+  // `require()` success is the real ABI compatibility test — it throws
+  // `ERR_DLOPEN_FAILED` with "compiled against different Node version"
+  // on ABI mismatch. Checking `.versions.modules` is unreliable because
+  // better-sqlite3 does NOT expose that property on the binding object.
+  let needs_rebuild = bundled_bs3_binding.exists() && !bundled_require_ok;
 
   if needs_rebuild {
     startup_log(
       &log_dir,
-      &format!(
-        "Step 3a: ABI MISMATCH — bundled={} user={}. Rebuilding native modules…",
-        bundled_mod_version, user_mod_version
-      ),
+      "Step 3a: ABI MISMATCH — bundled better-sqlite3 failed to load. Rebuilding native modules…",
     );
 
     let rebuild_dir = app_cache_dir.join("rebuilt-node-modules");
@@ -434,14 +430,14 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
           // ── Verification ──────────────────────────────────────
           if rebuild_ok {
-            // Verify the rebuilt addon's ABI matches user's Node
+            // Verify the rebuilt addon loads successfully
             let rebuilt_bs3_path = rebuild_nm.join("better-sqlite3/build/Release/better_sqlite3.node");
             if rebuilt_bs3_path.exists() {
-              let rebuilt_mod = String::from_utf8_lossy(
+              let rebuilt_check = String::from_utf8_lossy(
                 &Command::new(&node_bin)
                   .arg("-e")
                   .arg(&format!(
-                    "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
+                    "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL')}}",
                     rebuilt_bs3_path.display()
                   ))
                   .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
@@ -452,13 +448,13 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
               .trim()
               .to_string();
 
-              startup_log(&log_dir, &format!("  rebuilt MODULE_VERSION: {}", rebuilt_mod));
+              startup_log(&log_dir, &format!("  rebuilt load check: {}", rebuilt_check));
 
-              if rebuilt_mod == user_mod_version {
+              if rebuilt_check == "LOAD_OK" {
                 node_path = format!("{}:{}", rebuild_nm.to_string_lossy().to_string(), node_path);
                 startup_log(&log_dir, "  SUCCESS: Native module rebuilt for user's Node.js version");
               } else {
-                startup_log(&log_dir, "  WARNING: Rebuilt module ABI mismatch persists. Server may fail.");
+                startup_log(&log_dir, "  WARNING: Rebuilt module still fails to load. Server may fail.");
               }
             } else {
               startup_log(&log_dir, "  WARNING: Rebuild claimed success but .node file not found at expected path");
