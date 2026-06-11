@@ -156,9 +156,34 @@ async function ensureDatabaseTables(): Promise<boolean> {
   return true;
 }
 
-// Ensure tables exist before backfill (critical for fresh desktop installs).
-// MUST be awaited before app.listen() to prevent login race condition.
-// Startup sequence with robust DB readiness check
+// Start the HTTP server immediately so the frontend can connect.
+// DB init, seeding, and backfill run AFTER listen() — the frontend polls
+// /api/me which will return { db_ready: false } until initialization completes.
+// This prevents the eternal "Connecting..." spinner on first launch.
+//
+// STATIC FILES MUST BE SERVED BEFORE DB INIT.
+// Vite HashRouter needs index.html for all routes. If static middleware isn't
+// registered yet, the frontend SPA can't load (GET / returns 404 from Express
+// default handler) — user sees blank white screen, never gets to "Connecting...".
+if (isProd) {
+  const distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    console.log(`Serving static files from: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get("*", (req, res, next) => {
+      // Only serve index.html for HTML requests (not API calls)
+      if (req.path.startsWith("/api/")) return next();
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+}
+
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`Server running on http://localhost:${PORT} [${isProd ? "production" : "development"}]`);
+});
+
+// ── Async background initialization (non-blocking) ──
+
 async function startup(): Promise<void> {
   // Desktop mode only: retry DB readiness in case offline migration hasn't run yet
   // (SQLite file may not be ready immediately on first launch)
@@ -173,8 +198,9 @@ async function startup(): Promise<void> {
       await sleep(1000);
     }
     if (!ready) {
-      logger.error("Database readiness not achieved within timeout. Exiting.");
-      process.exit(1);
+      logger.error("Database readiness not achieved within timeout. Using fallback mode.");
+      // DO NOT exit — frontend will show graceful error via /api/me dbReady check.
+      return;
     }
   }
 
@@ -212,27 +238,23 @@ async function startup(): Promise<void> {
 
   try {
     await backfillUids();
+    // Set dbReady flag after all init steps complete successfully.
+    // /api/me checks this flag — while false, frontend shows "Preparing…"
+    // instead of treating the server as not-yet-ready.
+    dbReady = true;
+    console.log("[startup] Database initialization complete. /api/me will return authenticated.");
   } catch (err) {
     logger.error({ err }, "Failed to backfill uids");
   }
+}
 
-  if (isProd) {
-    const distPath = path.join(process.cwd(), "dist");
-    if (fs.existsSync(distPath)) {
-      console.log(`Serving static files from: ${distPath}`);
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-    }
-  }
-
-  app.listen(PORT, "127.0.0.1", () => {
-    console.log(`Server running on http://localhost:${PORT} [${isProd ? "production" : "development"}]`);
-  });
+// /api/me checks this flag. `true` only after ensureDatabaseTables +
+// seedAIProviders + backfillUids all succeed.
+let dbReady = false;
+export function isDbReady(): boolean {
+  return dbReady;
 }
 
 startup().catch((err) => {
   logger.error({ err }, "Startup failed");
-  process.exit(1);
 });

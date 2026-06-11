@@ -17,7 +17,7 @@
  */
 
 import { build } from "esbuild";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
@@ -210,27 +210,37 @@ async function main() {
   for (const binName of neededBins) {
     const srcBin = resolve(srcBinDir, binName);
     if (existsSync(srcBin)) {
-      // Read the symlink target (e.g. "../prebuild-install/bin.js")
-      // and create an equivalent symlink in the output.
-      // macOS/linux: symlinks work natively.
-      // Windows: requires developer mode but this code path is only
-      // relevant for macOS desktop (native module ABI mismatch).
-      const target = readlinkSync(srcBin, "utf8");
       const destBin = resolve(nmOutBin, binName);
-      try {
-        symlinkSync(target, destBin);
-        console.log(`   → .bin/${binName} -> ${target}`);
-      } catch (err) {
-        // Fallback: copy the target file directly (lib.rs PATH includes the
-        // .bin dir, so we need the executable to be there somehow)
-        const targetFile = resolve(srcBinDir, "..", target);
-        if (existsSync(targetFile)) {
-          copyFileSync(targetFile, destBin);
-          console.log(`   → .bin/${binName} (file copy, no symlink)`);
+      const stat = lstatSync(srcBin);
+      if (stat.isSymbolicLink()) {
+        // macOS/Linux: resolve symlink target and recreate in output
+        const target = readlinkSync(srcBin, "utf8");
+        try {
+          symlinkSync(target, destBin);
+          console.log(`   → .bin/${binName} -> ${target}`);
+        } catch {
+          const targetFile = resolve(srcBinDir, "..", target);
+          if (existsSync(targetFile)) {
+            copyFileSync(targetFile, destBin);
+            console.log(`   → .bin/${binName} (file copy fallback)`);
+          }
         }
+      } else {
+        // Windows: .bin entries are .cmd/.ps1 shims, not symlinks.
+        // Copy the shim file directly so npm rebuild can find prebuild-install.
+        copyFileSync(srcBin, destBin);
+        console.log(`   → .bin/${binName} (shim copy, not a symlink)`);
       }
     } else {
-      console.warn(`   ⚠️  .bin/${binName} not found in source node_modules`);
+      // Windows: npm may use .cmd extension. Try that as fallback.
+      const srcBinCmd = resolve(srcBinDir, binName + ".cmd");
+      if (existsSync(srcBinCmd)) {
+        const destBinCmd = resolve(nmOutBin, binName + ".cmd");
+        copyFileSync(srcBinCmd, destBinCmd);
+        console.log(`   → .bin/${binName}.cmd (Windows shim)`);
+      } else {
+        console.warn(`   ⚠️  .bin/${binName} not found in source node_modules`);
+      }
     }
   }
 
@@ -255,8 +265,10 @@ async function main() {
   try {
     // prisma outputs the SQL to stdout; warnings go to stderr (discarded).
     // execSync with encoding='utf8' returns stdout as a plain string directly
+    const isWin = process.platform === "win32";
+    const redirect = isWin ? "2>NUL" : "2>/dev/null";
     const result = execSync(
-      `npx prisma migrate diff --from-empty --to-schema "${prismaSchemaSrc}" --script 2>/dev/null`,
+      `npx prisma migrate diff --from-empty --to-schema "${prismaSchemaSrc}" --script ${redirect}`,
       { cwd: ROOT, encoding: "utf8", shell: true, timeout: 30000 }
     );
     schemaSql = (typeof result === "string" ? result : result.stdout || "").trim();
