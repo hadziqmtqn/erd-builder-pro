@@ -48,20 +48,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clearAuthToken();
         }
       } else if (res.status === 503) {
-        // Database still initializing (desktop mode) — retry, don't mark as unauthenticated.
-        // The server returned { db_ready: false }, keep the spinner going.
+        // Database still initializing (desktop mode) — retry if transient.
+        // If server signals db_error:true, the failure is permanent (ABI mismatch).
+        const body = await res.json().catch(() => ({}));
+        if (body.db_error) {
+          console.error('[checkAuth] Permanent database error:', body.message);
+          setIsAuthenticated(false);
+          setIsGuest(false);
+          setUser(null);
+          clearAuthToken();
+          return;
+        }
         if (retryRef.current === 0) {
           console.log('[checkAuth] Database not ready yet, retrying…');
         }
         const isTauri = typeof window !== 'undefined' &&
           !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
-        if (isTauri && retryRef.current < 120) {
+        if (isTauri && retryRef.current < 30) {
           retryRef.current++;
           const delay = Math.min(1500 * Math.pow(1.3, retryRef.current - 1), 5000);
           setTimeout(() => checkAuth(), delay);
           return;
         }
-        // After 120 retries (~5 min), fall through to error state
+        // After 30 retries (~60s), fall through to error state
         setIsAuthenticated(false);
         setIsGuest(false);
         setUser(null);

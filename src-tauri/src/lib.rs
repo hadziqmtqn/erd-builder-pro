@@ -324,6 +324,10 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     // Remove any stale previous rebuild
     let _ = std::fs::remove_dir_all(&rebuild_dir);
 
+    // CRITICAL: Modern npm (>= 10) refuses to run `rebuild` without a
+    // package.json in the CWD. Create a minimal one for the fallback path.
+    let _ = std::fs::write(rebuild_dir.join("package.json"), "{ \"private\": true, \"description\": \"temp\" }\n");
+
     if let Err(e) = std::fs::create_dir_all(&rebuild_nm) {
       startup_log(&log_dir, &format!("  ERROR creating rebuild dir: {}", e));
     } else {
@@ -334,16 +338,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
         if let Err(e) = copy_dir_recursive(&src_bs3, &rebuild_bs3) {
           startup_log(&log_dir, &format!("  ERROR copying better-sqlite3: {}", e));
         } else {
-          startup_log(&log_dir, "  Copy complete. Running npm rebuild…");
-
-          // CRITICAL: When launched from Finder/Dock, the PATH environment
-          // variable is minimal (/usr/bin:/bin). npm needs node on PATH to
-          // run its rebuild scripts. We set both PATH and the npm-specific
-          // config so child processes can find node regardless of context.
-          // Also add bundled node_modules/.bin so `prebuild-install` binary
-          // (needed by better-sqlite3's install script) is found on PATH —
-          // without it, npm falls back to node-gyp which fails to compile
-          // against Node 25+ headers (C++20 syntax in v8 headers).
+          // Build PATH for child processes (npm, prebuild-install)
           let bin_dir = bundled_nm.join(".bin").to_string_lossy().to_string();
           let extra_path = format!("{}:{}", node_parent.to_string_lossy(), bin_dir);
           let current_path = std::env::var("PATH").unwrap_or_default();
@@ -355,69 +350,123 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
             current_path
           };
 
-          let npm_bin = node_parent.join("npm");
-          let npm_cmd = if npm_bin.exists() { &npm_bin } else { std::path::Path::new("npm") };
+          // ── Attempt 1: prebuild-install directly ──────────────
+          // Preferred path — doesn't need npm on PATH, no package.json
+          // validation. `prebuild-install` is shipped in bundled
+          // node_modules (build-server.js copies it + transitive deps).
+          let prebuild_cli = bundled_nm.join("prebuild-install/cli.js");
+          let mut rebuild_ok = false;
 
-          startup_log(&log_dir, &format!("  npm binary: {}", npm_cmd.display()));
-          startup_log(&log_dir, &format!("  rebuild PATH: {}", rebuild_path));
+          if prebuild_cli.exists() {
+            startup_log(&log_dir, "  Attempt 1: prebuild-install directly…");
+            let pbi_result = Command::new(&node_bin)
+              .arg(&prebuild_cli)
+              .current_dir(&rebuild_bs3)
+              .env("NODE_PATH", &node_path)
+              .env("PATH", &rebuild_path)
+              .env("npm_config_node_execpath", &node_bin)
+              .output();
 
-          let mut rebuild_cmd = Command::new(npm_cmd);
-          rebuild_cmd
-            .arg("rebuild")
-            .arg("better-sqlite3")
-            .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
-            .env("PATH", &rebuild_path)
-            .env("npm_config_node_execpath", &node_bin)
-            .current_dir(&rebuild_dir);
-
-          let rebuild_result = rebuild_cmd.output();
-
-          match rebuild_result {
-            Ok(output) => {
-              let stdout = String::from_utf8_lossy(&output.stdout);
-              let stderr = String::from_utf8_lossy(&output.stderr);
-              startup_log(&log_dir, &format!("  rebuild exit: {:?}", output.status.code()));
-              if !stdout.trim().is_empty() {
-                startup_log(&log_dir, &format!("  rebuild stdout: {}", stdout.trim()));
-              }
-              if !stderr.trim().is_empty() {
-                startup_log(&log_dir, &format!("  rebuild stderr: {}", stderr.trim()));
-              }
-
-              if output.status.success() {
-                // Verify the rebuilt addon's ABI now matches
-                let rebuilt_bs3 = rebuild_nm.join("better-sqlite3/build/Release/better_sqlite3.node");
-                let rebuilt_mod = String::from_utf8_lossy(
-                  &Command::new(&node_bin)
-                    .arg("-e")
-                    .arg(&format!(
-                      "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
-                      rebuilt_bs3.display()
-                    ))
-                    .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
-                    .output()
-                    .map(|o| o.stdout)
-                    .unwrap_or_default(),
-                )
-                .trim()
-                .to_string();
-
-                startup_log(&log_dir, &format!("  rebuilt MODULE_VERSION: {}", rebuilt_mod));
-
-                if rebuilt_mod == user_mod_version {
-                  // Success — prepend rebuilt path to NODE_PATH
-                  node_path = format!("{}:{}", rebuild_nm.to_string_lossy().to_string(), node_path);
-                  startup_log(&log_dir, "  SUCCESS: Native module rebuilt for user's Node.js version");
-                } else {
-                  startup_log(&log_dir, "  WARNING: Rebuilt module ABI still doesn't match. Server may fail.");
+            match pbi_result {
+              Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                startup_log(&log_dir, &format!("  prebuild-install exit: {:?}", out.status.code()));
+                if !stdout.trim().is_empty() {
+                  startup_log(&log_dir, &format!("  prebuild-install stdout: {}", stdout.trim().lines().last().unwrap_or("")));
                 }
-              } else {
-                startup_log(&log_dir, "  WARNING: npm rebuild failed. Server may not start.");
+                if !stderr.trim().is_empty() {
+                  let last_line = stderr.trim().lines().last().unwrap_or("");
+                  if !last_line.is_empty() {
+                    startup_log(&log_dir, &format!("  prebuild-install stderr: {}", last_line));
+                  }
+                }
+                rebuild_ok = out.status.success();
+              }
+              Err(e) => {
+                startup_log(&log_dir, &format!("  ERROR spawning prebuild-install: {}", e));
               }
             }
-            Err(e) => {
-              startup_log(&log_dir, &format!("  ERROR running npm rebuild: {}", e));
+          } else {
+            startup_log(&log_dir, "  prebuild-install not found in bundled node_modules");
+          }
+
+          // ── Attempt 2: npm rebuild (fallback) ─────────────────
+          if !rebuild_ok {
+            let npm_bin = node_parent.join("npm");
+            let npm_cmd = if npm_bin.exists() {
+              npm_bin.to_string_lossy().to_string()
+            } else {
+              "npm".to_string()
+            };
+
+            startup_log(&log_dir, &format!("  Attempt 2: npm rebuild (binary: {})…", npm_cmd));
+
+            let mut rebuild_cmd = Command::new(&npm_cmd);
+            rebuild_cmd
+              .arg("rebuild")
+              .arg("better-sqlite3")
+              .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
+              .env("PATH", &rebuild_path)
+              .env("npm_config_node_execpath", &node_bin)
+              .current_dir(&rebuild_dir);
+
+            let npm_result = rebuild_cmd.output();
+
+            match npm_result {
+              Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                startup_log(&log_dir, &format!("  npm rebuild exit: {:?}", output.status.code()));
+                if !stdout.trim().is_empty() {
+                  startup_log(&log_dir, &format!("  npm rebuild stdout: {}", stdout.trim()));
+                }
+                if !stderr.trim().is_empty() {
+                  startup_log(&log_dir, &format!("  npm rebuild stderr: {}", stderr.trim()));
+                }
+                rebuild_ok = output.status.success();
+              }
+              Err(e) => {
+                startup_log(&log_dir, &format!("  ERROR running npm rebuild: {}", e));
+              }
             }
+          }
+
+          // ── Verification ──────────────────────────────────────
+          if rebuild_ok {
+            // Verify the rebuilt addon's ABI matches user's Node
+            let rebuilt_bs3_path = rebuild_nm.join("better-sqlite3/build/Release/better_sqlite3.node");
+            if rebuilt_bs3_path.exists() {
+              let rebuilt_mod = String::from_utf8_lossy(
+                &Command::new(&node_bin)
+                  .arg("-e")
+                  .arg(&format!(
+                    "try{{console.log(require('{}').versions?.modules||'')}}catch(e){{console.log('unknown')}}",
+                    rebuilt_bs3_path.display()
+                  ))
+                  .env("NODE_PATH", rebuild_nm.to_string_lossy().to_string())
+                  .output()
+                  .map(|o| o.stdout)
+                  .unwrap_or_default(),
+              )
+              .trim()
+              .to_string();
+
+              startup_log(&log_dir, &format!("  rebuilt MODULE_VERSION: {}", rebuilt_mod));
+
+              if rebuilt_mod == user_mod_version {
+                node_path = format!("{}:{}", rebuild_nm.to_string_lossy().to_string(), node_path);
+                startup_log(&log_dir, "  SUCCESS: Native module rebuilt for user's Node.js version");
+              } else {
+                startup_log(&log_dir, "  WARNING: Rebuilt module ABI mismatch persists. Server may fail.");
+              }
+            } else {
+              startup_log(&log_dir, "  WARNING: Rebuild claimed success but .node file not found at expected path");
+            }
+          } else {
+            startup_log(&log_dir, "  FAILED: Both prebuild-install and npm rebuild failed.");
+            startup_log(&log_dir, "  Server will likely crash with better-sqlite3 load error.");
+            startup_log(&log_dir, "  Check ~/Library/Logs/com.erdbuilderpro.app/server.log for details.");
           }
         }
       } else {
