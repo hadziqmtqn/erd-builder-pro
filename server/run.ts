@@ -8,6 +8,7 @@ import { backfillUids } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
+import { setDbReady, setDbError } from "./lib/db-state.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
@@ -29,7 +30,7 @@ async function seedAIProviders(): Promise<void> {
     // ── AI Providers ──
     const providerDefs = [
       { name: "OpenAI", code: "openai", baseUrl: "https://api.openai.com/v1" },
-      { name: "Google Gemini", code: "gemini", baseUrl: null },
+      { name: "Google Gemini", code: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
       { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id" },
     ];
 
@@ -199,14 +200,9 @@ app.listen(PORT, "127.0.0.1", () => {
 //
 // When better-sqlite3 ABI mismatch makes prisma null:
 //   - ensureDatabaseTables() returns false immediately
-//   - dbReady stays false forever
+//   - dbReady stays false forever (managed via setDbReady/setDbError in db-state.ts)
 //   - /api/me returns { authenticated: false, db_error: true, message: "..." }
 //   - frontend shows error card instead of eternal "Connecting..."
-
-let dbReady = false;
-export function isDbReady(): boolean {
-  return dbReady;
-}
 
 async function startup(): Promise<void> {
   // Desktop: single DB readiness check (no retry — ABI mismatch won't heal)
@@ -221,7 +217,7 @@ async function startup(): Promise<void> {
   if (dbOk) {
     // DB is functional — signal /api/me to start responding immediately.
     // This gets the frontend past "Connecting..." while background init runs.
-    dbReady = true;
+    setDbReady();
     console.log("[startup] Database ready. /api/me will respond. Running background init...");
 
     // Fire-and-forget: seeding/backfill run after response path works.
@@ -237,6 +233,7 @@ async function startup(): Promise<void> {
     backfillUids().catch(err => logger.warn({ err }, "backfillUids failed (non-fatal)"));
   } else {
     logger.error("[startup] Database NOT ready. prisma is likely null (better-sqlite3 ABI mismatch). /api/me will return db_error.");
+    setDbError("better-sqlite3 native addon failed to load. See server-startup.log for details.");
     // dbReady stays false — frontend shows error after timeout.
   }
 }

@@ -48,7 +48,7 @@ async function main() {
   // ── AI Providers ──
   const providerDefs = [
     { name: 'OpenAI', code: 'openai', baseUrl: 'https://api.openai.com/v1' },
-    { name: 'Google Gemini', code: 'gemini', baseUrl: null },
+    { name: 'Google Gemini', code: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
     { name: 'OpenAI Compatible', code: 'openai_compatible', baseUrl: 'https://ai.paas.id' },
   ];
 

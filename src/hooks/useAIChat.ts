@@ -335,7 +335,7 @@ export function useAIChat(
     // ─── Build messages & call AI ─────────────────────
     try {
       // Resolve AI config — all modes now delegate config resolution to the proxy (avoids double Vercel cold start)
-      const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined } =
+      const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined; providerCode?: string } =
         { baseUrl: undefined, apiKey: undefined, model: undefined };
       const userId = isGuest ? undefined : auth.user?.id;
 
@@ -428,14 +428,15 @@ export function useAIChat(
       abortControllerRef.current = new AbortController();
       const accumulatedResponse = await callAiStream(
         config.baseUrl, config.apiKey, config.model, apiMessages, abortControllerRef.current.signal,
-        (token) => {
+        (token: string) => {
           setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last?.id === 'streaming') return [...prev.slice(0, -1), { ...last, content: last.content + token }];
             return prev;
           });
         },
-        userId
+        userId,
+        config.providerCode,
       );
 
       // Finalize message

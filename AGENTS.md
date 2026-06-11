@@ -1141,6 +1141,15 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/erd_builder_pro"
   - `npm run dev:client` → Vite frontend only (proxies `/api` to backend)
   - `npm run start` → production standalone (`server/run.ts`)
 
+- **`server/lib/db-state.ts`** ([`server/lib/db-state.ts`](./server/lib/db-state.ts)): shared DB readiness state extracted from `run.ts` to break circular dependency:
+  ```
+  server/dev.ts → index.ts → routes/auth.ts → X server/run.ts → index.ts (CIRCULAR!)
+  ```
+  `run.ts` imported `app` from `index.js` but was loaded (via `auth.ts`) before `index.ts` finished → `app` was `undefined` → `app.listen()` crashed.
+  - **Fix**: `dbReady` state + `isDbReady()`/`setDbReady()`/`setDbError()` extracted to `lib/db-state.ts` — **zero imports**, safe to load from any file.
+  - `auth.ts` imports `isDbReady` from `lib/db-state.js` instead of `../run.js`.
+  - `run.ts` imports `{ setDbReady, setDbError }` from `lib/db-state.js`.
+
 ## Shared Types
 
 - **`shared/types.ts`**: All TypeScript interfaces (Column, Entity, Diagram, Note, etc.) — single source of truth
@@ -1202,7 +1211,12 @@ Workspace/sidebar filtering menggunakan `project.uid` sebagai key identifier. Al
 - **Why proxy**: API key is not directly exposed to third-parties in browser DevTools. The key is sent in the POST body from client to server, then the server forwards to the provider.
 - **`res.on("close")` vs `req.on("close")`**: Use `res.on("close")` to detect client disconnect. `req.on("close")` fires prematurely when the POST body is finished reading by `express.json()`, which causes `AbortController.abort()` to be called before the fetch to the AI provider can connect.
 - **30s timeout**: Safety timeout to prevent the provider fetch from hanging forever.
+- **Provider-aware routing** (`ai.ts:97-130`): the proxy reads `providerCode` from the request body to select the correct provider endpoint:
+  - **Gemini** (`providerCode === "gemini"`): uses `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}` — auth via query param (`?key=`), no Bearer header. Falls back to URL pattern detection `(baseUrl || "").includes("generativelanguage.googleapis.com")`.
+  - **OpenAI / others**: uses `${baseUrl}/chat/completions` with `Authorization: Bearer ${apiKey}` header.
+- **Config endpoint** (`server/routes/ai-chat.ts:GET /config`): now returns `providerCode: config.provider?.code || "openai"` alongside `baseUrl` and `model` — enabling the frontend to pass `providerCode` through the entire chain (`resolveAiConfig` → `callAiStream` → proxy).
 - **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
+- **Chain**: `/api/ai/chat/config` → `resolveAiConfig` → `callAiStream` → `POST /api/ai/proxy` with `{ messages, model, apiKey, providerCode }`.
 
 ## AI Session UID Handling (SQLite vs PostgreSQL)
 
@@ -1229,6 +1243,40 @@ SQLite schema lacks `@default(uuid())` on `uid` columns → sessions created wit
 - [`server/routes/ai-settings.ts`](./server/routes/ai-settings.ts) masks `apiKey` as `'***'` in GET/POST `/configs` responses.
 - **Server-side guard**: `POST /configs` update/create branch ignores `api_key` if value is `'***'` — prevents accidentally overwriting the real key when user clicks Save without changing the field. Real key stays in DB.
 - **Test Connection moved server-side**: `POST /api/ai/settings/configs/test` endpoint at `ai-settings.ts` — reads real API key from DB, calls provider, returns success/failure. Frontend `handleTestConnection` in [`src/hooks/useAIProviders.ts`](./src/hooks/useAIProviders.ts) sends only `{ provider_code, model_identifier }`, no key in request body. Eliminates `Bearer ***` bug.
+
+### Base URL Field — Visible for All Providers
+
+- **Changed** ([`src/components/ai/APISettingsTab.tsx`](./src/components/ai/APISettingsTab.tsx), [`src/components/ai/ProviderConfigCard.tsx`](./src/components/ai/ProviderConfigCard.tsx)): Base URL text input shown for ALL providers, not just `openai_compatible`.
+- **Provider-aware placeholder**: a map object `{ openai: "https://api.openai.com/v1", gemini: "https://generativelanguage.googleapis.com/v1beta", openai_compatible: "https://your-custom-endpoint.com/v1" }` shows the correct default per provider.
+- **Why**: Users configuring Gemini or OpenAI with custom proxies/endpoints needed to override Base URL but the field was hidden for non-`openai_compatible` providers.
+- **Persistence fix** ([`src/hooks/useAIProviders.ts`](./src/hooks/useAIProviders.ts)): removed the `if (provider.code === 'openai_compatible' && ...)` guard from the payload builder — now sends `base_url` for ALL providers.
+
+### `apiKey` Nullable (Prisma Schema)
+
+- **All 3 schemas** ([`prisma/schema.prisma`](./prisma/schema.prisma), [`prisma/schema.pg.prisma`](./prisma/schema.pg.prisma), [`prisma/schema.sqlite.prisma`](./prisma/schema.sqlite.prisma)): `apiKey String` → `apiKey String?` (nullable).
+- **Why**: When saving AI config without changing the API Key, the client sends no `api_key` field (avoids sending `'***'`). Prisma's `create` branch was failing because `apiKey` was `NOT NULL` but the upsert payload had `apiKey: undefined` → Prisma defaulted `apiKey: null` → constraint violation.
+- **Also affects** the `'***'` skip pattern: if the user only changes Base URL (no API key change), the server upsert's `create` branch sees `apiKey: undefined` → Prisma sets `NULL` → now valid because column is nullable.
+
+### API Key `***` Client-Side Save Guard
+
+- [`src/hooks/useAIProviders.ts`](./src/hooks/useAIProviders.ts): `handleSaveConfig` payload builder now explicitly skips `api_key` from the request body when its value is `'***'`:
+  ```ts
+  if (api_key !== '***') payload.api_key = api_key;
+  ```
+  - **Server-side guard still in place** (see above) but client-side skip prevents unnecessary round-trip and avoids the `apiKey: null` path entirely on updates.
+  - **Edge case**: if ALL config fields are `'***'` (e.g. user opens modal, changes nothing, clicks Save), the payload is empty → server returns 400. Frontend `hasChanges` check should prevent this, but the guard is defense-in-depth.
+
+### Config Endpoint `providerCode` Return
+
+- `GET /api/ai/chat/config` ([`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts)): now returns `providerCode: config.provider?.code || "openai"` alongside `baseUrl` and `model`.
+- **Why**: The AI proxy (`server/routes/ai.ts`) needs `providerCode` to route requests correctly (Gemini uses query-param auth, OpenAI uses Bearer header). `resolveAiConfig` → `callAiStream` → proxy chain passes `providerCode` through to ensure correct endpoint/auth format.
+- **Frontend type**: `AiConfig` interface in [`src/hooks/aiChat/resolveAiConfig.ts`](./src/hooks/aiChat/resolveAiConfig.ts) now includes `providerCode?: string`.
+
+### `callAiStream` Argument Order
+
+- **Signature** ([`src/hooks/aiChat/callAiStream.ts`](./src/hooks/aiChat/callAiStream.ts)): `callAiStream(baseUrl, apiKey, model, messages, signal, onToken, userId?, providerCode?)`.
+- **Order**: `onToken` callback before `userId` before `providerCode`. Both `userId` and `providerCode` are optional.
+- **Bug fixed**: Previously `providerCode` was passed after `userId` but before `onToken` in `useAIChat.ts` — the signature had `onToken` as 7th param and `providerCode` as 8th, causing `providerCode` to be interpreted as `onToken` (a function) → runtime crash when trying to call it as a callback.
 
 ## @Mentions as Clickable Links in Chat
 

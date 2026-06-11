@@ -8,11 +8,12 @@ export async function callAiStream(
   signal: AbortSignal,
   onToken: (token: string) => void,
   userId?: string,
+  providerCode?: string,
 ): Promise<string> {
   const response = await apiFetch('/api/ai/proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, model, apiKey, baseUrl, userId }),
+    body: JSON.stringify({ messages, model, apiKey, baseUrl, userId, providerCode }),
     signal,
   });
 

@@ -85,6 +85,11 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
           });
           model = modelData?.modelIdentifier || "gpt-4o-mini";
         }
+
+        // Pass provider code from DB resolution to proxy routing
+        if (!req.body.providerCode && config.provider?.code) {
+          req.body.providerCode = config.provider.code;
+        }
       } catch (dbErr) {
         clearTimeout(timeout);
         logger.error({ err: dbErr }, "AI proxy: Failed to fetch default config:");
@@ -92,15 +97,38 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
       }
     }
 
-    const providerBaseUrl = baseUrl || "https://api.openai.com/v1";
-    const effectiveModel = model || "gpt-4o-mini";
+    // Re-read providerCode — may have been set by DB resolution above
+    const { providerCode } = req.body;
 
-    const response = await fetch(`${providerBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
+    const isGemini = providerCode === "gemini"
+      || (baseUrl || "").includes("generativelanguage.googleapis.com");
+
+    let providerBaseUrl: string;
+    let fetchUrl: string;
+    let fetchHeaders: Record<string, string>;
+
+    if (isGemini) {
+      // Google Gemini OpenAI-compatible endpoint
+      // Auth: x-goog-api-key header (Bearer also works but query param is most reliable)
+      providerBaseUrl = "https://generativelanguage.googleapis.com/v1beta";
+      fetchUrl = `${providerBaseUrl}/openai/chat/completions?key=${apiKey}`;
+      fetchHeaders = {
+        "Content-Type": "application/json",
+      };
+    } else {
+      providerBaseUrl = baseUrl || "https://api.openai.com/v1";
+      fetchUrl = `${providerBaseUrl}/chat/completions`;
+      fetchHeaders = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
-      },
+      };
+    }
+
+    const effectiveModel = model || "gpt-4o-mini";
+
+    const response = await fetch(fetchUrl, {
+      method: "POST",
+      headers: fetchHeaders,
       body: JSON.stringify({
         model: effectiveModel,
         messages,
