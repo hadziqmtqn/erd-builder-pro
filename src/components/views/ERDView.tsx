@@ -25,6 +25,7 @@ import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdAc
 import { toast } from 'sonner';
 import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { cn } from '@/lib/utils';
+import { useWorkspace } from '@/providers/WorkspaceContext';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -110,6 +111,8 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
   const { getViewport } = useReactFlow();
+  const { resolvedTheme } = useWorkspace();
+  const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
 
   // ─── Multi-table selection ───────────────────────────
   const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
@@ -473,11 +476,11 @@ const ERDViewComponent = ({
               <Plus className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Add Table</span>
             </Button>
-            <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+            <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
               <Upload className="w-3.5 h-3.5 sm:mr-1.5" />
               <span className="hidden sm:inline">Import SQL</span>
             </Button>
-            <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+            <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
               <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
               <span className="hidden sm:inline">Auto Layout</span>
             </Button>
@@ -612,7 +615,7 @@ const ERDViewComponent = ({
           onEdgeClick={onEdgeClick}
           onPaneClick={handlePaneClickLocal}
           onMove={onMove}
-          colorMode="dark"
+          colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
           nodesDraggable={!isReadOnly && !pendingDiff}
           nodesConnectable={!isReadOnly && !pendingDiff}
@@ -625,7 +628,7 @@ const ERDViewComponent = ({
           deleteKeyCode={null}
         >
 
-          <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
+          <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
           <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
       </div>
@@ -634,14 +637,14 @@ const ERDViewComponent = ({
       {pendingDiff && (
         <div className="absolute bottom-6 inset-x-0 z-50 flex flex-col items-center justify-center gap-2.5 pointer-events-none">
           {/* Main Diff Bar */}
-          <div className="flex items-center gap-4 p-2.5 bg-[#0f0f14]/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw]">
-            <div className="flex items-center gap-2 px-2.5 text-zinc-300">
+          <div className="flex items-center gap-4 p-2.5 bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw]">
+            <div className="flex items-center gap-2 px-2.5 text-foreground">
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">AI Schema Proposal</span>
-              <div className="h-4 w-px bg-white/10 mx-2" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">AI Schema Proposal</span>
+              <div className="h-4 w-px bg-border mx-2" />
               <div className="flex gap-2 text-[11px] font-bold">
                 {diffNewCount > 0 && (
                   <span className="text-emerald-400">{diffNewCount} New</span>
@@ -655,14 +658,14 @@ const ERDViewComponent = ({
               </div>
             </div>
 
-            <div className="h-6 w-px bg-white/10" />
+            <div className="h-6 w-px bg-border" />
 
             <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowChecklist(!showChecklist)}
-                className="h-8 px-3 bg-white/5 border-white/10 text-zinc-200 hover:text-white"
+                className="h-8 px-3 bg-muted border-border text-foreground hover:bg-muted/80"
               >
                 Review Changes
               </Button>
@@ -670,7 +673,7 @@ const ERDViewComponent = ({
                 variant="outline" 
                 size="sm" 
                 onClick={handleRejectAll}
-                className="h-8 px-3 text-red-400 border-red-950/50 bg-red-950/20 hover:bg-red-950/40 hover:text-red-300 font-bold"
+                className="h-8 px-3 text-red-400 border-red-500/50 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 font-bold"
               >
                 Reject All
               </Button>
@@ -686,14 +689,14 @@ const ERDViewComponent = ({
 
           {/* Checklist Panel */}
           {showChecklist && (
-            <div className="w-[320px] bg-[#0f0f14]/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="w-[320px] bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Select tables to merge:</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Select tables to merge:</span>
                 <button 
                   onClick={() => {
                     setApprovedTableIds(approvedTableIds.length === allChangedIds.length ? [] : [...allChangedIds]);
                   }}
-                  className="text-[10px] text-zinc-500 hover:text-zinc-300 underline font-medium"
+                  className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline font-medium"
                 >
                   {approvedTableIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
                 </button>
@@ -710,9 +713,9 @@ const ERDViewComponent = ({
                       key={n.id} 
                       className={cn(
                         "flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all",
-                        isChecked 
-                          ? "bg-white/5 border-white/10 text-zinc-100" 
-                          : "bg-transparent border-transparent text-zinc-500 hover:text-zinc-300"
+                        isChecked
+                          ? "bg-muted border-border text-foreground"
+                          : "bg-transparent border-transparent text-muted-foreground hover:text-foreground"
                       )}
                     >
                       <div className="flex items-center gap-2.5">
@@ -726,7 +729,7 @@ const ERDViewComponent = ({
                                 : [...prev, n.id]
                             );
                           }}
-                          className="rounded border-white/10 bg-transparent text-emerald-500 focus:ring-0 cursor-pointer h-4 w-4"
+                          className="rounded border-border bg-transparent text-emerald-500 focus:ring-0 cursor-pointer h-4 w-4"
                         />
                         <span className="text-xs font-semibold">{label}</span>
                       </div>

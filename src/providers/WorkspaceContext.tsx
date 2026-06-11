@@ -157,6 +157,11 @@ export interface WorkspaceContextValue {
   settingsTab: string;
   setSettingsTab: (tab: string) => void;
 
+  // Theme
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  resolvedTheme: 'light' | 'dark';
+
   // Header
   handleHeaderDelete: () => void;
   handleHeaderRename: () => void;

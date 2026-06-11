@@ -110,7 +110,7 @@ export const TableDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          activeMainTab === 'schema' ? 'max-w-5xl bg-[#0f0f14] border-white/10 text-white shadow-2xl' : 'sm:max-w-sm'
+          activeMainTab === 'schema' ? 'max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl' : 'sm:max-w-sm'
         )}
         onDoubleClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -183,28 +183,28 @@ export const TableDialog = ({
                 </TabsList>
               </div>
 
-              <div className="p-0 overflow-hidden bg-[#050508] relative">
-                <div className="absolute top-4 right-6 px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-white/20 uppercase tracking-widest z-10">
+              <div className="p-0 overflow-hidden bg-muted relative">
+                <div className="absolute top-4 right-6 px-2 py-1 rounded bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground/20 uppercase tracking-widest z-10">
                   {currentLanguage}
                 </div>
 
                 {Object.entries(generatedCode).map(([key, code]) => (
                   <TabsContent key={key} value={key} className="mt-0">
                     <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                      <code className="text-white/90 block">{code}</code>
+                      <code className="text-foreground/90 block">{code}</code>
                     </pre>
                   </TabsContent>
                 ))}
               </div>
             </Tabs>
 
-            <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
+            <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
               <div className="flex items-center gap-2 mr-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={downloadFile}
-                  className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold"
+                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
                 >
                   <Download className="w-3.5 h-3.5 mr-2" />
                   Download
@@ -213,7 +213,7 @@ export const TableDialog = ({
                   variant="outline"
                   size="sm"
                   onClick={copyToClipboard}
-                  className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold min-w-[90px]"
+                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px]"
                 >
                   {copied ? (
                     <>
@@ -230,7 +230,7 @@ export const TableDialog = ({
               </div>
               <Button
                 onClick={() => onOpenChange(false)}
-                className="h-9 px-6 bg-white text-black hover:bg-white/90 font-bold"
+                className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
               >
                 Close
               </Button>

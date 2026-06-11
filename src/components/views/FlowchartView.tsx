@@ -407,7 +407,8 @@ export const FlowchartView = React.memo(({
   };
 
   // ── SVG Export ──
-  const { setFlowchartExportHandler } = useWorkspace();
+  const { setFlowchartExportHandler, resolvedTheme } = useWorkspace();
+  const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
 
   const getExportFilename = (suffix?: string) => {
     const base = activeFlowchart?.title?.replace(/[^a-zA-Z0-9_-]/g, '_') || 'flowchart';
@@ -768,13 +769,13 @@ export const FlowchartView = React.memo(({
               <>
                 <div className="w-px h-6 bg-border mx-0.5" />
                 <Select value={selectedGroup ?? ''} onValueChange={(val) => { setSelectedGroup(val || null); setSelectedNodeId(null); }}>
-                  <SelectTrigger className="h-9 min-w-[130px] border-none bg-transparent hover:bg-white/5 px-2 text-xs font-medium cursor-pointer [&>svg]:text-muted-foreground" title="Select a group to move">
+                  <SelectTrigger className="h-9 min-w-[130px] border-none bg-transparent hover:bg-muted px-2 text-xs font-medium cursor-pointer [&>svg]:text-muted-foreground" title="Select a group to move">
                     <Move className="w-3.5 h-3.5 mr-1 text-muted-foreground shrink-0" />
                     <SelectValue placeholder="Move Group" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a24] border-white/10 text-white min-w-[150px]">
+                  <SelectContent className="bg-popover border-border text-popover-foreground min-w-[150px]">
                     {canvasGroups.map((g) => (
-                      <SelectItem key={g} value={g} className="focus:bg-white/10 text-xs">{g}</SelectItem>
+                      <SelectItem key={g} value={g} className="focus:bg-muted text-xs">{g}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -782,7 +783,7 @@ export const FlowchartView = React.memo(({
             )}
             <>
               <div className="w-px h-6 bg-border mx-0.5" />
-              <Button onClick={handleAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold cursor-pointer">
+              <Button onClick={handleAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
                 <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Auto Layout</span>
               </Button>
@@ -821,7 +822,7 @@ export const FlowchartView = React.memo(({
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
           onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedGroup(null); }}
           fitView
-          colorMode="dark"
+          colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
           nodesDraggable={!isReadOnly}
           nodesConnectable={!isReadOnly}
@@ -831,7 +832,7 @@ export const FlowchartView = React.memo(({
           onMove={(e, v) => setViewport(v)}
         >
           <Controls className="bg-background/95 border-border shadow-md" showInteractive={!isReadOnly} />
-          <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
+          <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
         </ReactFlow>
         {groupBounds && (
           <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>

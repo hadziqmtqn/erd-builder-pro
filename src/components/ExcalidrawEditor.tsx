@@ -3,6 +3,7 @@ import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import { Drawing } from '../types';
 import { compressImage } from '../lib/image-compression';
 import { apiFetch } from '../lib/api';
+import { useWorkspace } from '../providers/WorkspaceContext';
 
 interface ExcalidrawEditorProps {
   drawing: Drawing;
@@ -13,6 +14,7 @@ interface ExcalidrawEditorProps {
 }
 
 export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false }: ExcalidrawEditorProps) {
+  const { resolvedTheme } = useWorkspace();
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const lastDataRef = useRef(drawing.data);
   const isReady = useRef(false);
@@ -328,7 +330,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
           excalidrawAPI={setExcalidrawAPI}
           initialData={initialData}
           onChange={handleChange}
-          theme="dark"
+          theme={resolvedTheme}
           UIOptions={uiOptions}
           viewModeEnabled={isReadOnly}
         >

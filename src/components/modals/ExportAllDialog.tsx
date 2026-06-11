@@ -120,13 +120,13 @@ export const ExportAllDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         size="2xl"
-        className="bg-[#0f0f14] border-white/10 text-white shadow-2xl"
+        className="bg-popover border-border text-popover-foreground shadow-2xl"
         onDoubleClick={(e) => e.stopPropagation()}
       >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
-          <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">
+          <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
             <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
-            <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
+            <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
               {nodes.length} tables · {edges.length} relationships
             </div>
 
@@ -151,7 +151,7 @@ export const ExportAllDialog = ({
             </TabsList>
           </DialogHeader>
 
-          <DialogBody className="p-0 bg-[#0d1117] relative flex-1 min-h-0 overflow-y-auto">
+          <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
             {isSchemaTab ? (
               <div className="h-full min-h-[300px]">
                 <CodeMirror
@@ -169,23 +169,23 @@ export const ExportAllDialog = ({
                     closeBrackets: false,
                     indentOnInput: false,
                   }}
-                  className="text-[13px] text-white/90 h-full"
+                  className="text-[13px] text-foreground/90 h-full"
                   style={{ minHeight: '300px' }}
                 />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full py-16 px-6 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-5">
+                <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center mb-5">
                   {activeTab === 'pdf' ? (
                     <FileText className="w-8 h-8 text-red-400" />
                   ) : (
                     <ImageIcon className="w-8 h-8 text-purple-400" />
                   )}
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">
+                <h3 className="text-lg font-bold text-foreground mb-2">
                   Export as {currentTab?.label}
                 </h3>
-                <p className="text-sm text-white/40 max-w-md mb-6">
+                <p className="text-sm text-muted-foreground/40 max-w-md mb-6">
                   Exports the entire ERD canvas as a{' '}
                   {activeTab === 'pdf' ? 'PDF document' : 'SVG image'}.
                   This feature generates a visual representation of all tables and
@@ -193,7 +193,7 @@ export const ExportAllDialog = ({
                 </p>
                 <Button
                   onClick={activeTab === 'pdf' ? onExportPDF : onExportImage}
-                  className="h-10 px-6 bg-white text-black hover:bg-white/90 font-bold gap-2"
+                  className="h-10 px-6 bg-primary text-primary-foreground hover:bg-primary/90 font-bold gap-2"
                 >
                   <Download className="w-4 h-4" />
                   Generate {currentTab?.label}
@@ -203,14 +203,14 @@ export const ExportAllDialog = ({
           </DialogBody>
 
           {isSchemaTab && (
-            <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
+            <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
               <div className="flex items-center gap-2 mr-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={downloadFile}
                   disabled={isDownloading}
-                  className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold"
+                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
                 >
                   {isDownloading ? (
                     <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
@@ -224,7 +224,7 @@ export const ExportAllDialog = ({
                   size="sm"
                   onClick={copyToClipboard}
                   disabled={!isSingleFile}
-                  className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold min-w-[90px] disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px] disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {copied ? (
                     <>
@@ -241,7 +241,7 @@ export const ExportAllDialog = ({
               </div>
               <Button
                 onClick={() => onOpenChange(false)}
-                className="h-9 px-6 bg-white text-black hover:bg-white/90 font-bold"
+                className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
               >
                 Close
               </Button>

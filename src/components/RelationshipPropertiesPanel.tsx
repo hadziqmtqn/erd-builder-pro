@@ -57,14 +57,14 @@ export default function RelationshipPropertiesPanel({
               if (type) onUpdateEdge(selectedEdge.id, type.shortLabel);
             }}
           >
-            <SelectTrigger className="w-full h-10 bg-background border-white/10 text-sm">
+            <SelectTrigger className="w-full h-10 bg-background border-border text-sm">
               <SelectValue placeholder="Select type">
                 {RELATIONSHIP_TYPES.find(t => t.shortLabel === selectedEdge.label)?.label || RELATIONSHIP_TYPES[1].label}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent className="bg-[#1a1a24] border-white/10 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               {RELATIONSHIP_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value} className="text-xs focus:bg-white/10 focus:text-white">
+                <SelectItem key={type.value} value={type.value} className="text-xs focus:bg-muted focus:text-foreground">
                   {type.label}
                 </SelectItem>
               ))}
@@ -77,11 +77,11 @@ export default function RelationshipPropertiesPanel({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-blue-400">Source</span>
-            <span className="text-[11px] font-mono text-white font-bold">{getDisplayName(selectedEdge.source, selectedEdge.sourceHandle)}</span>
+            <span className="text-[11px] font-mono text-foreground font-bold">{getDisplayName(selectedEdge.source, selectedEdge.sourceHandle)}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-purple-400">Target</span>
-            <span className="text-[11px] font-mono text-white font-bold">{getDisplayName(selectedEdge.target, selectedEdge.targetHandle)}</span>
+            <span className="text-[11px] font-mono text-foreground font-bold">{getDisplayName(selectedEdge.target, selectedEdge.targetHandle)}</span>
           </div>
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function RelationshipPropertiesPanel({
         <Button 
           variant="outline" 
           size="sm" 
-          className="w-full h-9 text-xs font-bold gap-2 mb-2 bg-background/60 border-white/10"
+          className="w-full h-9 text-xs font-bold gap-2 mb-2 bg-background border-border"
           onClick={() => onFlipEdge(selectedEdge.id)}
         >
           <ArrowLeftRight className="w-3.5 h-3.5" />

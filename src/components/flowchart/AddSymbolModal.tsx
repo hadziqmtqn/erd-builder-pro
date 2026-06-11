@@ -83,7 +83,7 @@ export function AddSymbolModal({
                   {nodeData.shape ? SHAPE_LABELS[nodeData.shape] : "Select a shape"}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
                 <SelectItem value="oval">Oval (Start/End)</SelectItem>
                 <SelectItem value="diamond">Diamond (Decision)</SelectItem>

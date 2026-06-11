@@ -78,7 +78,7 @@ export function SymbolPropertiesModal({
                 value={selectedNode.data.label}
                 onChange={(e) => onUpdateNodeData({ label: e.target.value })}
                 placeholder="Enter symbol label"
-                className="bg-black/50 border-white/10 text-white"
+                className="bg-muted/50 border-border text-foreground"
               />
             </div>
 
@@ -110,7 +110,7 @@ export function SymbolPropertiesModal({
                     }
                   }}
                   placeholder="e.g. Pengajuan Cuti"
-                  className="bg-black/50 border-white/10 text-white"
+                  className="bg-muted/50 border-border text-foreground"
                 />
                 <p className="text-[10px] text-muted-foreground/50">Nama grup untuk alur yang dimulai dari sini.</p>
               </div>
@@ -122,12 +122,12 @@ export function SymbolPropertiesModal({
                 value={selectedNode.data.shape} 
                 onValueChange={(val: FlowchartShape | null) => val && onUpdateNodeData({ shape: val })}
               >
-                <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
+                <SelectTrigger className="w-full bg-muted border-border text-foreground">
                   <SelectValue placeholder="Select a shape">
                     {selectedNode.data.shape ? SHAPE_LABELS[selectedNode.data.shape] : "Select a shape"}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="rectangle">Rectangle (Process)</SelectItem>
                   <SelectItem value="oval">Oval (Start/End)</SelectItem>
                   <SelectItem value="diamond">Diamond (Decision)</SelectItem>

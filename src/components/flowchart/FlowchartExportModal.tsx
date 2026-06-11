@@ -22,6 +22,7 @@ import FlowchartNode from '../FlowchartNode';
 import { Download, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { generateFlowchartSVG, downloadSVG } from '@/lib/generateFlowchartSVG';
 import { toast } from 'sonner';
+import { useWorkspace } from '@/providers/WorkspaceContext';
 
 interface FlowchartExportModalProps {
   nodes: Node<FlowchartNodeData>[];
@@ -44,6 +45,8 @@ export function FlowchartExportModal({
   filename,
   onCancel,
 }: FlowchartExportModalProps) {
+  const { resolvedTheme } = useWorkspace();
+  const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const [nodes] = useState(initialNodes);
   const [edges] = useState(initialEdges);
 
@@ -78,7 +81,7 @@ export function FlowchartExportModal({
                 nodeTypes={nodeTypes}
                 defaultEdgeOptions={defaultEdgeOptions}
                 fitView
-                colorMode="dark"
+                colorMode={resolvedTheme}
                 onlyRenderVisibleElements={true}
                 nodesDraggable={false}
                 nodesConnectable={false}
@@ -90,7 +93,7 @@ export function FlowchartExportModal({
                 zoomOnPinch={false}
                 zoomOnDoubleClick={false}
               >
-                <Background variant={BackgroundVariant.Lines} gap={50} size={1} color="#222" />
+                <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
               </ReactFlow>
             </ReactFlowProvider>
           </div>

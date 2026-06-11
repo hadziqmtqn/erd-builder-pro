@@ -340,8 +340,8 @@ export function ChangelogView() {
                 <DialogTitle className="text-2xl">{selectedRelease.name || `Release ${selectedRelease.tag_name}`}</DialogTitle>
               </DialogHeader>
 
-              <DialogBody className="bg-[#0f0f14]/50">
-                <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+              <DialogBody className="bg-muted/50">
+                <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-border">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {selectedRelease.body}
                   </ReactMarkdown>

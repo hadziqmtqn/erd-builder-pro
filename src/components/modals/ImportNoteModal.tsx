@@ -102,7 +102,7 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-none shadow-2xl bg-[#0f0f11] text-zinc-100">
+      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-none shadow-2xl bg-popover text-foreground">
         <DialogHeader className="p-6 pb-0 flex flex-row items-center justify-between border-none bg-transparent">
           <div className="flex items-center gap-3">
             <Upload className="w-5 h-5 text-zinc-400" />

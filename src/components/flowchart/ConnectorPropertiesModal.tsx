@@ -81,12 +81,12 @@ export function ConnectorPropertiesModal({
             <div className="space-y-2">
               <Label>Line Style</Label>
               <Select value={isDashed ? 'dashed' : 'solid'} onValueChange={(val) => onEdgeTypeChange(val || '')}>
-                <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
+                <SelectTrigger className="w-full bg-muted border-border text-foreground">
                   <SelectValue placeholder="Select line style">
                     {LINE_STYLE_LABELS[isDashed ? 'dashed' : 'solid']}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="solid">Solid Line</SelectItem>
                   <SelectItem value="dashed">Dashed Line</SelectItem>
                 </SelectContent>
@@ -96,12 +96,12 @@ export function ConnectorPropertiesModal({
             <div className="space-y-2">
               <Label>Arrow Style</Label>
               <Select value={arrowType} onValueChange={(val) => onArrowChange(val || '')}>
-                <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
+                <SelectTrigger className="w-full bg-muted border-border text-foreground">
                   <SelectValue placeholder="Select arrow style">
                     {ARROW_STYLE_LABELS[arrowType]}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1e24] border-white/10 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="end">Arrow at End</SelectItem>
                   <SelectItem value="start">Arrow at Start (Reverse)</SelectItem>
                   <SelectItem value="both">Arrows Both Ends</SelectItem>

@@ -53,7 +53,7 @@ export function FeedbackDialog({
 
   return (
     <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setContent(""); } }}>
-      <DialogContent className="sm:max-w-[425px] border-white/10 bg-[#0f0f14]/95 backdrop-blur-xl shadow-2xl">
+      <DialogContent className="sm:max-w-[425px] border-border bg-popover/95 backdrop-blur-xl shadow-2xl">
           <form onSubmit={handleSubmit} className="flex flex-col max-h-[inherit]">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold">Kirim Masukan</DialogTitle>
@@ -72,10 +72,10 @@ export function FeedbackDialog({
                        category === "other" ? "Kritik / Lainnya" : category}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a24] border-white/10 text-white">
-                    <SelectItem value="suggestion" className="focus:bg-white/10">Saran Fitur</SelectItem>
-                    <SelectItem value="bug" className="focus:bg-white/10 text-destructive">Lapor Bug</SelectItem>
-                    <SelectItem value="other" className="focus:bg-white/10">Kritik / Lainnya</SelectItem>
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
+                    <SelectItem value="suggestion" className="focus:bg-muted">Saran Fitur</SelectItem>
+                    <SelectItem value="bug" className="focus:bg-muted text-destructive">Lapor Bug</SelectItem>
+                    <SelectItem value="other" className="focus:bg-muted">Kritik / Lainnya</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -84,7 +84,7 @@ export function FeedbackDialog({
                 <textarea
                   id="content"
                   autoComplete="off"
-                  className="flex min-h-[140px] w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm ring-offset-background placeholder:text-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all resize-none"
+                  className="flex min-h-[140px] w-full rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all resize-none"
                   placeholder="Tuliskan masukan Anda di sini..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
@@ -98,7 +98,7 @@ export function FeedbackDialog({
                   type="email"
                   autoComplete="off"
                   placeholder="email@contoh.com"
-                  className="bg-white/5 border-white/10 focus:ring-primary/50 h-10 px-4"
+                  className="bg-muted/50 border-border focus:ring-primary/50 h-10 px-4"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -109,7 +109,7 @@ export function FeedbackDialog({
                 variant="ghost" 
                 type="button" 
                 onClick={() => onOpenChange(false)}
-                className="hover:bg-white/5"
+                className="hover:bg-muted"
               >
                 Batal
               </Button>
