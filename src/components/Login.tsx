@@ -29,6 +29,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Desktop mode (Tauri) uses auto-login via /api/me — login form should never show.
   // The AppInitialization spinner handles the /api/me call. If somehow the login page
@@ -36,6 +37,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const isTauri = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
   const pollRef = useRef(true);
+  const pollAttempts = useRef(0);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -52,9 +54,23 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
               onLogin(data.user);
               return;
             }
+          } else if (res.status === 503) {
+            // Server is up but DB not ready. Check if error is permanent.
+            const data = await res.json().catch(() => ({}));
+            if (data.db_error && !cancelled) {
+              setDbError(data.message || "Database initialization failed. Check logs for details.");
+              // Stop polling — permanent error won't heal
+              return;
+            }
           }
         } catch {
-          // server not ready yet
+          // Server not reachable yet (connection refused) — keep polling
+        }
+        pollAttempts.current++;
+        // After ~20s of failure, show timeout error
+        if (pollAttempts.current >= 20 && !cancelled) {
+          setDbError("Unable to connect to backend server. Check ~/Library/Logs/com.erdbuilderpro.app/");
+          return;
         }
         if (!cancelled) await new Promise(r => setTimeout(r, 1000));
       }
@@ -63,8 +79,27 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
     return () => { cancelled = true; };
   }, [isTauri, onLogin]);
 
-  // In desktop mode, never show the form — wait for auto-login silently
+  // In desktop mode, never show the form — wait for auto-login silently.
+  // If DB error detected, show diagnostic card instead of spinner.
   if (isTauri) {
+    if (dbError) {
+      return (
+        <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+          <div className="max-w-md w-full rounded-lg border border-red-800 bg-red-950/40 p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-red-400 text-lg">⚠️</span>
+              <h2 className="text-red-300 font-semibold">Startup Error</h2>
+            </div>
+            <p className="text-red-200/80 text-sm mb-4">{dbError}</p>
+            <div className="text-xs text-red-300/60 space-y-1">
+              <p>Log file: <code className="text-red-200/80">~/Library/Logs/com.erdbuilderpro.app/server-startup.log</code></p>
+              <p>Try restarting the app. If the issue persists, ensure Node.js is installed.</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
         <div className="flex flex-col items-center gap-4">

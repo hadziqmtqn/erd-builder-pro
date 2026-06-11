@@ -231,11 +231,17 @@ async function ensureDesktopUser(): Promise<{ user: any; token: string } | null>
 router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
   // If database is still initializing, signal it so the frontend can show
   // a "Preparing…" state instead of treating it as an auth failure.
+  // When `!prisma` (better-sqlite3 ABI mismatch), the error is permanent —
+  // frontend should stop retrying and show a diagnostic card.
   if (isDesktopMode() && !isDbReady()) {
+    const isPermanent = !prisma;
     return res.status(503).json({
       authenticated: false,
       db_ready: false,
-      message: "Database is still initializing. Please wait.",
+      db_error: isPermanent,
+      message: isPermanent
+        ? "Database driver failed to load. This is likely because the bundled native module is incompatible with your Node.js version. Check ~/Library/Logs/com.erdbuilderpro.app/server-startup.log"
+        : "Database is still initializing. Please wait.",
     });
   }
 

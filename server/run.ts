@@ -106,7 +106,12 @@ Key capabilities:
  * primary path.
  */
 async function ensureDatabaseTables(): Promise<boolean> {
-  if (!prisma || !isDesktopMode()) return false;
+  if (!prisma || !isDesktopMode()) {
+    if (!prisma) {
+      logger.error("ensureDatabaseTables: prisma is null — better-sqlite3 native addon likely failed to load (ABI mismatch). Check dist-server/node_modules/better-sqlite3/build/Release/better_sqlite3.node");
+    }
+    return false;
+  }
 
   try {
     // Quick probe: does the users table exist?
@@ -183,76 +188,81 @@ app.listen(PORT, "127.0.0.1", () => {
 });
 
 // ── Async background initialization (non-blocking) ──
+//
+// Critical design:
+//   - check DB readiness ONCE (no 60s retry loop — if better-sqlite3 fails
+//     due to ABI mismatch, retrying is pointless)
+//   - set dbReady = true IMMEDIATELY when tables exist, so /api/me can
+//     start auto-login without waiting for seeding/backfill
+//   - seeding (AI providers, admin user, uuid backfill) runs fire-and-forget
+//     in the background after dbReady is set
+//
+// When better-sqlite3 ABI mismatch makes prisma null:
+//   - ensureDatabaseTables() returns false immediately
+//   - dbReady stays false forever
+//   - /api/me returns { authenticated: false, db_error: true, message: "..." }
+//   - frontend shows error card instead of eternal "Connecting..."
 
-async function startup(): Promise<void> {
-  // Desktop mode only: retry DB readiness in case offline migration hasn't run yet
-  // (SQLite file may not be ready immediately on first launch)
-  if (isDesktopMode()) {
-    const maxRetries = 60; // about 60 seconds total
-    const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
-    let ready = false;
-    for (let i = 0; i < maxRetries; i++) {
-      ready = await ensureDatabaseTables();
-      console.log(`[startup/db-readiness] attempt ${i + 1}/${maxRetries} - ${ready ? 'READY' : 'PENDING'}`);
-      if (ready) break;
-      await sleep(1000);
-    }
-    if (!ready) {
-      logger.error("Database readiness not achieved within timeout. Using fallback mode.");
-      // DO NOT exit — frontend will show graceful error via /api/me dbReady check.
-      return;
-    }
-  }
-
-  // Seed default AI data for desktop mode (providers, models, system prompts).
-  // Safe to call every startup — seedAIProviders checks if data already exists.
-  await seedAIProviders();
-
-  // Seed admin user for local auth modes (both SQLite and local PostgreSQL).
-  // This runs at startup so the user exists immediately — no need to wait
-  // for the first browser request to /api/me. Credentials match the seed
-  // script and ensureDesktopUser() in auth.ts.
-  if (useLocalAuth() && prisma) {
-    try {
-      const adminEmail = "admin@local.dev";
-      const adminPassword = "admin123";
-      const existing = await prisma.user.findFirst({
-        where: { email: adminEmail } as any,
-      });
-      if (!existing) {
-        const salt = randomBytes(16).toString("hex");
-        const hash = scryptSync(adminPassword, salt, 64).toString("hex");
-        await prisma.user.create({
-          data: {
-            email: adminEmail,
-            name: "Admin",
-            password: `${salt}:${hash}`,
-          } as any,
-        });
-        logger.info({ email: adminEmail }, "Admin user created during startup");
-      }
-    } catch (err) {
-      logger.warn({ err }, "Failed to ensure admin user (non-fatal)");
-    }
-  }
-
-  try {
-    await backfillUids();
-    // Set dbReady flag after all init steps complete successfully.
-    // /api/me checks this flag — while false, frontend shows "Preparing…"
-    // instead of treating the server as not-yet-ready.
-    dbReady = true;
-    console.log("[startup] Database initialization complete. /api/me will return authenticated.");
-  } catch (err) {
-    logger.error({ err }, "Failed to backfill uids");
-  }
-}
-
-// /api/me checks this flag. `true` only after ensureDatabaseTables +
-// seedAIProviders + backfillUids all succeed.
 let dbReady = false;
 export function isDbReady(): boolean {
   return dbReady;
+}
+
+async function startup(): Promise<void> {
+  // Desktop: single DB readiness check (no retry — ABI mismatch won't heal)
+  let dbOk = false;
+  if (isDesktopMode()) {
+    dbOk = await ensureDatabaseTables();
+    console.log(`[startup] db-readiness check: ${dbOk ? 'READY' : 'FAILED'}`);
+  } else {
+    dbOk = true;
+  }
+
+  if (dbOk) {
+    // DB is functional — signal /api/me to start responding immediately.
+    // This gets the frontend past "Connecting..." while background init runs.
+    dbReady = true;
+    console.log("[startup] Database ready. /api/me will respond. Running background init...");
+
+    // Fire-and-forget: seeding/backfill run after response path works.
+    // If any fails, /api/me already returns authenticated — user is using
+    // the app. Non-critical features (AI providers, uid backfill) populate
+    // asynchronously.
+    seedAIProviders().catch(err => logger.warn({ err }, "seedAIProviders failed (non-fatal)"));
+
+    if (useLocalAuth() && prisma) {
+      seedAdminUser().catch(err => logger.warn({ err }, "seedAdminUser failed (non-fatal)"));
+    }
+
+    backfillUids().catch(err => logger.warn({ err }, "backfillUids failed (non-fatal)"));
+  } else {
+    logger.error("[startup] Database NOT ready. prisma is likely null (better-sqlite3 ABI mismatch). /api/me will return db_error.");
+    // dbReady stays false — frontend shows error after timeout.
+  }
+}
+
+/**
+ * Seed the built-in admin@local.dev user for desktop/local auth modes.
+ * Safe to call every startup — checks if user already exists.
+ */
+async function seedAdminUser(): Promise<void> {
+  const adminEmail = "admin@local.dev";
+  const adminPassword = "admin123";
+  const existing = await prisma!.user.findFirst({
+    where: { email: adminEmail } as any,
+  });
+  if (!existing) {
+    const salt = randomBytes(16).toString("hex");
+    const hash = scryptSync(adminPassword, salt, 64).toString("hex");
+    await prisma!.user.create({
+      data: {
+        email: adminEmail,
+        name: "Admin",
+        password: `${salt}:${hash}`,
+      } as any,
+    });
+    logger.info({ email: adminEmail }, "Admin user created during startup");
+  }
 }
 
 startup().catch((err) => {
