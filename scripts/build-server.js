@@ -35,6 +35,7 @@ const EXTERNAL = [
   "@prisma/adapter-better-sqlite3",
   "better-sqlite3",
   "pg",
+  "prebuild-install",
 ];
 
 // Packages to NEVER copy — these are transitive deps of the `prisma` CLI
