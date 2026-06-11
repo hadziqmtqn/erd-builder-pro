@@ -114,7 +114,7 @@ export const NotesTableView = React.memo(function NotesTableView({
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+    <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -142,7 +142,7 @@ export const NotesTableView = React.memo(function NotesTableView({
       </div>
 
       {/* Table */}
-      <div className="overflow-auto rounded-t-xl border border-b-0">
+      <div className="overflow-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>

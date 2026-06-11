@@ -54,9 +54,7 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       borderColor: data.color,
       borderWidth: '2px',
       borderStyle: 'solid',
-      boxShadow: selected
-        ? `0 0 20px ${data.color}60`
-        : `0 4px 10px rgba(0,0,0,0.3)`,
+      boxShadow: 'none',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     };
 
@@ -208,7 +206,7 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       <Handle id="left" type="source" position={Position.Left} className={handleClasses} />
       
       {/* Label Container: breaks long text and restricts it from touching edges */}
-      <div className="relative z-10 text-center text-sm font-semibold text-white break-words whitespace-pre-wrap max-w-full flex-1">
+      <div className="relative z-10 text-center text-sm font-semibold text-foreground break-words whitespace-pre-wrap max-w-full flex-1">
         {data.label}
       </div>
 
