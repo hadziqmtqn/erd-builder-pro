@@ -34,12 +34,14 @@ interface DBConnectPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectConnection?: (conn: Connection) => void;
+  onImportComplete?: (diagramUid: string) => void;
 }
 
 export function DBConnectPanel({
   open,
   onOpenChange,
   onSelectConnection,
+  onImportComplete,
 }: DBConnectPanelProps) {
   const {
     connections,
@@ -49,6 +51,7 @@ export function DBConnectPanel({
     createConnection,
     updateConnection,
     deleteConnection,
+    importAsDiagram,
     getDefaultPort,
     fetchConnections,
   } = useConnections();
@@ -58,6 +61,9 @@ export function DBConnectPanel({
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const [deletingConn, setDeletingConn] = useState<Connection | null>(null);
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set());
+  const [importConn, setImportConn] = useState<Connection | null>(null);
+  const [importName, setImportName] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   const filtered = search.trim()
     ? connections.filter(c =>
@@ -108,6 +114,27 @@ export function DBConnectPanel({
     if (!deletingConn) return;
     await deleteConnection(deletingConn.id);
     setDeletingConn(null);
+  };
+
+  const handleStartImport = (conn: Connection) => {
+    setImportName(`${conn.name} Schema`);
+    setImportConn(conn);
+  };
+
+  const handleImport = async () => {
+    if (!importConn || !importName.trim()) return;
+    setIsImporting(true);
+    try {
+      const result = await importAsDiagram(importConn.id, importName.trim());
+      if (result?.diagram?.uid) {
+        setImportConn(null);
+        setImportName('');
+        onOpenChange(false);
+        onImportComplete?.(result.diagram.uid);
+      }
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -171,6 +198,7 @@ export function DBConnectPanel({
                     onDelete={setDeletingConn}
                     onTest={handleTestExisting}
                     onSelect={onSelectConnection}
+                    onImport={handleStartImport}
                     isTesting={testingIds.has(conn.id)}
                   />
                 ))}
@@ -206,6 +234,46 @@ export function DBConnectPanel({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import as ERD name dialog */}
+      <AlertDialog open={importConn !== null} onOpenChange={open => !open && setImportConn(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import as ERD Diagram</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody>
+            <p className="text-sm text-muted-foreground mb-4">
+              Create a new ERD diagram from <strong>{importConn?.name}</strong> tables.
+            </p>
+            <div className="relative">
+              <Input
+                value={importName}
+                onChange={e => setImportName(e.target.value)}
+                placeholder="Diagram name"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && importName.trim() && !isImporting) {
+                    handleImport();
+                  }
+                }}
+              />
+            </div>
+          </AlertDialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleImport} disabled={!importName.trim() || isImporting}>
+              {isImporting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                'Import'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

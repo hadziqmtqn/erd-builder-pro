@@ -63,6 +63,8 @@ export function DiagramEditorRoute() {
   }
 
   const showDiagram = isPublicView ? publicData : activeDiagram;
+  const isProductionDb = !isPublicView && showDiagram?.sourceType === 'production_db';
+  const effectiveReadOnly = isPublicView || isProductionDb;
 
   if (!showDiagram && !isPublicView && !isERDItemLoading) {
     return (
@@ -99,7 +101,7 @@ export function DiagramEditorRoute() {
         handleExportSQL={handleWorkspaceExportSQL}
         handleExportPDF={handleWorkspaceExportPDF}
         handleExportImage={handleWorkspaceExportImage}
-        isReadOnly={isPublicView}
+        isReadOnly={effectiveReadOnly}
         undo={undo}
         redo={redo}
         canUndo={canUndo}
