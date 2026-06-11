@@ -109,11 +109,15 @@ router.post("/proxy", validate(aiProxySchema), async (req, res) => {
 
     if (isGemini) {
       // Google Gemini OpenAI-compatible endpoint
-      // Auth: x-goog-api-key header (Bearer also works but query param is most reliable)
-      providerBaseUrl = "https://generativelanguage.googleapis.com/v1beta";
-      fetchUrl = `${providerBaseUrl}/openai/chat/completions?key=${apiKey}`;
+      // Auth: Authorization Bearer (the OpenAI-compatible endpoint uses the API key
+      // as the Bearer token — NOT x-goog-api-key header)
+      // baseUrl comes from the user's AI Config or client — respect custom values
+      // (user might have a custom proxy endpoint configured)
+      providerBaseUrl = baseUrl || "https://generativelanguage.googleapis.com/v1beta";
+      fetchUrl = `${providerBaseUrl}/openai/chat/completions`;
       fetchHeaders = {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
       };
     } else {
       providerBaseUrl = baseUrl || "https://api.openai.com/v1";

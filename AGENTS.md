@@ -1212,7 +1212,7 @@ Workspace/sidebar filtering menggunakan `project.uid` sebagai key identifier. Al
 - **`res.on("close")` vs `req.on("close")`**: Use `res.on("close")` to detect client disconnect. `req.on("close")` fires prematurely when the POST body is finished reading by `express.json()`, which causes `AbortController.abort()` to be called before the fetch to the AI provider can connect.
 - **30s timeout**: Safety timeout to prevent the provider fetch from hanging forever.
 - **Provider-aware routing** (`ai.ts:97-130`): the proxy reads `providerCode` from the request body to select the correct provider endpoint:
-  - **Gemini** (`providerCode === "gemini"`): uses `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}` — auth via query param (`?key=`), no Bearer header. Falls back to URL pattern detection `(baseUrl || "").includes("generativelanguage.googleapis.com")`.
+  - **Gemini** (`providerCode === "gemini"`): uses the user-configured `baseUrl` (from AI Config) + `/openai/chat/completions` with `Authorization: Bearer` header — the OpenAI-compatible endpoint expects the API key as a Bearer token, NOT `x-goog-api-key` or query param. Falls back to `https://generativelanguage.googleapis.com/v1beta` if `baseUrl` is not set. Also detects via URL pattern `(baseUrl || "").includes("generativelanguage.googleapis.com")`.
   - **OpenAI / others**: uses `${baseUrl}/chat/completions` with `Authorization: Bearer ${apiKey}` header.
 - **Config endpoint** (`server/routes/ai-chat.ts:GET /config`): now returns `providerCode: config.provider?.code || "openai"` alongside `baseUrl` and `model` — enabling the frontend to pass `providerCode` through the entire chain (`resolveAiConfig` → `callAiStream` → proxy).
 - **File**: [`server/routes/ai.ts`](./server/routes/ai.ts)
@@ -1269,7 +1269,7 @@ SQLite schema lacks `@default(uuid())` on `uid` columns → sessions created wit
 ### Config Endpoint `providerCode` Return
 
 - `GET /api/ai/chat/config` ([`server/routes/ai-chat.ts`](./server/routes/ai-chat.ts)): now returns `providerCode: config.provider?.code || "openai"` alongside `baseUrl` and `model`.
-- **Why**: The AI proxy (`server/routes/ai.ts`) needs `providerCode` to route requests correctly (Gemini uses query-param auth, OpenAI uses Bearer header). `resolveAiConfig` → `callAiStream` → proxy chain passes `providerCode` through to ensure correct endpoint/auth format.
+- **Why**: The AI proxy (`server/routes/ai.ts`) needs `providerCode` to route requests correctly (Gemini uses `Authorization: Bearer` header like OpenAI, non-Gemini uses `Authorization: Bearer`). `resolveAiConfig` → `callAiStream` → proxy chain passes `providerCode` through to ensure correct endpoint/auth format.
 - **Frontend type**: `AiConfig` interface in [`src/hooks/aiChat/resolveAiConfig.ts`](./src/hooks/aiChat/resolveAiConfig.ts) now includes `providerCode?: string`.
 
 ### `callAiStream` Argument Order
