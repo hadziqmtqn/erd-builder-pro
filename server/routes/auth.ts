@@ -12,6 +12,7 @@ import {
   getSession,
   deleteSession,
 } from "../lib/desktop-auth.js";
+import { isDbReady } from "../run.js";
 
 const router = Router();
 
@@ -228,6 +229,16 @@ async function ensureDesktopUser(): Promise<{ user: any; token: string } | null>
 
 // Me — validate existing session or auto-login in desktop mode.
 router.get("/me", async (req: ExpressRequest, res: ExpressResponse) => {
+  // If database is still initializing, signal it so the frontend can show
+  // a "Preparing…" state instead of treating it as an auth failure.
+  if (isDesktopMode() && !isDbReady()) {
+    return res.status(503).json({
+      authenticated: false,
+      db_ready: false,
+      message: "Database is still initializing. Please wait.",
+    });
+  }
+
   // Accept token from cookie OR Authorization header (cross-origin Tauri support)
   const token = req.cookies.token as string | undefined ||
     (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : undefined);
