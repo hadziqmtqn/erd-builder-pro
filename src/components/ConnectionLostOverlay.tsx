@@ -15,13 +15,13 @@ export function ConnectionLostOverlay({ isOnline }: ConnectionLostOverlayProps) 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md px-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-md px-4"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="w-full max-w-lg overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#121214] p-12 shadow-2xl shadow-black/50"
+            className="w-full max-w-lg overflow-hidden rounded-[2.5rem] border border-border bg-popover p-12 shadow-2xl"
           >
             <div className="flex flex-col items-center text-center">
               {/* Icon Container */}
@@ -33,7 +33,7 @@ export function ConnectionLostOverlay({ isOnline }: ConnectionLostOverlayProps) 
               </div>
 
               {/* Title */}
-              <h2 className="mb-4 text-3xl font-bold tracking-tight text-white">
+              <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground">
                 Offline Connection lost
               </h2>
 

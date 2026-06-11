@@ -58,6 +58,7 @@ import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
 import { AIRulesTab } from '@/components/ai/AIRulesTab';
 import { AccountTab } from '@/components/ai/AccountTab';
+import { AppearanceTab } from '@/components/ai/AppearanceTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
 import { GuestDataManagement } from '@/components/ai/GuestDataManagement';
@@ -315,17 +316,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'appearance' && (
-                <div className="p-12 flex flex-col items-center justify-center h-full text-center space-y-4">
-                  <div className="p-4 bg-muted/20 rounded-full">
-                    <Palette className="size-8 text-muted-foreground/40" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-semibold text-lg">{getTabLabel(settingsTab)}</h3>
-                    <p className="text-sm text-muted-foreground max-w-[280px]">
-                      This section is currently under development. Stay tuned for updates!
-                    </p>
-                  </div>
-                </div>
+                <AppearanceTab />
               )}
             </div>
           </main>

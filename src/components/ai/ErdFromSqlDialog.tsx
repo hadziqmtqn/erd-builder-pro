@@ -302,11 +302,11 @@ export function ErdFromSqlDialog({
                             {erdDiff.diffLines.map((line: any, li: number) => {
                               if (line.type === 'header') {
                                 return (
-                                  <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
+                                  <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border/30">
                                     {line.isNew && (
                                       <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
                                     )}
-                                    <span className="text-[11px] font-semibold text-gray-200">{line.tableName}</span>
+                                    <span className="text-[11px] font-semibold text-foreground">{line.tableName}</span>
                                   </div>
                                 );
                               }
@@ -345,11 +345,11 @@ export function ErdFromSqlDialog({
                   </label>
                   <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
                     {erdParsed.nodes.map((node: any) => (
-                      <div key={node.id} className="rounded-lg border border-border/40 bg-[#0d1117] overflow-hidden">
-                        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-black/20">
+                      <div key={node.id} className="rounded-lg border border-border/40 bg-muted overflow-hidden">
+                        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-muted/50">
                           <Database className="size-3 text-indigo-400 shrink-0" />
-                          <span className="text-[11px] font-semibold text-gray-200">{node.data.name}</span>
-                          <span className="text-[9px] text-gray-500 ml-auto">{node.data.columns.length} col</span>
+                          <span className="text-[11px] font-semibold text-foreground">{node.data.name}</span>
+                          <span className="text-[9px] text-muted-foreground ml-auto">{node.data.columns.length} col</span>
                         </div>
                         <div className="divide-y divide-border/10">
                           {node.data.columns.map((col: any) => (

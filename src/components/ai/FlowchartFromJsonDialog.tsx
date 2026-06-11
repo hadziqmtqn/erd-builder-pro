@@ -279,18 +279,18 @@ export function FlowchartFromJsonDialog({
                 </label>
                 <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
                   {newNodes.map((node: any) => (
-                    <div key={node.id} className="rounded-lg border border-border/40 bg-[#0d1117] overflow-hidden">
-                      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-black/20">
+                    <div key={node.id} className="rounded-lg border border-border/40 bg-muted overflow-hidden">
+                      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-muted/50">
                         <GitBranch className="size-3 text-emerald-400 shrink-0" />
-                        <span className="text-[11px] font-semibold text-gray-200">{node.data.label}</span>
-                        <span className="text-[9px] text-gray-500 ml-auto">{node.data.shape}</span>
+                        <span className="text-[11px] font-semibold text-foreground">{node.data.label}</span>
+                        <span className="text-[9px] text-muted-foreground ml-auto">{node.data.shape}</span>
                       </div>
                       <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono">
-                        <span className="text-gray-500">Shape:</span>
-                        <span className="text-gray-300">{node.data.shape}</span>
+                        <span className="text-muted-foreground">Shape:</span>
+                        <span className="text-foreground/80">{node.data.shape}</span>
                         {node.data.color && (
                           <>
-                            <span className="text-gray-500 ml-2">Color:</span>
+                            <span className="text-muted-foreground ml-2">Color:</span>
                             <span className="text-gray-300">{node.data.color}</span>
                           </>
                         )}
@@ -355,14 +355,14 @@ export function FlowchartFromJsonDialog({
                         {diff.rows.map((row, ri) => (
                           <div key={ri}>
                             {/* Node header */}
-                            <div className={`flex items-center gap-2 px-3 py-1.5 bg-[#0d1117] border-b border-border/30 ${row.isRemoved ? 'bg-red-950/30' : ''}`}>
+                            <div className={`flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border/30 ${row.isRemoved ? 'bg-red-500/10' : ''}`}>
                               {row.isNew && (
                                 <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
                               )}
                               {row.isRemoved && (
                                 <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 shrink-0">DEL</span>
                               )}
-                              <span className={`text-[11px] font-semibold ${row.isRemoved ? 'text-red-300/70 line-through' : 'text-gray-200'}`}>{row.nodeName}</span>
+                              <span className={`text-[11px] font-semibold ${row.isRemoved ? 'text-red-300/70 line-through' : 'text-foreground'}`}>{row.nodeName}</span>
                             </div>
                             {/* Property lines */}
                             {row.isNew ? (
@@ -445,18 +445,18 @@ export function FlowchartFromJsonDialog({
                     {/* Edge diff */}
                     {(diff.addedEdges.length > 0 || diff.removedEdges.length > 0) && (
                       <div className="rounded-lg border border-border/40 overflow-hidden text-[10px] font-mono leading-relaxed">
-                        <div className="px-3 py-1.5 bg-[#0d1117] border-b border-border/30">
-                          <span className="text-[11px] font-semibold text-gray-200">Connections</span>
+                        <div className="px-3 py-1.5 bg-muted border-b border-border/30">
+                          <span className="text-[11px] font-semibold text-foreground">Connections</span>
                         </div>
                         <div className="divide-y divide-border/10">
                           {diff.addedEdges.map((e, i) => (
-                            <div key={`add-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-emerald-900/20">
+                            <div key={`add-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-emerald-500/10">
                               <span className="w-4 shrink-0 select-none text-emerald-400">+</span>
-                              <span className="text-emerald-300">{e}</span>
+                              <span className="text-emerald-600 dark:text-emerald-400">{e}</span>
                             </div>
                           ))}
                           {diff.removedEdges.map((e, i) => (
-                            <div key={`rem-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-red-900/20">
+                            <div key={`rem-${i}`} className="flex items-center gap-1 px-3 py-[2px] bg-red-500/10">
                               <span className="w-4 shrink-0 select-none text-red-400">-</span>
                               <span className="text-red-400/70 line-through">{e}</span>
                             </div>

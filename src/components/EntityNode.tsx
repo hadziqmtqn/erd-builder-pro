@@ -53,7 +53,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
   const rowBgClass = useMemo(() => {
     if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
     if (diffState === 'deleted') return 'bg-red-500/10 hover:bg-red-500/15 line-through opacity-50 border-b border-red-500/20';
-    return 'border-white/5 hover:bg-white/5';
+    return 'border-border/50 hover:bg-muted';
   }, [diffState]);
 
   return (
@@ -90,7 +90,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
       <div className="flex items-center gap-2">
         <span className={cn(
           "text-sm font-medium", 
-          col.is_pk ? "text-white" : "text-white/80",
+          col.is_pk ? "text-foreground" : "text-foreground/80",
           diffState === 'new' && "text-emerald-400 font-semibold",
           diffState === 'deleted' && "text-red-400/80 line-through"
         )}>
@@ -105,13 +105,13 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
           </span>
           {(col.is_pk || isFk) && (
             <div className="flex items-center gap-1">
-              {col.is_pk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">pk</span>}
-              {isFk && <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
+              {col.is_pk && <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-tighter">pk</span>}
+              {isFk && <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
             </div>
           )}
         </div>
         {col.type.toUpperCase() === 'ENUM' && col.enum_values && (
-          <span className="font-mono italic text-right leading-tight break-words max-w-full" style={{ fontSize: '8.5px', color: 'rgba(255, 255, 255, 0.45)' }}>
+          <span className="font-mono italic text-right leading-tight break-words max-w-full text-[8.5px] text-muted-foreground">
             ({col.enum_values})
           </span>
         )}
@@ -204,11 +204,11 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   }, [data.color, diffState]);
 
   const containerClasses = useMemo(() => cn(
-    "bg-[#0f0f14] text-white rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container transition-all duration-300",
-    selected && "ring-2 ring-white/10",
-    diffState === 'new' && "shadow-[0_0_20px_rgba(16,185,129,0.35)]",
-    diffState === 'deleted' && "opacity-40 shadow-[0_0_15px_rgba(239,68,68,0.25)]",
-    diffState === 'modified' && "shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+    "bg-card text-foreground rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container transition-all duration-300",
+    selected && "ring-2 ring-primary/50",
+    diffState === 'new' && "shadow-[0_0_20px_rgba(16,185,129,0.35)] border-emerald-500/50",
+    diffState === 'deleted' && "opacity-40 shadow-[0_0_15px_rgba(239,68,68,0.25)] border-red-500/50",
+    diffState === 'modified' && "shadow-[0_0_20px_rgba(245,158,11,0.3)] border-amber-500/50"
   ), [selected, diffState]);
 
   const sortedColumns = useMemo(() => 
@@ -250,7 +250,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
           {!isReadOnly && (
             <DropdownMenu>
               <DropdownMenuTrigger 
-                className="nodrag nopan p-1 rounded-md hover:bg-white/10 text-white/50 hover:text-white transition-colors focus:outline-none"
+                className="nodrag nopan p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
                 onPointerDown={(e) => e.stopPropagation()}
                 onPointerUp={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -259,19 +259,19 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
               </DropdownMenuTrigger>
               <DropdownMenuContent 
                 align="end" 
-                className="w-44 bg-[#1a1a24] border-white/10 text-white z-[1000]" 
+                className="w-44 bg-popover border-border text-popover-foreground z-[1000]" 
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                <DropdownMenuItem onClick={handleEdit} className="cursor-pointer hover:bg-muted focus:bg-muted">
                   <Pencil className="w-4 h-4 mr-2" />
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer hover:bg-white/10 focus:bg-white/10">
+                <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer hover:bg-muted focus:bg-muted">
                   <Copy className="w-4 h-4 mr-2" />
                   Duplicate
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuSeparator className="bg-border" />
                 <DropdownMenuItem onClick={handleDeleteClick} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 focus:bg-destructive/10">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete Table

@@ -54,7 +54,7 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-none shadow-2xl bg-[#0f0f11] text-zinc-100">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-none shadow-2xl bg-popover text-foreground">
         <DialogHeader className="p-6 pb-4 border-none bg-transparent flex flex-row items-center justify-between">
           <DialogTitle className="text-xl font-semibold tracking-tight pr-0">
             Export

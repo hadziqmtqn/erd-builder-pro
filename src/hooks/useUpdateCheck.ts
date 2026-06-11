@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
 
-export function useUpdateCheck() {
+export function useUpdateCheck(onUpdateAvailable?: () => void) {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -15,7 +15,7 @@ export function useUpdateCheck() {
       try {
         const update = await check();
         
-        if (update?.available) {
+        if (update) {
           setHasUpdate(true);
           setLatestVersion(update.version);
 
@@ -27,6 +27,7 @@ export function useUpdateCheck() {
               onClick: () => handleUpdate(update),
             },
           });
+          onUpdateAvailable?.();
         }
       } catch (error) {
         console.error('Update check failed:', error);

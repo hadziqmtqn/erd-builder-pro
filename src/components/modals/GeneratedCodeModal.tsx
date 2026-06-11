@@ -93,15 +93,15 @@ export const GeneratedCodeModal = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-5xl bg-[#0f0f14] border-white/10 text-white shadow-2xl"
+        className="max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
-          <DialogHeader className="px-6 pt-6 pb-0 border-b border-white/5">
+          <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
             <DialogTitle className="text-xl font-bold tracking-tight">Generate Code Schema</DialogTitle>
-            <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
+            <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
               Table: {entity.name}
             </div>
             
@@ -116,27 +116,27 @@ export const GeneratedCodeModal = ({
             </TabsList>
           </DialogHeader>
           
-          <DialogBody className="p-0 bg-[#050508] relative flex-1 min-h-0 overflow-y-auto">
-            <div className="absolute top-4 right-6 px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-white/20 uppercase tracking-widest z-10">
+          <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
+            <div className="absolute top-4 right-6 px-2 py-1 rounded bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground/20 uppercase tracking-widest z-10">
               {currentLanguage}
             </div>
             
             {Object.entries(generatedCode).map(([key, code]) => (
               <TabsContent key={key} value={key} className="mt-0 h-full">
                 <pre className="p-6 overflow-auto h-full text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                  <code className="text-white/90 block">{code}</code>
+                  <code className="text-foreground/90 block">{code}</code>
                 </pre>
               </TabsContent>
             ))}
           </DialogBody>
 
-          <DialogFooter className="border-t border-white/5 p-4 bg-black/20 gap-3">
+          <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
             <div className="flex items-center gap-2 mr-auto">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={downloadFile}
-                className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold"
+                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
               >
                 <Download className="w-3.5 h-3.5 mr-2" />
                 Download
@@ -145,7 +145,7 @@ export const GeneratedCodeModal = ({
                 variant="outline"
                 size="sm"
                 onClick={copyToClipboard}
-                className="h-9 px-4 border-white/10 hover:bg-white/5 bg-white/5 text-xs font-semibold min-w-[90px]"
+                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px]"
               >
                 {copied ? (
                   <>
@@ -162,7 +162,7 @@ export const GeneratedCodeModal = ({
             </div>
             <Button 
               onClick={() => onOpenChange(false)} 
-              className="h-9 px-6 bg-white text-black hover:bg-white/90 font-bold"
+              className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
             >
               Close
             </Button>

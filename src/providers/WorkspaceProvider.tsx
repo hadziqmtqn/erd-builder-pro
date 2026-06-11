@@ -151,6 +151,18 @@ export function WorkspaceProvider({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('account');
 
+  // ── Theme State ──
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(() => {
+    return (localStorage.getItem('erd-builder-theme') as 'light' | 'dark' | 'system') || 'system';
+  });
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
+
+  // Persist theme preference
+  const setTheme = useCallback((t: 'light' | 'dark' | 'system') => {
+    localStorage.setItem('erd-builder-theme', t);
+    setThemeState(t);
+  }, []);
+
   // ── Safety Gate & Persistence State ──
   const isLocalSavingRef = useRef(false);
   const [isLocalSaving, setIsLocalSavingState] = useState(false);
@@ -586,11 +598,40 @@ export function WorkspaceProvider({
     }
   }, [debouncedSearchQuery, fetchProjects, isAuthenticated, isPublicView]);
 
-  // Dark mode
+  // ── Theme: resolve + apply ──
   useEffect(() => {
-    document.documentElement.classList.add('dark');
-    document.body.classList.add('dark');
-  }, []);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const updateResolved = () => {
+      const resolved = theme === 'system' ? (mediaQuery.matches ? 'dark' : 'light') : theme;
+      setResolvedTheme(resolved);
+    };
+
+    updateResolved();
+
+    // Listen for system preference changes
+    const handler = () => {
+      if (theme === 'system') {
+        const resolved = mediaQuery.matches ? 'dark' : 'light';
+        setResolvedTheme(resolved);
+      }
+    };
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [theme]);
+
+  // Apply resolved theme to <html>
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    if (resolvedTheme === 'dark') {
+      root.classList.add('dark');
+      body.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+      body.classList.remove('dark');
+    }
+  }, [resolvedTheme]);
 
   // Initial data fetch
   useEffect(() => {
@@ -915,6 +956,8 @@ export function WorkspaceProvider({
     isSettingsOpen, setIsSettingsOpen,
     settingsTab, setSettingsTab,
 
+    theme, setTheme, resolvedTheme,
+
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
@@ -1029,6 +1072,7 @@ export function WorkspaceProvider({
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
     pendingErdDiffTrigger, triggerPendingErdDiff,
+    theme, setTheme, resolvedTheme,
   ]);
 
   return (
