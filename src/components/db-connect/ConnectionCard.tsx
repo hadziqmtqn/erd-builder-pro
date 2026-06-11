@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { MoreHorizontal, Pencil, Trash2, Cable, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Cable, Loader2, Database } from 'lucide-react';
 import type { Connection, DbType } from '@/hooks/useConnections';
 
 const DB_TYPE_LABELS: Record<DbType, string> = {
@@ -29,6 +29,7 @@ interface ConnectionCardProps {
   onDelete: (conn: Connection) => void;
   onTest: (conn: Connection) => void;
   onSelect?: (conn: Connection) => void;
+  onImport?: (conn: Connection) => void;
   isTesting?: boolean;
 }
 
@@ -38,6 +39,7 @@ export function ConnectionCard({
   onDelete,
   onTest,
   onSelect,
+  onImport,
   isTesting,
 }: ConnectionCardProps) {
   const { id, name, type, host, database, is_test_ok } = connection;
@@ -96,6 +98,12 @@ export function ConnectionCard({
               )}
               Test
             </DropdownMenuItem>
+            {onImport && (
+              <DropdownMenuItem onClick={() => onImport(connection)} className="cursor-pointer">
+                <Database className="h-3.5 w-3.5 mr-2" />
+                Import as ERD
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onEdit(connection)} className="cursor-pointer">
               <Pencil className="h-3.5 w-3.5 mr-2" />

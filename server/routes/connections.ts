@@ -192,4 +192,80 @@ router.post("/connections/:id/schema", authenticate, desktopOnly, async (req: Ex
   }
 });
 
+// POST /api/connections/:id/import — fetch schema + create diagram + persist entities
+router.post("/connections/:id/import", authenticate, desktopOnly, async (req: ExpressRequest, res: ExpressResponse) => {
+  const userId = (req as any).user.id;
+  const { id } = req.params;
+  const { name } = req.body;
+
+  if (!name?.trim()) {
+    return res.status(400).json({ error: "Diagram name is required" });
+  }
+
+  try {
+    const conn = await prisma?.localDbConnection.findFirst({
+      where: { id: Number(id), userId },
+    });
+    if (!conn) return res.status(404).json({ error: "Connection not found" });
+
+    // 1. Fetch schema from external DB
+    const tables = await fetchSchema(buildConnectionInfo(conn));
+
+    // 2. Parse tables → entities
+    const entities = tables.map((t: any, i: number) => ({
+      id: crypto.randomUUID(),
+      name: t.table_name,
+      x: (i % 4) * 280 + 50,
+      y: Math.floor(i / 4) * 200 + 50,
+      color: "#4f46e5",
+      columns: (t.columns || []).map((c: any) => ({
+        id: crypto.randomUUID(),
+        name: c.name,
+        type: c.type,
+        is_pk: !!c.is_pk,
+        is_nullable: !!c.is_nullable,
+        enum_values: null,
+        sort_order: c.sort_order || 0,
+        _is_fk: false,
+      })),
+    }));
+
+    // 3. Create diagram with source info
+    const diagram = await prisma?.diagram.create({
+      data: {
+        name: name.trim(),
+        uid: crypto.randomUUID(),
+        userId,
+        sourceType: "production_db",
+        sourceConnectionId: Number(id),
+      },
+    });
+
+    if (!diagram) return res.status(500).json({ error: "Failed to create diagram" });
+
+    // 4. Save entities
+    if (entities.length > 0) {
+      await prisma?.entity.createMany({
+        data: entities.map((e: any) => ({
+          id: e.id,
+          diagramId: Number(diagram.id),
+          name: e.name,
+          x: e.x,
+          y: e.y,
+          color: e.color,
+          columns: JSON.stringify(e.columns),
+        })),
+      });
+    }
+
+    res.status(201).json({
+      diagram,
+      tableCount: entities.length,
+    });
+  } catch (err: any) {
+    console.error("Error importing schema:", err);
+    res.status(500).json({ error: `Failed to import schema: ${err.message}` });
+  }
+});
+
 export default router;

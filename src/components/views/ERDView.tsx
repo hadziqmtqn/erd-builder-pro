@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceContext';
+import { EyeOff, Monitor } from 'lucide-react';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -111,8 +112,9 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
   const { getViewport } = useReactFlow();
-  const { resolvedTheme } = useWorkspace();
+  const { resolvedTheme, activeDocument } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
+  const isProductionDb = activeDocument?.sourceType === 'production_db';
 
   // ─── Multi-table selection ───────────────────────────
   const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
@@ -464,6 +466,14 @@ const ERDViewComponent = ({
   return (
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 
+      {isReadOnly && isProductionDb && (
+        <div className="absolute top-6 inset-x-0 z-20 flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg pointer-events-auto text-sm text-amber-700 dark:text-amber-400 shadow-lg">
+            <EyeOff className="h-4 w-4 shrink-0" />
+            <span>Read-only — imported from production database. Switch to desktop app to modify.</span>
+          </div>
+        </div>
+      )}
 
       {!isReadOnly && !pendingDiff && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">

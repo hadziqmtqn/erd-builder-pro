@@ -76,7 +76,7 @@ export function useConnections() {
       }
       return { success: true, message: data.message || 'Connection successful' };
     } catch (e: any) {
-      return { success: false, message: e.message || 'Gagal test koneksi' };
+      return { success: false, message: e.message || 'Failed to test connection' };
     }
   };
 
@@ -89,7 +89,7 @@ export function useConnections() {
       }
       return { success: true, message: data.message || 'Connection successful' };
     } catch (e: any) {
-      return { success: false, message: e.message || 'Gagal test koneksi' };
+      return { success: false, message: e.message || 'Failed to test connection' };
     }
   };
 
@@ -102,7 +102,7 @@ export function useConnections() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Gagal simpan koneksi');
+        throw new Error(err.error || 'Failed to save connection');
       }
       const conn: Connection = await res.json();
       setConnections(prev => [...prev, conn]);
@@ -130,7 +130,7 @@ export function useConnections() {
       toast.success('Connection updated');
       return conn;
     } catch (e: any) {
-      toast.error(e.message || 'Gagal update koneksi');
+      toast.error(e.message || 'Failed to update connection');
       return null;
     }
   };
@@ -138,11 +138,31 @@ export function useConnections() {
   const deleteConnection = async (id: number) => {
     try {
       const res = await apiFetch(`/api/connections/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Gagal hapus koneksi');
+      if (!res.ok) throw new Error('Failed to delete connection');
       setConnections(prev => prev.filter(c => c.id !== id));
       toast.success('Connection deleted');
     } catch (e: any) {
-      toast.error(e.message || 'Gagal hapus koneksi');
+      toast.error(e.message || 'Failed to delete connection');
+    }
+  };
+
+  const importAsDiagram = async (id: number, name: string): Promise<{ diagram: any; tableCount: number } | null> => {
+    try {
+      const res = await apiFetch(`/api/connections/${id}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to import schema');
+      }
+      const result = await res.json();
+      toast.success(`Imported ${result.tableCount} tables as "${name}"`);
+      return result;
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to import schema');
+      return null;
     }
   };
 
@@ -157,6 +177,7 @@ export function useConnections() {
     createConnection,
     updateConnection,
     deleteConnection,
+    importAsDiagram,
     getDefaultPort,
   };
 }
