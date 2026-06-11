@@ -109,6 +109,8 @@ model Diagram {
   shareToken    String?        @map("share_token")
   expiryDate    DateTime?      @map("expiry_date") @db.Timestamptz(6)
   publishedAt   DateTime?      @map("published_at") @db.Timestamptz(6)
+  sourceType        String? @default("blank") @map("source_type")
+  sourceConnectionId Int?   @map("source_connection_id")
   project       Project?       @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   user          User?          @relation(fields: [userId], references: [id], onUpdate: NoAction)
   entities      Entity[]
@@ -403,6 +405,25 @@ model UserPreference {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("user_preferences")
+  @@schema("public")
+}
+
+// ── Local Database Connection (desktop-only) ──
+model LocalDbConnection {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  type      String
+  host      String?
+  port      Int?
+  user      String?
+  password  String?
+  database  String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_local_db_connections_user")
+  @@map("local_db_connections")
   @@schema("public")
 }
 

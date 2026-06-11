@@ -23,6 +23,7 @@ import aiRouter from "./routes/ai.js";
 import aiSettingsRouter from "./routes/ai-settings.js";
 import aiChatRouter from "./routes/ai-chat.js";
 import guestImportRouter from "./routes/guest-import.js";
+import connectionsRouter from "./routes/connections.js";
 
 const app = express();
 
@@ -207,6 +208,7 @@ app.use("/api/ai/rules", (await import("./routes/ai-rules.js")).default);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
+app.use("/api", connectionsRouter);
 
 app.use("/api/*", (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
