@@ -400,8 +400,8 @@ export const FlowchartView = React.memo(({
     } else {
       updateEdgeData({ 
         label: val, 
-        labelBgStyle: { fill: '#1e1e24' }, 
-        labelStyle: { fill: '#fff' } 
+        labelBgStyle: { fill: 'var(--popover)' }, 
+        labelStyle: { fill: 'var(--popover-foreground)' } 
       });
     }
   };
@@ -740,10 +740,15 @@ export const FlowchartView = React.memo(({
       return { ...marker, color: '#ffffff', width: 14, height: 14 };
     };
 
+    const overriddenStyle = isSelected
+      ? { ...(baseEdge.style || {}), stroke: '#ffffff', strokeWidth: 2.5 }
+      : baseEdge.style;
+
     return {
       ...baseEdge,
-      style: isSelected ? { stroke: '#ffffff', strokeWidth: 2.5 } : baseEdge.style,
+      style: overriddenStyle,
       markerEnd: isSelected ? overrideMarker(baseEdge.markerEnd) : baseEdge.markerEnd,
+      markerStart: isSelected ? overrideMarker(baseEdge.markerStart) : baseEdge.markerStart,
     };
   }), [edges, hoveredEdgeId, selectedEdgeId]);
 

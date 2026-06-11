@@ -13,8 +13,8 @@ export const initialNodes: Node<FlowchartNodeData>[] = [
 export const initialEdges: Edge[] = [
   { id: 'e1-2', source: '1', target: '2', sourceHandle: 'bottom', targetHandle: 'top', type: 'smoothstep', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
   { id: 'e2-3', source: '2', target: '3', sourceHandle: 'bottom', targetHandle: 'top', type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e3-4', source: '3', target: '4', sourceHandle: 'left', targetHandle: 'top', type: 'smoothstep', label: 'Yes', labelBgStyle: { fill: '#1e1e24' }, labelStyle: { fill: '#fff' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
-  { id: 'e3-5', source: '3', target: '5', sourceHandle: 'right', targetHandle: 'top', type: 'smoothstep', label: 'No', labelBgStyle: { fill: '#1e1e24' }, labelStyle: { fill: '#fff' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
+  { id: 'e3-4', source: '3', target: '4', sourceHandle: 'left', targetHandle: 'top', type: 'smoothstep', label: 'Yes', labelBgStyle: { fill: 'var(--popover)' }, labelStyle: { fill: 'var(--popover-foreground)' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
+  { id: 'e3-5', source: '3', target: '5', sourceHandle: 'right', targetHandle: 'top', type: 'smoothstep', label: 'No', labelBgStyle: { fill: 'var(--popover)' }, labelStyle: { fill: 'var(--popover-foreground)' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
   { id: 'e4-6', source: '4', target: '6', sourceHandle: 'bottom', targetHandle: 'left', type: 'smoothstep', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
   { id: 'e5-6', source: '5', target: '6', sourceHandle: 'bottom', targetHandle: 'right', type: 'smoothstep', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#b1b1b7' }, style: { stroke: '#b1b1b7' } },
 ];
