@@ -78,21 +78,24 @@ export const ProviderConfigCard: React.FC<ProviderConfigCardProps> = ({
       </CardHeader>
       
       <CardContent className="space-y-6 md:space-y-8 p-4 md:p-8">
-        {provider.code === 'openai_compatible' && (
-          <div className="space-y-3">
-            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Base URL</Label>
-            <div className="relative group">
-              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-purple-500" />
-              <Input 
-                placeholder="https://api.your-provider.com/v1" 
-                value={provider.base_url || ''} 
-                onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
-                className="pl-10 h-11 bg-muted/10 border-border/50 transition-all focus:ring-purple-500/20 text-sm md:text-base"
-              />
-            </div>
-            <p className="text-[10px] md:text-[11px] text-muted-foreground ml-1">The custom endpoint for OpenAI-compatible providers (Ollama, Groq, etc.).</p>
+        {/* Base URL — shown for all providers */}
+        <div className="space-y-3">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Base URL</Label>
+          <div className="relative group">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-purple-500" />
+            <Input 
+              placeholder={{
+                openai: 'https://api.openai.com/v1',
+                gemini: 'https://generativelanguage.googleapis.com/v1beta',
+                openai_compatible: 'https://api.your-provider.com/v1',
+              }[provider.code] || 'https://api.openai.com/v1'}
+              value={provider.base_url || ''} 
+              onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
+              className="pl-10 h-11 bg-muted/10 border-border/50 transition-all focus:ring-purple-500/20 text-sm md:text-base"
+            />
           </div>
-        )}
+          <p className="text-[10px] md:text-[11px] text-muted-foreground ml-1">API endpoint URL for this provider. Change if you use a proxy or self-hosted endpoint.</p>
+        </div>
 
         <div className="space-y-3">
           <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">API Key</Label>

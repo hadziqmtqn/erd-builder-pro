@@ -51,7 +51,8 @@ export const useAIProviders = () => {
 
     setIsSaving(true);
     try {
-      if (provider.code === 'openai_compatible' && provider.base_url !== undefined) {
+      // Save provider base URL if changed (all provider types)
+      if (provider.base_url !== undefined) {
         const pRes = await apiFetch(`/api/ai/settings/providers/${provider.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -63,15 +64,20 @@ export const useAIProviders = () => {
         }
       }
 
+      // Build payload — skip api_key if it's '***' (masked placeholder, already saved)
+      const payload: Record<string, any> = {
+        provider_id: provider.id,
+        selected_model_id: config.selected_model_id,
+        is_enabled: config.is_enabled ?? true,
+      };
+      if (config.api_key && config.api_key !== '***') {
+        payload.api_key = config.api_key;
+      }
+
       const cRes = await apiFetch('/api/ai/settings/configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider_id: provider.id,
-          api_key: config.api_key,
-          selected_model_id: config.selected_model_id,
-          is_enabled: config.is_enabled ?? true,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!cRes.ok) {

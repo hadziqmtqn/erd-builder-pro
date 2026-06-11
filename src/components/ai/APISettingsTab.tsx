@@ -136,24 +136,26 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                 </CardHeader>
                 
                 <CardContent className="space-y-6 p-4 md:p-6">
-                  {/* Base URL for OpenAI Compatible */}
-                  {provider.code === 'openai_compatible' && (
-                    <Field>
-                      <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
-                        <Globe className="size-3" />
-                        Base URL
-                      </FieldLabel>
-                      <Input 
-                        placeholder="https://api.your-provider.com/v1" 
-                        value={provider.base_url || ''} 
-                        onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
-                        className="h-9 text-sm"
-                      />
-                      <p className="text-[11px] text-muted-foreground/70 mt-1 px-1">
-                        Custom endpoint for OpenAI-compatible providers (Ollama, Groq, etc.)
-                      </p>
-                    </Field>
-                  )}
+                  {/* Base URL — shown for all providers */}
+                  <Field>
+                    <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+                      <Globe className="size-3" />
+                      Base URL
+                    </FieldLabel>
+                    <Input 
+                      placeholder={{
+                        openai: 'https://api.openai.com/v1',
+                        gemini: 'https://generativelanguage.googleapis.com/v1beta',
+                        openai_compatible: 'https://api.your-provider.com/v1',
+                      }[provider.code] || 'https://api.openai.com/v1'}
+                      value={provider.base_url || ''} 
+                      onChange={(e) => onUpdateProvider(provider.code, { base_url: e.target.value })}
+                      className="h-9 text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground/70 mt-1 px-1">
+                      API endpoint URL for this provider. Change if you use a proxy or self-hosted endpoint.
+                    </p>
+                  </Field>
 
                   {/* API Key */}
                   <Field>

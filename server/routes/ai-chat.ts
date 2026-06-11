@@ -211,6 +211,7 @@ router.get("/config", authenticate, async (req: ExpressRequest, res: ExpressResp
     res.json({
       baseUrl: config.provider?.baseUrl || "https://api.openai.com/v1",
       model: config.selectedModel?.modelIdentifier || "gpt-4o-mini",
+      providerCode: config.provider?.code || "openai",
     });
   } catch (err: any) {
     handleError(res, err, "Failed to fetch AI config");

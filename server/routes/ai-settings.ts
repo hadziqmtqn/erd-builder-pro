@@ -369,7 +369,7 @@ router.post("/configs/test", authenticate, async (req: ExpressRequest, res: Expr
 });
 
 // PUT /api/ai/settings/providers/:id
-// Regular users may update the base URL for OpenAI Compatible providers.
+// Update provider base URL (for custom endpoints / self-hosted proxies).
 router.put("/providers/:id", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   try {
     const { base_url } = req.body;

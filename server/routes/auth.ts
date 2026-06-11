@@ -12,7 +12,7 @@ import {
   getSession,
   deleteSession,
 } from "../lib/desktop-auth.js";
-import { isDbReady } from "../run.js";
+import { isDbReady } from "../lib/db-state.js";
 
 const router = Router();
 

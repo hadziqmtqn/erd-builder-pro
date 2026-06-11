@@ -4,6 +4,7 @@ export interface AiConfig {
   baseUrl: string | undefined;
   apiKey: string | undefined;
   model: string | undefined;
+  providerCode?: string;
 }
 
 export async function resolveAiConfig(): Promise<AiConfig> {
