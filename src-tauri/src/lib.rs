@@ -354,13 +354,13 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
           // Preferred path — doesn't need npm on PATH, no package.json
           // validation. `prebuild-install` is shipped in bundled
           // node_modules (build-server.js copies it + transitive deps).
-          let prebuild_cli = bundled_nm.join("prebuild-install/cli.js");
+          let prebuild_entry = bundled_nm.join("prebuild-install/bin.js");
           let mut rebuild_ok = false;
 
-          if prebuild_cli.exists() {
+          if prebuild_entry.exists() {
             startup_log(&log_dir, "  Attempt 1: prebuild-install directly…");
             let pbi_result = Command::new(&node_bin)
-              .arg(&prebuild_cli)
+              .arg(&prebuild_entry)
               .current_dir(&rebuild_bs3)
               .env("NODE_PATH", &node_path)
               .env("PATH", &rebuild_path)
