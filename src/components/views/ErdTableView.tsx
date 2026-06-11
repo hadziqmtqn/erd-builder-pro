@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Diagram, Project } from '@/types';
 import {
   Table,
@@ -16,7 +16,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable } from 'lucide-react';
+import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 
 interface ErdTableViewProps {
   diagrams: Diagram[];
@@ -50,6 +51,9 @@ export const ErdTableView = React.memo(function ErdTableView({
   onDeleteDiagram,
 }: ErdTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalDiagrams / ITEMS_PER_PAGE));
+  const [dbConnectOpen, setDbConnectOpen] = useState(false);
+  const isDesktop = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const getProjectById = (projectId: number | string | null | undefined) => {
     if (projectId === null || projectId === undefined) return null;
@@ -129,10 +133,18 @@ export const ErdTableView = React.memo(function ErdTableView({
             ({totalDiagrams} diagrams)
           </span>
         </div>
-        <Button size="sm" onClick={onCreateDiagram}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          Create Diagram
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={onCreateDiagram}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            Create Diagram
+          </Button>
+          {isDesktop && (
+            <Button size="sm" variant="outline" onClick={() => setDbConnectOpen(true)}>
+              <Cable className="w-4 h-4 mr-1.5" />
+              DB Connect
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -282,6 +294,11 @@ export const ErdTableView = React.memo(function ErdTableView({
           </div>
         </div>
       )}
+
+      <DBConnectPanel
+        open={dbConnectOpen}
+        onOpenChange={setDbConnectOpen}
+      />
     </div>
   );
 });
