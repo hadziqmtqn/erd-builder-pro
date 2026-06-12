@@ -4,7 +4,7 @@ import { authenticate } from "../lib/middleware.js";
 import { isDesktopMode } from "../lib/config.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import type { ConnectionInfo, DbType } from "../lib/db-connectors/types.js";
-import { testConnection, fetchSchema } from "../lib/db-connectors/registry.js";
+import { testConnection, fetchSchema, getConnector } from "../lib/db-connectors/registry.js";
 
 const router = Router();
 
@@ -284,23 +284,15 @@ router.post("/connections/:id/import", authenticate, desktopOnly, async (req: Ex
         );
 
         const relationships: any[] = [];
-        let fkLog: string[] = [];
         tables.forEach((t: any) => {
           const sourceEntity = entityMap.get(t.table_name);
           if (!sourceEntity) return;
-          const fks = t.foreign_keys || [];
-          (fks).forEach((fk: any) => {
+          (t.foreign_keys || []).forEach((fk: any) => {
             const targetEntity = entityMap.get(fk.ref_table);
-            if (!targetEntity) {
-              fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: target entity not found`);
-              return;
-            }
+            if (!targetEntity) return;
             const sourceColId = columnMap.get(`${t.table_name}.${fk.column}`);
             const targetColId = columnMap.get(`${fk.ref_table}.${fk.ref_column}`);
-            if (!sourceColId || !targetColId) {
-              fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: column not found (src=${!!sourceColId}, tgt=${!!targetColId})`);
-              return;
-            }
+            if (!sourceColId || !targetColId) return;
 
             relationships.push({
               id: crypto.randomUUID(),
@@ -311,14 +303,12 @@ router.post("/connections/:id/import", authenticate, desktopOnly, async (req: Ex
               targetColumnId: targetColId,
               type: "one-to-many",
             });
-            fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: OK`);
           });
         });
 
         if (relationships.length > 0) {
           await prisma?.relationship.createMany({ data: relationships });
         }
-        console.log("[DB IMPORT] Relationships created:", relationships.length, "FK debug:", JSON.stringify(fkLog), "Tables:", tables.length, "FK fields present:", tables.some((t: any) => (t.foreign_keys || []).length > 0));
       } catch (entityErr) {
         // Cleanup orphan diagram — entity creation failed
         await prisma?.diagram.delete({ where: { id: diagram.id } }).catch(() => {});
@@ -333,6 +323,76 @@ router.post("/connections/:id/import", authenticate, desktopOnly, async (req: Ex
   } catch (err: any) {
     console.error("Error importing schema:", err);
     res.status(500).json({ error: `Failed to import schema: ${err.message}` });
+  }
+});
+
+// POST /api/connections/:id/records — query records from a table
+router.post("/connections/:id/records", authenticate, desktopOnly, async (req: ExpressRequest, res: ExpressResponse) => {
+  const userId = (req as any).user.id;
+  const { id } = req.params;
+  const { table, page = 1, pageSize = 50 } = req.body;
+
+  if (!table?.trim()) {
+    return res.status(400).json({ error: "table name is required" });
+  }
+
+  try {
+    const conn = await prisma?.localDbConnection.findFirst({
+      where: { id: Number(id), userId },
+    });
+    if (!conn) return res.status(404).json({ error: "Connection not found" });
+
+    const info = buildConnectionInfo(conn);
+    const { client, release } = await getConnector(info.type).connect(info);
+
+    try {
+      const limit = Math.min(Math.max(1, pageSize), 200);
+      const offset = (Math.max(1, page) - 1) * limit;
+
+      let columns: string[] = [];
+      let rows: Record<string, any>[] = [];
+      let total = 0;
+
+      if (info.type === "postgresql") {
+        const pgClient = client as any;
+        // Count total
+        const countRes = await pgClient.query(`SELECT COUNT(*)::int AS total FROM "${table.replace(/"/g, '""')}"`);
+        total = countRes.rows[0]?.total || 0;
+        // Fetch rows
+        const dataRes = await pgClient.query(`SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT $1 OFFSET $2`, [limit, offset]);
+        columns = dataRes.fields.map((f: any) => f.name);
+        rows = dataRes.rows;
+      } else if (info.type === "mysql") {
+        const mysqlClient = client as any;
+        const escapedTable = table.replace(/`/g, '``');
+        const [countRows] = await mysqlClient.execute(`SELECT COUNT(*) AS total FROM \`${escapedTable}\``);
+        total = countRows[0]?.total || 0;
+        const [dataRows, dataFields] = await mysqlClient.execute(`SELECT * FROM \`${escapedTable}\` LIMIT ? OFFSET ?`, [limit, offset]);
+        columns = (dataFields || []).map((f: any) => f.name || f.column || f);
+        rows = dataRows;
+      } else if (info.type === "sqlite") {
+        const db = client as any;
+        const escapedTable = table.replace(/"/g, '""');
+        const countResult = db.exec(`SELECT COUNT(*) AS total FROM "${escapedTable}"`);
+        total = countResult[0]?.values[0]?.[0] || 0;
+        const dataResult = db.exec(`SELECT * FROM "${escapedTable}" LIMIT ${limit} OFFSET ${offset}`);
+        if (dataResult[0]) {
+          columns = dataResult[0].columns;
+          rows = dataResult[0].values.map((vals: any[]) => {
+            const row: Record<string, any> = {};
+            columns.forEach((col: string, i: number) => { row[col] = vals[i]; });
+            return row;
+          });
+        }
+      }
+
+      res.json({ columns, rows, total, page, pageSize: limit });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    console.error("Error querying records:", err);
+    res.status(500).json({ error: `Failed to query records: ${err.message}` });
   }
 });
 

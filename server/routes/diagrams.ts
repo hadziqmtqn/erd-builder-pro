@@ -69,11 +69,18 @@ router.get("/", authenticate, async (req: ExpressRequest, res: ExpressResponse) 
           updatedAt: true,
           isDeleted: true,
           userId: true,
+          sourceType: true,
+          sourceConnectionId: true,
           project: { select: { name: true, uid: true, id: true } },
         },
       }),
       prisma.diagram.count({ where }),
     ]);
+
+    // Debug: log first few diagrams' sourceType
+    if (data && data.length > 0) {
+      console.log('[DEBUG] GET / list sourceTypes:', data.slice(0, 3).map(d => ({ id: d.id, uid: d.uid?.slice(0,8), sourceType: d.sourceType, sourceConnectionId: d.sourceConnectionId })));
+    }
 
     res.json({ data: data || [], total: total || 0 });
   } catch (err: any) {
@@ -219,6 +226,8 @@ router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
     });
 
     if (!diagram) return res.status(404).json({ error: "Diagram not found" });
+
+    console.log('[DEBUG] GET /:uid diagram:', { id: diagram.id, uid: diagram.uid, sourceType: diagram.sourceType, sourceConnectionId: diagram.sourceConnectionId, keys: Object.keys(diagram) });
 
     const diagramId = Number(diagram.id);
 

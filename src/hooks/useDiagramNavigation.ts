@@ -125,8 +125,14 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
       }, { isStale: () => diagramTargetRef.current !== id });
 
       // Add loaded diagram to state if newly created (e.g., from DB import)
-      if (loadedData && !currentDiagrams.some(d => String(d.id) === String(loadedData.id) || (d.uid && d.uid === loadedData.uid))) {
-        setDiagrams(prev => [loadedData, ...prev]);
+      // Must use functional updater + check prev to avoid race with fetchDiagrams
+      if (loadedData) {
+        setDiagrams(prev => {
+          if (prev.some(d => String(d.id) === String(loadedData.id) || (d.uid && d.uid === loadedData.uid))) {
+            return prev; // already in list — no duplicate
+          }
+          return [loadedData, ...prev];
+        });
       }
     } finally {
       isSwitchingDiagramRef.current = false;
