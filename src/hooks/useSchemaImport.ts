@@ -28,8 +28,8 @@ export function useSchemaImport() {
       }
 
       const data = await res.json();
-      toast.success(`Imported ${data.tableCount} tables from production DB`);
-      return { diagram: data.diagram, tableCount: data.tableCount };
+      toast.success(`Imported ${data.table_count} tables from production DB`);
+      return { diagram: data.diagram, tableCount: data.table_count };
     } catch (e: any) {
       toast.error(e.message || 'Failed to import schema');
       return null;

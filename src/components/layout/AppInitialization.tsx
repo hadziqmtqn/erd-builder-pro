@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from "framer-motion";
 import { Database, Share2 } from 'lucide-react';
 
@@ -8,6 +8,19 @@ interface AppInitializationProps {
 }
 
 export function AppInitialization({ type, view = 'Document' }: AppInitializationProps) {
+  // Apply theme from localStorage directly — component renders outside WorkspaceProvider
+  useEffect(() => {
+    const t = localStorage.getItem('erd-builder-theme');
+    const root = document.documentElement;
+    const body = document.body;
+    if (t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      root.classList.add('dark');
+      body.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+      body.classList.remove('dark');
+    }
+  }, []);
   if (type === 'init') {
     return (
       <div className="h-screen w-screen bg-background flex flex-col items-center justify-center gap-6 overflow-hidden">

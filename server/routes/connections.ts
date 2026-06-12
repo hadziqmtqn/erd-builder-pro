@@ -243,19 +243,87 @@ router.post("/connections/:id/import", authenticate, desktopOnly, async (req: Ex
 
     if (!diagram) return res.status(500).json({ error: "Failed to create diagram" });
 
-    // 4. Save entities
+    // 4. Save entities + columns
     if (entities.length > 0) {
-      await prisma?.entity.createMany({
-        data: entities.map((e: any) => ({
-          id: e.id,
-          diagramId: Number(diagram.id),
-          name: e.name,
-          x: e.x,
-          y: e.y,
-          color: e.color,
-          columns: JSON.stringify(e.columns),
-        })),
-      });
+      try {
+        // createMany doesn't support relation fields — create columns separately
+        await prisma?.entity.createMany({
+          data: entities.map((e: any) => ({
+            id: e.id,
+            diagramId: Number(diagram.id),
+            name: e.name,
+            x: e.x,
+            y: e.y,
+            color: e.color,
+          })),
+        });
+
+        // Batch create all columns
+        const allColumns = entities.flatMap((e: any) =>
+          (e.columns || []).map((c: any) => ({
+            id: c.id,
+            entityId: e.id,
+            name: c.name,
+            type: c.type,
+            isPk: !!c.is_pk,
+            isNullable: !!c.is_nullable,
+          }))
+        );
+
+        if (allColumns.length > 0) {
+          await prisma?.column.createMany({ data: allColumns });
+        }
+
+        // 5. Create relationships from foreign keys
+        const entityMap = new Map(entities.map((e: any) => [e.name, e]));
+        const columnMap = new Map<string, string>();
+        entities.forEach((e: any) =>
+          (e.columns || []).forEach((c: any) => {
+            columnMap.set(`${e.name}.${c.name}`, c.id);
+          })
+        );
+
+        const relationships: any[] = [];
+        let fkLog: string[] = [];
+        tables.forEach((t: any) => {
+          const sourceEntity = entityMap.get(t.table_name);
+          if (!sourceEntity) return;
+          const fks = t.foreign_keys || [];
+          (fks).forEach((fk: any) => {
+            const targetEntity = entityMap.get(fk.ref_table);
+            if (!targetEntity) {
+              fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: target entity not found`);
+              return;
+            }
+            const sourceColId = columnMap.get(`${t.table_name}.${fk.column}`);
+            const targetColId = columnMap.get(`${fk.ref_table}.${fk.ref_column}`);
+            if (!sourceColId || !targetColId) {
+              fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: column not found (src=${!!sourceColId}, tgt=${!!targetColId})`);
+              return;
+            }
+
+            relationships.push({
+              id: crypto.randomUUID(),
+              diagramId: Number(diagram.id),
+              sourceEntityId: sourceEntity.id,
+              targetEntityId: targetEntity.id,
+              sourceColumnId: sourceColId,
+              targetColumnId: targetColId,
+              type: "one-to-many",
+            });
+            fkLog.push(`${t.table_name}.${fk.column} -> ${fk.ref_table}.${fk.ref_column}: OK`);
+          });
+        });
+
+        if (relationships.length > 0) {
+          await prisma?.relationship.createMany({ data: relationships });
+        }
+        console.log("[DB IMPORT] Relationships created:", relationships.length, "FK debug:", JSON.stringify(fkLog), "Tables:", tables.length, "FK fields present:", tables.some((t: any) => (t.foreign_keys || []).length > 0));
+      } catch (entityErr) {
+        // Cleanup orphan diagram — entity creation failed
+        await prisma?.diagram.delete({ where: { id: diagram.id } }).catch(() => {});
+        throw entityErr;
+      }
     }
 
     res.status(201).json({

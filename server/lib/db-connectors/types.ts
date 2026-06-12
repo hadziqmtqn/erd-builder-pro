@@ -9,18 +9,29 @@ export interface ConnectionInfo {
   database: string;
 }
 
+export interface ForeignKeySchema {
+  column: string;
+  ref_table: string;
+  ref_column: string;
+  constraint_name?: string;
+}
+
 export interface ColumnSchema {
   name: string;
   type: string;
   is_pk: boolean;
   is_nullable: boolean;
   sort_order: number;
+  is_fk?: boolean;
+  ref_table?: string;
+  ref_column?: string;
 }
 
 export interface TableSchema {
   table_name: string;
   table_schema?: string;
   columns: ColumnSchema[];
+  foreign_keys?: ForeignKeySchema[];
 }
 
 export interface ConnectorClient {

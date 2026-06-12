@@ -1,4 +1,4 @@
-const CACHE_NAME = 'erd-builder-cache-v1.2'; // Update version
+const CACHE_NAME = 'erd-builder-cache-v1.3'; // Bump: theme inline script
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

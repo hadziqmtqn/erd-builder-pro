@@ -36,7 +36,17 @@ export const sqliteConnector: DbConnector = {
         is_nullable: col[3] === 0,
         sort_order: col[0] + 1,
       })) || [];
-      rows.push({ table_name: tableName, columns });
+
+      // Fetch foreign keys
+      const fkInfo = db.exec(`PRAGMA foreign_key_list("${tableName}")`);
+      const foreign_keys = fkInfo[0]?.values.map((fk: any[]) => ({
+        column: fk[3],      // "from" — source column
+        ref_table: fk[2],    // "table" — target table
+        ref_column: fk[4],   // "to" — target column
+        constraint_name: `fk_${tableName}_${fk[3]}`,
+      })) || [];
+
+      rows.push({ table_name: tableName, columns, foreign_keys });
     }
     return rows;
   },

@@ -218,7 +218,7 @@ export function WorkspaceProvider({
   const setIsPublicView = _setIsPublicView;
 
   const {
-    diagrams, activeDiagramId, setActiveDiagramId,
+    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId,
     fetchDiagrams, createDiagram, updateDiagram, deleteDiagram, restoreDiagram, deleteDiagramPermanent, moveDiagramToProject, saveDiagram,
     diagramsTotal, isLoading: isDiagramsLoading,
   } = useDiagrams(isAuthenticated, view, isGuest);
@@ -427,7 +427,7 @@ export function WorkspaceProvider({
 
   // ── Navigation hooks ──
   const { handleDiagramSelect } = useDiagramNavigation({
-    diagrams, activeDiagramId, setActiveDiagramId, view,
+    diagrams, setDiagrams, activeDiagramId, setActiveDiagramId, view,
     setView: setViewCompat, setSidebarView: setSidebarViewCompat,
     setNodes, setEdges,
     selectDiagram, flushPendingSaves, isAuthenticated, isERDItemLoading,
