@@ -8,6 +8,7 @@ import { getSharePathInfo } from '../lib/urlUtils';
 // ──────────────────────────────────────────
 export interface UseDiagramNavigationProps {
   diagrams: Diagram[];
+  setDiagrams: (diagrams: Diagram[] | ((prev: Diagram[]) => Diagram[])) => void;
   activeDiagramId: number | string | null;
   setActiveDiagramId: (id: any) => void;
   view: string;
@@ -38,6 +39,7 @@ export interface UseDiagramNavigationReturn {
 export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagramNavigationReturn {
   const {
     diagrams,
+    setDiagrams,
     activeDiagramId,
     setActiveDiagramId,
     view,
@@ -117,10 +119,15 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
       // Fetch diagram data with stale-response guard
       // Use urlIdentifier (prefers uid) so useERDSession.handleDiagramSelect
       // sets activeDiagramId to UUID instead of numeric id
-      await selectDiagram(urlIdentifier, (newId: any) => {
+      const loadedData = await selectDiagram(urlIdentifier, (newId: any) => {
         setActiveDiagramId(newId);
         lastLoadedDiagramIdRef.current = newId;
       }, { isStale: () => diagramTargetRef.current !== id });
+
+      // Add loaded diagram to state if newly created (e.g., from DB import)
+      if (loadedData && !currentDiagrams.some(d => String(d.id) === String(loadedData.id) || (d.uid && d.uid === loadedData.uid))) {
+        setDiagrams(prev => [loadedData, ...prev]);
+      }
     } finally {
       isSwitchingDiagramRef.current = false;
     }

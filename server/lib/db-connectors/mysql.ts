@@ -47,12 +47,32 @@ export const mysqlConnector: DbConnector = {
           FROM information_schema.COLUMNS c
           WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA
             AND c.TABLE_NAME = t.TABLE_NAME
-        ) AS columns
+        ) AS columns,
+        COALESCE(
+          (SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'column', kcu.COLUMN_NAME,
+              'ref_table', kcu.REFERENCED_TABLE_NAME,
+              'ref_column', kcu.REFERENCED_COLUMN_NAME,
+              'constraint_name', kcu.CONSTRAINT_NAME
+            )
+          )
+          FROM information_schema.KEY_COLUMN_USAGE kcu
+          WHERE kcu.TABLE_SCHEMA = t.TABLE_SCHEMA
+            AND kcu.TABLE_NAME = t.TABLE_NAME
+            AND kcu.REFERENCED_TABLE_NAME IS NOT NULL),
+          JSON_ARRAY()
+        ) AS foreign_keys
       FROM information_schema.TABLES t
       WHERE t.TABLE_SCHEMA = ?
         AND t.TABLE_TYPE = 'BASE TABLE'
       ORDER BY t.TABLE_NAME
     `, [info.database]);
-    return tables as any[];
+    return (tables as any[]).map((row: any) => ({
+      table_name: row.table_name,
+      table_schema: row.table_schema,
+      columns: row.columns || [],
+      foreign_keys: row.foreign_keys || [],
+    }));
   },
 };

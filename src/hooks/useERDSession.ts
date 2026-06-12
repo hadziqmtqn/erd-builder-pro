@@ -97,9 +97,9 @@ export function useERDSession(
 
   const loadingIdRef = useRef<string | number | null>(null);
 
-  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }) => {
+  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }): Promise<any> => {
     // Prevent duplicate concurrent loads for the same ID
-    if (loadingIdRef.current === id) return;
+    if (loadingIdRef.current === id) return null;
     loadingIdRef.current = id;
 
     if (!options?.silent) {
@@ -126,7 +126,7 @@ export function useERDSession(
         if (!localData) {
           setIsItemLoading(false);
           loadingIdRef.current = null;
-          return;
+          return null;
         }
         data = localData;
       } else {
@@ -137,14 +137,14 @@ export function useERDSession(
           toast.error("Failed to load diagram details");
           setIsItemLoading(false);
           loadingIdRef.current = null;
-          return;
+          return null;
         }
         data = await res.json();
       }
       
       if (!data || data.is_deleted) {
         setIsItemLoading(false);
-        return;
+        return null;
       }
 
       // Ensure entities and relationships are at least empty arrays
@@ -269,6 +269,8 @@ export function useERDSession(
       setTimeout(() => {
         isInitializingRef.current = false;
       }, 2000);
+
+      return finalData;
     } catch (err) {
       setIsItemLoading(false);
     } finally {

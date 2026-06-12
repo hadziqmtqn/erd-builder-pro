@@ -44,8 +44,11 @@ export function useConnections() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const isDesktop = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+
   const fetchConnections = useCallback(async () => {
-    if (!user || isGuest) return;
+    if (!user || isGuest || !isDesktop) return;
     setIsLoading(true);
     try {
       const res = await apiFetch('/api/connections');
@@ -57,7 +60,7 @@ export function useConnections() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isGuest]);
+  }, [user, isGuest, isDesktop]);
 
   useEffect(() => {
     fetchConnections();
@@ -158,7 +161,7 @@ export function useConnections() {
         throw new Error(err.error || 'Failed to import schema');
       }
       const result = await res.json();
-      toast.success(`Imported ${result.tableCount} tables as "${name}"`);
+      toast.success(`Imported ${result.table_count} tables as "${name}"`);
       return result;
     } catch (e: any) {
       toast.error(e.message || 'Failed to import schema');
