@@ -1,10 +1,12 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
-import { Database } from 'lucide-react';
+import { Database, Columns, TableIcon } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
+import { DataViewer } from '@/components/db-connect/DataViewer';
+import { cn } from '@/lib/utils';
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
@@ -26,6 +28,9 @@ export function DiagramEditorRoute() {
 
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
+
+  // Tab state for production DB diagrams
+  const [diagramTab, setDiagramTab] = useState<'erd' | 'data'>('erd');
 
   const handleAutoLayout = useCallback(() => {
     if (!nodes || nodes.length === 0) return;
@@ -63,6 +68,7 @@ export function DiagramEditorRoute() {
   }
 
   const showDiagram = isPublicView ? publicData : activeDiagram;
+  console.log('[DEBUG] DiagramEditorRoute:', { showDiagram, isPublicView, activeDiagramId, activeDiagramKey: activeDiagram?.uid, sourceType: showDiagram?.sourceType, sourceConnectionId: showDiagram?.sourceConnectionId, diagramsCount: ctx.diagrams.length });
   const isProductionDb = !isPublicView && showDiagram?.sourceType === 'production_db';
   const effectiveReadOnly = isPublicView || isProductionDb;
 
@@ -86,36 +92,73 @@ export function DiagramEditorRoute() {
   }
 
   return (
-      <ERDView
-        key={isPublicView ? publicData?.id : activeDiagramId}
-        isLoading={isERDItemLoading}
-        nodes={nodes} edges={edges} setNodes={ctx.setNodes} setEdges={ctx.setEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-        onNodeClick={handleNodeClick}
-        onNodeDoubleClick={handleNodeDoubleClick}
-        onEdgeClick={handleEdgeClick}
-        onPaneClick={handlePaneClick}
-        onMove={handleMove}
-        addEntity={addEntity}
-        onImportSQL={handleOpenImportModal}
-        onAutoLayout={handleAutoLayout}
-        handleExportSQL={handleWorkspaceExportSQL}
-        handleExportPDF={handleWorkspaceExportPDF}
-        handleExportImage={handleWorkspaceExportImage}
-        isReadOnly={effectiveReadOnly}
-        undo={undo}
-        redo={redo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        takeSnapshot={takeSnapshot}
-        selectedNodeId={selectedNodeId}
-        onNodeDragStop={onNodeDragStop}
-        onMoveEnd={onMoveEnd}
-        saveDiagram={saveDiagram}
-        triggerDebouncedSync={triggerDebouncedSync}
-        pendingErdDiffTrigger={pendingErdDiffTrigger}
-        extractColumnIdFromHandle={extractColumnIdFromHandle}
-        getRelationKey={getRelationKey}
-        dedupeEdgesByRelation={dedupeEdgesByRelation}
-      />
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Tab bar — only for production DB diagrams */}
+      {isProductionDb && !isPublicView && (
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-muted/5 shrink-0">
+          <button
+            onClick={() => setDiagramTab('erd')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              diagramTab === 'erd'
+                ? 'bg-accent text-accent-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+            )}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            ERD
+          </button>
+          <button
+            onClick={() => setDiagramTab('data')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              diagramTab === 'data'
+                ? 'bg-accent text-accent-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+            )}
+          >
+            <TableIcon className="w-3.5 h-3.5" />
+            Data
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      {diagramTab === 'data' && isProductionDb && !isPublicView && showDiagram?.sourceConnectionId ? (
+        <DataViewer connectionId={Number(showDiagram.sourceConnectionId)} />
+      ) : (
+        <ERDView
+          key={isPublicView ? publicData?.id : activeDiagramId}
+          isLoading={isERDItemLoading}
+          nodes={nodes} edges={edges} setNodes={ctx.setNodes} setEdges={ctx.setEdges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+          onNodeClick={handleNodeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onEdgeClick={handleEdgeClick}
+          onPaneClick={handlePaneClick}
+          onMove={handleMove}
+          addEntity={addEntity}
+          onImportSQL={handleOpenImportModal}
+          onAutoLayout={handleAutoLayout}
+          handleExportSQL={handleWorkspaceExportSQL}
+          handleExportPDF={handleWorkspaceExportPDF}
+          handleExportImage={handleWorkspaceExportImage}
+          isReadOnly={effectiveReadOnly}
+          undo={undo}
+          redo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          takeSnapshot={takeSnapshot}
+          selectedNodeId={selectedNodeId}
+          onNodeDragStop={onNodeDragStop}
+          onMoveEnd={onMoveEnd}
+          saveDiagram={saveDiagram}
+          triggerDebouncedSync={triggerDebouncedSync}
+          pendingErdDiffTrigger={pendingErdDiffTrigger}
+          extractColumnIdFromHandle={extractColumnIdFromHandle}
+          getRelationKey={getRelationKey}
+          dedupeEdgesByRelation={dedupeEdgesByRelation}
+        />
+      )}
+    </div>
   );
 }
