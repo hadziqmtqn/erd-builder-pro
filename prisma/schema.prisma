@@ -425,6 +425,7 @@ model DbAccount {
 
   @@index([userId], map: "idx_db_accounts_user")
   @@map("db_accounts")
+  @@schema("public")
 }
 
 // ── DB Catalog (specific database under an account) ──
@@ -440,6 +441,7 @@ model DbCatalog {
 
   @@index([accountId], map: "idx_db_catalogs_account")
   @@map("db_catalogs")
+  @@schema("public")
 }
 
 
