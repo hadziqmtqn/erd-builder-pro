@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Diagram, Project } from '@/types';
 import {
   Table,
@@ -12,11 +12,12 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable } from 'lucide-react';
+import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable, Database } from 'lucide-react';
 import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 
 interface ErdTableViewProps {
@@ -35,6 +36,44 @@ interface ErdTableViewProps {
 }
 
 const ITEMS_PER_PAGE = 10;
+const STORAGE_KEY = 'erd-table-column-visibility';
+
+interface ColumnDef {
+  id: string;
+  label: string;
+  defaultVisible: boolean;
+  hideable: boolean;
+  width: string;
+}
+
+const DEFAULT_COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[22%]' },
+  { id: 'workspace', label: 'Workspace', defaultVisible: true, hideable: false, width: 'w-[15%]' },
+  { id: 'source', label: 'Source', defaultVisible: true, hideable: true, width: 'w-[12%]' },
+  { id: 'updated', label: 'Updated', defaultVisible: false, hideable: true, width: 'w-[12%]' },
+  { id: 'status', label: 'Status', defaultVisible: true, hideable: true, width: 'w-[8%]' },
+  { id: 'created', label: 'Created', defaultVisible: true, hideable: true, width: 'w-[11%]' },
+  { id: 'expires', label: 'Expires', defaultVisible: false, hideable: true, width: 'w-[12%]' },
+  { id: 'actions', label: 'Actions', defaultVisible: true, hideable: false, width: 'w-[8%]' },
+];
+
+const loadColumnVisibility = (): Record<string, boolean> => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...parsed };
+    }
+  } catch {}
+  // Fallback to defaults
+  return Object.fromEntries(DEFAULT_COLUMNS.map(c => [c.id, c.defaultVisible]));
+};
+
+const formatSourceType = (st?: string): string => {
+  if (!st) return '—';
+  if (st === 'production_db') return 'DB Connect';
+  return st.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
 export const ErdTableView = React.memo(function ErdTableView({
   diagrams,
@@ -54,6 +93,24 @@ export const ErdTableView = React.memo(function ErdTableView({
   const [dbConnectOpen, setDbConnectOpen] = useState(false);
   const isDesktop = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(loadColumnVisibility);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleColumns));
+    } catch {}
+  }, [visibleColumns]);
+
+  const toggleColumn = useCallback((colId: string) => {
+    setVisibleColumns(prev => ({ ...prev, [colId]: !prev[colId] }));
+  }, []);
+
+  const isColVisible = useCallback((colId: string): boolean => {
+    const col = DEFAULT_COLUMNS.find(c => c.id === colId);
+    if (!col || !col.hideable) return true;
+    return visibleColumns[colId] ?? col.defaultVisible;
+  }, [visibleColumns]);
 
   const getProjectById = (projectId: number | string | null | undefined) => {
     if (projectId === null || projectId === undefined) return null;
@@ -100,6 +157,8 @@ export const ErdTableView = React.memo(function ErdTableView({
     }
   };
 
+  const visibleCols = DEFAULT_COLUMNS.filter(c => c.id === 'name' || c.id === 'workspace' || c.id === 'actions' || isColVisible(c.id));
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -134,6 +193,27 @@ export const ErdTableView = React.memo(function ErdTableView({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Columns Toggle */}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="outline" size="sm">
+                <Columns3 className="w-4 h-4 mr-1.5" />
+                Columns
+              </Button>
+            } />
+            <DropdownMenuContent align="end" className="w-44">
+              {DEFAULT_COLUMNS.filter(c => c.hideable).map(col => (
+                <DropdownMenuCheckboxItem
+                  key={col.id}
+                  checked={isColVisible(col.id)}
+                  onCheckedChange={() => toggleColumn(col.id)}
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button size="sm" onClick={onCreateDiagram}>
             <Plus className="w-4 h-4 mr-1.5" />
             Create Diagram
@@ -152,19 +232,17 @@ export const ErdTableView = React.memo(function ErdTableView({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[28%]">Name</TableHead>
-              <TableHead className="w-[18%]">Workspace</TableHead>
-              <TableHead className="w-[13%]">Updated</TableHead>
-              <TableHead className="w-[8%]">Status</TableHead>
-              <TableHead className="w-[12%]">Created</TableHead>
-              <TableHead className="w-[13%]">Expires</TableHead>
-              <TableHead className="w-[8%] text-right">Actions</TableHead>
+              {DEFAULT_COLUMNS.filter(c => visibleCols.some(v => v.id === c.id)).map(col => (
+                <TableHead key={col.id} className={col.width}>
+                  {col.label}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {diagrams.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={visibleCols.length} className="h-32 text-center text-muted-foreground">
                   {totalDiagrams === 0
                     ? 'No diagrams yet. Create your first ERD diagram to get started.'
                     : 'No diagrams on this page.'}
@@ -180,62 +258,105 @@ export const ErdTableView = React.memo(function ErdTableView({
                     className="cursor-pointer group"
                     onClick={() => onSelectDiagram(uid)}
                   >
-                    <TableCell className="font-medium">
-                      <span className="truncate block max-w-[280px]">
-                        {d.name || 'Untitled'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full cursor-pointer hover:bg-accent transition-colors"
-                        onClick={e => {
-                          e.stopPropagation();
-                          onWorkspaceClick(currentProjectUid);
-                        }}
-                      >
-                        {getProjectName(d)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(d.updated_at)}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${d.is_public ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
-                        {d.is_public ? 'Public' : 'Private'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(d.created_at)}
-                    </TableCell>
-                    <TableCell className={`text-muted-foreground text-xs ${isExpired(d.expiry_date) ? 'text-red-500 font-medium' : ''}`}>
-                      {formatDateOnly(d.expiry_date)}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        }>
-                          <span className="sr-only">Actions</span>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit Document
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => onDeleteDiagram(uid)} className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {visibleCols.map(col => {
+                      if (col.id === 'name') {
+                        return (
+                          <TableCell key="name" className="font-medium">
+                            <span className="truncate block max-w-[280px]">
+                              {d.name || 'Untitled'}
+                            </span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'workspace') {
+                        return (
+                          <TableCell key="workspace">
+                            <span
+                              className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full cursor-pointer hover:bg-accent transition-colors"
+                              onClick={e => {
+                                e.stopPropagation();
+                                onWorkspaceClick(currentProjectUid);
+                              }}
+                            >
+                              {getProjectName(d)}
+                            </span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'source') {
+                        return (
+                          <TableCell key="source" className="text-muted-foreground text-xs">
+                            {(d.source_type && d.source_type !== 'scratch') ? (
+                              <span className="inline-flex items-center gap-1 text-xs bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full">
+                                <Database className="w-3 h-3" />
+                                {formatSourceType(d.source_type)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/50">Scratch</span>
+                            )}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'updated') {
+                        return (
+                          <TableCell key="updated" className="text-muted-foreground text-xs">
+                            {formatDate(d.updated_at)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'status') {
+                        return (
+                          <TableCell key="status">
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${d.is_public ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
+                              {d.is_public ? 'Public' : 'Private'}
+                            </span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'created') {
+                        return (
+                          <TableCell key="created" className="text-muted-foreground text-xs">
+                            {formatDate(d.created_at)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'expires') {
+                        return (
+                          <TableCell key="expires" className={`text-muted-foreground text-xs ${isExpired(d.expiry_date) ? 'text-red-500 font-medium' : ''}`}>
+                            {formatDateOnly(d.expiry_date)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'actions') {
+                        return (
+                          <TableCell key="actions" className="text-right" onClick={e => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              } />
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit Document
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => onDeleteDiagram(uid)} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        );
+                      }
+                      return null;
+                    })}
                   </TableRow>
                 );
               })
@@ -289,7 +410,7 @@ export const ErdTableView = React.memo(function ErdTableView({
               disabled={page >= totalPages}
               onClick={() => onPageChange(page + 1)}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </div>

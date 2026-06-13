@@ -430,6 +430,12 @@ router.delete("/catalogs/:id", authenticate, desktopOnly, async (req: ExpressReq
     });
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
+    // Get affected diagrams info before detaching
+    const affectedDiagrams = await prisma?.diagram.findMany({
+      where: { sourceConnectionId: Number(id) },
+      select: { id: true, name: true },
+    });
+
     // Detach diagrams using this catalog
     await prisma?.diagram.updateMany({
       where: { sourceConnectionId: Number(id) },
@@ -437,7 +443,11 @@ router.delete("/catalogs/:id", authenticate, desktopOnly, async (req: ExpressReq
     });
 
     await prisma?.dbCatalog.delete({ where: { id: Number(id) } });
-    res.json({ success: true });
+    res.json({
+      success: true,
+      detachedDiagrams: affectedDiagrams?.length ?? 0,
+      diagramNames: affectedDiagrams?.map(d => d.name) ?? [],
+    });
   } catch (err) {
     console.error("Error deleting catalog:", err);
     res.status(500).json({ error: "Failed to delete catalog" });

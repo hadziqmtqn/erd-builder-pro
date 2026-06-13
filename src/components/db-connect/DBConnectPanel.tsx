@@ -249,9 +249,15 @@ export function DBConnectPanel({
                     onAddCatalog={handleAddDatabase}
                     onImportCatalog={handleStartImport}
                     onDeleteCatalog={async (cat) => {
-                      await deleteCatalog(cat.id);
+                      const result = await deleteCatalog(cat.id);
                       fetchCatalogs();
                       fetchAccounts();
+                      if (result && result.detachedDiagrams > 0) {
+                        toast.info(
+                          `${result.detachedDiagrams} diagram(s) disconnected: ${result.diagramNames.join(', ')}`,
+                          { duration: 5000 }
+                        );
+                      }
                     }}
                     isTesting={testingIds.has(acc.id)}
                   />
