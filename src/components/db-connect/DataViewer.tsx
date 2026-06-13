@@ -85,10 +85,32 @@ export function DataViewer({ connectionId }: DataViewerProps) {
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 </div>
               ) : error ? (
-                <div className="flex-1 flex items-center justify-center text-sm text-destructive">
-                  <div className="flex flex-col items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    <span>{error}</span>
+                <div className="flex-1 flex items-center justify-center text-sm">
+                  <div className="flex flex-col items-center gap-3 max-w-xs text-center">
+                    {error.includes('Catalog not found') ? (
+                      <>
+                        <Database className="w-8 h-8 text-muted-foreground/40" />
+                        <div>
+                          <p className="font-medium text-foreground mb-1">Connection was removed</p>
+                          <p className="text-xs text-muted-foreground">
+                            This diagram is no longer connected to the database. The ERD data is still saved.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-1"
+                          onClick={() => window.history.replaceState(null, '', '?tab=erd')}
+                        >
+                          Switch to ERD
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-5 h-5 text-destructive" />
+                        <span className="text-destructive">{error}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : records ? (

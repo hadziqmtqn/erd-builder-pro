@@ -15,8 +15,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Network, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Network, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Columns3 } from 'lucide-react';
+import { useColumnVisibility, ColumnDef } from '@/hooks/useColumnVisibility';
 
 interface FlowchartTableViewProps {
   flowcharts: Flowchart[];
@@ -34,6 +36,17 @@ interface FlowchartTableViewProps {
 }
 
 const ITEMS_PER_PAGE = 10;
+const STORAGE_KEY = 'flowchart-table-column-visibility';
+
+const COLUMNS: ColumnDef[] = [
+  { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[30%]' },
+  { id: 'workspace', label: 'Workspace', defaultVisible: true, hideable: false, width: 'w-[20%]' },
+  { id: 'updated', label: 'Updated', defaultVisible: false, hideable: true, width: 'w-[14%]' },
+  { id: 'status', label: 'Status', defaultVisible: true, hideable: true, width: 'w-[8%]' },
+  { id: 'created', label: 'Created', defaultVisible: true, hideable: true, width: 'w-[12%]' },
+  { id: 'expires', label: 'Expires', defaultVisible: false, hideable: true, width: 'w-[14%]' },
+  { id: 'actions', label: 'Actions', defaultVisible: true, hideable: false, width: 'w-[8%]' },
+];
 
 export const FlowchartTableView = React.memo(function FlowchartTableView({
   flowcharts,
@@ -50,6 +63,8 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
   onDeleteFlowchart,
 }: FlowchartTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalFlowcharts / ITEMS_PER_PAGE));
+  const { toggle, visibleCols } = useColumnVisibility(STORAGE_KEY, COLUMNS);
+  const cols = visibleCols();
 
   const getProjectById = (projectId: number | string | null | undefined) => {
     if (projectId === null || projectId === undefined) return null;
@@ -128,29 +143,46 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
             ({totalFlowcharts} flowcharts)
           </span>
         </div>
-        <Button size="sm" onClick={onCreateFlowchart}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          Create Flowchart
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <Button variant="outline" size="sm">
+                <Columns3 className="w-4 h-4 mr-1.5" />
+                Columns
+              </Button>
+            } />
+            <DropdownMenuContent align="end" className="w-44">
+              {COLUMNS.filter(c => c.hideable).map(col => (
+                <DropdownMenuCheckboxItem
+                  key={col.id}
+                  checked={cols.some(v => v.id === col.id)}
+                  onCheckedChange={() => toggle(col.id)}
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" onClick={onCreateFlowchart}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            Create Flowchart
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[28%]">Name</TableHead>
-              <TableHead className="w-[18%]">Workspace</TableHead>
-              <TableHead className="w-[13%]">Updated</TableHead>
-              <TableHead className="w-[8%]">Status</TableHead>
-              <TableHead className="w-[12%]">Created</TableHead>
-              <TableHead className="w-[13%]">Expires</TableHead>
-              <TableHead className="w-[8%] text-right">Actions</TableHead>
+              {cols.map(col => (
+                <TableHead key={col.id} className={col.width}>{col.label}</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {flowcharts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={cols.length} className="h-32 text-center text-muted-foreground">
                   {totalFlowcharts === 0
                     ? 'No flowcharts yet. Create your first flowchart to get started.'
                     : 'No flowcharts on this page.'}
@@ -166,62 +198,82 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
                     className="cursor-pointer group"
                     onClick={() => onSelectFlowchart(uid)}
                   >
-                    <TableCell className="font-medium">
-                      <span className="truncate block max-w-[280px]">
-                        {flowchart.title || 'Untitled'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full cursor-pointer hover:bg-accent transition-colors"
-                        onClick={e => {
-                          e.stopPropagation();
-                          onWorkspaceClick(currentProjectUid);
-                        }}
-                      >
-                        {getProjectName(flowchart)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(flowchart.updated_at)}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${flowchart.is_public ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
-                        {flowchart.is_public ? 'Public' : 'Private'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {formatDate(flowchart.created_at)}
-                    </TableCell>
-                    <TableCell className={`text-muted-foreground text-xs ${isExpired(flowchart.expiry_date) ? 'text-red-500 font-medium' : ''}`}>
-                      {formatDateOnly(flowchart.expiry_date)}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        }>
-                          <span className="sr-only">Actions</span>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit Document
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => onDeleteFlowchart(uid)} className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {cols.map(col => {
+                      if (col.id === 'name') {
+                        return (
+                          <TableCell key="name" className="font-medium">
+                            <span className="truncate block max-w-[280px]">{flowchart.title || 'Untitled'}</span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'workspace') {
+                        return (
+                          <TableCell key="workspace">
+                            <span
+                              className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full cursor-pointer hover:bg-accent transition-colors"
+                              onClick={e => { e.stopPropagation(); onWorkspaceClick(currentProjectUid); }}
+                            >
+                              {getProjectName(flowchart)}
+                            </span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'updated') {
+                        return (
+                          <TableCell key="updated" className="text-muted-foreground text-xs">
+                            {formatDate(flowchart.updated_at)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'status') {
+                        return (
+                          <TableCell key="status">
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${flowchart.is_public ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
+                              {flowchart.is_public ? 'Public' : 'Private'}
+                            </span>
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'created') {
+                        return (
+                          <TableCell key="created" className="text-muted-foreground text-xs">
+                            {formatDate(flowchart.created_at)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'expires') {
+                        return (
+                          <TableCell key="expires" className={`text-muted-foreground text-xs ${isExpired(flowchart.expiry_date) ? 'text-red-500 font-medium' : ''}`}>
+                            {formatDateOnly(flowchart.expiry_date)}
+                          </TableCell>
+                        );
+                      }
+                      if (col.id === 'actions') {
+                        return (
+                          <TableCell key="actions" className="text-right" onClick={e => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger render={
+                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              } />
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem onClick={() => onOpenEditDocument(uid)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Edit Document
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => onDeleteFlowchart(uid)} className="text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        );
+                      }
+                      return null;
+                    })}
                   </TableRow>
                 );
               })
@@ -253,9 +305,7 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
               }, [])
               .map((item) =>
                 item === 'ellipsis' ? (
-                  <span key={`e-${item}`} className="px-1 text-xs text-muted-foreground">
-                    ...
-                  </span>
+                  <span key={`e-${item}`} className="px-1 text-xs text-muted-foreground">...</span>
                 ) : (
                   <Button
                     key={item}
