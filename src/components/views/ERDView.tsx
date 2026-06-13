@@ -15,7 +15,7 @@ import {
   reconnectEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import EntityNode from '../EntityNode';
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceContext';
+import { apiFetch } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 
 const nodeTypes = {
@@ -114,7 +115,11 @@ const ERDViewComponent = ({
   const { getViewport } = useReactFlow();
   const { resolvedTheme, activeDocument } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
-  const isProductionDb = activeDocument?.sourceType === 'production_db';
+  const isProductionDb = activeDocument?.source_type === 'production_db';
+  const sourceConnectionId = activeDocument?.source_connection_id as number | undefined;
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
 
   // ─── Multi-table selection ───────────────────────────
   const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
@@ -289,6 +294,87 @@ const ERDViewComponent = ({
     });
     setShowChecklist(false);
   }, []);
+  const handleSync = useCallback(async () => {
+    if (!sourceConnectionId) return;
+    setIsSyncing(true);
+    try {
+      const res = await apiFetch(`/api/catalogs/${sourceConnectionId}/schema`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to sync schema' }));
+        toast.error(err.error || 'Failed to sync schema');
+        return;
+      }
+      const data = await res.json();
+      const tables: any[] = data.schema || [];
+
+      // Convert tables to Node<Entity>[]
+      const idMap = new Map<string, string>();
+      const newNodes: Node<Entity>[] = tables.map((t: any, i: number) => {
+        const nodeId = crypto.randomUUID();
+        idMap.set(t.table_name, nodeId);
+        return {
+          id: nodeId,
+          type: 'entity',
+          position: { x: (i % 4) * 280 + 50, y: Math.floor(i / 4) * 200 + 50 },
+          data: {
+            id: nodeId,
+            name: t.table_name,
+            x: (i % 4) * 280 + 50,
+            y: Math.floor(i / 4) * 200 + 50,
+            color: '#4f46e5',
+            columns: (t.columns || []).map((c: any) => ({
+              id: crypto.randomUUID(),
+              name: c.name,
+              type: c.type,
+              is_pk: !!c.is_pk,
+              is_nullable: !!c.is_nullable,
+              enum_values: null,
+              sort_order: c.sort_order || 0,
+              _is_fk: false,
+            })),
+          },
+        };
+      });
+
+      // Build edges from foreign_keys
+      const columnIdMap = new Map<string, string>();
+      newNodes.forEach(n => {
+        n.data.columns.forEach(c => {
+          columnIdMap.set(`${n.data.name}.${c.name}`, c.id);
+        });
+      });
+      const newEdges: Edge[] = [];
+      tables.forEach((t: any) => {
+        const sourceId = idMap.get(t.table_name);
+        if (!sourceId) return;
+        (t.foreign_keys || []).forEach((fk: any) => {
+          const targetId = idMap.get(fk.ref_table);
+          if (!targetId) return;
+          const srcColId = columnIdMap.get(`${t.table_name}.${fk.column}`);
+          const tgtColId = columnIdMap.get(`${fk.ref_table}.${fk.ref_column}`);
+          if (!srcColId || !tgtColId) return;
+          if (newEdges.some(e => e.source === sourceId && e.target === targetId)) return;
+          newEdges.push({
+            id: crypto.randomUUID(),
+            source: sourceId,
+            target: targetId,
+            sourceHandle: `col-${srcColId}-source`,
+            targetHandle: `col-${tgtColId}-target`,
+            type: 'smoothstep',
+          });
+        });
+      });
+
+      startDiff(nodesRef.current, edgesRef.current, newNodes, newEdges);
+      toast.success(`Fetched ${tables.length} tables from production DB`);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to sync schema');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [sourceConnectionId, startDiff]);
 
   const handleRejectAll = useCallback(() => {
     setPendingDiff(null);
@@ -467,7 +553,7 @@ const ERDViewComponent = ({
     <div className="flex-1 relative flex flex-col overflow-hidden border rounded-xl bg-muted/20" style={{ contain: 'paint layout' }}>
 
       {isReadOnly && isProductionDb && (
-        <div className="absolute top-6 inset-x-0 z-20 flex justify-center pointer-events-none">
+        <div className="absolute bottom-4 inset-x-0 z-20 flex justify-center pointer-events-none">
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg pointer-events-auto text-sm text-amber-700 dark:text-amber-400 shadow-lg">
             <EyeOff className="h-4 w-4 shrink-0" />
             <span>Read-only — imported from production database. Switch to desktop app to modify.</span>
@@ -475,48 +561,60 @@ const ERDViewComponent = ({
         </div>
       )}
 
-      {!isReadOnly && !pendingDiff && (
+      {!pendingDiff && (
         <div className="absolute top-6 inset-x-0 z-10 flex justify-center pointer-events-none">
           <div className="flex items-center gap-1.5 p-1.5 bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw] overflow-x-auto no-scrollbar">
             <JumpToNode nodes={nodes} label="Table" />
+            {!isReadOnly && <div className="w-px h-6 bg-border mx-0.5" />}
             
-            <div className="w-px h-6 bg-border mx-0.5" />
-            
-            <Button onClick={addEntity} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
-              <Plus className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Add Table</span>
-            </Button>
-            <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
-              <Upload className="w-3.5 h-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">Import SQL</span>
-            </Button>
+            {!isReadOnly && (
+              <Button onClick={addEntity} size="sm" className="h-9 px-3 sm:px-4 font-bold shadow-lg shadow-primary/20 cursor-pointer">
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Add Table</span>
+              </Button>
+            )}
+            {!isReadOnly && (
+              <Button onClick={onImportSQL} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
+                <Upload className="w-3.5 h-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Import SQL</span>
+              </Button>
+            )}
             <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
               <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
               <span className="hidden sm:inline">Auto Layout</span>
             </Button>
 
-            <div className="flex items-center gap-0.5 ml-auto">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={undo} 
-                disabled={!canUndo}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo2 className="w-4 h-4" />
+            {isProductionDb && (
+              <Button onClick={handleSync} variant="outline" size="sm" className="h-9 px-3 border-amber-500/50 hover:bg-amber-500/10 bg-amber-500/5 text-amber-600 dark:text-amber-400 text-xs font-semibold cursor-pointer" disabled={isSyncing}>
+                <RefreshCw className={`w-3.5 h-3.5 sm:mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={redo} 
-                disabled={!canRedo}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                title="Redo (Ctrl+Y)"
-              >
-                <Redo2 className="w-4 h-4" />
-              </Button>
-            </div>
+            )}
+
+            {!isReadOnly && (
+              <div className="flex items-center gap-0.5 ml-auto">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={undo} 
+                  disabled={!canUndo}
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={redo} 
+                  disabled={!canRedo}
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

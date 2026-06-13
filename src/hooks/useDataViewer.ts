@@ -24,7 +24,7 @@ export function useDataViewer(connectionId: number | null) {
     setIsLoadingTables(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/connections/${connectionId}/schema`, { method: 'POST' });
+      const res = await apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch tables');
       setTables(data.schema || []);
@@ -45,7 +45,7 @@ export function useDataViewer(connectionId: number | null) {
     setIsLoadingRecords(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/connections/${connectionId}/records`, {
+      const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table, page: p, pageSize: 50 }),

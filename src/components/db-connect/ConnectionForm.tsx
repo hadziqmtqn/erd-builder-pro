@@ -18,8 +18,8 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Loader2, CheckCircle2, XCircle, FolderOpen } from 'lucide-react';
-import type { ConnectionFormData, DbType, TestResult, Connection } from '@/hooks/useConnections';
+import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import type { DbAccountFormData, DbType, TestResult, DbAccount } from '@/hooks/useConnections';
 
 const DB_OPTIONS: { value: DbType; label: string; defaultPort: number }[] = [
   { value: 'postgresql', label: 'PostgreSQL', defaultPort: 5432 },
@@ -30,9 +30,9 @@ const DB_OPTIONS: { value: DbType; label: string; defaultPort: number }[] = [
 interface ConnectionFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editing?: Connection | null;
-  onSave: (data: ConnectionFormData) => Promise<Connection | null>;
-  onTest: (data: ConnectionFormData) => Promise<TestResult>;
+  editing?: DbAccount | null;
+  onSave: (data: DbAccountFormData) => Promise<DbAccount | null>;
+  onTest: (data: DbAccountFormData) => Promise<TestResult>;
   getDefaultPort: (type: DbType) => number;
 }
 
@@ -50,7 +50,6 @@ export function ConnectionForm({
   const [port, setPort] = useState(String(editing?.port ?? getDefaultPort(type)));
   const [user, setUser] = useState(editing?.user || '');
   const [password, setPassword] = useState('');
-  const [database, setDatabase] = useState(editing?.database || '');
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -66,7 +65,6 @@ export function ConnectionForm({
         setPort(String(editing.port ?? getDefaultPort(editing.type)));
         setUser(editing.user || '');
         setPassword('');
-        setDatabase(editing.database);
       } else {
         setType('postgresql');
         setName('');
@@ -74,7 +72,6 @@ export function ConnectionForm({
         setPort('5432');
         setUser('postgres');
         setPassword('');
-        setDatabase('');
       }
       setTestResult(null);
     }
@@ -88,14 +85,13 @@ export function ConnectionForm({
     setTestResult(null);
   };
 
-  const buildFormData = (): ConnectionFormData => ({
+  const buildFormData = (): DbAccountFormData => ({
     name,
     type,
     host,
     port: Number(port),
     user,
     password,
-    database,
   });
 
   const handleTest = async () => {
@@ -107,7 +103,7 @@ export function ConnectionForm({
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !database.trim()) return;
+    if (!name.trim()) return;
     setIsSaving(true);
     const result = await onSave(buildFormData());
     setIsSaving(false);
@@ -122,7 +118,7 @@ export function ConnectionForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Connection' : 'New Connection'}</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit Server Account' : 'New Server Account'}</DialogTitle>
         </DialogHeader>
         <DialogBody className="space-y-3">
           {/* Type */}
@@ -149,7 +145,7 @@ export function ConnectionForm({
           {/* Name */}
           <Field>
             <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-              Connection Name
+              Server Name
             </FieldLabel>
             <Input
               className="h-10"
@@ -216,48 +212,6 @@ export function ConnectionForm({
             </div>
           )}
 
-          {/* Database */}
-          <Field>
-            <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-              {isSqlite ? 'Database Path' : 'Database'}
-            </FieldLabel>
-            <div className="flex gap-2">
-              <Input
-                className="h-10 flex-1"
-                placeholder={isSqlite ? '/path/to/database.db' : 'database_name'}
-                value={database}
-                onChange={e => setDatabase(e.target.value)}
-              />
-              {isSqlite && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-10 w-10 shrink-0"
-                  onClick={async () => {
-                    try {
-                      const { open: openDialog } = await import('@tauri-apps/plugin-dialog');
-                      const selected = await openDialog({
-                        multiple: false,
-                        title: 'Select SQLite file',
-                        filters: [{
-                          name: 'SQLite Database',
-                          extensions: ['db', 'sqlite', 'sqlite3', 'db3'],
-                        }],
-                      });
-                      if (typeof selected === 'string' && selected) {
-                        setDatabase(selected);
-                      }
-                    } catch {
-                      // Fallback: not in Tauri — user can type manually
-                    }
-                  }}
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </Field>
-
           {/* Test result */}
           {testResult && (
             <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
@@ -275,7 +229,7 @@ export function ConnectionForm({
           )}
         </DialogBody>
         <DialogFooter className="gap-2">
-          <Button variant="outline" className="h-9" onClick={handleTest} disabled={isTesting || !database.trim()}>
+          <Button variant="outline" className="h-9" onClick={handleTest} disabled={isTesting}>
             {isTesting ? (
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
             ) : null}
@@ -286,7 +240,7 @@ export function ConnectionForm({
           </DialogClose>
           <Button
             className="h-9 px-6"
-            disabled={!name.trim() || !database.trim() || isSaving}
+            disabled={!name.trim() || isSaving}
             onClick={handleSave}
           >
             {isSaving ? (

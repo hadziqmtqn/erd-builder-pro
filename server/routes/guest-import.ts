@@ -47,6 +47,12 @@ function safeDate(val: string | null | undefined, fallback: Date = now()): Date 
   return Number.isNaN(d.getTime()) ? fallback : d;
 }
 
+// Assert Prisma is available at module level
+if (!prisma) {
+  throw new Error("Prisma is not available (server started without database)");
+}
+const _prisma: NonNullable<typeof prisma> = prisma;
+
 /** Write an NDJSON progress line to the streaming response. */
 function sendProgress(res: ExpressResponse, data: Record<string, unknown>): void {
   try {
@@ -143,7 +149,7 @@ async function importProjects(
       guestIdToName.set(guestId, nameLower);
     }
 
-    const existing = await prisma.project.findFirst({
+    const existing = await _prisma.project.findFirst({
       where: { name, userId, isDeleted: false },
       select: { id: true },
     });
@@ -152,7 +158,7 @@ async function importProjects(
       nameToDbId.set(nameLower, existing.id);
       stats.skipped_existing++;
     } else {
-      const created = await prisma.project.create({
+      const created = await _prisma.project.create({
         data: {
           uid: item.uid || uuid(),
           name,
@@ -200,7 +206,7 @@ async function importNotes(
 
     for (const item of batch) {
       if (item.uid) {
-        const existing = await prisma.note.findUnique({
+        const existing = await _prisma.note.findUnique({
           where: { uid: String(item.uid) },
           select: { id: true },
         });
@@ -225,7 +231,7 @@ async function importNotes(
     }
 
     if (creates.length > 0) {
-      await prisma.$transaction(creates.map(data => prisma.note.create({ data })));
+      await _prisma.$transaction(creates.map(data => _prisma.note.create({ data })));
       stats.notes += creates.length;
     }
 
@@ -258,7 +264,7 @@ async function importDiagrams(
 
   for (const item of validItems) {
     if (item.uid) {
-      const existing = await prisma.diagram.findUnique({
+      const existing = await _prisma.diagram.findUnique({
         where: { uid: String(item.uid) },
         select: { id: true },
       });
@@ -278,7 +284,7 @@ async function importDiagrams(
     const projectId = resolveProjectId(item.project_id, item.projectId, nameToDbId, guestIdToName);
 
     // Step 1: Create the diagram record
-    const diagram = await prisma.diagram.create({
+    const diagram = await _prisma.diagram.create({
       data: {
         uid: item.uid || uuid(),
         name: String(item.name),
@@ -330,7 +336,7 @@ async function importDiagrams(
 
     for (let i = 0; i < entityBatch.length; i += BATCH_SIZE) {
       const slice = entityBatch.slice(i, i + BATCH_SIZE);
-      await prisma.$transaction(slice.map(e => prisma.entity.create({ data: e.data })));
+      await _prisma.$transaction(slice.map(e => _prisma.entity.create({ data: e.data })));
       stats.entities += slice.length;
       processed += slice.length;
 
@@ -375,7 +381,7 @@ async function importDiagrams(
 
     for (let i = 0; i < columnBatch.length; i += BATCH_SIZE) {
       const slice = columnBatch.slice(i, i + BATCH_SIZE);
-      await prisma.$transaction(slice.map(c => prisma.column.create({ data: c.data })));
+      await _prisma.$transaction(slice.map(c => _prisma.column.create({ data: c.data })));
       stats.columns += slice.length;
       processed += slice.length;
 
@@ -431,7 +437,7 @@ async function importDiagrams(
 
     for (let i = 0; i < relBatch.length; i += BATCH_SIZE) {
       const slice = relBatch.slice(i, i + BATCH_SIZE);
-      await prisma.$transaction(slice.map(r => prisma.relationship.create({ data: r })));
+      await _prisma.$transaction(slice.map(r => _prisma.relationship.create({ data: r })));
       stats.relationships += slice.length;
       processed += slice.length;
 
@@ -468,7 +474,7 @@ async function importFlowcharts(
 
     for (const item of batch) {
       if (item.uid) {
-        const existing = await prisma.flowchart.findUnique({
+        const existing = await _prisma.flowchart.findUnique({
           where: { uid: String(item.uid) },
           select: { id: true },
         });
@@ -493,7 +499,7 @@ async function importFlowcharts(
     }
 
     if (creates.length > 0) {
-      await prisma.$transaction(creates.map(data => prisma.flowchart.create({ data })));
+      await _prisma.$transaction(creates.map(data => _prisma.flowchart.create({ data })));
       stats.flowcharts += creates.length;
     }
 
@@ -530,7 +536,7 @@ async function importDrawings(
 
     for (const item of batch) {
       if (item.uid) {
-        const existing = await prisma.drawing.findUnique({
+        const existing = await _prisma.drawing.findUnique({
           where: { uid: String(item.uid) },
           select: { id: true },
         });
@@ -555,7 +561,7 @@ async function importDrawings(
     }
 
     if (creates.length > 0) {
-      await prisma.$transaction(creates.map(data => prisma.drawing.create({ data })));
+      await _prisma.$transaction(creates.map(data => _prisma.drawing.create({ data })));
       stats.drawings += creates.length;
     }
 
@@ -588,7 +594,7 @@ async function importAiChatSessions(
 
   for (const session of validSessions) {
     if (session.uid) {
-      const existing = await prisma.aiChatSession.findUnique({
+      const existing = await _prisma.aiChatSession.findUnique({
         where: { uid: String(session.uid) },
         select: { id: true },
       });
@@ -607,7 +613,7 @@ async function importAiChatSessions(
 
     const projectId = resolveProjectId(session.project_id, session.projectId, nameToDbId, guestIdToName);
 
-    const created = await prisma.aiChatSession.create({
+    const created = await _prisma.aiChatSession.create({
       data: {
         uid: session.uid || uuid(),
         userId,
@@ -646,7 +652,7 @@ async function importAiChatSessions(
 
     for (let i = 0; i < msgCreates.length; i += BATCH_SIZE) {
       const slice = msgCreates.slice(i, i + BATCH_SIZE);
-      await prisma.$transaction(slice.map(m => prisma.aiChatMessage.create({ data: m })));
+      await _prisma.$transaction(slice.map(m => _prisma.aiChatMessage.create({ data: m })));
       stats.ai_messages += slice.length;
       processed += slice.length;
 
@@ -717,7 +723,8 @@ router.post("/import", authenticate, async (req: ExpressRequest, res: ExpressRes
   // 1. Validate
   const validation = validatePayload(req.body);
   if (!validation.ok) {
-    return res.status(400).json({ error: validation.error });
+    const errMsg = validation as { ok: false; error: string };
+    return res.status(400).json({ error: errMsg.error });
   }
   const { payload } = validation;
   const data = payload.data!;

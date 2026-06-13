@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,8 +8,32 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { MoreHorizontal, Pencil, Trash2, Cable, Loader2, Database } from 'lucide-react';
-import type { Connection, DbType } from '@/hooks/useConnections';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
+import {
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Cable,
+  Loader2,
+  Database,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  HardDrive,
+  Unplug,
+} from 'lucide-react';
+import type { DbAccount, DbCatalog, DatabaseEntry, DbType } from '@/hooks/useConnections';
 
 const DB_TYPE_LABELS: Record<DbType, string> = {
   postgresql: 'PostgreSQL',
@@ -24,98 +48,196 @@ const DB_TYPE_COLORS: Record<DbType, string> = {
 };
 
 interface ConnectionCardProps {
-  connection: Connection;
-  onEdit: (conn: Connection) => void;
-  onDelete: (conn: Connection) => void;
-  onTest: (conn: Connection) => void;
-  onSelect?: (conn: Connection) => void;
-  onImport?: (conn: Connection) => void;
+  account: DbAccount;
+  catalogs: DbCatalog[];
+  onEdit: (account: DbAccount) => void;
+  onDelete: (account: DbAccount) => void;
+  onTest: (account: DbAccount) => void;
+  onAddCatalog: (account: DbAccount) => void;
+  onImportCatalog: (catalog: DbCatalog) => void;
+  onDeleteCatalog: (catalog: DbCatalog) => void;
   isTesting?: boolean;
 }
 
 export function ConnectionCard({
-  connection,
+  account,
+  catalogs,
   onEdit,
   onDelete,
   onTest,
-  onSelect,
-  onImport,
+  onAddCatalog,
+  onImportCatalog,
+  onDeleteCatalog,
   isTesting,
 }: ConnectionCardProps) {
-  const { id, name, type, host, database, is_test_ok } = connection;
+  const [expanded, setExpanded] = useState(false);
+  const [deletingCatalog, setDeletingCatalog] = useState<DbCatalog | null>(null);
+
+  const { id, name, type, host, port } = account;
 
   const hostDisplay = type === 'sqlite'
-    ? database
-    : host ? `${host}:${connection.port || ''}` : '-';
+    ? 'Local file'
+    : host ? `${host}:${port || ''}` : '-';
+
+  const toggleExpanded = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded(!expanded);
+  };
 
   return (
-    <div
-      className="group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/50 cursor-pointer"
-      onClick={() => onSelect?.(connection)}
-    >
-      {/* DB type indicator */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-muted/50">
-        <Cable className="h-4 w-4 text-muted-foreground" />
-      </div>
+    <>
+      <div className="rounded-lg border transition-colors hover:bg-accent/50">
+        {/* Account header */}
+        <div className="flex items-start gap-3 p-3 cursor-pointer" onClick={toggleExpanded}>
+          {/* DB type indicator */}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-muted/50">
+            <HardDrive className="h-4 w-4 text-muted-foreground" />
+          </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{name}</span>
-          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${DB_TYPE_COLORS[type]}`}>
-            {DB_TYPE_LABELS[type]}
-          </Badge>
-          {is_test_ok === true && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
-              OK
-            </Badge>
-          )}
-          {is_test_ok === false && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20">
-              Failed
-            </Badge>
-          )}
-        </div>
-        <div className="mt-0.5 text-xs text-muted-foreground truncate">
-          {hostDisplay}
-        </div>
-      </div>
-
-      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="icon-sm" className="h-7 w-7" />
-            }
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onClick={() => onTest(connection)} disabled={isTesting} className="cursor-pointer">
-              {isTesting ? (
-                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
-              ) : (
-                <Cable className="h-3.5 w-3.5 mr-2" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-sm truncate">{name}</span>
+              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${DB_TYPE_COLORS[type]}`}>
+                {DB_TYPE_LABELS[type]}
+              </Badge>
+              {catalogs.length > 0 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                  {catalogs.length} DB
+                </Badge>
               )}
-              Test
-            </DropdownMenuItem>
-            {onImport && (
-              <DropdownMenuItem onClick={() => onImport(connection)} className="cursor-pointer">
-                <Database className="h-3.5 w-3.5 mr-2" />
-                Import as ERD
-              </DropdownMenuItem>
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground truncate">
+              {hostDisplay}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7"
+              onClick={toggleExpanded}
+            >
+              {expanded ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" className="h-7 w-7" />
+                }
+                onClick={e => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={(e: any) => { e.stopPropagation(); onTest(account); }} disabled={isTesting} className="cursor-pointer">
+                  {isTesting ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Cable className="h-3.5 w-3.5 mr-2" />
+                  )}
+                  Test
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e: any) => { e.stopPropagation(); onEdit(account); }} className="cursor-pointer">
+                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={(e: any) => { e.stopPropagation(); onDelete(account); }} className="cursor-pointer text-destructive focus:text-destructive">
+                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Expanded: catalogs */}
+        {expanded && (
+          <div className="border-t px-3 py-2 space-y-1.5">
+            {catalogs.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-1">No databases connected yet</p>
+            ) : (
+              <ScrollArea className="max-h-48">
+                {catalogs.map(cat => (
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-accent/50 group/cat"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Database className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs truncate">{cat.label || cat.databaseName}</span>
+                      {cat.label && cat.label !== cat.databaseName && (
+                        <span className="text-[10px] text-muted-foreground">({cat.databaseName})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/cat:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-6 w-6"
+                        title="Import as ERD"
+                        onClick={(e) => { e.stopPropagation(); onImportCatalog(cat); }}
+                      >
+                        <Database className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        title="Disconnect database"
+                        onClick={(e) => { e.stopPropagation(); setDeletingCatalog(cat); }}
+                      >
+                        <Unplug className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </ScrollArea>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onEdit(connection)} className="cursor-pointer">
-              <Pencil className="h-3.5 w-3.5 mr-2" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete(connection)} className="cursor-pointer text-destructive focus:text-destructive">
-              <Trash2 className="h-3.5 w-3.5 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full h-7 text-xs justify-start text-muted-foreground hover:text-foreground"
+              onClick={(e) => { e.stopPropagation(); onAddCatalog(account); }}
+            >
+              <Plus className="h-3 w-3 mr-1.5" />
+              Add Database
+            </Button>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Delete catalog confirmation */}
+      <AlertDialog open={deletingCatalog !== null} onOpenChange={open => !open && setDeletingCatalog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Database</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody>
+            <p className="text-sm text-muted-foreground">
+              Disconnect <strong>{deletingCatalog?.label || deletingCatalog?.databaseName}</strong>?
+              Diagrams using this database still exist, but can no longer sync.
+            </p>
+          </AlertDialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingCatalog) onDeleteCatalog(deletingCatalog);
+                setDeletingCatalog(null);
+              }}
+            >
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
