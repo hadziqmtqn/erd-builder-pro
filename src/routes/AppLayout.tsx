@@ -163,7 +163,13 @@ function AppLayoutInner() {
     }
   }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges]);
 
-  const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing' && searchParams.get('tab') !== 'data';
+  const showAIChat = useMemo(() => {
+    if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
+    // Apply same default logic as DiagramEditorRoute: Data tab → hide AI Chat
+    const isProductionDb = !isPublicView && activeDiagram?.source_type === 'production_db';
+    const resolvedTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
+    return resolvedTab === 'erd';
+  }, [entityContext, isPublicView, activeDiagram, searchParams]);
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
   const activeProjectId = useMemo<string | number | null>(() => {
