@@ -1,6 +1,6 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Database, Columns, TableIcon } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
@@ -29,8 +29,18 @@ export function DiagramEditorRoute() {
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
 
-  // Tab state for production DB diagrams
-  const [diagramTab, setDiagramTab] = useState<'erd' | 'data'>('erd');
+  // Tab state for production DB diagrams — URL-driven so AppLayout can detect
+  const [searchParams, setSearchParams] = useSearchParams();
+  const diagramTab = searchParams.get('tab') || 'erd';
+
+  const setDiagramTab = useCallback((tab: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === 'erd') next.delete('tab');
+      else next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const handleAutoLayout = useCallback(() => {
     if (!nodes || nodes.length === 0) return;
@@ -51,6 +61,18 @@ export function DiagramEditorRoute() {
     }
   }, [id, activeDiagramId, isPublicView, handleDiagramSelect]);
 
+  // Read snake_case fields from API response (camelToSnake middleware converts all)
+  const isProductionDb = useMemo(() => {
+    const show = isPublicView ? publicData : activeDiagram;
+    return !isPublicView && show?.source_type === 'production_db';
+  }, [isPublicView, publicData, activeDiagram]);
+
+  const sourceConnectionId = useMemo<number | undefined>(() => {
+    const show = isPublicView ? publicData : activeDiagram;
+    const raw = show?.source_connection_id;
+    return raw != null ? Number(raw) : undefined;
+  }, [isPublicView, publicData, activeDiagram]);
+
   if (!isPublicView && !activeDiagramId) {
     if (id && !processedUrlRef.current) {
       return (
@@ -67,12 +89,10 @@ export function DiagramEditorRoute() {
     );
   }
 
-  const showDiagram = isPublicView ? publicData : activeDiagram;
-  console.log('[DEBUG] DiagramEditorRoute:', { showDiagram, isPublicView, activeDiagramId, activeDiagramKey: activeDiagram?.uid, sourceType: showDiagram?.sourceType, sourceConnectionId: showDiagram?.sourceConnectionId, diagramsCount: ctx.diagrams.length });
-  const isProductionDb = !isPublicView && showDiagram?.sourceType === 'production_db';
+  const show = isPublicView ? publicData : activeDiagram;
   const effectiveReadOnly = isPublicView || isProductionDb;
 
-  if (!showDiagram && !isPublicView && !isERDItemLoading) {
+  if (!show && !isPublicView && !isERDItemLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <Database className="w-12 h-12 text-muted-foreground/40 mb-4" />
@@ -82,7 +102,7 @@ export function DiagramEditorRoute() {
     );
   }
 
-  if (!showDiagram && !isPublicView) {
+  if (!show && !isPublicView) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center border rounded-xl bg-muted/10">
         <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -124,8 +144,8 @@ export function DiagramEditorRoute() {
       )}
 
       {/* Content */}
-      {diagramTab === 'data' && isProductionDb && !isPublicView && showDiagram?.sourceConnectionId ? (
-        <DataViewer connectionId={Number(showDiagram.sourceConnectionId)} />
+      {diagramTab === 'data' && isProductionDb && !isPublicView && sourceConnectionId ? (
+        <DataViewer connectionId={sourceConnectionId} />
       ) : (
         <ERDView
           key={isPublicView ? publicData?.id : activeDiagramId}

@@ -149,7 +149,7 @@ export function useConnections() {
     }
   };
 
-  const importAsDiagram = async (id: number, name: string): Promise<{ diagram: any; tableCount: number } | null> => {
+  const importAsDiagram = async (id: number, name: string): Promise<{ diagram: any; table_count: number } | null> => {
     try {
       const res = await apiFetch(`/api/connections/${id}/import`, {
         method: 'POST',
@@ -161,7 +161,7 @@ export function useConnections() {
         throw new Error(err.error || 'Failed to import schema');
       }
       const result = await res.json();
-      toast.success(`Imported ${result.tableCount} tables as "${name}"`);
+      toast.success(`Imported ${result.table_count} tables as "${name}"`);
       return result;
     } catch (e: any) {
       toast.error(e.message || 'Failed to import schema');

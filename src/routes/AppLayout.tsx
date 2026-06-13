@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 
 // Components
 import { AppSidebar } from '@/components/app-sidebar';
@@ -37,6 +37,7 @@ import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 function AppLayoutInner() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
   const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
@@ -162,7 +163,7 @@ function AppLayoutInner() {
     }
   }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges]);
 
-  const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing';
+  const showAIChat = entityContext !== null && !isPublicView && entityContext.entityType !== 'drawing' && searchParams.get('tab') !== 'data';
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
   const activeProjectId = useMemo<string | number | null>(() => {

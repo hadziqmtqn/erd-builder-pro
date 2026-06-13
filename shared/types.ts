@@ -76,6 +76,8 @@ export interface Diagram {
   share_token?: string;
   expiry_date?: string;
   _version?: number;
+  source_type?: string;
+  source_connection_id?: number;
 }
 
 export interface Note {
