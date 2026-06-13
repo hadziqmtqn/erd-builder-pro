@@ -82,7 +82,7 @@ export function useDataViewer(connectionId: number | null) {
     fetchRecords(activeTable, prev);
   }, [activeTable, page, fetchRecords]);
 
-  const totalPages = records ? Math.ceil(records.total / records.pageSize) : 0;
+  const totalPages = records ? Math.ceil(records.total / (records.pageSize || 50)) : 0;
 
   const goToPage = useCallback((p: number) => {
     if (!activeTable || p < 1 || (totalPages && p > totalPages)) return;

@@ -365,9 +365,10 @@ router.post("/connections/:id/records", authenticate, desktopOnly, async (req: E
       } else if (info.type === "mysql") {
         const mysqlClient = client as any;
         const escapedTable = table.replace(/`/g, '``');
+        // LIMIT/OFFSET interpolated — prepared stmt placeholders not supported in MySQL < 8.0
         const [countRows] = await mysqlClient.execute(`SELECT COUNT(*) AS total FROM \`${escapedTable}\``);
         total = countRows[0]?.total || 0;
-        const [dataRows, dataFields] = await mysqlClient.execute(`SELECT * FROM \`${escapedTable}\` LIMIT ? OFFSET ?`, [limit, offset]);
+        const [dataRows, dataFields] = await mysqlClient.execute(`SELECT * FROM \`${escapedTable}\` LIMIT ${limit} OFFSET ${offset}`);
         columns = (dataFields || []).map((f: any) => f.name || f.column || f);
         rows = dataRows;
       } else if (info.type === "sqlite") {
