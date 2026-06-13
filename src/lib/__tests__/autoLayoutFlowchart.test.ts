@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { autoLayoutFlowchart } from '../autoLayoutFlowchart';
 import { Node, Edge } from '@xyflow/react';
-import { FlowchartNodeData } from '@/components/FlowchartNode';
+import { FlowchartNodeData, FlowchartShape } from '@/components/FlowchartNode';
 
 function makeNode(
   id: string,
   label: string,
-  shape: string = 'rectangle',
+  shape: FlowchartShape = 'rectangle',
   section?: string,
 ): Node<FlowchartNodeData> {
   return {

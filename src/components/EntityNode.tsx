@@ -121,8 +121,9 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
 });
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
-  const { isPublicView, duplicateEntity } = useWorkspace();
-  const isReadOnly = isPublicView || !!data.isDiffMode;
+  const { isPublicView, duplicateEntity, activeDocument } = useWorkspace();
+  const isProductionDb = activeDocument?.source_type === 'production_db';
+  const isReadOnly = isPublicView || !!data.isDiffMode || isProductionDb;
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);

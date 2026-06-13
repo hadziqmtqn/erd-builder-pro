@@ -160,6 +160,10 @@ function camelToSnake(obj: unknown): unknown {
 }
 
 app.use((_req, res, next) => {
+  // Skip camelToSnake for new routes: accounts & catalogs use camelCase natively
+  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs')) {
+    return next();
+  }
   const originalJson = res.json.bind(res);
   res.json = function (body: unknown) {
     return originalJson(camelToSnake(body));

@@ -20,114 +20,162 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { Plus, Database, Search, Loader2 } from 'lucide-react';
+import { Plus, Database, Search, Loader2, HardDrive } from 'lucide-react';
 import { ConnectionCard } from './ConnectionCard';
 import { ConnectionForm } from './ConnectionForm';
 import {
-  useConnections,
-  type Connection,
-  type ConnectionFormData,
+  useDbAccounts,
+  useDbCatalogs,
+  type DbAccount,
+  type DbCatalog,
+  type DbAccountFormData,
+  type DatabaseEntry,
 } from '@/hooks/useConnections';
 import { toast } from 'sonner';
 
 interface DBConnectPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectConnection?: (conn: Connection) => void;
   onImportComplete?: (diagramUid: string) => void;
 }
 
 export function DBConnectPanel({
   open,
   onOpenChange,
-  onSelectConnection,
   onImportComplete,
 }: DBConnectPanelProps) {
   const {
-    connections,
+    accounts,
     isLoading,
-    testConnection,
-    testExistingConnection,
-    createConnection,
-    updateConnection,
-    deleteConnection,
-    importAsDiagram,
+    createAccount,
+    updateAccount,
+    deleteAccount,
+    listDatabases,
+    testAccount,
     getDefaultPort,
-    fetchConnections,
-  } = useConnections();
+    fetchAccounts,
+  } = useDbAccounts();
+
+  const {
+    catalogs,
+    fetchCatalogs,
+    createCatalog,
+    deleteCatalog,
+    importAsDiagram,
+  } = useDbCatalogs();
 
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingConn, setEditingConn] = useState<Connection | null>(null);
-  const [deletingConn, setDeletingConn] = useState<Connection | null>(null);
+  const [editingAcc, setEditingAcc] = useState<DbAccount | null>(null);
+  const [deletingAcc, setDeletingAcc] = useState<DbAccount | null>(null);
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set());
-  const [importConn, setImportConn] = useState<Connection | null>(null);
+
+  // Add database flow
+  const [addDbAccount, setAddDbAccount] = useState<DbAccount | null>(null);
+  const [availableDbs, setAvailableDbs] = useState<DatabaseEntry[]>([]);
+  const [isLoadingDbs, setIsLoadingDbs] = useState(false);
+
+  // Import flow
+  const [importCat, setImportCat] = useState<DbCatalog | null>(null);
   const [importName, setImportName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
   const filtered = search.trim()
-    ? connections.filter(c =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.type.toLowerCase().includes(search.toLowerCase()) ||
-        c.host?.toLowerCase().includes(search.toLowerCase())
+    ? accounts.filter(a =>
+        a.name.toLowerCase().includes(search.toLowerCase()) ||
+        a.type.toLowerCase().includes(search.toLowerCase()) ||
+        a.host?.toLowerCase().includes(search.toLowerCase())
       )
-    : connections;
+    : accounts;
 
   const handleAdd = () => {
-    setEditingConn(null);
+    setEditingAcc(null);
     setShowForm(true);
   };
 
-  const handleEdit = (conn: Connection) => {
-    setEditingConn(conn);
+  const handleEdit = (acc: DbAccount) => {
+    setEditingAcc(acc);
     setShowForm(true);
   };
 
-  const handleSave = async (data: ConnectionFormData): Promise<Connection | null> => {
-    if (editingConn) {
-      return updateConnection(editingConn.id, data);
+  const handleSave = async (data: DbAccountFormData): Promise<DbAccount | null> => {
+    if (editingAcc) {
+      return updateAccount(editingAcc.id, data);
     }
-    return createConnection(data);
+    return createAccount(data);
   };
 
-  const handleTest = async (data: ConnectionFormData) => {
-    return testConnection(data);
+  const handleTest = async (data: DbAccountFormData) => {
+    try {
+      const { apiFetch } = await import('@/lib/api');
+      const res = await apiFetch('/api/accounts/test-cred', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        return { success: false, message: result.error || result.message || 'Connection failed' };
+      }
+      return { success: true, message: result.message || 'Connection successful' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Failed to test connection' };
+    }
   };
 
-  const handleTestExisting = async (conn: Connection) => {
-    setTestingIds(prev => new Set(prev).add(conn.id));
-    const result = await testExistingConnection(conn.id);
+  const handleTestExisting = async (acc: DbAccount) => {
+    setTestingIds(prev => new Set(prev).add(acc.id));
+    const result = await testAccount(acc.id);
     setTestingIds(prev => {
       const next = new Set(prev);
-      next.delete(conn.id);
+      next.delete(acc.id);
       return next;
     });
     if (result.success) {
       toast.success(result.message);
-      fetchConnections();
+      fetchAccounts();
     } else {
       toast.error(result.message);
     }
   };
 
   const handleDelete = async () => {
-    if (!deletingConn) return;
-    await deleteConnection(deletingConn.id);
-    setDeletingConn(null);
+    if (!deletingAcc) return;
+    await deleteAccount(deletingAcc.id);
+    setDeletingAcc(null);
   };
 
-  const handleStartImport = (conn: Connection) => {
-    setImportName(`${conn.name} Schema`);
-    setImportConn(conn);
+  const handleAddDatabase = async (acc: DbAccount) => {
+    setIsLoadingDbs(true);
+    setAddDbAccount(acc);
+    setAvailableDbs([]);
+    const dbs = await listDatabases(acc.id);
+    setAvailableDbs(dbs);
+    setIsLoadingDbs(false);
+  };
+
+  const handleSelectDatabase = async (dbName: string) => {
+    if (!addDbAccount) return;
+    const catalog = await createCatalog(addDbAccount.id, dbName);
+    if (catalog) {
+      setAddDbAccount(null);
+      fetchCatalogs();
+      fetchAccounts();
+    }
+  };
+
+  const handleStartImport = (cat: DbCatalog) => {
+    setImportName(cat.label || cat.databaseName);
+    setImportCat(cat);
   };
 
   const handleImport = async () => {
-    if (!importConn || !importName.trim()) return;
+    if (!importCat || !importName.trim()) return;
     setIsImporting(true);
     try {
-      const result = await importAsDiagram(importConn.id, importName.trim());
+      const result = await importAsDiagram(importCat.id, importName.trim());
       if (result?.diagram?.uid) {
-        setImportConn(null);
+        setImportCat(null);
         setImportName('');
         onOpenChange(false);
         onImportComplete?.(result.diagram.uid);
@@ -142,9 +190,9 @@ export function DBConnectPanel({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="sm:max-w-md w-full p-0 flex flex-col gap-0">
           <SheetHeader className="p-4 pb-2">
-            <SheetTitle>Database Connections</SheetTitle>
+            <SheetTitle>Database Accounts</SheetTitle>
             <SheetDescription>
-              Manage external database connections
+              Connect to external databases and import schemas as ERD diagrams
             </SheetDescription>
           </SheetHeader>
 
@@ -154,7 +202,7 @@ export function DBConnectPanel({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 className="h-9 pl-8 text-sm"
-                placeholder="Search connections..."
+                placeholder="Search accounts..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
@@ -165,7 +213,7 @@ export function DBConnectPanel({
             </Button>
           </div>
 
-          {/* Connection list */}
+          {/* Account list */}
           <ScrollArea className="flex-1 px-4 pb-4">
             {isLoading ? (
               <div className="space-y-2 pt-2">
@@ -175,31 +223,37 @@ export function DBConnectPanel({
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center pt-12 text-center">
-                <Database className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <HardDrive className="h-10 w-10 text-muted-foreground/40 mb-3" />
                 <p className="text-sm text-muted-foreground">
                   {search.trim()
-                    ? 'No connections found'
-                    : 'No database connections yet'}
+                    ? 'No accounts found'
+                    : 'No database accounts yet'}
                 </p>
                 {!search.trim() && (
                   <Button variant="outline" size="sm" className="mt-3" onClick={handleAdd}>
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
-                    Add Connection
+                    Add Account
                   </Button>
                 )}
               </div>
             ) : (
               <div className="space-y-2 pt-2">
-                {filtered.map(conn => (
+                {filtered.map(acc => (
                   <ConnectionCard
-                    key={conn.id}
-                    connection={conn}
+                    key={acc.id}
+                    account={acc}
+                    catalogs={catalogs.filter(c => c.accountId === acc.id)}
                     onEdit={handleEdit}
-                    onDelete={setDeletingConn}
+                    onDelete={setDeletingAcc}
                     onTest={handleTestExisting}
-                    onSelect={onSelectConnection}
-                    onImport={handleStartImport}
-                    isTesting={testingIds.has(conn.id)}
+                    onAddCatalog={handleAddDatabase}
+                    onImportCatalog={handleStartImport}
+                    onDeleteCatalog={async (cat) => {
+                      await deleteCatalog(cat.id);
+                      fetchCatalogs();
+                      fetchAccounts();
+                    }}
+                    isTesting={testingIds.has(acc.id)}
                   />
                 ))}
               </div>
@@ -212,22 +266,23 @@ export function DBConnectPanel({
       <ConnectionForm
         open={showForm}
         onOpenChange={setShowForm}
-        editing={editingConn}
+        editing={editingAcc}
         onSave={handleSave}
         onTest={handleTest}
         getDefaultPort={getDefaultPort}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog open={deletingConn !== null} onOpenChange={open => !open && setDeletingConn(null)}>
+      {/* Delete account confirmation */}
+      <AlertDialog open={deletingAcc !== null} onOpenChange={open => !open && setDeletingAcc(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Connection</AlertDialogTitle>
+            <AlertDialogTitle>Delete Account</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
             <p className="text-sm text-muted-foreground">
-              Delete connection <strong>{deletingConn?.name}</strong>? 
-              Diagrams using this connection still exist, but can no longer sync.
+              Delete server account <strong>{deletingAcc?.name}</strong>?
+              All connected databases ({catalogs.filter(c => c.accountId === deletingAcc?.id).length}) will be disconnected.
+              Diagrams using these databases still exist, but can no longer sync.
             </p>
           </AlertDialogBody>
           <AlertDialogFooter>
@@ -239,29 +294,74 @@ export function DBConnectPanel({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Pick database dialog */}
+      <AlertDialog open={addDbAccount !== null} onOpenChange={open => !open && setAddDbAccount(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Select Database</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogBody>
+            {isLoadingDbs ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : availableDbs.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No databases found on <strong>{addDbAccount?.name}</strong>
+              </p>
+            ) : (
+              <ScrollArea className="max-h-64">
+                <div className="space-y-1">
+                  {availableDbs.map(db => (
+                    <button
+                      key={db.name}
+                      className={`w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm text-left ${
+                        db.isConnected
+                          ? 'opacity-50 cursor-not-allowed bg-muted/30'
+                          : 'hover:bg-accent transition-colors'
+                      }`}
+                      onClick={() => {
+                        if (!db.isConnected) handleSelectDatabase(db.name);
+                      }}
+                    >
+                      <Database className={`h-4 w-4 shrink-0 ${db.isConnected ? 'text-green-500' : 'text-muted-foreground'}`} />
+                      <span className="flex-1 truncate">{db.name}</span>
+                      {db.isConnected && (
+                        <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Connected</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </AlertDialogBody>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Import as ERD name dialog */}
-      <AlertDialog open={importConn !== null} onOpenChange={open => !open && setImportConn(null)}>
+      <AlertDialog open={importCat !== null} onOpenChange={open => !open && setImportCat(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Import as ERD Diagram</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
             <p className="text-sm text-muted-foreground mb-4">
-              Create a new ERD diagram from <strong>{importConn?.name}</strong> tables.
+              Create a new ERD diagram from <strong>{importCat?.label || importCat?.databaseName}</strong> tables.
             </p>
-            <div className="relative">
-              <Input
-                value={importName}
-                onChange={e => setImportName(e.target.value)}
-                placeholder="Diagram name"
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && importName.trim() && !isImporting) {
-                    handleImport();
-                  }
-                }}
-              />
-            </div>
+            <Input
+              value={importName}
+              onChange={e => setImportName(e.target.value)}
+              placeholder="Diagram name"
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter' && importName.trim() && !isImporting) {
+                  handleImport();
+                }
+              }}
+            />
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
