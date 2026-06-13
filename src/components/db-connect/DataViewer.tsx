@@ -68,9 +68,9 @@ export function DataViewer({ connectionId }: DataViewerProps) {
       </div>
 
       {/* Main area — records */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 grid grid-rows-[1fr_auto] overflow-hidden">
         {!activeTable ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
             <div className="flex flex-col items-center gap-2">
               <Database className="w-8 h-8 text-muted-foreground/30" />
               <span>Select a table to view records</span>
@@ -78,8 +78,8 @@ export function DataViewer({ connectionId }: DataViewerProps) {
           </div>
         ) : (
           <>
-            {/* Content area */}
-            <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Content area — always takes 1fr (remaining space) */}
+            <div className="min-h-0 overflow-hidden flex flex-col">
               {isLoadingRecords ? (
                 <div className="flex-1 flex items-center justify-center">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -104,7 +104,7 @@ export function DataViewer({ connectionId }: DataViewerProps) {
                   </div>
 
                   {/* Records grid */}
-                  <div className="flex-1 overflow-auto custom-scrollbar">
+                  <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
                     <div className="min-w-fit inline-block align-middle">
                       <Table>
                         <TableHeader>
@@ -151,7 +151,7 @@ export function DataViewer({ connectionId }: DataViewerProps) {
               ) : null}
             </div>
 
-            {/* Pagination — always visible when records loaded */}
+            {/* Pagination — auto row, only visible when records loaded */}
             {records && (
               <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/10 shrink-0">
                 <span className="text-xs text-muted-foreground">

@@ -29,18 +29,36 @@ export function DiagramEditorRoute() {
   // Safety net: URL has id but context hasn't synced yet
   const processedUrlRef = useRef(false);
 
-  // Tab state for production DB diagrams — URL-driven so AppLayout can detect
+  // URL search params for tab state — AppLayout uses this to hide AI Chat on Data tab
   const [searchParams, setSearchParams] = useSearchParams();
-  const diagramTab = searchParams.get('tab') || 'erd';
+
+  // Read snake_case fields from API response (camelToSnake middleware converts all)
+  const isProductionDb = useMemo(() => {
+    const show = isPublicView ? publicData : activeDiagram;
+    return !isPublicView && show?.source_type === 'production_db';
+  }, [isPublicView, publicData, activeDiagram]);
+
+  // Tab default: Data for production DB (browse records first), ERD for normal diagrams
+  const diagramTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
 
   const setDiagramTab = useCallback((tab: string) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (tab === 'erd') next.delete('tab');
-      else next.set('tab', tab);
+      next.set('tab', tab);
       return next;
     }, { replace: true });
   }, [setSearchParams]);
+
+  // Sync default tab to URL param so AppLayout can detect Data mode (hide AI Chat)
+  useEffect(() => {
+    if (isProductionDb && !searchParams.get('tab')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', 'data');
+        return next;
+      }, { replace: true });
+    }
+  }, [isProductionDb, setSearchParams]);
 
   const handleAutoLayout = useCallback(() => {
     if (!nodes || nodes.length === 0) return;
@@ -60,12 +78,6 @@ export function DiagramEditorRoute() {
       handleDiagramSelect(id);
     }
   }, [id, activeDiagramId, isPublicView, handleDiagramSelect]);
-
-  // Read snake_case fields from API response (camelToSnake middleware converts all)
-  const isProductionDb = useMemo(() => {
-    const show = isPublicView ? publicData : activeDiagram;
-    return !isPublicView && show?.source_type === 'production_db';
-  }, [isPublicView, publicData, activeDiagram]);
 
   const sourceConnectionId = useMemo<number | undefined>(() => {
     const show = isPublicView ? publicData : activeDiagram;
@@ -117,18 +129,6 @@ export function DiagramEditorRoute() {
       {isProductionDb && !isPublicView && (
         <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-muted/5 shrink-0">
           <button
-            onClick={() => setDiagramTab('erd')}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              diagramTab === 'erd'
-                ? 'bg-accent text-accent-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            )}
-          >
-            <Columns className="w-3.5 h-3.5" />
-            ERD
-          </button>
-          <button
             onClick={() => setDiagramTab('data')}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
@@ -139,6 +139,18 @@ export function DiagramEditorRoute() {
           >
             <TableIcon className="w-3.5 h-3.5" />
             Data
+          </button>
+          <button
+            onClick={() => setDiagramTab('erd')}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              diagramTab === 'erd'
+                ? 'bg-accent text-accent-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+            )}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            ERD
           </button>
         </div>
       )}
