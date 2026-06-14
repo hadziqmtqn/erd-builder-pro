@@ -32,12 +32,12 @@ interface ExportAllDialogProps {
 }
 
 const TABS: { id: string; label: string; icon: React.ElementType; lang: string; isExperimental?: boolean }[] = [
-  { id: 'mysql', label: 'MySQL', icon: Database, lang: 'sql' },
-  { id: 'postgresql', label: 'PostgreSQL', icon: Database, lang: 'sql' },
-  { id: 'laravel_migration', label: 'Laravel Migration', icon: FileCode, lang: 'php' },
-  { id: 'laravel_model', label: 'Laravel Model', icon: FileCode, lang: 'php' },
   { id: 'typescript', label: 'TypeScript', icon: FileText, lang: 'typescript' },
   { id: 'prisma', label: 'Prisma', icon: FileText, lang: 'prisma' },
+  { id: 'laravel_migration', label: 'Laravel Migration', icon: FileCode, lang: 'php' },
+  { id: 'laravel_model', label: 'Laravel Model', icon: FileCode, lang: 'php' },
+  { id: 'mysql', label: 'MySQL', icon: Database, lang: 'sql' },
+  { id: 'postgresql', label: 'PostgreSQL', icon: Database, lang: 'sql' },
   { id: 'zod', label: 'Zod', icon: FileText, lang: 'typescript' },
   { id: 'pdf', label: 'PDF', icon: FileText, lang: '', isExperimental: true },
   { id: 'svg', label: 'SVG', icon: ImageIcon, lang: '', isExperimental: true },
