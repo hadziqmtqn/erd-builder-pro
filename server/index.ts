@@ -23,7 +23,7 @@ import aiRouter from "./routes/ai.js";
 import aiSettingsRouter from "./routes/ai-settings.js";
 import aiChatRouter from "./routes/ai-chat.js";
 import guestImportRouter from "./routes/guest-import.js";
-import connectionsRouter from "./routes/connections.js";
+import connectionsRouter from "./routes/connections/index.js";
 
 const app = express();
 
