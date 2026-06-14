@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -20,6 +20,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Database, Search, Loader2, HardDrive } from 'lucide-react';
 import { ConnectionCard } from './ConnectionCard';
 import { ConnectionForm } from './ConnectionForm';
@@ -32,6 +33,7 @@ import {
   type DatabaseEntry,
 } from '@/hooks/useConnections';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
 
 interface DBConnectPanelProps {
   open: boolean;
@@ -190,7 +192,12 @@ export function DBConnectPanel({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="sm:max-w-md w-full p-0 flex flex-col gap-0">
           <SheetHeader className="p-4 pb-2">
-            <SheetTitle>Database Accounts</SheetTitle>
+            <div className="flex items-center gap-2">
+              <SheetTitle>Database Accounts</SheetTitle>
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-amber-600 border-amber-400 dark:text-amber-400 dark:border-amber-500">
+                Experimental
+              </Badge>
+            </div>
             <SheetDescription>
               Connect to external databases and import schemas as ERD diagrams
             </SheetDescription>
@@ -207,10 +214,12 @@ export function DBConnectPanel({
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <Button size="sm" className="h-9 shrink-0" onClick={handleAdd}>
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              New
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" className="h-9 shrink-0" onClick={handleAdd}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                New
+              </Button>
+            </div>
           </div>
 
           {/* Account list */}

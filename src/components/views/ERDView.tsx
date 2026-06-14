@@ -195,6 +195,8 @@ const ERDViewComponent = ({
   }, [pendingDiff]);
 
   const styledEdges = React.useMemo(() => {
+    const hasSelection = allSelectedIds.length > 0;
+
     return edges.map(edge => {
       const baseEdge = {
         ...edge,
@@ -206,15 +208,21 @@ const ERDViewComponent = ({
         },
       };
 
-      const isConnectedToSelected = allSelectedIds.some(
+      const isConnectedToSelected = hasSelection && allSelectedIds.some(
         id => edge.source === id || edge.target === id
       );
-      
-      const shouldAnimate = isConnectedToSelected && allSelectedIds.length > 0;
-      const newClassName = shouldAnimate
-        ? `${edge.className || ''} edge-animated-active`.trim()
-        : (edge.className || '');
-      // Avoid creating a new object when className hasn't changed
+
+      // Build class list from existing + computed classes
+      const classes: string[] = [];
+      if (edge.className) classes.push(edge.className);
+
+      if (isConnectedToSelected) {
+        classes.push('edge-animated-active');
+      } else if (hasSelection) {
+        classes.push('edge-dimmed');
+      }
+
+      const newClassName = classes.join(' ');
       if (baseEdge.className === newClassName) return baseEdge;
       return { ...baseEdge, className: newClassName };
     });

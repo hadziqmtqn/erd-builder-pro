@@ -123,25 +123,38 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                 body = { title: parsedData.title, content: parsedData.content, project_id: parsedData.project_id };
               } else if (draft.type === DraftType.ERD) {
                 endpoint = `/api/diagrams/save/${draft.id}`;
-                const entities = (parsedData.nodes || []).map((n: any) => ({
-                  ...n.data,
-                  x: n.position?.x || 0,
-                  y: n.position?.y || 0,
-                }));
-                const relationships = (parsedData.edges || []).map((e: any) => ({
-                  id: e.id,
-                  source_entity_id: e.source,
-                  target_entity_id: e.target,
-                  source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-                  target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-                  source_handle: e.sourceHandle || undefined,
-                  target_handle: e.targetHandle || undefined,
-                  type: 'one-to-many',
-                  label: e.label,
-                }));
                 
-                const cachedVersion = await getCachedDiagramVersion(draft.id);
-                body = { entities, relationships, viewport: parsedData.viewport, expectedVersion: cachedVersion !== null ? cachedVersion : undefined };
+                // Check if this is a production DB diagram (lightweight format)
+                if (parsedData._type === 'production_db_positions') {
+                  // Production DB: send positions only
+                  const cachedVersion = await getCachedDiagramVersion(draft.id);
+                  body = { 
+                    data: { nodes: parsedData.nodes, viewport: parsedData.viewport, _type: parsedData._type },
+                    viewport: parsedData.viewport, 
+                    expectedVersion: cachedVersion !== null ? cachedVersion : undefined 
+                  };
+                } else {
+                  // Scratch diagram: send full entities + relationships
+                  const entities = (parsedData.nodes || []).map((n: any) => ({
+                    ...n.data,
+                    x: n.position?.x || 0,
+                    y: n.position?.y || 0,
+                  }));
+                  const relationships = (parsedData.edges || []).map((e: any) => ({
+                    id: e.id,
+                    source_entity_id: e.source,
+                    target_entity_id: e.target,
+                    source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+                    target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
+                    source_handle: e.sourceHandle || undefined,
+                    target_handle: e.targetHandle || undefined,
+                    type: 'one-to-many',
+                    label: e.label,
+                  }));
+                  
+                  const cachedVersion = await getCachedDiagramVersion(draft.id);
+                  body = { entities, relationships, viewport: parsedData.viewport, expectedVersion: cachedVersion !== null ? cachedVersion : undefined };
+                }
               } else if (draft.type === DraftType.FLOWCHART) {
                 endpoint = `/api/flowcharts/${draft.id}`;
                 body = { title: parsedData.title, data: parsedData.data || draft.data, project_id: parsedData.project_id };

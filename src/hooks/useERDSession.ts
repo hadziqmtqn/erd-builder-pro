@@ -11,10 +11,9 @@ import {
   useReactFlow 
 } from '@xyflow/react';
 import { toast } from 'sonner';
-import { Entity, Column, Diagram, DraftType } from '../types';
+import { Entity, Column, Diagram, DraftType, Relationship } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
-import { useRealtimeSync } from './useRealtimeSync';
 
 export function useERDSession(
   isPublicView: boolean,
@@ -155,33 +154,89 @@ export function useERDSession(
       clearHistory();
 
       let finalData = data;
-      
-      if (draft && draft.sync_pending) {
+
+      // Production DB diagram: fetch live schema + merge with saved positions
+      // Detection: data.data exists and data.data._type === 'production_db_positions' and data.data.source exists
+      const diagramData = (data as any).data;
+      if (diagramData && diagramData._type === 'production_db_positions' && diagramData.source) {
         try {
-          const parsedDraft = JSON.parse(draft.data);
-          finalData = { 
-            ...data, 
-            entities: parsedDraft.nodes.map((n: any) => ({ ...n.data, x: n.position.x, y: n.position.y })), 
-            relationships: parsedDraft.edges.map((e: any) => ({
-              id: e.id,
-              source_entity_id: e.source,
-              target_entity_id: e.target,
-              source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-              target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-              source_handle: e.sourceHandle || undefined,
-              target_handle: e.targetHandle || undefined,
-              label: e.label
-            })), 
-            viewport_x: parsedDraft.viewport.x, 
-            viewport_y: parsedDraft.viewport.y, 
-            viewport_zoom: parsedDraft.viewport.zoom 
-          };
-          // Only show toast if not a silent reload
-          if (!(window as any).currentSyncIsSilent) {
-            toast.info("Loaded unsynced local draft", { duration: 2000 });
+          const source = diagramData.source;
+          const schemaRes = await apiFetch('/api/diagrams/fetch-schema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: source.type,
+              host: source.host,
+              port: source.port,
+              user: source.user,
+              password_encrypted: source.password_encrypted,
+              database: source.database,
+            }),
+          });
+          if (schemaRes.ok) {
+            const schemaData = await schemaRes.json();
+            const savedPositions = diagramData.nodes || {};
+
+            // Convert fetched schema to entities with saved positions
+            const liveEntities: Entity[] = (schemaData.schema || []).map((t: any) => {
+              const saved = savedPositions[t.table_name] || {};
+              return {
+                id: t.table_name,
+                name: t.table_name,
+                x: saved.x ?? 0,
+                y: saved.y ?? 0,
+                color: saved.color ?? '#6b7280',
+                columns: (t.columns || []).map((c: any) => ({
+                  id: `${t.table_name}.${c.name}`,
+                  name: c.name,
+                  type: c.type,
+                  is_pk: c.is_pk,
+                  is_nullable: c.is_nullable,
+                  _is_fk: (t.foreign_keys || []).some((fk: any) => fk.column === c.name),
+                  sort_order: c.sort_order,
+                })),
+                collapsed: saved.collapsed ?? false,
+                hidden_columns: saved.hidden_columns ?? [],
+                note: saved.note ?? '',
+              };
+            });
+
+            // Convert foreign keys to edges
+            const liveEdges: Relationship[] = [];
+            (schemaData.schema || []).forEach((t: any) => {
+              (t.foreign_keys || []).forEach((fk: any) => {
+                liveEdges.push({
+                  id: crypto.randomUUID(),
+                  source_entity_id: t.table_name,
+                  target_entity_id: fk.ref_table,
+                  source_column_id: `${t.table_name}.${fk.column}`,
+                  target_column_id: `${fk.ref_table}.${fk.ref_column}`,
+                  source_handle: `col-${t.table_name}.${fk.column}-source`,
+                  target_handle: `col-${fk.ref_table}.${fk.ref_column}-target`,
+                  label: '',
+                  type: 'one-to-many',
+                });
+              });
+            });
+
+            finalData = {
+              ...data,
+              entities: liveEntities,
+              relationships: liveEdges,
+              viewport_x: diagramData.viewport?.x ?? data.viewport_x,
+              viewport_y: diagramData.viewport?.y ?? data.viewport_y,
+              viewport_zoom: diagramData.viewport?.zoom ?? data.viewport_zoom,
+            };
           }
-        } catch (e) {}
+        } catch (err) {
+          console.error('Failed to fetch live schema:', err);
+          toast.error('Failed to load production DB schema');
+        }
       }
+
+      // Ensure entities and relationships are at least empty arrays
+      if (!finalData.entities) finalData.entities = [];
+      if (!finalData.relationships) finalData.relationships = [];
 
       const flowNodes: Node<Entity>[] = finalData.entities.map(e => {
         return {

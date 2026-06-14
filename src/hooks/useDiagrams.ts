@@ -322,7 +322,34 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     const { expectedVersion: passedVersion, retryCount = 0 } = options || {};
     
     try {
-      const data = JSON.stringify({ nodes, edges, viewport });
+      // Check if this is a production DB diagram
+      const currentDiagram = diagramsRef.current.find(d => String(d.id) === String(activeDiagramId) || String(d.uid) === String(activeDiagramId));
+      const isProductionDb = currentDiagram?.source_connection_id;
+      
+      let data: string;
+      if (isProductionDb) {
+        // Production DB: save only positions (lightweight format)
+        const positions: Record<string, any> = {};
+        nodes.forEach(n => {
+          positions[n.id] = {
+            x: n.position.x,
+            y: n.position.y,
+            color: (n.data as any)?.color,
+            collapsed: (n.data as any)?.collapsed,
+            hidden_columns: (n.data as any)?.hidden_columns,
+            note: (n.data as any)?.note,
+          };
+        });
+        data = JSON.stringify({ 
+          nodes: positions, 
+          viewport,
+          _type: 'production_db_positions'
+        });
+      } else {
+        // Scratch diagram: save full nodes + edges
+        data = JSON.stringify({ nodes, edges, viewport });
+      }
+      
       const isSyncPending = !isGuestCheck();
       
       if (isGuestCheck()) {

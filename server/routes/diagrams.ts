@@ -1,11 +1,14 @@
 import { Router, Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { supabase } from "../lib/config.js";
+import { supabase, isDesktopMode } from "../lib/config.js";
 import { prisma } from "../lib/prisma.js";
 import { authenticate } from "../lib/middleware.js";
 import { validate, createDiagramSchema, renameSchema } from "../lib/validation.js";
 import { handleError, getSafeUpdate, uidOrIdWhere } from "../lib/utils.js";
 import { logger } from "../lib/logger.js";
 import { resolveOwnedProjectId } from "../lib/security.js";
+import { fetchSchema, testConnection, getConnector } from "../lib/db-connectors/registry.js";
+import type { ConnectionInfo, TableSchema } from "../lib/db-connectors/types.js";
+import { encrypt, decrypt } from "../lib/crypto.js";
 
 const router = Router();
 
@@ -230,6 +233,24 @@ router.get("/:uid", authenticate, async (req: ExpressRequest, res: ExpressRespon
     console.log('[DEBUG] GET /:uid diagram:', { id: diagram.id, uid: diagram.uid, sourceType: diagram.sourceType, sourceConnectionId: diagram.sourceConnectionId, keys: Object.keys(diagram) });
 
     const diagramId = Number(diagram.id);
+
+    // Production DB diagram: return data column (lightweight format)
+    if ((diagram as any).data) {
+      let parsedData: any = null;
+      try {
+        parsedData = typeof (diagram as any).data === 'string' 
+          ? JSON.parse((diagram as any).data) 
+          : (diagram as any).data;
+      } catch (e) {
+        parsedData = { nodes: {} };
+      }
+      return res.json({ 
+        ...diagram, 
+        data: parsedData, 
+        entities: [], 
+        relationships: [] 
+      });
+    }
 
     const entities = await prisma.entity.findMany({
       where: { diagramId },
@@ -461,7 +482,7 @@ async function upsertRelationships(rows: any[], diagramId: number) {
 
 router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
   const identifier = req.params.uid;
-  const { entities, relationships, viewport, expectedVersion } = req.body;
+  const { entities, relationships, viewport, expectedVersion, data } = req.body;
 
   const dedupe = <T extends { id: any }>(arr: T[], label: string): T[] => {
     const seen = new Set();
@@ -495,7 +516,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
 
     const currentDiagram = await prisma.diagram.findFirst({
       where: diagramWhere,
-      select: { id: true, uid: true, version: true, updatedAt: true, name: true },
+      select: { id: true, uid: true, version: true, updatedAt: true, name: true, data: true, sourceType: true },
     });
 
     if (!currentDiagram) {
@@ -525,6 +546,11 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       }
     }
 
+    // ── Production DB diagrams: skip entity/relationship CRUD, preserve _type + source ──
+    const isProductionDbSave = currentDiagram.sourceType === 'production_db' ||
+      (data !== undefined && typeof data === 'object' && (data as any)?._type === 'production_db_positions');
+
+    if (!isProductionDbSave) {
     const existingRelationships = await prisma.relationship.findMany({
       where: { diagramId },
       select: { id: true },
@@ -604,6 +630,20 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
       });
     }
 
+    }
+
+    // ── Merge missing _type + source into incoming data for production DB diagrams ──
+    let mergedData = data;
+    if (isProductionDbSave && data !== undefined) {
+      const incomingData = typeof data === 'string' ? JSON.parse(data) : { ...data };
+      const existingParsed = currentDiagram.data
+        ? (typeof currentDiagram.data === 'string' ? JSON.parse(currentDiagram.data) : currentDiagram.data)
+        : {};
+      if (!incomingData._type && existingParsed._type) incomingData._type = existingParsed._type;
+      if (!incomingData.source && existingParsed.source) incomingData.source = existingParsed.source;
+      mergedData = incomingData;
+    }
+
     const updatedDiagram = await prisma.diagram.update({
       where: { id: diagramId },
       data: {
@@ -611,6 +651,7 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
         viewportX: viewport?.x || 0,
         viewportY: viewport?.y || 0,
         viewportZoom: viewport?.zoom || 1.0,
+        ...(mergedData !== undefined && { data: typeof mergedData === 'string' ? mergedData : JSON.stringify(mergedData) }),
       },
       select: { version: true },
     });
@@ -649,6 +690,168 @@ router.post("/save/:uid", authenticate, async (req: ExpressRequest, res: Express
   } catch (err: any) {
     logger.error({ err, uid: identifier }, `Save Error`);
     res.status(500).json({ error: "Failed to save diagram" });
+  }
+});
+
+// ── POST /api/diagrams/fetch-schema — fetch live schema from external DB (no system DB storage)
+router.post("/fetch-schema", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!isDesktopMode()) {
+    return res.status(404).json({ error: "Not available" });
+  }
+
+  const { type, host, port, user, password, password_encrypted, database } = req.body as Partial<ConnectionInfo> & { password_encrypted?: string };
+
+  if (!type || !database) {
+    return res.status(400).json({ error: "type and database are required" });
+  }
+
+  let finalPassword = password;
+  if (!finalPassword && password_encrypted) {
+    try {
+      finalPassword = decrypt(password_encrypted);
+    } catch (e) {
+      console.error("Failed to decrypt password:", e);
+    }
+  }
+
+  try {
+    const connInfo: ConnectionInfo = {
+      type: type as "postgresql" | "mysql" | "sqlite",
+      host: host || undefined,
+      port: port || undefined,
+      user: user || undefined,
+      password: finalPassword || undefined,
+      database,
+    };
+
+    const tables = await fetchSchema(connInfo);
+
+    res.json({ schema: tables });
+  } catch (err: any) {
+    logger.error({ err }, "Fetch schema error");
+    res.status(500).json({ error: `Failed to fetch schema: ${err.message}` });
+  }
+});
+
+// ── POST /api/diagrams/test-db-connection — test external DB connection
+router.post("/test-db-connection", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!isDesktopMode()) {
+    return res.status(404).json({ error: "Not available" });
+  }
+
+  const { type, host, port, user, password, database } = req.body as Partial<ConnectionInfo>;
+
+  if (!type || !database) {
+    return res.status(400).json({ error: "type and database are required" });
+  }
+
+  try {
+    const connInfo: ConnectionInfo = {
+      type: type as "postgresql" | "mysql" | "sqlite",
+      host: host || undefined,
+      port: port || undefined,
+      user: user || undefined,
+      password: password || undefined,
+      database,
+    };
+
+    const result = await testConnection(connInfo);
+    res.json({ success: true, message: result });
+  } catch (err: any) {
+    res.json({ success: false, message: err.message });
+  }
+});
+
+// ── POST /api/diagrams/create-from-db — create diagram from external DB (no import to system DB)
+router.post("/create-from-db", authenticate, async (req: ExpressRequest, res: ExpressResponse) => {
+  if (!isDesktopMode()) {
+    return res.status(404).json({ error: "Not available" });
+  }
+
+  if (!prisma) return res.status(500).json({ error: "Database connection not available" });
+
+  const userId = (req as any).user.id;
+  const { name, type, host, port, user, password, database } = req.body;
+
+  if (!name?.trim()) {
+    return res.status(400).json({ error: "Diagram name is required" });
+  }
+  if (!type || !database) {
+    return res.status(400).json({ error: "type and database are required" });
+  }
+
+  try {
+    // 1. Fetch live schema from external DB
+    const connInfo: ConnectionInfo = {
+      type: type as "postgresql" | "mysql" | "sqlite",
+      host: host || undefined,
+      port: port || undefined,
+      user: user || undefined,
+      password: password || undefined,
+      database,
+    };
+
+    const tables = await fetchSchema(connInfo);
+
+    // 2. Build positions (auto-layout)
+    const entities = tables.map((t: any, i: number) => ({
+      name: t.table_name,
+      x: (i % 4) * 280 + 50,
+      y: Math.floor(i / 4) * 200 + 50,
+      color: "#4f46e5",
+      columns: (t.columns || []).map((c: any) => ({
+        name: c.name,
+        type: c.type,
+        is_pk: !!c.is_pk,
+        is_nullable: !!c.is_nullable,
+        sort_order: c.sort_order || 0,
+        _is_fk: (t.foreign_keys || []).some((fk: any) => fk.column === c.name),
+      })),
+    }));
+
+    // 3. Prepare data for diagram: positions + connection info (encrypted password)
+    const positions: Record<string, any> = {};
+    entities.forEach(e => {
+      positions[e.name] = { x: e.x, y: e.y, color: e.color, collapsed: false, hidden_columns: [], note: "" };
+    });
+
+    // Encrypt password before storing
+    const encryptedPassword = password ? encrypt(password) : undefined;
+
+    const diagramData = {
+      nodes: positions,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      _type: "production_db_positions",
+      source: {
+        type,
+        host: host || undefined,
+        port: port || undefined,
+        user: user || undefined,
+        database,
+        password_encrypted: encryptedPassword,
+      },
+    };
+
+    // 4. Create diagram (no entities/relationships saved to system DB)
+    const diagram = await prisma.diagram.create({
+      data: {
+        name: name.trim(),
+        uid: crypto.randomUUID(),
+        userId,
+        sourceType: "production_db",
+        data: JSON.stringify(diagramData),
+      },
+      select: { id: true, uid: true, name: true, data: true, sourceType: true, updatedAt: true },
+    });
+
+    // 5. Return diagram + schema for immediate rendering
+    res.json({
+      diagram,
+      schema: tables,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Create from DB error");
+    res.status(500).json({ error: `Failed to create diagram: ${err.message}` });
   }
 });
 

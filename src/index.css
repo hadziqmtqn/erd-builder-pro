@@ -117,9 +117,17 @@
   }
 }
 
+/* Connected edges when node selected — non-white color + dash animation */
 .edge-animated-active .react-flow__edge-path {
   stroke-dasharray: 5;
   animation: edge_dash_draw 0.5s linear infinite !important;
+  stroke: var(--edge-selected) !important;
+  stroke-width: 2.5 !important;
+}
+
+/* Dim non-selected edges when another table is selected */
+.edge-dimmed .react-flow__edge-path {
+  opacity: 0.15 !important;
 }
 
 .react-flow__controls {
@@ -238,6 +246,7 @@ code:not(pre code) {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --edge-selected: oklch(0.65 0.18 45);
 }
 
 .dark {
@@ -272,6 +281,7 @@ code:not(pre code) {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --edge-selected: oklch(0.78 0.16 45);
 }
 
 /* Tiptap Editor Styles */

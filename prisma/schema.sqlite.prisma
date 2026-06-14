@@ -102,6 +102,7 @@ model Diagram {
   publishedAt  DateTime? @map("published_at")
   sourceType        String? @default("blank") @map("source_type")
   sourceConnectionId Int?   @map("source_connection_id")
+  data             String?  @map("data")  // JSON positions untuk production DB (desktop only)
   user         User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project      Project? @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   entities     Entity[]

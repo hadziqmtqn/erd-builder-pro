@@ -14,6 +14,9 @@ async function runStartupMigration() {
   if (migrationDone || !prisma) return;
   migrationDone = true;
   try {
+    // Skip migration for SQLite (desktop mode) — information_schema doesn't exist
+    if (isDesktopMode()) return;
+    
     const tables = await prisma.$queryRawUnsafe<{table_name: string}[]>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'local_db_connections'"
     ).catch(() => []);
@@ -513,112 +516,50 @@ router.post("/catalogs/:id/import", authenticate, desktopOnly, async (req: Expre
       database: catalog.databaseName,
     });
 
-    // 2. Parse tables → entities
-    const entities = tables.map((t: any, i: number) => ({
-      id: crypto.randomUUID(),
-      name: t.table_name,
-      x: (i % 4) * 280 + 50,
-      y: Math.floor(i / 4) * 200 + 50,
-      color: "#4f46e5",
-      columns: (t.columns || []).map((c: any) => ({
-        id: crypto.randomUUID(),
-        name: c.name,
-        type: c.type,
-        is_pk: !!c.is_pk,
-        is_nullable: !!c.is_nullable,
-        enum_values: null,
-        sort_order: c.sort_order || 0,
-        _is_fk: false,
-      })),
-    }));
+    // 2. Build positions (auto-layout) + data JSON (same format as create-from-db)
+    const positions: Record<string, any> = {};
+    tables.forEach((t: any, i: number) => {
+      positions[t.table_name] = {
+        x: (i % 4) * 280 + 50,
+        y: Math.floor(i / 4) * 200 + 50,
+        color: "#4f46e5",
+        collapsed: false,
+        hidden_columns: [],
+        note: "",
+      };
+    });
 
-    // 3. Create diagram pointing to this catalog
+    const diagramData = {
+      nodes: positions,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      _type: "production_db_positions",
+      source: {
+        type: catalog.account.type,
+        host: catalog.account.host || undefined,
+        port: catalog.account.port || undefined,
+        user: catalog.account.user || undefined,
+        database: catalog.databaseName,
+        password_encrypted: catalog.account.password || undefined,
+      },
+    };
+
+    // 3. Create diagram (no entities/relationships saved to system DB — live-render only)
     const diagram = await prisma?.diagram.create({
       data: {
         name: name.trim(),
         uid: crypto.randomUUID(),
         userId,
         sourceType: "production_db",
-        sourceConnectionId: catalog.id, // ← points to DbCatalog
+        sourceConnectionId: catalog.id, // ← points to DbCatalog for reference
+        data: JSON.stringify(diagramData),
       },
     });
 
     if (!diagram) return res.status(500).json({ error: "Failed to create diagram" });
 
-    // 4. Save entities + columns
-    if (entities.length > 0) {
-      try {
-        await prisma?.entity.createMany({
-          data: entities.map((e: any) => ({
-            id: e.id,
-            diagramId: Number(diagram.id),
-            name: e.name,
-            x: e.x,
-            y: e.y,
-            color: e.color,
-          })),
-        });
-
-        const allColumns = entities.flatMap((e: any) =>
-          (e.columns || []).map((c: any) => ({
-            id: c.id,
-            entityId: e.id,
-            name: c.name,
-            type: c.type,
-            isPk: !!c.is_pk,
-            isNullable: !!c.is_nullable,
-            sortOrder: c.sort_order ?? 0,
-          }))
-        );
-
-        if (allColumns.length > 0) {
-          await prisma?.column.createMany({ data: allColumns });
-        }
-
-        // 5. Create relationships from foreign keys
-        const entityMap = new Map(entities.map((e: any) => [e.name, e]));
-        const columnMap = new Map<string, string>();
-        entities.forEach((e: any) =>
-          (e.columns || []).forEach((c: any) => {
-            columnMap.set(`${e.name}.${c.name}`, c.id);
-          })
-        );
-
-        const relationships: any[] = [];
-        tables.forEach((t: any) => {
-          const sourceEntity = entityMap.get(t.table_name);
-          if (!sourceEntity) return;
-          (t.foreign_keys || []).forEach((fk: any) => {
-            const targetEntity = entityMap.get(fk.ref_table);
-            if (!targetEntity) return;
-            const sourceColId = columnMap.get(`${t.table_name}.${fk.column}`);
-            const targetColId = columnMap.get(`${fk.ref_table}.${fk.ref_column}`);
-            if (!sourceColId || !targetColId) return;
-
-            relationships.push({
-              id: crypto.randomUUID(),
-              diagramId: Number(diagram.id),
-              sourceEntityId: sourceEntity.id,
-              targetEntityId: targetEntity.id,
-              sourceColumnId: sourceColId,
-              targetColumnId: targetColId,
-              type: "one-to-many",
-            });
-          });
-        });
-
-        if (relationships.length > 0) {
-          await prisma?.relationship.createMany({ data: relationships });
-        }
-      } catch (entityErr) {
-        await prisma?.diagram.delete({ where: { id: diagram.id } }).catch(() => {});
-        throw entityErr;
-      }
-    }
-
     res.status(201).json({
       diagram,
-      tableCount: entities.length,
+      tableCount: tables.length,
     });
   } catch (err: any) {
     console.error("Error importing schema:", err);
@@ -985,6 +926,11 @@ router.post("/connections/:id/records", authenticate, desktopOnly, async (req: E
 router.post("/migrate-connections", authenticate, desktopOnly, async (_req: ExpressRequest, res: ExpressResponse) => {
   const userId = (_req as any).user.id;
   try {
+    // Skip migration for SQLite (desktop mode) — information_schema doesn't exist
+    if (isDesktopMode()) {
+      return res.json({ migrated: 0, message: "Migration not needed for SQLite" });
+    }
+    
     // Check if old table exists
     const tables = await prisma?.$queryRawUnsafe<{table_name: string}[]>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'local_db_connections'"
