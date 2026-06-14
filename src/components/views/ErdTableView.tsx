@@ -94,6 +94,9 @@ export const ErdTableView = React.memo(function ErdTableView({
   const isDesktop = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
+  // Filter out 'source' column in web mode — DB Connect is desktop-only
+  const columns = isDesktop ? DEFAULT_COLUMNS : DEFAULT_COLUMNS.filter(c => c.id !== 'source');
+
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(loadColumnVisibility);
 
   useEffect(() => {
@@ -107,7 +110,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   }, []);
 
   const isColVisible = useCallback((colId: string): boolean => {
-    const col = DEFAULT_COLUMNS.find(c => c.id === colId);
+    const col = columns.find(c => c.id === colId);
     if (!col || !col.hideable) return true;
     return visibleColumns[colId] ?? col.defaultVisible;
   }, [visibleColumns]);
@@ -157,7 +160,7 @@ export const ErdTableView = React.memo(function ErdTableView({
     }
   };
 
-  const visibleCols = DEFAULT_COLUMNS.filter(c => c.id === 'name' || c.id === 'workspace' || c.id === 'actions' || isColVisible(c.id));
+  const visibleCols = columns.filter(c => c.id === 'name' || c.id === 'workspace' || c.id === 'actions' || isColVisible(c.id));
 
   if (isLoading) {
     return (
@@ -202,7 +205,7 @@ export const ErdTableView = React.memo(function ErdTableView({
               </Button>
             } />
             <DropdownMenuContent align="end" className="w-44">
-              {DEFAULT_COLUMNS.filter(c => c.hideable).map(col => (
+              {columns.filter(c => c.hideable).map(col => (
                 <DropdownMenuCheckboxItem
                   key={col.id}
                   checked={isColVisible(col.id)}
@@ -232,7 +235,7 @@ export const ErdTableView = React.memo(function ErdTableView({
         <Table>
           <TableHeader>
             <TableRow>
-              {DEFAULT_COLUMNS.filter(c => visibleCols.some(v => v.id === c.id)).map(col => (
+              {columns.filter(c => visibleCols.some(v => v.id === c.id)).map(col => (
                 <TableHead key={col.id} className={col.width}>
                   {col.label}
                 </TableHead>
@@ -416,11 +419,13 @@ export const ErdTableView = React.memo(function ErdTableView({
         </div>
       )}
 
-      <DBConnectPanel
-        open={dbConnectOpen}
-        onOpenChange={setDbConnectOpen}
-        onImportComplete={(uid) => onSelectDiagram(uid)}
-      />
+      {isDesktop && (
+        <DBConnectPanel
+          open={dbConnectOpen}
+          onOpenChange={setDbConnectOpen}
+          onImportComplete={(uid) => onSelectDiagram(uid)}
+        />
+      )}
     </div>
   );
 });

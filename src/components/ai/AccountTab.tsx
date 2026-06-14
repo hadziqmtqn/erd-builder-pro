@@ -172,8 +172,8 @@ export function AccountTab() {
   return (
     <div className="p-8 max-w-2xl">
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-zinc-100">Account</h2>
-        <p className="text-sm text-zinc-400 mt-1">
+        <h2 className="text-lg font-semibold text-foreground">Account</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           {isReadOnly
             ? 'Your account is managed by your authentication provider.'
             : isTauriApp
@@ -184,8 +184,8 @@ export function AccountTab() {
 
       {isReadOnly && (
         <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 rounded-md flex items-start gap-2">
-          <Info className="size-4 text-blue-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-blue-200/80">
+          <Info className="size-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-blue-700 dark:text-blue-300">
             Signed in via Supabase Auth. To change your name, email, or password, visit your Supabase dashboard or contact your administrator.
           </p>
         </div>
@@ -193,8 +193,8 @@ export function AccountTab() {
 
       {!isReadOnly && isTauriApp && (
         <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-start gap-2">
-          <Info className="size-4 text-amber-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-200/80">
+          <Info className="size-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-700 dark:text-amber-300">
             Desktop mode: only account name can be updated. Email and password are configured during installation.
           </p>
         </div>
@@ -240,11 +240,11 @@ export function AccountTab() {
           <div className="border-t border-border/40 pt-6 mt-2">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <Lock className="size-3.5" />
                   Change Password
                 </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {config.supportsPasswordUpdate
                     ? 'Enter your current password and a new password to update.'
                     : 'Password changes are not available in this mode.'}

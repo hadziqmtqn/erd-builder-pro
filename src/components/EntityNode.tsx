@@ -32,9 +32,10 @@ interface ColumnRowProps {
   col: any;
   borderColor: string;
   typeColor: string;
+  hideHandles?: boolean;
 }
 
-const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) => {
+const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles }: ColumnRowProps) => {
   const isFk = col._is_fk;
   const diffState = col.diffState as 'new' | 'deleted' | undefined;
 
@@ -47,8 +48,10 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor }: ColumnRowProps) =
   }), [borderColor]);
 
   const handleBaseClass = useMemo(() => cn(
-    '!w-2 !h-2 !border-none cursor-crosshair opacity-0 group-hover:!opacity-100 group-focus-within:!opacity-100 transition-opacity duration-150',
-  ), []);
+    '!w-2 !h-2 !border-none cursor-crosshair opacity-0 transition-opacity duration-150',
+    !hideHandles && 'group-hover:!opacity-100 group-focus-within:!opacity-100',
+    hideHandles && '!opacity-0 !pointer-events-none',
+  ), [hideHandles]);
 
   const rowBgClass = useMemo(() => {
     if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
@@ -285,7 +288,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
         {/* Columns */}
         <div className="flex flex-col">
           {sortedColumns.map((col: any) => (
-            <EntityColumnRow key={col.id} col={col} borderColor={borderColor} typeColor={typeColor} />
+            <EntityColumnRow key={col.id} col={col} borderColor={borderColor} typeColor={typeColor} hideHandles={isProductionDb} />
           ))}
         </div>
       </div>

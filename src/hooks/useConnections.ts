@@ -369,7 +369,8 @@ export function useDbCatalogs(accountId?: number) {
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const fetchCatalogs = useCallback(async () => {
-    if (!user || isGuest) return;
+    // Skip fetch in web mode — DB Connect is desktop-only
+    if (!isDesktop || !user || isGuest) return;
     setIsLoading(true);
     try {
       const params = accountId ? `?accountId=${accountId}` : '';
