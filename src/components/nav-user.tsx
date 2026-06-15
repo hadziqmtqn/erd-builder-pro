@@ -113,22 +113,24 @@ export function NavUser({
               <DropdownMenuSeparator />
 
               <DropdownMenuGroup>
-                {isGuest ? (
+                {/* Settings - always shown */}
+                <DropdownMenuItem 
+                  onClick={() => handleOpenSettings(isGuest ? 'appearance' : 'account')}
+                  className="cursor-pointer"
+                  disabled={!isGuest && !isOnline}
+                >
+                  <Settings className="mr-2 size-4" />
+                  Settings
+                </DropdownMenuItem>
+
+                {/* Backup Data - guest only */}
+                {isGuest && (
                   <DropdownMenuItem 
                     onClick={() => setGuestExportOpen(true)}
                     className="cursor-pointer"
                   >
                     <Download className="mr-2 size-4" />
                     Backup Data
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem 
-                    onClick={() => isOnline && handleOpenSettings('account')}
-                    className="cursor-pointer"
-                    disabled={!isOnline}
-                  >
-                    <Settings className="mr-2 size-4" />
-                    Settings
                   </DropdownMenuItem>
                 )}
               <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">

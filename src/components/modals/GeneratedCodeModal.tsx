@@ -105,7 +105,7 @@ export const GeneratedCodeModal = ({
               Table: {entity.name}
             </div>
             
-            <TabsList variant="line" className="mt-4 flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0">
+            <TabsList variant="line" className="mt-4 flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0 gap-8">
               <TabsTrigger value="mysql" data-variant="line">MySQL</TabsTrigger>
               <TabsTrigger value="postgresql" data-variant="line">PostgreSQL</TabsTrigger>
               <TabsTrigger value="laravel_migration" data-variant="line">Laravel Migration</TabsTrigger>
