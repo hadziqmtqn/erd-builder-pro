@@ -53,13 +53,13 @@ router.post("/configs", authenticate, async (req: ExpressRequest, res: ExpressRe
         userId,
         providerId,
         ...(api_key && api_key !== '***' ? { apiKey: api_key } : {}),
-        selectedModelId: selectedModelId ?? undefined,
-        isEnabled: is_enabled ?? true,
+        ...(selectedModelId != null ? { selectedModelId } : {}),
+        ...(is_enabled != null ? { isEnabled: is_enabled } : {}),
       },
       update: {
         ...(api_key && api_key !== '***' ? { apiKey: api_key } : {}),
-        selectedModelId: selectedModelId ?? undefined,
-        isEnabled: is_enabled ?? undefined,
+        ...(selectedModelId != null ? { selectedModelId } : {}),
+        ...(is_enabled != null ? { isEnabled: is_enabled } : {}),
         updatedAt: new Date(),
       }
     });
