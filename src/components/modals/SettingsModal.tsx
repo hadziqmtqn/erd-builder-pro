@@ -105,32 +105,51 @@ export function SettingsModal() {
     togglePromptDefault,
   } = useAIPrompts();
 
-  const navGroups = [
-    {
-      label: "General",
-      items: [
-        { id: 'account', label: 'Account', icon: <User className="size-4" /> },
-        { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
-      ]
-    },
-    {
-      label: "Feature",
-      items: [
-        { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
-        { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
-        { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
-        { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
-      ]
-    },
-    {
-      label: "More",
-      items: [
-        ...(!isGuest ? [{ id: 'guest-import', label: 'Guest Data Import', icon: <Upload className="size-4" /> }] : []),
-        { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
-        { id: 'changelog', label: 'What\'s New', icon: <History className="size-4" /> },
-      ]
+  const navGroups = React.useMemo(() => {
+    if (isGuest) {
+      return [
+        {
+          label: "General",
+          items: [
+            { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
+          ]
+        },
+        {
+          label: "More",
+          items: [
+            { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
+          ]
+        },
+      ];
     }
-  ];
+
+    return [
+      {
+        label: "General",
+        items: [
+          { id: 'account', label: 'Account', icon: <User className="size-4" /> },
+          { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
+        ]
+      },
+      {
+        label: "Feature",
+        items: [
+          { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
+          { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
+          { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
+          { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
+        ]
+      },
+      {
+        label: "More",
+        items: [
+          { id: 'guest-import', label: 'Guest Data Import', icon: <Upload className="size-4" /> },
+          { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
+          { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
+        ]
+      }
+    ];
+  }, [isGuest]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {

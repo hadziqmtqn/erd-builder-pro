@@ -266,8 +266,8 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving} className="h-9 px-5 font-semibold text-sm shadow-sm">
-              {isSaving && <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />}
-              {editingModelId ? 'Save Changes' : 'Register Model'}
+              {isSaving && <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent shrink-0" />}
+              <span>{editingModelId ? 'Save Changes' : 'Register Model'}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

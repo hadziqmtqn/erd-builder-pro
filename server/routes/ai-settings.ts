@@ -52,7 +52,7 @@ router.post("/configs", authenticate, async (req: ExpressRequest, res: ExpressRe
       create: {
         userId,
         providerId,
-        apiKey: (api_key && api_key !== '***') ? api_key : null,
+        ...(api_key && api_key !== '***' ? { apiKey: api_key } : {}),
         selectedModelId: selectedModelId ?? undefined,
         isEnabled: is_enabled ?? true,
       },
