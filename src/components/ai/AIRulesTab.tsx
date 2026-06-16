@@ -27,8 +27,8 @@ export function AIRulesTab() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-zinc-100">AI Rules</h2>
-        <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
+        <h2 className="text-lg font-semibold text-foreground">AI Rules</h2>
+        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
           Define custom rules the AI should follow when generating content in each view.
           Rules are injected as system instructions — if you explicitly ask the AI to do something
           that contradicts a rule, your request takes precedence.
@@ -36,15 +36,15 @@ export function AIRulesTab() {
       </div>
 
       {/* View type tabs */}
-      <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
         {VIEW_TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveView(tab.id)}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${
               activeView === tab.id
-                ? 'bg-zinc-700 text-zinc-100 shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {tab.icon}
@@ -56,7 +56,7 @@ export function AIRulesTab() {
       {/* Rules editor */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Rules for {activeView.toUpperCase()}
           </label>
           {rules && !rules.is_enabled && (
@@ -69,21 +69,21 @@ export function AIRulesTab() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 text-zinc-400 animate-spin" />
+            <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
           </div>
         ) : (
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={`e.g. for ${activeView.toUpperCase()}:\n- Always use snake_case for naming\n- Every table must have created_at and updated_at columns\n- Use English for all identifiers\n- ...`}
-            className="w-full min-h-[280px] bg-black/40 border border-zinc-800 rounded-lg p-4 text-sm font-mono text-zinc-200 focus:outline-none focus:border-zinc-600 resize-y placeholder:text-zinc-600"
+            className="w-full min-h-[280px] bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono text-foreground focus:outline-none focus:border-primary/50 resize-y placeholder:text-muted-foreground/50"
           />
         )}
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-2">
-        <p className="text-[11px] text-zinc-500 max-w-lg">
+        <p className="text-[11px] text-muted-foreground max-w-lg">
           Rules are advisory — the AI will follow them unless you explicitly request otherwise in your prompt.
         </p>
         <Button

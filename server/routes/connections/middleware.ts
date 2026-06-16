@@ -41,8 +41,8 @@ export async function runStartupMigration() {
   if (migrationDone || !prisma) return;
   migrationDone = true;
   try {
-    // Skip migration for SQLite (desktop mode) — information_schema doesn't exist
-    if (isDesktopMode()) return;
+    // Only run in desktop mode (SQLite) where DbAccount/DbCatalog exist
+    if (!isDesktopMode()) return;
 
     const tables = await prisma.$queryRawUnsafe<{ table_name: string }[]>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'local_db_connections'"

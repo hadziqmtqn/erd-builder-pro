@@ -98,13 +98,15 @@
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: white !important;
+  stroke: var(--edge-selected) !important;
   stroke-width: 3 !important;
-  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+  filter: drop-shadow(0 0 4px var(--edge-selected));
 }
 
 .react-flow__edge.selected .react-flow__edge-interaction {
-  @apply !stroke-white/20 !stroke-[10];
+  stroke: var(--edge-selected) !important;
+  opacity: 0.2;
+  stroke-width: 10 !important;
 }
 
 @keyframes edge_dash_draw {
