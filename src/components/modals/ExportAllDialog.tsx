@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Copy, Check, Download, Loader2, Database, FileText, Image as ImageIcon, FileCode, FlaskConical } from 'lucide-react';
+import { toast } from 'sonner';
 import { Node, Edge } from '@xyflow/react';
 import { Entity } from '@/types';
 import { generateAllTablesCode, generateAllTablesFiles, AllExportFormat, getExtension } from '@/lib/sql-generator-all';
@@ -51,9 +52,10 @@ export const ExportAllDialog = ({
   onExportPDF,
   onExportImage,
 }: ExportAllDialogProps) => {
-  const [activeTab, setActiveTab] = React.useState('mysql');
+  const [activeTab, setActiveTab] = React.useState('typescript');
   const [copied, setCopied] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
+  const [downloaded, setDownloaded] = React.useState(false);
 
   const currentTab = TABS.find(t => t.id === activeTab);
   const isSingleFile = activeTab === 'mysql' || activeTab === 'postgresql';
@@ -84,6 +86,7 @@ export const ExportAllDialog = ({
 
   const downloadFile = async () => {
     setIsDownloading(true);
+    const toastId = toast.loading(isSingleFile ? 'Downloading...' : 'Creating archive...');
     try {
       if (isSingleFile) {
         const ext = getExtension(activeTab as AllExportFormat);
@@ -110,6 +113,11 @@ export const ExportAllDialog = ({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
+      setDownloaded(true);
+      toast.success(isSingleFile ? 'File downloaded successfully' : 'Archive downloaded successfully', { id: toastId });
+      setTimeout(() => setDownloaded(false), 2000);
+    } catch (err) {
+      toast.error('Failed to download file', { id: toastId });
     } finally {
       setIsDownloading(false);
     }
@@ -212,15 +220,20 @@ export const ExportAllDialog = ({
                   variant="outline"
                   size="sm"
                   onClick={downloadFile}
-                  disabled={isDownloading}
+                  disabled={isDownloading || downloaded}
                   className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
                 >
-                  {isDownloading ? (
+                  {downloaded ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
+                      Downloaded
+                    </>
+                  ) : isDownloading ? (
                     <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
                   ) : (
                     <Download className="w-3.5 h-3.5 mr-2" />
                   )}
-                  {isSingleFile ? 'Download' : 'Download .zip'}
+                  {!downloaded && (isSingleFile ? 'Download' : 'Download .zip')}
                 </Button>
                 <Button
                   variant="outline"

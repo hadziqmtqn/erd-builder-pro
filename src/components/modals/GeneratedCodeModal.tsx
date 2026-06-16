@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { Entity } from '../../types';
 import {
   generateMySQL,
@@ -33,6 +34,7 @@ export const GeneratedCodeModal = ({
 }: GeneratedCodeModalProps) => {
   const [activeTab, setActiveTab] = React.useState<string>('mysql');
   const [copied, setCopied] = React.useState(false);
+  const [downloaded, setDownloaded] = React.useState(false);
 
   if (!entity) return null;
 
@@ -76,15 +78,23 @@ export const GeneratedCodeModal = ({
       postgresql: 'sql'
     };
     const extension = extMap[activeTab] || 'sql';
-    const blob = new Blob([currentCode], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${entity.name.toLowerCase()}_${activeTab}.${extension}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const toastId = toast.loading('Preparing download...');
+    try {
+      const blob = new Blob([currentCode], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${entity.name.toLowerCase()}_${activeTab}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDownloaded(true);
+      toast.success(`${entity.name}_${activeTab}.${extension} downloaded successfully`, { id: toastId });
+      setTimeout(() => setDownloaded(false), 2000);
+    } catch (err) {
+      toast.error('Failed to download file', { id: toastId });
+    }
   };
 
   return (
@@ -144,8 +154,17 @@ export const GeneratedCodeModal = ({
                 onClick={downloadFile}
                 className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
               >
-                <Download className="w-3.5 h-3.5 mr-2" />
-                Download
+                {downloaded ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
+                    Downloaded
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5 mr-2" />
+                    Download
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"
