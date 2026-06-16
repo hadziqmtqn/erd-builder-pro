@@ -170,33 +170,41 @@ export const TableDialog = ({
           </TabsContent>
 
           <TabsContent value="schema" className="m-0">
-            <Tabs value={activeSchemaTab} onValueChange={setActiveSchemaTab}>
-              <div className="px-6 pt-4 border-b border-white/5">
-                <TabsList variant="line" className="flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0">
-                  <TabsTrigger value="mysql" data-variant="line">MySQL</TabsTrigger>
-                  <TabsTrigger value="postgresql" data-variant="line">PostgreSQL</TabsTrigger>
-                  <TabsTrigger value="laravel_migration" data-variant="line">Laravel Migration</TabsTrigger>
-                  <TabsTrigger value="laravel_model" data-variant="line">Laravel Model</TabsTrigger>
-                  <TabsTrigger value="typescript" data-variant="line">TypeScript</TabsTrigger>
-                  <TabsTrigger value="prisma" data-variant="line">Prisma</TabsTrigger>
-                  <TabsTrigger value="zod" data-variant="line">Zod</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <div className="p-0 overflow-hidden bg-muted relative">
-                <div className="absolute top-4 right-6 px-2 py-1 rounded bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground/20 uppercase tracking-widest z-10">
-                  {currentLanguage}
-                </div>
-
-                {Object.entries(generatedCode).map(([key, code]) => (
-                  <TabsContent key={key} value={key} className="mt-0">
-                    <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                      <code className="text-foreground/90 block">{code}</code>
-                    </pre>
-                  </TabsContent>
+            <div className="px-6 pt-4 mb-3 overflow-x-auto scrollbar-hide">
+              <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
+                {[
+                  { id: 'mysql', label: 'MySQL' },
+                  { id: 'postgresql', label: 'PostgreSQL' },
+                  { id: 'laravel_migration', label: 'Laravel Migration' },
+                  { id: 'laravel_model', label: 'Laravel Model' },
+                  { id: 'typescript', label: 'TypeScript' },
+                  { id: 'prisma', label: 'Prisma' },
+                  { id: 'zod', label: 'Zod' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveSchemaTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
+                      activeSchemaTab === tab.id
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
               </div>
-            </Tabs>
+            </div>
+
+            <div className="p-0 overflow-hidden bg-muted relative">
+              <div className="absolute top-4 right-6 px-2 py-1 rounded bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground/20 uppercase tracking-widest z-10">
+                {currentLanguage}
+              </div>
+
+              <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
+                <code className="text-foreground/90 block">{currentCode}</code>
+              </pre>
+            </div>
 
             <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
               <div className="flex items-center gap-2 mr-auto">

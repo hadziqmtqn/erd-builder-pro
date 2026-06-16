@@ -11,7 +11,7 @@ export function AppearanceTab() {
   const { theme, setTheme, resolvedTheme } = useWorkspace();
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">

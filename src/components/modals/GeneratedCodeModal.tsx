@@ -8,20 +8,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Download, Database } from 'lucide-react';
+import { Copy, Check, Download } from 'lucide-react';
 import { Entity } from '../../types';
-import { 
-  generateMySQL, 
-  generatePostgreSQL, 
+import {
+  generateMySQL,
+  generatePostgreSQL,
   generateLaravelMigration,
   generateTypeScript,
   generatePrisma,
   generateLaravelModel,
   generateZod
 } from '../../lib/sql-generator';
-import { cn } from '@/lib/utils';
-
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface GeneratedCodeModalProps {
   open: boolean;
@@ -98,22 +95,35 @@ export const GeneratedCodeModal = ({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
-          <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
+        <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
             <DialogTitle className="text-xl font-bold tracking-tight">Generate Code Schema</DialogTitle>
             <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
               Table: {entity.name}
             </div>
             
-            <TabsList variant="line" className="mt-4 flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0 gap-8">
-              <TabsTrigger value="mysql" data-variant="line">MySQL</TabsTrigger>
-              <TabsTrigger value="postgresql" data-variant="line">PostgreSQL</TabsTrigger>
-              <TabsTrigger value="laravel_migration" data-variant="line">Laravel Migration</TabsTrigger>
-              <TabsTrigger value="laravel_model" data-variant="line">Laravel Model</TabsTrigger>
-              <TabsTrigger value="typescript" data-variant="line">TypeScript</TabsTrigger>
-              <TabsTrigger value="prisma" data-variant="line">Prisma</TabsTrigger>
-              <TabsTrigger value="zod" data-variant="line">Zod</TabsTrigger>
-            </TabsList>
+            <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
+              {[
+                { id: 'mysql', label: 'MySQL' },
+                { id: 'postgresql', label: 'PostgreSQL' },
+                { id: 'laravel_migration', label: 'Laravel Migration' },
+                { id: 'laravel_model', label: 'Laravel Model' },
+                { id: 'typescript', label: 'TypeScript' },
+                { id: 'prisma', label: 'Prisma' },
+                { id: 'zod', label: 'Zod' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </DialogHeader>
           
           <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
@@ -121,13 +131,9 @@ export const GeneratedCodeModal = ({
               {currentLanguage}
             </div>
             
-            {Object.entries(generatedCode).map(([key, code]) => (
-              <TabsContent key={key} value={key} className="mt-0 h-full">
-                <pre className="p-6 overflow-auto h-full text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                  <code className="text-foreground/90 block">{code}</code>
-                </pre>
-              </TabsContent>
-            ))}
+            <pre className="p-6 overflow-auto h-full text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
+              <code className="text-foreground/90 block">{currentCode}</code>
+            </pre>
           </DialogBody>
 
           <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
@@ -167,8 +173,7 @@ export const GeneratedCodeModal = ({
               Close
             </Button>
           </DialogFooter>
-        </Tabs>
-      </DialogContent>
+        </DialogContent>
     </Dialog>
   );
 };

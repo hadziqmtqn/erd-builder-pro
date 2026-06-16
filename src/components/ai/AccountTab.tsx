@@ -170,7 +170,7 @@ export function AccountTab() {
   };
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 md:p-8 max-w-2xl">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-foreground">Account</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -350,7 +350,7 @@ function GuestModeView() {
   };
 
   return (
-    <div className="p-8 flex flex-col items-center justify-center h-full text-center space-y-8">
+    <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full text-center space-y-8">
       {/* Info */}
       <div className="space-y-3 max-w-[360px]">
         <div className="p-4 bg-muted/20 rounded-full inline-flex mx-auto">

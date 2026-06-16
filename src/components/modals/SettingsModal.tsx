@@ -164,11 +164,11 @@ export function SettingsModal() {
           Manage your application settings and AI configuration.
         </DialogDescription>
         
-        <SidebarProvider className="items-start h-full">
+        <SidebarProvider className="items-start min-h-0! h-full">
           {/* Sidebar */}
           <Sidebar collapsible="none" className="w-[220px] border-r border-border/40 bg-muted/5 hidden md:flex h-full">
-            <SidebarContent className="p-2 pt-4">
-              <div className="px-4 py-2 mb-4">
+            <SidebarContent className="pt-4 px-2 pb-0">
+              <div className="px-4 py-2 mb-2">
                 <h2 className="text-sm font-bold flex items-center gap-2">
                   <Settings className="size-4" />
                   Settings
@@ -176,8 +176,8 @@ export function SettingsModal() {
               </div>
 
               {navGroups.map((group) => (
-                <SidebarGroup key={group.label}>
-                  <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4 mb-1">
+                <SidebarGroup key={group.label} className="py-1">
+                  <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4 mb-0.5">
                     {group.label}
                   </SidebarGroupLabel>
                   <SidebarGroupContent>
@@ -258,7 +258,7 @@ export function SettingsModal() {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {settingsTab === 'ai-config' && (
-                <div className="p-8">
+                <div className="p-4 md:p-8">
                   <APISettingsTab 
                     providers={providers}
                     configs={configs}
@@ -274,7 +274,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'ai-models' && (
-                <div className="p-8">
+                <div className="p-4 md:p-8">
                   <ModelCatalogTab 
                     providers={providers}
                     models={Object.values(models).flat()}
@@ -291,7 +291,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'ai-prompts' && (
-                <div className="p-8">
+                <div className="p-4 md:p-8">
                   <DefaultPromptsTab 
                     prompts={prompts}
                     isSaving={isSavingPrompts}
@@ -323,7 +323,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'guest-import' && (
-                <div className="p-6 overflow-y-auto h-full">
+                <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold">Guest Data Import</h2>
                     <p className="text-sm text-muted-foreground mt-1">

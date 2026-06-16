@@ -25,7 +25,7 @@ export function AIRulesTab() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">AI Rules</h2>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -89,8 +89,9 @@ export function AIRulesTab() {
         <Button
           onClick={handleSave}
           disabled={isSaving || isLoading}
+          variant="outline"
           size="sm"
-          className="h-9 px-4 font-bold"
+          className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
         >
           {isSaving ? (
             <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
