@@ -9,6 +9,7 @@ coverage/
 !.env.example
 *.db
 backups/
+!server/routes/backups
 
 # wrangler files
 .wrangler

@@ -10,19 +10,19 @@ import rateLimit from "express-rate-limit";
 
 import { checkSupabase } from "./lib/middleware.js";
 import { httpLogger } from "./lib/logger.js";
-import authRouter from "./routes/auth.js";
-import diagramsRouter from "./routes/diagrams.js";
-import projectsRouter from "./routes/projects.js";
+import authRouter from "./routes/auth/index.js";
+import diagramsRouter from "./routes/diagrams/index.js";
+import projectsRouter from "./routes/projects/index.js";
 import notesRouter from "./routes/notes/index.js";
 import drawingsRouter from "./routes/drawings/index.js";
 import flowchartsRouter from "./routes/flowcharts/index.js";
 import feedbackRouter from "./routes/feedback/index.js";
-import backupsRouter from "./routes/backups.js";
+import backupsRouter from "./routes/backups/index.js";
 import commonRouter from "./routes/common/index.js";
 import aiRouter from "./routes/ai/index.js";
-import aiSettingsRouter from "./routes/ai-settings.js";
+import aiSettingsRouter from "./routes/ai-settings/index.js";
 import aiChatRouter from "./routes/ai-chat/index.js";
-import guestImportRouter from "./routes/guest-import.js";
+import guestImportRouter from "./routes/guest-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
 
 const app = express();
