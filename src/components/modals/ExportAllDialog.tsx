@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Copy, Check, Download, Loader2, Database, FileText, Image as ImageIcon, FileCode, FlaskConical } from 'lucide-react';
 import { Node, Edge } from '@xyflow/react';
 import { Entity } from '@/types';
@@ -123,20 +122,23 @@ export const ExportAllDialog = ({
         className="bg-popover border-border text-popover-foreground shadow-2xl"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col min-h-0 h-full">
-          <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
-            <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
-            <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
-              {nodes.length} tables · {edges.length} relationships
-            </div>
+        <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
+          <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
+          <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
+            {nodes.length} tables · {edges.length} relationships
+          </div>
 
-            <TabsList variant="line" className="mt-4 flex-nowrap overflow-x-auto custom-scrollbar scrollbar-hide pb-0">
+          <div className="pt-4 mb-3 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
               {TABS.map(tab => (
-                <TabsTrigger
+                <button
                   key={tab.id}
-                  value={tab.id}
-                  data-variant="line"
-                  className="relative inline-flex items-center gap-1.5"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 >
                   <tab.icon className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>
@@ -146,10 +148,11 @@ export const ExportAllDialog = ({
                       Exp
                     </Badge>
                   )}
-                </TabsTrigger>
+                </button>
               ))}
-            </TabsList>
-          </DialogHeader>
+            </div>
+          </div>
+        </DialogHeader>
 
           <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
             {isSchemaTab ? (
@@ -247,7 +250,6 @@ export const ExportAllDialog = ({
               </Button>
             </DialogFooter>
           )}
-        </Tabs>
       </DialogContent>
     </Dialog>
   );
