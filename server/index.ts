@@ -13,15 +13,15 @@ import { httpLogger } from "./lib/logger.js";
 import authRouter from "./routes/auth.js";
 import diagramsRouter from "./routes/diagrams.js";
 import projectsRouter from "./routes/projects.js";
-import notesRouter from "./routes/notes.js";
-import drawingsRouter from "./routes/drawings.js";
-import flowchartsRouter from "./routes/flowcharts.js";
-import feedbackRouter from "./routes/feedback.js";
+import notesRouter from "./routes/notes/index.js";
+import drawingsRouter from "./routes/drawings/index.js";
+import flowchartsRouter from "./routes/flowcharts/index.js";
+import feedbackRouter from "./routes/feedback/index.js";
 import backupsRouter from "./routes/backups.js";
-import commonRouter from "./routes/common.js";
-import aiRouter from "./routes/ai.js";
+import commonRouter from "./routes/common/index.js";
+import aiRouter from "./routes/ai/index.js";
 import aiSettingsRouter from "./routes/ai-settings.js";
-import aiChatRouter from "./routes/ai-chat.js";
+import aiChatRouter from "./routes/ai-chat/index.js";
 import guestImportRouter from "./routes/guest-import.js";
 import connectionsRouter from "./routes/connections/index.js";
 
@@ -30,15 +30,16 @@ const app = express();
 // Trust proxy for Vercel (X-Forwarded-For) — required by express-rate-limit
 app.set('trust proxy', 1);
 
-// Security headers — relaxed CSP for Vite dev + app requirements
+// Security headers
 const isProd = process.env.NODE_ENV === 'production';
 app.use(helmet({
-  contentSecurityPolicy: {
+  contentSecurityPolicy: isProd ? {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+      // Excalidraw loads fonts via esm.sh CDN
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com", "https://esm.sh"],
       imgSrc: ["'self'", "data:", "blob:", "*"],
       connectSrc: ["'self'", "*"],
       frameSrc: ["'self'"],
@@ -46,8 +47,7 @@ app.use(helmet({
       baseUri: ["'self'"],
       formAction: ["'self'"],
     },
-    reportOnly: !isProd,
-  },
+  } : false,
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -208,7 +208,7 @@ app.use("/api/backups", backupsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/ai/settings", aiSettingsRouter);
 app.use("/api/ai/chat", aiChatRouter);
-app.use("/api/ai/rules", (await import("./routes/ai-rules.js")).default);
+app.use("/api/ai/rules", (await import("./routes/ai-rules/index.js")).default);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
