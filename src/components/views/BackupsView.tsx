@@ -207,18 +207,36 @@ export const BackupsView = () => {
       return;
     }
 
-    // Web: stream the file via Content-Disposition download.
-    window.location.href = `/api/backups/${backup.id}/download`;
+    // Web: fetch the file and trigger download via blob URL so we can
+    // detect success/failure and show appropriate toast feedback.
+    const toastId = toast.loading(`Downloading "${backup.name}"...`);
+    try {
+      const res = await fetch(`/api/backups/${backup.id}/download`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(`Server responded with ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${backup.name}.sql.gz`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-    const targetDir = folderSettings?.effective_folder;
-    const description = targetDir
-      ? `File saved to ${targetDir}/${backup.name}.sql.gz`
-      : 'File downloaded to your browser.';
-
-    toast.success(`Backup "${backup.name}" downloaded successfully.`, {
-      description,
-      duration: 6000,
-    });
+      toast.success(`Backup "${backup.name}" downloaded successfully.`, {
+        id: toastId,
+        duration: 6000,
+      });
+    } catch (err) {
+      toast.error(`Failed to download backup "${backup.name}".`, {
+        id: toastId,
+        description: 'Check your connection and try again.',
+      });
+    }
   };
 
   const handleCreateBackup = async () => {
