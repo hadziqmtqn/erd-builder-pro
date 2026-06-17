@@ -79,14 +79,29 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # macOS: build ARM64 first, then rebuild native modules for x86_64, then cross-compile
+      # macOS: build ARM64 first, then rebuild native modules for x86_64, then cross-compile.
+      # We use --bundles app (skip DMG) because Tauri's built-in bundle_dmg.sh (create-dmg fork)
+      # intermittently fails on CI runners (tauri#3055, #13804). DMG is created manually below.
       - name: Build Tauri app (ARM64)
         if: matrix.platform == 'macos'
         shell: bash
-        run: npx tauri build
+        run: npx tauri build --bundles app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Create DMG (ARM64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_DIR="src-tauri/target/release/bundle/dmg"
+          mkdir -p "$DMG_DIR"
+          bash src-tauri/scripts/create-dmg.sh \
+            "src-tauri/target/release/bundle/macos/ERD Builder Pro.app" \
+            "${DMG_DIR}/ERD Builder Pro_${VERSION}_aarch64.dmg" \
+            --volicon "src-tauri/icons/icon.icns"
 
       - name: Rebuild better-sqlite3 for x86_64
         if: matrix.platform == 'macos'
@@ -96,26 +111,41 @@ jobs:
       - name: Build Tauri app (x86_64)
         if: matrix.platform == 'macos'
         shell: bash
-        run: npx tauri build --target x86_64-apple-darwin
+        run: npx tauri build --target x86_64-apple-darwin --bundles app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Create DMG (x86_64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
+          mkdir -p "$DMG_DIR"
+          bash src-tauri/scripts/create-dmg.sh \
+            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/ERD Builder Pro.app" \
+            "${DMG_DIR}/ERD Builder Pro_${VERSION}_x86_64.dmg" \
+            --volicon "src-tauri/icons/icon.icns"
 
       - name: Rename and collect macOS DMGs + signatures
         if: matrix.platform == 'macos'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION=$(node -p "require('./package.json').version")
           mkdir -p dmg-output
 
-          # ARM64 DMG (default target)
-          cp "src-tauri/target/release/bundle/dmg"/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
+          # ARM64 DMG
+          cp "src-tauri/target/release/bundle/dmg/ERD Builder Pro_${VERSION}_aarch64.dmg" \
+             "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
           if ls "src-tauri/target/release"/*.sig 2>/dev/null; then
             cp "src-tauri/target/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
           fi
 
-          # x86_64 DMG (cross-compiled)
-          cp "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"/*.dmg "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+          # x86_64 DMG
+          cp "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ERD Builder Pro_${VERSION}_x86_64.dmg" \
+             "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
           if ls "src-tauri/target/x86_64-apple-darwin/release"/*.sig 2>/dev/null; then
             cp "src-tauri/target/x86_64-apple-darwin/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
           fi
