@@ -78,10 +78,12 @@ const archivePath = resolve(ROOT, "dist-server", archiveName);
 // ── Download ────────────────────────────────────────────────────────
 
 function main() {
-  // Skip if already extracted and verified
   const nodeExe =
     platform === "win32" ? join(OUT_DIR, "node.exe") : join(OUT_DIR, "node");
-  if (existsSync(nodeExe)) {
+
+  // ── Skip check (only for single-arch builds) ──────────────────
+  // macOS universal binary: always re-create to ensure both slices are fresh
+  if (platform !== "darwin" && existsSync(nodeExe)) {
     try {
       const verCheck = execSync(`"${nodeExe}" --version`, {
         encoding: "utf8",
@@ -96,17 +98,19 @@ function main() {
     }
   }
 
-  console.log(`📥 Downloading Node.js ${version} for ${os}...`);
-  console.log(`   ${url}`);
-
+  // ── Download ────────────────────────────────────────────────────────
+  // macOS: no single-arch download — the lipo branch downloads both arches.
   // Clean any stale files
   if (existsSync(OUT_DIR)) {
     rmSync(OUT_DIR, { recursive: true, force: true });
   }
   mkdirSync(OUT_DIR, { recursive: true });
 
-  // Download archive (curl with follow redirect, resume support)
-  execSync(`curl -L -o "${archivePath}" "${url}"`, { stdio: "inherit" });
+  if (platform !== "darwin") {
+    console.log(`📥 Downloading Node.js ${version} for ${os}...`);
+    console.log(`   ${url}`);
+    execSync(`curl -L -o "${archivePath}" "${url}"`, { stdio: "inherit" });
+  }
 
   // ── Extract ───────────────────────────────────────────────────────
 
@@ -131,8 +135,44 @@ function main() {
     } else {
       copyFileSync(srcExe, nodeExe);
     }
+    return;
+  }
+
+  if (platform === "darwin") {
+    // macOS: download BOTH arm64 and x64, combine into universal binary via lipo
+    const ARCHES = ["darwin-arm64", "darwin-x64"];
+    const extractedNodes = [];
+
+    for (const targetOs of ARCHES) {
+      const targetFolder = `node-${version}-${targetOs}`;
+      const targetArchive = `${targetFolder}.tar.gz`;
+      const targetUrl = `https://nodejs.org/dist/${version}/${targetArchive}`;
+      const targetPath = resolve(ROOT, "dist-server", targetArchive);
+
+      console.log(`  Downloading ${targetOs}...`);
+      execSync(`curl -L -o "${targetPath}" "${targetUrl}"`, { stdio: "inherit" });
+
+      const archDir = join(extractDir, targetOs);
+      mkdirSync(archDir, { recursive: true });
+      execSync(`tar -xzf "${targetPath}" -C "${archDir}" "${targetFolder}/bin/node"`, {
+        stdio: "inherit",
+      });
+
+      const archNode = join(archDir, targetFolder, "bin", "node");
+      if (!existsSync(archNode)) {
+        throw new Error(`Extracted node binary not found: ${archNode}`);
+      }
+      extractedNodes.push(archNode);
+      rmSync(targetPath, { force: true });
+    }
+
+    console.log("  Creating universal (fat) binary with lipo...");
+    execSync(`lipo -create -output "${nodeExe}" ${extractedNodes.map(s => `"${s}"`).join(" ")}`, {
+      stdio: "inherit",
+    });
+    execSync(`chmod +x "${nodeExe}"`);
   } else {
-    // macOS/Linux: tar.gz, extract only bin/node
+    // Linux: tar.gz, extract only bin/node
     execSync(
       `tar -xzf "${archivePath}" -C "${extractDir}" "${folderName}/bin/node"`,
       { stdio: "inherit" },
