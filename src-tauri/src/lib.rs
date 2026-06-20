@@ -65,7 +65,13 @@ pub fn run() {
 /// so `Command::new("node")` fails with "No such file or directory" even when
 /// the user has Node installed. We probe common install locations instead.
 fn find_node_executable() -> Option<String> {
-  // Static well-known paths
+  // ── Static well-known paths (platform-specific) ────────────────
+  #[cfg(target_os = "windows")]
+  let static_candidates = [
+    r"C:\Program Files\nodejs\node.exe",
+    r"C:\Program Files (x86)\nodejs\node.exe",
+  ];
+  #[cfg(not(target_os = "windows"))]
   let static_candidates = [
     // Apple Silicon Homebrew
     "/opt/homebrew/bin/node",
@@ -83,29 +89,44 @@ fn find_node_executable() -> Option<String> {
     }
   }
 
-  // Dynamic paths that need the user's home directory
-  let home = std::env::var("HOME").ok();
+  // ── Dynamic paths (require HOME / LOCALAPPDATA) ───────────────
+  #[cfg(target_os = "windows")]
+  if let Ok(local) = std::env::var("LOCALAPPDATA") {
+    // fnm on Windows
+    let fnm_path = format!(r"{}\fnm\current\node.exe", local);
+    if std::path::Path::new(&fnm_path).exists() {
+      return Some(fnm_path);
+    }
+    // nvm-windows
+    let nvm_path = format!(r"{}\nvm\nodejs\node.exe", local);
+    if std::path::Path::new(&nvm_path).exists() {
+      return Some(nvm_path);
+    }
+    // Volta on Windows
+    let volta = format!(r"{}\Volta\node.exe", local);
+    if std::path::Path::new(&volta).exists() {
+      return Some(volta);
+    }
+  }
 
-  if let Some(home) = &home {
-    // nvm — probe the actual current version link and the latest installed version
+  #[cfg(not(target_os = "windows"))]
+  if let Some(home) = &std::env::var("HOME").ok() {
+    // nvm — current version symlink
     let nvm_current = format!("{}/.nvm/versions/node/current/bin/node", home);
     if std::path::Path::new(&nvm_current).exists() {
       return Some(nvm_current);
     }
-
-    // fnm — uses a symlink at .fnm/current
+    // fnm
     let fnm_current = format!("{}/.fnm/current/bin/node", home);
     if std::path::Path::new(&fnm_current).exists() {
       return Some(fnm_current);
     }
-
     // Volta
     let volta = format!("{}/.volta/bin/node", home);
     if std::path::Path::new(&volta).exists() {
       return Some(volta);
     }
-
-    // nvm — fallback glob for latest installed version (no symlink case)
+    // nvm — glob fallback: latest installed version (no symlink case)
     let nvm_dir = format!("{}/.nvm/versions/node", home);
     if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
       let mut versions: Vec<String> = entries
@@ -113,7 +134,6 @@ fn find_node_executable() -> Option<String> {
         .filter(|e| e.path().join("bin/node").exists())
         .map(|e| e.path().join("bin/node").to_string_lossy().to_string())
         .collect();
-      // Sort descending so the latest version is first
       versions.sort_by(|a, b| b.cmp(a));
       if let Some(latest) = versions.into_iter().next() {
         return Some(latest);
@@ -121,15 +141,29 @@ fn find_node_executable() -> Option<String> {
     }
   }
 
-  // Fallback to PATH lookup (works in dev mode where shell PATH is set)
-  if let Ok(output) = Command::new("which").arg("node").output() {
+  // ── Fallback to PATH lookup ────────────────────────────────────
+  // macOS: launchd clears PATH, so this usually fails in production.
+  // Windows/Linux: inherits PATH, so `node` / `node.exe` resolves.
+  #[cfg(target_os = "windows")]
+  let which_cmd = "where";
+  #[cfg(not(target_os = "windows"))]
+  let which_cmd = "which";
+
+  if let Ok(output) = Command::new(which_cmd).arg("node").output() {
     if output.status.success() {
       if let Ok(s) = String::from_utf8(output.stdout) {
-        let trimmed = s.trim();
+        let trimmed = s.lines().next().unwrap_or("").trim();
         if !trimmed.is_empty() {
           return Some(trimmed.to_string());
         }
       }
+    }
+  }
+
+  // Final fallback: try `node` directly (uses PATH on Windows/Linux)
+  if let Ok(output) = Command::new("node").arg("--version").output() {
+    if output.status.success() {
+      return Some("node".to_string());
     }
   }
 
@@ -201,14 +235,32 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
   // ── Step 1: Find Node.js ─────────────────────────────────────────
   startup_log(&log_dir, "Step 1: Locating Node.js…");
-  let node_bin = find_node_executable().ok_or_else(|| {
-    startup_log(&log_dir, "FATAL: Node.js not found");
-    "Node.js not found. The app probes: Homebrew (/opt/homebrew/bin, /usr/local/bin), \
-     nvm (~/.nvm/versions/node/*/bin), fnm (~/.fnm/current/bin), \
-     Volta (~/.volta/bin), MacPorts (/opt/local/bin), and PATH. \
-     If you use a different version manager, install Node.js from https://nodejs.org \
-     or create a symlink at one of these locations."
-  })?;
+
+  // 1a. Check for bundled Node.js binary first (production desktop)
+  #[cfg(target_os = "windows")]
+  let bundled_node = resource_dir.join("dist-server/node-bin/node.exe");
+  #[cfg(not(target_os = "windows"))]
+  let bundled_node = resource_dir.join("dist-server/node-bin/node");
+
+  let node_bin = if bundled_node.exists() {
+    startup_log(
+      &log_dir,
+      &format!("  Using bundled Node.js: {}", bundled_node.display()),
+    );
+    bundled_node.to_string_lossy().to_string()
+  } else {
+    // 1b. Fallback to system-installed Node.js (dev mode, or unbundled build)
+    find_node_executable().ok_or_else(|| {
+      startup_log(&log_dir, "FATAL: Node.js not found");
+      "Node.js not found. The app probes: bundled binary (dist-server/node-bin/), "
+        .to_string()
+        + "Homebrew (/opt/homebrew/bin, /usr/local/bin), "
+        + "nvm (~/.nvm/versions/node/*/bin), fnm (~/.fnm/current/bin), "
+        + "Volta (~/.volta/bin), MacPorts (/opt/local/bin), "
+        + "and PATH. If you use a different version manager, "
+        + "install Node.js from https://nodejs.org"
+    })?
+  };
   startup_log(&log_dir, &format!("  Node binary: {}", node_bin));
 
   // ── Step 2: Inspect Node version + ABI ───────────────────────────
