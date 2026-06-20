@@ -1,11 +1,19 @@
-import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
+import {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+  NextFunction,
+} from "express";
 import { prisma } from "../../lib/prisma.js";
 import { isDesktopMode } from "../../lib/config.js";
 import { encrypt, decrypt } from "../../lib/crypto.js";
 import type { ConnectionInfo, DbType } from "../../lib/db-connectors/types.js";
 
 // ── Desktop-only guard ──
-export function desktopOnly(_req: ExpressRequest, res: ExpressResponse, next: NextFunction) {
+export function desktopOnly(
+  _req: ExpressRequest,
+  res: ExpressResponse,
+  next: NextFunction,
+) {
   if (!isDesktopMode()) {
     return res.status(404).json({ error: "Not available" });
   }
@@ -31,7 +39,9 @@ export function buildConnectionInfo(conn: {
   };
 }
 
-export function maskPassword(obj: Record<string, unknown>): Record<string, unknown> {
+export function maskPassword(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
   return { ...obj, password: (obj as any).password ? "***" : null };
 }
 
@@ -44,21 +54,28 @@ export async function runStartupMigration() {
     // Only run in desktop mode (SQLite) where DbAccount/DbCatalog exist
     if (!isDesktopMode()) return;
 
-    const tables = await prisma.$queryRawUnsafe<{ table_name: string }[]>(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'local_db_connections'"
-    ).catch(() => []);
+    const tables = await prisma
+      .$queryRawUnsafe<
+        { table_name: string }[]
+      >("SELECT name AS table_name FROM sqlite_master WHERE type = 'table' AND name = 'local_db_connections'")
+      .catch(() => []);
     if (!tables || tables.length === 0) return;
 
-    const oldConns = await prisma.$queryRawUnsafe<any[]>(
-      "SELECT * FROM local_db_connections"
-    ).catch(() => []);
+    const oldConns = await prisma
+      .$queryRawUnsafe<any[]>("SELECT * FROM local_db_connections")
+      .catch(() => []);
     if (!oldConns || oldConns.length === 0) return;
 
-    console.log(`[migrate] Migrating ${oldConns.length} local_db_connections → DbAccount + DbCatalog`);
+    console.log(
+      `[migrate] Migrating ${oldConns.length} local_db_connections → DbAccount + DbCatalog`,
+    );
 
     for (const conn of oldConns) {
       const existing = await prisma.dbCatalog.findFirst({
-        where: { account: { userId: conn.user_id }, databaseName: conn.database },
+        where: {
+          account: { userId: conn.user_id },
+          databaseName: conn.database,
+        },
       });
       if (existing) continue;
 
@@ -75,7 +92,11 @@ export async function runStartupMigration() {
       });
 
       const catalog = await prisma.dbCatalog.create({
-        data: { accountId: account.id, databaseName: conn.database, label: conn.name },
+        data: {
+          accountId: account.id,
+          databaseName: conn.database,
+          label: conn.name,
+        },
       });
 
       await prisma.diagram.updateMany({
