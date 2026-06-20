@@ -152,7 +152,6 @@ function main() {
   rmSync(archivePath, { recursive: true, force: true });
 
   // ── Verify ────────────────────────────────────────────────────────
-  // ── Verify ────────────────────────────────────────────────────────
   const verOut = execSync(`"${nodeExe}" --version`, {
     encoding: "utf8",
     timeout: 5000,
@@ -168,7 +167,9 @@ function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("❌ Failed to bundle Node.js:", err.message);
+try {
+  main();
+} catch (err) {
+  console.error("❌ Failed to bundle Node.js:", err instanceof Error ? err.message : String(err));
   process.exit(1);
-});
+}
