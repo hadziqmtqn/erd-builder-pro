@@ -182,6 +182,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   }
 
   startup_log(&log_dir, "=== ERD Builder Pro backend startup ===");
+  startup_log(&log_dir, &format!("Log directory:       {}", log_dir.display()));
 
   let bundled_nm = resource_dir.join("dist-server/node_modules");
   let server_script = resource_dir.join("dist-server/index.js");
@@ -291,15 +292,17 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   // won't load — e.g.  "NODE_MODULE_VERSION 127 vs 141".
   //
   // Fix: copy better-sqlite3 to the writable app data dir and run
-  // `npm rebuild` there. The rebuilt addon replaces the bundled one
-  // in the NODE_PATH so Node picks it up first.
+  // `npm rebuild` there. We then write a preload hook that patches
+  // Module._resolveFilename to redirect require('better-sqlite3') to
+  // the rebuilt module — because NODE_PATH alone won't override the
+  // local dist-server/node_modules/ resolution.
   // Derive the node parent directory for PATH manipulation (needed later)
   let node_parent = std::path::Path::new(&node_bin)
     .parent()
     .map(|p| p.to_path_buf())
     .unwrap_or_else(|| std::path::PathBuf::from("/usr/local/bin"));
 
-  let mut node_path = bundled_nm.to_string_lossy().to_string();
+  let node_path = bundled_nm.to_string_lossy().to_string();
   // Rebuild needed ONLY when the bundled native addon fails to load.
   // `require()` success is the real ABI compatibility test — it throws
   // `ERR_DLOPEN_FAILED` with "compiled against different Node version"
@@ -307,14 +310,18 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   // better-sqlite3 does NOT expose that property on the binding object.
   let needs_rebuild = bundled_bs3_binding.exists() && !bundled_require_ok;
 
+  // Declare rebuild paths outside the block so they're accessible for
+  // preload hook env vars in Steps 5 & 6.
+  let rebuild_dir = app_cache_dir.join("rebuilt-node-modules");
+  let rebuild_nm = rebuild_dir.join("node_modules");
+  let mut preload_path: Option<std::path::PathBuf> = None;
+
   if needs_rebuild {
     startup_log(
       &log_dir,
       "Step 3a: ABI MISMATCH — bundled better-sqlite3 failed to load. Rebuilding native modules…",
     );
 
-    let rebuild_dir = app_cache_dir.join("rebuilt-node-modules");
-    let rebuild_nm = rebuild_dir.join("node_modules");
     let rebuild_bs3 = rebuild_nm.join("better-sqlite3");
 
     // Remove any stale previous rebuild
@@ -451,7 +458,15 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
               startup_log(&log_dir, &format!("  rebuilt load check: {}", rebuilt_check));
 
               if rebuilt_check == "LOAD_OK" {
-                node_path = format!("{}:{}", rebuild_nm.to_string_lossy().to_string(), node_path);
+                // Write preload hook to redirect require('better-sqlite3') to rebuilt version.
+                // Node.js resolves local node_modules/ before NODE_PATH, so NODE_PATH
+                // manipulation is ineffective here. The preload hooks Module._resolveFilename
+                // to intercept 'better-sqlite3' and route it to the rebuilt module.
+                let preload_file = app_cache_dir.join("preload.cjs");
+                let preload_src = r#"const M=require('module'),P=require('path');const r=M._resolveFilename;const d=process.env.NODE_REBUILT_MODULES;if(d){const bs=P.join(d,'better-sqlite3');M._resolveFilename=function(q,parent,...a){return q==='better-sqlite3'?r.call(this,bs,parent,...a):r.call(this,q,parent,...a);};}"#;
+                let _ = std::fs::write(&preload_file, preload_src);
+                preload_path = Some(preload_file.clone());
+                startup_log(&log_dir, &format!("  Preload hook written: {}", preload_file.display()));
                 startup_log(&log_dir, "  SUCCESS: Native module rebuilt for user's Node.js version");
               } else {
                 startup_log(&log_dir, "  WARNING: Rebuilt module still fails to load. Server may fail.");
@@ -462,7 +477,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
           } else {
             startup_log(&log_dir, "  FAILED: Both prebuild-install and npm rebuild failed.");
             startup_log(&log_dir, "  Server will likely crash with better-sqlite3 load error.");
-            startup_log(&log_dir, "  Check ~/Library/Logs/com.erdbuilderpro.app/server.log for details.");
+            startup_log(&log_dir, &format!("  Check server log at: {}/server.log", log_dir.display()));
           }
         }
       } else {
@@ -472,6 +487,14 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   } else {
     startup_log(&log_dir, &format!("Step 3: ABI OK (bundled={}, user={}), no rebuild needed", bundled_mod_version, user_mod_version));
   }
+
+  // ── Preload hook env vars for migration & server ─────────────────
+  let preload_opt = preload_path.as_ref().map(|p| format!("--require {}", p.display()));
+  let rebuild_nm_str = if preload_path.is_some() {
+    Some(rebuild_nm.to_string_lossy().to_string())
+  } else {
+    None
+  };
 
   // ── Step 4: Pipe setup for server stdout/stderr ──────────────────
   startup_log(&log_dir, "Step 4: Setting up log pipes…");
@@ -505,14 +528,24 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
       startup_log(&log_dir, "  Running offline migration…");
 
       let migration_stdout = open_log();
-      let output = Command::new(&node_bin)
+      let mut cmd = Command::new(&node_bin);
+      cmd
         .arg(&migrate_script)
         .arg(db_path.to_string_lossy().to_string())
         .env("NODE_PATH", &node_path)
         .current_dir(&app_data_dir)
         .stdout(migration_stdout)
-        .stderr(std::process::Stdio::piped())
-        .output();
+        .stderr(std::process::Stdio::piped());
+
+      // Inject preload hook env vars so migration can load the rebuilt better-sqlite3
+      if let Some(ref opt) = preload_opt {
+        cmd.env("NODE_OPTIONS", opt);
+      }
+      if let Some(ref nm_str) = rebuild_nm_str {
+        cmd.env("NODE_REBUILT_MODULES", nm_str);
+      }
+
+      let output = cmd.output();
 
       match output {
         Ok(out) => {
@@ -541,7 +574,8 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
   startup_log(&log_dir, &format!("  NODE_PATH: {}", node_path));
   startup_log(&log_dir, &format!("  PORT: 3099"));
 
-  let child = Command::new(&node_bin)
+  let mut cmd = Command::new(&node_bin);
+  cmd
     .arg(&server_script)
     .env("NODE_ENV", "production")
     .env("PORT", "3099")
@@ -552,7 +586,17 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     )
     .current_dir(&app_data_dir)
     .stdout(server_stdout)
-    .stderr(server_stderr)
+    .stderr(server_stderr);
+
+  // Inject preload hook env vars so the server can load the rebuilt better-sqlite3
+  if let Some(ref opt) = preload_opt {
+    cmd.env("NODE_OPTIONS", opt);
+  }
+  if let Some(ref nm_str) = rebuild_nm_str {
+    cmd.env("NODE_REBUILT_MODULES", nm_str);
+  }
+
+  let child = cmd
     .spawn()
     .map_err(|e| {
       let msg = format!("Failed to spawn '{}': {}", node_bin, e);
