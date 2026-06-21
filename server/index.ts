@@ -82,6 +82,11 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // Desktop app (Tauri): file:// protocol (Windows .deb installer)
+    if (origin.startsWith("file://")) {
+      return callback(null, true);
+    }
+    
     // Vercel domains: allow all *.vercel.app subdomains
     const url = new URL(origin);
     if (url.hostname.endsWith(".vercel.app")) {
