@@ -26,6 +26,7 @@ import {
   existsSync,
   mkdirSync,
   copyFileSync,
+  cpSync,
   rmSync,
   renameSync,
   readdirSync,
@@ -122,19 +123,40 @@ function main() {
   mkdirSync(extractDir, { recursive: true });
 
   if (ext === "zip") {
-    // Windows: unzip and copy node.exe
+    // Windows: unzip and copy node.exe + npm
     execSync(`unzip -o "${archivePath}" -d "${extractDir}"`, {
       stdio: "inherit",
     });
-    const srcExe = join(extractDir, folderName, "node.exe");
+
+    // Find the root folder inside the zip
+    const files = readdirSync(extractDir);
+    const srcRoot = join(extractDir, files[0]);
+
+    // Copy node.exe
+    const srcExe = join(srcRoot, "node.exe");
     if (!existsSync(srcExe)) {
-      // unzip may create the folder directly; try alternative path
-      const files = readdirSync(extractDir);
-      const subDir = join(extractDir, files[0]);
-      copyFileSync(join(subDir, "node.exe"), nodeExe);
+      copyFileSync(join(srcRoot, "node.exe"), nodeExe);
     } else {
       copyFileSync(srcExe, nodeExe);
     }
+
+    // Copy npm.cmd (Windows batch wrapper)
+    const srcNpmCmd = join(srcRoot, "npm.cmd");
+    const destNpmCmd = join(OUT_DIR, "npm.cmd");
+    if (existsSync(srcNpmCmd)) {
+      copyFileSync(srcNpmCmd, destNpmCmd);
+    }
+
+    // Copy node_modules/npm/ (npm's own source + deps)
+    const srcNpmDir = join(srcRoot, "node_modules", "npm");
+    const destNpmDir = join(OUT_DIR, "node_modules", "npm");
+    if (existsSync(srcNpmDir)) {
+      cpSync(srcNpmDir, destNpmDir, { recursive: true, force: true });
+    }
+
+    console.log(`   node.exe → ${nodeExe}`);
+    console.log(`   npm.cmd  → ${destNpmCmd}`);
+    console.log(`   npm/     → ${destNpmDir}`);
     return;
   }
 

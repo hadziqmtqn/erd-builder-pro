@@ -534,7 +534,11 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
                     // ── Attempt 2: npm rebuild (fallback) ─────────────────
                     if !rebuild_ok {
-                        let npm_bin = node_parent.join("npm");
+                        let npm_bin = if cfg!(target_os = "windows") {
+                            node_parent.join("npm.cmd")
+                        } else {
+                            node_parent.join("npm")
+                        };
                         let npm_cmd = if npm_bin.exists() {
                             npm_bin.to_string_lossy().to_string()
                         } else {
@@ -600,7 +604,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                                 &Command::new(&node_bin)
                                     .arg("-e")
                                     .arg(&format!(
-                                        "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL')}}",
+                                        "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL:'+e.message)}}",
                                         rebuilt_bs3_path_str
                                     ))
                                     .env("NODE_PATH", &rebuild_nm_str)
