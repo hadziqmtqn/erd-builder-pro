@@ -20,6 +20,15 @@ fn win_path(p: &std::path::Path) -> String {
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// Apply `CREATE_NO_WINDOW` to a `Command` on Windows (no-op on other platforms).
+/// Must be called before `.spawn()` / `.output()` to prevent a console window
+/// from flashing when the parent is a GUI app.
+#[inline]
+fn suppress_window(cmd: &mut Command) {
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
 /// Holds the Node.js server child process so it can be killed on exit.
 struct ServerProcess(Mutex<Option<Child>>);
 
@@ -170,7 +179,10 @@ fn find_node_executable() -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     let which_cmd = "which";
 
-    if let Ok(output) = Command::new(which_cmd).arg("node").output() {
+    let mut cmd = Command::new(which_cmd);
+    cmd.arg("node");
+    suppress_window(&mut cmd);
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             if let Ok(s) = String::from_utf8(output.stdout) {
                 let trimmed = s.lines().next().unwrap_or("").trim();
@@ -182,7 +194,10 @@ fn find_node_executable() -> Option<String> {
     }
 
     // Final fallback: try `node` directly (uses PATH on Windows/Linux)
-    if let Ok(output) = Command::new("node").arg("--version").output() {
+    let mut cmd = Command::new("node");
+    cmd.arg("--version");
+    suppress_window(&mut cmd);
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             return Some("node".to_string());
         }
@@ -307,10 +322,11 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     // ── Step 2: Inspect Node version + ABI ───────────────────────────
     startup_log(&log_dir, "Step 2: Inspecting Node.js version…");
 
+    let mut cmd = Command::new(&node_bin);
+    cmd.arg("-v");
+    suppress_window(&mut cmd);
     let node_version = String::from_utf8_lossy(
-        &Command::new(&node_bin)
-            .arg("-v")
-            .output()
+        &cmd.output()
             .map(|o| o.stdout)
             .unwrap_or_default(),
     )
@@ -319,11 +335,12 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     startup_log(&log_dir, &format!("  node -v: {}", node_version));
 
     // Get the user's NODE_MODULE_VERSION
+    let mut cmd = Command::new(&node_bin);
+    cmd.arg("-e")
+       .arg("console.log(process.versions.modules)");
+    suppress_window(&mut cmd);
     let user_mod_version = String::from_utf8_lossy(
-        &Command::new(&node_bin)
-            .arg("-e")
-            .arg("console.log(process.versions.modules)")
-            .output()
+        &cmd.output()
             .map(|o| o.stdout)
             .unwrap_or_default(),
     )
@@ -356,14 +373,15 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     // as control characters instead of literal paths.
     let js_path_fwd = |p: &str| -> String { p.replace("\\", "/") };
     let (bundled_mod_version, bundled_require_ok) = if bundled_bs3_binding.exists() {
-        let result = Command::new(&node_bin)
-            .arg("-e")
-            .arg(&format!(
-                "try{{const m=require('{}');console.log(m.versions?.modules||'ok_no_ver')}}catch(e){{console.log('require_failed')}}",
-                js_path_fwd(&bundled_bs3_path_str)
-            ))
-            .env("NODE_PATH", &bundled_nm_str)
-            .output();
+        let mut cmd = Command::new(&node_bin);
+        cmd.arg("-e")
+           .arg(&format!(
+               "try{{const m=require('{}');console.log(m.versions?.modules||'ok_no_ver')}}catch(e){{console.log('require_failed')}}",
+               js_path_fwd(&bundled_bs3_path_str)
+           ))
+           .env("NODE_PATH", &bundled_nm_str);
+        suppress_window(&mut cmd);
+        let result = cmd.output();
 
         match result {
             Ok(output) => {
@@ -489,13 +507,14 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
                     if prebuild_entry.exists() {
                         startup_log(&log_dir, "  Attempt 1: prebuild-install directly…");
-                        let pbi_result = Command::new(&node_bin)
-                            .arg(win_path(&prebuild_entry))
-                            .current_dir(std::path::Path::new(&win_path(&rebuild_bs3)))
-                            .env("NODE_PATH", &node_path)
-                            .env("PATH", &rebuild_path)
-                            .env("npm_config_node_execpath", &node_bin)
-                            .output();
+                        let mut cmd = Command::new(&node_bin);
+                        cmd.arg(win_path(&prebuild_entry))
+                           .current_dir(std::path::Path::new(&win_path(&rebuild_bs3)))
+                           .env("NODE_PATH", &node_path)
+                           .env("PATH", &rebuild_path)
+                           .env("npm_config_node_execpath", &node_bin);
+                        suppress_window(&mut cmd);
+                        let pbi_result = cmd.output();
 
                         match pbi_result {
                             Ok(out) => {
@@ -565,6 +584,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                             .env("PATH", &rebuild_path)
                             .env("npm_config_node_execpath", &node_bin)
                             .current_dir(&rebuild_dir);
+                        suppress_window(&mut rebuild_cmd);
 
                         let npm_result = rebuild_cmd.output();
 
@@ -607,15 +627,16 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                         if rebuilt_bs3_path.exists() {
                             let rebuilt_bs3_path_str = win_path(&rebuilt_bs3_path);
                             let rebuild_nm_str = win_path(&rebuild_nm);
+                            let mut cmd = Command::new(&node_bin);
+                            cmd.arg("-e")
+                               .arg(&format!(
+                                   "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL:'+e.message)}}",
+                                   js_path_fwd(&rebuilt_bs3_path_str)
+                               ))
+                               .env("NODE_PATH", &rebuild_nm_str);
+                            suppress_window(&mut cmd);
                             let rebuilt_check = String::from_utf8_lossy(
-                                &Command::new(&node_bin)
-                                    .arg("-e")
-                                    .arg(&format!(
-                                        "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL:'+e.message)}}",
-                                        js_path_fwd(&rebuilt_bs3_path_str)
-                                    ))
-                                    .env("NODE_PATH", &rebuild_nm_str)
-                                    .output()
+                                &cmd.output()
                                     .map(|o| o.stdout)
                                     .unwrap_or_default(),
                             )
