@@ -1,6 +1,7 @@
 import express from "express";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { randomBytes, scryptSync } from "node:crypto";
 import app from "./index.js";
 import { backfillUids } from "./lib/startup-migration.js";
@@ -124,6 +125,7 @@ async function ensureDatabaseTables(): Promise<boolean> {
   }
 
   // Find schema.sql relative to this script (bundled in dist-server/)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const schemaPath = path.resolve(__dirname, "schema.sql");
 
   if (!fs.existsSync(schemaPath)) {

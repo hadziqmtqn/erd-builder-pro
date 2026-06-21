@@ -435,6 +435,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     let rebuild_dir = app_cache_dir.join("rebuilt-node-modules");
     let rebuild_nm = rebuild_dir.join("node_modules");
     let mut preload_path: Option<std::path::PathBuf> = None;
+    let mut preload_esm_path: Option<std::path::PathBuf> = None;
 
     if needs_rebuild {
         startup_log(
@@ -627,17 +628,33 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                             );
 
                             if rebuilt_check == "LOAD_OK" {
-                                // Write preload hook to redirect require('better-sqlite3') to rebuilt version.
-                                // Node.js resolves local node_modules/ before NODE_PATH, so NODE_PATH
-                                // manipulation is ineffective here. The preload hooks Module._resolveFilename
-                                // to intercept 'better-sqlite3' and route it to the rebuilt module.
+                                // ── Write CJS preload hook ──────────────────
+                                // Patches Module._resolveFilename to intercept
+                                // require('better-sqlite3') and route to rebuilt module.
                                 let preload_file = app_cache_dir.join("preload.cjs");
                                 let preload_src = r#"const M=require('module'),P=require('path');const r=M._resolveFilename;const d=process.env.NODE_REBUILT_MODULES;if(d){const bs=P.join(d,'better-sqlite3');M._resolveFilename=function(q,parent,...a){return q==='better-sqlite3'?r.call(this,bs,parent,...a):r.call(this,q,parent,...a);};}"#;
                                 let _ = std::fs::write(&preload_file, preload_src);
+
+                                // ── Write ESM preload hook ───────────────────
+                                // Uses Node's module.register() (Node 21.7+)
+                                // to intercept ESM `import 'better-sqlite3'`
+                                // and redirect to the rebuilt module.
+                                // The --import flag runs this before the main
+                                // entry point, so hooks are live before any
+                                // app module is loaded.
+                                let esm_preload_file = app_cache_dir.join("preload.mjs");
+                                let esm_preload_src = "import{register}from'node:module';import{join}from'node:path';import{pathToFileURL}from'node:url';const d=process.env.NODE_REBUILT_MODULES;if(d){const bs=join(d,'better-sqlite3');register({resolve(s,ctx,nxt){return s==='better-sqlite3'?{shortCircuit:true,url:pathToFileURL(bs).href}:nxt(s)}})}";
+                                let _ = std::fs::write(&esm_preload_file, esm_preload_src);
+
                                 preload_path = Some(preload_file.clone());
+                                preload_esm_path = Some(esm_preload_file.clone());
                                 startup_log(
                                     &log_dir,
-                                    &format!("  Preload hook written: {}", preload_file.display()),
+                                    &format!("  CJS preload written: {}", preload_file.display()),
+                                );
+                                startup_log(
+                                    &log_dir,
+                                    &format!("  ESM preload written: {}", esm_preload_file.display()),
                                 );
                                 startup_log(
                                     &log_dir,
@@ -690,9 +707,18 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     // ── Preload hook env vars for migration & server ─────────────────
     // Use win_path() for preload path because NODE_OPTIONS with \\?\ prefix
     // would confuse Node.js.
+    // We use BOTH --require (CJS interception via Module._resolveFilename)
+    // and --import (ESM interception via module.register()) to cover all
+    // module resolution paths that better-sqlite3 may go through.
     let preload_opt = preload_path
         .as_ref()
-        .map(|p| format!("--require {}", win_path(p)));
+        .map(|p| {
+            let mut opts = format!("--require {}", win_path(p));
+            if let Some(esm) = preload_esm_path.as_ref() {
+                opts.push_str(&format!(" --import {}", win_path(esm)));
+            }
+            opts
+        });
     let rebuild_nm_str = if preload_path.is_some() {
         Some(win_path(&rebuild_nm))
     } else {

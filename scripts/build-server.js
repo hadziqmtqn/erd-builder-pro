@@ -81,11 +81,10 @@ async function main() {
 
   // 1. Compile server TypeScript → bundled JS
   //
-  // We output **CJS** so the runtime preload hook (preload.cjs) can intercept
-  // `require('better-sqlite3')` via `Module._resolveFilename`. Native addon
-  // resolution must go through the CJS module system for the preload to work.
-  // ESM imports (used in previous `format: "esm"` builds) bypass the CJS
-  // module system entirely, making the preload hook ineffective.
+  // We output **ESM** because server/index.ts uses top-level `await import()`.
+  // The ESM preload hook (preload.mjs, written at runtime by lib.rs) uses
+  // Node's `module.register()` to intercept ESM `import 'better-sqlite3'`
+  // and redirect it to the rebuilt native addon in the cache directory.
   console.log("📦 Bundling server with esbuild...");
   await build({
     entryPoints: [resolve(ROOT, "server/run.ts")],
@@ -93,12 +92,15 @@ async function main() {
     bundle: true,
     platform: "node",
     target: "node18",
-    format: "cjs",
+    format: "esm",
     external: EXTERNAL,
     tsconfig: resolve(ROOT, "tsconfig.server.json"),
     sourcemap: false,
     minify: true,
     legalComments: "none",
+    banner: {
+      js: "import { createRequire as __crq } from 'module'; const require = __crq(import.meta.url);",
+    },
   });
   console.log("   → dist-server/index.js");
 
