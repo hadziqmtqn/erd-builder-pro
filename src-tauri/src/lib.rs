@@ -483,8 +483,8 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                     if prebuild_entry.exists() {
                         startup_log(&log_dir, "  Attempt 1: prebuild-install directly…");
                         let pbi_result = Command::new(&node_bin)
-                            .arg(&prebuild_entry)
-                            .current_dir(&rebuild_bs3)
+                            .arg(win_path(&prebuild_entry))
+                            .current_dir(std::path::Path::new(&win_path(&rebuild_bs3)))
                             .env("NODE_PATH", &node_path)
                             .env("PATH", &rebuild_path)
                             .env("npm_config_node_execpath", &node_bin)

@@ -10,7 +10,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "build:server": "node scripts/build-server.js",
-    "build:desktop": "cross-env DB_VARIANT=sqlite prisma generate && npm rebuild better-sqlite3 && npm run build:server && node scripts/download-node.js && cross-env VITE_API_URL=http://localhost:3099 vite build",
+    "build:desktop": "cross-env DB_VARIANT=sqlite prisma generate && cross-env npm_config_build_from_source=true npm rebuild better-sqlite3 && npm run build:server && node scripts/download-node.js && cross-env VITE_API_URL=http://localhost:3099 vite build",
     "start": "cross-env NODE_ENV=production tsx server/run.ts",
     "preview": "vite preview",
     "postinstall": "npm run db:generate:pg",
