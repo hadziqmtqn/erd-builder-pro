@@ -419,7 +419,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-background relative px-4 sm:px-6 md:px-24"
       >
-        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-2xl rounded-none sm:rounded-xl relative tiptap-editor-lined">
+        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined">
 
           <DocumentOutline headings={headings} scrollToHeading={scrollToHeading} editor={editor} />
 

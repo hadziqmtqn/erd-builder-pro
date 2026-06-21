@@ -277,7 +277,7 @@ function AppLayoutInner() {
           noteContent={activeNote?.content}
         />
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
           <Outlet />
         </div>
 
