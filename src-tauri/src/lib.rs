@@ -349,12 +349,18 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     // \\?\ long-path prefix that Tauri may return on Windows.
     let bundled_bs3_path_str = win_path(&bundled_bs3_binding);
     let bundled_nm_str = win_path(&bundled_nm);
+    // Convert backslashes to forward slashes for inline JS string literals.
+    // Node.js on Windows accepts forward slashes in require() paths, avoiding
+    // the multiple layers of backslash escaping (Rust → Windows cmdline → JS
+    // single-quoted string) where sequences like \r, \n, \b get interpreted
+    // as control characters instead of literal paths.
+    let js_path_fwd = |p: &str| -> String { p.replace("\\", "/") };
     let (bundled_mod_version, bundled_require_ok) = if bundled_bs3_binding.exists() {
         let result = Command::new(&node_bin)
             .arg("-e")
             .arg(&format!(
                 "try{{const m=require('{}');console.log(m.versions?.modules||'ok_no_ver')}}catch(e){{console.log('require_failed')}}",
-                bundled_bs3_path_str
+                js_path_fwd(&bundled_bs3_path_str)
             ))
             .env("NODE_PATH", &bundled_nm_str)
             .output();
@@ -605,7 +611,7 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
                                     .arg("-e")
                                     .arg(&format!(
                                         "try{{require('{}');console.log('LOAD_OK')}}catch(e){{console.log('LOAD_FAIL:'+e.message)}}",
-                                        rebuilt_bs3_path_str
+                                        js_path_fwd(&rebuilt_bs3_path_str)
                                     ))
                                     .env("NODE_PATH", &rebuild_nm_str)
                                     .output()
