@@ -10,6 +10,7 @@ import rateLimit from "express-rate-limit";
 
 import { checkSupabase } from "./lib/middleware.js";
 import { httpLogger } from "./lib/logger.js";
+import { isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
 import projectsRouter from "./routes/projects/index.js";
@@ -69,6 +70,15 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // Desktop mode: backend runs locally on the same machine as the
+    // frontend (Tauri webview). The Origin header varies across platforms
+    // and Tauri versions — it can be tauri://, https://tauri.localhost,
+    // file://, or even null. There is no cross-origin risk when both
+    // frontend and backend are on the same local machine.
+    if (isDesktopMode()) {
+      return callback(null, true);
+    }
+    
     // Tauri desktop: allow custom protocol
     if (origin.startsWith("tauri://")) {
       return callback(null, true);
@@ -82,7 +92,7 @@ app.use(cors({
       return callback(null, true);
     }
     
-    // Desktop app (Tauri): file:// protocol (Windows .deb installer)
+    // Desktop app (Tauri): file:// protocol (Windows installer)
     if (origin.startsWith("file://")) {
       return callback(null, true);
     }
@@ -98,6 +108,9 @@ app.use(cors({
       return callback(null, true);
     }
     
+    if (process.env.NODE_ENV === "production") {
+      console.warn(`[cors] Rejected origin: ${origin}`);
+    }
     callback(new Error("Not allowed by CORS"));
   },
   credentials: true
