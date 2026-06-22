@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getAuthToken } from '@/lib/api';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import ImageResize from 'tiptap-extension-resize-image';
@@ -79,7 +79,15 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
         if (data.url) {
           // Sanitize URL - remove escaped newlines
-          const cleanUrl = data.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+          let cleanUrl = data.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
+          
+          // For proxy/serve URLs (private S3), append auth token for cross-origin image loading
+          if (cleanUrl.includes('/api/serve/') || cleanUrl.includes('/api/storage/proxy')) {
+            const token = getAuthToken();
+            if (token) {
+              cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+            }
+          }
           
           editor?.chain()
             .focus()

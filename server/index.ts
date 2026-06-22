@@ -25,6 +25,7 @@ import aiSettingsRouter from "./routes/ai-settings/index.js";
 import aiChatRouter from "./routes/ai-chat/index.js";
 import guestImportRouter from "./routes/guest-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
+import storageRouter from "./routes/storage/index.js";
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use(helmet({
     },
   } : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 // CORS — configurable via CORS_ORIGINS env var
@@ -179,7 +181,7 @@ function camelToSnake(obj: unknown): unknown {
 
 app.use((_req, res, next) => {
   // Skip camelToSnake for new routes: accounts & catalogs use camelCase natively
-  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs')) {
+  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage')) {
     return next();
   }
   const originalJson = res.json.bind(res);
@@ -231,6 +233,7 @@ app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
 app.use("/api", connectionsRouter);
+app.use("/api/storage", storageRouter);
 
 app.use("/api/*", (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.originalUrl}` });

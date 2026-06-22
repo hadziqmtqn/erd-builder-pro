@@ -11,6 +11,7 @@ import {
   Library,
   ListChecks,
   Upload,
+  HardDrive,
 } from 'lucide-react';
 import {
   Dialog,
@@ -62,6 +63,7 @@ import { AppearanceTab } from '@/components/ai/AppearanceTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
 import { GuestDataManagement } from '@/components/ai/GuestDataManagement';
+import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
@@ -71,6 +73,9 @@ export function SettingsModal() {
     settingsTab, 
     setSettingsTab 
   } = useWorkspace();
+
+  const isDesktopApp = typeof window !== 'undefined' && 
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const {
     providers,
@@ -129,6 +134,7 @@ export function SettingsModal() {
         items: [
           { id: 'account', label: 'Account', icon: <User className="size-4" /> },
           { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
+          ...(isDesktopApp ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
         ]
       },
       {
@@ -336,6 +342,10 @@ export function SettingsModal() {
 
               {settingsTab === 'appearance' && (
                 <AppearanceTab />
+              )}
+
+              {settingsTab === 'storage' && (
+                <StorageConfigTab />
               )}
             </div>
           </main>
