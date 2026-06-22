@@ -12,6 +12,7 @@ import {
   Pencil,
   Trash2,
   FileText,
+  Bot,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -152,6 +153,15 @@ export const AppSidebar = React.memo(({
       isActive: view === 'drawings',
       onClick: () => onViewChange('drawings', true),
     },
+    // ── ⚡ AI Chat (Preview) ──
+    {
+      title: "AI Chat",
+      url: "#",
+      icon: Bot,
+      iconClassName: "text-cyan-400",
+      isActive: false,
+      onClick: () => {},
+    },
   ];
 
   // Filtered non-deleted projects
@@ -202,6 +212,45 @@ export const AppSidebar = React.memo(({
         </SidebarGroup>
       </SidebarHeader>
       <SidebarContent>
+        {/* ── AI Chat History (Preview) ── */}
+        <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>AI Chat History</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  className="hover:bg-muted hover:text-foreground rounded-md p-0.5 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </TooltipTrigger>
+                <TooltipContent side="right">New Chat</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {/* Mock history items — preview only */}
+              {[
+                { title: "Design users table schema", active: true },
+                { title: "Create API auth flow" },
+                { title: "Build notes ERD" },
+                { title: "Setup DB relationships" },
+                { title: "Generate seed data script" },
+              ].map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    tooltip={item.title}
+                    isActive={(item as any).active}
+                    className="cursor-default opacity-80 hover:opacity-100"
+                  >
+                    <span className="truncate text-xs">{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         {/* Workspaces section */}
         <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
           <SidebarGroupLabel className="flex items-center justify-between">

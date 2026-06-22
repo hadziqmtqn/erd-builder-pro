@@ -25,8 +25,8 @@ import { DiagramEditorRoute } from './routes/DiagramEditorRoute';
 import { DrawingEditorRoute } from './routes/DrawingEditorRoute';
 import { FlowchartEditorRoute } from './routes/FlowchartEditorRoute';
 import { AdminRoute } from './routes/AdminRoute';
-import { DashboardRoute } from './routes/DashboardRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
+import { NewDashboardPreview } from './components/dashboard/NewDashboardPreview';
 
 function AppContent() {
   const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
@@ -107,8 +107,8 @@ function AppContent() {
           {/* Admin pages */}
           <Route path="trash" element={<AdminRoute />} />
 
-          {/* Default: Dashboard */}
-          <Route index element={<DashboardRoute />} />
+          {/* Default: Dashboard — new version */}
+          <Route index element={<NewDashboardPreview />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFoundRoute />} />
