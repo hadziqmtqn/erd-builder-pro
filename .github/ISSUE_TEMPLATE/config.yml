@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/hadziqmtqn/erd-builder-pro/discussions
+    about: Please ask and answer questions here.
+  - name: GitHub Issues
+    url: https://github.com/hadziqmtqn/erd-builder-pro/issues
+    about: Search existing issues before creating a new one.

@@ -1,0 +1,78 @@
+name: Feature request
+description: Suggest an idea for ERD Builder Pro
+title: "[Feature]: "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve ERD Builder Pro.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: Describe the problem you're trying to solve.
+      placeholder: |
+        I'm always frustrated when I can't easily...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen.
+      placeholder: |
+        Add a button that lets me...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-feature
+    attributes:
+      label: Affected feature area
+      description: Which part of the app does this relate to?
+      options:
+        - ERD Editor
+        - Flowchart Editor
+        - Notes (Tiptap)
+        - Drawing / Excalidraw
+        - AI Assistant / Chat
+        - General UI / Navigation
+        - Authentication / Login
+        - Data Sync / Backup
+        - Import / Export
+        - Other (please describe in additional context)
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: Any alternative solutions or workarounds you've considered.
+      placeholder: |
+        I tried doing X manually, but it was too time-consuming...
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or examples
+      description: Screenshots, wireframes, or references from other tools that show what you mean.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context or details about your request.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched for existing feature requests before creating this issue.
+          required: true

@@ -1,0 +1,137 @@
+name: Bug report
+description: Create a report to help us improve ERD Builder Pro
+title: "[Bug]: "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to fill out this bug report.
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the issue...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: To Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Screen Recording
+      description: If applicable, add screenshots or a screen recording to help explain your problem.
+
+  - type: dropdown
+    id: affected-feature
+    attributes:
+      label: Affected feature
+      description: Which feature area does this bug affect?
+      options:
+        - ERD Editor
+        - Flowchart Editor
+        - Notes (Tiptap)
+        - Drawing / Excalidraw
+        - AI Assistant / Chat
+        - General UI / Navigation
+        - Authentication / Login
+        - Data Sync / Backup
+        - Import / Export
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: app-mode
+    attributes:
+      label: App Mode
+      description: How are you running the app?
+      options:
+        - Desktop App (macOS)
+        - Desktop App (Windows)
+        - Desktop App (Linux)
+        - Web Browser
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database-mode
+    attributes:
+      label: Database Mode
+      options:
+        - Desktop / SQLite
+        - PostgreSQL (local)
+        - Supabase (PostgreSQL cloud)
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      description: e.g. macOS 14.5, Windows 11, Ubuntu 24.04
+      placeholder: macOS 14.5
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser (if web mode)
+      placeholder: e.g. Chrome 120, Firefox 121, Safari 17
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App Version
+      placeholder: e.g. v2.2.1 (check in sidebar → About)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / Error Logs
+      description: Please paste any relevant error logs from the browser console or terminal.
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here (e.g. recent changes, network setup).
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched for existing issues before creating this report.
+          required: true
+        - label: I am using the latest available version of ERD Builder Pro.
+          required: false
