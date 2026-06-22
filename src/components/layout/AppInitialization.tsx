@@ -13,13 +13,30 @@ export function AppInitialization({ type, view = 'Document' }: AppInitialization
     const t = localStorage.getItem('erd-builder-theme');
     const root = document.documentElement;
     const body = document.body;
-    if (t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    const isDark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
       root.classList.add('dark');
       body.classList.add('dark');
     } else {
       root.classList.remove('dark');
       body.classList.remove('dark');
     }
+
+    // Also watch for system changes while this component is mounted (pre-hydration)
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      if (localStorage.getItem('erd-builder-theme') !== 'light') {
+        if (mediaQuery.matches) {
+          root.classList.add('dark');
+          body.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+          body.classList.remove('dark');
+        }
+      }
+    };
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
   }, []);
   if (type === 'init') {
     return (

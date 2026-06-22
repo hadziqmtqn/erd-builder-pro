@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",
@@ -20,8 +20,7 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "decorations": true,
-        "theme": "Dark"
+        "decorations": true
       }
     ],
     "security": {
@@ -43,7 +42,8 @@
       "../dist-server/migrate-db.mjs": "dist-server/migrate-db.mjs",
       "../dist-server/schema.sql": "dist-server/schema.sql",
       "../dist-server/node_modules": "dist-server/node_modules",
-      "../dist-server/prisma": "dist-server/prisma"
+      "../dist-server/prisma": "dist-server/prisma",
+      "../dist-server/node-bin": "dist-server/node-bin"
     }
   },
   "plugins": {

@@ -151,11 +151,27 @@ export function WorkspaceProvider({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('account');
 
+  // ── Window Debug ──
+  const [windowDimensions, setWindowDimensions] = useState<{ w: number; h: number } | null>(null);
+  const [showWindowDebug, setShowWindowDebug] = useState(false);
+
   // ── Theme State ──
   const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(() => {
     return (localStorage.getItem('erd-builder-theme') as 'light' | 'dark' | 'system') || 'system';
   });
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
+
+  // Compute resolved theme immediately — no hardcoded default
+  const getResolvedTheme = useCallback((t: 'light' | 'dark' | 'system'): 'light' | 'dark' => {
+    if (t === 'system') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return t;
+  }, []);
+
+  const initialResolved = getResolvedTheme(
+    (localStorage.getItem('erd-builder-theme') as 'light' | 'dark' | 'system') || 'system',
+  );
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(initialResolved);
 
   // Persist theme preference
   const setTheme = useCallback((t: 'light' | 'dark' | 'system') => {
@@ -311,20 +327,15 @@ export function WorkspaceProvider({
     if (message.type !== BroadcastMessageType.DRAFT_UPDATED) return;
     const { type: dataType, id } = message.payload;
     if (view === 'erd' && dataType === DraftType.ERD && String(id) === String(activeDiagramId)) {
-      console.log('[Broadcast] Incoming sync: updating state from another tab');
       isIncomingSyncRef.current = true;
       (window as any).currentSyncIsSilent = true;
-      await selectDiagram(id, setActiveDiagramId, { silent: true });
-      (window as any).currentSyncIsSilent = false;
+      await selectDiagram(String(id), setActiveDiagramId);
       setTimeout(() => { isIncomingSyncRef.current = false; }, 1000);
     } else if (view === 'notes' && dataType === DraftType.NOTES && String(id) === String(activeNoteUid)) {
-      console.log('[Broadcast] Reloading Note from local draft updated in another tab');
       await selectNote(String(id), { silent: true });
     } else if (view === 'drawings' && dataType === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
-      console.log('[Broadcast] Reloading Drawing from local draft updated in another tab');
       await selectDrawing(String(id), { silent: true });
     } else if (view === 'flowchart' && dataType === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
-      console.log('[Broadcast] Reloading Flowchart from local draft updated in another tab');
       await selectFlowchart(String(id), { silent: true });
     }
   }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
@@ -599,39 +610,186 @@ export function WorkspaceProvider({
   }, [debouncedSearchQuery, fetchProjects, isAuthenticated, isPublicView]);
 
   // ── Theme: resolve + apply ──
+  // Keep a ref so the mediaQuery change handler never goes stale
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-    const updateResolved = () => {
-      const resolved = theme === 'system' ? (mediaQuery.matches ? 'dark' : 'light') : theme;
+    const applyTheme = (resolved: 'light' | 'dark') => {
       setResolvedTheme(resolved);
+      const root = document.documentElement;
+      const body = document.body;
+      if (resolved === 'dark') {
+        root.classList.add('dark');
+        body.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+        body.classList.remove('dark');
+      }
     };
 
-    updateResolved();
+    // Resolve and apply on mount / theme change
+    const current = themeRef.current;
+    if (current === 'system') {
+      applyTheme(mediaQuery.matches ? 'dark' : 'light');
+    } else {
+      applyTheme(current);
+    }
 
-    // Listen for system preference changes
+    // Listen for system preference changes — always update when system changes
     const handler = () => {
-      if (theme === 'system') {
-        const resolved = mediaQuery.matches ? 'dark' : 'light';
-        setResolvedTheme(resolved);
+      if (themeRef.current === 'system') {
+        applyTheme(mediaQuery.matches ? 'dark' : 'light');
       }
     };
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, [theme]);
 
-  // Apply resolved theme to <html>
+  // ── Tauri: listen for OS theme changes ──
   useEffect(() => {
-    const root = document.documentElement;
-    const body = document.body;
-    if (resolvedTheme === 'dark') {
-      root.classList.add('dark');
-      body.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-      body.classList.remove('dark');
-    }
-  }, [resolvedTheme]);
+    const isTauri = typeof window !== 'undefined' &&
+      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+    if (!isTauri) return;
+
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+
+        // Initial sync: get current OS theme
+        const osTheme = await appWindow.theme();
+        if (osTheme && themeRef.current === 'system') {
+          const resolved = osTheme as 'light' | 'dark';
+          const root = document.documentElement;
+          const body = document.body;
+          if (resolved === 'dark') {
+            root.classList.add('dark');
+            body.classList.add('dark');
+          } else {
+            root.classList.remove('dark');
+            body.classList.remove('dark');
+          }
+          setResolvedTheme(resolved);
+        }
+
+        // Listen for OS theme changes
+        unlisten = await appWindow.onThemeChanged(({ payload: newTheme }) => {
+          if (themeRef.current === 'system' && newTheme) {
+            const resolved = newTheme as 'light' | 'dark';
+            const root = document.documentElement;
+            const body = document.body;
+            if (resolved === 'dark') {
+              root.classList.add('dark');
+              body.classList.add('dark');
+            } else {
+              root.classList.remove('dark');
+              body.classList.remove('dark');
+            }
+            setResolvedTheme(resolved);
+          }
+        });
+      } catch (err) {
+        console.warn('[Theme] Tauri theme API unavailable:', err);
+      }
+    })();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // ── Tauri: persist window size ──
+  useEffect(() => {
+    const isTauri = typeof window !== 'undefined' &&
+      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+    if (!isTauri) return;
+
+    let unlistenResize: (() => void) | undefined;
+    let unlistenMove: (() => void) | undefined;
+    let saveTimer: ReturnType<typeof setTimeout>;
+
+    const SANE_WIDTH = { min: 400, max: 4000 };
+    const SANE_HEIGHT = { min: 300, max: 3000 };
+
+    const saveWindowState = async (appWindow: any) => {
+      try {
+        // Don't save while full‑screen — keep the last non‑fullscreen state
+        if (await appWindow.isFullscreen()) return;
+
+        const size = await appWindow.outerSize();
+        const pos = await appWindow.outerPosition();
+        const state = {
+          width: Math.max(SANE_WIDTH.min, Math.min(SANE_WIDTH.max, size.width)),
+          height: Math.max(SANE_HEIGHT.min, Math.min(SANE_HEIGHT.max, size.height)),
+          x: pos.x,
+          y: pos.y,
+        };
+        localStorage.setItem('erd-builder-window-state', JSON.stringify(state));
+        setWindowDimensions({ w: state.width, h: state.height });
+      } catch { /* ignore */ }
+    };
+
+    (async () => {
+      try {
+        const { getCurrentWindow, PhysicalSize, LogicalPosition } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+
+        // Restore saved window size + position
+        const saved = localStorage.getItem('erd-builder-window-state');
+        if (saved) {
+          try {
+            const { width, height, x, y } = JSON.parse(saved);
+            if (
+              typeof width === 'number' && typeof height === 'number' &&
+              width >= SANE_WIDTH.min && width <= SANE_WIDTH.max &&
+              height >= SANE_HEIGHT.min && height <= SANE_HEIGHT.max
+            ) {
+              await appWindow.setSize(new PhysicalSize(width, height));
+              if (typeof x === 'number' && typeof y === 'number') {
+                await appWindow.setPosition(new LogicalPosition(x, y));
+              }
+            } else {
+              localStorage.removeItem('erd-builder-window-state');
+            }
+          } catch { /* ignore parse errors */ }
+        }
+
+        // Debounced save on resize + move
+        const debouncedSave = () => {
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => saveWindowState(appWindow), 500);
+        };
+
+        unlistenResize = await appWindow.onResized(debouncedSave);
+        unlistenMove = await appWindow.onMoved(debouncedSave);
+      } catch (err) {
+        console.warn('[Window] Tauri window API unavailable:', err);
+      }
+    })();
+
+    return () => {
+      clearTimeout(saveTimer);
+      if (unlistenResize) unlistenResize();
+      if (unlistenMove) unlistenMove();
+    };
+  }, []);
+
+  // ── Toggle window debug overlay with Ctrl+Shift+D ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        setShowWindowDebug(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // Initial data fetch
   useEffect(() => {
@@ -1091,6 +1249,13 @@ export function WorkspaceProvider({
       <DashboardPage />
       <FlowchartPage />
       {children}
+
+      {/* ── Window size debug overlay: Ctrl+Shift+D ── */}
+      {showWindowDebug && windowDimensions && (
+        <div className="fixed bottom-3 right-3 z-[9999] flex items-center gap-3 rounded-md bg-black/70 px-3 py-1.5 text-xs font-mono text-white/90 shadow-lg select-none">
+          <span className="tracking-wide">{windowDimensions.w}<span className="text-white/50 mx-0.5">×</span>{windowDimensions.h}</span>
+        </div>
+      )}
     </WorkspaceContext.Provider>
   );
 }

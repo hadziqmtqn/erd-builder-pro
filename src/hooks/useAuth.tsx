@@ -59,9 +59,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clearAuthToken();
           return;
         }
-        if (retryRef.current === 0) {
-          console.log('[checkAuth] Database not ready yet, retrying…');
-        }
         const isTauri = typeof window !== 'undefined' &&
           !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
         if (isTauri && retryRef.current < 30) {

@@ -81,12 +81,10 @@ async function main() {
 
   // 1. Compile server TypeScript → bundled JS
   //
-  // We output **ESM** (the source uses `import`/`export` and top-level await),
-  // but several transitive dependencies (e.g. `pg-types`, `pg-cloudflare`) use
-  // dynamic `require()` calls internally, and ESM does not provide a global
-  // `require`. We inject `createRequire` at the top of the bundle so those
-  // internal CJS calls resolve correctly without crashing with
-  // "Dynamic require of 'path' is not supported".
+  // We output **ESM** because server/index.ts uses top-level `await import()`.
+  // The ESM preload hook (preload.mjs, written at runtime by lib.rs) uses
+  // Node's `module.register()` to intercept ESM `import 'better-sqlite3'`
+  // and redirect it to the rebuilt native addon in the cache directory.
   console.log("📦 Bundling server with esbuild...");
   await build({
     entryPoints: [resolve(ROOT, "server/run.ts")],

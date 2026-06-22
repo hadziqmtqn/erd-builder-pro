@@ -2,7 +2,7 @@ import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } 
 import { supabase, isDesktopMode, isLocalPostgres } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 
-/** Extract token from cookie (preferred) or Authorization header (fallback). */
+/** Extract token from cookie (preferred), Authorization header (fallback), or query param. */
 function extractToken(req: ExpressRequest): string | undefined {
   // Cookie-based token (works for same-origin requests)
   const cookieToken = req.cookies.token as string | undefined;
@@ -13,6 +13,10 @@ function extractToken(req: ExpressRequest): string | undefined {
   if (authHeader?.startsWith("Bearer ")) {
     return authHeader.slice(7);
   }
+
+  // Query param token (used by /api/serve/* for cross-origin <img> loads)
+  const queryToken = req.query.token as string | undefined;
+  if (queryToken) return queryToken;
 
   return undefined;
 }

@@ -10,6 +10,7 @@ import rateLimit from "express-rate-limit";
 
 import { checkSupabase } from "./lib/middleware.js";
 import { httpLogger } from "./lib/logger.js";
+import { isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
 import projectsRouter from "./routes/projects/index.js";
@@ -24,6 +25,7 @@ import aiSettingsRouter from "./routes/ai-settings/index.js";
 import aiChatRouter from "./routes/ai-chat/index.js";
 import guestImportRouter from "./routes/guest-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
+import storageRouter from "./routes/storage/index.js";
 
 const app = express();
 
@@ -49,6 +51,7 @@ app.use(helmet({
     },
   } : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 // CORS — configurable via CORS_ORIGINS env var
@@ -69,6 +72,15 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // Desktop mode: backend runs locally on the same machine as the
+    // frontend (Tauri webview). The Origin header varies across platforms
+    // and Tauri versions — it can be tauri://, https://tauri.localhost,
+    // file://, or even null. There is no cross-origin risk when both
+    // frontend and backend are on the same local machine.
+    if (isDesktopMode()) {
+      return callback(null, true);
+    }
+    
     // Tauri desktop: allow custom protocol
     if (origin.startsWith("tauri://")) {
       return callback(null, true);
@@ -79,6 +91,11 @@ app.use(cors({
       origin.startsWith("http://localhost:") ||
       origin.startsWith("http://127.0.0.1:")
     ) {
+      return callback(null, true);
+    }
+    
+    // Desktop app (Tauri): file:// protocol (Windows installer)
+    if (origin.startsWith("file://")) {
       return callback(null, true);
     }
     
@@ -93,6 +110,9 @@ app.use(cors({
       return callback(null, true);
     }
     
+    if (process.env.NODE_ENV === "production") {
+      console.warn(`[cors] Rejected origin: ${origin}`);
+    }
     callback(new Error("Not allowed by CORS"));
   },
   credentials: true
@@ -161,7 +181,7 @@ function camelToSnake(obj: unknown): unknown {
 
 app.use((_req, res, next) => {
   // Skip camelToSnake for new routes: accounts & catalogs use camelCase natively
-  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs')) {
+  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage')) {
     return next();
   }
   const originalJson = res.json.bind(res);
@@ -213,6 +233,7 @@ app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
 app.use("/api", connectionsRouter);
+app.use("/api/storage", storageRouter);
 
 app.use("/api/*", (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.originalUrl}` });

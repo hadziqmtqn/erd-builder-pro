@@ -102,7 +102,14 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     await deleteProject(id);
     await fetchTrash();
     await fetchProjects();
-  }, [deleteProject, fetchTrash, fetchProjects]);
+    // Refresh document lists so dashboard's recent docs / stat cards update
+    await Promise.all([
+      fetchDiagrams(),
+      fetchNotes(),
+      fetchDrawings(),
+      fetchFlowcharts(),
+    ]);
+  }, [deleteProject, fetchTrash, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts]);
 
   const handleSidebarDiagramUpdate = useCallback(async (id: number | string, n: string, opts?: any) => {
     await updateDiagram(id, n, opts);

@@ -113,6 +113,7 @@ jobs:
         shell: bash
         run: npx tauri build --target x86_64-apple-darwin --bundles app
         env:
+          npm_config_arch: x64
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
@@ -200,29 +201,13 @@ jobs:
         shell: bash
         run: |
           PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
-          VERSION="${GITHUB_REF_NAME#v}"
+          CURRENT_TAG="${GITHUB_REF_NAME}"
 
-          {
-            echo "### What's Changed"
-            echo ""
-
-            if [ -n "$PREV_TAG" ]; then
-              git log --pretty="- %s" "$PREV_TAG..HEAD" 2>/dev/null || echo "No commits found."
-            else
-              git log --pretty="- %s" 2>/dev/null | head -30 || echo "Initial release."
-            fi
-
-            echo ""
-            echo "---"
-            echo ""
-            echo "### 📥 Download"
-            echo "Download the appropriate installer for your operating system below."
-            echo ""
-            echo "### 🖥️ Supported Platforms"
-            echo "- **macOS** (Apple Silicon / Intel) — \`.dmg\`"
-            echo "- **Windows** (x64) — \`.msi\`"
-            echo "- **Linux** (x64) — \`.deb\` / \`.AppImage\`"
-          } > release-notes.md
+          if [ -n "$PREV_TAG" ]; then
+            bash scripts/generate-release-notes.sh "$PREV_TAG" "$CURRENT_TAG" > release-notes.md
+          else
+            bash scripts/generate-release-notes.sh "$CURRENT_TAG" > release-notes.md
+          fi
 
           echo "Generated release notes:"
           cat release-notes.md

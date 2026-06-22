@@ -763,7 +763,7 @@ export const FlowchartView = React.memo(({
   }
 
   return (
-    <Card className="w-full h-full border-0 rounded-none bg-muted/20 flex flex-col overflow-hidden relative">
+    <Card className="w-full h-full border rounded-xl bg-muted/20 flex flex-col overflow-hidden relative py-0">
       
       {/* Top Bar */}
       {!isReadOnly && (

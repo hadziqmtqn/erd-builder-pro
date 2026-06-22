@@ -4,11 +4,22 @@
  */
 
 import { compressImage } from '../image-compression';
-import { apiFetch } from '../api';
+import { apiFetch, getAuthToken } from '../api';
 
 // CDN URLs
 const MAMMOTH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
 const JSZIP_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+
+/** Append auth token to proxy/serve URLs so images load from private S3 buckets. */
+function resolveImageUrl(url: string): string {
+  if (url.includes('/api/serve/') || url.includes('/api/storage/proxy')) {
+    const token = getAuthToken();
+    if (token) {
+      url += (url.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+    }
+  }
+  return url;
+}
 
 export class NoteImporter {
   private static isMammothLoaded = false;
@@ -144,7 +155,7 @@ export class NoteImporter {
 
               const data = await response.json();
               if (data.url) {
-                return { src: data.url };
+                return { src: resolveImageUrl(data.url) };
               }
               
               throw new Error('No URL returned from server');
@@ -239,7 +250,7 @@ export class NoteImporter {
             if (uploadRes.ok) {
               const data = await uploadRes.json();
               if (data.url) {
-                img.setAttribute("src", data.url);
+                img.setAttribute("src", resolveImageUrl(data.url));
               }
             }
           } catch (err) {

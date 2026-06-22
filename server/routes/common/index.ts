@@ -29,6 +29,12 @@ router.get("/test-r2", authenticate, ctrl.testR2);
 router.post("/upload", authenticate, validate(uploadSchema), upload.single("image"), ctrl.uploadFile);
 router.delete("/upload", authenticate, validate(deleteUploadSchema), ctrl.deleteFile);
 
+// ── Private storage access endpoints ──
+// Proxy streaming: works for same-origin & cross-origin (via ?token= query param)
+router.get("/serve/:key(*)", authenticate, ctrl.serveFile);
+// On-demand pre-signed URL generation
+router.post("/signed-urls", authenticate, ctrl.getSignedUrls);
+
 // Multer error handler — catches file filter and size limit errors
 router.use((err: any, _req: any, res: any, next: any) => {
   if (err instanceof multer.MulterError) {

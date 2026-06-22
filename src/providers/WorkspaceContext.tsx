@@ -95,10 +95,10 @@ export interface WorkspaceContextValue {
 
   // Navigation
   handleViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => Promise<void>;
-  handleNoteSelect: (uid: string) => Promise<void>;
-  handleDiagramSelect: (id: any) => Promise<void>;
-  handleDrawingSelect: (uid: string) => Promise<void>;
-  handleFlowchartSelect: (id: any) => Promise<void>;
+  handleNoteSelect: (uid: string, options?: { silent?: boolean; contentVersionAtStart?: number }) => Promise<void>;
+  handleDiagramSelect: (id: any, setActiveDiagramId?: (id: any) => void, options?: { silent?: boolean }) => Promise<void>;
+  handleDrawingSelect: (uid: string, options?: { silent?: boolean }) => Promise<void>;
+  handleFlowchartSelect: (id: any, options?: { silent?: boolean }) => Promise<void>;
 
   // Content
   handleNoteChange: (content: string) => void;
