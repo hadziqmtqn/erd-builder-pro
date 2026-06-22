@@ -219,32 +219,56 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 
-          # Find signature files from macOS artifact (single dir with both DMGs)
-          ARM_SIG_FILE=$(find artifacts/build-macos -name "*aarch64*.sig" 2>/dev/null | head -1)
-          INTEL_SIG_FILE=$(find artifacts/build-macos -name "*x86_64*.sig" 2>/dev/null | head -1)
+          # ── macOS: DMGs (already in flat dir 'dmg-output') ──
+          ARM_SIG_FILE=$(find artifacts/build-macos -name "*.aarch64*.sig" -o -name "*_aarch64*.sig" 2>/dev/null | head -1)
+          INTEL_SIG_FILE=$(find artifacts/build-macos -name "*.x86_64*.sig" -o -name "*_x86_64*.sig" 2>/dev/null | head -1)
+          ARM_SIG=""; [ -n "$ARM_SIG_FILE" ] && ARM_SIG=$(cat "$ARM_SIG_FILE")
+          INTEL_SIG=""; [ -n "$INTEL_SIG_FILE" ] && INTEL_SIG=$(cat "$INTEL_SIG_FILE")
 
-          ARM_SIG=""
-          INTEL_SIG=""
-          if [ -n "$ARM_SIG_FILE" ]; then
-            ARM_SIG=$(cat "$ARM_SIG_FILE")
+          ARM_DMG_NAME=$(find artifacts/build-macos -name "*_aarch64.dmg" 2>/dev/null | head -1 | xargs basename)
+          INTEL_DMG_NAME=$(find artifacts/build-macos -name "*_x86_64.dmg" 2>/dev/null | head -1 | xargs basename)
+          [ -z "$ARM_DMG_NAME" ] && ARM_DMG_NAME="ERD-Builder-Pro_${VERSION}_aarch64.dmg"
+          [ -z "$INTEL_DMG_NAME" ] && INTEL_DMG_NAME="ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+
+          # ── Linux: find AppImage (preferred) or .deb ──
+          LINUX_BUNDLE=$(find artifacts/build-linux -name "*.AppImage" 2>/dev/null | head -1)
+          if [ -z "$LINUX_BUNDLE" ]; then
+            LINUX_BUNDLE=$(find artifacts/build-linux -name "*.deb" 2>/dev/null | head -1)
           fi
-          if [ -n "$INTEL_SIG_FILE" ]; then
-            INTEL_SIG=$(cat "$INTEL_SIG_FILE")
+          LINUX_BUNDLE_NAME=""; LINUX_SIG=""
+          if [ -n "$LINUX_BUNDLE" ]; then
+            LINUX_BUNDLE_NAME=$(basename "$LINUX_BUNDLE")
+            # Find matching .sig by basename (signatures may be in a sibling dir)
+            LINUX_SIG_FILE=$(find artifacts/build-linux -name "${LINUX_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
+            [ -n "$LINUX_SIG_FILE" ] && LINUX_SIG=$(cat "$LINUX_SIG_FILE")
           fi
 
-          ARM_DMG_NAME="ERD-Builder-Pro_${VERSION}_aarch64.dmg"
-          INTEL_DMG_NAME="ERD-Builder-Pro_${VERSION}_x86_64.dmg"
+          # ── Windows: find MSI ──
+          WIN_MSI=$(find artifacts/build-windows -name "*.msi.zip" 2>/dev/null | head -1)
+          [ -z "$WIN_MSI" ] && WIN_MSI=$(find artifacts/build-windows -name "*.msi" 2>/dev/null | head -1)
+          WIN_BUNDLE_NAME=""; WIN_SIG=""
+          if [ -n "$WIN_MSI" ]; then
+            WIN_BUNDLE_NAME=$(basename "$WIN_MSI")
+            WIN_SIG_FILE=$(find artifacts/build-windows -name "${WIN_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
+            [ -n "$WIN_SIG_FILE" ] && WIN_SIG=$(cat "$WIN_SIG_FILE")
+          fi
 
+          # ── Build JSON ──
           jq -n \
             --arg v "$VERSION" \
             --arg date "$DATE" \
             --arg repo "$REPO" \
             --arg tag "$TAG" \
-            --arg arm_url "https://github.com/${REPO}/releases/download/${TAG}/${ARM_DMG_NAME}" \
-            --arg intel_url "https://github.com/${REPO}/releases/download/${TAG}/${INTEL_DMG_NAME}" \
+            --arg arm_url "${BASE_URL}/${ARM_DMG_NAME}" \
+            --arg intel_url "${BASE_URL}/${INTEL_DMG_NAME}" \
             --arg arm_sig "$ARM_SIG" \
             --arg intel_sig "$INTEL_SIG" \
+            --arg linux_name "${LINUX_BUNDLE_NAME}" \
+            --arg linux_sig "$LINUX_SIG" \
+            --arg win_name "${WIN_BUNDLE_NAME}" \
+            --arg win_sig "$WIN_SIG" \
             '{
               version: $v,
               notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
@@ -253,7 +277,15 @@ jobs:
                 "darwin-aarch64": { signature: $arm_sig, url: $arm_url },
                 "darwin-x86_64": { signature: $intel_sig, url: $intel_url }
               }
-            }' > latest.json
+            }
+            | if $linux_name != "" then .platforms["linux-x86_64"] = {
+                signature: $linux_sig,
+                url: ("https://github.com/" + $repo + "/releases/download/" + $tag + "/" + $linux_name)
+              } else . end
+            | if $win_name != "" then .platforms["windows-x86_64"] = {
+                signature: $win_sig,
+                url: ("https://github.com/" + $repo + "/releases/download/" + $tag + "/" + $win_name)
+              } else . end' > latest.json
 
           echo "Generated latest.json:"
           cat latest.json
@@ -264,8 +296,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: release-notes.md
-          draft: true
-          prerelease: ${{ github.event.inputs.prerelease == 'true' || contains(github.ref_name, '-') }}
+          draft: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
           generate_release_notes: false
           files: |

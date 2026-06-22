@@ -1,58 +1,108 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
 
-export function useUpdateCheck(onUpdateAvailable?: () => void) {
+export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: boolean) {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [update, setUpdate] = useState<any>(null);
 
-  useEffect(() => {
+  const performCheck = useCallback(async (isManual = false) => {
     // Only run in Tauri environment
-    if (!(window as any).__TAURI__) return;
+    if (!(window as any).__TAURI__) return false;
 
-    const checkUpdate = async () => {
-      try {
-        const update = await check();
-        
-        if (update) {
-          setHasUpdate(true);
-          setLatestVersion(update.version);
+    setIsChecking(true);
 
-          toast.info('Pembaruan Tersedia', {
-            description: `Versi baru (v${update.version}) sudah tersedia dengan fitur terbaru.`,
-            duration: Infinity, // Don't auto-dismiss
-            action: {
-              label: 'Update Sekarang',
-              onClick: () => handleUpdate(update),
-            },
+    // Get current app version dynamically
+    let currentVersion = '';
+    try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      currentVersion = await getVersion();
+    } catch {
+      currentVersion = '0.0.0';
+    }
+
+    let toastId: string | number | undefined;
+    if (isManual) {
+      toastId = toast.loading('Checking for updates...', {
+        description: `ERD Builder Pro v${currentVersion}`,
+      });
+    }
+
+    try {
+      const result = await check();
+
+      if (result) {
+        setHasUpdate(true);
+        setLatestVersion(result.version);
+        setUpdate(result);
+
+        if (toastId) toast.dismiss(toastId);
+        toast.info('Update Available', {
+          description: `New version (v${result.version}) is ready.`,
+          duration: Infinity,
+          action: {
+            label: 'Update Now',
+            onClick: () => handleDownloadUpdate(result),
+          },
+        });
+        onUpdateAvailable?.();
+        return true;
+      } else {
+        setHasUpdate(false);
+        setLatestVersion(null);
+        setUpdate(null);
+        if (toastId) toast.dismiss(toastId);
+        if (isManual) {
+          toast.success("You're up to date", {
+            description: `ERD Builder Pro v${currentVersion} is the latest version.`,
           });
-          onUpdateAvailable?.();
         }
-      } catch (error) {
-        console.error('Update check failed:', error);
+        return false;
       }
-    };
+    } catch (error) {
+      console.error('Update check failed:', error);
+      if (toastId) toast.dismiss(toastId);
+      if (isManual) {
+        toast.error('Check failed', {
+          description: 'Could not check for updates. Check your internet connection.',
+        });
+      }
+      return false;
+    } finally {
+      setIsChecking(false);
+    }
+  }, [onUpdateAvailable]);
 
-    // Check 5 seconds after app starts
-    const timer = setTimeout(checkUpdate, 5000);
+  // Auto-check 5 seconds after mount
+  useEffect(() => {
+    if (skipAutoCheck) return;
+    const timer = setTimeout(performCheck, 5000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [performCheck, skipAutoCheck]);
 
-  const handleUpdate = async (update: any) => {
+  // Listen for menu-check-update event (from macOS menu / App.tsx)
+  useEffect(() => {
+    const handler = () => performCheck(true);
+    window.addEventListener('menu-check-update', handler);
+    return () => window.removeEventListener('menu-check-update', handler);
+  }, [performCheck]);
+
+  const handleDownloadUpdate = useCallback(async (u: any) => {
     if (isDownloading) return;
-    
+
     setIsDownloading(true);
     const toastId = toast.loading('Mengunduh pembaruan...', {
       description: 'Mohon tunggu, sedang mengunduh versi terbaru.',
     });
 
     try {
-      // Download and install update
       let downloaded = 0;
       let contentLength = 0;
 
-      await update.downloadAndInstall((event: any) => {
+      await u.downloadAndInstall((event: any) => {
         switch (event.event) {
           case 'Started':
             contentLength = event.data.contentLength || 0;
@@ -77,7 +127,6 @@ export function useUpdateCheck(onUpdateAvailable?: () => void) {
               action: {
                 label: 'Tutup Aplikasi',
                 onClick: () => {
-                  // User will manually reopen the app
                   (window as any).__TAURI__.app.exit();
                 },
               },
@@ -87,7 +136,6 @@ export function useUpdateCheck(onUpdateAvailable?: () => void) {
       });
 
       setIsDownloading(false);
-
     } catch (error: any) {
       console.error('Update failed:', error);
       toast.error('Pembaruan gagal', {
@@ -96,9 +144,13 @@ export function useUpdateCheck(onUpdateAvailable?: () => void) {
       });
       setIsDownloading(false);
     }
-  };
+  }, [isDownloading]);
 
-  return { hasUpdate, latestVersion, isDownloading };
+  const handleDownload = useCallback(() => {
+    if (update) handleDownloadUpdate(update);
+  }, [update, handleDownloadUpdate]);
+
+  return { hasUpdate, latestVersion, isChecking, isDownloading, checkNow: () => performCheck(true), handleDownload };
 }
 
 function formatBytes(bytes: number): string {

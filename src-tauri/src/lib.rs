@@ -1,8 +1,11 @@
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use tauri::Emitter;
 use tauri::Manager;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 
 /// Strip Windows `\\?\` long-path prefix from paths before passing to Node.js.
 /// Node.js does not understand this prefix in `require()`, NODE_PATH, etc.
@@ -35,9 +38,68 @@ struct ServerProcess(Mutex<Option<Child>>);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── macOS menu bar ────────────────────────────────────────
+            #[cfg(target_os = "macos")]
+            {
+                let handle = app.handle();
+
+                let about =
+                    MenuItemBuilder::with_id("about", "About ERD Builder Pro").build(handle)?;
+                let check_update =
+                    MenuItemBuilder::with_id("check_update", "Check for Updates…")
+                        .build(handle)?;
+
+                let app_submenu = SubmenuBuilder::new(handle, "ERD Builder Pro")
+                    .item(&about)
+                    .item(&check_update)
+                    .separator()
+                    .item(&MenuItemBuilder::with_id("settings", "Settings…").accelerator("CmdOrCtrl+,").build(handle)?)
+                    .separator()
+                    .item(&PredefinedMenuItem::hide(handle, Some("Hide ERD Builder Pro"))?)
+                    .item(&PredefinedMenuItem::hide_others(handle, Some("Hide Others"))?)
+                    .item(&PredefinedMenuItem::show_all(handle, Some("Show All"))?)
+                    .separator()
+                    .item(&PredefinedMenuItem::quit(handle, Some("Quit ERD Builder Pro"))?)
+                    .build()?;
+
+                let file_submenu = SubmenuBuilder::new(handle, "File")
+                    .item(&PredefinedMenuItem::close_window(handle, Some("Close Window"))?)
+                    .build()?;
+
+                let edit_submenu = SubmenuBuilder::new(handle, "Edit")
+                    .item(&PredefinedMenuItem::undo(handle, Some("Undo"))?)
+                    .item(&PredefinedMenuItem::redo(handle, Some("Redo"))?)
+                    .separator()
+                    .item(&PredefinedMenuItem::cut(handle, Some("Cut"))?)
+                    .item(&PredefinedMenuItem::copy(handle, Some("Copy"))?)
+                    .item(&PredefinedMenuItem::paste(handle, Some("Paste"))?)
+                    .item(&PredefinedMenuItem::select_all(handle, Some("Select All"))?)
+                    .build()?;
+
+                let view_submenu = SubmenuBuilder::new(handle, "View")
+                    .item(&PredefinedMenuItem::fullscreen(handle, Some("Enter Full Screen"))?)
+                    .build()?;
+
+                let window_submenu = SubmenuBuilder::new(handle, "Window")
+                    .item(&PredefinedMenuItem::minimize(handle, Some("Minimize"))?)
+                    .build()?;
+
+                let menu = MenuBuilder::new(handle)
+                    .item(&app_submenu)
+                    .item(&file_submenu)
+                    .item(&edit_submenu)
+                    .item(&view_submenu)
+                    .item(&window_submenu)
+                    .build()?;
+
+                handle.set_menu(menu)?;
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -70,6 +132,18 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_menu_event(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            match event.id().as_ref() {
+                "about" => {
+                    let _ = app_handle.emit("menu-about", ());
+                }
+                "check_update" => {
+                    let _ = app_handle.emit("menu-check-update", ());
+                }
+                _ => {}
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

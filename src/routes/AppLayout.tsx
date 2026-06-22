@@ -28,7 +28,6 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useTauriWindowPersistence } from '@/hooks/useTauriWindowPersistence';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
@@ -177,8 +176,7 @@ function AppLayoutInner() {
     return ent?.project_id ?? null;
   }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
 
-  // ── Persist Tauri window size/position ──
-  useTauriWindowPersistence();
+  // ── Persist Tauri window size/position (handled by tauri-plugin-window-state) ──
 
   // ── Update browser tab title ──
   useEffect(() => {
@@ -456,9 +454,9 @@ function AppLayoutInner() {
             onClose={() => setAIOpen(false)}
             entityType={entityContext!.entityType}
             entityUid={entityContext!.entityUid}
-            entityTitle={entityContext.entityType === 'note' ? activeNote?.title : 
-                         entityContext.entityType === 'diagram' ? activeDiagram?.name : 
-                         entityContext.entityType === 'flowchart' ? activeFlowchart?.title : null}
+            entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
+                         entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
+                         entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
             entityContextText={entityContextText}
             projectId={activeProjectId}
             pendingPrompt={pendingPrompt}
