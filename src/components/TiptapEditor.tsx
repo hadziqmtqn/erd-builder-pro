@@ -200,7 +200,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         );
 
         if (isTablePaste && html) {
-          console.log('Excel/Sheets/HTML Table detected, cleaning and importing...');
           (async () => {
             try {
               // Strip all inline styles, classes, and presentation attributes to ensure clean look
@@ -228,7 +227,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         if (html && !isMarkdownTable) return false;
 
         if (text && (isMarkdownGeneral || isMarkdownTable)) {
-          console.log('Markdown detected in paste, converting...');
             // We use an async IIFE because handlePaste expects a boolean return but processing might be async
             (async () => {
               try {

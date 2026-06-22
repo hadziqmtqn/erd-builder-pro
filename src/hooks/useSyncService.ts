@@ -100,7 +100,6 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
         const pendingSyncs = await localPersistence.getAllPendingSyncs();
         
         if (pendingSyncs.length > 0) {
-          console.log(`[SyncService] 🔄 Processing ${pendingSyncs.length} pending items...`);
           
           for (const draft of pendingSyncs) {
             try {
@@ -241,7 +240,6 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
 
     // Listener for coming back online
     const handleOnline = () => {
-      console.log('%c[SyncService] App is back online. Triggering sync...', 'color: #10b981');
       syncDrafts();
     };
 
@@ -266,7 +264,6 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
           const localTime = draft.updated_at;
 
           if (cloudTime > localTime) {
-            console.log(`%c[SyncService] Discarding stale local draft for ${type}#${draft.id} (Cloud is newer: ${new Date(cloudTime).toLocaleString()} vs Local: ${new Date(localTime).toLocaleString()})`, 'color: #ef4444; font-weight: bold');
             await localPersistence.deleteDraft(type, draft.id);
           }
         }
@@ -289,11 +286,9 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
         const legacyDrafts = pendingSyncs.filter((d: any) => d.type === 'diagram');
         
         if (legacyDrafts.length > 0) {
-          console.log(`%c[Migration] Cleaning up ${legacyDrafts.length} legacy 'diagram' drafts...`, 'color: #f59e0b; font-weight: bold');
           for (const draft of legacyDrafts) {
             await (localPersistence.deleteDraft as any)('diagram', draft.id);
           }
-          console.log('%c[Migration] Legacy drafts cleaned successfully.', 'color: #10b981; font-weight: bold');
         }
         localStorage.setItem('erd-builder-migration-diagram-to-erd', 'done');
       } catch (err) {

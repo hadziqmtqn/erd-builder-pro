@@ -148,7 +148,6 @@ class LocalPersistence {
           }
           cursor.continue();
         } else {
-          console.log('%c[LocalDB] All pending syncs cleared', 'color: #ef4444; font-weight: bold');
           resolve();
         }
       };

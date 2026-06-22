@@ -236,11 +236,11 @@ export const AppSidebar = React.memo(({
               </SidebarMenuItem>
 
               {isProjectsLoading ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse">
+                <div className="px-3 py-2 text-xs text-muted-foreground animate-pulse group-data-[collapsible=icon]:hidden">
                   Loading workspaces...
                 </div>
               ) : activeProjects.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
+                <div className="px-3 py-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
                   No workspaces yet
                 </div>
               ) : (

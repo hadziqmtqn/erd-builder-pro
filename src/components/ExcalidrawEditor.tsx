@@ -181,9 +181,6 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
       // Note: We intentionally do NOT call addFiles() here because it triggers
       // onChange again, causing an infinite loop. Instead, we just cache the R2 URLs
       // and let the next handleChange call sanitize the data.
-      if (updatedFiles.length > 0) {
-        console.log(`Queued ${updatedFiles.length} images for R2. URLs cached, will sanitize on next change.`);
-      }
     } catch (err) {
       console.error("Failed to process Excalidraw files for R2:", err);
     } finally {
@@ -242,12 +239,10 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     isReady.current = false;
     lastDataRef.current = drawing.data;
     processedFileIds.current = new Set(); // Reset on drawing change
-    console.log(`ExcalidrawEditor mounted for drawing: ${drawing.id}. Ready in 1500ms...`);
 
     // Mark as ready after a shorter delay
     timeoutId = setTimeout(() => {
       isReady.current = true;
-      console.log(`ExcalidrawEditor for drawing ${drawing.id} is now READY.`);
     }, 500);
 
     return () => {
@@ -282,7 +277,6 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
         
         if (data !== lastDataRef.current && data !== '{"elements":[],"appState":{"theme":"dark"},"files":{}}' && data !== '{"elements":[],"appState":{"theme":"light"},"files":{}}') {
-          console.log("Saving drawing on unmount (sanitized)...");
           onSaveRef.current({ ...drawingRef.current, data });
         }
       }

@@ -94,7 +94,6 @@ export function useFocusSync(params: UseFocusSyncParams) {
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
 
             if (isStale) {
-              console.log("[FocusSync] Cloud is newer, reloading ERD...");
               setIsRefreshing(true);
               await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
               await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
@@ -110,7 +109,6 @@ export function useFocusSync(params: UseFocusSyncParams) {
             const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
 
             if (isStale) {
-              console.log("[FocusSync] Cloud is newer, reloading Note...");
               setIsRefreshing(true);
               await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
               await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });

@@ -327,20 +327,15 @@ export function WorkspaceProvider({
     if (message.type !== BroadcastMessageType.DRAFT_UPDATED) return;
     const { type: dataType, id } = message.payload;
     if (view === 'erd' && dataType === DraftType.ERD && String(id) === String(activeDiagramId)) {
-      console.log('[Broadcast] Incoming sync: updating state from another tab');
       isIncomingSyncRef.current = true;
       (window as any).currentSyncIsSilent = true;
-      await selectDiagram(id, setActiveDiagramId, { silent: true });
-      (window as any).currentSyncIsSilent = false;
+      await selectDiagram(String(id), setActiveDiagramId);
       setTimeout(() => { isIncomingSyncRef.current = false; }, 1000);
     } else if (view === 'notes' && dataType === DraftType.NOTES && String(id) === String(activeNoteUid)) {
-      console.log('[Broadcast] Reloading Note from local draft updated in another tab');
       await selectNote(String(id), { silent: true });
     } else if (view === 'drawings' && dataType === DraftType.DRAWINGS && String(id) === String(activeDrawingId)) {
-      console.log('[Broadcast] Reloading Drawing from local draft updated in another tab');
       await selectDrawing(String(id), { silent: true });
     } else if (view === 'flowchart' && dataType === DraftType.FLOWCHART && String(id) === String(activeFlowchartId)) {
-      console.log('[Broadcast] Reloading Flowchart from local draft updated in another tab');
       await selectFlowchart(String(id), { silent: true });
     }
   }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId]));
@@ -735,7 +730,6 @@ export function WorkspaceProvider({
           y: pos.y,
         };
         localStorage.setItem('erd-builder-window-state', JSON.stringify(state));
-        console.log('[Window]', `${state.width}×${state.height} @ (${state.x},${state.y})`);
         setWindowDimensions({ w: state.width, h: state.height });
       } catch { /* ignore */ }
     };
@@ -760,7 +754,6 @@ export function WorkspaceProvider({
                 await appWindow.setPosition(new LogicalPosition(x, y));
               }
             } else {
-              console.log('[Window] ignoring corrupt saved state', saved);
               localStorage.removeItem('erd-builder-window-state');
             }
           } catch { /* ignore parse errors */ }
