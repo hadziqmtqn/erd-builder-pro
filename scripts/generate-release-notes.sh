@@ -170,13 +170,4 @@ if [ -s "$CAT_OTHER" ]; then
 fi
 
 echo ""
-echo "---"
-echo ""
-echo "### 📥 Download"
-echo ""
-echo "Download the appropriate installer for your operating system below."
-echo ""
-echo "**Supported Platforms:**"
-echo "- macOS (Apple Silicon / Intel) — \`.dmg\`"
-echo "- Windows (x64) — \`.msi\`"
-echo "- Linux (x64) — \`.deb\` / \`.AppImage\`"
+

@@ -1,11 +1,12 @@
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
 // Components
 import { Login } from './components/Login';
 import { ForbiddenView } from './components/views/ForbiddenView';
 import { AppInitialization } from './components/layout/AppInitialization';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { AboutDialog } from './components/modals/AboutDialog';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -31,6 +32,32 @@ import { NotFoundRoute } from './routes/NotFoundRoute';
 function AppContent() {
   const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  // Listen for native macOS menu events (emitted from Rust via Tauri)
+  useEffect(() => {
+    let unlistenAbout: () => void;
+    let unlistenCheckUpdate: () => void;
+
+    const setup = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+
+      unlistenAbout = await listen<string>('menu-about', () => {
+        setAboutOpen(true);
+      });
+
+      unlistenCheckUpdate = await listen<string>('menu-check-update', () => {
+        window.dispatchEvent(new CustomEvent('menu-check-update', { detail: {} }));
+      });
+    };
+
+    setup();
+
+    return () => {
+      unlistenAbout?.();
+      unlistenCheckUpdate?.();
+    };
+  }, []);
 
   // When transitioning from unauthenticated → authenticated (user logs in),
   // navigate to dashboard to prevent stale URL from Guest mode or previous
@@ -44,8 +71,8 @@ function AppContent() {
       navigate('/');
     }
   }, [isAuthenticated, navigate]);
-  const { isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument } = usePublicDocument(() => {});
 
+  const { isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument } = usePublicDocument(() => {});
   const shareInfo = getSharePathInfo();
 
   // Auth loading
@@ -115,6 +142,7 @@ function AppContent() {
         </Route>
       </Routes>
       <SettingsModal />
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
     </WorkspaceProvider>
   );
 }
