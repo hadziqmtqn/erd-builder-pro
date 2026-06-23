@@ -23,6 +23,8 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const fileUrlMap = useRef<Map<string, string>>(new Map()); // Maps fileId to R2 URL
   const isProcessingFiles = useRef(false); // Guard to prevent infinite loops
   const isMountedRef = useRef(true); // Track if component is mounted
+  const isDesktopApp = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   // ——— New: throttle/debounce refs for canvas ———
   const latestSceneRef = useRef<{ elements: any[]; appState: any; files: any } | null>(null);
@@ -61,17 +63,19 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
     const { elements, appState, files } = latestSceneRef.current;
     latestSceneRef.current = null; // consumed
 
-    // Sanitize files: replace base64 with R2 URLs
+    // Sanitize files: replace base64 with R2 URLs (web mode only)
     const cleanFiles = { ...files };
     let wasSanitized = false;
-    Object.keys(cleanFiles).forEach(id => {
-      const mappedUrl = fileUrlMap.current.get(id);
-      const currentFile = cleanFiles[id];
-      if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
-        cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
-        wasSanitized = true;
-      }
-    });
+    if (!isDesktopApp) {
+      Object.keys(cleanFiles).forEach(id => {
+        const mappedUrl = fileUrlMap.current.get(id);
+        const currentFile = cleanFiles[id];
+        if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
+          cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
+          wasSanitized = true;
+        }
+      });
+    }
 
     const { collaborators, ...safeAppState } = appState;
     const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });
@@ -113,6 +117,9 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const processNewFiles = useCallback(async (files: any) => {
     // Guard against infinite loops - don't process if already processing or unmounted
     if (!isMountedRef.current || isProcessingFiles.current || !excalidrawAPI || !files) return;
+    
+    // Desktop mode: store images as base64 natively (Excalidraw format), no R2 upload needed
+    if (isDesktopApp) return;
     
     // Update ref so scheduleFileProcessing always has the latest version
     processNewFilesRef.current = processNewFiles;
@@ -209,7 +216,7 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
             // JSON stores \n as literal characters, not actual newlines
             let cleanUrl = file.dataURL.replace(/\\n/g, '').replace(/\\r/g, '').trim();
             
-            if (!cleanUrl.startsWith('data:image/')) {
+            if (!cleanUrl.startsWith('data:image/') && !isDesktopApp) {
               processedFileIds.current.add(id);
               fileUrlMap.current.set(id, cleanUrl);
             }
@@ -262,16 +269,18 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
         const appState = excalidrawAPI.getAppState();
         const files = excalidrawAPI.getFiles();
         
-        // Sanitize files map: Replace any Base64 with R2 URLs from our map if available
+        // Sanitize files map: Replace any Base64 with R2 URLs from our map if available (web mode only)
         const cleanFiles = { ...files };
-        Object.keys(cleanFiles).forEach(id => {
-          const mappedUrl = fileUrlMap.current.get(id);
-          const currentFile = cleanFiles[id];
-          if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
-            // IMMUTABLE UPDATE: Clone the file object to avoid mutating live Excalidraw state
-            cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
-          }
-        });
+        if (!isDesktopApp) {
+          Object.keys(cleanFiles).forEach(id => {
+            const mappedUrl = fileUrlMap.current.get(id);
+            const currentFile = cleanFiles[id];
+            if (mappedUrl && currentFile && typeof currentFile.dataURL === 'string' && currentFile.dataURL.startsWith('data:image/')) {
+              // IMMUTABLE UPDATE: Clone the file object to avoid mutating live Excalidraw state
+              cleanFiles[id] = { ...currentFile, dataURL: mappedUrl };
+            }
+          });
+        }
 
         const { collaborators, ...safeAppState } = appState;
         const data = JSON.stringify({ elements, appState: safeAppState, files: cleanFiles });

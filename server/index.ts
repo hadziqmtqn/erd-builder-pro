@@ -24,6 +24,7 @@ import aiRouter from "./routes/ai/index.js";
 import aiSettingsRouter from "./routes/ai-settings/index.js";
 import aiChatRouter from "./routes/ai-chat/index.js";
 import guestImportRouter from "./routes/guest-import/index.js";
+import desktopImportRouter from "./routes/desktop-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
 import storageRouter from "./routes/storage/index.js";
 
@@ -232,6 +233,7 @@ app.use("/api/ai/rules", (await import("./routes/ai-rules/index.js")).default);
 app.use("/api", feedbackRouter);
 app.use("/api", commonRouter);
 app.use("/api/guest", guestImportRouter);
+app.use("/api/desktop", desktopImportRouter);
 app.use("/api", connectionsRouter);
 app.use("/api/storage", storageRouter);
 

@@ -456,9 +456,10 @@ export const BackupsView = () => {
         </div>
       </div>
 
-      {/* Storage location panel — hidden in cloud (Supabase) mode because
-          backups are written to R2 via GitHub Action, not the user's filesystem. */}
-      {folderSettings?.supports_local_folder && (
+      {/* Storage location panel — only visible in Tauri (desktop) mode because
+          it lets the user pick a local filesystem folder. In web / Supabase
+          mode backups are stored in R2 and the folder setting is irrelevant. */}
+      {isTauri && folderSettings?.supports_local_folder && (
         <div className="px-6 py-3 border-b bg-muted/30 shrink-0">
           {isEditingFolder ? (
             <div className="flex flex-col gap-2">
