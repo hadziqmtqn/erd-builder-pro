@@ -21,8 +21,7 @@ const typeConfig = {
 
 export function QuickJump() {
   const {
-    view, notes, diagrams, flowcharts, drawings,
-    activeDocument,
+    notes, diagrams, flowcharts, drawings, activeDocument,
     handleNoteSelect, handleDiagramSelect,
     handleDrawingSelect, handleFlowchartSelect,
   } = useWorkspace();

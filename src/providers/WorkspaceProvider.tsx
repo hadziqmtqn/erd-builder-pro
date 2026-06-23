@@ -924,7 +924,13 @@ export function WorkspaceProvider({
       else if (newView === 'ai-settings') { setSettingsTab('account'); setIsSettingsOpen(true); }
       else if (newView === 'backups') { setSettingsTab('backups'); setIsSettingsOpen(true); }
       else if (newView === 'changelog') { setSettingsTab('changelog'); setIsSettingsOpen(true); }
-      else targetUrl = '/';
+      else {
+        setActiveNoteUid(null);
+        setActiveDrawingId(null);
+        setActiveDiagramId(null);
+        setActiveFlowchartId(null);
+        targetUrl = '/';
+      }
       if (targetUrl && targetUrl !== location.pathname + location.search) {
         navigate(targetUrl, { replace: true });
       }

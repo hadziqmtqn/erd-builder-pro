@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { Button } from "@/components/ui/button";
 import { toast } from 'sonner';
 import CodeMirror from '@uiw/react-codemirror';
@@ -58,6 +59,7 @@ export function SQLImportForm({
   const [error, setError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { resolvedTheme } = useWorkspace();
 
   const [step, setStep] = useState<'input' | 'review'>('input');
   const [tableChanges, setTableChanges] = useState<TableChange[]>([]);
@@ -350,7 +352,7 @@ export function SQLImportForm({
             <CodeMirror
               value={sql}
               height="280px"
-              theme={oneDark}
+              theme={resolvedTheme === 'dark' ? oneDark : undefined}
               extensions={[sqlLang()]}
               placeholder="CREATE TABLE users (&#10;  id SERIAL PRIMARY KEY,&#10;  email VARCHAR(255) NOT NULL&#10;);"
               className="border border-border/50 rounded-lg overflow-hidden text-xs"

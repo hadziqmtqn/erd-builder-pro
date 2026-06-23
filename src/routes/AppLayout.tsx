@@ -178,12 +178,31 @@ function AppLayoutInner() {
 
   // ── Persist Tauri window size/position (handled by tauri-plugin-window-state) ──
 
-  // ── Update browser tab title ──
+  // ── Update browser tab title (route-aware) ──
   useEffect(() => {
-    document.title = activeFileName
-      ? `${activeFileName} | ERD Builder Pro`
-      : 'ERD Builder Pro';
-  }, [activeFileName]);
+    const pageTitle = (() => {
+      // If there's an active file open, always use its name
+      if (activeFileName) return `${activeFileName} | ERD Builder Pro`;
+
+      // Derive title from route
+      const path = location.pathname;
+      if (path === '/') return `Dashboard | ERD Builder Pro`;
+      if (path === '/trash') return `Trash | ERD Builder Pro`;
+      if (path.startsWith('/table/')) {
+        const label = breadcrumbLabel || featureLabel || 'Tables';
+        return `${label} | ERD Builder Pro`;
+      }
+      // Editor routes without a loaded file yet — show type label
+      if (path.startsWith('/notes/')) return `Notes | ERD Builder Pro`;
+      if (path.startsWith('/diagrams/')) return `Diagram | ERD Builder Pro`;
+      if (path.startsWith('/flowcharts/')) return `Flowchart | ERD Builder Pro`;
+      if (path.startsWith('/drawings/')) return `Drawing | ERD Builder Pro`;
+
+      // 404 / unknown routes
+      return `ERD Builder Pro`;
+    })();
+    document.title = pageTitle;
+  }, [activeFileName, featureLabel, breadcrumbLabel, location.pathname]);
 
   // ── Desktop-only keyboard shortcut: CMD+, (macOS) / CTRL+, (Win/Linux) → open Settings
   useEffect(() => {

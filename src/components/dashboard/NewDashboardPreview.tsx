@@ -6,6 +6,7 @@ import {
   Database,
   Network,
   ArrowRight,
+  AlertTriangle,
 } from 'lucide-react';
 
 type DocType = 'note' | 'erd' | 'flowchart';
@@ -85,6 +86,19 @@ export function NewDashboardPreview() {
     <div className="flex h-full w-full flex-col items-center overflow-y-auto">
       {/* ── Spacer top ── */}
       <div className="flex-1 min-h-[60px]" />
+
+      {/* ── Alert Banner ── */}
+      <div className="w-full max-w-2xl px-6 mb-4">
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5">
+          <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Dashboard AI — Preview</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              This page is not yet functional. Use the AI Chat panel from the sidebar for active AI features.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* ── Main content ── */}
       <div className="flex w-full max-w-2xl flex-col items-center gap-5 px-6">

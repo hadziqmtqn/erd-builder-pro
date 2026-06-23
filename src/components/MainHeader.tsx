@@ -123,66 +123,118 @@ export const MainHeader = React.memo(({
         )}
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
-            {/* Case 1: Page-specific breadcrumb (e.g. "Dashboard") — replaces featureLabel */}
-            {!isPublicView && !hasActiveItem && breadcrumbLabel && (
-              <BreadcrumbItem className="shrink-0">
-                <BreadcrumbPage className="font-semibold text-foreground">
-                  {breadcrumbLabel}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            )}
+            {/* ── URL-driven breadcrumb — always consistent with current route ── */}
+            {!isPublicView && (() => {
+              const path = location.pathname;
 
-            {/* Case 2: Active document — featureLabel > projectName > fileName */}
-            {!isPublicView && hasActiveItem && (
-              <>
+              // Dashboard (index route)
+              if (path === '/') {
+                return (
+                  <BreadcrumbItem className="shrink-0">
+                    <BreadcrumbPage className="font-semibold text-foreground">Dashboard</BreadcrumbPage>
+                  </BreadcrumbItem>
+                );
+              }
+
+              // Table list pages: /table/notes, /table/erd, /table/drawings, /table/flowchart
+              if (path.startsWith('/table/')) {
+                const tableLabels: Record<string, string> = {
+                  notes: 'Notes',
+                  erd: 'ERD Builder',
+                  drawings: 'Drawings',
+                  flowchart: 'Flowcharts',
+                };
+                const feature = path.match(/^\/table\/([^/]+)$/)?.[1];
+                const label = feature ? (tableLabels[feature] || feature) : 'Unknown';
+                return (
+                  <BreadcrumbItem className="shrink-0">
+                    <BreadcrumbPage className="font-medium text-foreground">{label}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                );
+              }
+
+              // Document editors
+              if (path.startsWith('/notes/') || path.startsWith('/diagrams/') || path.startsWith('/drawings/') || path.startsWith('/flowcharts/')) {
+                const editorInfo: Record<string, { label: string; href: string }> = {
+                  notes: { label: 'Notes', href: '/table/notes' },
+                  diagrams: { label: 'ERD Builder', href: '/table/erd' },
+                  drawings: { label: 'Drawings', href: '/table/drawings' },
+                  flowcharts: { label: 'Flowcharts', href: '/table/flowchart' },
+                };
+                const segment = path.split('/')[1];
+                const info = editorInfo[segment];
+                return (
+                  <>
+                    {info && (
+                      <>
+                        <BreadcrumbItem className="shrink-0">
+                          <BreadcrumbPage className="font-medium text-muted-foreground">{info.label}</BreadcrumbPage>
+                        </BreadcrumbItem>
+                        {activeProjectName && <BreadcrumbSeparator className="shrink-0" />}
+                      </>
+                    )}
+                    {activeProjectName && (
+                      <>
+                        <BreadcrumbItem className="min-w-0 shrink">
+                          <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName}</BreadcrumbPage>
+                        </BreadcrumbItem>
+                        {activeFileName && <BreadcrumbSeparator className="shrink-0" />}
+                      </>
+                    )}
+                    {activeFileName && (
+                      <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
+                        <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
+
+                        {initialShareSettings?.is_public && !isPublicView && (
+                          <TooltipProvider delay={0}>
+                            <Tooltip>
+                              <TooltipTrigger render={
+                                <Badge variant="outline" className="h-5 px-1.5 gap-1.5 bg-green-500/5 text-green-500 border-green-500/20 rounded-full hover:bg-green-500/10 cursor-help shadow-sm">
+                                  <Globe className="w-2.5 h-2.5" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Public</span>
+                                  <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse ml-0.5" />
+                                </Badge>
+                              } />
+                              <TooltipContent side="bottom" align="center" className="text-[10px] font-medium">
+                                This document is shared publicly via a secret link.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </BreadcrumbItem>
+                    )}
+                    {!activeFileName && !activeProjectName && (
+                      <BreadcrumbItem className="shrink-0">
+                        <BreadcrumbPage className="font-medium text-foreground">{info?.label || 'Document'}</BreadcrumbPage>
+                      </BreadcrumbItem>
+                    )}
+                  </>
+                );
+              }
+
+              // Trash
+              if (path.startsWith('/trash')) {
+                return (
+                  <BreadcrumbItem className="shrink-0">
+                    <BreadcrumbPage className="font-medium text-foreground">Trash</BreadcrumbPage>
+                  </BreadcrumbItem>
+                );
+              }
+
+              // Fallback: breadcrumbLabel override from context, or featureLabel
+              if (breadcrumbLabel) {
+                return (
+                  <BreadcrumbItem className="shrink-0">
+                    <BreadcrumbPage className="font-semibold text-foreground">{breadcrumbLabel}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                );
+              }
+              return (
                 <BreadcrumbItem className="shrink-0">
-                  <BreadcrumbPage className="font-medium text-muted-foreground">
-                    {featureLabel}
-                  </BreadcrumbPage>
+                  <BreadcrumbPage className="font-medium text-muted-foreground">{featureLabel}</BreadcrumbPage>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator className="shrink-0" />
-                <BreadcrumbItem className="min-w-0 shrink">
-                  <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName || "Uncategorized"}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </>
-            )}
-
-            {hasActiveItem && activeFileName && (
-              <>
-                {!isPublicView && <BreadcrumbSeparator className="shrink-0" />}
-                <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
-                  <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
-                  
-                  {initialShareSettings?.is_public && !isPublicView && (
-                    <TooltipProvider delay={0}>
-                      <Tooltip>
-                        <TooltipTrigger render={
-                          <Badge variant="outline" className="h-5 px-1.5 gap-1.5 bg-green-500/5 text-green-500 border-green-500/20 rounded-full hover:bg-green-500/10 cursor-help shadow-sm">
-                            <Globe className="w-2.5 h-2.5" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Public</span>
-                            <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse ml-0.5" />
-                          </Badge>
-                        } />
-                        <TooltipContent side="bottom" align="center" className="text-[10px] font-medium">
-                          This document is shared publicly via a secret link.
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </BreadcrumbItem>
-              </>
-            )}
-
-            {/* Case 3: Table list — just featureLabel */}
-            {!isPublicView && !hasActiveItem && !breadcrumbLabel && (
-              <BreadcrumbItem className="shrink-0">
-                <BreadcrumbPage className="font-medium text-muted-foreground">
-                  {featureLabel}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            )}
-
-            {!isPublicView && hasActiveItem && isSyncing}
+              );
+            })()}
           </BreadcrumbList>
         </Breadcrumb>
       </div>
@@ -197,7 +249,7 @@ export const MainHeader = React.memo(({
       </div>
 
       <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
-        <QuickJump />
+        {location.pathname !== '/' && <QuickJump />}
         {/* File search — only in table list view */}
         {!isPublicView && isTableView && !hideFileSearch && (
           <div className="relative flex items-center mr-1 sm:mr-2">
@@ -217,7 +269,7 @@ export const MainHeader = React.memo(({
             </div>
           </div>
         )}
-        {['erd', 'notes', 'drawings', 'flowchart'].includes(view) && hasActiveItem && (
+        {!!location.pathname.match(/^\/(notes|diagrams|drawings|flowcharts)\/[^/]+$/) && (
           <div className="flex items-center gap-1 sm:gap-4">
             {!isPublicView && (
               <div className="hidden sm:flex items-center gap-1.5 shrink-0">

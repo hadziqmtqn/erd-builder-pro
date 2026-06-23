@@ -417,7 +417,7 @@ export const AIChatPanel = ({
                     placeholder="Search conversations..."
                     value={sessionSearch}
                     onChange={e => setSessionSearch(e.target.value)}
-                    className="w-full h-7 pl-7 pr-2 text-[11px] rounded-md border border-border bg-background/50 outline-none focus:border-primary/30 transition-colors"
+                    className="w-full h-8 pl-7 pr-2 text-xs rounded-md border border-border bg-background/50 outline-none focus:border-primary/30 transition-colors"
                   />
                 </div>
               )}
@@ -428,7 +428,7 @@ export const AIChatPanel = ({
                 </div>
               ) : filteredSessions.length === 0 ? (
                 <div className="py-16 text-center">
-                  <p className="text-[11px] text-muted-foreground/50 font-medium">
+                  <p className="text-xs text-muted-foreground/50 font-medium">
                     {sessionSearch ? 'No matching conversations' : 'No conversations yet'}
                   </p>
                 </div>
@@ -456,7 +456,7 @@ export const AIChatPanel = ({
                       >
                         <ChevronLeft className="size-3" />
                       </button>
-                      <span className="text-[10px] text-muted-foreground/50 font-medium tabular-nums">
+                      <span className="text-xs text-muted-foreground/50 font-medium tabular-nums">
                         {sessionPage}/{totalPages}
                       </span>
                       <button
