@@ -29,7 +29,7 @@ export function SessionItem({
     >
       <div className="flex items-center gap-2.5 min-w-0">
         <MessageSquare className="size-3.5 shrink-0 opacity-60" />
-        <span className="text-xs font-medium truncate">{session.title}</span>
+        <span className="text-sm font-medium truncate">{session.title}</span>
       </div>
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}

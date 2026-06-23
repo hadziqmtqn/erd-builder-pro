@@ -6,7 +6,140 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/700.css";
 @import "@fontsource/jetbrains-mono/800.css";
-@import "prism-themes/themes/prism-dracula.css";
+/* Prism theme — fully theme-aware using app CSS variables */
+/* Light mode: GitHub-like syntax colors  */
+.token.comment,
+.token.prolog,
+.token.cdata {
+  color: hsl(220, 14%, 56%);
+}
+
+.token.doctype,
+.token.punctuation,
+.token.entity {
+  color: hsl(220, 9%, 24%);
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: hsl(14, 73%, 35%);
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: hsl(132, 63%, 25%);
+}
+
+.token.operator,
+.token.url {
+  color: hsl(220, 9%, 24%);
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: hsl(273, 73%, 40%);
+}
+
+.token.function,
+.token.maybe-class-name {
+  color: hsl(221, 87%, 50%);
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: hsl(14, 73%, 35%);
+}
+
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+.token.entity {
+  cursor: help;
+}
+
+/* Dark mode: Dracula-inspired colors */
+.dark .token.comment,
+.dark .token.prolog,
+.dark .token.doctype,
+.dark .token.cdata {
+  color: #6272a4;
+}
+
+.dark .token.punctuation {
+  color: #f8f8f2;
+}
+
+.dark .token.property,
+.dark .token.tag,
+.dark .token.boolean,
+.dark .token.number,
+.dark .token.constant,
+.dark .token.symbol,
+.dark .token.deleted {
+  color: #bd93f9;
+}
+
+.dark .token.selector,
+.dark .token.attr-name,
+.dark .token.string,
+.dark .token.char,
+.dark .token.builtin,
+.dark .token.inserted {
+  color: #50fa7b;
+}
+
+.dark .token.operator,
+.dark .token.entity,
+.dark .token.url {
+  color: #ff79c6;
+}
+
+.dark .token.atrule,
+.dark .token.attr-value,
+.dark .token.keyword {
+  color: #ff79c6;
+}
+
+.dark .token.function,
+.dark .token.maybe-class-name {
+  color: #50fa7b;
+}
+
+.dark .token.regex,
+.dark .token.important,
+.dark .token.variable {
+  color: #f1fa8c;
+}
+
+.dark .token.important,
+.dark .token.bold {
+  font-weight: bold;
+}
+
+.dark .token.italic {
+  font-style: italic;
+}
+
+.dark .token.entity {
+  cursor: help;
+}
 
 @custom-variant dark (&:is(.dark *));
 @plugin "@tailwindcss/typography";

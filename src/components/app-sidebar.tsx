@@ -1,5 +1,6 @@
 import * as React from "react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef } from "react"
+import { useLocation } from "react-router-dom"
 import {
   Database,
   Heart,
@@ -111,6 +112,10 @@ export const AppSidebar = React.memo(({
   const { state, setOpen } = useSidebar();
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+
+  // AI Chat History hanya muncul di AI Dashboard — toggle sudah dinonaktifkan
+  const showChatHistory = false;
 
   // Rename/delete project dialog state
   const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);
@@ -153,15 +158,15 @@ export const AppSidebar = React.memo(({
       isActive: view === 'drawings',
       onClick: () => onViewChange('drawings', true),
     },
-    // ── ⚡ AI Chat (Preview) ──
-    {
+    // ── ⚡ AI Chat (Preview) — only on AI Dashboard ──
+    ...(showChatHistory ? [{
       title: "AI Chat",
       url: "#",
       icon: Bot,
       iconClassName: "text-cyan-400",
       isActive: false,
       onClick: () => {},
-    },
+    }] : []),
   ];
 
   // Filtered non-deleted projects
@@ -212,44 +217,45 @@ export const AppSidebar = React.memo(({
         </SidebarGroup>
       </SidebarHeader>
       <SidebarContent>
-        {/* ── AI Chat History (Preview) ── */}
-        <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
-          <SidebarGroupLabel className="flex items-center justify-between">
-            <span>AI Chat History</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className="hover:bg-muted hover:text-foreground rounded-md p-0.5 cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </TooltipTrigger>
-                <TooltipContent side="right">New Chat</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {/* Mock history items — preview only */}
-              {[
-                { title: "Design users table schema", active: true },
-                { title: "Create API auth flow" },
-                { title: "Build notes ERD" },
-                { title: "Setup DB relationships" },
-                { title: "Generate seed data script" },
-              ].map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={(item as any).active}
-                    className="cursor-default opacity-80 hover:opacity-100"
+        {/* ── AI Chat History ── */}
+        {showChatHistory && (
+          <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">
+            <SidebarGroupLabel className="flex items-center justify-between">
+              <span>AI Chat History</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className="hover:bg-muted hover:text-foreground rounded-md p-0.5 cursor-pointer"
                   >
-                    <span className="truncate text-xs">{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                    <Plus className="h-3.5 w-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">New Chat</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {[
+                  { title: "Design users table schema", active: true },
+                  { title: "Create API auth flow" },
+                  { title: "Build notes ERD" },
+                  { title: "Setup DB relationships" },
+                  { title: "Generate seed data script" },
+                ].map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      isActive={(item as any).active}
+                      className="cursor-default opacity-80 hover:opacity-100"
+                    >
+                      <span className="truncate text-sm">{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Workspaces section */}
         <SidebarGroup className="px-4 group-data-[collapsible=icon]:p-2">

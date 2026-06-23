@@ -1,3 +1,4 @@
+import { useWorkspace } from '@/providers/WorkspaceProvider';
 import React from 'react';
 import JSZip from 'jszip';
 import CodeMirror from '@uiw/react-codemirror';
@@ -56,6 +57,7 @@ export const ExportAllDialog = ({
   const [copied, setCopied] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [downloaded, setDownloaded] = React.useState(false);
+  const { resolvedTheme } = useWorkspace();
 
   const currentTab = TABS.find(t => t.id === activeTab);
   const isSingleFile = activeTab === 'mysql' || activeTab === 'postgresql';
@@ -168,7 +170,7 @@ export const ExportAllDialog = ({
                 <CodeMirror
                   value={generatedCode}
                   extensions={codeMirrorExtensions}
-                  theme={oneDark}
+                  theme={resolvedTheme === 'dark' ? oneDark : undefined}
                   readOnly
                   height="100%"
                   basicSetup={{

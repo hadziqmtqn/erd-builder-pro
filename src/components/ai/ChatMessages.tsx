@@ -232,7 +232,7 @@ export const ChatMessages = memo(function ChatMessages({
                           mentionFiles={mentionFiles}
                         />
                       ) : (
-                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs" style={{ '--tw-prose-pre-bg': 'var(--muted)', '--tw-prose-pre-code': 'var(--foreground)', '--tw-prose-code': 'var(--foreground)' } as React.CSSProperties}>
                           {isStreamingMsg && !msg.content ? (
                             <span className="inline-flex gap-1 py-1">
                               <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
