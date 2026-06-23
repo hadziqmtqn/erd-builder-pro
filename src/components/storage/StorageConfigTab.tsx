@@ -184,7 +184,7 @@ export function StorageConfigTab() {
   const isFromDb = source === 'db';
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="p-6 space-y-6">
       <Card className="border border-border/50 bg-background/50 backdrop-blur-sm shadow-lg">
         <CardHeader className="border-b border-border/30 pb-6">
           <div className="flex items-center gap-3">

@@ -114,8 +114,23 @@ export const AppSidebar = React.memo(({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
 
-  // AI Chat History hanya muncul di AI Dashboard — toggle sudah dinonaktifkan
-  const showChatHistory = false;
+  // AI Chat History hanya muncul di AI Dashboard
+  const [showChatHistory, setShowChatHistory] = useState(
+    () => localStorage.getItem('erd-builder-dashboard-mode') === 'ai'
+  );
+
+  React.useEffect(() => {
+    const onStorage = () => {
+      setShowChatHistory(localStorage.getItem('erd-builder-dashboard-mode') === 'ai');
+    };
+    window.addEventListener('storage', onStorage);
+    // Also poll in case storage event doesn't fire in same tab
+    const interval = setInterval(onStorage, 250);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Rename/delete project dialog state
   const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);

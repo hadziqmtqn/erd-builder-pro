@@ -8,6 +8,7 @@ import {
   ArrowRight,
   AlertTriangle,
 } from 'lucide-react';
+import { ChatFlowPreview } from './ChatFlowPreview';
 
 type DocType = 'note' | 'erd' | 'flowchart';
 
@@ -84,11 +85,8 @@ export function NewDashboardPreview() {
 
   return (
     <div className="flex h-full w-full flex-col items-center overflow-y-auto">
-      {/* ── Spacer top ── */}
-      <div className="flex-1 min-h-[60px]" />
-
       {/* ── Alert Banner ── */}
-      <div className="w-full max-w-2xl px-6 mb-4">
+      <div className="w-full max-w-4xl px-6 mb-6">
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5">
           <AlertTriangle className="size-4 text-amber-500 shrink-0 mt-0.5" />
           <div className="min-w-0">
@@ -100,21 +98,25 @@ export function NewDashboardPreview() {
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <div className="flex w-full max-w-2xl flex-col items-center gap-5 px-6">
-        {/* ── Hero ── */}
-        <div className="flex flex-col items-center text-center">
-          <div className="size-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-            <Bot className="size-6 text-primary" />
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight">What would you like to create?</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            Notes, ERD diagrams, or flowcharts — describe it and we'll help you start
-          </p>
+      {/* ── Hero ── */}
+      <div className="flex flex-col items-center text-center px-6 mb-6">
+        <div className="size-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+          <Bot className="size-6 text-primary" />
         </div>
+        <h1 className="text-xl font-semibold tracking-tight">What would you like to create?</h1>
+        <p className="text-sm text-muted-foreground mt-1.5">
+          Notes, ERD diagrams, or flowcharts — describe it and we'll help you start
+        </p>
+      </div>
+
+      {/* ── Chat Flow Preview ── */}
+      <ChatFlowPreview />
+
+      {/* ── Try it input ── */}
+      <div className="flex w-full max-w-4xl flex-col items-center gap-5 px-6 mt-2">
 
         {/* ── Textarea ── */}
-        <div className="w-full max-w-2xl flex items-end gap-2 rounded-xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/30 focus-within:shadow-md transition-all">
+        <div className="w-full max-w-4xl flex items-end gap-2 rounded-xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/30 focus-within:shadow-md transition-all">
           <textarea
             ref={textareaRef}
             value={inputValue}

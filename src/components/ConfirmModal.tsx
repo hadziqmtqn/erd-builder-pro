@@ -10,7 +10,7 @@ import {
   AlertDialogBody,
 } from "@/components/ui/alert-dialog";
 import { cn } from '../lib/utils';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info } from 'lucide-react';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ interface ConfirmModalProps {
   cancelText?: string;
   onConfirm: () => void;
   onCancel: () => void;
-  variant?: 'danger' | 'warning' | 'info';
+  variant?: 'danger' | 'warning' | 'info' | 'success';
 }
 
 export default function ConfirmModal({
@@ -33,6 +33,10 @@ export default function ConfirmModal({
   onCancel,
   variant = 'danger'
 }: ConfirmModalProps) {
+  const Icon = variant === 'success' ? CheckCircle
+    : variant === 'info' ? Info
+    : AlertTriangle;
+
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent size="sm" className="max-w-[400px]">
@@ -41,9 +45,10 @@ export default function ConfirmModal({
             "w-12 h-12 rounded-full flex items-center justify-center mb-2",
             variant === 'danger' && "bg-destructive/10 text-destructive",
             variant === 'warning' && "bg-yellow-500/10 text-yellow-500",
-            variant === 'info' && "bg-primary/10 text-primary"
+            variant === 'info' && "bg-primary/10 text-primary",
+            variant === 'success' && "bg-emerald-500/10 text-emerald-500"
           )}>
-            <AlertTriangle className="w-6 h-6" />
+            <Icon className="w-6 h-6" />
           </div>
           <AlertDialogTitle className="text-xl font-bold tracking-tight sm:text-center">{title}</AlertDialogTitle>
         </AlertDialogHeader>
@@ -66,7 +71,8 @@ export default function ConfirmModal({
               "w-full sm:w-auto",
               variant === 'danger' && "bg-destructive hover:bg-destructive/90",
               variant === 'warning' && "bg-yellow-500 hover:bg-yellow-600",
-              variant === 'info' && "bg-primary hover:bg-primary/90"
+              variant === 'info' && "bg-primary hover:bg-primary/90",
+              variant === 'success' && "bg-emerald-500 hover:bg-emerald-600"
             )}
           >
             {confirmText}
