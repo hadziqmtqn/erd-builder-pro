@@ -62,7 +62,7 @@ import { AccountTab } from '@/components/ai/AccountTab';
 import { AppearanceTab } from '@/components/ai/AppearanceTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
-import { GuestDataManagement } from '@/components/ai/GuestDataManagement';
+import { DataImport } from '@/components/ai/DataImport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -149,7 +149,7 @@ export function SettingsModal() {
       {
         label: "More",
         items: [
-          { id: 'guest-import', label: 'Guest Data Import', icon: <Upload className="size-4" /> },
+          { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
           { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
           { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
         ]
@@ -328,15 +328,15 @@ export function SettingsModal() {
                 </div>
               )}
 
-              {settingsTab === 'guest-import' && (
+              {settingsTab === 'import-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <div className="mb-6">
-                    <h2 className="text-lg font-semibold">Guest Data Import</h2>
+                    <h2 className="text-lg font-semibold">Import Data</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Import data from a Guest Mode export file into your account.
+                      Restore data from a JSON backup or replace the local database from a .db file.
                     </p>
                   </div>
-                  <GuestDataManagement />
+                  <DataImport />
                 </div>
               )}
 
