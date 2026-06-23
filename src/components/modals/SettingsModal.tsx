@@ -264,8 +264,7 @@ export function SettingsModal() {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {settingsTab === 'ai-config' && (
-                <div className="p-4 md:p-8">
-                  <APISettingsTab 
+                <APISettingsTab 
                     providers={providers}
                     configs={configs}
                     models={models}
@@ -276,12 +275,10 @@ export function SettingsModal() {
                     onUpdateProvider={updateProviderLocal}
                     onUpdateConfig={updateConfigLocal}
                   />
-                </div>
               )}
 
               {settingsTab === 'ai-models' && (
-                <div className="p-4 md:p-8">
-                  <ModelCatalogTab 
+                <ModelCatalogTab 
                     providers={providers}
                     models={Object.values(models).flat()}
                     newModel={newModel}
@@ -293,19 +290,16 @@ export function SettingsModal() {
                     onDeleteModel={handleDeleteModel}
                     onCancelEdit={cancelEdit}
                   />
-                </div>
               )}
 
               {settingsTab === 'ai-prompts' && (
-                <div className="p-4 md:p-8">
-                  <DefaultPromptsTab 
+                <DefaultPromptsTab 
                     prompts={prompts}
                     isSaving={isSavingPrompts}
                     onSave={handleSavePrompt}
                     onDelete={handleDeletePrompt}
                     onToggleDefault={togglePromptDefault}
                   />
-                </div>
               )}
 
               {settingsTab === 'ai-rules' && (
@@ -313,7 +307,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'backups' && (
-                <div className="h-full">
+                <div className="p-6 space-y-6">
                   <BackupsView />
                 </div>
               )}
@@ -323,7 +317,7 @@ export function SettingsModal() {
               )}
 
               {settingsTab === 'changelog' && (
-                <div className="h-full">
+                <div className="p-6 space-y-6">
                   <ChangelogView />
                 </div>
               )}

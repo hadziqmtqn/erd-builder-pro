@@ -39,6 +39,11 @@ function AppContent() {
     let unlistenAbout: () => void;
     let unlistenCheckUpdate: () => void;
 
+    const isTauri = typeof window !== 'undefined' &&
+      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+
+    if (!isTauri) return;
+
     const setup = async () => {
       const { listen } = await import('@tauri-apps/api/event');
 
