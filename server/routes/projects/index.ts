@@ -11,5 +11,6 @@ router.delete("/:id", authenticate, ctrl.remove);
 router.post("/:id/restore", authenticate, ctrl.restore);
 router.delete("/:id/permanent", authenticate, ctrl.permanentDelete);
 router.get("/:id/siblings", authenticate, ctrl.siblings);
+router.get("/:id/summary", authenticate, ctrl.summary);
 
 export default router;

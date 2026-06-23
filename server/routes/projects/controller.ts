@@ -77,3 +77,13 @@ export async function siblings(req: ExpressRequest, res: ExpressResponse): Promi
     handleError(res, err, "Failed to fetch siblings");
   }
 }
+
+export async function summary(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+    res.json(await svc.getProjectSummary(projectId, userId));
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch project summary");
+  }
+}
