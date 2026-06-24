@@ -365,6 +365,9 @@ export const AIChatPanel = ({
                 <h3 className="text-sm font-semibold tracking-tight">AI Assistant</h3>
               </div>
               <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="size-8" onClick={handleNewSession} title="New Chat">
+                  <Plus className="size-4" />
+                </Button>
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
                   <PanelRightClose className="size-3.5" />
                 </Button>
@@ -373,11 +376,7 @@ export const AIChatPanel = ({
 
             {/* ── Session List Page ──────────────────── */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
-              <Button variant="outline" size="sm" className="w-full gap-2 h-8 text-xs border-dashed" onClick={handleNewSession}>
-                <Plus className="size-3.5" />
-                New Chat
-              </Button>
-
+              {/* Search — only when there are sessions */}
               {hasSessions && (
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" />
