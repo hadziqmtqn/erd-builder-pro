@@ -199,7 +199,12 @@ export function DashboardRoute() {
     }
   }, [isLoading]);
 
-  const isEmpty = initialLoadDone && totalDocs === 0;
+  // Show empty state as soon as projects are loaded and empty —
+  // don't wait for documents to finish loading
+  const isEmpty = (!ctx.isProjectsLoading && (ctx.projects || []).filter((p: any) => !p.is_deleted).length === 0 && totalDocs === 0);
+
+  // Show dashboard content as soon as we have projects or documents
+  const showContent = !isEmpty && initialLoadDone;
 
   return (
     <div className="flex h-full w-full flex-col gap-6 overflow-y-auto p-6">
@@ -240,7 +245,7 @@ export function DashboardRoute() {
         </div>
       )}
 
-      {!isEmpty && (
+      {showContent && (
         <>
           {/* ── Stat Cards ── */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
