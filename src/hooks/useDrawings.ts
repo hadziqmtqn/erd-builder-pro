@@ -206,7 +206,12 @@ export function useDrawings(isGuest: boolean = false) {
 
   const deleteDrawing = async (uid: string) => {
     if (isGuestCheck()) {
-      const drawing = await localPersistence.getResource(uid);
+      let drawing = await localPersistence.getResource(uid);
+      // Fallback: MoveToTrashAlert passes uid (UUID), but IndexedDB key is id
+      if (!drawing) {
+        const all = await localPersistence.getAllResources('drawings');
+        drawing = all.find((d: any) => matchesDrawingId(d, uid)) || null;
+      }
       if (drawing) {
         drawing.is_deleted = true;
         drawing.deleted_at = new Date().toISOString();
@@ -234,7 +239,11 @@ export function useDrawings(isGuest: boolean = false) {
 
   const moveDrawingToProject = async (uid: string, projectId: number | string | null, options?: { silent?: boolean }) => {
     if (isGuestCheck()) {
-      const drawing = await localPersistence.getResource(uid);
+      let drawing = await localPersistence.getResource(uid);
+      if (!drawing) {
+        const all = await localPersistence.getAllResources('drawings');
+        drawing = all.find((d: any) => matchesDrawingId(d, uid)) || null;
+      }
       if (drawing) {
         drawing.project_id = projectId;
         await localPersistence.saveResource(drawing);
@@ -292,7 +301,11 @@ export function useDrawings(isGuest: boolean = false) {
 
   const restoreDrawing = async (uid: string) => {
     if (isGuestCheck()) {
-      const drawing = await localPersistence.getResource(uid);
+      let drawing = await localPersistence.getResource(uid);
+      if (!drawing) {
+        const all = await localPersistence.getAllResources('drawings');
+        drawing = all.find((d: any) => matchesDrawingId(d, uid)) || null;
+      }
       if (drawing) {
         drawing.is_deleted = false;
         drawing.deleted_at = undefined;
@@ -316,8 +329,14 @@ export function useDrawings(isGuest: boolean = false) {
 
   const deleteDrawingPermanent = async (uid: string) => {
     if (isGuestCheck()) {
-      await localPersistence.deleteResource(uid);
-      await localPersistence.clearDraft(DraftType.DRAWINGS, uid);
+      let drawing = await localPersistence.getResource(uid);
+      if (!drawing) {
+        const all = await localPersistence.getAllResources('drawings');
+        drawing = all.find((d: any) => matchesDrawingId(d, uid)) || null;
+      }
+      const resourceId = drawing ? drawing.id : uid;
+      await localPersistence.deleteResource(resourceId);
+      await localPersistence.clearDraft(DraftType.DRAWINGS, resourceId);
       setDrawings(prev => prev.filter(d => !matchesDrawingId(d, uid)));
       toast.success('Drawing permanently deleted from local');
       return;

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 // Components
 import { AppSidebar } from '@/components/app-sidebar';
@@ -25,11 +26,13 @@ import { OfflineOverlay } from '@/components/layout/OfflineOverlay';
 import {
   SidebarInset,
   SidebarProvider,
+  useSidebar,
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
+import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
@@ -227,6 +230,19 @@ function AppLayoutInner() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [setIsSettingsOpen]);
 
+  // ── Collapse left sidebar when AI Chat opens ──
+  const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();
+  const prevLeftOpenRef = useRef(leftSidebarOpen);
+  useEffect(() => {
+    if (isAIOpen) {
+      prevLeftOpenRef.current = leftSidebarOpen;
+      setLeftSidebarOpen(false);
+    } else if (prevLeftOpenRef.current) {
+      // Restore sidebar only if it was open before chat opened
+      setLeftSidebarOpen(true);
+    }
+  }, [isAIOpen]);
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
@@ -255,7 +271,10 @@ function AppLayoutInner() {
         />
       )}
 
-      <SidebarInset className={isPublicView ? "w-full" : ""}>
+      <SidebarInset className={cn(
+        isPublicView ? "w-full" : "",
+        isAIOpen && "mr-90 transition-[margin] duration-200"
+      )}>
         <MainHeader
           featureLabel={featureLabel}
           activeProjectName={activeProjectName}
@@ -467,29 +486,32 @@ function AppLayoutInner() {
           </>
         )}
 
-        {/* AI Assistant — only on file feature pages */}
-        {showAIChat && isAIOpen && (
-          <AIChatPanel
-            onClose={() => setAIOpen(false)}
-            entityType={entityContext!.entityType}
-            entityUid={entityContext!.entityUid}
-            entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
-                         entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
-                         entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
-            entityContextText={entityContextText}
-            projectId={activeProjectId}
-            pendingPrompt={pendingPrompt}
-            onPromptUsed={clearPrompt}
-            pendingAction={pendingAction}
-            onClearPendingAction={clearPendingAction}
-            notes={notes}
-            diagrams={diagrams}
-            flowcharts={flowcharts}
-            drawings={drawings}
-            activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
-          />
-        )}
+        {/* AI Chat — sticky right sidebar, does not resize workspace */}
         {showAIChat && (
+          <RightChatSidebar>
+            <AIChatPanel
+              onClose={() => setAIOpen(false)}
+              entityType={entityContext!.entityType}
+              entityUid={entityContext!.entityUid}
+              entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
+                           entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
+                           entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
+              entityContextText={entityContextText}
+              projectId={activeProjectId}
+              pendingPrompt={pendingPrompt}
+              onPromptUsed={clearPrompt}
+              pendingAction={pendingAction}
+              onClearPendingAction={clearPendingAction}
+              notes={notes}
+              diagrams={diagrams}
+              flowcharts={flowcharts}
+              drawings={drawings}
+              activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+            />
+          </RightChatSidebar>
+        )}
+        {/* Floating toggle button — visible when chat is closed */}
+        {showAIChat && !isAIOpen && (
           <AIChatToggle
             isOpen={isAIOpen}
             onClick={() => setAIOpen(true)}

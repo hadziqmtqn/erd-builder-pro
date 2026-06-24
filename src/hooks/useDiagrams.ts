@@ -196,14 +196,20 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
 
   const deleteDiagram = async (id: number | string) => {
     if (isGuestCheck()) {
-      const diagram = await localPersistence.getResource(id);
+      let diagram = await localPersistence.getResource(id);
+      // In guest mode, MoveToTrashAlert passes uid (UUID), but IndexedDB key is numeric/string id.
+      // Fall back to searching all resources by uid if direct getResource fails.
+      if (!diagram) {
+        const all = await localPersistence.getAllResources('erd');
+        diagram = all.find((d: any) => String(d.uid) === String(id) || String(d.id) === String(id)) || null;
+      }
       if (diagram) {
         diagram.is_deleted = true;
         diagram.deleted_at = new Date().toISOString();
         await localPersistence.saveResource(diagram);
-        setDiagrams(prev => prev.filter(f => f.id !== id));
+        setDiagrams(prev => prev.filter(f => String(f.id) !== String(id) && String(f.uid) !== String(id)));
         setDiagramsTotal(prev => Math.max(0, prev - 1));
-        if (activeDiagramId === id) setActiveDiagramId(null);
+        if (activeDiagramId === id || String(activeDiagramId) === String(id)) setActiveDiagramId(null);
         toast.success('Diagram moved to local trash');
       }
       return;
@@ -229,12 +235,16 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
 
   const restoreDiagram = async (id: number | string) => {
     if (isGuestCheck()) {
-      const diagram = await localPersistence.getResource(id);
+      let diagram = await localPersistence.getResource(id);
+      if (!diagram) {
+        const all = await localPersistence.getAllResources('erd');
+        diagram = all.find((d: any) => String(d.uid) === String(id) || String(d.id) === String(id)) || null;
+      }
       if (diagram) {
         diagram.is_deleted = false;
         diagram.deleted_at = undefined;
         await localPersistence.saveResource(diagram);
-        setDiagrams(prev => prev.map(d => String(d.id) === String(id) ? { ...d, is_deleted: false } : d));
+        setDiagrams(prev => prev.map(d => String(d.id) === String(id) || String(d.uid) === String(id) ? { ...d, is_deleted: false } : d));
         toast.success('Diagram restored locally');
       }
       return;
@@ -258,9 +268,16 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
 
   const deleteDiagramPermanent = async (id: number | string) => {
     if (isGuestCheck()) {
-      await localPersistence.deleteResource(id);
-      await localPersistence.clearDraft(DraftType.ERD, id);
-      setDiagrams(prev => prev.filter(f => f.id !== id));
+      // Find resource by uid or id (MoveToTrashAlert passes uid UUID, but IndexedDB key is id)
+      let diagram = await localPersistence.getResource(id);
+      if (!diagram) {
+        const all = await localPersistence.getAllResources('erd');
+        diagram = all.find((d: any) => String(d.uid) === String(id) || String(d.id) === String(id)) || null;
+      }
+      const resourceId = diagram ? diagram.id : id;
+      await localPersistence.deleteResource(resourceId);
+      await localPersistence.clearDraft(DraftType.ERD, resourceId);
+      setDiagrams(prev => prev.filter(f => String(f.id) !== String(id) && String(f.uid) !== String(id)));
       toast.success('Diagram permanently deleted from local storage');
       return;
     }
