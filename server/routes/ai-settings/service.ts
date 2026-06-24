@@ -39,18 +39,29 @@ export async function upsertConfig(
 ) {
   const providerId = Number(body.provider_id);
   const selectedModelId = body.selected_model_id != null ? Number(body.selected_model_id) || null : null;
+  const hasApiKey = !!(body.api_key && body.api_key !== "***");
+
+  // Check if config already exists — if creating, api_key is required (NOT NULL)
+  const existing = await prisma?.userAiConfig.findUnique({
+    where: { userId_providerId: { userId, providerId } },
+    select: { id: true },
+  });
+
+  if (!existing && !hasApiKey) {
+    throw new Error("API key is required when creating a new configuration");
+  }
 
   const data = await prisma?.userAiConfig.upsert({
     where: { userId_providerId: { userId, providerId } },
     create: {
       userId,
       providerId,
-      ...(body.api_key && body.api_key !== "***" ? { apiKey: body.api_key } : {}),
+      ...(hasApiKey ? { apiKey: body.api_key! } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
     },
     update: {
-      ...(body.api_key && body.api_key !== "***" ? { apiKey: body.api_key } : {}),
+      ...(hasApiKey ? { apiKey: body.api_key! } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
       updatedAt: new Date(),
