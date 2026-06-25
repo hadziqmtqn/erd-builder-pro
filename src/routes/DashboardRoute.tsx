@@ -384,7 +384,7 @@ export function DashboardRoute() {
                           </td>
                           <td className="px-3 py-2.5">
                             <div className="flex flex-col">
-                              <span className="text-xs font-medium truncate max-w-[200px]">
+                              <span className="text-xs font-medium truncate max-w-50">
                                 {doc.name || doc.title || '(Untitled)'}
                               </span>
                               <span className="text-[10px] text-muted-foreground/50">

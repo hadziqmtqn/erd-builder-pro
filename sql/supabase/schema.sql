@@ -41,7 +41,10 @@ CREATE TABLE IF NOT EXISTS diagrams (
   share_token TEXT,
   expiry_date TIMESTAMPTZ,
   published_at TIMESTAMPTZ,
-  _version INTEGER DEFAULT 0
+  _version INTEGER DEFAULT 0,
+  source_type TEXT DEFAULT 'blank',
+  source_connection_id INTEGER,
+  data TEXT
 );
 
 -- Entities Table
