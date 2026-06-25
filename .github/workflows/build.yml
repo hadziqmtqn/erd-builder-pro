@@ -79,6 +79,30 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Sign bundle (Linux/Windows)
+        if: matrix.platform != 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find built bundle
+          BUNDLE=""
+          for ext in AppImage deb msi; do
+            BUNDLE=$(find src-tauri/target/release/bundle -name "*.${ext}" ! -name "*.sig" 2>/dev/null | head -1)
+            [ -n "$BUNDLE" ] && break
+          done
+          if [ -z "$BUNDLE" ]; then
+            echo "No bundle found to sign"
+            exit 0
+          fi
+          echo "Signing: $BUNDLE"
+          npx tauri signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "$BUNDLE"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
       # macOS: build ARM64 first, then rebuild native modules for x86_64, then cross-compile.
       # We use --bundles app (skip DMG) because Tauri's built-in bundle_dmg.sh (create-dmg fork)
       # intermittently fails on CI runners (tauri#3055, #13804). DMG is created manually below.
