@@ -1,4 +1,11 @@
 import React from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { sql as sqlLang } from '@codemirror/lang-sql';
+import { php } from '@codemirror/lang-php';
+import { javascript } from '@codemirror/lang-javascript';
+import { go } from '@codemirror/lang-go';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { goHighlightExtensions } from '@/lib/codemirror-go-highlight';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +16,7 @@ import {
   DialogBody,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Download, Trash2, Table, FileCode } from 'lucide-react';
+import { Copy, Check, Download, Trash2, Table, FileCode, Database, FileText } from 'lucide-react';
 import { Entity } from '@/types';
 import {
   generateMySQL,
@@ -18,7 +25,9 @@ import {
   generateTypeScript,
   generatePrisma,
   generateLaravelModel,
-  generateZod
+  generateZod,
+  generateGoravelModel,
+  generateGoravelMigration,
 } from '@/lib/sql-generator';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -32,6 +41,85 @@ interface TableDialogProps {
   defaultTab?: 'properties' | 'schema';
 }
 
+const CATEGORIES = [
+  {
+    id: 'sql',
+    label: 'SQL',
+    formats: [
+      { id: 'mysql', label: 'MySQL' },
+      { id: 'postgresql', label: 'PostgreSQL' },
+    ],
+  },
+  {
+    id: 'laravel',
+    label: 'Laravel',
+    formats: [
+      { id: 'laravel_migration', label: 'Migration' },
+      { id: 'laravel_model', label: 'Model' },
+    ],
+  },
+  {
+    id: 'goravel',
+    label: 'Goravel',
+    formats: [
+      { id: 'goravel', label: 'Model' },
+      { id: 'goravel_migration', label: 'Migration' },
+    ],
+  },
+  {
+    id: 'typescript',
+    label: 'TypeScript',
+    formats: [
+      { id: 'typescript', label: 'Interface' },
+      { id: 'zod', label: 'Zod' },
+    ],
+  },
+  {
+    id: 'prisma',
+    label: 'Prisma',
+    formats: [
+      { id: 'prisma', label: 'Schema' },
+    ],
+  },
+];
+
+const FORMAT_GENERATORS: Record<string, (entity: Entity) => string> = {
+  mysql: generateMySQL,
+  postgresql: generatePostgreSQL,
+  laravel_migration: generateLaravelMigration,
+  laravel_model: generateLaravelModel,
+  goravel: generateGoravelModel,
+  goravel_migration: generateGoravelMigration,
+  typescript: generateTypeScript,
+  zod: generateZod,
+  prisma: generatePrisma,
+};
+
+const FORMAT_LANGUAGES: Record<string, string> = {
+  mysql: 'sql',
+  postgresql: 'sql',
+  laravel_migration: 'php',
+  laravel_model: 'php',
+  goravel: 'go',
+  goravel_migration: 'go',
+  typescript: 'typescript',
+  zod: 'typescript',
+  prisma: 'prisma',
+};
+
+const FORMAT_EXTENSIONS: Record<string, string> = {
+  sql: 'sql',
+  mysql: 'sql',
+  postgresql: 'sql',
+  laravel_migration: 'php',
+  laravel_model: 'php',
+  goravel: 'go',
+  goravel_migration: 'go',
+  typescript: 'ts',
+  zod: 'ts',
+  prisma: 'prisma',
+};
+
 export const TableDialog = ({
   open,
   onOpenChange,
@@ -39,7 +127,8 @@ export const TableDialog = ({
   defaultTab = 'properties',
 }: TableDialogProps) => {
   const [activeMainTab, setActiveMainTab] = React.useState<string>(defaultTab);
-  const [activeSchemaTab, setActiveSchemaTab] = React.useState<string>('mysql');
+  const [activeCategory, setActiveCategory] = React.useState(CATEGORIES[0].id);
+  const [activeTab, setActiveTab] = React.useState(CATEGORIES[0].formats[0].id);
   const [copied, setCopied] = React.useState(false);
 
   const {
@@ -47,6 +136,7 @@ export const TableDialog = ({
     deleteEntity,
     setSelectedNodeId,
     setIsDeleteAlertOpen,
+    resolvedTheme,
   } = useWorkspace();
 
   React.useEffect(() => {
@@ -55,28 +145,23 @@ export const TableDialog = ({
 
   if (!entity) return null;
 
-  const generatedCode = React.useMemo(() => {
-    return {
-      mysql: generateMySQL(entity),
-      postgresql: generatePostgreSQL(entity),
-      laravel_migration: generateLaravelMigration(entity),
-      laravel_model: generateLaravelModel(entity),
-      typescript: generateTypeScript(entity),
-      prisma: generatePrisma(entity),
-      zod: generateZod(entity),
-    };
-  }, [entity]);
+  const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
+  const visibleFormats = currentCategory?.formats ?? [];
+  const generateFn = FORMAT_GENERATORS[activeTab];
+  const currentCode = generateFn ? generateFn(entity) : '';
+  const currentLanguage = FORMAT_LANGUAGES[activeTab] || 'sql';
 
-  const currentCode = (generatedCode as Record<string, string>)[activeSchemaTab];
-
-  const getLanguage = (tab: string) => {
-    if (tab === 'typescript' || tab === 'zod') return 'typescript';
-    if (tab === 'prisma') return 'prisma';
-    if (tab.startsWith('laravel')) return 'php';
-    return 'sql';
-  };
-
-  const currentLanguage = getLanguage(activeSchemaTab);
+  const codeMirrorExtensions = React.useMemo(() => {
+    const lang = FORMAT_LANGUAGES[activeTab] || '';
+    switch (lang) {
+      case 'sql': return [sqlLang()];
+      case 'php': return [php()];
+      case 'go': return [go(), ...goHighlightExtensions(resolvedTheme)];
+      case 'prisma':
+      case 'typescript': return [javascript({ typescript: true })];
+      default: return [];
+    }
+  }, [activeTab, resolvedTheme]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(currentCode);
@@ -85,25 +170,24 @@ export const TableDialog = ({
   };
 
   const downloadFile = () => {
-    const extMap: Record<string, string> = {
-      typescript: 'ts',
-      zod: 'ts',
-      prisma: 'prisma',
-      laravel_migration: 'php',
-      laravel_model: 'php',
-      mysql: 'sql',
-      postgresql: 'sql'
-    };
-    const extension = extMap[activeSchemaTab] || 'sql';
+    const extension = FORMAT_EXTENSIONS[activeTab] || 'sql';
     const blob = new Blob([currentCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${entity.name.toLowerCase()}_${activeSchemaTab}.${extension}`;
+    a.download = `${entity.name.toLowerCase()}_${activeTab}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleCategoryChange = (catId: string) => {
+    setActiveCategory(catId);
+    const cat = CATEGORIES.find(c => c.id === catId);
+    if (cat && cat.formats.length > 0) {
+      setActiveTab(cat.formats[0].id);
+    }
   };
 
   return (
@@ -170,40 +254,63 @@ export const TableDialog = ({
           </TabsContent>
 
           <TabsContent value="schema" className="m-0">
-            <div className="px-6 pt-4 mb-3 overflow-x-auto scrollbar-hide">
-              <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
-                {[
-                  { id: 'mysql', label: 'MySQL' },
-                  { id: 'postgresql', label: 'PostgreSQL' },
-                  { id: 'laravel_migration', label: 'Laravel Migration' },
-                  { id: 'laravel_model', label: 'Laravel Model' },
-                  { id: 'typescript', label: 'TypeScript' },
-                  { id: 'prisma', label: 'Prisma' },
-                  { id: 'zod', label: 'Zod' },
-                ].map(tab => (
+            <div className="px-6 pt-4 space-y-2 mb-3 overflow-x-auto scrollbar-hide w-full">
+              {/* Category pills */}
+              <div className="flex gap-1 bg-muted/40 border border-border rounded-lg p-0.5 w-fit">
+                {CATEGORIES.map(cat => (
                   <button
-                    key={tab.id}
-                    onClick={() => setActiveSchemaTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
-                      activeSchemaTab === tab.id
+                    key={cat.id}
+                    onClick={() => handleCategoryChange(cat.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all text-nowrap ${
+                      activeCategory === cat.id
                         ? 'bg-background text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    {tab.label}
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Format pills for active category */}
+              <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit mb-2">
+                {visibleFormats.map(fmt => (
+                  <button
+                    key={fmt.id}
+                    onClick={() => setActiveTab(fmt.id)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
+                      activeTab === fmt.id
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {fmt.label}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="p-0 overflow-hidden bg-muted relative">
-              <div className="absolute top-4 right-6 px-2 py-1 rounded bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground/20 uppercase tracking-widest z-10">
-                {currentLanguage}
+              <div className="h-full min-h-75">
+                <CodeMirror
+                  value={currentCode}
+                  extensions={codeMirrorExtensions}
+                  theme={resolvedTheme === 'dark' ? oneDark : undefined}
+                  readOnly
+                  height="100%"
+                  basicSetup={{
+                    lineNumbers: true,
+                    foldGutter: false,
+                    highlightActiveLine: false,
+                    highlightActiveLineGutter: false,
+                    bracketMatching: false,
+                    closeBrackets: false,
+                    indentOnInput: false,
+                  }}
+                  className="text-[13px] text-foreground/90 h-full"
+                  style={{ minHeight: '300px' }}
+                />
               </div>
-
-              <pre className="p-6 overflow-auto max-h-[400px] text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-primary/40">
-                <code className="text-foreground/90 block">{currentCode}</code>
-              </pre>
             </div>
 
             <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
@@ -221,7 +328,7 @@ export const TableDialog = ({
                   variant="outline"
                   size="sm"
                   onClick={copyToClipboard}
-                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px]"
+                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-22.5"
                 >
                   {copied ? (
                     <>

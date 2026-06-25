@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "2.2.4",
+  "version": "2.2.5",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development tsx watch server/dev.ts",
@@ -36,6 +36,7 @@
     "@aws-sdk/client-s3": "^3.1020.0",
     "@aws-sdk/s3-request-presigner": "^3.1073.0",
     "@base-ui/react": "^1.3.0",
+    "@codemirror/lang-go": "^6.0.1",
     "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-php": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",

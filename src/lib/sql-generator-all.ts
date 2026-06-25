@@ -7,6 +7,8 @@ import {
   generatePrisma,
   generateLaravelModel,
   generateZod,
+  generateGoravelModel,
+  generateGoravelMigration,
   toPascalCase,
 } from './sql-generator';
 import { Entity } from '@/types';
@@ -18,7 +20,9 @@ export type AllExportFormat =
   | 'laravel_model'
   | 'typescript'
   | 'prisma'
-  | 'zod';
+  | 'zod'
+  | 'goravel'
+  | 'goravel_migration';
 
 export interface ExportFile {
   filename: string;
@@ -96,6 +100,22 @@ export function generateAllTablesCode(
       entities.forEach((entity, i) => {
         if (i > 0) body.push('');
         body.push(generateZod(entity));
+      });
+      break;
+    }
+    case 'goravel': {
+      headers.push(`// ERD Export: ${fileName}`, `// Goravel Models`, ``);
+      entities.forEach((entity, i) => {
+        if (i > 0) body.push('');
+        body.push(generateGoravelModel(entity));
+      });
+      break;
+    }
+    case 'goravel_migration': {
+      headers.push(`// ERD Export: ${fileName}`, `// Goravel Migrations`, ``);
+      entities.forEach((entity, i) => {
+        if (i > 0) body.push('');
+        body.push(generateGoravelMigration(entity));
       });
       break;
     }
@@ -203,6 +223,21 @@ export function generateAllTablesFiles(
       });
       break;
     }
+    case 'goravel': {
+      entities.forEach(entity => {
+        const structName = toPascalCase(entity.name, true);
+        files.push({ filename: `models/${structName}.go`, content: generateGoravelModel(entity) });
+      });
+      break;
+    }
+    case 'goravel_migration': {
+      const entityFkMap = buildEntityFkMap(entities, edges);
+      entities.forEach(entity => {
+        const fkConstraints = entityFkMap.get(entity.id);
+        files.push({ filename: `migrations/create_${entity.name.toLowerCase()}_table.go`, content: generateGoravelMigration(entity, fkConstraints) });
+      });
+      break;
+    }
   }
 
   return files;
@@ -251,6 +286,8 @@ export function getExtension(format: AllExportFormat): string {
     typescript: 'ts',
     prisma: 'prisma',
     zod: 'ts',
+    goravel: 'go',
+    goravel_migration: 'go',
   };
   return map[format] || 'txt';
 }

@@ -20,7 +20,7 @@ export function ImportSQLModal({
 }: ImportSQLModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-150">
         <DialogHeader>
           <DialogTitle>Import SQL (Reverse Engineering)</DialogTitle>
           <DialogDescription>

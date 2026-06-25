@@ -5,7 +5,9 @@ import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { php } from '@codemirror/lang-php';
 import { javascript } from '@codemirror/lang-javascript';
+import { go } from '@codemirror/lang-go';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { goHighlightExtensions } from '@/lib/codemirror-go-highlight';
 import {
   Dialog,
   DialogContent,
@@ -15,8 +17,7 @@ import {
   DialogBody,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Copy, Check, Download, Loader2, Database, FileText, Image as ImageIcon, FileCode, FlaskConical } from 'lucide-react';
+import { Copy, Check, Download, Loader2, Database, FileCode, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Node, Edge } from '@xyflow/react';
 import { Entity } from '@/types';
@@ -32,17 +33,49 @@ interface ExportAllDialogProps {
   onExportImage: () => void;
 }
 
-const TABS: { id: string; label: string; icon: React.ElementType; lang: string; isExperimental?: boolean }[] = [
-  { id: 'typescript', label: 'TypeScript', icon: FileText, lang: 'typescript' },
-  { id: 'prisma', label: 'Prisma', icon: FileText, lang: 'prisma' },
-  { id: 'laravel_migration', label: 'Laravel Migration', icon: FileCode, lang: 'php' },
-  { id: 'laravel_model', label: 'Laravel Model', icon: FileCode, lang: 'php' },
-  { id: 'mysql', label: 'MySQL', icon: Database, lang: 'sql' },
-  { id: 'postgresql', label: 'PostgreSQL', icon: Database, lang: 'sql' },
-  { id: 'zod', label: 'Zod', icon: FileText, lang: 'typescript' },
-  { id: 'pdf', label: 'PDF', icon: FileText, lang: '', isExperimental: true },
-  { id: 'svg', label: 'SVG', icon: ImageIcon, lang: '', isExperimental: true },
+const CATEGORIES = [
+  {
+    id: 'sql',
+    label: 'SQL',
+    formats: [
+      { id: 'mysql', label: 'MySQL' },
+      { id: 'postgresql', label: 'PostgreSQL' },
+    ],
+  },
+  {
+    id: 'laravel',
+    label: 'Laravel',
+    formats: [
+      { id: 'laravel_migration', label: 'Migration' },
+      { id: 'laravel_model', label: 'Model' },
+    ],
+  },
+  {
+    id: 'goravel',
+    label: 'Goravel',
+    formats: [
+      { id: 'goravel', label: 'Model' },
+      { id: 'goravel_migration', label: 'Migration' },
+    ],
+  },
+  {
+    id: 'typescript',
+    label: 'TypeScript',
+    formats: [
+      { id: 'typescript', label: 'Interface' },
+      { id: 'zod', label: 'Zod' },
+    ],
+  },
+  {
+    id: 'prisma',
+    label: 'Prisma',
+    formats: [
+      { id: 'prisma', label: 'Schema' },
+    ],
+  },
 ];
+
+const SINGLE_FILE_TABS = new Set(['mysql', 'postgresql', 'prisma']);
 
 export const ExportAllDialog = ({
   open,
@@ -53,32 +86,41 @@ export const ExportAllDialog = ({
   onExportPDF,
   onExportImage,
 }: ExportAllDialogProps) => {
-  const [activeTab, setActiveTab] = React.useState('typescript');
+  const [activeCategory, setActiveCategory] = React.useState(CATEGORIES[0].id);
+  const [activeTab, setActiveTab] = React.useState(CATEGORIES[0].formats[0].id);
   const [copied, setCopied] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [downloaded, setDownloaded] = React.useState(false);
   const { resolvedTheme } = useWorkspace();
 
-  const currentTab = TABS.find(t => t.id === activeTab);
-  const isSingleFile = activeTab === 'mysql' || activeTab === 'postgresql';
-  const isSchemaTab = !currentTab?.isExperimental;
+  const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
+  const visibleFormats = currentCategory?.formats ?? [];
+  const format = activeTab as AllExportFormat;
+  const isSingleFile = SINGLE_FILE_TABS.has(activeTab);
 
   const generatedCode = React.useMemo(() => {
-    if (!isSchemaTab) return '';
-    return generateAllTablesCode(activeTab as AllExportFormat, nodes, edges, fileName) + '\n\n';
-  }, [activeTab, nodes, edges, fileName, isSchemaTab]);
+    return generateAllTablesCode(format, nodes, edges, fileName) + '\n\n';
+  }, [format, nodes, edges, fileName]);
 
   const codeMirrorExtensions = React.useMemo(() => {
-    const lang = currentTab?.lang;
-    if (!lang) return [];
+    const getLang = (tab: string) => {
+      if (tab === 'mysql' || tab === 'postgresql') return 'sql';
+      if (tab === 'laravel_migration' || tab === 'laravel_model') return 'php';
+      if (tab === 'goravel' || tab === 'goravel_migration') return 'go';
+      if (tab === 'typescript' || tab === 'zod') return 'typescript';
+      if (tab === 'prisma') return 'prisma';
+      return '';
+    };
+    const lang = getLang(activeTab);
     switch (lang) {
       case 'sql': return [sqlLang()];
       case 'php': return [php()];
+      case 'go': return [go(), ...goHighlightExtensions(resolvedTheme)];
       case 'prisma':
       case 'typescript': return [javascript({ typescript: true })];
       default: return [];
     }
-  }, [currentTab]);
+  }, [activeTab, resolvedTheme]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(generatedCode);
@@ -91,7 +133,7 @@ export const ExportAllDialog = ({
     const toastId = toast.loading(isSingleFile ? 'Downloading...' : 'Creating archive...');
     try {
       if (isSingleFile) {
-        const ext = getExtension(activeTab as AllExportFormat);
+        const ext = getExtension(format);
         const blob = new Blob([generatedCode], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -102,7 +144,7 @@ export const ExportAllDialog = ({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        const files = generateAllTablesFiles(activeTab as AllExportFormat, nodes, edges, fileName);
+        const files = generateAllTablesFiles(format, nodes, edges, fileName);
         const zip = new JSZip();
         files.forEach(f => zip.file(f.filename, f.content));
         const blob = await zip.generateAsync({ type: 'blob' });
@@ -125,6 +167,14 @@ export const ExportAllDialog = ({
     }
   };
 
+  const handleCategoryChange = (catId: string) => {
+    setActiveCategory(catId);
+    const cat = CATEGORIES.find(c => c.id === catId);
+    if (cat && cat.formats.length > 0) {
+      setActiveTab(cat.formats[0].id);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -132,32 +182,47 @@ export const ExportAllDialog = ({
         className="bg-popover border-border text-popover-foreground shadow-2xl"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <DialogHeader className="px-6 pt-6 pb-0 border-b border-border">
-          <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
-          <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
-            {nodes.length} tables · {edges.length} relationships
+        <DialogHeader className="px-6 pt-6 pb-0 border-b border-border space-y-3">
+          <div>
+            <DialogTitle className="text-xl font-bold tracking-tight">Export All</DialogTitle>
+            <div className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest mt-1">
+              {nodes.length} tables · {edges.length} relationships
+            </div>
           </div>
 
-          <div className="pt-4 mb-3 overflow-x-auto scrollbar-hide">
-            <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
-              {TABS.map(tab => (
+          {/* Category pills */}
+          <div className="overflow-x-auto scrollbar-hide w-full">
+            <div className="flex gap-1 bg-muted/40 border border-border rounded-lg p-0.5 w-fit">
+              {CATEGORIES.map(cat => (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
-                    activeTab === tab.id
+                  key={cat.id}
+                  onClick={() => handleCategoryChange(cat.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all text-nowrap ${
+                    activeCategory === cat.id
                       ? 'bg-background text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <tab.icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                  {tab.isExperimental && (
-                    <Badge className="ml-1 h-4 px-1 text-[7px] font-bold uppercase tracking-widest bg-amber-500/15 text-amber-400 border-amber-500/30 rounded-sm">
-                      <FlaskConical className="w-2 h-2 mr-0.5" />
-                      Exp
-                    </Badge>
-                  )}
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Format pills for active category */}
+          <div className="overflow-x-auto scrollbar-hide w-full -mt-1 mb-2">
+            <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
+              {visibleFormats.map(fmt => (
+                <button
+                  key={fmt.id}
+                  onClick={() => setActiveTab(fmt.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all text-nowrap ${
+                    activeTab === fmt.id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {fmt.label}
                 </button>
               ))}
             </div>
@@ -165,106 +230,76 @@ export const ExportAllDialog = ({
         </DialogHeader>
 
           <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
-            {isSchemaTab ? (
-              <div className="h-full min-h-[300px]">
-                <CodeMirror
-                  value={generatedCode}
-                  extensions={codeMirrorExtensions}
-                  theme={resolvedTheme === 'dark' ? oneDark : undefined}
-                  readOnly
-                  height="100%"
-                  basicSetup={{
-                    lineNumbers: true,
-                    foldGutter: false,
-                    highlightActiveLine: false,
-                    highlightActiveLineGutter: false,
-                    bracketMatching: false,
-                    closeBrackets: false,
-                    indentOnInput: false,
-                  }}
-                  className="text-[13px] text-foreground/90 h-full"
-                  style={{ minHeight: '300px' }}
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full py-16 px-6 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center mb-5">
-                  {activeTab === 'pdf' ? (
-                    <FileText className="w-8 h-8 text-red-400" />
-                  ) : (
-                    <ImageIcon className="w-8 h-8 text-purple-400" />
-                  )}
-                </div>
-                <h3 className="text-lg font-bold text-foreground mb-2">
-                  Export as {currentTab?.label}
-                </h3>
-                <p className="text-sm text-muted-foreground/40 max-w-md mb-6">
-                  Exports the entire ERD canvas as a{' '}
-                  {activeTab === 'pdf' ? 'PDF document' : 'SVG image'}.
-                  This feature generates a visual representation of all tables and
-                  relationships as they appear on the canvas.
-                </p>
-                <Button
-                  onClick={activeTab === 'pdf' ? onExportPDF : onExportImage}
-                  className="h-10 px-6 bg-primary text-primary-foreground hover:bg-primary/90 font-bold gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Generate {currentTab?.label}
-                </Button>
-              </div>
-            )}
+            <div className="h-full min-h-75">
+              <CodeMirror
+                value={generatedCode}
+                extensions={codeMirrorExtensions}
+                theme={resolvedTheme === 'dark' ? oneDark : undefined}
+                readOnly
+                height="100%"
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: false,
+                  highlightActiveLine: false,
+                  highlightActiveLineGutter: false,
+                  bracketMatching: false,
+                  closeBrackets: false,
+                  indentOnInput: false,
+                }}
+                className="text-[13px] text-foreground/90 h-full"
+                style={{ minHeight: '300px' }}
+              />
+            </div>
           </DialogBody>
 
-          {isSchemaTab && (
-            <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
-              <div className="flex items-center gap-2 mr-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={downloadFile}
-                  disabled={isDownloading || downloaded}
-                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
-                >
-                  {downloaded ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
-                      Downloaded
-                    </>
-                  ) : isDownloading ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5 mr-2" />
-                  )}
-                  {!downloaded && (isSingleFile ? 'Download' : 'Download .zip')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={copyToClipboard}
-                  disabled={!isSingleFile}
-                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px] disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 mr-2" />
-                      Copy
-                    </>
-                  )}
-                </Button>
-              </div>
+          <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
+            <div className="flex items-center gap-2 mr-auto">
               <Button
-                onClick={() => onOpenChange(false)}
-                className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
+                variant="outline"
+                size="sm"
+                onClick={downloadFile}
+                disabled={isDownloading || downloaded}
+                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
               >
-                Close
+                {downloaded ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
+                    Downloaded
+                  </>
+                ) : isDownloading ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 mr-2" />
+                )}
+                {!downloaded && (isSingleFile ? 'Download' : 'Download .zip')}
               </Button>
-            </DialogFooter>
-          )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyToClipboard}
+                disabled={!isSingleFile}
+                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-22.5 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-2 text-green-400" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 mr-2" />
+                    Copy
+                  </>
+                )}
+              </Button>
+            </div>
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
+            >
+              Close
+            </Button>
+          </DialogFooter>
       </DialogContent>
     </Dialog>
   );
