@@ -93,7 +93,8 @@ async function upsertEntities(rows: any[], diagramId: number) {
           color: e.color || "#6366f1",
         },
       })
-    )
+    ),
+    { timeout: 30000 }
   );
 }
 
@@ -121,7 +122,8 @@ async function upsertColumns(rows: any[]) {
           sortOrder: col.sort_order || 0,
         },
       })
-    )
+    ),
+    { timeout: 30000 }
   );
 }
 
@@ -156,7 +158,8 @@ async function upsertRelationships(rows: any[], diagramId: number) {
           label: r.label || null,
         },
       })
-    )
+    ),
+    { timeout: 30000 }
   );
 }
 
