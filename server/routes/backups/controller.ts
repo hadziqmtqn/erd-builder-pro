@@ -1,6 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import { s3Client, R2_BUCKET_NAME } from "../../lib/config.js";
 import * as backupsService from "./service.js";
 import { z } from "zod";
 
@@ -69,6 +70,17 @@ export async function download(req: ExpressRequest, res: ExpressResponse): Promi
     if (!backup.filePath) {
       res.status(400).json({ error: "File has not been uploaded yet" });
       return;
+    }
+
+    // If R2 configured, try streaming from R2 first (hybrid: local + cloud)
+    if (s3Client && R2_BUCKET_NAME) {
+      const r2Key = `backups/${id}.sql.gz`;
+      try {
+        await backupsService.streamR2File(r2Key, backup.name, res);
+        return;
+      } catch (r2Err: any) {
+        logger.warn({ err: r2Err, id }, "R2 download failed, falling back to local file");
+      }
     }
 
     const { useLocalAuth } = await import("../../lib/config.js");

@@ -184,8 +184,17 @@ if (isProd) {
   }
 }
 
-app.listen(PORT, "127.0.0.1", () => {
+const server = app.listen(PORT, "127.0.0.1", () => {
   console.log(`Server running on http://localhost:${PORT} [${isProd ? "production" : "development"}]`);
+});
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`FATAL: Port ${PORT} is already in use. Is another instance of ERD Builder Pro running?`);
+    process.exit(1);
+  }
+  console.error('Server error:', err.message);
+  process.exit(1);
 });
 
 // ── Async background initialization (non-blocking) ──

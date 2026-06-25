@@ -20,7 +20,7 @@ export async function initAutoBackupScheduler(): Promise<void> {
     });
 
     if (prefs.length > 0) {
-      startAutoBackupScheduler(prefs[0].userId);
+      await startAutoBackupScheduler(prefs[0].userId);
       logger.info({ userId: prefs[0].userId }, 'Auto-backup scheduler started on server init');
     }
   } catch (error) {

@@ -33,6 +33,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from '@/hooks/useAuth';
 import { RestoreBackupDialog, type RestoreProgress } from '@/components/modals/RestoreBackupDialog';
 
@@ -421,6 +428,8 @@ export const BackupsView = () => {
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
+  const [_tab, setTab] = useState<"histories" | "settings">("histories");
+
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
       {/* Header Area */}
@@ -456,6 +465,15 @@ export const BackupsView = () => {
         </div>
       </div>
 
+      <div className="px-6 pt-3 pb-3 border-b shrink-0">
+        <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
+          <button onClick={() => setTab("histories")} className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${_tab === "histories" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Histories</button>
+          <button onClick={() => setTab("settings")} className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${_tab === "settings" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Settings</button>
+        </div>
+      </div>
+
+      {_tab === "settings" && (
+      <>
       {/* Storage location panel — only visible in Tauri (desktop) mode because
           it lets the user pick a local filesystem folder. In web / Supabase
           mode backups are stored in R2 and the folder setting is irrelevant. */}
@@ -573,12 +591,15 @@ export const BackupsView = () => {
         </div>
       )}
 
-      {/* ── Auto-Backup Settings (only in Tauri / local mode) ── */}
-      {isTauri && (
+      {/* ── Auto-Backup Settings (desktop / local PG) ── */}
+      {folderSettings?.supports_local_folder && (
         <AutoBackupSettings />
       )}
+      </>
+      )}
 
-      {/* Content Area */}
+      {_tab === "histories" && (
+      // Content Area
       <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
         <div className="p-6">
           {loading && backups.length === 0 ? (
@@ -760,6 +781,7 @@ export const BackupsView = () => {
           )}
         </div>
       </div>
+      )}
 
       <RestoreBackupDialog
         isOpen={restoreDialogOpen}
@@ -878,22 +900,10 @@ function AutoBackupSettings() {
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
               Interval
             </label>
-            <select
-              value={interval}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setInterval(v);
-                save({ interval: v });
-              }}
-              disabled={saving}
-              className="w-full h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground"
-            >
-              {INTERVAL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <Select value={String(interval)} onValueChange={(v: any) => { const n = Number(v); setInterval(n); save({ interval: n }); }} disabled={saving}>
+              <SelectTrigger className="h-8 text-xs bg-background"><SelectValue>{INTERVAL_OPTIONS.find(o => o.value === interval)?.label}</SelectValue></SelectTrigger>
+              <SelectContent>{INTERVAL_OPTIONS.map(opt => (<SelectItem key={opt.value} value={String(opt.value)} className="text-xs">{opt.label}</SelectItem>))}</SelectContent>
+            </Select>
           </div>
 
           {/* Retention */}
@@ -901,22 +911,10 @@ function AutoBackupSettings() {
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
               Keep
             </label>
-            <select
-              value={retention}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setRetention(v);
-                save({ retention: v });
-              }}
-              disabled={saving}
-              className="w-full h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground"
-            >
-              {[3, 5, 10, 20, 30, 50].map((n) => (
-                <option key={n} value={n}>
-                  Last {n} backups
-                </option>
-              ))}
-            </select>
+            <Select value={String(retention)} onValueChange={(v: any) => { const n = Number(v); setRetention(n); save({ retention: n }); }} disabled={saving}>
+              <SelectTrigger className="h-8 text-xs bg-background"><SelectValue>Last {retention} backups</SelectValue></SelectTrigger>
+              <SelectContent>{[3, 5, 10, 20, 30, 50].map((n: number) => (<SelectItem key={n} value={String(n)} className="text-xs">Last {n} backups</SelectItem>))}</SelectContent>
+            </Select>
           </div>
         </div>
       )}

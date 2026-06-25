@@ -37,6 +37,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    },
     "resources": {
       "../dist-server/index.js": "dist-server/index.js",
       "../dist-server/migrate-db.mjs": "dist-server/migrate-db.mjs",

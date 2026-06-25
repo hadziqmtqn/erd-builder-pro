@@ -8,16 +8,14 @@ import { randomUUID } from 'crypto';
 
 type AutoBackupSettings = {
   enabled: boolean;
-  intervalMinutes: number;
+  intervalSeconds: number;
   retentionCount: number;
 };
 
-/**
- * Global interval handle so we can stop/restart the scheduler
- * when the user changes settings without restarting the server.
- */
+/** Global scheduler handle. */
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let currentUserId: string | null = null;
+let lastBackupTime: number = 0;
 
 // ── Read settings from DB ──
 
@@ -33,7 +31,7 @@ async function loadSettings(userId: string): Promise<AutoBackupSettings> {
 
   return {
     enabled: pref?.autoBackupEnabled ?? false,
-    intervalMinutes: Math.floor((pref?.autoBackupInterval ?? 3600) / 60),
+    intervalSeconds: pref?.autoBackupInterval ?? 3600,
     retentionCount: pref?.autoBackupRetention ?? 10,
   };
 }
@@ -45,7 +43,13 @@ async function performAutoBackup(userId: string): Promise<void> {
     const settings = await loadSettings(userId);
     if (!settings.enabled) return;
 
-    logger.info({ userId }, 'Auto-backup: starting');
+    // Respect the configured interval — skip if not enough time has passed
+    const now = Date.now();
+    if (lastBackupTime > 0 && (now - lastBackupTime) < settings.intervalSeconds * 1000) {
+      return; // not yet time for next backup
+    }
+
+    logger.info({ userId, intervalSeconds: settings.intervalSeconds }, 'Auto-backup: starting');
 
     // 1. Create backup record
     const backupId = randomUUID();
@@ -62,6 +66,7 @@ async function performAutoBackup(userId: string): Promise<void> {
       data: { filePath, fileSize, status: 'completed' },
     });
 
+    lastBackupTime = now;
     logger.info({ backupId, fileSize }, 'Auto-backup: local completed');
 
     // 3. Upload to R2 if configured
@@ -104,15 +109,9 @@ async function enforceRetention(userId: string, maxCount: number): Promise<void>
     if (!backups || backups.length === 0) return;
 
     for (const b of backups) {
-      // Delete local file
       if (b.filePath) {
-        try {
-          await unlink(b.filePath);
-        } catch {
-          // file may already be gone
-        }
+        try { await unlink(b.filePath); } catch { /* already gone */ }
       }
-      // Delete DB record
       await prisma?.backup.delete({ where: { id: b.id } }).catch(() => {});
     }
 
@@ -124,21 +123,37 @@ async function enforceRetention(userId: string, maxCount: number): Promise<void>
 
 // ── Scheduler control ──
 
-export function startAutoBackupScheduler(userId: string): void {
+export async function startAutoBackupScheduler(userId: string): Promise<void> {
+  const wasRunning = schedulerTimer !== null;
   if (schedulerTimer) {
     clearInterval(schedulerTimer);
   }
 
   currentUserId = userId;
 
-  // Run immediately (first tick), then on interval
-  // We check settings inside each tick, so changing settings takes effect
-  // on the next tick without restarting the scheduler.
-  void performAutoBackup(userId);
+  // Preserve lastBackupTime on restart (settings change). On fresh start
+  // (server boot), seed from the most recent completed backup so the
+  // interval is respected across app restarts — prevents immediate backup
+  // when desktop app reopens minutes after last backup.
+  if (!wasRunning) {
+    try {
+      const last = await prisma?.backup.findFirst({
+        where: { userId, status: "completed" },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      lastBackupTime = last?.createdAt
+        ? new Date(last.createdAt).getTime()
+        : 0;
+    } catch {
+      lastBackupTime = 0;
+    }
+  }
 
+  // Tick every 60 seconds — the actual interval is enforced inside
   schedulerTimer = setInterval(() => {
     void performAutoBackup(userId);
-  }, 60_000); // Check every minute — the actual interval is enforced inside the tick
+  }, 60_000);
 }
 
 export function stopAutoBackupScheduler(): void {
@@ -147,6 +162,7 @@ export function stopAutoBackupScheduler(): void {
     schedulerTimer = null;
   }
   currentUserId = null;
+  lastBackupTime = 0;
   logger.info('Auto-backup scheduler stopped');
 }
 
