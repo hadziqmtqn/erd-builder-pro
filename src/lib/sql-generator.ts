@@ -318,6 +318,180 @@ ${castItems}
 }`;
 }
 
+export function generateGoravelModel(entity: Entity): string {
+  const structName = toPascalCase(entity.name, true);
+  const tableName = entity.name.toLowerCase();
+
+  const fields = entity.columns.map(col => {
+    const t = col.type.toLowerCase();
+    let goType = 'string';
+    let gormTag = '';
+
+    // Skip relation FK column (handled by GORM relation)
+    if (col._is_fk && col.name.endsWith('_id') && !col.is_pk) {
+      return null;
+    }
+
+    switch (t) {
+      case 'integer':
+      case 'int':
+        goType = col.is_pk ? 'uint' : 'int';
+        if (col.is_pk) gormTag = '`gorm:"primaryKey"`';
+        break;
+      case 'bigint':
+        goType = col.is_pk ? 'uint64' : 'int64';
+        if (col.is_pk) gormTag = '`gorm:"primaryKey"`';
+        break;
+      case 'text':
+      case 'longtext':
+        goType = 'string';
+        gormTag = '`gorm:"type:text"`';
+        break;
+      case 'boolean':
+      case 'bool':
+        goType = 'bool';
+        break;
+      case 'timestamp':
+      case 'datetime':
+        goType = 'time.Time';
+        gormTag = '`gorm:"autoCreateTime"`';
+        if (col.name === 'updated_at') {
+          gormTag = '`gorm:"autoUpdateTime"`';
+        }
+        break;
+      case 'date':
+        goType = 'time.Time';
+        break;
+      case 'decimal':
+      case 'float':
+        goType = 'float64';
+        break;
+      case 'uuid':
+        goType = 'string';
+        gormTag = '`gorm:"type:uuid"`';
+        break;
+      case 'json':
+        goType = 'string';
+        gormTag = '`gorm:"type:json"`';
+        break;
+      case 'enum':
+        goType = 'string';
+        break;
+      default:
+        goType = 'string';
+    }
+
+    // Build gorm tag for non-special types
+    if (!gormTag && goType === 'string') {
+      let tag = 'type:varchar(255)';
+      if (!col.is_nullable && !col.is_pk) tag += ';not null';
+      gormTag = '`gorm:"' + tag + '"`';
+    } else if (!gormTag && !col.is_pk) {
+      let tag = '';
+      if (col.is_nullable) tag = 'default:null';
+      if (tag) gormTag = '`gorm:"' + tag + '"`';
+    }
+
+    const goName = toPascalCase(col.name, false);
+    return `    ${goName} ${goType} ${gormTag}`;
+  }).filter(Boolean).join('\n');
+
+  return `package models\n\nimport "time"\n\ntype ${structName} struct {\n${fields}\n\n    CreatedAt time.Time\n    UpdatedAt time.Time\n}`;
+}
+
+export function generateGoravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
+  const tableName = entity.name.toLowerCase();
+  const pascalName = toPascalCase(entity.name, true);
+  const className = `MCreate${pascalName}Table`;
+
+  const shouldAddTimestamps = !entity.columns.some(c => c.name === 'created_at');
+  const hasSoftDeletes = entity.columns.some(c => c.name === 'deleted_at');
+  const skipNames = new Set(['created_at', 'updated_at', 'deleted_at']);
+
+  const columns = entity.columns
+    .filter(col => !skipNames.has(col.name.toLowerCase()))
+    .map(col => {
+      const t = col.type.toLowerCase();
+      const name = col.name.toLowerCase();
+      let method = 'String';
+      let args: string | null = null;
+
+      if (col.is_pk && name === 'id') {
+        method = 'ID';
+        args = null;
+      } else {
+        switch (t) {
+          case 'integer':
+          case 'int': method = 'Integer'; break;
+          case 'bigint':
+            method = name.endsWith('_id') || col.is_pk ? 'UnsignedBigInteger' : 'BigInteger';
+            break;
+          case 'text': method = 'Text'; break;
+          case 'longtext': method = 'LongText'; break;
+          case 'boolean':
+          case 'bool': method = 'Boolean'; break;
+          case 'timestamp': method = 'Timestamp'; break;
+          case 'datetime': method = 'DateTime'; break;
+          case 'date': method = 'Date'; break;
+          case 'decimal': method = 'Decimal'; args = '10, 2'; break;
+          case 'float': method = 'Float'; break;
+          case 'uuid': method = 'Uuid'; break;
+          case 'json': method = 'Json'; break;
+          case 'enum': method = 'String'; break;
+          default: method = 'String';
+        }
+      }
+
+      let chain = `table.${method}(${args ? args : `"${col.name}"`})`;
+      if (col.is_nullable && !col.is_pk) chain += '.Nullable()';
+
+      return `      ${chain}`;
+    }).join('\n');
+
+  let fkBlock = '';
+  if (fkConstraints && fkConstraints.length > 0) {
+    const fkLines = fkConstraints
+      .filter(fk => entity.columns.some(c => c.name === fk.column))
+      .map(fk => {
+        return `      table.Foreign("${fk.column}").References("${fk.references}").On("${fk.on}").OnDelete("cascade")`;
+      })
+      .join('\n');
+    if (fkLines) {
+      fkBlock = `\n${fkLines}`;
+    }
+  }
+
+  const upBody = [
+    `return facades.Schema().Create("${tableName}", func(table schema.Blueprint) {`,
+    columns,
+    hasSoftDeletes ? `      table.SoftDeletes()` : '',
+    shouldAddTimestamps ? `      table.Timestamps()` : '',
+    fkBlock,
+    `    })`,
+  ].filter(Boolean).join('\n');
+
+  return `package migrations
+
+import (
+    "github.com/goravel/framework/contracts/database/schema"
+    "github.com/goravel/framework/facades"
+)
+
+type ${className} struct{}
+
+func (m *${className}) Signature() string {
+    return "create_${tableName}_table"
+}
+
+func (m *${className}) Up() error {
+    ${upBody}
+}
+
+func (m *${className}) Down() error {
+    return facades.Schema().DropIfExists("${tableName}")
+}`;
+}
+
 export function generateZod(entity: Entity): string {
   const schemaName = toPascalCase(entity.name, true);
   const varName = schemaName.charAt(0).toLowerCase() + schemaName.slice(1);

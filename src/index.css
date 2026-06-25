@@ -995,3 +995,8 @@ ul[data-type="taskList"] li[data-checked="true"]>div>p {
     color: #374151;
   }
 }
+
+/* CodeMirror — JetBrains Mono for all code blocks */
+.cm-editor .cm-content {
+  font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+}

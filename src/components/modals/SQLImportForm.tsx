@@ -386,7 +386,7 @@ export function SQLImportForm({
             <Button
               onClick={handleParse}
               disabled={!sql.trim() || isImporting}
-              className="font-bold min-w-[120px]"
+              className="font-bold min-w-30"
             >
               {isImporting ? (
                 <>
@@ -404,7 +404,7 @@ export function SQLImportForm({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="space-y-4 max-h-[340px] overflow-y-auto custom-scrollbar">
+          <div className="space-y-4 max-h-85 overflow-y-auto custom-scrollbar">
             {tableChanges.map((change, idx) => (
               <div key={idx} className="bg-muted/20 border border-border/50 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -471,7 +471,7 @@ export function SQLImportForm({
             <Button variant="ghost" onClick={handleCancelReview}>
               Cancel
             </Button>
-            <Button onClick={handleApplyChanges} className="font-bold min-w-[120px]">
+            <Button onClick={handleApplyChanges} className="font-bold min-w-30">
               <FileCode className="w-4 h-4 mr-2" />
               Apply Changes
             </Button>
