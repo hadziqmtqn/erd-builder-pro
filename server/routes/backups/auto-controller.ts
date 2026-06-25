@@ -94,7 +94,7 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
       create: { userId, ...updateData },
     });
 
-    // Restart scheduler with new settings
+    // Restart scheduler only when enabled/interval changes
     if (enabled !== undefined || interval !== undefined) {
       const fresh = await prisma?.userPreference.findUnique({
         where: { userId },
@@ -102,7 +102,7 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
       });
 
       if (fresh?.autoBackupEnabled) {
-        startAutoBackupScheduler(userId);
+        await startAutoBackupScheduler(userId);
         logger.info({ userId }, "Auto-backup scheduler (re)started after settings change");
       } else {
         stopAutoBackupScheduler();

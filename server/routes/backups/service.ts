@@ -1,6 +1,6 @@
 import { GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME, useLocalAuth } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import {
   createLocalBackup,
@@ -11,7 +11,7 @@ import {
   restoreLocalBackup,
 } from "../../lib/local-backup.js";
 import { createReadStream } from "fs";
-import { access, stat } from "fs/promises";
+import { access, readFile, stat } from "fs/promises";
 import path from "path";
 
 // ── Folder Settings ──
@@ -159,6 +159,25 @@ export async function executeLocalBackup(backupId: string, userId: string) {
       data: { filePath, fileSize, status: "completed" },
     });
     logger.info({ backupId, filePath, fileSize }, "Local backup completed");
+
+    // Upload to R2 if configured — non-blocking (failure doesn't fail the backup)
+    if (s3Client && R2_BUCKET_NAME) {
+      const r2Key = `backups/${backupId}.sql.gz`;
+      try {
+        const fileBuffer = await readFile(filePath);
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: r2Key,
+            Body: fileBuffer,
+            ContentType: "application/gzip",
+          })
+        );
+        logger.info({ backupId, key: r2Key }, "R2 upload completed");
+      } catch (r2Err: any) {
+        logger.error({ err: r2Err, backupId }, "R2 upload failed (local backup preserved)");
+      }
+    }
   } catch (error: any) {
     logger.error({ err: error, backupId }, "Local backup failed");
     await prisma?.backup.update({
