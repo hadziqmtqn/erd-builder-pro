@@ -243,6 +243,13 @@ function AppLayoutInner() {
     }
   }, [isAIOpen]);
 
+  // ── Auto-close chat when leaving file pages ──
+  useEffect(() => {
+    if (!showAIChat) {
+      setAIOpen(false);
+    }
+  }, [showAIChat, setAIOpen]);
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
