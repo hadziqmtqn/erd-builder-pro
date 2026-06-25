@@ -200,6 +200,10 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
     backup_folder TEXT,
+    auto_backup_enabled BOOLEAN DEFAULT FALSE,
+    auto_backup_interval INTEGER DEFAULT 3600,
+    auto_backup_retention INTEGER DEFAULT 10,
+    storage_config TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

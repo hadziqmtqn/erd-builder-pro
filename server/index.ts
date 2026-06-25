@@ -19,6 +19,7 @@ import drawingsRouter from "./routes/drawings/index.js";
 import flowchartsRouter from "./routes/flowcharts/index.js";
 import feedbackRouter from "./routes/feedback/index.js";
 import backupsRouter from "./routes/backups/index.js";
+import { initAutoBackupScheduler } from "./lib/auto-backup-init.js";
 import commonRouter from "./routes/common/index.js";
 import aiRouter from "./routes/ai/index.js";
 import aiSettingsRouter from "./routes/ai-settings/index.js";
@@ -236,6 +237,11 @@ app.use("/api/guest", guestImportRouter);
 app.use("/api/desktop", desktopImportRouter);
 app.use("/api", connectionsRouter);
 app.use("/api/storage", storageRouter);
+
+// ── Auto-backup scheduler (desktop mode) ──
+initAutoBackupScheduler().catch((err) => {
+  console.error("Failed to init auto-backup scheduler:", err);
+});
 
 app.use("/api/*", (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.originalUrl}` });

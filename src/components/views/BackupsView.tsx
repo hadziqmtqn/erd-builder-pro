@@ -573,6 +573,11 @@ export const BackupsView = () => {
         </div>
       )}
 
+      {/* ── Auto-Backup Settings (only in Tauri / local mode) ── */}
+      {isTauri && (
+        <AutoBackupSettings />
+      )}
+
       {/* Content Area */}
       <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
         <div className="p-6">
@@ -774,3 +779,154 @@ export const BackupsView = () => {
     </div>
   );
 };
+
+// ── Auto-Backup Settings ──
+
+const INTERVAL_OPTIONS = [
+  { value: 15, label: '15 minutes' },
+  { value: 30, label: '30 minutes' },
+  { value: 60, label: '1 hour' },
+  { value: 360, label: '6 hours' },
+  { value: 720, label: '12 hours' },
+  { value: 1440, label: '24 hours' },
+];
+
+function AutoBackupSettings() {
+  const [enabled, setEnabled] = useState(false);
+  const [interval, setInterval] = useState(60); // minutes
+  const [retention, setRetention] = useState(10);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const res = await apiFetch('/api/backups/settings/auto');
+      if (res.ok) {
+        const data = await res.json();
+        setEnabled(data.enabled);
+        // Convert seconds to minutes for UI
+        setInterval(Math.floor((data.interval || 3600) / 60));
+        setRetention(data.retention || 10);
+      }
+    } catch (err) {
+      console.error('Failed to load auto-backup settings', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async (patch: Record<string, any>) => {
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/backups/settings/auto', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Failed to save');
+      }
+    } catch (err: any) {
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="px-6 py-3 border-b bg-muted/20 shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Loading auto-backup settings...
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-6 py-4 border-b bg-muted/20 shrink-0 space-y-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <RotateCcwKey className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Auto Backup</span>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={enabled}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+              save({ enabled: e.target.checked });
+            }}
+            disabled={saving}
+          />
+          <div className="w-9 h-5 bg-muted rounded-full peer-checked:bg-primary/80 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-background after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4" />
+        </label>
+      </div>
+
+      {/* Settings (only when enabled) */}
+      {enabled && (
+        <div className="grid grid-cols-2 gap-4 pt-1">
+          {/* Interval */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+              Interval
+            </label>
+            <select
+              value={interval}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setInterval(v);
+                save({ interval: v });
+              }}
+              disabled={saving}
+              className="w-full h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground"
+            >
+              {INTERVAL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Retention */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+              Keep
+            </label>
+            <select
+              value={retention}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setRetention(v);
+                save({ retention: v });
+              }}
+              disabled={saving}
+              className="w-full h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground"
+            >
+              {[3, 5, 10, 20, 30, 50].map((n) => (
+                <option key={n} value={n}>
+                  Last {n} backups
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {saving && (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Saving...
+        </div>
+      )}
+    </div>
+  );
+}

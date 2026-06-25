@@ -398,13 +398,16 @@ model UserAiRule {
 
 // ── User Preferences (desktop app) ──
 model UserPreference {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId        String   @unique @map("user_id") @db.Uuid
-  backupFolder  String?  @map("backup_folder")
-  storageConfig String?  @map("storage_config")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-  user          User     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  backupFolder        String?  @map("backup_folder")
+  autoBackupEnabled   Boolean? @default(false) @map("auto_backup_enabled")
+  autoBackupInterval  Int?     @default(3600) @map("auto_backup_interval")
+  autoBackupRetention Int?     @default(10) @map("auto_backup_retention")
+  storageConfig       String?  @map("storage_config")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user                User     @relation(fields: [userId], references: [id], onUpdate: NoAction)
 
   @@map("user_preferences")
   @@schema("public")
