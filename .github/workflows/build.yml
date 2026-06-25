@@ -103,6 +103,19 @@ jobs:
             "${DMG_DIR}/ERD Builder Pro_${VERSION}_aarch64.dmg" \
             --volicon "src-tauri/icons/icon.icns"
 
+      - name: Sign DMG (ARM64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_PATH="src-tauri/target/release/bundle/dmg/ERD Builder Pro_${VERSION}_aarch64.dmg"
+          npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "$DMG_PATH"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
       - name: Rebuild better-sqlite3 for x86_64
         if: matrix.platform == 'macos'
         shell: bash
@@ -130,6 +143,19 @@ jobs:
             "${DMG_DIR}/ERD Builder Pro_${VERSION}_x86_64.dmg" \
             --volicon "src-tauri/icons/icon.icns"
 
+      - name: Sign DMG (x86_64)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_PATH="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ERD Builder Pro_${VERSION}_x86_64.dmg"
+          npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "$DMG_PATH"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
       - name: Rename and collect macOS DMGs + signatures
         if: matrix.platform == 'macos'
         shell: bash
@@ -140,15 +166,15 @@ jobs:
           # ARM64 DMG
           cp "src-tauri/target/release/bundle/dmg/ERD Builder Pro_${VERSION}_aarch64.dmg" \
              "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg"
-          if ls "src-tauri/target/release"/*.sig 2>/dev/null; then
-            cp "src-tauri/target/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
+          if ls "src-tauri/target/release/bundle/dmg/"*.sig 2>/dev/null; then
+            cp "src-tauri/target/release/bundle/dmg/"*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_aarch64.dmg.sig" 2>/dev/null || true
           fi
 
           # x86_64 DMG
           cp "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ERD Builder Pro_${VERSION}_x86_64.dmg" \
              "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg"
-          if ls "src-tauri/target/x86_64-apple-darwin/release"/*.sig 2>/dev/null; then
-            cp "src-tauri/target/x86_64-apple-darwin/release"/*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
+          if ls "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/"*.sig 2>/dev/null; then
+            cp "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/"*.sig "dmg-output/ERD-Builder-Pro_${VERSION}_x86_64.dmg.sig" 2>/dev/null || true
           fi
 
           echo "Collected DMGs to dmg-output/:"
