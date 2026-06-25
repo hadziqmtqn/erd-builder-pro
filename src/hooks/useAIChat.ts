@@ -9,6 +9,7 @@ import {
   fallbackSystemPrompt,
   buildTechnicalRules,
   fetchUserSystemPrompt,
+  buildViewInstruction,
   callAiStream,
   persistGuestMessages,
   persistGuestTitle,
@@ -350,6 +351,12 @@ export function useAIChat(
       apiMessages.push({ role: 'system', content: systemPrompt });
       apiMessages.push({ role: 'system', content: 'Always respond in the same language the user is communicating in.' });
       apiMessages.push({ role: 'system', content: buildTechnicalRules() });
+
+      // Dynamic view-specific instruction — tells AI what buttons exist
+      const viewInstruction = buildViewInstruction(viewType ?? null);
+      if (viewInstruction) {
+        apiMessages.push({ role: 'system', content: viewInstruction });
+      }
 
       // View-specific AI rules (per-view configurable instructions)
       if (viewType && !isGuest) {

@@ -17,7 +17,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Invalid JSON body" });
   }
 
-  const { messages, model, apiKey, baseUrl, userId } = body;
+  const { messages, model, apiKey, baseUrl, userId, providerCode } = body;
 
   if (!messages) {
     return res.status(400).json({ error: "Missing required fields: messages" });
@@ -26,6 +26,7 @@ export default async function handler(req: any, res: any) {
   let resolvedApiKey = apiKey;
   let resolvedBaseUrl = baseUrl;
   let resolvedModel = model;
+  let resolvedProviderCode = providerCode;
 
   // Guest/Online mode: resolve config from Supabase when no apiKey sent
   if (!resolvedApiKey) {
@@ -62,6 +63,7 @@ export default async function handler(req: any, res: any) {
     const config = configData[0];
     resolvedApiKey = config.api_key;
     resolvedBaseUrl = resolvedBaseUrl || config.ai_providers?.base_url || "https://api.openai.com/v1";
+    resolvedProviderCode = resolvedProviderCode || config.ai_providers?.code;
 
     if (!resolvedModel && config.selected_model_id) {
       const { data: modelData } = await supabase
@@ -76,8 +78,17 @@ export default async function handler(req: any, res: any) {
   const effectiveBaseUrl = resolvedBaseUrl || "https://api.openai.com/v1";
   const effectiveModel = resolvedModel || "gpt-4o-mini";
 
+  // Detect Gemini provider — route to OpenAI-compatible endpoint
+  const isGemini =
+    resolvedProviderCode === "gemini" ||
+    effectiveBaseUrl.includes("generativelanguage.googleapis.com");
+
+  const fetchUrl = isGemini
+    ? `${effectiveBaseUrl.replace(/\/+$/, "")}/openai/chat/completions`
+    : `${effectiveBaseUrl.replace(/\/+$/, "")}/chat/completions`;
+
   // Proxy to AI provider with SSE streaming
-  const providerRes = await fetch(`${effectiveBaseUrl}/chat/completions`, {
+  const providerRes = await fetch(fetchUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

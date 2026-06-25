@@ -1,4 +1,4 @@
-export { fallbackSystemPrompt, buildTechnicalRules, fetchUserSystemPrompt } from './buildSystemMessages';
+export { fallbackSystemPrompt, buildTechnicalRules, fetchUserSystemPrompt, buildViewInstruction } from './buildSystemMessages';
 export { resolveAiConfig } from './resolveAiConfig';
 export type { AiConfig } from './resolveAiConfig';
 export { callAiStream } from './callAiStream';

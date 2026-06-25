@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, Minimize2, PanelRightClose, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Sparkles, PanelRightClose, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ConfirmModal';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { SessionItem } from './SessionItem';
-import { MinimizedBar } from './MinimizedBar';
 import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
@@ -132,7 +131,6 @@ export const AIChatPanel = ({
   // Reset to page 1 on search change
   useEffect(() => { setSessionPage(1); }, [sessionSearch]);
 
-  const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
   // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
   const actions = currentViewType ? getActionsForView(currentViewType) : [];
 
@@ -171,33 +169,7 @@ export const AIChatPanel = ({
     inputRef.current?.focus();
   }, [entityType, entityContextText, entityTitle, actionContextData, activeActionId]);
 
-  // ─── Auto-minimize on click outside panel ──────────
-  useEffect(() => {
-    if (minimized || confirmOverwritePrompt) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('[role="alertdialog"]') ||
-        target.closest('[role="dialog"]') ||
-        target.closest('[role="menu"]') ||
-        target.closest('[data-slot="select-content"]') ||
-        target.closest('.fixed.inset-0') ||
-        target.closest('.ProseMirror') ||
-        target.closest('.tiptap-editor-content')
-      ) {
-        return;
-      }
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setMinimized(true);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [minimized, confirmOverwritePrompt]);
-
-  // ─── Handle close ──────────────────────────────────
+  const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
   const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -382,7 +354,7 @@ export const AIChatPanel = ({
       <div
         ref={panelRef}
         style={{ display: minimized ? 'none' : undefined }}
-        className="fixed right-4 top-20 bottom-4 w-[400px] z-50 flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl overflow-hidden animate-in slide-in-from-right-2 duration-300"
+        className="h-full flex flex-col bg-card text-card-foreground overflow-hidden"
       >
         {page === 'list' ? (
           <>
@@ -393,8 +365,8 @@ export const AIChatPanel = ({
                 <h3 className="text-sm font-semibold tracking-tight">AI Assistant</h3>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setMinimized(true)} title="Minimize panel">
-                  <Minimize2 className="size-3.5" />
+                <Button variant="ghost" size="icon" className="size-8" onClick={handleNewSession} title="New Chat">
+                  <Plus className="size-4" />
                 </Button>
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
                   <PanelRightClose className="size-3.5" />
@@ -404,11 +376,7 @@ export const AIChatPanel = ({
 
             {/* ── Session List Page ──────────────────── */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
-              <Button variant="outline" size="sm" className="w-full gap-2 h-8 text-xs border-dashed" onClick={handleNewSession}>
-                <Plus className="size-3.5" />
-                New Chat
-              </Button>
-
+              {/* Search — only when there are sessions */}
               {hasSessions && (
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/40" />
@@ -487,9 +455,6 @@ export const AIChatPanel = ({
                 <span className="text-sm font-medium truncate">{currentSession?.title || 'AI Assistant'}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setMinimized(true)} title="Minimize panel">
-                  <Minimize2 className="size-3.5" />
-                </Button>
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
                   <PanelRightClose className="size-3.5" />
                 </Button>
@@ -551,13 +516,6 @@ export const AIChatPanel = ({
           </>
         )}
       </div>
-
-      {minimized && (
-        <MinimizedBar
-          title={currentSession?.title || 'AI Assistant'}
-          onExpand={() => setMinimized(false)}
-        />
-      )}
 
       <ConfirmModal
         isOpen={!!confirmOverwritePrompt}
