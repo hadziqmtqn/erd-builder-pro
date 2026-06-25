@@ -170,7 +170,7 @@ export const GeneratedCodeModal = ({
                 variant="outline"
                 size="sm"
                 onClick={copyToClipboard}
-                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-[90px]"
+                className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-22.5"
               >
                 {copied ? (
                   <>

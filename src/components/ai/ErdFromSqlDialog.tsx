@@ -297,14 +297,14 @@ export function ErdFromSqlDialog({
                             </span>
                           )}
                         </label>
-                        <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
+                        <div className="rounded-lg border border-border/40 overflow-hidden max-h-75 overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed bg-muted/30">
                           <div className="divide-y divide-border/10">
                             {erdDiff.diffLines.map((line: any, li: number) => {
                               if (line.type === 'header') {
                                 return (
                                   <div key={li} className="flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border/30">
                                     {line.isNew && (
-                                      <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
+                                      <span className="text-[8px] font-semibold px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">NEW</span>
                                     )}
                                     <span className="text-[11px] font-semibold text-foreground">{line.tableName}</span>
                                   </div>
@@ -312,14 +312,14 @@ export function ErdFromSqlDialog({
                               }
                               const isAdd = line.type === 'add';
                               const isRemove = line.type === 'remove';
-                              const bg = isAdd ? 'bg-emerald-900/20' : isRemove ? 'bg-red-900/20' : '';
-                              const prefixColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400' : 'text-gray-600';
-                              const colNameColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-gray-300';
-                              const typeColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-gray-500';
-                              const pkColor = isAdd ? 'text-emerald-400' : isRemove ? 'text-red-400/70' : 'text-amber-400';
-                              const nulColor = isAdd ? 'text-emerald-400/50' : isRemove ? 'text-red-400/50' : 'text-gray-600';
+                              const bg = isAdd ? 'bg-emerald-500/5 dark:bg-emerald-900/20' : isRemove ? 'bg-red-500/5 dark:bg-red-900/20' : '';
+                              const prefixColor = isAdd ? 'text-emerald-600 dark:text-emerald-400' : isRemove ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground/40';
+                              const colNameColor = isAdd ? 'text-emerald-700 dark:text-emerald-300' : isRemove ? 'text-red-700 dark:text-red-400' : 'text-foreground';
+                              const typeColor = isAdd ? 'text-emerald-600/60 dark:text-emerald-400/60' : isRemove ? 'text-red-600/60 dark:text-red-400/60' : 'text-muted-foreground';
+                              const pkColor = isAdd ? 'text-emerald-600 dark:text-emerald-400' : isRemove ? 'text-red-600/70 dark:text-red-400/70' : 'text-amber-600 dark:text-amber-400';
+                              const nulColor = isAdd ? 'text-emerald-600/50 dark:text-emerald-400/50' : isRemove ? 'text-red-600/50 dark:text-red-400/50' : 'text-muted-foreground/50';
                               return (
-                                <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
+                                <div key={li} className={`flex items-center gap-1 px-3 py-0.5 ${bg}`}>
                                   <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
                                   {line.col.is_pk && <span className={pkColor}>PK</span>}
                                   <span className={colNameColor}>{line.col.name}</span>
@@ -343,7 +343,7 @@ export function ErdFromSqlDialog({
                   <label className="text-[11px] font-medium text-muted-foreground">
                     Tables ({erdParsed.nodes.length})
                   </label>
-                  <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
+                  <div className="max-h-75 overflow-y-auto custom-scrollbar space-y-2">
                     {erdParsed.nodes.map((node: any) => (
                       <div key={node.id} className="rounded-lg border border-border/40 bg-muted overflow-hidden">
                         <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-muted/50">
@@ -354,13 +354,13 @@ export function ErdFromSqlDialog({
                         <div className="divide-y divide-border/10">
                           {node.data.columns.map((col: any) => (
                             <div key={col.id} className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono">
-                              <div className="flex items-center gap-1 w-[60px] shrink-0">
-                                {col.is_pk && <span className="text-[8px] text-amber-400 font-semibold">PK</span>}
-                                {col._is_fk && <span className="text-[8px] text-blue-400 font-semibold">FK</span>}
+                              <div className="flex items-center gap-1 w-15 shrink-0">
+                                {col.is_pk && <span className="text-[8px] text-amber-600 dark:text-amber-400 font-semibold">PK</span>}
+                                {col._is_fk && <span className="text-[8px] text-blue-600 dark:text-blue-400 font-semibold">FK</span>}
                               </div>
-                              <span className="text-gray-200 min-w-[40px]">{col.name}</span>
-                              <span className="text-gray-500">{col.type}</span>
-                              {col.is_nullable && <span className="text-gray-600 text-[8px]">nullable</span>}
+                              <span className="text-foreground min-w-10">{col.name}</span>
+                              <span className="text-muted-foreground">{col.type}</span>
+                              {col.is_nullable && <span className="text-muted-foreground/50 text-[8px]">nullable</span>}
                             </div>
                           ))}
                         </div>

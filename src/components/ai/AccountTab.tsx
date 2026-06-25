@@ -183,15 +183,41 @@ export function AccountTab() {
       </div>
 
       {isReadOnly && (
-        <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 rounded-md flex items-start gap-2">
-          <Info className="size-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-blue-700 dark:text-blue-300">
-            Signed in via Supabase Auth. To change your name, email, or password, visit your Supabase dashboard or contact your administrator.
-          </p>
+        <div className="mb-6 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl flex items-start gap-3">
+          <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+            <Info className="size-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Supabase Account</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Your account is managed by Supabase Auth. Name, email, and password changes must be done through your authentication provider.
+            </p>
+          </div>
         </div>
       )}
 
-      {!isReadOnly && isTauriApp && (
+      {/* Read-only Supabase profile card */}
+      {isReadOnly ? (
+        <div className="rounded-xl border border-border/40 bg-muted/20 divide-y divide-border/20">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <User className="size-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Name</p>
+              <p className="text-sm font-medium text-foreground truncate">{name || '—'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Lock className="size-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Email</p>
+              <p className="text-sm text-foreground truncate">{email || '—'}</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+
+      {isTauriApp && (
         <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-start gap-2">
           <Info className="size-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -210,13 +236,13 @@ export function AccountTab() {
             id="account-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            disabled={isReadOnly || isSaving}
+            disabled={isSaving}
             placeholder="Your name"
             maxLength={255}
           />
         </Field>
 
-        {!isReadOnly && !isTauriApp && (
+        {!isTauriApp && (
           <>
             <Field>
               <FieldLabel htmlFor="account-email">Email</FieldLabel>
@@ -236,7 +262,7 @@ export function AccountTab() {
           </>
         )}
 
-        {!isReadOnly && !isTauriApp && (
+        {!isTauriApp && (
           <div className="border-t border-border/40 pt-6 mt-2">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -303,12 +329,11 @@ export function AccountTab() {
           </div>
         )}
 
-        {!isReadOnly && (
-          <div className="flex items-center gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-2">
             <Button
               onClick={handleSave}
-              disabled={isSaving || isReadOnly || !hasChanges}
-              className="min-w-[140px]"
+              disabled={isSaving || !hasChanges}
+              className="min-w-35"
             >
               {isSaving ? (
                 <>
@@ -326,8 +351,9 @@ export function AccountTab() {
               <span className="text-xs text-muted-foreground">You have unsaved changes</span>
             )}
           </div>
-        )}
       </FieldGroup>
+        </>
+      )}
     </div>
   );
 }
@@ -352,7 +378,7 @@ function GuestModeView() {
   return (
     <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full text-center space-y-8">
       {/* Info */}
-      <div className="space-y-3 max-w-[360px]">
+      <div className="space-y-3 max-w-90">
         <div className="p-4 bg-muted/20 rounded-full inline-flex mx-auto">
           <User className="size-8 text-muted-foreground/40" />
         </div>
