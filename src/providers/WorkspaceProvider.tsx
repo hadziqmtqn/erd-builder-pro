@@ -1258,7 +1258,7 @@ export function WorkspaceProvider({
 
       {/* ── Window size debug overlay: Ctrl+Shift+D ── */}
       {showWindowDebug && windowDimensions && (
-        <div className="fixed bottom-3 right-3 z-[9999] flex items-center gap-3 rounded-md bg-black/70 px-3 py-1.5 text-xs font-mono text-white/90 shadow-lg select-none">
+        <div className="fixed bottom-3 right-3 z-9999 flex items-center gap-3 rounded-md bg-black/70 px-3 py-1.5 text-xs font-mono text-white/90 shadow-lg select-none">
           <span className="tracking-wide">{windowDimensions.w}<span className="text-white/50 mx-0.5">×</span>{windowDimensions.h}</span>
         </div>
       )}

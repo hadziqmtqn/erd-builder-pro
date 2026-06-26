@@ -89,7 +89,7 @@ SERVER_PID=$!
 # Wait for server to be ready on port 3000
 echo "Waiting for server to accept connections..."
 for i in $(seq 1 90); do
-  if wget -q --spider http://localhost:3000/api/health 2>/dev/null; then
+  if wget -q --spider http://127.0.0.1:3000/api/health 2>/dev/null; then
     echo "Server is ready on port 3000"
     break
   fi
