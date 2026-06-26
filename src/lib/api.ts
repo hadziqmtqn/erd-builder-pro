@@ -3,8 +3,24 @@ function isTauri(): boolean {
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 }
 
+/** True when running inside an installed (production) Tauri app. */
+function isTauriProduction(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI__;
+}
+
+/**
+ * API Base URL — resolves based on environment:
+ * - Non-Tauri (web): relative (handled by vite proxy / reverse proxy)
+ * - Tauri dev: port 3100 (dev:desktop script uses 3100)
+ * - Tauri production: port 3099
+ */
+const TAURI_DEV_PORT = '3100';
+const TAURI_PROD_PORT = '3099';
+
 export const API_BASE_URL: string = import.meta.env.VITE_API_URL ||
-  (isTauri() ? 'http://localhost:3099' : '');
+  (isTauri()
+    ? `http://localhost:${isTauriProduction() ? TAURI_PROD_PORT : TAURI_DEV_PORT}`
+    : '');
 
 /** Storage key for the auth token (used in desktop/Tauri cross-origin mode). */
 export const AUTH_TOKEN_KEY = 'auth_token';

@@ -6,6 +6,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import * as drawingsService from "./service.js";
+import { getStorageClientForUser } from "../../lib/storage.js";
 
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
@@ -101,14 +102,17 @@ export async function permanentDelete(req: ExpressRequest, res: ExpressResponse)
     const drawing = await drawingsService.getDrawingForPermanentDelete(req.params.uid, userId);
     if (!drawing) { res.status(404).json({ error: "Drawing not found" }); return; }
 
-    // Clean up R2 images embedded in Excalidraw data
-    if (drawing.data && s3Client && R2_BUCKET_NAME) {
+    // Clean up storage images embedded in Excalidraw data
+    const userStorage = await getStorageClientForUser(userId, prisma);
+    const cleanupClient = userStorage?.client ?? s3Client;
+    const cleanupBucket = userStorage?.bucketName ?? R2_BUCKET_NAME;
+    if (drawing.data && cleanupClient && cleanupBucket) {
       const keys = drawingsService.extractR2KeysFromDrawingData(drawing.data);
       if (keys.length > 0) {
-        logger.info(`Deleting ${keys.length} images from R2 for drawing ${req.params.uid}`);
+        logger.info(`Deleting ${keys.length} images from storage for drawing ${req.params.uid}`);
         await Promise.all(keys.map(key =>
-          s3Client!.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
-            .catch(err => logger.error({ err }, `Failed to delete R2 object ${key}`))
+          cleanupClient!.send(new DeleteObjectCommand({ Bucket: cleanupBucket as string, Key: key }))
+            .catch(err => logger.error({ err }, `Failed to delete storage object ${key}`))
         ));
       }
     }

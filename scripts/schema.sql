@@ -186,7 +186,8 @@ CREATE TABLE "backups" (
     "status" TEXT NOT NULL DEFAULT 'pending',
     "file_path" TEXT,
     "file_size" INTEGER,
-    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
+    "destinations" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "backups_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 

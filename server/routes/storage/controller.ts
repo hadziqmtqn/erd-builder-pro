@@ -70,6 +70,53 @@ export async function getStorageConfig(req: Request, res: Response): Promise<voi
  * POST /api/storage/config
  * Saves storage configuration to the database.
  */
+/**
+ * Resolve masked credential values from existing DB config or env vars.
+ * Returns { accessKeyId, secretAccessKey } with real (unmasked) values.
+ */
+async function resolveCredentials(
+  userId: string | number,
+  accessKeyId: string,
+  secretAccessKey: string,
+): Promise<{ accessKeyId: string; secretAccessKey: string }> {
+  let resolvedSecretKey = secretAccessKey;
+  let resolvedAccessKey = accessKeyId;
+
+  // 1) Try existing DB record first
+  if (prisma) {
+    try {
+      const existing = await (prisma as any).userPreference.findUnique({
+        where: { userId },
+      });
+      if (existing?.storageConfig) {
+        const existingConfig: StorageConfig = JSON.parse(existing.storageConfig);
+        if (!secretAccessKey || secretAccessKey === "***") {
+          resolvedSecretKey = existingConfig.secretAccessKey;
+        }
+        if (!accessKeyId || accessKeyId.endsWith("***")) {
+          resolvedAccessKey = existingConfig.accessKeyId;
+        }
+      }
+    } catch {
+      // If parsing fails, use the provided values as-is
+    }
+  }
+
+  // 2) Fallback to env vars if still masked (first-time save from env)
+  if (
+    resolvedAccessKey.endsWith("***") ||
+    resolvedSecretKey === "***"
+  ) {
+    const envConfig = getEnvStorageConfig();
+    if (envConfig) {
+      if (resolvedAccessKey.endsWith("***")) resolvedAccessKey = envConfig.accessKeyId;
+      if (resolvedSecretKey === "***") resolvedSecretKey = envConfig.secretAccessKey;
+    }
+  }
+
+  return { accessKeyId: resolvedAccessKey, secretAccessKey: resolvedSecretKey };
+}
+
 export async function saveStorageConfig(req: Request, res: Response): Promise<void> {
   const userId = (req as any).user?.id;
   if (!userId) {
@@ -84,27 +131,10 @@ export async function saveStorageConfig(req: Request, res: Response): Promise<vo
 
   const { type, accountId, endpoint, region, accessKeyId, secretAccessKey, bucketName, publicUrl } = req.body;
 
-  // ── Resolve masked/empty secrets from existing config FIRST ──
-  let resolvedSecretKey = secretAccessKey;
-  let resolvedAccessKey = accessKeyId;
-
-  try {
-    const existing = await (prisma as any).userPreference.findUnique({
-      where: { userId },
-    });
-
-    if (existing?.storageConfig) {
-      const existingConfig: StorageConfig = JSON.parse(existing.storageConfig);
-      if (!secretAccessKey || secretAccessKey === "***") {
-        resolvedSecretKey = existingConfig.secretAccessKey;
-      }
-      if (!accessKeyId || accessKeyId.endsWith("***")) {
-        resolvedAccessKey = existingConfig.accessKeyId;
-      }
-    }
-  } catch {
-    // If parsing fails, use the provided values as-is
-  }
+  // ── Resolve masked/empty secrets from existing config or env vars ──
+  const resolved = await resolveCredentials(userId, accessKeyId || "", secretAccessKey || "");
+  let resolvedAccessKey = resolved.accessKeyId;
+  let resolvedSecretKey = resolved.secretAccessKey;
 
   // ── Validate required fields (on resolved values) ──
   if (!type || !["r2", "s3-compatible"].includes(type)) {
@@ -173,13 +203,14 @@ export async function testStorageConnectionHandler(req: Request, res: Response):
 
   let config: StorageConfig | null = null;
 
-  // Use provided config from request body
+  // Use provided config from request body (resolve masked credentials)
   if (req.body.type) {
+    const resolved = await resolveCredentials(userId, req.body.accessKeyId || "", req.body.secretAccessKey || "");
     config = {
       type: req.body.type,
       ...(req.body.type === "r2" ? { accountId: req.body.accountId } : { endpoint: req.body.endpoint, region: req.body.region || "us-east-1" }),
-      accessKeyId: req.body.accessKeyId,
-      secretAccessKey: req.body.secretAccessKey,
+      accessKeyId: resolved.accessKeyId,
+      secretAccessKey: resolved.secretAccessKey,
       bucketName: req.body.bucketName,
       ...(req.body.publicUrl ? { publicUrl: req.body.publicUrl } : {}),
     };

@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { unlink, readFile } from 'fs/promises';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { getStorageClientForUser } from '../lib/storage.js';
 
 type AutoBackupSettings = {
   enabled: boolean;
@@ -61,32 +62,42 @@ async function performAutoBackup(userId: string): Promise<void> {
 
     // 2. Execute local backup
     const { filePath, fileSize } = await createLocalBackup(backupId, userId);
-    await prisma?.backup.update({
-      where: { id: backupId },
-      data: { filePath, fileSize, status: 'completed' },
-    });
-
     lastBackupTime = now;
     logger.info({ backupId, fileSize }, 'Auto-backup: local completed');
 
-    // 3. Upload to R2 if configured
-    if (s3Client && R2_BUCKET_NAME) {
+    // Build destinations list — always 'local', add 'cloud' if upload succeeds
+    const destinations: string[] = ['local'];
+
+    // 3. Upload to object storage if configured
+    //    Resolve from DB user config first, fall back to env-var-based s3Client.
+    const userStorage = await getStorageClientForUser(userId, prisma);
+    const uploadClient = userStorage?.client ?? s3Client;
+    const uploadBucket = userStorage?.bucketName ?? R2_BUCKET_NAME;
+
+    if (uploadClient && uploadBucket) {
       try {
         const fileBuffer = await readFile(filePath);
         const key = `backups/${backupId}.sql.gz`;
-        await s3Client.send(
+        await uploadClient.send(
           new PutObjectCommand({
-            Bucket: R2_BUCKET_NAME,
+            Bucket: uploadBucket,
             Key: key,
             Body: fileBuffer,
             ContentType: 'application/gzip',
           })
         );
-        logger.info({ backupId, key }, 'Auto-backup: R2 upload completed');
+        destinations.push('cloud');
+        logger.info({ backupId, key }, 'Auto-backup: storage upload completed');
       } catch (r2Err: any) {
-        logger.error({ err: r2Err, backupId }, 'Auto-backup: R2 upload failed (local backup preserved)');
+        logger.error({ err: r2Err, backupId }, 'Auto-backup: storage upload failed (local backup preserved)');
       }
     }
+
+    // Update record with final status and destinations
+    await prisma?.backup.update({
+      where: { id: backupId },
+      data: { filePath, fileSize, status: 'completed', destinations: destinations.join(',') },
+    });
 
     // 4. Cleanup old backups exceeding retention
     await enforceRetention(userId, settings.retentionCount);

@@ -3,6 +3,7 @@ import { s3Client, R2_BUCKET_NAME } from "../../lib/config.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { randomUUID } from "crypto";
+import { getStorageClientForUser } from "../../lib/storage.js";
 
 // ── List ──
 
@@ -192,12 +193,15 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
     await prisma?.diagram.deleteMany({ where: { id: { in: diagramIds } } });
   }
 
-  // Clean up R2 images embedded in notes
+  // Clean up storage images embedded in notes
   const notes = await prisma?.note.findMany({
     where: { projectId, userId },
     select: { content: true },
   });
-  if (notes && notes.length > 0 && s3Client && R2_BUCKET_NAME) {
+  const userStorage = await getStorageClientForUser(userId, prisma);
+  const cleanupClient = userStorage?.client ?? s3Client;
+  const cleanupBucket = userStorage?.bucketName ?? R2_BUCKET_NAME;
+  if (notes && notes.length > 0 && cleanupClient && cleanupBucket) {
     for (const note of notes) {
       if (note.content) {
         const regex = /<img[^>]+src="([^">]+)"/g;
@@ -207,9 +211,9 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
           if (url.includes("erd-builder-pro/")) {
             const key = url.substring(url.indexOf("erd-builder-pro/"));
             try {
-              await s3Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+              await cleanupClient.send(new DeleteObjectCommand({ Bucket: cleanupBucket, Key: key }));
             } catch (err) {
-              logger.error({ err }, "Failed to delete image from R2 during project deletion:");
+              logger.error({ err }, "Failed to delete image from storage during project deletion:");
             }
           }
         }

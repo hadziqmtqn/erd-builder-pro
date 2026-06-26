@@ -6,6 +6,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import * as notesService from "./service.js";
+import { getStorageClientForUser } from "../../lib/storage.js";
 
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
@@ -101,12 +102,16 @@ export async function permanentDelete(req: ExpressRequest, res: ExpressResponse)
     const note = await notesService.getNoteForPermanentDelete(req.params.uid, userId);
     if (!note) { res.status(404).json({ error: "Note not found" }); return; }
 
-    // Clean up R2 images embedded in note content
-    if (note.content && s3Client && R2_BUCKET_NAME) {
+    // Clean up storage images embedded in note content
+    // Resolve client from DB config, fall back to env-var s3Client
+    const userStorage = await getStorageClientForUser(userId, prisma);
+    const cleanupClient = userStorage?.client ?? s3Client;
+    const cleanupBucket = userStorage?.bucketName ?? R2_BUCKET_NAME;
+    if (note.content && cleanupClient && cleanupBucket) {
       const keys = notesService.extractR2KeysFromContent(note.content);
       await Promise.all(keys.map(key =>
-        s3Client!.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }))
-          .catch(err => logger.error({ err }, "Failed to delete image from R2 during note deletion:"))
+        cleanupClient!.send(new DeleteObjectCommand({ Bucket: cleanupBucket as string, Key: key }))
+          .catch(err => logger.error({ err }, "Failed to delete image from storage during note deletion:"))
       ));
     }
 
