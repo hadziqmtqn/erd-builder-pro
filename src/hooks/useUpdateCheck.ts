@@ -167,10 +167,25 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
 
       setIsDownloading(false);
     } catch (error: any) {
-      console.error('Update failed:', error);
-      toast.error('Pembaruan gagal', {
+      // Extract the real error message — the updater plugin may throw
+      // strings, raw objects, or Error instances with varying shapes.
+      const detail =
+        typeof error === 'string'
+          ? error
+          : error?.message
+            ? error.message
+            : error?.toString
+              ? error.toString()
+              : JSON.stringify(error);
+      console.error('Update download/install failed:', error);
+      toast.error('Update failed', {
         id: toastId,
-        description: error.message || 'Terjadi kesalahan saat mengunduh pembaruan.',
+        description: detail || 'An error occurred while downloading the update.',
+        duration: 12000,
+        action: {
+          label: 'Copy Error',
+          onClick: () => navigator.clipboard.writeText(detail).catch(() => {}),
+        },
       });
       setIsDownloading(false);
     }

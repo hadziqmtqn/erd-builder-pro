@@ -100,10 +100,18 @@ pub fn run() {
                 handle.set_menu(menu)?;
             }
 
-            if cfg!(debug_assertions) {
+            // Enable logging to disk — level depends on build profile.
+            // Release: warn+ only (errors from updater, server, etc.).
+            // Debug:   info+ (full diagnostics visible in Console.app).
+            {
+                let level = if cfg!(debug_assertions) {
+                    log::LevelFilter::Info
+                } else {
+                    log::LevelFilter::Warn
+                };
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
+                        .level(level)
                         .build(),
                 )?;
             }
