@@ -20,15 +20,15 @@ export function AccountTab() {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
-  // Detect if running in Tauri (desktop app) - client-side detection
-  const isTauriApp = typeof window !== 'undefined' && 
-    !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
-
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
+
+  // Dual detection: server primary + client fallback for tauri dev edge cases
+  const isTauriClient = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -73,9 +73,19 @@ export function AccountTab() {
   }
 
   const isReadOnly = config.supabaseAuth;
+  // config.isDesktop may be false in tauri dev (frontend runs in regular browser
+  // without Tauri IPC). Dual detection: server config + client-side Tauri flags.
+  const isDesktop = config.isDesktop || isTauriClient;
+  const supportsPasswordUpdate = !config.supabaseAuth && !isDesktop;
 
-  const hasChanges = isTauriApp
-    ? name !== (user.user_metadata?.name || user.user_metadata?.full_name || '')
+  // Web local auth mode (non-desktop): allow name, email changes freely.
+  // Current password only required when changing password.
+  const wantsEmailChange = email !== (user.email || '');
+  const wantsPasswordChange = newPassword.length > 0;
+
+  const hasChanges = isDesktop
+    ? name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
+      email !== (user.email || '')
     : name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
       email !== (user.email || '') ||
       newPassword.length > 0;
@@ -87,21 +97,27 @@ export function AccountTab() {
       return;
     }
     
-    // Desktop app (Tauri): only allow name changes
-    if (isTauriApp) {
+    // Desktop app (Tauri): allow name and email changes
+    if (isDesktop) {
       const newName = name.trim();
       const oldName = (user.user_metadata?.name || user.user_metadata?.full_name || '').trim();
-      if (newName === oldName) {
+      const newEmail = email.trim();
+      const oldEmail = (user.email || '').trim();
+      if (newName === oldName && newEmail === oldEmail) {
         toast.info('No changes to save');
         return;
       }
       
       setIsSaving(true);
       try {
+        const payload: Record<string, string> = {};
+        if (newName && newName !== oldName) payload.name = newName;
+        if (newEmail && newEmail !== oldEmail) payload.email = newEmail;
+
         const res = await apiFetch('/api/account', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName }),
+          body: JSON.stringify(payload),
         });
 
         if (!res.ok) {
@@ -114,7 +130,7 @@ export function AccountTab() {
           setUser(data.user);
         }
 
-        toast.success('Account name updated successfully');
+        toast.success('Account updated successfully');
       } catch (err: any) {
         toast.error(err.message || 'Failed to update account');
       } finally {
@@ -123,11 +139,10 @@ export function AccountTab() {
       return;
     }
     
-    // Web local auth mode: allow name, email, password changes
-    const wantsEmailChange = email !== (user.email || '');
-    const wantsPasswordChange = newPassword.length > 0;
-    if ((wantsEmailChange || wantsPasswordChange) && !currentPassword) {
-      toast.error('Current password is required to change email or password');
+    // Web local auth mode (non-desktop): allow name, email changes freely.
+    // Current password only required when changing password.
+    if (!isDesktop && wantsPasswordChange && !currentPassword) {
+      toast.error('Current password is required to change your password');
       return;
     }
 
@@ -176,8 +191,8 @@ export function AccountTab() {
         <p className="text-sm text-muted-foreground mt-1">
           {isReadOnly
             ? 'Your account is managed by your authentication provider.'
-            : isTauriApp
-            ? 'Update your account name. Email and password are fixed at install time.'
+            : isDesktop
+            ? 'Update your account name and email.'
             : 'Update your profile information. Changes are saved to your local profile.'}
         </p>
       </div>
@@ -217,11 +232,11 @@ export function AccountTab() {
       ) : (
         <>
 
-      {isTauriApp && (
+      {isDesktop && (
         <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md flex items-start gap-2">
           <Info className="size-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-700 dark:text-amber-300">
-            Desktop mode: only account name can be updated. Email and password are configured during installation.
+            Desktop mode: only account name and email can be updated. Password is configured during installation.
           </p>
         </div>
       )}
@@ -242,27 +257,25 @@ export function AccountTab() {
           />
         </Field>
 
-        {!isTauriApp && (
-          <>
-            <Field>
-              <FieldLabel htmlFor="account-email">Email</FieldLabel>
-              <Input
-                id="account-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isSaving}
-                placeholder="you@example.com"
-                maxLength={255}
-              />
-              <FieldDescription>
-                Changing your email requires your current password
-              </FieldDescription>
-            </Field>
-          </>
-        )}
+        <Field>
+          <FieldLabel htmlFor="account-email">Email</FieldLabel>
+          <Input
+            id="account-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isSaving}
+            placeholder="you@example.com"
+            maxLength={255}
+          />
+          {!isDesktop && (
+            <FieldDescription>
+              Use the Change Password section below if you want to update your password.
+            </FieldDescription>
+          )}
+        </Field>
 
-        {!isTauriApp && (
+        {!isDesktop && (
           <div className="border-t border-border/40 pt-6 mt-2">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -271,7 +284,7 @@ export function AccountTab() {
                   Change Password
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {config.supportsPasswordUpdate
+                  {supportsPasswordUpdate
                     ? 'Enter your current password and a new password to update.'
                     : 'Password changes are not available in this mode.'}
                 </p>
@@ -281,7 +294,7 @@ export function AccountTab() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowPasswords((v) => !v)}
-                disabled={!config.supportsPasswordUpdate}
+                disabled={!supportsPasswordUpdate}
                 className="text-xs"
               >
                 {showPasswords ? <EyeOff className="size-3.5 mr-1" /> : <Eye className="size-3.5 mr-1" />}
@@ -300,7 +313,7 @@ export function AccountTab() {
                   type={showPasswords ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  disabled={!config.supportsPasswordUpdate || isSaving}
+                  disabled={!supportsPasswordUpdate || isSaving}
                   placeholder="••••••••"
                   autoComplete="current-password"
                 />
@@ -313,13 +326,13 @@ export function AccountTab() {
                   type={showPasswords ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  disabled={!config.supportsPasswordUpdate || isSaving}
+                  disabled={!supportsPasswordUpdate || isSaving}
                   placeholder="At least 6 characters"
                   autoComplete="new-password"
                   minLength={6}
                   maxLength={128}
                 />
-                {!config.supportsPasswordUpdate && (
+                {!supportsPasswordUpdate && (
                   <FieldDescription>
                     Password update is disabled in this build.
                   </FieldDescription>

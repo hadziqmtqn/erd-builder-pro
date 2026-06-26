@@ -1,16 +1,25 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+
+async function getVersion(): Promise<string> {
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    return await getVersion();
+  } catch {
+    return '0.0.0';
+  }
+}
 
 export function AboutDialog({
   open,
   onOpenChange,
-  hasUpdate = false,
-  latestVersion = null,
-  isChecking = false,
-  onCheckUpdate = () => {},
-  onDownload = () => {},
+  hasUpdate: hasUpdateProp = false,
+  latestVersion: latestVersionProp = null,
+  isChecking: isCheckingProp = false,
+  onCheckUpdate: onCheckUpdateProp,
+  onDownload: onDownloadProp,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -24,16 +33,117 @@ export function AboutDialog({
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
   const [appVersion, setAppVersion] = useState('...');
 
+  // Local check state (when props are not provided — e.g. App.tsx)
+  const [localHasUpdate, setLocalHasUpdate] = useState(false);
+  const [localLatestVersion, setLocalLatestVersion] = useState<string | null>(null);
+  const [localIsChecking, setLocalIsChecking] = useState(false);
+  const [localUpdateObj, setLocalUpdateObj] = useState<any>(null);
+
+  // Props take priority if provided (nav-user.tsx path), otherwise use local
+  const hasUpdate = hasUpdateProp || localHasUpdate;
+  const latestVersion = latestVersionProp || localLatestVersion;
+  const isChecking = isCheckingProp || localIsChecking;
+
   useEffect(() => {
     if (isTauri) {
-      import('@tauri-apps/api/app').then(({ getVersion }) =>
-        getVersion().then(setAppVersion)
-      ).catch(() => setAppVersion('0.0.0'));
+      getVersion().then(setAppVersion);
     } else {
-      // Fallback for browser: try reading from meta or package
       setAppVersion('2.2.1');
     }
   }, [isTauri]);
+
+  // Auto-check whenever dialog opens
+  useEffect(() => {
+    if (!open || !isTauri) return;
+    // If parent provides onCheckUpdate, trigger it
+    if (onCheckUpdateProp) {
+      onCheckUpdateProp();
+      return;
+    }
+    if (onDownloadProp) return;
+
+    setLocalIsChecking(true);
+    let cancelled = false;
+
+    const doCheck = async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const result = await check();
+        if (cancelled) return;
+        if (result) {
+          setLocalHasUpdate(true);
+          setLocalLatestVersion(result.version);
+          setLocalUpdateObj(result);
+        } else {
+          setLocalHasUpdate(false);
+          setLocalLatestVersion(null);
+          setLocalUpdateObj(null);
+        }
+      } catch {
+        // silent — check failed
+      } finally {
+        if (!cancelled) setLocalIsChecking(false);
+      }
+    };
+
+    doCheck();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isTauri]);
+
+  const handleDownload = useCallback(() => {
+    if (onDownloadProp) {
+      onDownloadProp();
+    } else if (localUpdateObj) {
+      // Inline download for App.tsx path
+      import('@tauri-apps/plugin-updater').then(({ check }) => {
+        // localUpdateObj already has downloadAndInstall
+        localUpdateObj.downloadAndInstall(() => {}).catch(() => {});
+      });
+    }
+  }, [onDownloadProp, localUpdateObj]);
+
+  const handleCheckUpdate = useCallback(() => {
+    if (onCheckUpdateProp) {
+      onCheckUpdateProp();
+      return;
+    }
+    // Re-trigger local check
+    setLocalIsChecking(true);
+    setLocalHasUpdate(false);
+    setLocalLatestVersion(null);
+
+    const doCheck = async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const result = await check();
+        if (result) {
+          setLocalHasUpdate(true);
+          setLocalLatestVersion(result.version);
+          setLocalUpdateObj(result);
+        } else {
+          setLocalHasUpdate(false);
+          setLocalLatestVersion(null);
+          setLocalUpdateObj(null);
+        }
+      } catch {
+        // silent
+      } finally {
+        setLocalIsChecking(false);
+      }
+    };
+    doCheck();
+  }, [onCheckUpdateProp]);
+
+  // Reset local state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setLocalHasUpdate(false);
+      setLocalLatestVersion(null);
+      setLocalIsChecking(false);
+      setLocalUpdateObj(null);
+    }
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -64,7 +174,7 @@ export function AboutDialog({
           </div>
 
           {/* Description */}
-          <p className="text-xs text-center text-muted-foreground max-w-[240px] leading-relaxed">
+          <p className="text-xs text-center text-muted-foreground max-w-60 leading-relaxed">
             Entity-Relationship Diagram builder, flowcharts, notes, and AI-powered
             assistance — all in one desktop app.
           </p>
@@ -89,7 +199,7 @@ export function AboutDialog({
                     variant="default"
                     size="sm"
                     className="h-8 text-xs gap-1.5"
-                    onClick={onDownload}
+                    onClick={handleDownload}
                   >
                     <Download className="size-3.5" />
                     Download Update
@@ -105,7 +215,7 @@ export function AboutDialog({
                     variant="ghost"
                     size="sm"
                     className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
-                    onClick={onCheckUpdate}
+                    onClick={handleCheckUpdate}
                   >
                     <RefreshCw className="size-3" />
                     Check Again

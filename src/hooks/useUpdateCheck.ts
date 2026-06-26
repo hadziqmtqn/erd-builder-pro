@@ -1,17 +1,47 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
 
-export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: boolean) {
+const DISMISS_KEY = 'erd-update-dismissed-version';
+
+export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: boolean, skipEvent?: boolean) {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [update, setUpdate] = useState<any>(null);
 
+  // Use ref for onUpdateAvailable to avoid re-creating performCheck on every render
+  const onUpdateAvailableRef = useRef(onUpdateAvailable);
+  onUpdateAvailableRef.current = onUpdateAvailable;
+
+  // Guard: prevent concurrent checks (manual or auto)
+  const checkingRef = useRef(false);
+
+  // Guard: avoid duplicate auto-check toasts if the same version was already seen
+  const toastShownForVersion = useRef<string | null>(null);
+
+  const markVersionSeen = useCallback((version: string) => {
+    toastShownForVersion.current = version;
+  }, []);
+
+  const isVersionDismissed = useCallback((version: string) => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(DISMISS_KEY) === version;
+  }, []);
+
+  const dismissVersion = useCallback((version: string) => {
+    localStorage.setItem(DISMISS_KEY, version);
+  }, []);
+
   const performCheck = useCallback(async (isManual = false) => {
     // Only run in Tauri environment
-    if (!(window as any).__TAURI__) return false;
+    const isTauri = !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
+    if (!isTauri) return false;
+
+    // Guard: prevent concurrent checks
+    if (checkingRef.current) return false;
+    checkingRef.current = true;
 
     setIsChecking(true);
 
@@ -40,6 +70,14 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
         setUpdate(result);
 
         if (toastId) toast.dismiss(toastId);
+
+        // Auto-check: don't spam — show once per version, respect dismiss
+        if (!isManual) {
+          if (toastShownForVersion.current === result.version) return true;
+          if (isVersionDismissed(result.version)) return true;
+          toastShownForVersion.current = result.version;
+        }
+
         toast.info('Update Available', {
           description: `New version (v${result.version}) is ready.`,
           duration: Infinity,
@@ -47,8 +85,12 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
             label: 'Update Now',
             onClick: () => handleDownloadUpdate(result),
           },
+          cancel: {
+            label: 'Later',
+            onClick: () => dismissVersion(result.version),
+          },
         });
-        onUpdateAvailable?.();
+        onUpdateAvailableRef.current?.();
         return true;
       } else {
         setHasUpdate(false);
@@ -73,22 +115,9 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
       return false;
     } finally {
       setIsChecking(false);
+      checkingRef.current = false;
     }
-  }, [onUpdateAvailable]);
-
-  // Auto-check 5 seconds after mount
-  useEffect(() => {
-    if (skipAutoCheck) return;
-    const timer = setTimeout(performCheck, 5000);
-    return () => clearTimeout(timer);
-  }, [performCheck, skipAutoCheck]);
-
-  // Listen for menu-check-update event (from macOS menu / App.tsx)
-  useEffect(() => {
-    const handler = () => performCheck(true);
-    window.addEventListener('menu-check-update', handler);
-    return () => window.removeEventListener('menu-check-update', handler);
-  }, [performCheck]);
+  }, [isVersionDismissed]); // stable — only depends on stable functions
 
   const handleDownloadUpdate = useCallback(async (u: any) => {
     if (isDownloading) return;
@@ -127,7 +156,8 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
               action: {
                 label: 'Tutup Aplikasi',
                 onClick: () => {
-                  (window as any).__TAURI__.app.exit();
+                  const tauriApi = (window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__;
+                  if (tauriApi?.app?.exit) tauriApi.app.exit();
                 },
               },
             });
@@ -150,7 +180,30 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
     if (update) handleDownloadUpdate(update);
   }, [update, handleDownloadUpdate]);
 
-  return { hasUpdate, latestVersion, isChecking, isDownloading, checkNow: () => performCheck(true), handleDownload };
+  // Stable refs for checkNow to avoid re-triggering effects
+  const performCheckRef = useRef(performCheck);
+  performCheckRef.current = performCheck;
+
+  const checkNow = useCallback(() => {
+    performCheckRef.current(true);
+  }, []);
+
+  // Auto-check 5 seconds after mount (once)
+  useEffect(() => {
+    if (skipAutoCheck) return;
+    const timer = setTimeout(() => performCheckRef.current(false), 5000);
+    return () => clearTimeout(timer);
+  }, [skipAutoCheck]); // stable — only depends on skipAutoCheck
+
+  // Listen for menu-check-update event (from macOS menu / App.tsx)
+  useEffect(() => {
+    if (skipEvent) return;
+    const handler = () => performCheckRef.current(true);
+    window.addEventListener('menu-check-update', handler);
+    return () => window.removeEventListener('menu-check-update', handler);
+  }, [skipEvent]); // stable — only depends on skipEvent
+
+  return { hasUpdate, latestVersion, isChecking, isDownloading, checkNow, handleDownload };
 }
 
 function formatBytes(bytes: number): string {

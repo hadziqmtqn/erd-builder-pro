@@ -184,8 +184,9 @@ if (isProd) {
   }
 }
 
-const server = app.listen(PORT, "127.0.0.1", () => {
-  console.log(`Server running on http://localhost:${PORT} [${isProd ? "production" : "development"}]`);
+const HOST = process.env.HOST || (isDesktopMode() ? "127.0.0.1" : "0.0.0.0");
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT} [${isProd ? "production" : "development"}]`);
 });
 
 server.on('error', (err: NodeJS.ErrnoException) => {
