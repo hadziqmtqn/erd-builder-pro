@@ -164,7 +164,7 @@ export function SettingsModal() {
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-      <DialogContent className="overflow-hidden p-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[950px] bg-background border-border/40 shadow-2xl">
+      <DialogContent className="overflow-hidden p-0 md:max-h-150 md:max-w-175 lg:max-w-237.5 bg-background border-border/40 shadow-2xl">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your application settings and AI configuration.
@@ -172,7 +172,7 @@ export function SettingsModal() {
         
         <SidebarProvider className="items-start min-h-0! h-full">
           {/* Sidebar */}
-          <Sidebar collapsible="none" className="w-[220px] border-r border-border/40 bg-muted/5 hidden md:flex h-full">
+          <Sidebar collapsible="none" className="w-55 border-r border-border/40 bg-muted/5 hidden md:flex h-full">
             <SidebarContent className="pt-4 px-2 pb-0">
               <div className="px-4 py-2 mb-2">
                 <h2 className="text-sm font-bold flex items-center gap-2">
@@ -212,7 +212,7 @@ export function SettingsModal() {
           </Sidebar>
 
           {/* Main Content Area */}
-          <main className="flex-1 flex flex-col h-[600px] overflow-hidden">
+          <main className="flex-1 flex flex-col h-150 overflow-hidden">
             <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/40 px-6 backdrop-blur-sm">
               <div className="flex items-center gap-2 flex-1">
                 <Breadcrumb className="hidden md:flex">

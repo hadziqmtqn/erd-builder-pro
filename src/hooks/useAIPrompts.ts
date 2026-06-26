@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { AISystemPrompt } from '@/types';
@@ -6,19 +6,21 @@ import { toast } from 'sonner';
 
 export const useAIPrompts = () => {
   const { user, isGuest } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
   const [prompts, setPrompts] = useState<AISystemPrompt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const fetchPromptsData = useCallback(async () => {
-    if (!user || isGuest) return;
+    if (!userRef.current || isGuest) return;
     try {
       const res = await apiFetch('/api/ai/settings/prompts');
       if (!res.ok) return;
       const promptData: AISystemPrompt[] = await res.json();
       setPrompts(promptData);
     } catch {}
-  }, [user, isGuest]);
+  }, [isGuest]);
 
   useEffect(() => {
     setIsLoading(false);

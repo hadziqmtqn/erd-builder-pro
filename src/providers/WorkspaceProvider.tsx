@@ -549,8 +549,8 @@ export function WorkspaceProvider({
     if (activeDocument) handleExportImage(activeFileName || 'Untitled');
   }, [activeDocument, activeFileName, handleExportImage]);
 
-  // Update check
-  useUpdateCheck(() => handleViewChange('changelog'));
+  // Update check — auto-check once on mount, silent (no auto-open), skip menu event (nav-user handles it)
+  useUpdateCheck(undefined, false, true);
 
   // ── Side Effects ──
   // PWA install toast + public doc detection

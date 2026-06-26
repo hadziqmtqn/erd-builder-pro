@@ -193,11 +193,12 @@ export async function updateLocalAccount(
   const user = await prisma.user.findFirst({ where: { id: userId } as any });
   if (!user) return { notFound: true };
 
-  // If changing email or password, require verified current password
-  const requiresCurrentPassword = !!(data.email || data.newPassword);
+  // If changing password, require verified current password.
+  // Name and email changes don't require current password.
+  const requiresCurrentPassword = !isDesktopMode() && !!data.newPassword;
   if (requiresCurrentPassword) {
     if (!data.currentPassword) {
-      return { error: "Current password is required to change email or password" };
+      return { error: "Current password is required to change your password" };
     }
     const storedPassword = (user as any).password || (user as any).encrypted_password || "";
     if (!verifyPassword(data.currentPassword, storedPassword)) {

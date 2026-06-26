@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { AIModel } from '@/types';
@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 
 export const useAIModels = () => {
   const { user, isGuest } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
   const [models, setModels] = useState<Record<string, AIModel[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -17,7 +19,7 @@ export const useAIModels = () => {
   });
 
   const fetchModelsData = useCallback(async () => {
-    if (!user || isGuest) return;
+    if (!userRef.current || isGuest) return;
     try {
       const res = await apiFetch('/api/ai/settings/models');
       if (!res.ok) return;
@@ -29,7 +31,7 @@ export const useAIModels = () => {
       });
       setModels(modelMap);
     } catch {}
-  }, [user, isGuest]);
+  }, [isGuest]);
 
   useEffect(() => {
     setIsLoading(false);
