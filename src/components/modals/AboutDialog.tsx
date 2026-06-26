@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import { Button } from '@/components/ui/button';
 import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 
 async function getVersion(): Promise<string> {
   try {
@@ -95,10 +96,21 @@ export function AboutDialog({
     if (onDownloadProp) {
       onDownloadProp();
     } else if (localUpdateObj) {
-      // Inline download for App.tsx path
-      import('@tauri-apps/plugin-updater').then(({ check }) => {
-        // localUpdateObj already has downloadAndInstall
-        localUpdateObj.downloadAndInstall(() => {}).catch(() => {});
+      localUpdateObj.downloadAndInstall(() => {}).catch((err: unknown) => {
+        const detail =
+          typeof err === 'string'
+            ? err
+            : (err as any)?.message
+              ? (err as any).message
+              : JSON.stringify(err);
+        toast.error('Update failed', {
+          description: detail || 'An error occurred while downloading the update.',
+          duration: 12000,
+          action: {
+            label: 'Copy Error',
+            onClick: () => navigator.clipboard.writeText(detail).catch(() => {}),
+          },
+        });
       });
     }
   }, [onDownloadProp, localUpdateObj]);
