@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, scryptSync } from "node:crypto";
 import app from "./index.js";
 import { backfillUids } from "./lib/startup-migration.js";
+import { applySchemaMigrations } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
@@ -241,6 +242,9 @@ async function startup(): Promise<void> {
     }
 
     backfillUids().catch(err => logger.warn({ err }, "backfillUids failed (non-fatal)"));
+
+    // Apply incremental schema migrations (add new columns, etc.)
+    applySchemaMigrations().catch(err => logger.warn({ err }, "applySchemaMigrations failed (non-fatal)"));
   } else {
     logger.error("[startup] Database NOT ready. prisma is likely null (better-sqlite3 ABI mismatch). /api/me will return db_error.");
     setDbError("better-sqlite3 native addon failed to load. See server-startup.log for details.");

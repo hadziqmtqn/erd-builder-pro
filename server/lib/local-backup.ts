@@ -329,6 +329,7 @@ export async function restoreLocalBackup(
         filePath: autoBackupResult.filePath,
         fileSize: autoBackupResult.fileSize,
         status: "completed",
+        destinations: "local",
       },
     });
   } catch (err: any) {

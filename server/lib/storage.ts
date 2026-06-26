@@ -245,3 +245,32 @@ export function getEnvStorageConfig(): StorageConfig | null {
 
   return null;
 }
+
+/**
+ * Resolve S3 client + bucket from a user's DB-stored storage config.
+ * Returns null if user has no configured storage.
+ * Caller must ensure `prisma` is available.
+ */
+export async function getStorageClientForUser(
+  userId: string | number,
+  prisma: any,
+): Promise<{ client: S3Client; bucketName: string } | null> {
+  try {
+    const pref = await (prisma as any).userPreference.findUnique({
+      where: { userId },
+      select: { storageConfig: true },
+    });
+    if (pref?.storageConfig) {
+      const parsed: StorageConfig = JSON.parse(pref.storageConfig);
+      if (parsed.accessKeyId && parsed.secretAccessKey && parsed.bucketName) {
+        return {
+          client: buildS3Client(parsed),
+          bucketName: parsed.bucketName,
+        };
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return null;
+}

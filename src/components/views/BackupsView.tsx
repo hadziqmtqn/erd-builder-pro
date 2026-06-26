@@ -51,6 +51,7 @@ interface BackupRecord {
   created_at: string;
   status: 'pending' | 'completed' | 'failed';
   file_size: number | null;
+  destinations: string | null;
 }
 
 interface BackupFolderSettings {
@@ -630,6 +631,7 @@ export const BackupsView = () => {
                     <TableHead className="pl-6">Backup Name</TableHead>
                     <TableHead className="text-center">Size</TableHead>
                     <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-center">Destinations</TableHead>
                     <TableHead className="text-center">Date</TableHead>
                     <TableHead className="text-right pr-6">Action</TableHead>
                   </TableRow>
@@ -664,6 +666,23 @@ export const BackupsView = () => {
                             <XCircle className="w-3 h-3" />
                             Failed
                           </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {backup.destinations ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            {backup.destinations.split(',').map(d => (
+                              <Badge key={d} variant="outline" className={`text-[10px] h-5 px-1.5 gap-1 ${
+                                d === 'cloud'
+                                  ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                  : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                              }`}>
+                                {d === 'cloud' ? 'Cloud' : 'Local'}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center text-xs text-muted-foreground">

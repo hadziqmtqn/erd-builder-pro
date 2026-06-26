@@ -1,6 +1,6 @@
 import { GITHUB_TOKEN, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, s3Client, R2_BUCKET_NAME, useLocalAuth } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client as S3ClientType } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import {
   createLocalBackup,
@@ -13,6 +13,7 @@ import {
 import { createReadStream } from "fs";
 import { access, readFile, stat } from "fs/promises";
 import path from "path";
+import { getStorageClientForUser } from "../../lib/storage.js";
 
 // ── Folder Settings ──
 
@@ -124,17 +125,19 @@ export async function streamLocalFile(filePath: string, userId: string, name: st
   });
 }
 
-export async function streamR2File(key: string, name: string, res: any) {
-  if (!s3Client || !R2_BUCKET_NAME) {
+export async function streamR2File(key: string, name: string, res: any, overrides?: { client: S3ClientType; bucketName: string }) {
+  const client = overrides?.client ?? s3Client;
+  const bucket = overrides?.bucketName ?? R2_BUCKET_NAME;
+  if (!client || !bucket) {
     throw new Error("Storage is not configured on the server");
   }
 
   const command = new GetObjectCommand({
-    Bucket: R2_BUCKET_NAME,
+    Bucket: bucket,
     Key: key,
   });
 
-  const response = await s3Client.send(command);
+  const response = await client.send(command);
 
   res.setHeader("Content-Disposition", `attachment; filename="${name}.sql.gz"`);
   res.setHeader("Content-Type", "application/gzip");
@@ -154,30 +157,48 @@ export async function executeLocalBackup(backupId: string, userId: string) {
   logger.info({ backupId, mode: "local" }, "Starting local backup process");
   try {
     const { filePath, fileSize } = await createLocalBackup(backupId, userId);
-    await prisma?.backup.update({
-      where: { id: backupId },
-      data: { filePath, fileSize, status: "completed" },
-    });
     logger.info({ backupId, filePath, fileSize }, "Local backup completed");
 
-    // Upload to R2 if configured — non-blocking (failure doesn't fail the backup)
-    if (s3Client && R2_BUCKET_NAME) {
+    // Build destinations list — always 'local', add 'cloud' if upload succeeds
+    const destinations: string[] = ['local'];
+
+    // Upload to storage if configured — resolves from DB config, falls back to env vars
+    let uploadClient: S3ClientType | null = null;
+    let uploadBucket: string | null = null;
+
+    const userStorage = await getStorageClientForUser(userId, prisma);
+    if (userStorage) {
+      uploadClient = userStorage.client;
+      uploadBucket = userStorage.bucketName;
+    } else if (s3Client && R2_BUCKET_NAME) {
+      uploadClient = s3Client;
+      uploadBucket = R2_BUCKET_NAME;
+    }
+
+    if (uploadClient && uploadBucket) {
       const r2Key = `backups/${backupId}.sql.gz`;
       try {
         const fileBuffer = await readFile(filePath);
-        await s3Client.send(
+        await uploadClient.send(
           new PutObjectCommand({
-            Bucket: R2_BUCKET_NAME,
+            Bucket: uploadBucket,
             Key: r2Key,
             Body: fileBuffer,
             ContentType: "application/gzip",
           })
         );
-        logger.info({ backupId, key: r2Key }, "R2 upload completed");
+        destinations.push('cloud');
+        logger.info({ backupId, key: r2Key }, "Storage upload completed");
       } catch (r2Err: any) {
-        logger.error({ err: r2Err, backupId }, "R2 upload failed (local backup preserved)");
+        logger.error({ err: r2Err, backupId }, "Storage upload failed (local backup preserved)");
       }
     }
+
+    // Update record with final status and destinations
+    await prisma?.backup.update({
+      where: { id: backupId },
+      data: { filePath, fileSize, status: "completed", destinations: destinations.join(',') },
+    });
   } catch (error: any) {
     logger.error({ err: error, backupId }, "Local backup failed");
     await prisma?.backup.update({

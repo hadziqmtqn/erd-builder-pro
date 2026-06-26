@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { s3Client, R2_BUCKET_NAME } from "../../lib/config.js";
 import * as backupsService from "./service.js";
 import { z } from "zod";
+import { getStorageClientForUser } from "../../lib/storage.js";
 
 const folderSchema = z.object({
   folder: z.string().min(1).max(1024).nullable(),
@@ -72,14 +73,17 @@ export async function download(req: ExpressRequest, res: ExpressResponse): Promi
       return;
     }
 
-    // If R2 configured, try streaming from R2 first (hybrid: local + cloud)
-    if (s3Client && R2_BUCKET_NAME) {
+    // If storage configured, try streaming from storage first (hybrid: local + cloud)
+    const userStorage = await getStorageClientForUser(userId, prisma);
+    const storageClient = userStorage?.client ?? s3Client;
+    const storageBucket = userStorage?.bucketName ?? R2_BUCKET_NAME;
+    if (storageClient && storageBucket) {
       const r2Key = `backups/${id}.sql.gz`;
       try {
-        await backupsService.streamR2File(r2Key, backup.name, res);
+        await backupsService.streamR2File(r2Key, backup.name, res, { client: storageClient, bucketName: storageBucket });
         return;
       } catch (r2Err: any) {
-        logger.warn({ err: r2Err, id }, "R2 download failed, falling back to local file");
+        logger.warn({ err: r2Err, id }, "Storage download failed, falling back to local file");
       }
     }
 
