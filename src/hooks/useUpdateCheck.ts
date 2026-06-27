@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
 
 const DISMISS_KEY = 'erd-update-dismissed-version';
-const ENDPOINT = 'https://whale-employee-affiliation-naples.trycloudflare.com/latest.json';
 
 /** Write a diagnostic message to the app's server log. */
 async function updateLog(level: string, message: string, extra?: any) {
@@ -71,7 +70,6 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
                     await exit(0);
                   } catch (err: any) {
                     updateLog('error', 'exit_failed', err?.message || String(err));
-                    // Last resort: reload the page so the new version takes effect.
                     window.location.reload();
                   }
                 },
@@ -110,48 +108,32 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
 
     updateLog('info', 'check_started', `current=${currentVersion} manual=${isManual}`);
 
-    let result: any = null;
-    try { result = await check(); } catch (err: any) { updateLog('warn', 'rust_check_failed', err?.message || String(err)); }
-
-    if (result) {
-      setHasUpdate(true); setLatestVersion(result.version); setUpdate(result);
-      if (toastId) toast.dismiss(toastId);
-      if (!isManual && (toastShownForVersion.current === result.version || isVersionDismissed(result.version))) { setIsChecking(false); checkingRef.current = false; return true; }
-      toastShownForVersion.current = result.version;
-      updateLog('info', 'update_available', `v${result.version} (rust)`);
-      toast.info('Update Available', { description: `New version (v${result.version}) is ready.`, duration: Infinity, action: { label: 'Update Now', onClick: () => handleDownloadUpdate(result) }, cancel: { label: 'Later', onClick: () => dismissVersion(result.version) } });
-      onUpdateAvailableRef.current?.();
-      setIsChecking(false); checkingRef.current = false;
-      return true;
-    }
-
     try {
-      const res = await fetch(ENDPOINT);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const latest = data.version as string;
-      if (latest && latest !== currentVersion) {
-        const wrapper = { version: latest, downloadAndInstall: (cb: any) => downloadViaRust(cb) };
-        setHasUpdate(true); setLatestVersion(latest); setUpdate(wrapper);
+      const result = await check();
+
+      if (result) {
+        setHasUpdate(true); setLatestVersion(result.version); setUpdate(result);
         if (toastId) toast.dismiss(toastId);
-        if (!isManual && (toastShownForVersion.current === latest || isVersionDismissed(latest))) { setIsChecking(false); checkingRef.current = false; return true; }
-        toastShownForVersion.current = latest;
-        updateLog('info', 'update_available', `v${latest} (frontend)`);
-        toast.info('Update Available', { description: `New version (v${latest}) is ready.`, duration: Infinity, action: { label: 'Update Now', onClick: () => handleDownloadUpdate(wrapper) }, cancel: { label: 'Later', onClick: () => dismissVersion(latest) } });
+        if (!isManual && (toastShownForVersion.current === result.version || isVersionDismissed(result.version))) { setIsChecking(false); checkingRef.current = false; return true; }
+        toastShownForVersion.current = result.version;
+        updateLog('info', 'update_available', `v${result.version}`);
+        toast.info('Update Available', { description: `New version (v${result.version}) is ready.`, duration: Infinity, action: { label: 'Update Now', onClick: () => handleDownloadUpdate(result) }, cancel: { label: 'Later', onClick: () => dismissVersion(result.version) } });
         onUpdateAvailableRef.current?.();
         setIsChecking(false); checkingRef.current = false;
         return true;
       }
+
+      // No update available
       if (toastId) toast.dismiss(toastId);
       if (isManual) toast.success("You're up to date", { description: `ERD Builder Pro v${currentVersion} is the latest version.` });
       updateLog('info', 'no_update', `current=${currentVersion}`);
+      setHasUpdate(false); setLatestVersion(null); setUpdate(null);
     } catch (err: any) {
       updateLog('error', 'check_failed', err?.message || String(err));
       if (toastId) toast.dismiss(toastId);
       if (isManual) toast.error('Check failed', { description: 'Could not check for updates. Check your internet connection.' });
     }
 
-    setHasUpdate(false); setLatestVersion(null); setUpdate(null);
     setIsChecking(false); checkingRef.current = false;
     return false;
   }, [isVersionDismissed, handleDownloadUpdate]);
@@ -164,12 +146,6 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
   useEffect(() => { if (skipEvent) return; const h = () => performCheckRef.current(true); window.addEventListener('menu-check-update', h); return () => window.removeEventListener('menu-check-update', h); }, [skipEvent]);
 
   return { hasUpdate, latestVersion, isChecking, isDownloading, checkNow, handleDownload };
-}
-
-async function downloadViaRust(onEvent: (e: any) => void) {
-  const real = await check();
-  if (!real) throw new Error('No update available');
-  return real.downloadAndInstall(onEvent);
 }
 
 function formatBytes(bytes: number): string {
