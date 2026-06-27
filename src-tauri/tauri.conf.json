@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
   "version": "2.3.2",
-  "identifier": "com.erdbuilderpro.app.dev",
+  "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3098",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ERD Builder Pro (Dev)",
+        "title": "ERD Builder Pro",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -56,10 +56,10 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://whale-employee-affiliation-naples.trycloudflare.com/latest.json"
+        "https://github.com/hadziqmtqn/erd-builder-pro/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzMUU0Mzg2RjAzQTEyRApSV1F0b1FOdk9PUXhCbzFudkVwTkZSYXJDRkV1WkQzMnhiZWVlUnJGQmpvamZ5eWRDQ1NYV21uOQo="
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0QTk2QzQ1NjNEMzA0NjYKUldSbUJOTmpSV3lweEwzUG5uN0N2VStxVW5HVFE0eFM0ZWFwQ0dIR2JBbDZ4Z1gzWG5KSDVHMkUK"
     }
   }
 }
