@@ -15,6 +15,7 @@
     "core:window:allow-outer-position",
     "core:window:allow-outer-size",
     "core:window:allow-is-fullscreen",
-    "updater:default"
+    "updater:default",
+    "process:default"
   ]
 }
