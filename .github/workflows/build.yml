@@ -121,6 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
+          mkdir -p "src-tauri/target/release/bundle/dmg"
           COPYFILE_DISABLE=1 tar -czf "src-tauri/target/release/bundle/dmg/ERD Builder Pro_${VERSION}_aarch64.app.tar.gz" \
             -C src-tauri/target/release/bundle/macos "ERD Builder Pro.app"
 
@@ -183,6 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
+          mkdir -p "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
           COPYFILE_DISABLE=1 tar -czf "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ERD Builder Pro_${VERSION}_x86_64.app.tar.gz" \
             -C src-tauri/target/x86_64-apple-darwin/release/bundle/macos "ERD Builder Pro.app"
 
