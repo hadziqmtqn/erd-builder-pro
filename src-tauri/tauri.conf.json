@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
-  "version": "2.3.3-4",
+  "version": "2.3.3-7",
   "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",
@@ -56,7 +56,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/hadziqmtqn/erd-builder-pro/releases/download/v2.3.3-5/latest.json"
+        "https://github.com/hadziqmtqn/erd-builder-pro/releases/download/v2.3.3-7/latest.json"
       ],
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0QTk2QzQ1NjNEMzA0NjYKUldSbUJOTmpSV3lweEwzUG5uN0N2VStxVW5HVFE0eFM0ZWFwQ0dIR2JBbDZ4Z1gzWG5KSDVHMkUK"

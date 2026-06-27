@@ -80,26 +80,22 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Sign bundle (Linux/Windows)
+      - name: Sign bundles (Linux/Windows)
         if: matrix.platform != 'macos'
         shell: bash
         run: |
           set -euo pipefail
-          # Find built bundle
-          BUNDLE=""
+          # Sign all built bundles: AppImage, deb, msi
           for ext in AppImage deb msi; do
             BUNDLE=$(find src-tauri/target/release/bundle -name "*.${ext}" ! -name "*.sig" 2>/dev/null | head -1)
-            [ -n "$BUNDLE" ] && break
+            if [ -n "$BUNDLE" ]; then
+              echo "Signing: $BUNDLE"
+              npx tauri signer sign \
+                --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+                --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+                "$BUNDLE"
+            fi
           done
-          if [ -z "$BUNDLE" ]; then
-            echo "No bundle found to sign"
-            exit 0
-          fi
-          echo "Signing: $BUNDLE"
-          npx tauri signer sign \
-            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
-            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
-            "$BUNDLE"
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -341,19 +337,24 @@ jobs:
           [ -z "$ARM_TAR_NAME" ] && ARM_TAR_NAME="ERD-Builder-Pro_${VERSION}_aarch64.app.tar.gz"
           [ -z "$INTEL_TAR_NAME" ] && INTEL_TAR_NAME="ERD-Builder-Pro_${VERSION}_x86_64.app.tar.gz"
 
-          # ── Linux: find AppImage (preferred) or .deb ──
-          LINUX_BUNDLE=$(find artifacts/build-linux -name "*.AppImage" 2>/dev/null | head -1)
-          if [ -z "$LINUX_BUNDLE" ]; then
-            LINUX_BUNDLE=$(find artifacts/build-linux -name "*.deb" 2>/dev/null | head -1)
+          # ── Linux: find AppImage and .deb separately ──
+          LINUX_APPIMAGE=$(find artifacts/build-linux -name "*.AppImage" 2>/dev/null | head -1)
+          LINUX_DEB=$(find artifacts/build-linux -name "*.deb" 2>/dev/null | head -1)
+          LINUX_APPIMAGE_NAME=""; LINUX_APPIMAGE_SIG=""
+          LINUX_DEB_NAME=""; LINUX_DEB_SIG=""
+
+          if [ -n "$LINUX_APPIMAGE" ]; then
+            LINUX_APPIMAGE_NAME=$(basename "$LINUX_APPIMAGE" | sed 's/ /./g')
+            SIG_FILE=$(find artifacts/build-linux -name "${LINUX_APPIMAGE_NAME}.sig" 2>/dev/null | head -1)
+            [ -z "$SIG_FILE" ] && SIG_FILE=$(find artifacts/build-linux -name "*.sig" 2>/dev/null | head -1)
+            [ -n "$SIG_FILE" ] && LINUX_APPIMAGE_SIG=$(cat "$SIG_FILE")
           fi
-          LINUX_BUNDLE_NAME=""; LINUX_SIG=""
-          if [ -n "$LINUX_BUNDLE" ]; then
-            LINUX_BUNDLE_NAME=$(basename "$LINUX_BUNDLE" | sed 's/ /./g')
-            # Find matching .sig by basename (signatures may be in a sibling dir)
-            LINUX_SIG_FILE=$(find artifacts/build-linux -name "${LINUX_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
-            # Fallback: search any .sig in linux artifacts
-            [ -z "$LINUX_SIG_FILE" ] && LINUX_SIG_FILE=$(find artifacts/build-linux -name "*.sig" 2>/dev/null | head -1)
-            [ -n "$LINUX_SIG_FILE" ] && LINUX_SIG=$(cat "$LINUX_SIG_FILE")
+
+          if [ -n "$LINUX_DEB" ]; then
+            LINUX_DEB_NAME=$(basename "$LINUX_DEB" | sed 's/ /./g')
+            SIG_FILE=$(find artifacts/build-linux -name "${LINUX_DEB_NAME}.sig" 2>/dev/null | head -1)
+            [ -z "$SIG_FILE" ] && SIG_FILE=$(find artifacts/build-linux -name "*.sig" 2>/dev/null | head -1)
+            [ -n "$SIG_FILE" ] && LINUX_DEB_SIG=$(cat "$SIG_FILE")
           fi
 
           # ── Windows: find MSI ──
@@ -379,10 +380,12 @@ jobs:
             --arg intel_url "${BASE_URL}/${INTEL_TAR_NAME}" \
             --arg arm_sig "$ARM_SIG" \
             --arg intel_sig "$INTEL_SIG" \
-            --arg linux_name "${LINUX_BUNDLE_NAME}" \
-            --arg linux_sig "$LINUX_SIG" \
+            --arg linux_name "${LINUX_APPIMAGE_NAME}" \
+            --arg linux_sig "${LINUX_APPIMAGE_SIG}" \
+            --arg linux_deb_name "${LINUX_DEB_NAME}" \
+            --arg linux_deb_sig "${LINUX_DEB_SIG}" \
             --arg win_name "${WIN_BUNDLE_NAME}" \
-            --arg win_sig "$WIN_SIG" \
+            --arg win_sig "${WIN_SIG}" \
             '{
               version: $v,
               notes: ("See https://github.com/" + $repo + "/releases/tag/" + $tag),
@@ -395,6 +398,10 @@ jobs:
             | if $linux_name != "" then .platforms["linux-x86_64"] = {
                 signature: $linux_sig,
                 url: ("https://github.com/" + $repo + "/releases/download/" + $tag + "/" + $linux_name)
+              } else . end
+            | if $linux_deb_name != "" then .platforms["linux-x86_64-deb"] = {
+                signature: $linux_deb_sig,
+                url: ("https://github.com/" + $repo + "/releases/download/" + $tag + "/" + $linux_deb_name)
               } else . end
             | if $win_name != "" then .platforms["windows-x86_64"] = {
                 signature: $win_sig,
