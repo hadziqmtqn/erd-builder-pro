@@ -344,15 +344,17 @@ jobs:
           LINUX_DEB_NAME=""; LINUX_DEB_SIG=""
 
           if [ -n "$LINUX_APPIMAGE" ]; then
-            LINUX_APPIMAGE_NAME=$(basename "$LINUX_APPIMAGE" | sed 's/ /./g')
-            SIG_FILE=$(find artifacts/build-linux -name "${LINUX_APPIMAGE_NAME}.sig" 2>/dev/null | head -1)
+            APPIMAGE_NAME_ORIG=$(basename "$LINUX_APPIMAGE")
+            LINUX_APPIMAGE_NAME=$(echo "$APPIMAGE_NAME_ORIG" | sed 's/ /./g')
+            SIG_FILE=$(find artifacts/build-linux -name "${APPIMAGE_NAME_ORIG}.sig" 2>/dev/null | head -1)
             [ -z "$SIG_FILE" ] && SIG_FILE=$(find artifacts/build-linux -name "*.sig" 2>/dev/null | head -1)
             [ -n "$SIG_FILE" ] && LINUX_APPIMAGE_SIG=$(cat "$SIG_FILE")
           fi
 
           if [ -n "$LINUX_DEB" ]; then
-            LINUX_DEB_NAME=$(basename "$LINUX_DEB" | sed 's/ /./g')
-            SIG_FILE=$(find artifacts/build-linux -name "${LINUX_DEB_NAME}.sig" 2>/dev/null | head -1)
+            DEB_NAME_ORIG=$(basename "$LINUX_DEB")
+            LINUX_DEB_NAME=$(echo "$DEB_NAME_ORIG" | sed 's/ /./g')
+            SIG_FILE=$(find artifacts/build-linux -name "${DEB_NAME_ORIG}.sig" 2>/dev/null | head -1)
             [ -z "$SIG_FILE" ] && SIG_FILE=$(find artifacts/build-linux -name "*.sig" 2>/dev/null | head -1)
             [ -n "$SIG_FILE" ] && LINUX_DEB_SIG=$(cat "$SIG_FILE")
           fi
@@ -362,9 +364,10 @@ jobs:
           [ -z "$WIN_MSI" ] && WIN_MSI=$(find artifacts/build-windows -name "*.msi" 2>/dev/null | head -1)
           WIN_BUNDLE_NAME=""; WIN_SIG=""
           if [ -n "$WIN_MSI" ]; then
-            WIN_BUNDLE_NAME=$(basename "$WIN_MSI" | sed 's/ /./g')
+            WIN_NAME_ORIG=$(basename "$WIN_MSI")
+            WIN_BUNDLE_NAME=$(echo "$WIN_NAME_ORIG" | sed 's/ /./g')
             # Strip .zip suffix for .sig lookup (sig matches the original .msi, not .msi.zip)
-            WIN_SIG_LOOKUP=$(basename "$WIN_MSI" .zip | sed 's/ /./g')
+            WIN_SIG_LOOKUP=$(basename "$WIN_MSI" .zip)
             WIN_SIG_FILE=$(find artifacts/build-windows -name "${WIN_SIG_LOOKUP}.sig" -o -name "${WIN_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
             [ -z "$WIN_SIG_FILE" ] && WIN_SIG_FILE=$(find artifacts/build-windows -name "*.msi.sig" 2>/dev/null | head -1)
             [ -n "$WIN_SIG_FILE" ] && WIN_SIG=$(cat "$WIN_SIG_FILE")
