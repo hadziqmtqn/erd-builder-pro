@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { check } from '@tauri-apps/plugin-updater';
 
 const DISMISS_KEY = 'erd-update-dismissed-version';
+const NOTIFIED_KEY = 'erd-update-notified-version';
 
 /** Write a diagnostic message to the app's server log. */
 async function updateLog(level: string, message: string, extra?: any) {
@@ -117,7 +118,16 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
         if (!isManual && (toastShownForVersion.current === result.version || isVersionDismissed(result.version))) { setIsChecking(false); checkingRef.current = false; return true; }
         toastShownForVersion.current = result.version;
         updateLog('info', 'update_available', `v${result.version}`);
+        // If this version was already notified by another instance (e.g., auto-check),
+        // skip showing a duplicate toast on manual check
+        if (isManual && localStorage.getItem(NOTIFIED_KEY) === result.version) {
+          setHasUpdate(true); setLatestVersion(result.version); setUpdate(result);
+          onUpdateAvailableRef.current?.();
+          setIsChecking(false); checkingRef.current = false;
+          return true;
+        }
         toast.info('Update Available', { description: `New version (v${result.version}) is ready.`, duration: Infinity, action: { label: 'Update Now', onClick: () => handleDownloadUpdate(result) }, cancel: { label: 'Later', onClick: () => dismissVersion(result.version) } });
+        if (!isManual) localStorage.setItem(NOTIFIED_KEY, result.version);
         onUpdateAvailableRef.current?.();
         setIsChecking(false); checkingRef.current = false;
         return true;
