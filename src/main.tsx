@@ -8,7 +8,7 @@ import App from './App.tsx';
 import { AuthProvider } from './hooks/useAuth';
 import './index.css';
 import "@excalidraw/excalidraw/index.css";
-import { API_BASE_URL, clearAuthToken } from './lib/api';
+import { getApiBaseUrl, clearAuthToken } from './lib/api';
 
 // Detect Tauri and add data attribute for CSS targeting
 if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -27,7 +27,8 @@ window.fetch = async (...args) => {
     
   const isAuthRoute = url.includes('/api/login') || url.includes('/api/logout') || url.includes('/api/me');
   const isSupabaseRoute = url.includes('supabase.co');
-  const isApiRoute = (url.startsWith('/api/') || (API_BASE_URL && url.startsWith(API_BASE_URL))) && !url.includes('supabase.co');
+  const baseUrl = getApiBaseUrl();
+  const isApiRoute = (url.startsWith('/api/') || (baseUrl && url.startsWith(baseUrl))) && !url.includes('supabase.co');
   
   const isGuest = sessionStorage.getItem('auth_mode') === 'guest';
   

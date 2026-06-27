@@ -220,6 +220,14 @@ app.get("/api/ready", (_req, res) => {
   res.json({ ready: true, timestamp: new Date().toISOString() });
 });
 
+// Update-check diagnostic log endpoint — frontend posts structured events
+// so failures can be diagnosed from the server log.
+app.post("/api/log/update", (req, res) => {
+  const { level, message, extra, timestamp } = req.body || {};
+  console.log(`[update:${level || 'info'}] ${message || '?'} ${extra || ''} (${timestamp || '?'})`);
+  res.json({ ok: true });
+});
+
 app.use("/api", authRouter);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/projects", projectsRouter);

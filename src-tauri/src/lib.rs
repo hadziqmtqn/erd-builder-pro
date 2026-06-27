@@ -40,6 +40,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -107,7 +108,7 @@ pub fn run() {
                 let level = if cfg!(debug_assertions) {
                     log::LevelFilter::Info
                 } else {
-                    log::LevelFilter::Warn
+                    log::LevelFilter::Debug
                 };
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
