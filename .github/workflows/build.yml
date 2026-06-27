@@ -348,7 +348,7 @@ jobs:
           fi
           LINUX_BUNDLE_NAME=""; LINUX_SIG=""
           if [ -n "$LINUX_BUNDLE" ]; then
-            LINUX_BUNDLE_NAME=$(basename "$LINUX_BUNDLE")
+            LINUX_BUNDLE_NAME=$(basename "$LINUX_BUNDLE" | sed 's/ /./g')
             # Find matching .sig by basename (signatures may be in a sibling dir)
             LINUX_SIG_FILE=$(find artifacts/build-linux -name "${LINUX_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
             # Fallback: search any .sig in linux artifacts
@@ -361,9 +361,9 @@ jobs:
           [ -z "$WIN_MSI" ] && WIN_MSI=$(find artifacts/build-windows -name "*.msi" 2>/dev/null | head -1)
           WIN_BUNDLE_NAME=""; WIN_SIG=""
           if [ -n "$WIN_MSI" ]; then
-            WIN_BUNDLE_NAME=$(basename "$WIN_MSI")
+            WIN_BUNDLE_NAME=$(basename "$WIN_MSI" | sed 's/ /./g')
             # Strip .zip suffix for .sig lookup (sig matches the original .msi, not .msi.zip)
-            WIN_SIG_LOOKUP=$(basename "$WIN_MSI" .zip)
+            WIN_SIG_LOOKUP=$(basename "$WIN_MSI" .zip | sed 's/ /./g')
             WIN_SIG_FILE=$(find artifacts/build-windows -name "${WIN_SIG_LOOKUP}.sig" -o -name "${WIN_BUNDLE_NAME}.sig" 2>/dev/null | head -1)
             [ -z "$WIN_SIG_FILE" ] && WIN_SIG_FILE=$(find artifacts/build-windows -name "*.msi.sig" 2>/dev/null | head -1)
             [ -n "$WIN_SIG_FILE" ] && WIN_SIG=$(cat "$WIN_SIG_FILE")
