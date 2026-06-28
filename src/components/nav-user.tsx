@@ -69,7 +69,7 @@ export function NavUser({
 
   const [guestExportOpen, setGuestExportOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const { hasUpdate, latestVersion, isChecking, checkNow, handleDownload } = useUpdateCheck(undefined, true);
+  const { hasUpdate, latestVersion, isChecking, isDownloading, checkNow, handleDownload } = useUpdateCheck(undefined, true);
 
   return (
     <>
@@ -199,6 +199,7 @@ export function NavUser({
         hasUpdate={hasUpdate}
         latestVersion={latestVersion}
         isChecking={isChecking}
+        isDownloading={isDownloading}
         onCheckUpdate={checkNow}
         onDownload={handleDownload}
       />

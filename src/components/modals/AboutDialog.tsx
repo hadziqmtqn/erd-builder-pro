@@ -19,6 +19,7 @@ export function AboutDialog({
   hasUpdate: hasUpdateProp = false,
   latestVersion: latestVersionProp = null,
   isChecking: isCheckingProp = false,
+  isDownloading: isDownloadingProp = false,
   onCheckUpdate: onCheckUpdateProp,
   onDownload: onDownloadProp,
 }: {
@@ -27,6 +28,7 @@ export function AboutDialog({
   hasUpdate?: boolean;
   latestVersion?: string | null;
   isChecking?: boolean;
+  isDownloading?: boolean;
   onCheckUpdate?: () => void;
   onDownload?: () => void;
 }) {
@@ -38,12 +40,14 @@ export function AboutDialog({
   const [localHasUpdate, setLocalHasUpdate] = useState(false);
   const [localLatestVersion, setLocalLatestVersion] = useState<string | null>(null);
   const [localIsChecking, setLocalIsChecking] = useState(false);
+  const [localIsDownloading, setLocalIsDownloading] = useState(false);
   const [localUpdateObj, setLocalUpdateObj] = useState<any>(null);
 
   // Props take priority if provided (nav-user.tsx path), otherwise use local
   const hasUpdate = hasUpdateProp || localHasUpdate;
   const latestVersion = latestVersionProp || localLatestVersion;
   const isChecking = isCheckingProp || localIsChecking;
+  const isDownloading = isDownloadingProp || localIsDownloading;
 
   useEffect(() => {
     if (isTauri) {
@@ -96,6 +100,8 @@ export function AboutDialog({
     if (onDownloadProp) {
       onDownloadProp();
     } else if (localUpdateObj) {
+      if (localIsDownloading) return;
+      setLocalIsDownloading(true);
       localUpdateObj.downloadAndInstall(() => {}).catch((err: unknown) => {
         const detail =
           typeof err === 'string'
@@ -111,9 +117,9 @@ export function AboutDialog({
             onClick: () => navigator.clipboard.writeText(detail).catch(() => {}),
           },
         });
-      });
+      }).finally(() => setLocalIsDownloading(false));
     }
-  }, [onDownloadProp, localUpdateObj]);
+  }, [onDownloadProp, localUpdateObj, localIsDownloading]);
 
   const handleCheckUpdate = useCallback(() => {
     if (onCheckUpdateProp) {
@@ -212,9 +218,14 @@ export function AboutDialog({
                     size="sm"
                     className="h-8 text-xs gap-1.5"
                     onClick={handleDownload}
+                    disabled={isDownloading}
                   >
-                    <Download className="size-3.5" />
-                    Download Update
+                    {isDownloading ? (
+                      <LoaderCircle className="size-3.5 animate-spin" />
+                    ) : (
+                      <Download className="size-3.5" />
+                    )}
+                    {isDownloading ? 'Downloading...' : 'Download Update'}
                   </Button>
                 </div>
               ) : (
