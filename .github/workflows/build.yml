@@ -274,6 +274,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.msi.zip
+            src-tauri/target/release/bundle/**/*.exe
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/release/bundle/**/*.tar.gz
@@ -432,6 +433,7 @@ jobs:
             artifacts/build-linux/**/*.sig
             artifacts/build-windows/**/*.msi
             artifacts/build-windows/**/*.msi.zip
+            artifacts/build-windows/**/*.exe
             artifacts/build-windows/**/*.sig
             artifacts/build-macos/*_aarch64.dmg
             artifacts/build-macos/*_aarch64.dmg.sig
