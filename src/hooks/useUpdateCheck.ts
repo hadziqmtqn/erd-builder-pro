@@ -29,6 +29,7 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
   onUpdateAvailableRef.current = onUpdateAvailable;
   const checkingRef = useRef(false);
   const toastShownForVersion = useRef<string | null>(null);
+  const downloadingRef = useRef(false);
 
   const dismissVersion = useCallback((version: string) => { localStorage.setItem(DISMISS_KEY, version); }, []);
   const isVersionDismissed = useCallback((version: string) => {
@@ -37,7 +38,8 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
   }, []);
 
   const handleDownloadUpdate = useCallback(async (u: any) => {
-    if (isDownloading) return;
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
     setIsDownloading(true);
     const toastId = toast.loading('Downloading update...', { description: 'Please wait, downloading the latest version.' });
     updateLog('info', 'download_started', u.version);
@@ -80,6 +82,7 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
         }
       });
       setIsDownloading(false);
+      downloadingRef.current = false;
     } catch (error: any) {
       const detail = typeof error === 'string' ? error : error?.message || error?.toString?.() || JSON.stringify(error);
       updateLog('error', 'download_failed', detail);
@@ -91,8 +94,9 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
         action: { label: 'Copy Error', onClick: () => navigator.clipboard.writeText(detail).catch(() => {}) },
       });
       setIsDownloading(false);
+      downloadingRef.current = false;
     }
-  }, [isDownloading]);
+  }, []);
 
   const performCheck = useCallback(async (isManual = false) => {
     const isTauri = !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
