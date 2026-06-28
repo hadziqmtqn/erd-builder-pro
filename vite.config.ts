@@ -16,6 +16,15 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    build: {
+      // Force single JS bundle — avoids Windows Tauri chunk-missing bug
+      chunkSizeWarningLimit: 10000,
+      rollupOptions: {
+        output: {
+          manualChunks: () => 'app',
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {
