@@ -106,7 +106,12 @@ app.use(cors({
     if (url.hostname.endsWith(".vercel.app")) {
       return callback(null, true);
     }
-    
+
+    // Orbstack domains: allow all *.orb.local (Docker dev containers)
+    if (url.hostname.endsWith(".orb.local")) {
+      return callback(null, true);
+    }
+
     // Custom domains: check CORS_ORIGINS env var
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
