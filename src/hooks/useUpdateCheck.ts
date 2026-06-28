@@ -5,8 +5,14 @@ import { check } from '@tauri-apps/plugin-updater';
 const DISMISS_KEY = 'erd-update-dismissed-version';
 const NOTIFIED_KEY = 'erd-update-notified-version';
 
-/** Write a diagnostic message to the app's server log. */
+/** Check if running inside Tauri — avoids connect-refused in web mode. */
+function isTauriEnv(): boolean {
+  return !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
+}
+
+/** Write a diagnostic message to the app's server log (Tauri-only, silently skipped in web). */
 async function updateLog(level: string, message: string, extra?: string) {
+  if (!isTauriEnv()) return;
   try {
     await fetch('http://localhost:3099/api/log/update', {
       method: 'POST',

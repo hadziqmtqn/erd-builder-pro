@@ -25,13 +25,24 @@ elif echo "$DATABASE_URL" | grep -q "^postgresql://"; then
   # ── Local PostgreSQL mode ──
   echo "Mode: Local PostgreSQL"
 
-  # Extract database name from URL: postgresql://user:pass@host:port/dbname?params
-  # Split by /, take last segment, strip query params
+  # Extract database name from URL: postgresql://user:***@host:port/dbname?params
   DB_NAME=$(echo "$DATABASE_URL" | awk -F'/' '{print $NF}' | awk -F'?' '{print $1}')
+
+  # Wait for PostgreSQL to be reachable (handles container startup races)
+  echo "Waiting for PostgreSQL to accept connections..."
+  for i in $(seq 1 30); do
+    if psql "$DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+      echo "PostgreSQL ready after ${i}s"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "ERROR: PostgreSQL not reachable within timeout — continuing anyway"
+    fi
+    sleep 1
+  done
 
   if [ -n "$DB_NAME" ] && [ "$DB_NAME" != "postgres" ]; then
     # Build admin URL pointing to the default 'postgres' database (always exists).
-    # Simple string replacement: change only the database path segment, keep query params intact.
     ADMIN_URL=$(echo "$DATABASE_URL" | sed "s|/$DB_NAME|/postgres|")
     echo "Ensuring database \"${DB_NAME}\" exists..."
     if psql "$ADMIN_URL" -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
@@ -54,16 +65,10 @@ fi
 export DB_VARIANT="$SCHEMA_VARIANT"
 
 # ── Regenerate Prisma client ──
-# Critical: the build stage generates the client for Supabase schema, but at
-# runtime we may need SQLite or local PG schema. Without regeneration, the
-# client will have the wrong User model (e.g. auth.users fields) causing
-# seed scripts and upsert queries to fail.
 echo "Regenerating Prisma client for ${SCHEMA_VARIANT} schema..."
 npx prisma generate
 
 # ── Check if database is already initialized ──
-# Skip prisma db push when tables already exist to avoid PostgreSQL internal
-# catalog conflict errors (P2002 on pg_type.typname + typnamespace).
 needs_migration=true
 if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
   if [ -f "$DATA_DIR/erd-builder.db" ]; then
@@ -78,10 +83,6 @@ elif [ "$SCHEMA_VARIANT" = "pg" ]; then
 fi
 
 # ── Start server in background ──
-# This is the KEY fix for Dokploy/Traefik Bad Gateway. By starting the Node
-# server BEFORE running prisma db push, port 3000 opens quickly and Traefik
-# can route traffic immediately. The health endpoint (/api/health) returns
-# OK without querying the database, so it works even before tables exist.
 echo "Starting server in background..."
 npm start &
 SERVER_PID=$!
@@ -106,9 +107,6 @@ if [ "$needs_migration" = true ]; then
 fi
 
 # ── Seed initial data ──
-# Tables now exist (either from this deploy or a previous one). Run the seed
-# script which is fully idempotent — it checks if data already exists before
-# inserting. Safe to run on every deploy.
 echo "Seeding initial data..."
 npx tsx prisma/seed.sqlite.ts || echo "WARNING: Seeding failed (non-fatal)"
 

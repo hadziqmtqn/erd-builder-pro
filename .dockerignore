@@ -1,8 +1,10 @@
 node_modules
 dist
+dist-server
 .git
 .env
 *.log
 .DS_Store
 .hermes
 .opencode
+src-tauri
