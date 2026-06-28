@@ -292,6 +292,14 @@ export interface WorkspaceContextValue {
   // Flowchart SVG export handler (set by FlowchartView)
   flowchartExportHandler: FlowchartExportHandler | null;
   setFlowchartExportHandler: (handler: FlowchartExportHandler | null) => void;
+
+  // Update
+  hasUpdate: boolean;
+  latestVersion: string | null;
+  isCheckingUpdate: boolean;
+  isDownloadingUpdate: boolean;
+  checkForUpdates: () => void;
+  downloadUpdate: () => void;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);

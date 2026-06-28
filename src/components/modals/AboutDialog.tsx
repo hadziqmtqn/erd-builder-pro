@@ -57,10 +57,13 @@ export function AboutDialog({
     }
   }, [isTauri]);
 
-  // Auto-check whenever dialog opens
+  // Auto-check whenever dialog opens (skip if parent already knows or another instance already found update)
   useEffect(() => {
     if (!open || !isTauri) return;
-    // If parent provides onCheckUpdate, trigger it
+    // Skip if parent already has update info or is busy
+    if (hasUpdateProp || isCheckingProp || isDownloadingProp) return;
+    // If parent provides onCheckUpdate, delegate — NOTIFIED_KEY in performCheck
+    // will prevent duplicate toast while ensuring update object is available for download.
     if (onCheckUpdateProp) {
       onCheckUpdateProp();
       return;
@@ -122,6 +125,7 @@ export function AboutDialog({
   }, [onDownloadProp, localUpdateObj, localIsDownloading]);
 
   const handleCheckUpdate = useCallback(() => {
+    if (isDownloading) return;
     if (onCheckUpdateProp) {
       onCheckUpdateProp();
       return;
@@ -151,7 +155,7 @@ export function AboutDialog({
       }
     };
     doCheck();
-  }, [onCheckUpdateProp]);
+  }, [onCheckUpdateProp, isDownloading]);
 
   // Reset local state when dialog closes
   useEffect(() => {

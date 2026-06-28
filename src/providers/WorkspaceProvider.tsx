@@ -549,8 +549,8 @@ export function WorkspaceProvider({
     if (activeDocument) handleExportImage(activeFileName || 'Untitled');
   }, [activeDocument, activeFileName, handleExportImage]);
 
-  // Update check — auto-check once on mount, silent (no auto-open), skip menu event (nav-user handles it)
-  useUpdateCheck(undefined, false, true);
+  // Update check — centralised here, exposed via context to all consumers
+  const { hasUpdate, latestVersion, isChecking: isCheckingUpdate, isDownloading: isDownloadingUpdate, checkNow: checkForUpdates, handleDownload: downloadUpdate } = useUpdateCheck(undefined, false, true);
 
   // ── Side Effects ──
   // PWA install toast + public doc detection
@@ -1165,6 +1165,8 @@ export function WorkspaceProvider({
 
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
+    hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    checkForUpdates, downloadUpdate,
   }), [
     user, isGuest, _handleLogout, view, sidebarView,
     isPublicView, setIsPublicView, publicData,
@@ -1235,6 +1237,8 @@ export function WorkspaceProvider({
     tablePage,
     breadcrumbLabel, setBreadcrumbLabel,
     flowchartExportHandler, setFlowchartExportHandler,
+    hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    checkForUpdates, downloadUpdate,
     pendingErdDiffTrigger, triggerPendingErdDiff,
     theme, setTheme, resolvedTheme,
   ]);
