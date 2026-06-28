@@ -68,20 +68,6 @@ export DB_VARIANT="$SCHEMA_VARIANT"
 echo "Regenerating Prisma client for ${SCHEMA_VARIANT} schema..."
 npx prisma generate
 
-# ── Check if database is already initialized ──
-needs_migration=true
-if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
-  if [ -f "$DATA_DIR/erd-builder.db" ]; then
-    echo "SQLite database already exists — skipping migration"
-    needs_migration=false
-  fi
-elif [ "$SCHEMA_VARIANT" = "pg" ]; then
-  if psql "$DATABASE_URL" -c "SELECT 1 FROM users LIMIT 1" >/dev/null 2>&1; then
-    echo "PostgreSQL database already initialized — skipping migration"
-    needs_migration=false
-  fi
-fi
-
 # ── Start server in background ──
 echo "Starting server in background..."
 npm start &
@@ -100,10 +86,19 @@ for i in $(seq 1 90); do
   sleep 1
 done
 
-# ── Run migration ──
-if [ "$needs_migration" = true ]; then
-  echo "Running Prisma schema migration for ${SCHEMA_VARIANT}..."
-  npx prisma db push --accept-data-loss || echo "WARNING: Migration failed, continuing anyway"
+# ── Run Prisma schema sync —─
+# SQLite: skip if DB file exists (rarely changes schema mid-lifecycle)
+# PostgreSQL: ALWAYS run — table additions (like Backup) could have been
+# added to the schema after initial deploy. `db push` is idempotent for
+# adding tables/columns. Without --accept-data-loss it won't drop data.
+if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
+  if [ ! -f "$DATA_DIR/erd-builder.db" ]; then
+    echo "Running Prisma schema sync for sqlite..."
+    npx prisma db push --accept-data-loss || echo "WARNING: Migration failed, continuing anyway"
+  fi
+elif [ -n "$SCHEMA_VARIANT" ]; then
+  echo "Running Prisma schema sync for ${SCHEMA_VARIANT}..."
+  npx prisma db push || echo "WARNING: Schema sync failed, continuing anyway"
 fi
 
 # ── Seed initial data ──
