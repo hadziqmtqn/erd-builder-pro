@@ -6,12 +6,12 @@ const DISMISS_KEY = 'erd-update-dismissed-version';
 const NOTIFIED_KEY = 'erd-update-notified-version';
 
 /** Write a diagnostic message to the app's server log. */
-async function updateLog(level: string, message: string, extra?: any) {
+async function updateLog(level: string, message: string, extra?: string) {
   try {
     await fetch('http://localhost:3099/api/log/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level, message, extra: extra ? String(extra) : undefined, timestamp: new Date().toISOString() }),
+      body: JSON.stringify({ level, message, extra, timestamp: new Date().toISOString() }),
     });
   } catch {
     // Log endpoint may not exist — silently ignore.
@@ -38,9 +38,14 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
   }, []);
 
   const handleDownloadUpdate = useCallback(async (u: any) => {
-    if (downloadingRef.current) return;
+    updateLog('debug', 'handleDownloadUpdate called', `downloadingRef=${downloadingRef.current} version=${u.version}`);
+    if (downloadingRef.current) {
+      updateLog('debug', 'BLOCKED: download already in progress');
+      return;
+    }
     downloadingRef.current = true;
     setIsDownloading(true);
+    updateLog('info', 'download STARTED');
     const toastId = toast.loading('Downloading update...', { description: 'Please wait, downloading the latest version.' });
     updateLog('info', 'download_started', u.version);
     try {
@@ -86,7 +91,6 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
     } catch (error: any) {
       const detail = typeof error === 'string' ? error : error?.message || error?.toString?.() || JSON.stringify(error);
       updateLog('error', 'download_failed', detail);
-      console.error('Update failed:', error);
       toast.error('Update failed', {
         id: toastId,
         description: detail || 'An error occurred while downloading the update.',
@@ -99,9 +103,10 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
   }, []);
 
   const performCheck = useCallback(async (isManual = false) => {
+    updateLog('debug', 'performCheck called', `isManual=${isManual} checkingRef=${checkingRef.current}`);
     const isTauri = !!(window as any).__TAURI__ || !!(window as any).__TAURI_INTERNALS__;
-    if (!isTauri) return false;
-    if (checkingRef.current) return false;
+    if (!isTauri) { updateLog('debug', 'SKIP: not Tauri'); return false; }
+    if (checkingRef.current) { updateLog('debug', 'SKIP: already checking'); return false; }
     checkingRef.current = true;
     setIsChecking(true);
 
@@ -119,17 +124,22 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
       if (result) {
         setHasUpdate(true); setLatestVersion(result.version); setUpdate(result);
         if (toastId) toast.dismiss(toastId);
-        if (!isManual && (toastShownForVersion.current === result.version || isVersionDismissed(result.version))) { setIsChecking(false); checkingRef.current = false; return true; }
+        if (!isManual && (toastShownForVersion.current === result.version || isVersionDismissed(result.version))) {
+          updateLog('debug', 'SKIP toast: already shown/dismissed', result.version);
+          setIsChecking(false); checkingRef.current = false; return true;
+        }
         toastShownForVersion.current = result.version;
         updateLog('info', 'update_available', `v${result.version}`);
         // If this version was already notified by another instance (e.g., auto-check),
         // skip showing a duplicate toast on manual check
         if (isManual && localStorage.getItem(NOTIFIED_KEY) === result.version) {
+          updateLog('debug', 'SKIP toast: already notified by auto-check', result.version);
           setHasUpdate(true); setLatestVersion(result.version); setUpdate(result);
           onUpdateAvailableRef.current?.();
           setIsChecking(false); checkingRef.current = false;
           return true;
         }
+        updateLog('debug', 'SHOWING toast: Update Available', `v${result.version} manual=${isManual}`);
         toast.info('Update Available', { description: `New version (v${result.version}) is ready.`, duration: Infinity, action: { label: 'Update Now', onClick: () => handleDownloadUpdate(result) }, cancel: { label: 'Later', onClick: () => dismissVersion(result.version) } });
         if (!isManual) localStorage.setItem(NOTIFIED_KEY, result.version);
         onUpdateAvailableRef.current?.();
@@ -152,11 +162,14 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
     return false;
   }, [isVersionDismissed, handleDownloadUpdate]);
 
-  const handleDownload = useCallback(() => { if (update) handleDownloadUpdate(update); }, [update, handleDownloadUpdate]);
+  const handleDownload = useCallback(() => {
+    updateLog('debug', 'handleDownload called', `update=${update?.version} downloadingRef=${downloadingRef.current}`);
+    if (update) handleDownloadUpdate(update);
+  }, [update, handleDownloadUpdate]);
   const performCheckRef = useRef(performCheck); performCheckRef.current = performCheck;
-  const checkNow = useCallback(() => { performCheckRef.current(true); }, []);
+  const checkNow = useCallback(() => { updateLog('debug', 'checkNow (manual trigger)'); performCheckRef.current(true); }, []);
 
-  useEffect(() => { if (skipAutoCheck) return; const t = setTimeout(() => performCheckRef.current(false), 5000); return () => clearTimeout(t); }, [skipAutoCheck]);
+  useEffect(() => { if (skipAutoCheck) return; updateLog('debug', 'scheduling auto-check in 5s'); const t = setTimeout(() => { updateLog('debug', 'auto-check timer fired'); performCheckRef.current(false); }, 5000); return () => clearTimeout(t); }, [skipAutoCheck]);
   useEffect(() => { if (skipEvent) return; const h = () => performCheckRef.current(true); window.addEventListener('menu-check-update', h); return () => window.removeEventListener('menu-check-update', h); }, [skipEvent]);
 
   return { hasUpdate, latestVersion, isChecking, isDownloading, checkNow, handleDownload };

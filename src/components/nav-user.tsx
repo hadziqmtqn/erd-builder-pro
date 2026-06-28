@@ -8,6 +8,7 @@ import {
   MessageSquarePlus,
   Download,
   Info,
+  ArrowUpCircle,
 } from "lucide-react"
 
 import {
@@ -34,7 +35,6 @@ import { useWorkspace } from "../providers/WorkspaceContext"
 import { AppView } from "../types"
 import { GuestExportDialog } from "@/components/ai/GuestExportDialog"
 import { AboutDialog } from "@/components/modals/AboutDialog"
-import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 
 export function NavUser({
   user,
@@ -50,8 +50,9 @@ export function NavUser({
   onOpenFeedback: () => void
 }) {
   const { isMobile } = useSidebar()
-  const { isGuest, setIsSettingsOpen, setSettingsTab } = useWorkspace()
-
+  const { isGuest, setIsSettingsOpen, setSettingsTab,
+    hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    checkForUpdates, downloadUpdate } = useWorkspace();
   const isDesktop = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
@@ -69,7 +70,6 @@ export function NavUser({
 
   const [guestExportOpen, setGuestExportOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const { hasUpdate, latestVersion, isChecking, isDownloading, checkNow, handleDownload } = useUpdateCheck(undefined, true);
 
   return (
     <>
@@ -145,8 +145,15 @@ export function NavUser({
                   onClick={() => setAboutOpen(true)}
                   className="cursor-pointer"
                 >
-                  <Info className="mr-2 size-4" />
+                  {hasUpdate ? (
+                    <ArrowUpCircle className="mr-2 size-4 text-emerald-400" />
+                  ) : (
+                    <Info className="mr-2 size-4" />
+                  )}
                   About
+                  {hasUpdate && (
+                    <span className="ml-auto flex size-2 rounded-full bg-emerald-400" />
+                  )}
                 </DropdownMenuItem>
               <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
                 <Github className="mr-2 size-4" />
@@ -198,10 +205,10 @@ export function NavUser({
         onOpenChange={setAboutOpen}
         hasUpdate={hasUpdate}
         latestVersion={latestVersion}
-        isChecking={isChecking}
-        isDownloading={isDownloading}
-        onCheckUpdate={checkNow}
-        onDownload={handleDownload}
+        isChecking={isCheckingUpdate}
+        isDownloading={isDownloadingUpdate}
+        onCheckUpdate={checkForUpdates}
+        onDownload={downloadUpdate}
       />
     </>
   )
