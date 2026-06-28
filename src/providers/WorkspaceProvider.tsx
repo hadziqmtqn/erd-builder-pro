@@ -550,7 +550,7 @@ export function WorkspaceProvider({
   }, [activeDocument, activeFileName, handleExportImage]);
 
   // Update check — centralised here, exposed via context to all consumers
-  const { hasUpdate, latestVersion, isChecking: isCheckingUpdate, isDownloading: isDownloadingUpdate, checkNow: checkForUpdates, handleDownload: downloadUpdate } = useUpdateCheck(undefined, false, true);
+  const { hasUpdate, latestVersion, isChecking: isCheckingUpdate, isDownloading: isDownloadingUpdate, checkNow: checkForUpdates, handleDownload: downloadUpdate } = useUpdateCheck(undefined, false, false);
 
   // ── Side Effects ──
   // PWA install toast + public doc detection

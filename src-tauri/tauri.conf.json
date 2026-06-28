@@ -41,7 +41,8 @@
     "windows": {
       "wix": {
         "language": "en-US"
-      }
+      },
+      "nsis": {}
     },
     "resources": {
       "../dist-server/index.js": "dist-server/index.js",
