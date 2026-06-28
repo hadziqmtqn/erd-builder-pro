@@ -53,7 +53,7 @@ export function AboutDialog({
     if (isTauri) {
       getVersion().then(setAppVersion);
     } else {
-      setAppVersion('2.2.1');
+      setAppVersion((import.meta as any).env.APP_VERSION || '0.0.0');
     }
   }, [isTauri]);
 
