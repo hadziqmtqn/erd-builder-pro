@@ -74,7 +74,7 @@ export function ConnectorPropertiesModal({
                 value={typeof selectedEdge.label === 'string' ? selectedEdge.label : ''} 
                 onChange={(e) => onLabelChange(e.target.value)}
                 placeholder="e.g. Yes, No, 1, 2..."
-                className="bg-black/50 border-white/10 text-white"
+                className="bg-muted border-border text-foreground"
               />
             </div>
 

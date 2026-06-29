@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Globe, 
   Lock, 
@@ -61,6 +61,17 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
   const selectedProvider = providers.find(p => p.code === selectedProviderCode);
   const selectedConfig = selectedProvider ? configs[selectedProvider.code] : undefined;
   const selectedModels = selectedProvider ? (models[selectedProvider.id] || []) : [];
+
+  // Auto-heal: if selected_model_id references a model that no longer exists
+  // (e.g. after Docker deploy re-seeded models with new IDs), clear it so
+  // user doesn't accidentally save a stale reference.
+  useEffect(() => {
+    if (!selectedProvider || !selectedConfig?.selected_model_id) return;
+    if (selectedModels.length === 0) return; // models still loading, don't clear
+    if (!selectedModels.some(m => String(m.id) === String(selectedConfig.selected_model_id))) {
+      onUpdateConfig(selectedProvider.code, { selected_model_id: undefined });
+    }
+  }, [selectedProvider?.code, selectedConfig?.selected_model_id, selectedModels.length]);
 
   // Sort providers: openai_compatible first, then the rest
   const sortedProviders = useMemo(() => {
@@ -185,8 +196,14 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                 Default Model
               </FieldLabel>
               <Select 
-                value={selectedConfig?.selected_model_id ? String(selectedConfig?.selected_model_id) : ""} 
-                onValueChange={(val: string | null) => onUpdateConfig(selectedProvider.code, { selected_model_id: val || undefined })}
+                value={selectedConfig?.selected_model_id && selectedModels.some(m => String(m.id) === String(selectedConfig.selected_model_id))
+                  ? String(selectedConfig.selected_model_id)
+                  : ""} 
+                onValueChange={(val: string | null) => {
+                  if (val && selectedModels.some(m => String(m.id) === val)) {
+                    onUpdateConfig(selectedProvider.code, { selected_model_id: val });
+                  }
+                }}
               >
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue>
