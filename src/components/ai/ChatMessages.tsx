@@ -109,9 +109,15 @@ export const ChatMessages = memo(function ChatMessages({
   const [noteDialogText, setNoteDialogText] = useState<string | null>(null);
 
   // ─── Auto-scroll to bottom on new messages ─────────────
+  // Use instant scroll (scrollTop assignment) during streaming
+  // to avoid animation jank when content updates every token.
+  // Smooth scroll reserved for manual "scroll to bottom" button.
   useEffect(() => {
     if (!minimized && !userScrolledUpRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const el = scrollContainerRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   }, [messages, isStreaming, minimized]);
 
