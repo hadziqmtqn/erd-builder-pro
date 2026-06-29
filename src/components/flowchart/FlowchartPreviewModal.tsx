@@ -152,7 +152,7 @@ export function FlowchartPreviewModal({
                 <label className="text-[11px] font-medium text-muted-foreground">
                   New Symbols ({nodes.length})
                 </label>
-                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
+                <div className="max-h-75 overflow-y-auto custom-scrollbar space-y-2">
                   {nodes.map((node) => (
                     <div key={node.id} className="rounded-lg border border-border/40 bg-muted overflow-hidden">
                       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/20 bg-muted/50">
@@ -180,7 +180,7 @@ export function FlowchartPreviewModal({
             {diff && (
               <div className="space-y-1.5">
                 <label className="text-[11px] font-medium text-muted-foreground">Changes</label>
-                <div className="rounded-lg border border-border/40 overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
+                <div className="rounded-lg border border-border/40 overflow-hidden max-h-75 overflow-y-auto custom-scrollbar text-[10px] font-mono leading-relaxed">
                   <div className="divide-y divide-border/10">
                     {diff.map((line, li) => {
                       if (line.type === 'header') {
@@ -201,7 +201,7 @@ export function FlowchartPreviewModal({
                       const valColor = isAdd ? 'text-emerald-300' : isRemove ? 'text-red-400' : 'text-amber-300';
                       const fieldColor = isAdd ? 'text-emerald-400/60' : isRemove ? 'text-red-400/60' : 'text-amber-400/60';
                       return (
-                        <div key={li} className={`flex items-center gap-1 px-3 py-[2px] ${bg}`}>
+                        <div key={li} className={`flex items-center gap-1 px-3 py-0.5 ${bg}`}>
                           <span className={`w-4 shrink-0 select-none ${prefixColor}`}>{line.prefix}</span>
                           <span className={`w-20 shrink-0 ${fieldColor}`}>{line.field}</span>
                           {line.oldVal && <span className="text-red-400/70 line-through">{line.oldVal}</span>}
@@ -221,7 +221,7 @@ export function FlowchartPreviewModal({
           </div>
         </DialogBody>
 
-        <div className="flex items-center justify-between gap-3 px-6 pb-6">
+        <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-6">
           <div className="flex items-center gap-3">
             {canvasGroups.length > 0 && (
               <div className="flex items-center gap-2">
