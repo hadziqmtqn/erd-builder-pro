@@ -70,28 +70,29 @@ export function useUpdateCheck(onUpdateAvailable?: () => void, skipAutoCheck?: b
             break;
           case 'Finished':
             updateLog('info', 'download_finished', 'ready to install');
-            toast.success('Update downloaded successfully!', {
-              id: toastId,
-              description: 'Please restart the application to apply the update.',
-              duration: Infinity,
-              action: {
-                label: 'Close Application',
-                onClick: async () => {
-                  updateLog('info', 'exit_requested', 'user clicked close');
-                  try {
-                    const { exit } = await import('@tauri-apps/plugin-process');
-                    updateLog('info', 'exit_calling', '@tauri-apps/plugin-process');
-                    await exit(0);
-                  } catch (err: any) {
-                    updateLog('error', 'exit_failed', err?.message || String(err));
-                    window.location.reload();
-                  }
-                },
-              },
-            });
+            // NOTE: 'Finished' only means the download completed — install has NOT run yet.
+            // downloadAndInstall resolves AFTER install phase (restart). If we get here,
+            // the updater is about to run the installer. Keep the toast alive.
+            // The 'Done' case below fires after the actual install/restart.
             break;
         }
       });
+      // downloadAndInstall resolved = install completed and app should restart
+      updateLog('info', 'downloadAndInstall resolved — install complete');
+      toast.success('Update installed successfully!', {
+        id: toastId,
+        description: 'The application will now restart to apply the update.',
+        duration: 8000,
+      });
+      // Force restart after short delay
+      setTimeout(async () => {
+        try {
+          const { relaunch } = await import('@tauri-apps/plugin-process');
+          await relaunch();
+        } catch {
+          window.location.reload();
+        }
+      }, 1000);
       setIsDownloading(false);
       downloadingRef.current = false;
     } catch (error: any) {
