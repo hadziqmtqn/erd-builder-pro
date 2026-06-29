@@ -15,7 +15,7 @@ export function ConnectionLostOverlay({ isOnline }: ConnectionLostOverlayProps) 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-md px-4"
+          className="fixed inset-0 z-100 flex items-center justify-center bg-background/80 backdrop-blur-md px-4"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -34,16 +34,16 @@ export function ConnectionLostOverlay({ isOnline }: ConnectionLostOverlayProps) 
 
               {/* Title */}
               <h2 className="mb-4 text-3xl font-bold tracking-tight text-foreground">
-                Offline Connection lost
+                Connection Lost
               </h2>
 
               {/* Description */}
               <div className="mb-10 space-y-4 px-4 text-lg leading-relaxed text-muted-foreground">
                 <p>
-                  Koneksi internet terputus. jangan khawatir, fitur <strong className="text-white">autosave</strong> lokal kami tetap aktif menyimpan perubahan di perangkat anda.
+                  Your internet connection has been lost. Don't worry — our local <strong className="text-white">autosave</strong> feature is still active, saving changes on your device.
                 </p>
                 <p className="text-sm border-t border-white/5 pt-4 opacity-80">
-                  Namun, demi keamanan data, anda tidak dapat beralih halaman hingga koneksi kembali normal.
+                  For data safety, you cannot switch pages until the connection is restored.
                 </p>
               </div>
 
