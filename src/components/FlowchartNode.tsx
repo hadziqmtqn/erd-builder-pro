@@ -206,7 +206,7 @@ const FlowchartNode = ({ data, selected }: { data: FlowchartNodeData, selected?:
       <Handle id="left" type="source" position={Position.Left} className={handleClasses} />
       
       {/* Label Container: breaks long text and restricts it from touching edges */}
-      <div className="relative z-10 text-center text-sm font-semibold text-foreground break-words whitespace-pre-wrap max-w-full flex-1">
+      <div className="relative z-10 text-center text-sm font-semibold text-foreground wrap-break-word whitespace-pre-wrap max-w-full flex-1">
         {data.label}
       </div>
 

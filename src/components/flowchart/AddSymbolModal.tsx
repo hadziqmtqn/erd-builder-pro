@@ -55,7 +55,7 @@ export function AddSymbolModal({
               value={nodeData.label}
               onChange={(e) => onNodeDataChange({ ...nodeData, label: e.target.value })}
               placeholder="Enter symbol label"
-              className="bg-black/50 border-white/10 text-white"
+              className="bg-muted border-border text-foreground"
             />
           </div>
 
@@ -66,7 +66,7 @@ export function AddSymbolModal({
                 value={nodeData.section || ''}
                 onChange={(e) => onNodeDataChange({ ...nodeData, section: e.target.value || undefined })}
                 placeholder="e.g. Pengajuan Cuti"
-                className="bg-black/50 border-white/10 text-white"
+                className="bg-muted border-border text-foreground"
               />
               <p className="text-[10px] text-muted-foreground/50">Nama grup untuk alur yang dimulai dari sini.</p>
             </div>
@@ -78,7 +78,7 @@ export function AddSymbolModal({
               value={nodeData.shape} 
               onValueChange={(val) => onNodeDataChange({ ...nodeData, shape: (val as FlowchartShape) || nodeData.shape })}
             >
-              <SelectTrigger className="w-full bg-black/50 border-white/10 text-white">
+              <SelectTrigger className="w-full bg-muted border-border text-foreground">
                 <SelectValue placeholder="Select a shape">
                   {nodeData.shape ? SHAPE_LABELS[nodeData.shape] : "Select a shape"}
                 </SelectValue>
@@ -111,7 +111,7 @@ export function AddSymbolModal({
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" className="border-white/10" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={onConfirm} className="bg-primary text-primary-foreground">Add to Flowchart</Button>
         </DialogFooter>
       </DialogContent>
