@@ -226,16 +226,19 @@ async function startup(): Promise<void> {
   }
 
   if (dbOk) {
+    // Seed AI providers synchronously BEFORE frontend loads — otherwise
+    // /api/ai/settings/providers returns [] and the select dropdown stays
+    // empty because the frontend never refetches. Seeding is a few INSERTs,
+    // negligible latency even on cold start.
+    await seedAIProviders();
+
     // DB is functional — signal /api/me to start responding immediately.
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
     console.log("[startup] Database ready. /api/me will respond. Running background init...");
 
-    // Fire-and-forget: seeding/backfill run after response path works.
-    // If any fails, /api/me already returns authenticated — user is using
-    // the app. Non-critical features (AI providers, uid backfill) populate
-    // asynchronously.
-    seedAIProviders().catch(err => logger.warn({ err }, "seedAIProviders failed (non-fatal)"));
+    // Fire-and-forget: the rest of background init runs after /api/me works.
+    // These can be async — uid backfill, migrations, etc.
 
     if (useLocalAuth() && prisma) {
       seedAdminUser().catch(err => logger.warn({ err }, "seedAdminUser failed (non-fatal)"));
