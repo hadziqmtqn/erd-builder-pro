@@ -60,6 +60,11 @@ export function useAIChat(
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const messageOffsetRef = useRef(0);
 
+  // Per-session message cache — fetch once per session, survive client-side navigation.
+  // Map<sessionUid, AIChatMessage[]>
+  const messagesCacheMapRef = useRef(new Map<string, AIChatMessage[]>());
+  const displayCountRef = useRef(0);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionsRef = useRef<AIChatSession[]>(sessions);
   sessionsRef.current = sessions;
@@ -159,6 +164,7 @@ export function useAIChat(
       setSessions(prev => [newSession, ...prev]);
       setCurrentSession(newSession);
       setMessages([]);
+      messagesCacheMapRef.current.set(newSession.uid, []);
       return newSession.uid;
     } catch {
       toast.error('Failed to create chat session');
@@ -175,7 +181,11 @@ export function useAIChat(
         setCurrentSession(session);
         try {
           const stored = await localPersistence.getResource(sessionUid);
-          setMessages((stored?.messages as AIChatMessage[]) || []);
+          const allMessages = (stored?.messages as AIChatMessage[]) || [];
+          messagesCacheMapRef.current.set(sessionUid, allMessages);
+          displayCountRef.current = Math.min(PAGE_SIZE, allMessages.length);
+          setMessages(allMessages.slice(-PAGE_SIZE));
+          setHasMoreMessages(allMessages.length > PAGE_SIZE);
         } catch { setMessages([]); }
       }
       setIsMessagesLoading(false);
@@ -192,16 +202,21 @@ export function useAIChat(
       if (!session) throw new Error('Session not found');
 
       setCurrentSession(session);
-      messageOffsetRef.current = 0;
 
-      const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${PAGE_SIZE}`);
-      if (!msgRes.ok) throw new Error('Failed to load messages');
-      const { data: msgData, count } = await msgRes.json();
+      // Check cache first — skip fetch if already loaded this session
+      let allMessages = messagesCacheMapRef.current.get(sessionUid);
+      if (!allMessages) {
+        const FETCH_ALL_LIMIT = 9999;
+        const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${FETCH_ALL_LIMIT}`);
+        if (!msgRes.ok) throw new Error('Failed to load messages');
+        const { data: msgData } = await msgRes.json();
+        allMessages = (msgData || []).reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
+        messagesCacheMapRef.current.set(sessionUid, allMessages!);
+      }
 
-      const loadedMessages: AIChatMessage[] = (msgData || []).reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
-      setMessages(loadedMessages);
-      messageOffsetRef.current = loadedMessages.length;
-      setHasMoreMessages((count || 0) > loadedMessages.length);
+      displayCountRef.current = Math.min(PAGE_SIZE, allMessages!.length);
+      setMessages(allMessages!.slice(-PAGE_SIZE));
+      setHasMoreMessages(allMessages!.length > PAGE_SIZE);
     } catch {
       toast.error('Failed to load messages');
     } finally {
@@ -211,25 +226,25 @@ export function useAIChat(
 
   const loadMoreMessages = useCallback(async () => {
     if (!currentSession || isLoadingMore || !hasMoreMessages) return;
-    if (isGuestCheck()) { setIsLoadingMore(false); return; }
     setIsLoadingMore(true);
 
     try {
-      const offset = messageOffsetRef.current;
-      const msgRes = await apiFetch(`/api/ai/chat/sessions/${currentSession.uid}/messages?offset=${offset}&limit=${PAGE_SIZE}`);
-      if (!msgRes.ok) throw new Error('Failed to load more messages');
-      const { data } = await msgRes.json();
+      const all = messagesCacheMapRef.current.get(currentSession?.uid) ?? [];
+      const currentCount = displayCountRef.current;
+      if (currentCount >= all.length) { setHasMoreMessages(false); return; }
 
-      if (data && data.length > 0) {
-        const olderMessages: AIChatMessage[] = data.reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
-        setMessages(prev => [...olderMessages, ...prev]);
-        messageOffsetRef.current = offset + olderMessages.length;
-        setHasMoreMessages(data.length >= PAGE_SIZE);
-      } else {
-        setHasMoreMessages(false);
-      }
+      const batch = all.slice(
+        Math.max(0, all.length - currentCount - PAGE_SIZE),
+        all.length - currentCount,
+      );
+
+      if (batch.length === 0) { setHasMoreMessages(false); return; }
+
+      setMessages(prev => [...batch, ...prev]);
+      displayCountRef.current = currentCount + batch.length;
+      setHasMoreMessages(displayCountRef.current < all.length);
     } catch {
-      toast.error('Failed to load more messages');
+      toast.error('Failed to load older messages');
     } finally {
       setIsLoadingMore(false);
     }
@@ -239,7 +254,7 @@ export function useAIChat(
     if (isGuestCheck()) {
       try { await localPersistence.deleteResource(sessionUid); } catch {}
       setSessions(prev => prev.filter(s => s.uid !== sessionUid));
-      if (currentSession?.uid === sessionUid) { setCurrentSession(null); setMessages([]); }
+      if (currentSession?.uid === sessionUid) { setCurrentSession(null); setMessages([]); messagesCacheMapRef.current.delete(sessionUid); }
       return;
     }
 
@@ -247,7 +262,7 @@ export function useAIChat(
       const res = await apiFetch(`/api/ai/chat/sessions/${sessionUid}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete session');
       setSessions(prev => prev.filter(s => s.uid !== sessionUid));
-      if (currentSession?.uid === sessionUid) { setCurrentSession(null); setMessages([]); }
+      if (currentSession?.uid === sessionUid) { setCurrentSession(null); setMessages([]); messagesCacheMapRef.current.delete(sessionUid); }
     } catch {
       toast.error('Failed to delete session');
     }
@@ -257,6 +272,7 @@ export function useAIChat(
     setSessions([]);
     setCurrentSession(null);
     setMessages([]);
+    messagesCacheMapRef.current.clear();
   }, []);
 
   useEffect(() => { listSessions(); }, [listSessions]);
@@ -298,11 +314,15 @@ export function useAIChat(
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, tempUserMsg]);
+    const sessionUid = currentSession.uid ?? currentSession.id;
+    const existing = messagesCacheMapRef.current.get(sessionUid) ?? [];
+    messagesCacheMapRef.current.set(sessionUid, [...existing, tempUserMsg]);
 
     // Guest mode: persist user message immediately + auto-title
     if (isGuest) {
-      persistGuestMessages(currentSession.uid, [...messages, tempUserMsg]);
-      const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
+      const updatedCache = messagesCacheMapRef.current.get(sessionUid) ?? [];
+      persistGuestMessages(currentSession.uid, [...updatedCache]);
+      const isFirstMessage = updatedCache.filter(m => m.role === 'user').length === 1;
       if (isFirstMessage) {
         const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
         autoTitleSession(currentSession.uid, title, true);
@@ -321,7 +341,7 @@ export function useAIChat(
         });
         if (!res.ok) throw new Error('Failed to save message');
 
-        const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
+        const isFirstMessage = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => m.role === 'user').length === 1;
         if (isFirstMessage) {
           const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
           autoTitleSession(currentSession.uid, title, false);
@@ -387,8 +407,10 @@ export function useAIChat(
         } catch {}
       }
 
-      // Previous messages
-      const previousMessages = messages.filter(m => !m.id.toString().startsWith('temp-'));
+      // Previous messages — send ALL cached messages so AI remembers full conversation.
+      // Display is paginated (last N) but AI sees everything.
+      // temp-* messages (optimistic user) excluded since server hasn't persisted them yet.
+      const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
       for (const msg of previousMessages) {
         if (msg.role === 'system') continue;
         apiMessages.push({ role: msg.role, content: msg.content });
@@ -455,6 +477,8 @@ export function useAIChat(
         created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev.filter(m => m.id !== 'streaming'), finalAiMsg]);
+      const finalCache = messagesCacheMapRef.current.get(sessionUid) ?? [];
+      messagesCacheMapRef.current.set(sessionUid, [...finalCache, finalAiMsg]);
 
       // Persist
       if (isGuest) {
@@ -498,7 +522,7 @@ export function useAIChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [currentSession, messages, entityContextText, entityContext]);
+  }, [currentSession, entityContextText, entityContext]);
 
   const clearMessages = useCallback(() => setMessages([]), []);
 
