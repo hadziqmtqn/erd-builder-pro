@@ -96,11 +96,11 @@ export async function fetchUserSystemPrompt(): Promise<string | null> {
 export function buildViewInstruction(viewType: string | null): string | null {
   switch (viewType) {
     case 'erd':
-      return `[Current view: ERD Diagram] The user is viewing a database ERD diagram. Available action buttons below messages: Edit Columns, Explain Table, Suggest Indexes, Seed Data, plus Append/Replace for content. When you output SQL DDL, tell the user to use the action buttons below.`;
+      return `[Current view: ERD Diagram] User viewing a database ERD diagram. Action buttons (Edit Columns, Explain Table, Suggest Indexes, Seed Data, Append/Replace) appear automatically below messages.`;
     case 'notes':
-      return `[Current view: Notes] The user is editing a markdown note. Available action buttons below messages: Summarize, Improve Grammar, Generate Docs, plus Append/Replace for content. When you output text or markdown, tell the user to use Append or Replace to apply it.`;
+      return `[Current view: Notes] User editing a markdown note. Action buttons (Summarize, Improve Grammar, Generate Docs, Append/Replace) appear automatically below messages.`;
     case 'flowchart':
-      return `[Current view: Flowchart] The user is editing a flowchart diagram. Available action buttons below messages: Generate Flowchart, Explain Flow, Generate Pseudocode, Insert Symbol, Import from Description, plus Append/Replace for content. When you output JSON or flow descriptions, tell the user to use the action buttons below.`;
+      return `[Current view: Flowchart] User editing a flowchart diagram. Action buttons (Generate Flowchart, Explain Flow, Generate Pseudocode, Insert Symbol, Import from Description, Append/Replace) appear automatically below messages.`;
     default:
       return `[Current view: Dashboard/Table] The user is viewing a list. Keep responses brief and actionable.`;
   }
