@@ -118,6 +118,22 @@ export async function updateShare(req: ExpressRequest, res: ExpressResponse): Pr
   }
 }
 
+export async function moveToProject(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const userId = (req as any).user.id;
+    const raw = req.body.project_id;
+    const projectId = (raw === null || raw === undefined || raw === '' || raw === 'none' || raw === 'uncategorized')
+      ? null
+      : Number(raw);
+
+    const result = await diagService.updateDiagram(req.params.uid, userId, { projectId });
+    if (!result) { res.status(404).json({ error: "Diagram not found" }); return; }
+    res.json(result);
+  } catch (err: any) {
+    handleError(res, err, "Failed to move diagram to project");
+  }
+}
+
 export async function getPublic(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const diagram = await diagService.getPublicDiagram(req.params.uid);

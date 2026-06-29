@@ -206,7 +206,7 @@ export const ChatInput = memo(function ChatInput({
           onInput={handleInput}
           onKeyDown={handleMentionKeyDown}
           placeholder={isStreaming ? 'AI is responding...' : getPlaceholder(activeActionId, hasProject)}
-          className="flex-1 min-h-[80px] max-h-[200px] rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
+          className="flex-1 min-h-20 max-h-50 rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
           rows={3}
           disabled={isStreaming}
         />
@@ -215,13 +215,13 @@ export const ChatInput = memo(function ChatInput({
         {mentionOpen && filtered.length > 0 && (
           <div
             ref={mentionRef}
-            className="absolute z-[100] w-[240px] rounded-lg border border-border bg-popover shadow-xl overflow-hidden"
+            className="absolute z-100 w-60 rounded-lg border border-border bg-popover shadow-xl overflow-hidden"
             style={{
               bottom: 'calc(100% + 4px)',
               left: '0px',
             }}
           >
-            <div className="max-h-[180px] overflow-y-auto py-1">
+            <div className="max-h-45 overflow-y-auto py-1">
               {filtered.map((file, idx) => {
                 const Icon = MENTION_ICONS[file.type] || FileText;
                 const isActive = idx === mentionIndex;
@@ -254,7 +254,7 @@ export const ChatInput = memo(function ChatInput({
         </Button>
       </div>
 
-      <div className="flex items-center justify-between min-h-[28px]">
+      <div className="flex items-center justify-between min-h-7">
         {showActions ? (
           <div className="flex items-center gap-1 flex-wrap">
             {actions.map((action) => {
@@ -271,7 +271,7 @@ export const ChatInput = memo(function ChatInput({
                       }`}
                     >
                       {getActionIcon(action.id)}
-                      <span className="truncate max-w-[80px]">{action.label}</span>
+                      <span className="truncate max-w-20">{action.label}</span>
                     </button>
                   </HoverCardTrigger>
                   <HoverCardContent side="top" align="start" className="w-56 p-2.5">

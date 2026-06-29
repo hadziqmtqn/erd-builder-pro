@@ -14,6 +14,7 @@ import {
   SelectItem, SelectGroup, SelectLabel,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { stripAiFluff } from './chatUtils';
 
 export interface NoteFromTextDialogProps {
   text: string;
@@ -47,7 +48,8 @@ export function NoteFromTextDialog({
   const newHtml = useMemo(() => {
     if (!text) return '';
     try {
-      const html = marked.parse(text, { gfm: true, breaks: true }) as string;
+      const cleaned = stripAiFluff(text);
+      const html = marked.parse(cleaned, { gfm: true, breaks: true }) as string;
       return DOMPurify.sanitize(html, { ADD_TAGS: ['iframe'] });
     } catch {
       return DOMPurify.sanitize(text);
@@ -57,15 +59,21 @@ export function NoteFromTextDialog({
   const originalHtml = isOnNotesPage ? (activeNoteContent || '') : '';
 
   const diffHtml = useMemo(() => {
-    if (mode === 'replace') {
-      return newHtml;
+    const cleaned = stripAiFluff(text);
+    let html = '';
+    try {
+      html = marked.parse(cleaned, { gfm: true, breaks: true }) as string;
+      html = DOMPurify.sanitize(html, { ADD_TAGS: ['iframe'] });
+    } catch {
+      html = DOMPurify.sanitize(cleaned);
     }
+    if (mode === 'replace') return html;
     if (mode === 'append') {
       const separator = originalHtml.trim() ? '<br><hr><br>' : '';
-      return originalHtml + separator + newHtml;
+      return originalHtml + separator + html;
     }
-    return newHtml;
-  }, [mode, originalHtml, newHtml]);
+    return html;
+  }, [mode, originalHtml, text]);
 
   useEffect(() => {
     if (!updateUid || mode !== 'update') {
@@ -143,7 +151,7 @@ export function NoteFromTextDialog({
   return (
     <Dialog open={true} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogOverlay />
-      <DialogContent size="4xl" className="max-h-[85vh] flex flex-col !p-0">
+      <DialogContent size="4xl" className="max-h-[85vh] flex flex-col p-0!">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="size-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -164,7 +172,7 @@ export function NoteFromTextDialog({
           </div>
         </DialogHeader>
 
-        <DialogBody className="flex-1 overflow-auto !p-0 border-y">
+        <DialogBody className="flex-1 overflow-auto p-0! border-y">
           <div className="p-6 pb-0 space-y-4">
             <div className={`grid gap-3 ${isOnNotesPage ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button
@@ -281,7 +289,7 @@ export function NoteFromTextDialog({
                     <div className="sticky top-0 z-10 px-4 py-2 bg-muted/50 border-b text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Original
                     </div>
-                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:!min-h-0 [&_img]:max-w-full [&_img]:h-auto">
+                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:min-h-0! [&_img]:max-w-full [&_img]:h-auto">
                       {originalHtml ? (
                         <div dangerouslySetInnerHTML={{ __html: originalHtml }} />
                       ) : (
@@ -297,7 +305,7 @@ export function NoteFromTextDialog({
                     }`}>
                       {mode === 'replace' ? 'Replace With' : 'Appended Result'}
                     </div>
-                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:!min-h-0 [&_img]:max-w-full [&_img]:h-auto">
+                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:min-h-0! [&_img]:max-w-full [&_img]:h-auto">
                       <div dangerouslySetInnerHTML={{ __html: diffHtml }} />
                     </div>
                   </div>
@@ -308,7 +316,7 @@ export function NoteFromTextDialog({
                     <div className="sticky top-0 z-10 px-4 py-2 bg-muted/50 border-b text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Original
                     </div>
-                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:!min-h-0 [&_img]:max-w-full [&_img]:h-auto">
+                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:min-h-0! [&_img]:max-w-full [&_img]:h-auto">
                       <div dangerouslySetInnerHTML={{ __html: existingHtml }} />
                     </div>
                   </div>
@@ -316,7 +324,7 @@ export function NoteFromTextDialog({
                     <div className="sticky top-0 z-10 px-4 py-2 bg-green-50 dark:bg-green-950/20 border-b text-[11px] font-semibold uppercase tracking-wider text-green-700 dark:text-green-400">
                       AI Changes
                     </div>
-                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:!min-h-0 [&_img]:max-w-full [&_img]:h-auto">
+                    <div className="flex-1 px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:min-h-0! [&_img]:max-w-full [&_img]:h-auto">
                       <div dangerouslySetInnerHTML={{ __html: diffHtml }} />
                     </div>
                   </div>
@@ -326,7 +334,7 @@ export function NoteFromTextDialog({
                   <div className="px-4 py-2 bg-muted/50 border-b text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {mode === 'create' ? 'Note Content Preview' : 'Content Preview'}
                   </div>
-                  <div className="px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:!min-h-0 [&_img]:max-w-full [&_img]:h-auto">
+                  <div className="px-5 py-4 prose prose-sm dark:prose-invert max-w-none text-sm [&_.tiptap-editor-content]:min-h-0! [&_img]:max-w-full [&_img]:h-auto">
                     <div dangerouslySetInnerHTML={{ __html: diffHtml }} />
                   </div>
                 </div>

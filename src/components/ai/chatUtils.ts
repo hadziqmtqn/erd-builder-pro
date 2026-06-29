@@ -86,3 +86,57 @@ export function formatTime(dateStr?: string): string {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
+
+// ─── AI Response Cleanup ─────────────────────────────────────────────────────
+
+const AI_FOOTER_PATTERNS: RegExp[] = [
+  /\b(beri\s*tahu|kabari|let\s+me\s+know|tell\s+me|lmk)\b/i,
+  /\b(gunakan|klik|click|use)\s+(tombol|button)\b/i,
+  /\b(jika\s+ada|if\s+(you\s+(have|need|want)|there\s+is|anything))\b/i,
+  /\b(jika\s+sudah\s+sesuai|if\s+(it|this|that)\s+(looks|is)\s+(good|correct|right|ok|okay))\b/i,
+  /\b(semoga\s+membantu|hope\s+(this|it|that)\s+helps)\b/i,
+  /\b(saya\s+siap|i'?m\s+(ready|here)|happy\s+to\s+help)\b/i,
+  /\b(silahkan|feel\s+free|don'?t\s+hesitate)\b/i,
+  /\b(^\*\*Catatan\*\*|^\*\*Note\*\*|^\*\*Tips?\*\*)/im,
+];
+
+/**
+ * Strip AI preamble and footer fluff from responses.
+ *
+ * AI frequently wraps real content with:
+ *   - Preamble: "Berikut adalah X yang telah diperbarui..." before ---
+ *   - Footer: "Jika ada yang perlu diubah, gunakan tombol Replace..." after ---
+ *
+ * Heuristic:
+ *   - Text before first \n---\n that is non-empty + shorter than 350 chars → preamble, strip it.
+ *     An empty first segment means content starts with --- (real Markdown HR), so keep it.
+ *   - Text after last \n---\n matching any AI_FOOTER_PATTERNS → footer, strip it.
+ *
+ * Only strips when at least 2 segments exist (actual content in middle).
+ * Internal --- separators within the content body are always preserved.
+ */
+export function stripAiFluff(content: string): string {
+  const HR = /\n---\n/;
+  const parts = content.split(HR);
+
+  if (parts.length < 2) return content.trim();
+
+  // Strip preamble: first segment must be NON-EMPTY (content starting with ---
+  // means first segment is "" — that's a real Markdown HR, not AI preamble)
+  const first = parts[0].trim();
+  if (first.length > 0 && first.length < 350) {
+    parts.shift();
+  }
+
+  // Strip footer if last segment looks like AI closing
+  if (parts.length >= 1) {
+    const last = parts[parts.length - 1].trim();
+    if (AI_FOOTER_PATTERNS.some(p => p.test(last))) {
+      parts.pop();
+    }
+  }
+
+  const result = parts.join('\n---\n').trim();
+  // If stripping removed everything, return original
+  return result || content.trim();
+}

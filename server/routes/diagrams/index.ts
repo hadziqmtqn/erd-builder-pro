@@ -9,6 +9,7 @@ router.get("/", authenticate, ctrl.list);
 router.post("/", authenticate, validate(createDiagramSchema), ctrl.create);
 router.get("/public/:uid", ctrl.getPublic);
 router.put("/:uid/share", authenticate, ctrl.updateShare);
+router.put("/:uid/project", authenticate, ctrl.moveToProject);
 router.get("/:uid", authenticate, ctrl.get);
 router.put("/:uid", authenticate, ctrl.update);
 router.delete("/:uid", authenticate, ctrl.remove);
