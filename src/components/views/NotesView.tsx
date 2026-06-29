@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { getMarkdownFromHtml } from '@/lib/markdownUtils';
 import { NoteImporter } from '@/lib/importers/note-importer';
 import { applyToNoteContent } from '@/components/ai/actions/notesActions';
+import { stripAiFluff } from '@/components/ai/chatUtils';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -51,13 +52,16 @@ export const NotesView = React.memo(({
     const cleanup = registerContentHandler(async (content: string, strategy: 'replace' | 'append', actionId?: string) => {
       const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
 
-      let parsedHtml = content;
+      // Strip AI preamble + footer fluff before processing
+      const cleanedContent = stripAiFluff(content);
+
+      let parsedHtml = cleanedContent;
       try {
-        parsedHtml = await marked.parse(content, { gfm: true, breaks: true });
+        parsedHtml = await marked.parse(cleanedContent, { gfm: true, breaks: true });
         parsedHtml = await NoteImporter.processHtmlForEditor(parsedHtml);
       } catch {}
 
-      setPendingChange({ content, strategy, originalContent: currentContent, originalHtml: currentContent, newHtml: parsedHtml, actionId });
+      setPendingChange({ content: cleanedContent, strategy, originalContent: currentContent, originalHtml: currentContent, newHtml: parsedHtml, actionId });
     });
 
     return cleanup;
@@ -76,9 +80,12 @@ export const NotesView = React.memo(({
 
       const currentContent = typeof activeNote.content === 'string' ? activeNote.content : '';
 
-      let parsedContent = pendingContent;
+      // Strip AI preamble + footer fluff
+      const cleanedPending = stripAiFluff(pendingContent);
+
+      let parsedContent = cleanedPending;
       try {
-        parsedContent = await marked.parse(pendingContent, { gfm: true, breaks: true });
+        parsedContent = await marked.parse(cleanedPending, { gfm: true, breaks: true });
         parsedContent = await NoteImporter.processHtmlForEditor(parsedContent);
       } catch {}
 
@@ -129,7 +136,8 @@ export const NotesView = React.memo(({
         const merged = applyToNoteContent(markdownContent, actionId, content);
         parsedContent = await marked.parse(merged, { gfm: true, breaks: true });
       } else {
-        parsedContent = await marked.parse(content, { gfm: true, breaks: true });
+        const cleaned = stripAiFluff(content);
+        parsedContent = await marked.parse(cleaned, { gfm: true, breaks: true });
       }
       parsedContent = await NoteImporter.processHtmlForEditor(parsedContent);
     } catch (err) {

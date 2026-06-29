@@ -818,7 +818,7 @@ const ERDViewComponent = ({
                 </button>
               </div>
 
-              <div className="max-h-[200px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+              <div className="max-h-50 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                 {diffNodesWithChanges.map(n => {
                   const label = n.data.name || n.data.label || n.id;
                   const type = n.data.diffState;
