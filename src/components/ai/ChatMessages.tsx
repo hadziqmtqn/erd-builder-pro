@@ -167,7 +167,7 @@ export const ChatMessages = memo(function ChatMessages({
               <>
                 <MessageSquare className="size-10 text-muted-foreground/20 mb-4" />
                 <h4 className="text-sm font-semibold">AI Assistant</h4>
-                <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+                <p className="text-xs text-muted-foreground mt-1 max-w-50">
                   Select a conversation or start a new chat
                 </p>
                 <Button variant="default" size="sm" className="mt-4" onClick={handleNewSession}>
