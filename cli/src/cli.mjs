@@ -16,6 +16,11 @@ const DB_PATH = path.join(DATA_DIR, 'data.db');
 const PID_FILE = path.join(DATA_DIR, 'server.pid');
 const DEFAULT_PORT = 3101;
 
+// Read version from package.json
+const pkgJson = JSON.parse(fs.readFileSync(path.join(PROD_ROOT, 'package.json'), 'utf8'));
+const VERSION = pkgJson.version;
+const UPDATE_URL = 'https://github.com/hadziqmtqn/erd-builder-pro/releases/latest/download/latest.json';
+
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -150,12 +155,39 @@ function launchMenubar(port) {
   child.unref();
 }
 
+async function checkForUpdates() {
+  try {
+    const res = await fetch(UPDATE_URL, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return;
+    const json = await res.json();
+    const latest = json.version;
+    if (!latest) return;
+    
+    // Write update info for menubar to read
+    const updateFile = path.join(DATA_DIR, 'update.json');
+    const hasUpdate = latest !== VERSION;
+    fs.writeFileSync(updateFile, JSON.stringify({
+      current: VERSION,
+      latest,
+      hasUpdate,
+      checkedAt: new Date().toISOString(),
+    }, null, 2));
+
+    if (hasUpdate) {
+      console.log(`\n📦 Update available: ${VERSION} → ${latest}`);
+      console.log(`   Run: npm update -g erdbpro\n`);
+    }
+  } catch {
+    // Silently ignore
+  }
+}
+
 // ── Commander ──
 const program = new Command();
 program
   .name('erdbpro')
   .description('ERD Builder Pro CLI — Database design workspace, one command away.')
-  .version('2.4.1');
+  .version(VERSION);
 
 program
   .command('start')
@@ -167,6 +199,7 @@ program
   .option('--no-open', 'Do not open browser on start')
   .action(async (options) => {
     checkNodeVersion();
+    await checkForUpdates();
     const port = parseInt(options.port, 10);
     const dbUrl = options.dbUrl || `file:${DB_PATH}`;
     const background = !!options.background;
@@ -184,7 +217,7 @@ program
 
     ensureDataDir();
 
-    console.log(`\n🚀 ERD Builder Pro v2.4.1`);
+    console.log(`\n🚀 ERD Builder Pro v${VERSION}`);
     console.log(`   📁 Data:  ${DATA_DIR}`);
     console.log(`   🌐 URL:   http://localhost:${port}`);
     if (dbUrl.startsWith('file:')) {
@@ -218,6 +251,13 @@ program
   .command('status')
   .description('Check if server is running')
   .action(() => serverStatus());
+
+program
+  .command('update')
+  .description('Check for updates and show install instructions')
+  .action(async () => {
+    await checkForUpdates();
+  });
 
 // Default: "erdbpro" without subcommand = "erdbpro start"
 if (process.argv.slice(2).length === 0) {
