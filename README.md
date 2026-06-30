@@ -11,7 +11,7 @@
 
 </div>
 
-**ERD Builder Pro** is a professional-grade, high-performance web application designed for developers and database architects to build, document, and visualize complex data structures. Built with a modular architecture and modern tech stack, it offers a seamless experience for database design and technical documentation.
+**ERD Builder Pro** is a database design and documentation tool for developers. Build ERDs, flowcharts, notes, and drawings — all in one workspace.
 
 <div align="center">
   <img width="1200" alt="ERD Builder Pro Dashboard" src="public/img/erd-intro.png" />
@@ -19,24 +19,11 @@
 
 ## 🚀 Key Features
 
-- **🎨 Multi-Mode Visual Workspace**: 
-  - **ERD Builder**: Drag-and-drop entity relationship diagramming using **XYFlow** (React Flow v12).
-  - **Interactive Flowcharts**: Visualize processes and architectures with customizable nodes, decision points, and smart connectors.
-  - **Excalidraw Integration**: Free-hand sketching for whiteboarding and architectural brainstorming.
-  - **Rich Text Notes**: Professional documentation powered by **TipTap**, supporting tables, task lists, and markdown.
-- **🏗️ Modular Architecture**:
-  - **Component-Based Views**: Clean separation of concerns with dedicated views for ERD, Notes, Drawings, and Trash.
-  - **Scalable Design**: Easily extendable codebase with a decoupled frontend/backend structure.
-- **📤 Advanced Export Options**:
-  - **SQL Schema Generation**: Export diagrams directly to **PostgreSQL** or **MySQL** DDL scripts.
-  - **Universal Formats**: High-quality Image and PDF exports for documentation sharing.
-- **📁 Smart Organization**:
-  - **Project Management**: Group related assets into distinct projects for better workspace management.
-  - **Comprehensive Trash System**: Safety-first soft-delete system for all projects and files.
-- **🤖 AI-Powered Assistant**: Context-aware chat integrated per view — ask about diagrams, generate SQL/seed data, summarize notes, or describe flowcharts. Streaming responses with auto-apply (Replace/Append). Supports multi-table selection, markdown-aware notes context. AI can reference multiple file types within the same workspace (e.g., chat about a Note while AI also sees the ERD diagram and Flowchart), enabling cross-feature analysis.
-- **🔐 Enterprise-Grade Security**:
-  - **Supabase Authentication**: Secure Email/Password login system with persistent session management.
-  - **Cloud Hybrid Storage**: Real-time persistence using **Supabase Database** and **Cloudflare R2**.
+- **🎨 Visual Workspace**: ERD diagrams (XYFlow), flowcharts, free-hand drawing (Excalidraw), and rich-text notes (TipTap).
+- **📤 Export**: Generate SQL DDL (PostgreSQL, MySQL), export as images or PDF.
+- **📁 Project Management**: Organize assets into projects with soft-delete trash system.
+- **🤖 AI Assistant**: Context-aware chat per view — generate SQL, seed data, summarize notes, create flowcharts. Streaming responses with auto-apply.
+- **🔐 Security**: Supabase authentication, Cloudflare R2 storage, rate limiting, Helmet middleware.
 
 ## 🛠️ Tech Stack
 
@@ -51,39 +38,18 @@
 
 ## 🏗️ Getting Started
 
-### � Documentation
-For detailed guides and tutorials, visit: [https://docs.erdbuilderpro.com](https://docs.erdbuilderpro.com)
+### 🚀 Quick Install (Recommended)
 
-### 📋 Prerequisites
-- **Node.js**: v20+ 
-- **npm**: v10+
-- **Supabase Account**: For Database and Authentication management
-- **Cloudflare R2 / S3 Account**: For storing large assets (drawings/attachments)
+The CLI app is the fastest way to get started — no Docker, no Supabase, no config:
 
-### ⚙️ Installation & Setup
+```bash
+npm install -g erdbpro
+erdbpro
+```
 
-1. **Clone the repository**:
-   ```bash
-   git clone <your-repository-url>
-   cd erd-builder-pro
-   ```
+Opens at `http://localhost:3101`. Data stored locally in `~/.erdbpro/`. Login with `admin@local.dev` / `admin123`.
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment**:
-   Create a `.env` file in the root directory and follow the configuration guide:
-   [https://docs.erdbuilderpro.com/configuration/env-variables](https://docs.erdbuilderpro.com/configuration/env-variables)
-
-   Use [`./.env.example`](./.env.example) as the local template. Do not commit real secret values into the repo or README.
-
-4. **Start Development**:
-   ```bash
-   npm run dev
-   ```
-   Access the dashboard at `http://localhost:3000`.
+A desktop app is also available on the [releases page](https://github.com/hadziqmtqn/erd-builder-pro/releases) (macOS `.dmg`, Windows `.msi`, Linux `.deb`). Note: the desktop app is not yet code-signed — macOS and Windows may show a security warning on first launch.
 
 ### 🐳 Docker
 
@@ -93,21 +59,6 @@ docker pull bekenweb/erd-builder-pro:latest
 docker run -d --name erd-builder-pro -p 3000:3000 \
   --env-file .env \
   bekenweb/erd-builder-pro:latest
-```
-
-> Fill `.env` based on the [env configuration docs](https://docs.erdbuilderpro.com/configuration/env-variables) and [`.env.example`](./.env.example). Vite build args (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are baked into the image — use the appropriate tag or build your own with `docker build --build-arg VITE_SUPABASE_URL=... -t erd-builder-pro .`
-
-Available tags: [`latest`](https://hub.docker.com/r/bekenweb/erd-builder-pro/tags), versioned (`v1.2.3`), and commit SHA (`2bbc233`).
-
-### 📦 Local Build
-
-Build the optimized production bundle:
-```bash
-npm run build
-```
-Run the production server:
-```bash
-npm run start
 ```
 
 ### 🧪 Testing
@@ -137,8 +88,6 @@ src/lib/__tests__/
 
 ## 🤝 Sponsors
 
-A huge thank you to our sponsors for providing the infrastructure and tools that make this project possible:
-
 <div align="center">
   <a href="https://www.idcloudhost.com" target="_blank">
     <img src="/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
@@ -158,9 +107,7 @@ A huge thank you to our sponsors for providing the infrastructure and tools that
 
 ## 💖 Support
 
-If you find ERD Builder Pro useful, consider supporting the developer:
-
-<a href="https://trakteer.id/khadziq_muttaqin/tip" target="_blank"><img src="https://edge-cdn.trakteer.id/images/embed/trbtn-red-1.png?v=14-05-2025" height="40" style="border:0;height:40px;" alt="Trakteer Saya"></a>
+<a href="https://trakteer.id/khadziq_muttaqin/tip" target="_blank"><img src="https://edge-cdn.trakteer.id/images/embed/trbtn-red-1.png?v=14-05-2025" height="40" alt="Trakteer Saya"></a>
 
 ---
 
