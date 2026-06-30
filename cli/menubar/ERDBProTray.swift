@@ -4,19 +4,20 @@ import Foundation
 let port = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "3101"
 let home = FileManager.default.homeDirectoryForCurrentUser
 let pidFile = home.appendingPathComponent(".erdbpro/server.pid").path
+let updateFile = home.appendingPathComponent(".erdbpro/update.json").path
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var statusMenuItem: NSMenuItem!
+    var updateMenuItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
-            // Load custom icon, fallback to "ERD" text
             let iconCandidates = [
                 Bundle.main.bundlePath + "/../icon.svg",
-                "\(FileManager.default.homeDirectoryForCurrentUser.path)/Projects/erd-builder-pro/cli/menubar/icon.svg"
+                "\(home.path)/Projects/erd-builder-pro/cli/menubar/icon.svg"
             ]
             var iconLoaded = false
             for iconPath in iconCandidates {
@@ -40,6 +41,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusMenuItem)
         menu.addItem(NSMenuItem.separator())
 
+        updateMenuItem = NSMenuItem(title: "", action: #selector(showUpdate), keyEquivalent: "")
+        updateMenuItem.isHidden = true
+        menu.addItem(updateMenuItem)
+
         let openItem = NSMenuItem(title: "Open ERD Builder Pro", action: #selector(openApp), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
@@ -51,21 +56,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusItem.menu = menu
 
-        // Handle SIGTERM (from pkill / erdbpro stop)
         signal(SIGTERM) { _ in
             NSApplication.shared.terminate(nil)
         }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        // Server status
         if let pidStr = try? String(contentsOfFile: pidFile, encoding: .utf8) {
             let pid = pidStr.trimmingCharacters(in: .whitespacesAndNewlines)
             if let pidNum = Int32(pid), kill(pidNum, 0) == 0 {
                 statusMenuItem.title = "Server: Running (PID: \(pid))"
-                return
+            } else {
+                statusMenuItem.title = "Server: Stopped"
             }
+        } else {
+            statusMenuItem.title = "Server: Stopped"
         }
-        statusMenuItem.title = "Server: Stopped"
+
+        // Update notification
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: updateFile)),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let hasUpdate = json["hasUpdate"] as? Bool, hasUpdate,
+           let latest = json["latest"] as? String {
+            let attr = NSAttributedString(
+                string: "Update Available: v\(latest)",
+                attributes: [.foregroundColor: NSColor.systemGreen]
+            )
+            updateMenuItem.attributedTitle = attr
+            updateMenuItem.isHidden = false
+        } else {
+            updateMenuItem.isHidden = true
+        }
     }
 
     @objc func openApp() {
@@ -74,13 +96,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc func showUpdate() {
+        // Open GitHub releases
+        if let url = URL(string: "https://github.com/hadziqmtqn/erd-builder-pro/releases/latest") {
+            NSWorkspace.shared.open(url)
+        }
+        // Show update instructions
+        let alert = NSAlert()
+        alert.messageText = "Update ERD Builder Pro"
+        alert.informativeText = "Run this command in your terminal:\n\nnpm update -g erdbpro\n\nThen restart with: erdbpro start --force"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        DispatchQueue.main.async { alert.runModal() }
+    }
+
     @objc func quitApp() {
-        // Stop server via PID file
         if let pidStr = try? String(contentsOfFile: pidFile, encoding: .utf8) {
             let pid = pidStr.trimmingCharacters(in: .whitespacesAndNewlines)
             if let pidNum = Int32(pid) {
                 kill(pidNum, SIGTERM)
-                // Server handles PID file cleanup on exit
             }
         }
         NSApplication.shared.terminate(nil)

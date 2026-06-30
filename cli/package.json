@@ -1,6 +1,6 @@
 {
   "name": "erdbpro",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "ERD Builder Pro CLI — one command to start your database design workspace.",
   "type": "module",
   "bin": {
