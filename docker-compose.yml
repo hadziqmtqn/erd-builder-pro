@@ -1,18 +1,39 @@
 services:
   erd-builder-pro:
-    build: .
+    build:
+      context: .
+      args:
+        - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-true}
     ports:
       - "3000:3000"
     volumes:
       # Volume mount for SQLite — data persists across container restarts
       - erd-data:/app/data
     restart: unless-stopped
-    # ── Example: Local PostgreSQL ──
+    # ── Database: uncomment ONE section ──
+    #
+    # Option 1: Pure PostgreSQL (recommended for production)
     # environment:
-    #   - DATABASE_URL=postgresql://postgres:postgres@db:5432/erd_builder_pro
+    #   - DATABASE_URL=postgresql://user:password@db:5432/erd_builder_pro
     # depends_on:
     #   - db
+    #
+    # Option 2: Supabase (managed PostgreSQL + Auth)
+    # environment:
+    #   - DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
+    #   - SUPABASE_URL=https://your-project.supabase.co
+    #
+    # Option 3: SQLite (default, zero-config — no environment needed)
 
 volumes:
   erd-data:
-  # pg-data:  # Uncomment for PostgreSQL
+  # pg-data:  # Uncomment for PostgreSQL Option 1
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=changeme
+  #     - POSTGRES_DB=erd_builder_pro
+  #   volumes:
+  #     - pg-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
