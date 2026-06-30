@@ -211,7 +211,7 @@ CREATE TABLE "ai_models" (
     "context_window" INTEGER,
     "is_active" BOOLEAN DEFAULT true,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ai_models_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES "ai_providers" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+    CONSTRAINT "ai_models_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES "ai_providers" ("id") ON DELETE RESTRICT ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -224,7 +224,7 @@ CREATE TABLE "user_ai_configs" (
     "is_enabled" BOOLEAN DEFAULT true,
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "user_ai_configs_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES "ai_providers" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
-    CONSTRAINT "user_ai_configs_selected_model_id_fkey" FOREIGN KEY ("selected_model_id") REFERENCES "ai_models" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+    CONSTRAINT "user_ai_configs_selected_model_id_fkey" FOREIGN KEY ("selected_model_id") REFERENCES "ai_models" ("id") ON DELETE RESTRICT ON UPDATE NO ACTION,
     CONSTRAINT "user_ai_configs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 

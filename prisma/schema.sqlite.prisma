@@ -302,7 +302,7 @@ model AiModel {
   contextWindow   Int?         @map("context_window")
   isActive        Boolean?     @default(true) @map("is_active")
   createdAt       DateTime?    @default(now()) @map("created_at")
-  provider        AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  provider        AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   userConfigs     UserAiConfig[]
 
   @@map("ai_models")

@@ -27,6 +27,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useERDSession } from '../hooks/useERDSession';
 import { useSQLGenerator } from '../hooks/useSQLGenerator';
 import { useUpdateCheck } from '../hooks/useUpdateCheck';
+import { useVersionCheck } from '../hooks/useVersionCheck';
 import { useImageExporter } from '../hooks/useImageExporter';
 import {
   useBroadcastChannel, BroadcastMessageType,
@@ -551,6 +552,17 @@ export function WorkspaceProvider({
 
   // Update check — centralised here, exposed via context to all consumers
   const { hasUpdate, latestVersion, isChecking: isCheckingUpdate, isDownloading: isDownloadingUpdate, checkNow: checkForUpdates, handleDownload: downloadUpdate } = useUpdateCheck(undefined, false, false);
+
+  // Cross-platform version check (web, CLI, Docker, desktop).
+  // Desktop: Tauri updater handles actual download/install. Web: this provides
+  // the outdated badge in nav-user. Avatar dot = isWebOutdated || hasUpdate.
+  const { isOutdated: isWebOutdated, latestVersion: latestWebVersion, currentVersion } = useVersionCheck();
+
+  // Merge: desktop update takes priority (can actually install).
+  // Web outdated flag is separate so the About dialog only shows Download button
+  // when Tauri updater has a concrete update object.
+  const showOutdatedBadge = hasUpdate || isWebOutdated;
+  const mergedLatestVersion = latestVersion || latestWebVersion;
 
   // ── Side Effects ──
   // PWA install toast + public doc detection
@@ -1167,6 +1179,7 @@ export function WorkspaceProvider({
     flowchartExportHandler, setFlowchartExportHandler,
     hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
     checkForUpdates, downloadUpdate,
+    isWebOutdated, showOutdatedBadge,
   }), [
     user, isGuest, _handleLogout, view, sidebarView,
     isPublicView, setIsPublicView, publicData,
@@ -1239,6 +1252,7 @@ export function WorkspaceProvider({
     flowchartExportHandler, setFlowchartExportHandler,
     hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
     checkForUpdates, downloadUpdate,
+    isWebOutdated, showOutdatedBadge,
     pendingErdDiffTrigger, triggerPendingErdDiff,
     theme, setTheme, resolvedTheme,
   ]);

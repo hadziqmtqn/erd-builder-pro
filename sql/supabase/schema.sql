@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS ai_providers (
 -- AI Models Table
 CREATE TABLE IF NOT EXISTS ai_models (
     id BIGSERIAL PRIMARY KEY,
-    provider_id BIGINT REFERENCES ai_providers(id) ON DELETE CASCADE,
+    provider_id BIGINT REFERENCES ai_providers(id) ON DELETE RESTRICT,
     model_identifier TEXT NOT NULL, -- 'gpt-4o', 'gemini-1.5-pro'
     display_name TEXT NOT NULL,
     context_window INTEGER DEFAULT NULL,
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS user_ai_configs (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
     provider_id BIGINT REFERENCES ai_providers(id) ON DELETE CASCADE,
-    selected_model_id BIGINT REFERENCES ai_models(id) ON DELETE SET NULL,
+    selected_model_id BIGINT REFERENCES ai_models(id) ON DELETE RESTRICT,
     api_key TEXT NOT NULL,
     is_enabled BOOLEAN DEFAULT TRUE,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
