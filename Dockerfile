@@ -38,10 +38,17 @@ COPY package*.json ./
 
 # Install production dependencies (skip postinstall — prisma CLI is a devDep)
 # prisma CLI is needed at runtime for client regeneration + db push
-RUN npm install --omit=dev --ignore-scripts && npm install tsx prisma
+# better-sqlite3: native addon required by @prisma/adapter-better-sqlite3 for SQLite mode
+# --ignore-scripts prevents native compilation; we rebuild explicitly below
+# --fetch-timeout=300000 handles slow/distanced npm registries
+RUN npm install --omit=dev --ignore-scripts --fetch-timeout=300000 && npm install tsx prisma better-sqlite3 --fetch-timeout=300000
 
-# Install psql for database probing in entrypoint (PostgreSQL mode only)
-RUN apk add --no-cache postgresql-client
+# Install build tools for better-sqlite3 native compilation + psql for PostgreSQL probing
+RUN apk add --no-cache postgresql-client python3 make g++
+
+# Rebuild better-sqlite3 native addon against this container's Node.js ABI
+# npm_config_build_from_source=true ensures compilation even without prebuild binaries
+RUN npm_config_build_from_source=true npm rebuild better-sqlite3 || echo "WARNING: better-sqlite3 rebuild failed (SQLite mode will not work)"
 
 # Copy pre-generated Prisma client from build stage (fallback for Supabase)
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma

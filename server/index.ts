@@ -233,6 +233,56 @@ app.post("/api/log/update", (req, res) => {
   res.json({ ok: true });
 });
 
+// Version check endpoint — cross-platform (web, CLI, Docker, desktop).
+// Fetches latest version from GitHub releases. Cached in-memory for 1 hour
+// to avoid GitHub API rate limits on repeated page loads.
+let versionCache: { version: string; fetchedAt: number } | null = null;
+const VERSION_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+app.get("/api/version/latest", async (_req, res) => {
+  try {
+    // Return cached value if fresh
+    if (versionCache && Date.now() - versionCache.fetchedAt < VERSION_CACHE_TTL) {
+      res.json({
+        latest: versionCache.version,
+        source: "cache",
+        cachedAt: new Date(versionCache.fetchedAt).toISOString(),
+      });
+      return;
+    }
+
+    // Fetch from GitHub releases API
+    const response = await fetch(
+      "https://api.github.com/repos/hadziqmtqn/erd-builder-pro/releases/latest",
+      { headers: { Accept: "application/vnd.github+json", "User-Agent": "erd-builder-pro" } }
+    );
+
+    if (!response.ok) {
+      res.json({ latest: null, source: "error", error: `GitHub API returned ${response.status}` });
+      return;
+    }
+
+    const data = await response.json() as any;
+    const tag = data?.tag_name || "";
+    // Strip leading 'v' if present
+    const version = tag.startsWith("v") ? tag.slice(1) : tag;
+
+    versionCache = { version, fetchedAt: Date.now() };
+    res.json({ latest: version, source: "github", cachedAt: new Date().toISOString() });
+  } catch (err: any) {
+    // Return cached value even if expired, as fallback
+    if (versionCache) {
+      res.json({
+        latest: versionCache.version,
+        source: "cache-fallback",
+        cachedAt: new Date(versionCache.fetchedAt).toISOString(),
+      });
+      return;
+    }
+    res.json({ latest: null, source: "error", error: err?.message || "Unknown error" });
+  }
+});
+
 app.use("/api", authRouter);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/projects", projectsRouter);

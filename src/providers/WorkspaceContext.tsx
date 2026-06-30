@@ -300,6 +300,10 @@ export interface WorkspaceContextValue {
   isDownloadingUpdate: boolean;
   checkForUpdates: () => void;
   downloadUpdate: () => void;
+  /** True when web/CLI version check finds newer version (cross-platform). */
+  isWebOutdated: boolean;
+  /** Merged: hasUpdate (desktop) || isWebOutdated (web). Use for avatar dot badge. */
+  showOutdatedBadge: boolean;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);

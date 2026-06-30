@@ -66,42 +66,56 @@ async function main() {
   }
   console.log('  ✓ AI Providers: OpenAI, Gemini, OpenAI Compatible');
 
-  // ── AI Models (re-create per provider for determinism) ──
+  // ── AI Models (idempotent — only seed if provider has no models) ──
+  // Uses findFirst instead of deleteMany+createMany to avoid wiping
+  // user_ai_configs.selected_model_id via ON DELETE SET NULL cascade.
   const openai = await prisma.aiProvider.findUnique({ where: { code: 'openai' } });
   const gemini = await prisma.aiProvider.findUnique({ where: { code: 'gemini' } });
   const openaiCompat = await prisma.aiProvider.findUnique({ where: { code: 'openai_compatible' } });
 
   if (openai) {
-    await prisma.aiModel.deleteMany({ where: { providerId: openai.id } });
-    await prisma.aiModel.createMany({
-      data: [
-        { providerId: openai.id, modelIdentifier: 'gpt-4o', displayName: 'GPT-4o', contextWindow: 128000, isActive: true },
-        { providerId: openai.id, modelIdentifier: 'gpt-4o-mini', displayName: 'GPT-4o Mini', contextWindow: 128000, isActive: true },
-        { providerId: openai.id, modelIdentifier: 'gpt-4-turbo', displayName: 'GPT-4 Turbo', contextWindow: 128000, isActive: true },
-      ],
-    });
-    console.log('  ✓ OpenAI models: GPT-4o, GPT-4o Mini, GPT-4 Turbo');
+    const existing = await prisma.aiModel.findFirst({ where: { providerId: openai.id } });
+    if (!existing) {
+      await prisma.aiModel.createMany({
+        data: [
+          { providerId: openai.id, modelIdentifier: 'gpt-4o', displayName: 'GPT-4o', contextWindow: 128000, isActive: true },
+          { providerId: openai.id, modelIdentifier: 'gpt-4o-mini', displayName: 'GPT-4o Mini', contextWindow: 128000, isActive: true },
+          { providerId: openai.id, modelIdentifier: 'gpt-4-turbo', displayName: 'GPT-4 Turbo', contextWindow: 128000, isActive: true },
+        ],
+      });
+      console.log('  ✓ OpenAI models: GPT-4o, GPT-4o Mini, GPT-4 Turbo');
+    } else {
+      console.log('  - OpenAI models already exist, skipping');
+    }
   }
 
   if (gemini) {
-    await prisma.aiModel.deleteMany({ where: { providerId: gemini.id } });
-    await prisma.aiModel.createMany({
-      data: [
-        { providerId: gemini.id, modelIdentifier: 'gemini-1.5-pro', displayName: 'Gemini 1.5 Pro', contextWindow: 1048576, isActive: true },
-        { providerId: gemini.id, modelIdentifier: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', contextWindow: 1048576, isActive: true },
-      ],
-    });
-    console.log('  ✓ Gemini models: Gemini 1.5 Pro, Gemini 1.5 Flash');
+    const existing = await prisma.aiModel.findFirst({ where: { providerId: gemini.id } });
+    if (!existing) {
+      await prisma.aiModel.createMany({
+        data: [
+          { providerId: gemini.id, modelIdentifier: 'gemini-1.5-pro', displayName: 'Gemini 1.5 Pro', contextWindow: 1048576, isActive: true },
+          { providerId: gemini.id, modelIdentifier: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash', contextWindow: 1048576, isActive: true },
+        ],
+      });
+      console.log('  ✓ Gemini models: Gemini 1.5 Pro, Gemini 1.5 Flash');
+    } else {
+      console.log('  - Gemini models already exist, skipping');
+    }
   }
 
   if (openaiCompat) {
-    await prisma.aiModel.deleteMany({ where: { providerId: openaiCompat.id } });
-    await prisma.aiModel.createMany({
-      data: [
-        { providerId: openaiCompat.id, modelIdentifier: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', contextWindow: 128000, isActive: true },
-      ],
-    });
-    console.log('  ✓ OpenAI Compatible models: DeepSeek V4 Flash');
+    const existing = await prisma.aiModel.findFirst({ where: { providerId: openaiCompat.id } });
+    if (!existing) {
+      await prisma.aiModel.createMany({
+        data: [
+          { providerId: openaiCompat.id, modelIdentifier: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', contextWindow: 128000, isActive: true },
+        ],
+      });
+      console.log('  ✓ OpenAI Compatible models: DeepSeek V4 Flash');
+    } else {
+      console.log('  - OpenAI Compatible models already exist, skipping');
+    }
   }
 
   // ── Default system prompt ──

@@ -379,7 +379,7 @@ ALTER TABLE "public"."ai_chat_sessions" ADD FOREIGN KEY ("project_id") REFERENCE
 CREATE UNIQUE INDEX ai_chat_sessions_uid_key ON public.ai_chat_sessions USING btree (uid);
 CREATE INDEX idx_ai_chat_sessions_entity ON public.ai_chat_sessions USING btree (entity_type, entity_uid);
 CREATE INDEX idx_ai_chat_sessions_project_id ON public.ai_chat_sessions USING btree (project_id);
-ALTER TABLE "public"."ai_models" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."ai_providers"("id") ON DELETE CASCADE;
+ALTER TABLE "public"."ai_models" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."ai_providers"("id") ON DELETE RESTRICT;
 
 
 -- Indices
@@ -451,7 +451,7 @@ ALTER TABLE "public"."sessions" ADD FOREIGN KEY ("user_id") REFERENCES "public".
 CREATE UNIQUE INDEX sessions_token_key ON public.sessions USING btree (token);
 CREATE INDEX sessions_token_idx ON public.sessions USING btree (token);
 ALTER TABLE "public"."user_ai_configs" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."ai_providers"("id") ON DELETE CASCADE;
-ALTER TABLE "public"."user_ai_configs" ADD FOREIGN KEY ("selected_model_id") REFERENCES "public"."ai_models"("id") ON DELETE SET NULL;
+ALTER TABLE "public"."user_ai_configs" ADD FOREIGN KEY ("selected_model_id") REFERENCES "public"."ai_models"("id") ON DELETE RESTRICT;
 ALTER TABLE "public"."user_ai_configs" ADD FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
 
 

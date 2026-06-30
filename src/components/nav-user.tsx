@@ -9,6 +9,7 @@ import {
   Download,
   Info,
   ArrowUpCircle,
+  BadgeAlert,
 } from "lucide-react"
 
 import {
@@ -52,6 +53,7 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const { isGuest, setIsSettingsOpen, setSettingsTab,
     hasUpdate, latestVersion, isCheckingUpdate, isDownloadingUpdate,
+    isWebOutdated, showOutdatedBadge,
     checkForUpdates, downloadUpdate } = useWorkspace();
   const isDesktop = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
@@ -81,10 +83,26 @@ export function NavUser({
                 size="lg"
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={avatar} alt={name} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
-                </Avatar>
+                <div className="relative">
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src={avatar} alt={name} />
+                    <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  </Avatar>
+                  {showOutdatedBadge && (
+                    <span
+                      className="absolute -top-1 -right-1 flex size-3 rounded-full bg-amber-500 ring-2 ring-sidebar"
+                      title={isDesktop 
+                        ? `Update available: v${latestVersion || '?'}` 
+                        : isWebOutdated
+                          ? `New version available: v${latestVersion || '?'}. ${
+                              (import.meta as any).env?.APP_VERSION 
+                                ? `You're on v${(import.meta as any).env.APP_VERSION}.` 
+                                : ''
+                            } Pull latest Docker image or update your install.`
+                          : ''}
+                    />
+                  )}
+                </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{name}</span>
                   <span className="truncate text-xs">{email}</span>
@@ -147,12 +165,14 @@ export function NavUser({
                 >
                   {hasUpdate ? (
                     <ArrowUpCircle className="mr-2 size-4 text-emerald-400" />
+                  ) : isWebOutdated ? (
+                    <BadgeAlert className="mr-2 size-4 text-amber-500" />
                   ) : (
                     <Info className="mr-2 size-4" />
                   )}
                   About
-                  {hasUpdate && (
-                    <span className="ml-auto flex size-2 rounded-full bg-emerald-400" />
+                  {showOutdatedBadge && (
+                    <span className={`ml-auto flex size-2 rounded-full ${hasUpdate ? 'bg-emerald-400' : 'bg-amber-500'}`} />
                   )}
                 </DropdownMenuItem>
               <DropdownMenuItem render={<a href="https://github.com/hadziqmtqn/erd-builder-pro" target="_blank" rel="noopener noreferrer" />} className="cursor-pointer">
