@@ -1,0 +1,442 @@
+// ──────────────────────────────────────────────
+// SQLite-compatible Prisma schema for desktop mode
+// Stripped of PostgreSQL-specific features:
+//  - No auth schema models (desktop uses local auth)
+//  - No @db.Uuid, @db.VarChar, @db.Timestamptz annotations
+//  - No schemas (SQLite has no schema concept)
+//  - Int instead of BigInt for auto-increment IDs
+//  - Added local User model (not from auth schema)
+// ──────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ── Local user model (desktop auth, not Supabase auth) ──
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password      String
+  isSuperAdmin  Boolean? @map("is_super_admin")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @map("updated_at")
+
+  diagrams        Diagram[]
+  notes           Note[]
+  drawings        Drawing[]
+  flowcharts      Flowchart[]
+  projects        Project[]
+  backups         Backup[]
+  entityChanges   EntityChange[]
+  userAiConfigs   UserAiConfig[]
+  aiChatSessions  AiChatSession[]
+  aiSystemPrompts AiSystemPrompt[]
+  userAiRules     UserAiRule[]
+  preferences     UserPreference?
+  sessions        Session[]
+
+  @@map("users")
+}
+
+// ── Auth sessions (local auth mode) ──
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  email     String
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([token])
+  @@map("sessions")
+}
+
+// ── Project ──
+model Project {
+  id        Int       @id @default(autoincrement())
+  uid       String?   @unique
+  name      String
+  userId    String?   @map("user_id")
+  color     String?   @default("#6366f1")
+  isDeleted Boolean?  @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @map("updated_at")
+  version   Int?      @default(0) @map("_version")
+  user      User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  diagrams  Diagram[]
+  notes     Note[]
+  drawings  Drawing[]
+  flowcharts Flowchart[]
+  aiChatSessions AiChatSession[]
+
+  @@index([userId, isDeleted], map: "idx_projects_user_deleted")
+  @@index([updatedAt], map: "idx_projects_updated_at")
+  @@map("projects")
+}
+
+// ── Diagram (ERD) ──
+model Diagram {
+  id           Int      @id @default(autoincrement())
+  uid          String?  @unique
+  name         String
+  userId       String?  @map("user_id")
+  projectId    Int?     @map("project_id")
+  isDeleted    Boolean? @default(false) @map("is_deleted")
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime? @default(now()) @map("created_at")
+  updatedAt    DateTime? @default(now()) @map("updated_at")
+  viewportX    Float?   @default(0) @map("viewport_x")
+  viewportY    Float?   @default(0) @map("viewport_y")
+  viewportZoom Float?   @default(1.0) @map("viewport_zoom")
+  version      Int?     @default(0) @map("_version")
+  isPublic     Boolean? @default(false) @map("is_public")
+  shareToken   String?  @map("share_token")
+  expiryDate   DateTime? @map("expiry_date")
+  publishedAt  DateTime? @map("published_at")
+  sourceType        String? @default("blank") @map("source_type")
+  sourceConnectionId Int?   @map("source_connection_id")
+  data             String?  @map("data")  // JSON positions untuk production DB (desktop only)
+  user         User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project      Project? @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  entities     Entity[]
+  relationships Relationship[]
+
+  @@index([projectId, isDeleted], map: "idx_diagrams_project_deleted")
+  @@index([updatedAt], map: "idx_diagrams_updated_at")
+  @@index([version], map: "idx_diagrams_version")
+  @@map("diagrams")
+}
+
+// ── Note ──
+model Note {
+  id         Int       @id @default(autoincrement())
+  uid        String?   @unique
+  title      String
+  content    String?   @default("")
+  userId     String?   @map("user_id")
+  projectId  Int?      @map("project_id")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  updatedAt  DateTime? @default(now()) @map("updated_at")
+  version    Int?      @default(0) @map("_version")
+  isPublic   Boolean?  @default(false) @map("is_public")
+  shareToken String?   @map("share_token")
+  expiryDate DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+
+  @@index([projectId, isDeleted], map: "idx_notes_project_deleted")
+  @@index([updatedAt], map: "idx_notes_updated_at")
+  @@index([version], map: "idx_notes_version")
+  @@map("notes")
+}
+
+// ── Drawing ──
+model Drawing {
+  id         Int       @id @default(autoincrement())
+  uid        String?   @unique
+  title      String
+  data       String?   @default("[]")
+  userId     String?   @map("user_id")
+  projectId  Int?      @map("project_id")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  updatedAt  DateTime? @default(now()) @map("updated_at")
+  version    Int?      @default(0) @map("_version")
+  isPublic   Boolean?  @default(false) @map("is_public")
+  shareToken String?   @map("share_token")
+  expiryDate DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+
+  @@index([projectId, isDeleted], map: "idx_drawings_project_deleted")
+  @@index([updatedAt], map: "idx_drawings_updated_at")
+  @@index([version], map: "idx_drawings_version")
+  @@map("drawings")
+}
+
+// ── Flowchart ──
+model Flowchart {
+  id         Int       @id @default(autoincrement())
+  uid        String?   @unique
+  title      String
+  data       String?   @default("{\"nodes\":[], \"edges\":[]}")
+  userId     String?   @map("user_id")
+  projectId  Int?      @map("project_id")
+  isDeleted  Boolean?  @default(false) @map("is_deleted")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  updatedAt  DateTime? @default(now()) @map("updated_at")
+  version    Int?      @default(0) @map("_version")
+  isPublic   Boolean?  @default(false) @map("is_public")
+  shareToken String?   @map("share_token")
+  expiryDate DateTime? @map("expiry_date")
+  publishedAt DateTime? @map("published_at")
+  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+
+  @@index([projectId, isDeleted], map: "idx_flowcharts_project_deleted")
+  @@index([updatedAt], map: "idx_flowcharts_updated_at")
+  @@index([version], map: "idx_flowcharts_version")
+  @@map("flowcharts")
+}
+
+// ── Entity (ERD table) ──
+model Entity {
+  id        String         @id
+  diagramId Int?           @map("diagram_id")
+  name      String
+  x         Float
+  y         Float
+  color     String?        @default("#6366f1")
+  createdAt DateTime?      @default(now()) @map("created_at")
+  columns   Column[]
+  diagram   Diagram?       @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  relationshipsFrom Relationship[] @relation("source_entity")
+  relationshipsTo   Relationship[] @relation("target_entity")
+
+  @@map("entities")
+}
+
+// ── Column (ERD table column) ──
+model Column {
+  id         String    @id
+  entityId   String?   @map("entity_id")
+  name       String
+  type       String
+  isPk       Boolean?  @default(false) @map("is_pk")
+  isNullable Boolean?  @default(true) @map("is_nullable")
+  enumValues String?   @map("enum_values")
+  sortOrder  Int?      @default(0) @map("sort_order")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  entity     Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("columns")
+}
+
+// ── Relationship (ERD edge) ──
+model Relationship {
+  id              String    @id
+  diagramId       Int?      @map("diagram_id")
+  sourceEntityId  String?   @map("source_entity_id")
+  targetEntityId  String?   @map("target_entity_id")
+  sourceColumnId  String?   @map("source_column_id")
+  targetColumnId  String?   @map("target_column_id")
+  type            String?   @default("one-to-many")
+  sourceHandle    String?   @map("source_handle")
+  targetHandle    String?   @map("target_handle")
+  label           String?
+  createdAt       DateTime? @default(now()) @map("created_at")
+  diagram         Diagram?  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sourceEntity    Entity?   @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  targetEntity    Entity?   @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("relationships")
+}
+
+// ── Entity Change (audit log) ──
+model EntityChange {
+  id         Int      @id @default(autoincrement())
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  version    Int
+  userId     String?  @map("user_id")
+  changes    String?  @default("{}")
+  changeType String?  @default("update") @map("change_type")
+  createdAt  DateTime? @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([entityType, entityId, version], map: "idx_entity_changes_lookup")
+  @@index([createdAt], map: "idx_entity_changes_retention")
+  @@index([userId, createdAt], map: "idx_entity_changes_user")
+  @@map("entity_changes")
+}
+
+// ── Backup ──
+model Backup {
+  id        String    @id @default(uuid())
+  userId    String?   @map("user_id")
+  name      String
+  status    String    @default("pending")
+  filePath  String?   @map("file_path")
+  fileSize  Int?      @map("file_size")
+  destinations String? @map("destinations")
+  createdAt DateTime? @default(now()) @map("created_at")
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("backups")
+}
+
+// ── AI Provider ──
+model AiProvider {
+  id        Int          @id @default(autoincrement())
+  name      String
+  code      String       @unique
+  baseUrl   String?      @map("base_url")
+  isActive  Boolean?     @default(true) @map("is_active")
+  createdAt DateTime?    @default(now()) @map("created_at")
+  updatedAt DateTime?    @default(now()) @map("updated_at")
+  models    AiModel[]
+  userConfigs UserAiConfig[]
+
+  @@map("ai_providers")
+}
+
+// ── AI Model ──
+model AiModel {
+  id              Int          @id @default(autoincrement())
+  providerId      Int?         @map("provider_id")
+  modelIdentifier String       @map("model_identifier")
+  displayName     String       @map("display_name")
+  contextWindow   Int?         @map("context_window")
+  isActive        Boolean?     @default(true) @map("is_active")
+  createdAt       DateTime?    @default(now()) @map("created_at")
+  provider        AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  userConfigs     UserAiConfig[]
+
+  @@map("ai_models")
+}
+
+// ── User AI Config ──
+model UserAiConfig {
+  id              Int         @id @default(autoincrement())
+  userId          String      @map("user_id")
+  providerId      Int?        @map("provider_id")
+  selectedModelId Int?        @map("selected_model_id")
+  apiKey          String?     @map("api_key")
+  isEnabled       Boolean?    @default(true) @map("is_enabled")
+  updatedAt       DateTime?   @default(now()) @map("updated_at")
+  provider        AiProvider? @relation(fields: [providerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  selectedModel   AiModel?    @relation(fields: [selectedModelId], references: [id], onUpdate: NoAction)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, providerId])
+  @@map("user_ai_configs")
+}
+
+// ── AI Chat Session ──
+model AiChatSession {
+  id         Int             @id @default(autoincrement())
+  uid        String?         @unique
+  userId     String?         @map("user_id")
+  projectId  Int?            @map("project_id")
+  title      String?         @default("New Conversation")
+  createdAt  DateTime?       @default(now()) @map("created_at")
+  updatedAt  DateTime?       @default(now()) @map("updated_at")
+  entityUid  String?         @map("entity_uid")
+  entityType String?         @map("entity_type")
+  messages   AiChatMessage[]
+  project    Project?        @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  user       User?           @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([entityType, entityUid], map: "idx_ai_chat_sessions_entity")
+  @@index([projectId], map: "idx_ai_chat_sessions_project_id")
+  @@map("ai_chat_sessions")
+}
+
+// ── AI Chat Message ──
+model AiChatMessage {
+  id            Int           @id @default(autoincrement())
+  sessionId     Int           @map("session_id")
+  role          String
+  content       String
+  selectionText String?       @map("selection_text")
+  createdAt     DateTime?     @default(now()) @map("created_at")
+  session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("ai_chat_messages")
+}
+
+// ── AI System Prompt ──
+model AiSystemPrompt {
+  id        String    @id @default(uuid())
+  name      String
+  content   String
+  category  String    @default("custom")
+  isDefault Boolean?  @default(false) @map("is_default")
+  isBuiltIn Boolean?  @default(false) @map("is_built_in")
+  userId    String?   @map("user_id")
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @map("updated_at")
+  user      User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@map("ai_system_prompts")
+}
+
+// ── User AI Rule ──
+model UserAiRule {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  viewType  String   @map("view_type")
+  content   String   @default("")
+  isEnabled Boolean  @default(true) @map("is_enabled")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, viewType])
+  @@map("user_ai_rules")
+}
+
+// ── User Preferences (desktop app) ──
+model UserPreference {
+  id                  String   @id @default(uuid())
+  userId              String   @unique @map("user_id")
+  backupFolder        String?  @map("backup_folder")
+  autoBackupEnabled   Boolean? @default(false) @map("auto_backup_enabled")
+  autoBackupInterval  Int?     @default(3600) @map("auto_backup_interval")
+  autoBackupRetention Int?     @default(10) @map("auto_backup_retention")
+  storageConfig       String?  @map("storage_config")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("user_preferences")
+}
+
+// ── Local Database Connection (desktop-only) ──
+// ── DB Account (server-level credentials) ──
+model DbAccount {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  name      String
+  type      String
+  host      String?
+  port      Int?
+  user      String?
+  password  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  catalogs  DbCatalog[]
+
+  @@index([userId], map: "idx_db_accounts_user")
+  @@map("db_accounts")
+}
+
+// ── DB Catalog (specific database under an account) ──
+model DbCatalog {
+  id           Int      @id @default(autoincrement())
+  accountId    Int      @map("account_id")
+  databaseName String   @map("database_name")
+  label        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @map("updated_at")
+
+  account      DbAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([accountId], map: "idx_db_catalogs_account")
+  @@map("db_catalogs")
+}
+

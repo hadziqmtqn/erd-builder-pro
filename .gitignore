@@ -18,3 +18,9 @@ backups/
 .hermes/*
 .opencode/*
 opencode.json
+
+# CLI package build artifacts
+cli/dist/
+cli/dist-server/
+cli/menubar/erdbpro-tray
+cli/menubar/ERDBProTray.app/
