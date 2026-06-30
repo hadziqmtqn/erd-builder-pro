@@ -140,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiFetch('/api/logout', { method: 'POST' });
       if (res.ok) {
+        clearAuthToken();
         setIsAuthenticated(false);
         setIsGuest(false);
         setUser(null);

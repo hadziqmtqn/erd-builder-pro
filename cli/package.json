@@ -1,26 +1,38 @@
 {
   "name": "erdbpro",
-  "version": "2.4.2",
+  "version": "2.4.5-beta.4",
   "description": "ERD Builder Pro CLI — one command to start your database design workspace.",
   "type": "module",
   "bin": {
-    "erdbpro": "./bin/erdbpro.mjs"
+    "erdbpro": "./bin/erdbpro.js"
   },
   "files": [
     "bin/",
     "src/",
     "dist-server/",
     "dist/",
-    "prisma/"
+    "prisma/",
+    "menubar/"
   ],
   "dependencies": {
     "commander": "^13.0.0",
-    "open": "^10.0.0"
+    "open": "^10.0.0",
+    "better-sqlite3": "^12.11.1"
+  },
+  "scripts": {
+    "postinstall": "cp -r node_modules/better-sqlite3 dist-server/node_modules/ 2>/dev/null || true"
   },
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["erd", "database", "diagram", "flowchart", "notes", "sqlite"],
+  "keywords": [
+    "erd",
+    "database",
+    "diagram",
+    "flowchart",
+    "notes",
+    "sqlite"
+  ],
   "license": "MIT",
   "repository": "hadziqmtqn/erd-builder-pro"
 }

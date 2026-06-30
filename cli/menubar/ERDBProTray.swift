@@ -42,6 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
 
         updateMenuItem = NSMenuItem(title: "", action: #selector(showUpdate), keyEquivalent: "")
+        updateMenuItem.target = self
         updateMenuItem.isHidden = true
         menu.addItem(updateMenuItem)
 

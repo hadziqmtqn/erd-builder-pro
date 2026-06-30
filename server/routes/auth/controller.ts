@@ -115,6 +115,7 @@ export async function logout(req: ExpressRequest, res: ExpressResponse): Promise
     httpOnly: !useLocalAuth(),
     secure: isSecure,
     sameSite: "lax",
+    path: "/",
   });
   res.json({ success: true });
 }
