@@ -30,6 +30,15 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [guestMode, setGuestMode] = useState(true);
+
+  // Fetch runtime config (guest mode, auth config)
+  useEffect(() => {
+    apiFetch('/api/auth-config')
+      .then(r => r.json())
+      .then(d => setGuestMode(d.guestMode !== false))
+      .catch(() => {});
+  }, []);
 
   // Desktop mode (Tauri) uses auto-login via /api/me — login form should never show.
   // The AppInitialization spinner handles the /api/me call. If somehow the login page
@@ -208,7 +217,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                     <Button type="submit" disabled={loading} className="w-full">
                       {loading ? "Logging in..." : "Login"}
                     </Button>
-                    {import.meta.env.VITE_ENABLE_GUEST_MODE === 'true' && (
+                    {guestMode && (
                       <>
                         <div className="relative my-2">
                           <div className="absolute inset-0 flex items-center">
