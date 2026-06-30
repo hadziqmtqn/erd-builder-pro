@@ -8,18 +8,24 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEV_ROOT = path.resolve(__dirname, '../../..');
-const PROD_ROOT = path.resolve(__dirname, '../..');
-const PKG_ROOT = fs.existsSync(path.join(PROD_ROOT, 'dist-server', 'index.js')) ? PROD_ROOT : DEV_ROOT;
+// Dev: cli/src/cli.mjs → pkg at ../..   Prod: src/cli.mjs → pkg at ..
+const ROOT = (() => {
+  const a = path.resolve(__dirname, '../..');   // dev (cli/)
+  const b = path.resolve(__dirname, '..');       // prod (pkg root)
+  return fs.existsSync(path.join(b, 'dist-server', 'index.js')) ? b
+       : fs.existsSync(path.join(a, 'dist-server', 'index.js')) ? a
+       : b;
+})();
+const PKG_ROOT = ROOT;
 const DATA_DIR = path.join(os.homedir(), '.erdbpro');
 const DB_PATH = path.join(DATA_DIR, 'data.db');
 const PID_FILE = path.join(DATA_DIR, 'server.pid');
 const DEFAULT_PORT = 3101;
 
 // Read version from package.json
-const pkgJson = JSON.parse(fs.readFileSync(path.join(PROD_ROOT, 'package.json'), 'utf8'));
+const pkgJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = pkgJson.version;
-const UPDATE_URL = 'https://github.com/hadziqmtqn/erd-builder-pro/releases/latest/download/latest.json';
+const UPDATE_URL = 'https://registry.npmjs.org/erdbpro/latest';
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
