@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "2.4.2",
+  "version": "2.5.1",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development tsx watch server/dev.ts",
@@ -76,6 +76,7 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@whatwg-node/server": "^0.10.18",
     "@xyflow/react": "^12.10.2",
+    "better-sqlite3": "^12.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cookie-parser": "^1.4.7",
