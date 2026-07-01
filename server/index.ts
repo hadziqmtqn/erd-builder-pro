@@ -233,42 +233,69 @@ app.post("/api/log/update", (req, res) => {
   res.json({ ok: true });
 });
 
-// Version check endpoint — cross-platform (web, CLI, Docker, desktop).
-// Fetches latest version from GitHub releases. Cached in-memory for 1 hour
-// to avoid GitHub API rate limits on repeated page loads.
-let versionCache: { version: string; fetchedAt: number } | null = null;
+// Version check endpoint — CLI checks npm registry, all others check GitHub releases.
+
+// Runtime version — passed by CLI/Docker via APP_VERSION env var.
+// Falls back to build-time value when not set (web deployments).
+let versionCache: { version: string; fetchedAt: number; source: string } | null = null;
 const VERSION_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
+app.get("/api/version/current", (_req, res) => {
+  const current = process.env.APP_VERSION || "0.0.0";
+  res.json({ current });
+});
+
 app.get("/api/version/latest", async (_req, res) => {
+  const installMode = process.env.ERD_INSTALL_MODE || "web";
+  const isCli = installMode === "cli";
+
   try {
     // Return cached value if fresh
     if (versionCache && Date.now() - versionCache.fetchedAt < VERSION_CACHE_TTL) {
       res.json({
         latest: versionCache.version,
-        source: "cache",
+        source: versionCache.source,
         cachedAt: new Date(versionCache.fetchedAt).toISOString(),
       });
       return;
     }
 
-    // Fetch from GitHub releases API
-    const response = await fetch(
-      "https://api.github.com/repos/hadziqmtqn/erd-builder-pro/releases/latest",
-      { headers: { Accept: "application/vnd.github+json", "User-Agent": "erd-builder-pro" } }
-    );
+    // CLI: fetch from npm registry. Non-CLI: fetch from GitHub releases.
+    if (isCli) {
+      const resp = await fetch("https://registry.npmjs.org/erdbpro/latest");
+      if (!resp.ok) {
+        res.json({ latest: null, source: "npm", error: `NPM registry returned ${resp.status}` });
+        return;
+      }
+      const json = await resp.json() as any;
+      const version = json?.version || "";
+      if (!version) {
+        res.json({ latest: null, source: "npm", error: "No version in NPM response" });
+        return;
+      }
 
-    if (!response.ok) {
-      res.json({ latest: null, source: "error", error: `GitHub API returned ${response.status}` });
-      return;
+      versionCache = { version, fetchedAt: Date.now(), source: "npm" };
+      res.json({ latest: version, source: "npm", cachedAt: new Date().toISOString() });
+    } else {
+      // GitHub — existing logic
+      const response = await fetch(
+        "https://api.github.com/repos/hadziqmtqn/erd-builder-pro/releases/latest",
+        { headers: { Accept: "application/vnd.github+json", "User-Agent": "erd-builder-pro" } }
+      );
+
+      if (!response.ok) {
+        res.json({ latest: null, source: "github", error: `GitHub API returned ${response.status}` });
+        return;
+      }
+
+      const data = await response.json() as any;
+      const tag = data?.tag_name || "";
+      // Strip leading 'v' if present
+      const version = tag.startsWith("v") ? tag.slice(1) : tag;
+
+      versionCache = { version, fetchedAt: Date.now(), source: "github" };
+      res.json({ latest: version, source: "github", cachedAt: new Date().toISOString() });
     }
-
-    const data = await response.json() as any;
-    const tag = data?.tag_name || "";
-    // Strip leading 'v' if present
-    const version = tag.startsWith("v") ? tag.slice(1) : tag;
-
-    versionCache = { version, fetchedAt: Date.now() };
-    res.json({ latest: version, source: "github", cachedAt: new Date().toISOString() });
   } catch (err: any) {
     // Return cached value even if expired, as fallback
     if (versionCache) {

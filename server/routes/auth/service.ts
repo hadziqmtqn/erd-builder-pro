@@ -22,7 +22,8 @@ export function getAuthConfig() {
     isLocalPostgres: isLocalPostgres(),
     supportsPasswordUpdate: isLocalPostgres(),
     installMode: getInstallMode(),
-    guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "true") !== "false",
+    guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "false") === "true",
+    guestAiEnabled: (process.env.GUEST_AI_ENABLED || "false") === "true",
     ...(isDesktopMode()
       ? {
           desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,

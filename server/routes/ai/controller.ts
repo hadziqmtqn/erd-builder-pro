@@ -30,20 +30,28 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Guest AI guard: if no userId in body, try session cookie
+    if (!userId) {
+      try {
+        const token = req.cookies?.token;
+        if (token) {
+          const { supabase } = await import("../../lib/config.js");
+          const { data: { user } } = await supabase.auth.getUser(token);
+          if (user) userId = user.id;
+        }
+      } catch {}
+    }
+
+    // If still no userId, this is an unauthenticated (guest) request.
+    // Block AI for guests unless explicitly enabled.
+    if (!userId && (process.env.GUEST_AI_ENABLED || "false") !== "true") {
+      clearTimeout(timeout);
+      res.status(403).json({ error: "AI Chat is not available in guest mode. Please log in to use AI features." });
+      return;
+    }
+
     // When no apiKey is provided, look up config from DB
     if (!apiKey) {
-      // Attempt to get userId from session cookie if not provided in body
-      if (!userId) {
-        try {
-          const { supabase } = await import("../../lib/config.js");
-          const token = req.cookies?.token;
-          if (token) {
-            const { data: { user } } = await supabase.auth.getUser(token);
-            if (user) userId = user.id;
-          }
-        } catch {}
-      }
-
       try {
         const resolved = await resolveAiConfig({
           userId,

@@ -267,7 +267,7 @@ export const ErdTableView = React.memo(function ErdTableView({
                       if (col.id === 'name') {
                         return (
                           <TableCell key="name" className="font-medium">
-                            <span className="truncate block max-w-[280px]">
+                            <span className="truncate block max-w-70">
                               {d.name || 'Untitled'}
                             </span>
                           </TableCell>
