@@ -24,18 +24,57 @@ Login with:
 - **Email:** `admin@local.dev`
 - **Password:** `admin123`
 
-Data stored in `~/.erdbpro/`. SQLite by default, PostgreSQL supported.
+Data stored in `~/.erdbpro/` (SQLite). Zero config, always ready.
+
+---
+
+## Interactive Menu
+
+After starting, you'll see an interactive menu you can navigate with arrow keys:
+
+```
+========================================
+  ERD Builder Pro (v2.5.2)
+  🚀 Server: http://localhost:3101
+========================================
+
+ ▶ Web UI (Open in Browser)
+   Hide to Background
+   Exit
+
+  ↑↓ move  Enter select  q quit
+```
+
+- **↑↓** — move the `▶` selector up or down
+- **Enter** — execute the selected action
+- After an action (e.g. opening the browser), press **Enter** to return to the menu
+- **q** or **Ctrl+C** — exit immediately
+
+### Menu Options
+
+| Option | What it does |
+|--------|--------------|
+| **Web UI** | Opens the app in your default browser at `http://localhost:3101` |
+| **Hide to Background** | Detaches the server to run silently. Stop with `erdbpro stop`. |
+| **Exit** | Stops the server and exits the CLI |
+
+You can also bypass the menu entirely:
+
+```bash
+erdbpro start --background   # Start silently, no menu
+erdbpro start --open         # Open browser immediately, no menu
+```
 
 ---
 
 ## Commands
 
 ```bash
-erdbpro                          # Start server + open browser
+erdbpro                          # Start server + interactive menu
 erdbpro start                    # Same as above
 erdbpro start --background       # Run in background (detached)
+erdbpro start --open             # Skip menu, open browser immediately
 erdbpro start --port 4000        # Custom port
-erdbpro start --no-open          # Don't open browser
 erdbpro start --force            # Restart if already running
 erdbpro stop                     # Stop background server
 erdbpro status                   # Check if server is running
@@ -43,14 +82,16 @@ erdbpro status                   # Check if server is running
 
 ---
 
-## Database Options
+## Database
 
-**SQLite (default):** Zero config. Database created automatically in `~/.erdbpro/data.db`.
+**SQLite only.** Database created automatically in `~/.erdbpro/data.db`. No configuration needed.
 
-**PostgreSQL:**
+Need PostgreSQL? Use the Docker image instead:
 ```bash
-erdbpro start --db-url postgresql://user:pass@localhost:5432/erdbpro
+docker run -p 3101:3101 -e DATABASE_URL=postgresql://... bekenweb/erd-builder-pro
 ```
+
+The CLI distribution keeps things simple — SQLite is fast, portable, and requires zero setup. Docker and desktop (Tauri) builds support PostgreSQL for production use.
 
 ---
 
@@ -107,7 +148,7 @@ All features identical to the desktop app:
 ~/.erdbpro/
   ├── data.db          # SQLite database
   ├── server.pid       # Background process PID
-  └── config.json      # User preferences (future)
+  └── logs/            # Server logs
 ```
 
 ---

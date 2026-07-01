@@ -126,8 +126,8 @@ async function ensureDatabaseTables(): Promise<boolean> {
   }
 
   // Find schema.sql relative to this script (bundled in dist-server/)
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const schemaPath = path.resolve(__dirname, "schema.sql");
+  const __dir = path.dirname(fileURLToPath(import.meta.url));
+  const schemaPath = path.resolve(__dir, "schema.sql");
 
   if (!fs.existsSync(schemaPath)) {
     logger.warn({ schemaPath }, "schema.sql not found — cannot create tables");
@@ -176,11 +176,21 @@ if (isProd) {
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     console.log(`Serving static files from: ${distPath}`);
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get("*", (req, res, next) => {
       // Only serve index.html for HTML requests (not API calls)
       if (req.path.startsWith("/api/")) return next();
-      res.sendFile(path.join(distPath, "index.html"));
+      // Also skip requests that already got served as static files
+      if (req.path.includes(".") && !req.path.endsWith("/")) return next();
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.set("Pragma", "no-cache");
+      res.set("Expires", "0");
+      const html = fs.readFileSync(path.join(distPath, "index.html"), "utf8");
+      const mode = process.env.ERD_INSTALL_MODE || "";
+      const injected = mode
+        ? html.replace("</head>", `<script>window.ERD_INSTALL_MODE="${mode}"</script></head>`)
+        : html;
+      res.type("html").send(injected);
     });
   }
 }

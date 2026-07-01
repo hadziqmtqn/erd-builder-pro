@@ -4,6 +4,8 @@ import open from 'open';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
+import http from 'node:http';
+import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -18,6 +20,7 @@ const ROOT = (() => {
 })();
 const PKG_ROOT = ROOT;
 const DATA_DIR = path.join(os.homedir(), '.erdbpro');
+const LOG_DIR = path.join(DATA_DIR, 'logs');
 const DB_PATH = path.join(DATA_DIR, 'data.db');
 const PID_FILE = path.join(DATA_DIR, 'server.pid');
 const DEFAULT_PORT = 3101;
@@ -29,6 +32,7 @@ const UPDATE_URL = 'https://registry.npmjs.org/erdbpro/latest';
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
 function checkNodeVersion() {
@@ -52,7 +56,9 @@ function isServerRunning() {
   }
 }
 
-function startServer(port, dbUrl, background) {
+function startServer(port, background) {
+  const dbUrl = `file:${DB_PATH}`;
+  const dbVariant = 'sqlite';
   const serverScript = path.join(PKG_ROOT, 'dist-server', 'index.js');
 
   if (!fs.existsSync(serverScript)) {
@@ -73,19 +79,35 @@ function startServer(port, dbUrl, background) {
   const env = {
     ...process.env,
     DATABASE_URL: dbUrl,
+    DB_VARIANT: dbVariant,
     NODE_ENV: 'production',
     PORT: String(port),
     HOST: '127.0.0.1',
+    ERD_INSTALL_MODE: 'cli',
   };
+
+  // Always redirect server logs to file. Only connect stdio for detached mode.
+  const dateTag = new Date().toISOString().replace(/[:.]/g, '-');
+  const outLog = path.join(LOG_DIR, `server-${dateTag}.out.log`);
+  const errLog = path.join(LOG_DIR, `server-${dateTag}.err.log`);
+  const outFd = fs.openSync(outLog, 'a');
+  const errFd = fs.openSync(errLog, 'a');
 
   const spawnOpts = {
     env,
     cwd: PKG_ROOT,
-    stdio: background ? 'ignore' : 'inherit',
+    stdio: background ? ['ignore', outFd, errFd] : [process.stdin, outFd, errFd],
     detached: !!background,
   };
 
   const child = spawn(process.execPath, [serverScript], spawnOpts);
+
+  // Clean up fd handles in parent after spawn
+  if (!background) {
+    // In foreground mode we still own stdin; close the log fds in parent
+    outFd && fs.closeSync(outFd);
+    errFd && fs.closeSync(errFd);
+  }
 
   // Always write PID file so menubar Quit can stop the server
   fs.writeFileSync(PID_FILE, String(child.pid));
@@ -105,6 +127,7 @@ function startServer(port, dbUrl, background) {
   child.on('exit', (code) => {
     if (code !== 0 && !background) {
       console.error(`❌ Server exited with code ${code}`);
+      console.error(`   Logs: ${errLog}`);
     }
     if (fs.existsSync(PID_FILE)) {
       try { fs.unlinkSync(PID_FILE); } catch { /* stale */ }
@@ -123,9 +146,9 @@ function startServer(port, dbUrl, background) {
   process.on('SIGTERM', cleanup);
 }
 
-function stopServer() {
+function stopServer(silent = false) {
   if (!isServerRunning()) {
-    console.log('ℹ️  No server running.');
+    if (!silent) console.log('ℹ️  No server running.');
     return;
   }
   try {
@@ -133,9 +156,9 @@ function stopServer() {
     process.kill(pid, 'SIGTERM');
     // Also kill menubar app
     try { spawn('pkill', ['-f', 'erdbpro-tray'], { stdio: 'ignore' }); } catch {}
-    console.log(`🛑 Server stopped (PID: ${pid})`);
+    if (!silent) console.log(`🛑 Server stopped (PID: ${pid})`);
   } catch {
-    console.log('🛑 Server already stopped.');
+    if (!silent) console.log('🛑 Server already stopped.');
   }
 }
 
@@ -195,19 +218,154 @@ program
   .description('ERD Builder Pro CLI — Database design workspace, one command away.')
   .version(VERSION);
 
+/**
+ * Poll the server health endpoint until it responds or times out.
+ */
+async function waitForServer(port, timeout = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+          resolve(res);
+          res.resume();
+        });
+        req.on('error', reject);
+        req.setTimeout(2000, () => { req.destroy(); reject(new Error('timeout')); });
+      });
+      return true;
+    } catch {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  return false;
+}
+
+/**
+ * Arrow-key navigable menu — no number typing, just ↑↓ Enter.
+ * Zero logs — all output is in ~/.erdbpro/logs/
+ */
+async function showMenu(port) {
+  const choices = [
+    { label: 'Web UI (Open in Browser)', action: 'open' },
+    { label: 'Hide to Background',       action: 'hide' },
+    { label: 'Exit',                     action: 'exit' },
+  ];
+
+  let selected = 0;
+  let firstDraw = true;
+  let keepMenu = true;
+
+  function drawMenu() {
+    if (firstDraw) {
+      process.stdout.write('\x1b[s');
+      firstDraw = false;
+    } else {
+      process.stdout.write('\x1b[u\x1b[J');
+    }
+
+    console.log('========================================');
+    console.log(`  ERD Builder Pro (v${VERSION})`);
+    console.log(`  🚀 Server: http://localhost:${port}`);
+    console.log('========================================');
+    console.log('');
+
+    for (let i = 0; i < choices.length; i++) {
+      const prefix = i === selected ? ` ▶` : `  `;
+      const label  = i === selected ? `\x1b[1m${choices[i].label}\x1b[0m` : choices[i].label;
+      console.log(`${prefix} ${label}`);
+    }
+
+    console.log('');
+    process.stdout.write('  ↑↓ move  Enter select  q quit  ');
+  }
+
+  console.log('');
+  drawMenu();
+
+  readline.emitKeypressEvents(process.stdin);
+  if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+  function awaitKeypress() {
+    return new Promise((resolve) => {
+      function handler(_, key) {
+        process.stdin.removeListener('keypress', handler);
+        resolve(key);
+      }
+      process.stdin.on('keypress', handler);
+    });
+  }
+
+  while (keepMenu) {
+    // ── Menu loop: ↑↓ navigate, Enter picks ──
+    let picked;
+    while (true) {
+      const key = await awaitKeypress();
+      if (key.name === 'up') {
+        selected = (selected - 1 + choices.length) % choices.length;
+        drawMenu();
+      } else if (key.name === 'down') {
+        selected = (selected + 1) % choices.length;
+        drawMenu();
+      } else if (key.name === 'return') {
+        picked = choices[selected].action;
+        break;
+      } else if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+        picked = 'exit';
+        break;
+      }
+    }
+
+    if (picked === 'exit') {
+      keepMenu = false;
+      continue;
+    }
+
+    // ── Execute action ──
+    process.stdout.write('\x1b[u\x1b[J'); // clear menu area
+
+    if (picked === 'hide') {
+      const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
+      console.log(`\n  🔒 Running in background (PID: ${pid})`);
+      console.log(`  🌐  URL:   http://localhost:${port}`);
+      console.log('  🛑  Stop:  erdbpro stop');
+      console.log(`  📋  Logs:  ${LOG_DIR}\n`);
+      cleanup();
+      process.exit(0);
+    }
+
+    if (picked === 'open') {
+      console.log('\n  🌐 Opening browser...');
+      await open(`http://localhost:${port}`).catch(() => {});
+    }
+
+    // ── Wait for Enter, then redraw menu (no extra text) ──
+    console.log('\n  Press Enter to go back to menu...');
+    await awaitKeypress(); // eat the Enter
+
+    firstDraw = true;
+    selected = 0;
+    drawMenu();
+  }
+
+  function cleanup() {
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+  }
+
+  cleanup();
+}
+
 program
   .command('start')
   .description('Start ERD Builder Pro server')
   .option('-p, --port <number>', 'Port to listen on', String(DEFAULT_PORT))
-  .option('--db-url <url>', 'Database URL (default: SQLite in ~/.erdbpro/)')
   .option('-b, --background', 'Run server in background (detached)')
+  .option('--open', 'Skip menu and open browser immediately')
   .option('-f, --force', 'Force start even if server appears to be running')
-  .option('--no-open', 'Do not open browser on start')
   .action(async (options) => {
     checkNodeVersion();
     await checkForUpdates();
     const port = parseInt(options.port, 10);
-    const dbUrl = options.dbUrl || `file:${DB_PATH}`;
     const background = !!options.background;
 
     if (isServerRunning() && !options.force) {
@@ -217,35 +375,46 @@ program
     }
 
     if (isServerRunning() && options.force) {
-      stopServer();
+      stopServer(true);
       await new Promise(r => setTimeout(r, 500));
     }
 
     ensureDataDir();
 
-    console.log(`\n🚀 ERD Builder Pro v${VERSION}`);
-    console.log(`   📁 Data:  ${DATA_DIR}`);
-    console.log(`   🌐 URL:   http://localhost:${port}`);
-    if (dbUrl.startsWith('file:')) {
-      console.log(`   🗄️  DB:    SQLite (${dbUrl.replace('file:', '')})`);
-    } else {
-      console.log(`   🗄️  DB:    PostgreSQL`);
-    }
-    console.log();
-
-    startServer(port, dbUrl, background);
-
-    if (options.open && !background) {
-      setTimeout(() => { open(`http://localhost:${port}`).catch(() => {}); }, 2000);
-    }
-    if (options.open && background) {
-      setTimeout(() => { open(`http://localhost:${port}`).catch(() => {}); }, 3000);
-    }
+    startServer(port, background);
 
     // Launch menubar tray icon (macOS only, if bundled)
-    setTimeout(() => {
-      const launched = launchMenubar(port);
-    }, 1500);
+    setTimeout(() => { launchMenubar(port); }, 1500);
+
+    // If --background flag: skip menu, server runs detached
+    if (background) {
+      process.exit(0);
+    }
+
+    // If --open flag: skip menu, open browser immediately
+    if (options.open) {
+      await waitForServer(port);
+      await open(`http://localhost:${port}`).catch(() => {});
+      return; // keep alive for SIGINT
+    }
+
+    // Default interactive mode: wait for server, then show clean menu
+    await waitForServer(port);
+
+    // On SIGINT (Ctrl+C), stop server cleanly
+    process.on('SIGINT', () => {
+      console.log('\n  👋 Goodbye!\n');
+      stopServer(true);
+      process.exit(0);
+    });
+
+    // Menu handles all actions internally (open, terminal, hide, exit)
+    // Only returns when user selects Exit (or q/Ctrl+C)
+    await showMenu(port);
+
+    console.log('\n  👋 Goodbye!\n');
+    stopServer(true);
+    process.exit(0);
   });
 
 program

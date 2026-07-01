@@ -1,4 +1,4 @@
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "../../lib/config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   hashPassword,
@@ -21,6 +21,7 @@ export function getAuthConfig() {
     isDesktop: isDesktopMode(),
     isLocalPostgres: isLocalPostgres(),
     supportsPasswordUpdate: isLocalPostgres(),
+    installMode: getInstallMode(),
     guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "true") !== "false",
     ...(isDesktopMode()
       ? {

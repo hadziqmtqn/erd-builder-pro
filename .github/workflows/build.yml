@@ -444,3 +444,22 @@ jobs:
             artifacts/build-macos/*_x86_64.app.tar.gz
             artifacts/build-macos/*_x86_64.app.tar.gz.sig
             latest.json
+
+      - name: Append unsigned notice to release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          append_body: true
+          body: |
+            > ⚠️ **Important Notice**
+            >
+            > This desktop application is **not registered with Apple or Microsoft**, so it:
+            > - Will likely be **flagged by Gatekeeper (macOS)** or **SmartScreen (Windows)** on first launch
+            > - Cannot receive automatic updates through official store channels
+            > - May require manual security overrides to run (System Settings → Privacy & Security → Open Anyway)
+            >
+            > To update, re-download the latest build from this releases page.
+            > We're actively working on code signing and platform registration. Stay tuned.
+            >
+            > 💡 **Alternative**: For the smoothest experience, consider using the [CLI app](https://www.npmjs.com/package/erdbpro), [Docker](https://hub.docker.com/r/bekenweb/erd-builder-pro), or self-hosting on your own server — no OS security warnings, always up-to-date.

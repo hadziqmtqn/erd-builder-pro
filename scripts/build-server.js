@@ -99,7 +99,7 @@ async function main() {
     minify: true,
     legalComments: "none",
     banner: {
-      js: "import { createRequire as __crq } from 'module'; const require = __crq(import.meta.url);",
+      js: "import { createRequire as __crq } from 'module'; const require = __crq(import.meta.url); const __dirname = import.meta.dirname; const __filename = import.meta.filename;",
     },
   });
   console.log("   → dist-server/index.js");

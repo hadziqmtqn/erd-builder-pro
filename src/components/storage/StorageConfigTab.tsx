@@ -39,8 +39,10 @@ interface StorageConfig {
 }
 
 export function StorageConfigTab() {
-  const isDesktopApp = typeof window !== 'undefined' && 
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const isDesktopApp = typeof window !== 'undefined' && (
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__) ||
+    (window as any).ERD_INSTALL_MODE === 'cli'
+  );
 
   if (!isDesktopApp) {
     return (
@@ -49,7 +51,7 @@ export function StorageConfigTab() {
           <CardContent className="py-12 text-center">
             <HardDrive className="w-8 h-8 mx-auto text-muted-foreground/40" />
             <p className="text-muted-foreground mt-4 text-sm">
-              Storage configuration is only available in the desktop app.
+              Storage configuration is only available in the desktop app or CLI mode.
             </p>
           </CardContent>
         </Card>
