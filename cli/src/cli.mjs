@@ -131,6 +131,17 @@ function startServer(port, background) {
   }
 
   child.on('exit', (code) => {
+    // null code = killed by signal (menubar Quit) — exit gracefully
+    if (code === null) {
+      if (fs.existsSync(PID_FILE)) {
+        try { fs.unlinkSync(PID_FILE); } catch { /* stale */ }
+      }
+      if (!background) {
+        process.stdout.write('\n  👋 Server stopped. Goodbye!\n\n');
+        process.exit(0);
+      }
+      return;
+    }
     if (code !== 0 && !background) {
       console.error(`❌ Server exited with code ${code}`);
       console.error(`   Logs: ${errLog}`);
