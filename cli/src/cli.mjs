@@ -28,7 +28,12 @@ const DEFAULT_PORT = 3101;
 // Read version from package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = pkgJson.version;
-const UPDATE_URL = 'https://registry.npmjs.org/erdbpro/latest';
+const UPDATE_URL = (() => {
+  if (VERSION.includes('-beta')) {
+    return 'https://registry.npmjs.org/erdbpro/beta';
+  }
+  return 'https://registry.npmjs.org/erdbpro/latest';
+})();
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -84,6 +89,7 @@ function startServer(port, background) {
     PORT: String(port),
     HOST: '127.0.0.1',
     ERD_INSTALL_MODE: 'cli',
+    APP_VERSION: VERSION,
   };
 
   // Always redirect server logs to file. Only connect stdio for detached mode.
@@ -243,7 +249,7 @@ async function waitForServer(port, timeout = 10000) {
 
 /**
  * Arrow-key navigable menu — no number typing, just ↑↓ Enter.
- * Zero logs — all output is in ~/.erdbpro/logs/
+ * Uses \x1b[H\x1b[J (home + erase to end) for reliable redraw.
  */
 async function showMenu(port) {
   const choices = [
@@ -253,16 +259,11 @@ async function showMenu(port) {
   ];
 
   let selected = 0;
-  let firstDraw = true;
   let keepMenu = true;
 
   function drawMenu() {
-    if (firstDraw) {
-      process.stdout.write('\x1b[s');
-      firstDraw = false;
-    } else {
-      process.stdout.write('\x1b[u\x1b[J');
-    }
+    // Home cursor + erase from cursor to end of screen
+    process.stdout.write('\x1b[H\x1b[J');
 
     console.log('========================================');
     console.log(`  ERD Builder Pro (v${VERSION})`);
@@ -280,7 +281,6 @@ async function showMenu(port) {
     process.stdout.write('  ↑↓ move  Enter select  q quit  ');
   }
 
-  console.log('');
   drawMenu();
 
   readline.emitKeypressEvents(process.stdin);
@@ -322,7 +322,7 @@ async function showMenu(port) {
     }
 
     // ── Execute action ──
-    process.stdout.write('\x1b[u\x1b[J'); // clear menu area
+    process.stdout.write('\x1b[H\x1b[J'); // clear for action output
 
     if (picked === 'hide') {
       const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
@@ -339,11 +339,10 @@ async function showMenu(port) {
       await open(`http://localhost:${port}`).catch(() => {});
     }
 
-    // ── Wait for Enter, then redraw menu (no extra text) ──
+    // ── Wait for Enter, then redraw menu ──
     console.log('\n  Press Enter to go back to menu...');
     await awaitKeypress(); // eat the Enter
 
-    firstDraw = true;
     selected = 0;
     drawMenu();
   }

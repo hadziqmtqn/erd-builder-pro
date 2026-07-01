@@ -3,13 +3,17 @@ services:
     build:
       context: .
       args:
-        - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-true}
+        - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-false}
     ports:
       - "3000:3000"
     volumes:
       # Volume mount for SQLite — data persists across container restarts
       - erd-data:/app/data
     restart: unless-stopped
+    environment:
+      # Guest mode & AI Chat for guests (both disabled by default)
+      - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-false}
+      - GUEST_AI_ENABLED=${GUEST_AI_ENABLED:-false}
     # ── Database: uncomment ONE section ──
     #
     # Option 1: Pure PostgreSQL (recommended for production)

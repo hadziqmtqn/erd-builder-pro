@@ -30,13 +30,13 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
-  const [guestMode, setGuestMode] = useState(true);
+  const [guestMode, setGuestMode] = useState(false);
 
   // Fetch runtime config (guest mode, auth config)
   useEffect(() => {
     apiFetch('/api/auth-config')
       .then(r => r.json())
-      .then(d => setGuestMode(d.guestMode !== false))
+      .then(d => setGuestMode(d.guest_mode !== false))
       .catch(() => {});
   }, []);
 
