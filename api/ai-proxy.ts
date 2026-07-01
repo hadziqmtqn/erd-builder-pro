@@ -23,6 +23,13 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Missing required fields: messages" });
   }
 
+  // Guest AI guard: block unauthenticated requests unless explicitly enabled
+  if (!userId && (process.env.GUEST_AI_ENABLED || "false") !== "true") {
+    return res.status(403).json({
+      error: "AI Chat is not available in guest mode. Please log in to use AI features.",
+    });
+  }
+
   let resolvedApiKey = apiKey;
   let resolvedBaseUrl = baseUrl;
   let resolvedModel = model;
