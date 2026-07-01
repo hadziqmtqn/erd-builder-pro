@@ -74,8 +74,10 @@ export function SettingsModal() {
     setSettingsTab 
   } = useWorkspace();
 
-  const isDesktopApp = typeof window !== 'undefined' && 
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const isDesktopApp = typeof window !== 'undefined' && (
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__) ||
+    (window as any).ERD_INSTALL_MODE === 'cli'
+  );
 
   const {
     providers,

@@ -4,7 +4,7 @@ import {
   NextFunction,
 } from "express";
 import { prisma } from "../../lib/prisma.js";
-import { isDesktopMode } from "../../lib/config.js";
+import { isDesktopMode, getInstallMode } from "../../lib/config.js";
 import { encrypt, decrypt } from "../../lib/crypto.js";
 import type { ConnectionInfo, DbType } from "../../lib/db-connectors/types.js";
 
@@ -14,7 +14,8 @@ export function desktopOnly(
   res: ExpressResponse,
   next: NextFunction,
 ) {
-  if (!isDesktopMode()) {
+  const mode = getInstallMode();
+  if (mode !== "desktop" && mode !== "cli") {
     return res.status(404).json({ error: "Not available" });
   }
   next();

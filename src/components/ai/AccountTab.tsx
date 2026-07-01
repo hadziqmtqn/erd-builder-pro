@@ -13,6 +13,7 @@ type AuthConfig = {
   isDesktop: boolean;
   isLocalPostgres: boolean;
   supportsPasswordUpdate: boolean;
+  installMode: 'desktop' | 'cli' | 'docker' | 'vercel' | 'web';
 };
 
 export function AccountTab() {

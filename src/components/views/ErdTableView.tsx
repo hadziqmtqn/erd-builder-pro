@@ -91,11 +91,13 @@ export const ErdTableView = React.memo(function ErdTableView({
 }: ErdTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalDiagrams / ITEMS_PER_PAGE));
   const [dbConnectOpen, setDbConnectOpen] = useState(false);
-  const isDesktop = typeof window !== 'undefined' &&
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const showDbConnect = typeof window !== 'undefined' && (
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__) ||
+    (window as any).ERD_INSTALL_MODE === 'cli'
+  );
 
   // Filter out 'source' column in web mode — DB Connect is desktop-only
-  const columns = isDesktop ? DEFAULT_COLUMNS : DEFAULT_COLUMNS.filter(c => c.id !== 'source');
+  const columns = showDbConnect ? DEFAULT_COLUMNS : DEFAULT_COLUMNS.filter(c => c.id !== 'source');
 
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(loadColumnVisibility);
 
@@ -221,7 +223,7 @@ export const ErdTableView = React.memo(function ErdTableView({
             <Plus className="w-4 h-4 mr-1.5" />
             Create Diagram
           </Button>
-          {isDesktop && (
+          {showDbConnect && (
             <Button size="sm" variant="outline" onClick={() => setDbConnectOpen(true)}>
               <Cable className="w-4 h-4 mr-1.5" />
               DB Connect
@@ -419,7 +421,7 @@ export const ErdTableView = React.memo(function ErdTableView({
         </div>
       )}
 
-      {isDesktop && (
+      {showDbConnect && (
         <DBConnectPanel
           open={dbConnectOpen}
           onOpenChange={setDbConnectOpen}

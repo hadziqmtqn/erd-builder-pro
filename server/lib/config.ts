@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
+import fs from "fs";
 
 dotenv.config();
 
@@ -23,6 +24,22 @@ export const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "";
 export function isDesktopMode(): boolean {
   const dbUrl = process.env.DATABASE_URL || "";
   return dbUrl === "" || dbUrl.startsWith("file:") || dbUrl.endsWith(".db");
+}
+
+export function getInstallMode(): string {
+  if (process.env.ERD_INSTALL_MODE === "cli") return "cli";
+  if (process.env.VERCEL) return "vercel";
+  if (process.env.DOCKER || isInDocker()) return "docker";
+  if (isDesktopMode()) return "desktop";
+  return "web";
+}
+
+function isInDocker(): boolean {
+  try {
+    return fs.existsSync("/.dockerenv");
+  } catch {
+    return false;
+  }
 }
 
 /** True when using local PostgreSQL (no Supabase auth). */
