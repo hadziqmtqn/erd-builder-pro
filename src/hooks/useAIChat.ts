@@ -302,6 +302,12 @@ export function useAIChat(
     const trimmed = content.trim();
     const isGuest = isGuestCheck();
 
+    // Guard: if not guest but user id not available yet, auth still loading
+    if (!isGuest && !auth.user?.id) {
+      toast.error('Authentication not ready. Please wait a moment and try again.');
+      return;
+    }
+
     setIsStreaming(true);
 
     // Optimistic user message
