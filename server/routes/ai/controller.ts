@@ -40,6 +40,22 @@ export async function proxy(req: Request, res: Response): Promise<void> {
           if (user) userId = user.id;
         }
       } catch {}
+
+      // Also try local auth (desktop / local postgres) — token is not a Supabase JWT
+      if (!userId) {
+        try {
+          const token = req.cookies?.token || (req.headers.authorization?.startsWith("Bearer ")
+            ? req.headers.authorization.slice(7)
+            : undefined);
+          if (token) {
+            const { getSession } = await import("../../lib/desktop-auth.js");
+            const session = await getSession(token);
+            if (session) {
+              userId = session.userId;
+            }
+          }
+        } catch {}
+      }
     }
 
     // If still no userId, this is an unauthenticated (guest) request.
