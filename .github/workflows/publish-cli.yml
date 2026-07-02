@@ -36,9 +36,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Configure npm for trusted publishing
-        run: npm config set registry https://registry.npmjs.org
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install deps
         run: npm ci
@@ -93,6 +91,8 @@ jobs:
 
       - name: Publish to npm
         run: cd cli && npm publish --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
