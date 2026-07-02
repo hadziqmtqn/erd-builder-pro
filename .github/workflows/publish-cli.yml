@@ -1,0 +1,91 @@
+name: Publish CLI
+
+on:
+  push:
+    tags:
+      - "v*"  # git tag v2.5.5 → publish to latest + GitHub Release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "npm dist-tag"
+        required: true
+        type: choice
+        default: "beta"
+        options:
+          - "beta"
+          - "latest"
+
+permissions:
+  contents: write  # needed for softprops/action-gh-release
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      DB_VARIANT: sqlite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prisma generate (SQLite)
+        run: npx prisma generate --schema=prisma/schema.sqlite.prisma
+
+      - name: Build server bundle
+        run: node scripts/build-server.js
+
+      - name: Build frontend
+        run: |
+          rm -rf dist
+          VITE_API_URL="" npx vite build
+
+      - name: Assemble CLI package
+        run: |
+          rm -rf cli/dist-server cli/dist cli/prisma
+          cp -r dist-server cli/dist-server
+          cp -r dist cli/dist
+          mkdir -p cli/prisma
+          cp prisma/schema.sqlite.prisma cli/prisma/
+          cp dist-server/schema.sql cli/prisma/ 2>/dev/null || true
+
+          # Regenerate Prisma client with SQLite schema for CLI
+          rm -rf node_modules/.prisma/client
+          DB_VARIANT=sqlite npx prisma generate --schema=prisma/schema.sqlite.prisma --generator client
+          cp -r node_modules/.prisma/client cli/dist-server/node_modules/.prisma/
+
+          # Copy better-sqlite3 for correct Node ABI
+          cp -r node_modules/better-sqlite3 cli/dist-server/node_modules/
+
+      - name: Sync version from root
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          node -e "const p=require('./cli/package.json');p.version='$VERSION';require('fs').writeFileSync('./cli/package.json',JSON.stringify(p,null,2)+'\n')"
+          echo "Publishing erdbpro@${VERSION}"
+
+      - name: Determine npm tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        run: cd cli && npm publish --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: false

@@ -268,7 +268,7 @@ export function useDrawings(isGuest: boolean = false) {
     return false;
   };
 
-  const saveDrawing = async (drawing: Drawing) => {
+  const saveDrawing = useCallback(async (drawing: Drawing) => {
     const drawingId = String(drawing.uid ?? drawing.id);
     if (!drawingId) return false;
     
@@ -297,7 +297,7 @@ export function useDrawings(isGuest: boolean = false) {
       console.error('Error in local saveDrawing:', err);
       return false;
     }
-  };
+  }, []);
 
   const restoreDrawing = async (uid: string) => {
     if (isGuestCheck()) {

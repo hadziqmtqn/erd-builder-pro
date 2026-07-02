@@ -70,7 +70,16 @@ export function useNotes(isGuest: boolean = false) {
       const startIdx = (pageNum - 1) * pageSize;
       const paged = enriched.slice(startIdx, startIdx + pageSize);
 
-      setNotes(paged);
+      // Preserve content for notes that were already loaded in detail view
+      // (prevents fetchNotes list response from overwriting selectNote's content)
+      const merged = paged.map((n: any) => {
+        const existing = notesRef.current.find(e => String(e.uid ?? e.id) === String(n.uid ?? n.id));
+        if (existing && existing.content != null) {
+          return { ...n, content: existing.content };
+        }
+        return n;
+      });
+      setNotes(merged);
       setNotesTotal(enriched.length);
       setHasMoreNotes(false);
       setIsLoading(false);
@@ -95,11 +104,21 @@ export function useNotes(isGuest: boolean = false) {
         } else {
           setNotes(prev => {
             const activeUid = activeNoteUidRef.current;
-            if (activeUid && !notesListData.some(n => n.uid === activeUid)) {
+            // Preserve content for notes already loaded in detail view (selectNote)
+            // even when the note IS in the list response (which lacks the content field).
+            const merged = notesListData.map((n: any) => {
+              const existing = prev.find(e => String(e.uid ?? e.id) === String(n.uid ?? n.id));
+              if (existing && existing.content != null) {
+                return { ...n, content: existing.content };
+              }
+              return n;
+            });
+            // Also preserve the active note if it's missing from the list entirely
+            if (activeUid && !merged.some(n => n.uid === activeUid)) {
               const existing = prev.find(n => n.uid === activeUid);
-              if (existing) return [...notesListData, existing];
+              if (existing) return [...merged, existing];
             }
-            return notesListData;
+            return merged;
           });
         }
         setNotesTotal(total);
@@ -264,7 +283,7 @@ export function useNotes(isGuest: boolean = false) {
     return false;
   };
 
-  const saveNote = async (note: Note) => {
+  const saveNote = useCallback(async (note: Note) => {
     if (!note.id && !note.uid) return false;
     
     try {
@@ -288,7 +307,7 @@ export function useNotes(isGuest: boolean = false) {
       console.error('Error in local saveNote:', err);
       return false;
     }
-  };
+  }, []);
 
   const restoreNote = async (uid: string) => {
     if (isGuestCheck()) {
@@ -399,18 +418,22 @@ export function useNotes(isGuest: boolean = false) {
           });
         }
 
-        // Step 3: Check draft AFTER API content (draft wins if sync_pending)
+        // Step 3: Check draft AFTER API content (draft wins if sync_pending AND has real content)
         const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
         if (draft && draft.sync_pending && versionCheck()) {
           try {
             const parsed = JSON.parse(draft.data);
-            setNotes(prev => {
-              const exists = prev.some(n => n.uid === uid);
-              if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
-              return prev;
-            });
-            if (!options?.silent) toast.info("Loaded unsynced local note draft");
-            try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+            // Only apply draft if it has real content — guard against empty drafts
+            // from buggy previous sessions overwriting valid API content.
+            if (parsed.content || !fullNote?.content) {
+              setNotes(prev => {
+                const exists = prev.some(n => n.uid === uid);
+                if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
+                return prev;
+              });
+              if (!options?.silent) toast.info("Loaded unsynced local note draft");
+              try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+            }
           } catch (e) {}
         }
       } else {
@@ -428,18 +451,20 @@ export function useNotes(isGuest: boolean = false) {
         }
         setIsItemLoading(false);
 
-        // Step 3: Check draft (same as before)
+        // Step 3: Check draft (same guard — don't overwrite API content with empty draft)
         const draft = await localPersistence.getDraft(DraftType.NOTES, uid);
         if (draft && draft.sync_pending && versionCheck()) {
           try {
             const parsed = JSON.parse(draft.data);
-            setNotes(prev => {
-              const exists = prev.some(n => n.uid === uid);
-              if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
-              return prev;
-            });
-            if (!options?.silent) toast.info("Loaded unsynced local note draft");
-            try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+            if (parsed.content || !fullNote?.content) {
+              setNotes(prev => {
+                const exists = prev.some(n => n.uid === uid);
+                if (exists) return prev.map(n => n.uid === uid ? { ...n, content: parsed.content } : n);
+                return prev;
+              });
+              if (!options?.silent) toast.info("Loaded unsynced local note draft");
+              try { saveContentCache(uid, note?.title || 'Untitled', parsed.content || ''); } catch {}
+            }
           } catch (e) {}
         }
       }

@@ -36,7 +36,7 @@ export const NotesView = React.memo(({
   const [isSaving, setIsSaving] = useState(false);
   const preAiContentRef = useRef<string | null>(null);
 
-  const showSkeleton = isLoading;
+  const showSkeleton = isLoading || (activeNote && activeNote.content == null);
   const [pendingChange, setPendingChange] = useState<{
     content: string;
     strategy: 'replace' | 'append';

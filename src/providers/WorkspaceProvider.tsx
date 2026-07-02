@@ -407,7 +407,7 @@ export function WorkspaceProvider({
   const { handleNoteChange, notesSaveTimeout } = useNoteChangeHandler({
     activeNoteUid, isIncomingSyncRef, notesRef, lastLoadedNoteIdRef,
     lastSaveCallRef, bumpContentVersion, saveNote, setNotes,
-    setIsLocalSaving, broadcastMessage, syncDrafts, isRefreshing, isNoteItemLoading,
+    broadcastMessage, syncDrafts, isRefreshing, isNoteItemLoading,
   });
 
   const { handleDrawingChange, drawingsSaveTimeoutRef } = useDrawingChangeHandler({
