@@ -46,6 +46,9 @@ jobs:
       - name: Upgrade npm (required for OIDC trusted publishing)
         run: npm install -g npm@latest
 
+      - name: Upgrade npm (required for OIDC trusted publishing)
+        run: npm install -g npm@latest
+
       - name: Install deps
         run: npm ci
 
