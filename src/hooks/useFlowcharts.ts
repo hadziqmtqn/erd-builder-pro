@@ -254,7 +254,7 @@ export function useFlowcharts(isGuest: boolean = false) {
     return false;
   };
 
-  const saveFlowchart = async (flowchart: Flowchart) => {
+  const saveFlowchart = useCallback(async (flowchart: Flowchart) => {
     if (!flowchart.id && !flowchart.uid) return false;
     
     try {
@@ -290,7 +290,7 @@ export function useFlowcharts(isGuest: boolean = false) {
       console.error('Error in local saveFlowchart:', err);
       return false;
     }
-  };
+  }, [isGuest]);
 
   const restoreFlowchart = async (uid: string) => {
     if (isGuest) {

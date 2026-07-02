@@ -18,7 +18,6 @@ export interface UseNoteChangeHandlerParams {
   bumpContentVersion: () => number;
   saveNote: (note: Note) => Promise<boolean>;
   setNotes: React.Dispatch<React.SetStateAction<Note[]>>;
-  setIsLocalSaving: (val: boolean) => void;
   broadcastMessage: (type: any, draftType: any, id: any) => void;
   syncDrafts: () => Promise<void>;
   /** State values */
@@ -58,7 +57,6 @@ export function useNoteChangeHandler(params: UseNoteChangeHandlerParams): UseNot
     bumpContentVersion,
     saveNote,
     setNotes,
-    setIsLocalSaving,
     broadcastMessage,
     syncDrafts,
     isRefreshing,
@@ -87,8 +85,6 @@ export function useNoteChangeHandler(params: UseNoteChangeHandlerParams): UseNot
     // Tiptap manages its own content internally via ProseMirror.
     // State is updated only when saving (800ms debounce below).
 
-    setIsLocalSaving(true);
-
     // Clear BOTH timers on every keystroke (IndexedDB + Cloud)
     if (notesSaveTimeout.current) clearTimeout(notesSaveTimeout.current);
     if (noteCloudSyncTimeoutRef.current) clearTimeout(noteCloudSyncTimeoutRef.current);
@@ -96,7 +92,7 @@ export function useNoteChangeHandler(params: UseNoteChangeHandlerParams): UseNot
     // SAFETY: Note ID Validation Guard
     if (lastLoadedNoteIdRef.current !== activeNoteUid) return;
 
-    // Stage 1: 800ms idle → IndexedDB (local draft, no cloud)
+    // Stage 1: 400ms idle → IndexedDB (silent, no UI indicator — Notion-like)
     notesSaveTimeout.current = setTimeout(async () => {
       // SAFETY: Wait if still loading/refreshing
       if (isRefreshing || isNoteItemLoading) return;
@@ -114,14 +110,13 @@ export function useNoteChangeHandler(params: UseNoteChangeHandlerParams): UseNot
       }
 
       lastSaveCallRef.current = Date.now();
-      setIsLocalSaving(false);
       broadcastMessage(BroadcastMessageType.DRAFT_UPDATED, DraftType.NOTES, noteId);
-    }, 800);
+    }, 400);
 
-    // Stage 2: 1600ms idle → Cloud (syncDrafts — syncs pending IndexedDB drafts to Supabase)
+    // Stage 2: 1000ms idle → Cloud (syncDrafts — syncs pending IndexedDB drafts to Supabase)
     noteCloudSyncTimeoutRef.current = setTimeout(async () => {
       await syncDraftsRef.current();
-    }, 1600);
+    }, 1000);
   }, [
     activeNoteUid,
     isIncomingSyncRef,
@@ -130,7 +125,6 @@ export function useNoteChangeHandler(params: UseNoteChangeHandlerParams): UseNot
     lastLoadedNoteIdRef,
     saveNote,
     setNotes,
-    setIsLocalSaving,
     broadcastMessage,
     isRefreshing,
     isNoteItemLoading,

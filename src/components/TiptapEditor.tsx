@@ -309,11 +309,27 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     };
   }, [editor, setSelectionText, disableAISelection]);
 
+  // Normalize HTML to plain text — strips tags and trims.
+  // Shared between content sync guard and handleUpdate.
+  const textContent = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+
   useEffect(() => {
     if (editor && typeof content === 'string' && editor.getHTML() !== content) {
-      editor.commands.setContent(content);
+      // Only sync if the editor doesn't have additional *substantive* edits beyond
+      // what the prop represents. Prevents overwriting the editor with stale saved
+      // content while the user is still typing (saveNote fires mid-edit).
+      if (textContent(editor.getHTML()) === textContent(content)) {
+        editor.commands.setContent(content);
+      }
     }
   }, [editor, content]);
+
+  // Debounce ref for onChange — prevents cascading re-renders on every keystroke
+  const onChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Track the content prop value on every render — used in handleUpdate to skip
+  // saves when editor content matches the prop (external sync, not user edit).
+  const contentPropRef = useRef<string>(content ?? '');
+  contentPropRef.current = content ?? '';
 
   useEffect(() => {
     if (!editor) return;
@@ -333,9 +349,26 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     };
 
     const handleUpdate = () => {
-      if (onChange) {
-        onChange(editor.getHTML());
+      // Skip if editor content matches the prop value — this update came from
+      // an external content sync (setContent from API load / note switch), not a user edit.
+      // Prevents re-saving content just loaded, or saving empty content on slow networks.
+      if (textContent(editor.getHTML()) === textContent(contentPropRef.current)) {
+        extractHeadings();
+        return;
       }
+
+      // Debounce onChange to avoid firing on every keystroke.
+      // The parent (handleNoteChange) also has its own 400ms debounce for the actual save.
+      // This prevents the cascading re-render chain: keystroke → onChange →
+      // re-render → saveNote recreated → handleNoteChange recreated → this effect re-runs.
+      if (onChangeTimeoutRef.current) {
+        clearTimeout(onChangeTimeoutRef.current);
+      }
+      onChangeTimeoutRef.current = setTimeout(() => {
+        if (onChange) {
+          onChange(editor.getHTML());
+        }
+      }, 150);
 
       extractHeadings();
 
@@ -373,6 +406,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     extractHeadings();
     return () => {
       editor.off('update', handleUpdate);
+      if (onChangeTimeoutRef.current) {
+        clearTimeout(onChangeTimeoutRef.current);
+      }
     };
   }, [editor, onChange]);
 
