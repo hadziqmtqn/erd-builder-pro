@@ -14,6 +14,11 @@ on:
         options:
           - "beta"
           - "latest"
+      version:
+        description: "Version (leave empty = read from package.json)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write  # needed for softprops/action-gh-release
@@ -65,7 +70,12 @@ jobs:
 
       - name: Sync version from root
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          INPUT_VERSION="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           node -e "const p=require('./cli/package.json');p.version='$VERSION';require('fs').writeFileSync('./cli/package.json',JSON.stringify(p,null,2)+'\n')"
           echo "Publishing erdbpro@${VERSION}"
 
