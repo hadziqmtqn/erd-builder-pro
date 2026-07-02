@@ -21,7 +21,8 @@ on:
         default: ""
 
 permissions:
-  contents: write  # needed for softprops/action-gh-release
+  contents: write   # GitHub Release
+  id-token: write   # npm trusted publishing (OIDC)
 
 jobs:
   build-and-publish:
@@ -35,7 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
+
+      - name: Configure npm for trusted publishing
+        run: npm config set registry https://registry.npmjs.org
 
       - name: Install deps
         run: npm ci
@@ -90,8 +93,6 @@ jobs:
 
       - name: Publish to npm
         run: cd cli && npm publish --tag ${{ steps.tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
