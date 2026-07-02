@@ -22,7 +22,7 @@ on:
 
 permissions:
   contents: write   # GitHub Release
-  id-token: write   # npm trusted publishing (OIDC)
+  id-token: write   # provenance + OIDC trusted publishing
 
 jobs:
   build-and-publish:
@@ -37,6 +37,9 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm (required for OIDC trusted publishing)
+        run: npm install -g npm@latest
 
       - name: Install deps
         run: npm ci
