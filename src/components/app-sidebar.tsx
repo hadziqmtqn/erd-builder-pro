@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { openExternalUrl } from "@/lib/urlUtils"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -325,7 +326,7 @@ export const AppSidebar = React.memo(({
                   "border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 transition-all duration-300",
                   isCollapsed ? "size-9 p-0 justify-center" : "w-full justify-start gap-2 h-9 px-2.5"
                 )}
-                onClick={() => window.open('https://trakteer.id/khadziq_muttaqin/tip', '_blank', 'noopener,noreferrer')}
+                onClick={() => openExternalUrl('https://trakteer.id/khadziq_muttaqin/tip')}
               >
                 <Heart className="w-4 h-4" />
                 {!isCollapsed && <span>Sponsor</span>}

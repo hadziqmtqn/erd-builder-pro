@@ -82,17 +82,31 @@ function main() {
   const nodeExe =
     platform === "win32" ? join(OUT_DIR, "node.exe") : join(OUT_DIR, "node");
 
-  // ── Skip check (only for single-arch builds) ──────────────────
-  // macOS universal binary: always re-create to ensure both slices are fresh
-  if (platform !== "darwin" && existsSync(nodeExe)) {
+  // ── Skip check ──────────────────────────────────────────────────
+  // Only re-download if the binary is missing, wrong version, or
+  // (on macOS) not a universal binary with both arm64 + x86_64.
+  if (existsSync(nodeExe)) {
     try {
       const verCheck = execSync(`"${nodeExe}" --version`, {
         encoding: "utf8",
         timeout: 5000,
       }).trim();
       if (verCheck === version) {
-        console.log(`✅ Node.js ${version} already bundled: ${nodeExe}`);
-        return;
+        // macOS: verify it's a universal binary (both slices present)
+        if (platform === "darwin") {
+          const lipoInfo = execSync(`lipo -info "${nodeExe}"`, {
+            encoding: "utf8",
+            timeout: 5000,
+          }).trim();
+          if (lipoInfo.includes("arm64") && lipoInfo.includes("x86_64")) {
+            console.log(`✅ Node.js ${version} (universal) already bundled: ${nodeExe}`);
+            return;
+          }
+          console.log("   ⚠️ Existing binary is not universal, re-creating...");
+        } else {
+          console.log(`✅ Node.js ${version} already bundled: ${nodeExe}`);
+          return;
+        }
       }
     } catch {
       // Stale binary, re-download
@@ -191,6 +205,7 @@ function main() {
     console.log("  Creating universal (fat) binary with lipo...");
     execSync(`lipo -create -output "${nodeExe}" ${extractedNodes.map(s => `"${s}"`).join(" ")}`, {
       stdio: "inherit",
+      timeout: 120_000,
     });
     execSync(`chmod +x "${nodeExe}"`);
   } else {
