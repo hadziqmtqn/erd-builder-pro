@@ -22,10 +22,10 @@ import {
   DropdownMenuSubContent,
   DropdownMenuLabel,
   DropdownMenuGroup
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+} from "./ui/dropdown-menu";
+import { Button } from "./ui/button";
 import { toast } from "sonner";
-import { useWorkspace } from "@/providers/WorkspaceContext";
+import { useWorkspace } from "../providers/WorkspaceContext";
 
 interface NavActionsMenuProps {
   onShare: () => void;
@@ -47,45 +47,6 @@ interface NavActionsMenuProps {
   noteContent?: string;
 }
 
-function FlowchartExportMenu() {
-  const { flowchartExportHandler } = useWorkspace();
-  if (!flowchartExportHandler) return null;
-
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
-          <Download className="h-4 w-4 text-muted-foreground" />
-          <span>Export</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-52 p-1">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SVG Format</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={flowchartExportHandler.exportAll} 
-              className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-            >
-              <ImageIcon className="h-4 w-4 text-purple-400" />
-              <span>All Canvas</span>
-            </DropdownMenuItem>
-            {flowchartExportHandler.groups.map(group => (
-              <DropdownMenuItem 
-                key={group}
-                onClick={() => flowchartExportHandler.exportGroup(group)} 
-                className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-              >
-                <ImageIcon className="h-4 w-4 text-purple-400" />
-                <span>{group}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-    </>
-  );
-}
 
 export const NavActionsMenu = ({
   onShare,
@@ -93,9 +54,6 @@ export const NavActionsMenu = ({
   onDelete,
   onDuplicate,
   onExportAll,
-  onExportSQL,
-  onExportPDF,
-  onExportImage,
   onExportMarkdown,
   onCopyMarkdown,
   onImportMarkdown,
