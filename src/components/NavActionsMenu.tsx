@@ -8,7 +8,6 @@ import {
   Copy,
   Download,
   Upload,
-  Image as ImageIcon,
   BarChart3
 } from 'lucide-react';
 import {
@@ -19,13 +18,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuLabel,
-  DropdownMenuGroup
+  DropdownMenuSubContent
 } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
-import { useWorkspace } from "../providers/WorkspaceContext";
 
 interface NavActionsMenuProps {
   onShare: () => void;
