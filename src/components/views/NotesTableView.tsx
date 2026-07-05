@@ -125,7 +125,7 @@ export const NotesTableView = React.memo(function NotesTableView({
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-yellow-400" />
           <h2 className="text-lg font-semibold">Notes</h2>
@@ -204,7 +204,7 @@ export const NotesTableView = React.memo(function NotesTableView({
                       if (col.id === 'name') {
                         return (
                           <TableCell key="name" className="font-medium">
-                            <span className="truncate block max-w-[280px]">{note.title || 'Untitled'}</span>
+                            <span className="truncate block max-w-70">{note.title || 'Untitled'}</span>
                           </TableCell>
                         );
                       }
