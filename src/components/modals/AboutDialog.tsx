@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { openExternalUrl } from '@/lib/urlUtils';
 
 async function getVersion(): Promise<string> {
   try {
@@ -268,7 +269,7 @@ export function AboutDialog({
               size="sm"
               className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
               onClick={() => {
-                window.open('https://github.com/hadziqmtqn/erd-builder-pro', '_blank');
+                openExternalUrl('https://github.com/hadziqmtqn/erd-builder-pro');
               }}
             >
               <ExternalLink className="size-3" />

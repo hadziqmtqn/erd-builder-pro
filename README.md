@@ -96,12 +96,17 @@ src/lib/__tests__/
   <a href="https://doktainer.com" target="_blank">
     <img src="/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
   </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://sumopod.com" target="_blank">
+    <img src="/public/img/sponsors/Sumopod.png" alt="SumoPod" height="60" />
+  </a>
 </div>
 
 | Sponsor | Support |
 |---------|---------|
 | [**IDCloudhost**](https://www.idcloudhost.com) | Virtual machine infrastructure for deployment and cloud hosting. |
 | [**Doktainer**](https://doktainer.com) | App template platform with Docker panel for streamlined container management. |
+| [**SumoPod**](https://sumopod.com) | Seamless container and application purchasing solutions for businesses of all sizes. |
 
 ---
 

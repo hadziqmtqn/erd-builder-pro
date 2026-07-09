@@ -76,7 +76,7 @@ export function AIRulesTab() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={`e.g. for ${activeView.toUpperCase()}:\n- Always use snake_case for naming\n- Every table must have created_at and updated_at columns\n- Use English for all identifiers\n- ...`}
-            className="w-full min-h-[280px] bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono text-foreground focus:outline-none focus:border-primary/50 resize-y placeholder:text-muted-foreground/50"
+            className="w-full min-h-70 bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono text-foreground focus:outline-none focus:border-primary/50 resize-y placeholder:text-muted-foreground/50"
           />
         )}
       </div>

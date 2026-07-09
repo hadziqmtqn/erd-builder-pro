@@ -19,7 +19,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
 import { QuickJump } from "./QuickJump";
-import { format } from "date-fns";
 
 import { AppView } from '@/types';
 
@@ -351,24 +350,6 @@ export const MainHeader = React.memo(({
                   </div>
                 )}
               </div>
-            )}
-
-            {!isPublicView && updatedAt && (
-              <TooltipProvider delay={200}>
-                <Tooltip>
-                  <TooltipTrigger 
-                    render={
-                      <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium cursor-help hover:text-foreground transition-colors">
-                        <span className="opacity-50">Edited</span>
-                        <span>{format(new Date(updatedAt), 'MMM dd')}</span>
-                      </div>
-                    }
-                  />
-                  <TooltipContent side="bottom" className="text-[10px] py-1 px-2 font-mono">
-                    {format(new Date(updatedAt), 'eee, dd MMM yyyy HH:mm:ss')}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             )}
 
             <NavActionsMenu 

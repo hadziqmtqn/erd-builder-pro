@@ -39,7 +39,7 @@ export default function ConfirmModal({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <AlertDialogContent size="sm" className="max-w-[400px]">
+      <AlertDialogContent size="sm" className="max-w-100">
         <AlertDialogHeader className="flex flex-col items-center justify-center text-center">
           <div className={cn(
             "w-12 h-12 rounded-full flex items-center justify-center mb-2",

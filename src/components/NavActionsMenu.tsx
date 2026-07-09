@@ -8,7 +8,6 @@ import {
   Copy,
   Download,
   Upload,
-  Image as ImageIcon,
   BarChart3
 } from 'lucide-react';
 import {
@@ -19,13 +18,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuLabel,
-  DropdownMenuGroup
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+  DropdownMenuSubContent
+} from "./ui/dropdown-menu";
+import { Button } from "./ui/button";
 import { toast } from "sonner";
-import { useWorkspace } from "@/providers/WorkspaceContext";
 
 interface NavActionsMenuProps {
   onShare: () => void;
@@ -47,45 +43,6 @@ interface NavActionsMenuProps {
   noteContent?: string;
 }
 
-function FlowchartExportMenu() {
-  const { flowchartExportHandler } = useWorkspace();
-  if (!flowchartExportHandler) return null;
-
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
-          <Download className="h-4 w-4 text-muted-foreground" />
-          <span>Export</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-52 p-1">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 py-1.5">SVG Format</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={flowchartExportHandler.exportAll} 
-              className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-            >
-              <ImageIcon className="h-4 w-4 text-purple-400" />
-              <span>All Canvas</span>
-            </DropdownMenuItem>
-            {flowchartExportHandler.groups.map(group => (
-              <DropdownMenuItem 
-                key={group}
-                onClick={() => flowchartExportHandler.exportGroup(group)} 
-                className="gap-3 px-3 py-2 text-xs font-semibold cursor-pointer"
-              >
-                <ImageIcon className="h-4 w-4 text-purple-400" />
-                <span>{group}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-    </>
-  );
-}
 
 export const NavActionsMenu = ({
   onShare,
@@ -93,9 +50,6 @@ export const NavActionsMenu = ({
   onDelete,
   onDuplicate,
   onExportAll,
-  onExportSQL,
-  onExportPDF,
-  onExportImage,
   onExportMarkdown,
   onCopyMarkdown,
   onImportMarkdown,
@@ -146,9 +100,10 @@ export const NavActionsMenu = ({
         <DropdownMenuTrigger render={
           <Button 
             variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:bg-muted/80 hover:text-foreground hover:shadow-sm active:scale-95 transition-all duration-200"
+            size="sm" 
+            className="h-8 text-muted-foreground hover:bg-muted/80 hover:text-foreground hover:shadow-sm active:scale-95 transition-all duration-200"
           >
+            <span className="hidden sm:inline mr-1.5 text-xs font-medium">Actions</span>
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         } />

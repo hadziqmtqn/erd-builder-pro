@@ -314,7 +314,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const textContent = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 
   useEffect(() => {
-    if (editor && typeof content === 'string' && editor.getHTML() !== content) {
+    if (!editor || editor.isDestroyed) return;
+    if (typeof content === 'string' && editor.getHTML() !== content) {
       // Only sync if the editor doesn't have additional *substantive* edits beyond
       // what the prop represents. Prevents overwriting the editor with stale saved
       // content while the user is still typing (saveNote fires mid-edit).
