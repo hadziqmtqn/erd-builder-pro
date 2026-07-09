@@ -2,7 +2,6 @@ import * as React from "react"
 import { useState, useRef } from "react"
 import {
   Database,
-  Heart,
   PenTool,
   Search,
   Network,
@@ -14,15 +13,12 @@ import {
   FileText,
 } from "lucide-react"
 
-import { cn } from "@/lib/utils"
-import { openExternalUrl } from "@/lib/urlUtils"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { motion } from "framer-motion"
 import {
   Sidebar,
   SidebarContent,
@@ -63,6 +59,7 @@ import {
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 
 import { Project, AppView } from "../types"
+import { SponsorCarousel } from "@/components/SponsorCarousel"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
@@ -100,15 +97,13 @@ export const AppSidebar = React.memo(({
   selectedWorkspaceUid,
   searchQuery,
   onSearchChange,
-  isInstallable,
-  onInstall,
   isProjectsLoading,
   user,
   isOnline,
   onOpenFeedback,
   ...props
 }: AppSidebarProps) => {
-  const { state, setOpen } = useSidebar();
+  const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -287,58 +282,8 @@ export const AppSidebar = React.memo(({
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        {isInstallable && (
-          <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className={cn(
-                    "inline-flex items-center justify-center rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-                    "border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-300",
-                    isCollapsed ? "size-9 p-0 justify-center" : "w-full justify-start gap-2 h-9 px-2.5"
-                  )}
-                  onClick={onInstall}
-                >
-                  <motion.div
-                    animate={{ rotate: [0, 15, -15, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <Database className="w-4 h-4" />
-                  </motion.div>
-                  {!isCollapsed && <span>Install App</span>}
-                </TooltipTrigger>
-                {isCollapsed && (
-                  <TooltipContent side="right">
-                    Install App
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
-        {/* Sponsor link — always visible */}
-        <div className={cn("px-3 mb-2", isCollapsed && "px-0 flex justify-center")}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                className={cn(
-                  "inline-flex items-center justify-center rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-                  "border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-700 dark:text-red-400 transition-all duration-300",
-                  isCollapsed ? "size-9 p-0 justify-center" : "w-full justify-start gap-2 h-9 px-2.5"
-                )}
-                onClick={() => openExternalUrl('https://trakteer.id/khadziq_muttaqin/tip')}
-              >
-                <Heart className="w-4 h-4" />
-                {!isCollapsed && <span>Sponsor</span>}
-              </TooltipTrigger>
-              {isCollapsed && (
-                <TooltipContent side="right">
-                  Sponsor
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        {/* Sponsor carousel — auto-rotate */}
+        <SponsorCarousel isCollapsed={isCollapsed} />
         <NavUser 
           user={user} 
           onLogout={onLogout}
