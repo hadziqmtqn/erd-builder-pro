@@ -115,7 +115,7 @@ export async function permanentDelete(req: ExpressRequest, res: ExpressResponse)
       ));
     }
 
-    await notesService.permanentDeleteNote(note.id);
+    await notesService.permanentDeleteNote(Number(note.id));
     res.json({ success: true });
   } catch (err: any) {
     handleError(res, err, "Failed to permanently delete note");

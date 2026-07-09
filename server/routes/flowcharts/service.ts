@@ -33,7 +33,7 @@ function conditions(userId: string, query: {
   return conditions;
 }
 
-async function excludeDeletedProjects(userId: string): Promise<number[]> {
+async function excludeDeletedProjects(userId: string): Promise<any[]> {
   const deleted = await prisma?.project.findMany({
     where: { userId, isDeleted: true },
     select: { id: true },

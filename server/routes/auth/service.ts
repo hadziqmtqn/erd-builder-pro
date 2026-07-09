@@ -168,7 +168,7 @@ export async function getLocalSession(token: string) {
 
   const user = await prisma.user.findFirst({
     where: { id: session.userId } as any,
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true },
   });
   if (!user) return null;
 
@@ -239,7 +239,7 @@ export async function updateLocalAccount(
   const updated = await prisma.user.update({
     where: { id: userId } as any,
     data: updateData,
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true },
   });
 
   return {

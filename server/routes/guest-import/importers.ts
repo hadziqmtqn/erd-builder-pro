@@ -12,8 +12,8 @@ export async function importProjects(
   res: ExpressResponse,
   workOffset: number,
   totalWork: number,
-): Promise<{ nameToDbId: Map<string, number>; guestIdToName: Map<string, string> }> {
-  const nameToDbId = new Map<string, number>();
+): Promise<{ nameToDbId: Map<string, any>; guestIdToName: Map<string, string> }> {
+  const nameToDbId = new Map<string, any>();
   const guestIdToName = new Map<string, string>();
   let processed = 0;
 
@@ -42,10 +42,10 @@ export async function importProjects(
           uid: item.uid || uuid(),
           name,
           userId,
-          color: item.color || "#6366f1",
+          
           isDeleted: false,
           createdAt: safeDate(item.created_at),
-          updatedAt: safeDate(item.updated_at),
+          
         },
       });
       nameToDbId.set(nameLower, created.id);
@@ -69,7 +69,7 @@ export async function importProjects(
 export async function importNotes(
   items: any[],
   userId: string,
-  nameToDbId: Map<string, number>,
+  nameToDbId: Map<string, any>,
   guestIdToName: Map<string, string>,
   stats: ImportStats,
   res: ExpressResponse,
@@ -105,7 +105,7 @@ export async function importNotes(
         projectId,
         isDeleted: false,
         createdAt: safeDate(item.created_at),
-        updatedAt: safeDate(item.updated_at),
+        
       });
     }
 
@@ -131,7 +131,7 @@ export async function importNotes(
 export async function importFlowcharts(
   items: any[],
   userId: string,
-  nameToDbId: Map<string, number>,
+  nameToDbId: Map<string, any>,
   guestIdToName: Map<string, string>,
   stats: ImportStats,
   res: ExpressResponse,
@@ -167,7 +167,7 @@ export async function importFlowcharts(
         projectId,
         isDeleted: false,
         createdAt: safeDate(item.created_at),
-        updatedAt: safeDate(item.updated_at),
+        
       });
     }
 
@@ -193,7 +193,7 @@ export async function importFlowcharts(
 export async function importDrawings(
   items: any[],
   userId: string,
-  nameToDbId: Map<string, number>,
+  nameToDbId: Map<string, any>,
   guestIdToName: Map<string, string>,
   stats: ImportStats,
   res: ExpressResponse,
@@ -229,7 +229,7 @@ export async function importDrawings(
         projectId,
         isDeleted: false,
         createdAt: safeDate(item.created_at),
-        updatedAt: safeDate(item.updated_at),
+        
       });
     }
 
@@ -255,7 +255,7 @@ export async function importDrawings(
 export async function importAiChatSessions(
   sessions: any[],
   userId: string,
-  nameToDbId: Map<string, number>,
+  nameToDbId: Map<string, any>,
   guestIdToName: Map<string, string>,
   stats: ImportStats,
   res: ExpressResponse,

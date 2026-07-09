@@ -56,15 +56,13 @@ export async function runStartupMigration() {
     if (!isDesktopMode()) return;
 
     const tables = await prisma
-      .$queryRawUnsafe<
-        { table_name: string }[]
-      >("SELECT name AS table_name FROM sqlite_master WHERE type = 'table' AND name = 'local_db_connections'")
-      .catch(() => []);
+      .$queryRawUnsafe("SELECT name AS table_name FROM sqlite_master WHERE type = 'table' AND name = 'local_db_connections'")
+      .catch(() => []) as { table_name: string }[];
     if (!tables || tables.length === 0) return;
 
     const oldConns = await prisma
-      .$queryRawUnsafe<any[]>("SELECT * FROM local_db_connections")
-      .catch(() => []);
+      .$queryRawUnsafe("SELECT * FROM local_db_connections")
+      .catch(() => []) as any[];
     if (!oldConns || oldConns.length === 0) return;
 
     console.log(
@@ -72,7 +70,7 @@ export async function runStartupMigration() {
     );
 
     for (const conn of oldConns) {
-      const existing = await prisma.dbCatalog.findFirst({
+      const existing = await (prisma as any).dbCatalog.findFirst({
         where: {
           account: { userId: conn.user_id },
           databaseName: conn.database,
@@ -80,7 +78,7 @@ export async function runStartupMigration() {
       });
       if (existing) continue;
 
-      const account = await prisma.dbAccount.create({
+      const account = await (prisma as any).dbAccount.create({
         data: {
           userId: conn.user_id,
           name: conn.name,
@@ -92,7 +90,7 @@ export async function runStartupMigration() {
         },
       });
 
-      const catalog = await prisma.dbCatalog.create({
+      const catalog = await (prisma as any).dbCatalog.create({
         data: {
           accountId: account.id,
           databaseName: conn.database,
@@ -100,7 +98,7 @@ export async function runStartupMigration() {
         },
       });
 
-      await prisma.diagram.updateMany({
+      await (prisma as any).diagram.updateMany({
         where: { userId: conn.user_id, sourceConnectionId: conn.id },
         data: { sourceConnectionId: catalog.id },
       });

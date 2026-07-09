@@ -59,13 +59,13 @@ export async function upsertConfig(
       ...(hasApiKey ? { apiKey: body.api_key! } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
-    },
+    } as any,
     update: {
       ...(hasApiKey ? { apiKey: body.api_key! } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
       updatedAt: new Date(),
-    },
+    } as any,
   });
   return data ? { ...data, apiKey: data.apiKey ? "***" : null } : null;
 }

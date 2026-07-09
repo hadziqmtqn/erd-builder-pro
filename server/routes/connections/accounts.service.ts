@@ -1,7 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 
 export async function findAllAccounts(userId: number | string) {
-  return prisma?.dbAccount.findMany({
+  return (prisma as any)?.dbAccount.findMany({
     where: { userId: String(userId) },
     include: { _count: { select: { catalogs: true } } },
     orderBy: { updatedAt: "desc" },
@@ -9,7 +9,7 @@ export async function findAllAccounts(userId: number | string) {
 }
 
 export async function findAccountById(id: number | string, userId: number | string) {
-  return prisma?.dbAccount.findFirst({
+  return (prisma as any)?.dbAccount.findFirst({
     where: { id: Number(id), userId: String(userId) },
     include: { catalogs: { select: { id: true } } },
   });
@@ -24,28 +24,28 @@ export async function createAccount(data: {
   user?: string;
   password?: string | null;
 }) {
-  return prisma?.dbAccount.create({ data });
+  return (prisma as any)?.dbAccount.create({ data });
 }
 
 export async function updateAccount(id: number | string, data: Record<string, unknown>) {
-  return prisma?.dbAccount.update({
+  return (prisma as any)?.dbAccount.update({
     where: { id: Number(id) },
     data,
   });
 }
 
 export async function deleteAccount(id: number | string) {
-  return prisma?.dbAccount.delete({ where: { id: Number(id) } });
+  return (prisma as any)?.dbAccount.delete({ where: { id: Number(id) } });
 }
 
 export async function findFirstCatalog(accountId: number | string) {
-  return prisma?.dbCatalog.findFirst({
+  return (prisma as any)?.dbCatalog.findFirst({
     where: { accountId: Number(accountId) },
   });
 }
 
 export async function findAllCatalogsByAccountId(accountId: number | string) {
-  return prisma?.dbCatalog.findMany({
+  return (prisma as any)?.dbCatalog.findMany({
     where: { accountId: Number(accountId) },
     select: { databaseName: true },
   });

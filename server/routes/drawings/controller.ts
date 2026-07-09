@@ -117,7 +117,7 @@ export async function permanentDelete(req: ExpressRequest, res: ExpressResponse)
       }
     }
 
-    await drawingsService.permanentDeleteDrawing(drawing.id);
+    await drawingsService.permanentDeleteDrawing(Number(drawing.id));
     res.json({ success: true });
   } catch (err: any) {
     handleError(res, err, "Failed to permanently delete drawing");

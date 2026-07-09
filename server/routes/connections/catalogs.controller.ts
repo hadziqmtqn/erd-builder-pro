@@ -33,7 +33,7 @@ export async function createCatalog(req: ExpressRequest, res: ExpressResponse) {
     if (!account) return res.status(404).json({ error: "Account not found" });
 
     // Check duplicate database name under same account
-    const existing = await prisma?.dbCatalog.findFirst({
+    const existing = await (prisma as any)?.dbCatalog.findFirst({
       where: { accountId: Number(accountId), databaseName },
     });
     if (existing) {
