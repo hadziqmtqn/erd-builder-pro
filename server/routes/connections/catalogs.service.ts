@@ -4,7 +4,7 @@ export async function findAllCatalogs(userId: number | string, accountId?: numbe
   const where: any = { account: { userId: String(userId) } };
   if (accountId !== undefined) where.accountId = accountId;
 
-  return prisma?.dbCatalog.findMany({
+  return (prisma as any)?.dbCatalog.findMany({
     where,
     include: {
       account: {
@@ -16,7 +16,7 @@ export async function findAllCatalogs(userId: number | string, accountId?: numbe
 }
 
 export async function findCatalogById(id: number | string, userId: number | string) {
-  return prisma?.dbCatalog.findFirst({
+  return (prisma as any)?.dbCatalog.findFirst({
     where: { id: Number(id), account: { userId: String(userId) } },
     include: { account: true },
   });
@@ -27,11 +27,11 @@ export async function createCatalog(data: {
   databaseName: string;
   label: string;
 }) {
-  return prisma?.dbCatalog.create({ data });
+  return (prisma as any)?.dbCatalog.create({ data });
 }
 
 export async function deleteCatalog(id: number | string) {
-  return prisma?.dbCatalog.delete({ where: { id: Number(id) } });
+  return (prisma as any)?.dbCatalog.delete({ where: { id: Number(id) } });
 }
 
 export async function detachDiagramsFromCatalog(catalogId: number | string) {

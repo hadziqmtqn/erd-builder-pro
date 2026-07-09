@@ -21,13 +21,13 @@ export async function createSession(userId: string, email: string, name: string 
   // Clean expired sessions for this user
   const cutoff = new Date(Date.now() - SESSION_EXPIRY_MS);
   try {
-    await prisma?.session.deleteMany({
+    await (prisma as any)?.session.deleteMany({
       where: { userId, createdAt: { lt: cutoff } },
     });
   } catch { /* ignore cleanup errors */ }
 
   try {
-    await prisma?.session.create({
+    await (prisma as any)?.session.create({
       data: { token, userId, email, name },
     });
   } catch (err) {
@@ -39,7 +39,7 @@ export async function createSession(userId: string, email: string, name: string 
 
 export async function getSession(token: string) {
   try {
-    const row = await prisma?.session.findFirst({
+    const row = await (prisma as any)?.session.findFirst({
       where: { token },
       select: { userId: true, email: true, name: true, createdAt: true },
     });
@@ -48,7 +48,7 @@ export async function getSession(token: string) {
 
     const age = Date.now() - row.createdAt.getTime();
     if (age > SESSION_EXPIRY_MS) {
-      await prisma?.session.deleteMany({ where: { token } }).catch(() => {});
+      await (prisma as any)?.session.deleteMany({ where: { token } }).catch(() => {});
       return undefined;
     }
 
@@ -60,6 +60,6 @@ export async function getSession(token: string) {
 
 export async function deleteSession(token: string): Promise<void> {
   try {
-    await prisma?.session.deleteMany({ where: { token } });
+    await (prisma as any)?.session.deleteMany({ where: { token } });
   } catch { /* ignore */ }
 }
