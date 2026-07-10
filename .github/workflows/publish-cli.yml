@@ -40,14 +40,8 @@ jobs:
       - name: Configure npm for trusted publishing
         run: npm config set registry https://registry.npmjs.org
 
-      - name: Upgrade npm (required for OIDC trusted publishing)
-        run: npm install -g npm@latest
-
-      - name: Upgrade npm (required for OIDC trusted publishing)
-        run: npm install -g npm@latest
-
-      - name: Upgrade npm (required for OIDC trusted publishing)
-        run: npm install -g npm@latest
+      # Note: Node 22 ships with npm 10.x which has OIDC/trusted publishing.
+      # DO NOT upgrade to npm@latest — v11+ has sigstore bundling issues.
 
       - name: Install deps
         run: npm ci
