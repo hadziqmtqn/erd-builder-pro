@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle } from 'lucide-react';
+import { ExternalLink, RefreshCw, CheckCircle2, Download, LoaderCircle, Heart } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { openExternalUrl } from '@/lib/urlUtils';
@@ -274,6 +274,17 @@ export function AboutDialog({
             >
               <ExternalLink className="size-3" />
               GitHub
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[11px] gap-1 text-rose-500 hover:text-rose-600"
+              onClick={() => {
+                openExternalUrl('https://trakteer.id/khadziq_muttaqin/tip');
+              }}
+            >
+              <Heart className="size-3" />
+              Support
             </Button>
           </div>
         </div>

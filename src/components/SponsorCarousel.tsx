@@ -23,15 +23,6 @@ const SPONSOR_INTERVAL = 6000
 
 const SPONSOR_SLIDES: SponsorSlide[] = [
   {
-    icon: Heart,
-    title: 'Support This Project',
-    description: 'Help keep ERD Builder Pro alive and independent.',
-    buttonText: 'Buy me a coffee',
-    buttonColor: '#2071FB',
-    buttonHoverColor: '#1a5fd4',
-    buttonAction: 'https://trakteer.id/khadziq_muttaqin/tip',
-  },
-  {
     logoSrc: 'https://s3.erdbuilderpro.com/sponsors/Sumopod-Light.png',
     logoDarkSrc: 'https://s3.erdbuilderpro.com/sponsors/Sumopod-Dark.png',
     logoAlt: 'SumoPod',
