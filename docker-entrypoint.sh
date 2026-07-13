@@ -68,6 +68,21 @@ export DB_VARIANT="$SCHEMA_VARIANT"
 echo "Regenerating Prisma client for ${SCHEMA_VARIANT} schema..."
 npx prisma generate
 
+# ── Push schema to database (BEFORE server start) ──
+# MUST run before server — server creates empty SQLite DB file on connect,
+# which breaks the old "skip if exists" check and bypasses migration entirely.
+if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
+  echo "Running Prisma schema push for sqlite..."
+  npx prisma db push --accept-data-loss || echo "WARNING: Schema push failed, continuing anyway"
+elif [ -n "$SCHEMA_VARIANT" ]; then
+  echo "Running Prisma schema push for ${SCHEMA_VARIANT}..."
+  npx prisma db push || echo "WARNING: Schema push failed, continuing anyway"
+fi
+
+# ── Seed initial data (BEFORE server start) ──
+echo "Seeding initial data..."
+npx tsx prisma/seed.sqlite.ts || echo "WARNING: Seeding failed (non-fatal)"
+
 # ── Start server in background ──
 echo "Starting server in background..."
 npm start &
@@ -85,25 +100,6 @@ for i in $(seq 1 90); do
   fi
   sleep 1
 done
-
-# ── Run Prisma schema sync —─
-# SQLite: skip if DB file exists (rarely changes schema mid-lifecycle)
-# PostgreSQL: ALWAYS run — table additions (like Backup) could have been
-# added to the schema after initial deploy. `db push` is idempotent for
-# adding tables/columns. Without --accept-data-loss it won't drop data.
-if [ "$SCHEMA_VARIANT" = "sqlite" ]; then
-  if [ ! -f "$DATA_DIR/erd-builder.db" ]; then
-    echo "Running Prisma schema sync for sqlite..."
-    npx prisma db push --accept-data-loss || echo "WARNING: Migration failed, continuing anyway"
-  fi
-elif [ -n "$SCHEMA_VARIANT" ]; then
-  echo "Running Prisma schema sync for ${SCHEMA_VARIANT}..."
-  npx prisma db push || echo "WARNING: Schema sync failed, continuing anyway"
-fi
-
-# ── Seed initial data ──
-echo "Seeding initial data..."
-npx tsx prisma/seed.sqlite.ts || echo "WARNING: Seeding failed (non-fatal)"
 
 # ── Handle Docker stop signals ──
 trap "echo 'Stopping server...'; kill $SERVER_PID 2>/dev/null; exit 0" SIGTERM SIGINT SIGQUIT
