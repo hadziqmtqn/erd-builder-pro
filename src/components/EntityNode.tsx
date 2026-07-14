@@ -101,7 +101,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles }: Colu
         </span>
       </div>
 
-      <div className="flex flex-col items-end gap-0.5 max-w-[140px]">
+      <div className="flex flex-col items-end gap-0.5 max-w-35">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-mono font-semibold" style={{ color: diffState === 'new' ? '#10b981' : diffState === 'deleted' ? '#ef4444' : typeColor }}>
             {col.type.toLowerCase()}
@@ -109,12 +109,12 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles }: Colu
           {(col.is_pk || isFk) && (
             <div className="flex items-center gap-1">
               {col.is_pk && <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-tighter">pk</span>}
-              {isFk && <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-tighter text-blue-400/80">fk</span>}
+              {isFk && <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-tighter">fk</span>}
             </div>
           )}
         </div>
         {col.type.toUpperCase() === 'ENUM' && col.enum_values && (
-          <span className="font-mono italic text-right leading-tight break-words max-w-full text-[8.5px] text-muted-foreground">
+          <span className="font-mono italic text-right leading-tight wrap-break-word max-w-full text-[8.5px] text-muted-foreground">
             ({col.enum_values})
           </span>
         )}
@@ -263,7 +263,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
               </DropdownMenuTrigger>
               <DropdownMenuContent 
                 align="end" 
-                className="w-44 bg-popover border-border text-popover-foreground z-[1000]" 
+                className="w-44 bg-popover border-border text-popover-foreground z-1000" 
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -294,7 +294,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
       </div>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent size="sm" className="max-w-[400px]">
+        <AlertDialogContent size="sm" className="max-w-100">
           <AlertDialogHeader>
             <AlertDialogMedia className="bg-destructive/10">
               <AlertTriangle className="w-5 h-5 text-destructive" />
