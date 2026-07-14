@@ -873,26 +873,18 @@ export function useERDSession(
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [handleUndo, handleRedo, canUndo, canRedo]);
 
-  // ── ERD Custom Event Listeners (editEntity / deleteEntity) ──
+  // ── ERD Custom Event Listener (deleteEntity) ──
   // Dispatched from EntityNode.tsx dropdown menu actions
-  // Extracted from App.tsx to keep ERD concerns co-located
   useEffect(() => {
-    const onEditEntity = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setSelectedNodeId(detail);
-      options?.onEditEntity?.(detail);
-    };
     const onDeleteEntity = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       deleteEntity(detail);
     };
-    window.addEventListener('editEntity', onEditEntity);
     window.addEventListener('deleteEntity', onDeleteEntity);
     return () => {
-      window.removeEventListener('editEntity', onEditEntity);
       window.removeEventListener('deleteEntity', onDeleteEntity);
     };
-  }, [setSelectedNodeId, deleteEntity, options?.onEditEntity]);
+  }, [deleteEntity]);
 
   return {
     nodes, setNodes, onNodesChange: onNodesChangeWrapped,

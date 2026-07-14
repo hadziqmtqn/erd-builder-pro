@@ -126,8 +126,6 @@ export interface WorkspaceContextValue {
   setIsDuplicateDialogOpen: (open: boolean) => void;
   isImportModalOpen: boolean;
   setIsImportModalOpen: (open: boolean) => void;
-  isTablePropertiesOpen: boolean;
-  setIsTablePropertiesOpen: (open: boolean) => void;
   isPermanentDeleteConfirmOpen: boolean;
   setIsPermanentDeleteConfirmOpen: (open: boolean) => void;
   isImportNoteModalOpen: boolean;

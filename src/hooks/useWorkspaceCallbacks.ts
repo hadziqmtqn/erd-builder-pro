@@ -6,7 +6,6 @@ export interface UseWorkspaceCallbacksParams {
   isPublicView: boolean;
   setSelectedNodeId: (id: string | null) => void;
   setSelectedEdgeId: (id: string | null) => void;
-  setIsTablePropertiesOpen: (open: boolean) => void;
   setIsImportModalOpen: (open: boolean) => void;
   viewportRef: { current: any };
   publicData: any;
@@ -33,7 +32,7 @@ export interface UseWorkspaceCallbacksParams {
 export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
   const {
     isPublicView, setSelectedNodeId, setSelectedEdgeId,
-    setIsTablePropertiesOpen, setIsImportModalOpen,
+    setIsImportModalOpen,
     viewportRef,
     publicData, diagrams, activeDiagramId,
     handleExportSQL, handleExportPDF, handleExportImage,
@@ -61,9 +60,8 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
   const handleNodeDoubleClick = useCallback((e: React.MouseEvent, n: Node) => {
     if (!isPublicView && !(e.target as HTMLElement).closest('.nodrag')) {
       setSelectedNodeId(n.id);
-      setIsTablePropertiesOpen(true);
     }
-  }, [isPublicView, setSelectedNodeId, setIsTablePropertiesOpen]);
+  }, [isPublicView, setSelectedNodeId]);
 
   const handleEdgeClick = useCallback((_: any, e: Edge) => {
     if (!isPublicView) setSelectedEdgeId(e.id);
