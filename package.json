@@ -14,6 +14,7 @@
     "start": "cross-env NODE_ENV=production tsx server/run.ts",
     "preview": "vite preview",
     "postinstall": "npm run db:generate:pg",
+    "reset-password": "tsx scripts/reset-password.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest run",
