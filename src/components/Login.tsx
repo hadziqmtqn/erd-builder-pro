@@ -184,7 +184,9 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                     <div className="flex items-center">
                       <FieldLabel htmlFor="password">Password</FieldLabel>
                       <a
-                        href="#"
+                        href="https://docs.erdbuilderpro.com/troubleshooting/common-issues#9-lupa-password-di-mode-self-hosted-local-postgresql--docker"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                       >
                         Forgot your password?
