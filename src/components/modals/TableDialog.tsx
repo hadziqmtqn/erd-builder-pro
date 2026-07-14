@@ -194,7 +194,7 @@ export const TableDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          activeMainTab === 'schema' ? 'max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl' : 'sm:max-w-sm'
+          activeMainTab === 'schema' ? 'max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl sm:max-w-md' : 'sm:max-w-md'
         )}
         onDoubleClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}

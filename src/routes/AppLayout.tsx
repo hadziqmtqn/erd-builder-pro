@@ -12,7 +12,6 @@ import { RenameDocumentDialog } from '@/components/modals/RenameDocumentDialog';
 import { DuplicateDocumentDialog } from '@/components/modals/DuplicateDocumentDialog';
 import { ExportAllDialog } from '@/components/modals/ExportAllDialog';
 import { ImportSQLModal } from '@/components/modals/ImportSQLModal';
-import { TablePropertiesModal } from '@/components/modals/TablePropertiesModal';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
 import { ImportNoteModal } from '@/components/modals/ImportNoteModal';
 import { ExportNoteModal } from '@/components/modals/ExportNoteModal';
@@ -98,7 +97,6 @@ function AppLayoutInner() {
     isDeleteAlertOpen, setIsDeleteAlertOpen,
     isRenameDialogOpen, setIsRenameDialogOpen,
     isDuplicateDialogOpen, setIsDuplicateDialogOpen,
-    isTablePropertiesOpen, setIsTablePropertiesOpen,
     isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen,
     isImportNoteModalOpen, setIsImportNoteModalOpen,
     isExportNoteModalOpen, setIsExportNoteModalOpen,
@@ -361,18 +359,6 @@ function AppLayoutInner() {
           onConfirm={confirmPermanentDelete}
           onAfterDelete={undefined}
         />
-
-        {!isPublicView && (
-          <TablePropertiesModal
-            isOpen={isTablePropertiesOpen && !!selectedNodeId}
-            onOpenChange={setIsTablePropertiesOpen}
-            selectedEntity={selectedEntity}
-            handleEntityUpdate={handleEntityUpdate}
-            deleteEntity={deleteEntity}
-            setSelectedNodeId={setSelectedNodeId}
-            setIsDeleteAlertOpen={setIsDeleteAlertOpen}
-          />
-        )}
 
         {!isPublicView && (
           <RenameDocumentDialog

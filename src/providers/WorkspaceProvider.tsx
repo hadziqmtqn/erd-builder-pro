@@ -130,7 +130,6 @@ export function WorkspaceProvider({
   }, [view]);
 
   // ── Modal States ──
-  const [isTablePropertiesOpen, setIsTablePropertiesOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -252,7 +251,6 @@ export function WorkspaceProvider({
     broadcastNodeMove: (id: string, x: number, y: number) => broadcastRef.current.move(id, x, y),
     broadcastNodeUpdate: (id: string, data: Entity) => broadcastRef.current.update(id, data),
     broadcastEdgesUpdate: (edges: Edge[]) => broadcastRef.current.edges(edges),
-    onEditEntity: () => { setIsTablePropertiesOpen(true); },
     onDeleteEntity: (id: string) => broadcastRef.current.delete(id),
   }), []);
 
@@ -1009,7 +1007,7 @@ export function WorkspaceProvider({
     selectedEntity,
   } = useWorkspaceCallbacks({
     isPublicView, setSelectedNodeId, setSelectedEdgeId,
-    setIsTablePropertiesOpen, setIsImportModalOpen,
+    setIsImportModalOpen,
     viewportRef, publicData, diagrams, activeDiagramId,
     handleExportSQL, handleExportPDF, handleExportImage,
     nodes, edges, view,
@@ -1116,7 +1114,6 @@ export function WorkspaceProvider({
     isRenameDialogOpen, setIsRenameDialogOpen,
     isDuplicateDialogOpen, setIsDuplicateDialogOpen,
     isImportModalOpen, setIsImportModalOpen,
-    isTablePropertiesOpen, setIsTablePropertiesOpen,
     isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen,
     isImportNoteModalOpen, setIsImportNoteModalOpen,
     isExportNoteModalOpen, setIsExportNoteModalOpen,
@@ -1208,7 +1205,6 @@ export function WorkspaceProvider({
     isRenameDialogOpen, setIsRenameDialogOpen,
     isDuplicateDialogOpen, setIsDuplicateDialogOpen,
     isImportModalOpen, setIsImportModalOpen,
-    isTablePropertiesOpen, setIsTablePropertiesOpen,
     isPermanentDeleteConfirmOpen, setIsPermanentDeleteConfirmOpen,
     isImportNoteModalOpen, setIsImportNoteModalOpen,
     isExportNoteModalOpen, setIsExportNoteModalOpen,
