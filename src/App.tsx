@@ -1,5 +1,6 @@
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useRef, useEffect, useState } from 'react';
+import { useWindowState } from '@/hooks/useWindowState';
 
 // Components
 import { Login } from './components/Login';
@@ -30,6 +31,7 @@ import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 
 function AppContent() {
+  useWindowState()
   const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
   const [aboutOpen, setAboutOpen] = useState(false);
