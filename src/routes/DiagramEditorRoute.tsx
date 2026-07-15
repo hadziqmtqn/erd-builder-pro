@@ -6,6 +6,7 @@ import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 import { DataViewer } from '@/components/db-connect/DataViewer';
+import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 import { cn } from '@/lib/utils';
 
 export function DiagramEditorRoute() {
@@ -125,6 +126,7 @@ export function DiagramEditorRoute() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
+      <ProjectFileTabs currentView="erd" />
       {/* Tab bar — only for production DB diagrams */}
       {isProductionDb && !isPublicView && (
         <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-muted/5 shrink-0">

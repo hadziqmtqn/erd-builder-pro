@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { GitBranch } from 'lucide-react';
+import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 
 import { FlowchartView } from '@/components/views/FlowchartView';
 
@@ -66,6 +67,8 @@ export function FlowchartEditorRoute() {
   }
 
   return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <ProjectFileTabs currentView="flowchart" />
       <FlowchartView
         isLoading={isFlowchartItemLoading}
         activeFlowchartId={activeFlowchartId}
@@ -75,5 +78,6 @@ export function FlowchartEditorRoute() {
         saveFlowchart={saveFlowchart}
         triggerDebouncedSync={triggerDebouncedSync}
       />
+    </div>
   );
 }

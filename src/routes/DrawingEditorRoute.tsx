@@ -2,6 +2,7 @@ import React, { Suspense, useEffect, useRef } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams } from 'react-router-dom';
 import { Image } from 'lucide-react';
+import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 
 const DrawingsView = React.lazy(() => import('@/components/views/DrawingsView').then(m => ({ default: m.DrawingsView })));
 
@@ -65,7 +66,9 @@ export function DrawingEditorRoute() {
   }
 
   return (
-    <Suspense fallback={
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <ProjectFileTabs currentView="drawings" />
+      <Suspense fallback={
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -83,5 +86,6 @@ export function DrawingEditorRoute() {
         isReadOnly={isPublicView}
       />
     </Suspense>
+    </div>
   );
 }
