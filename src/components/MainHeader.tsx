@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
-import { QuickJump } from "./QuickJump";
 
 import { AppView } from '@/types';
 
@@ -248,7 +247,6 @@ export const MainHeader = React.memo(({
       </div>
 
       <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
-        {location.pathname !== '/' && <QuickJump />}
         {/* File search — only in table list view */}
         {!isPublicView && isTableView && !hideFileSearch && (
           <div className="relative flex items-center mr-1 sm:mr-2">
