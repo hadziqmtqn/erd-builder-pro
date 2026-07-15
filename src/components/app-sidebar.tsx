@@ -308,7 +308,6 @@ export const AppSidebar = React.memo(({
               <Input
                 id="rename-project-input"
                 type="text"
-                className="h-10"
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -355,7 +354,6 @@ export const AppSidebar = React.memo(({
               <Input
                 id="create-project-input"
                 type="text"
-                className="h-10"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 onKeyDown={(e) => {
