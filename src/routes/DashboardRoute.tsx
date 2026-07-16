@@ -125,17 +125,24 @@ export function DashboardRoute() {
 
   // 10 most recently edited items across all types
   const recentDocs = useMemo(() => {
+    const projectMap = new Map(
+      (ctx.projects || []).map((p: any) => [String(p.id), p.name])
+    )
+    const getWorkspace = (doc: any) => {
+      const pid = doc.project_id ?? doc.projectId
+      return pid ? (projectMap.get(String(pid)) || '—') : '—'
+    }
     const all = [
-      ...(ctx.diagrams || []).map((d: any) => ({ ...d, _type: 'diagrams' as const })),
-      ...(ctx.notes || []).map((n: any) => ({ ...n, _type: 'notes' as const })),
-      ...(ctx.drawings || []).map((d: any) => ({ ...d, _type: 'drawings' as const })),
-      ...(ctx.flowcharts || []).map((f: any) => ({ ...f, _type: 'flowcharts' as const })),
-    ];
+      ...(ctx.diagrams || []).map((d: any) => ({ ...d, _type: 'diagrams' as const, _workspace: getWorkspace(d) })),
+      ...(ctx.notes || []).map((n: any) => ({ ...n, _type: 'notes' as const, _workspace: getWorkspace(n) })),
+      ...(ctx.drawings || []).map((d: any) => ({ ...d, _type: 'drawings' as const, _workspace: getWorkspace(d) })),
+      ...(ctx.flowcharts || []).map((f: any) => ({ ...f, _type: 'flowcharts' as const, _workspace: getWorkspace(f) })),
+    ]
     return all
       .filter((d) => !d.is_deleted)
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects]);
 
   // All non-deleted docs count
   const totalDocs = useMemo(() => {
@@ -369,6 +376,7 @@ export function DashboardRoute() {
                       <tr className="border-b border-border bg-muted/30">
                         <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs w-8"></th>
                         <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs">Name</th>
+                        <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs w-24">Workspace</th>
                         <th className="text-right font-medium text-muted-foreground px-3 py-2 text-xs w-20">Updated</th>
                       </tr>
                     </thead>
@@ -391,6 +399,9 @@ export function DashboardRoute() {
                                 {getDocLabel(doc._type)}
                               </span>
                             </div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="text-[11px] text-muted-foreground truncate max-w-24 block">{doc._workspace}</span>
                           </td>
                           <td className="px-3 py-2.5 text-right text-muted-foreground text-[11px] whitespace-nowrap">
                             {formatTimeAgo(doc.updated_at)}
