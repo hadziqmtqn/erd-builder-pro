@@ -223,7 +223,7 @@ export const ChatMessages = memo(function ChatMessages({
 
                   {/* Bubble + actions */}
                   <div className={`flex flex-col gap-1.5 max-w-[85%] min-w-0 ${isUser ? 'items-end' : 'items-start'}`}>
-                    <div className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed overflow-x-auto w-full ${
+                    <div className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed w-full ${
                       isUser
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted/50 border border-border/40'
@@ -250,6 +250,13 @@ export const ChatMessages = memo(function ChatMessages({
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
+                                  table({ children, ...props }) {
+                                    return (
+                                      <div className="overflow-x-auto -mx-3.5 px-3.5">
+                                        <table className="min-w-full border-collapse" {...props}>{children}</table>
+                                      </div>
+                                    );
+                                  },
                                   code({ className, children, ...props }) {
                                     if (className) {
                                       return <CodeBlock className={className} children={children} />;

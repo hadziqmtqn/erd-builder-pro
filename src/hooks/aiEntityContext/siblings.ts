@@ -46,20 +46,9 @@ export async function fetchSiblings(
 }
 
 /**
- * buildSiblingContext
- *
- * Fetch ALL project files (notes, ERDs, flowcharts, drawings) and build a
- * rich context string for AI. Each sibling file gets full content if it fits
- * within the character budget, otherwise a truncated summary.
- *
- * Budget allocation priority (by value density):
- *   1. ERD diagrams — table names + column details
- *   2. Notes — full markdown content (stripped HTML)
- *   3. Flowcharts — node labels
- *   4. Drawings — title only
- *
- * The current active entity (currentType + currentUid) is excluded — it is
- * already provided by entityContextText.
+ * Build rich context from all sibling files in the project.
+ * Budget priority (by value density): ERD diagrams > Notes > Flowcharts > Drawings.
+ * Current entity (currentType + currentUid) is excluded — already in entityContextText.
  */
 const MAX_BUDGET = 6000;
 
@@ -98,10 +87,10 @@ export async function buildSiblingContext(
           .join(', ');
         return `    ${e.name} — ${colStr}`;
       }).join('\n');
-      const content = `  🗃️ ${d.name} (ERD diagram)\n${entityLines}`;
+      const content = `  ${d.name} (ERD)\n${entityLines}`;
       items.push({ priority: 1, text: content, charLen: content.length });
     } else {
-      items.push({ priority: 1, text: `  🗃️ ${d.name} (ERD diagram)`, charLen: 0 });
+      items.push({ priority: 1, text: `  ${d.name} (ERD)`, charLen: 0 });
     }
   }
 
@@ -109,10 +98,10 @@ export async function buildSiblingContext(
   for (const n of apiData.notes || []) {
     if (n.uid === currentUid && currentType === 'note') continue;
     const stripped = n.content ? n.content.replace(/<[^>]+>/g, '').trim() : '';
-    const preview = stripped.length > 800 ? stripped.slice(0, 800) + '…' : stripped;
+    const preview = stripped.length > 800 ? stripped.slice(0, 800) + '...' : stripped;
     const content = preview
-      ? `  📄 ${n.title} (note)\n    ${preview}`
-      : `  📄 ${n.title} (note)`;
+      ? `  ${n.title} (note)\n    ${preview}`
+      : `  ${n.title} (note)`;
     items.push({ priority: 2, text: content, charLen: preview.length });
   }
 
@@ -128,19 +117,19 @@ export async function buildSiblingContext(
           .map((n: any) => n.data?.label || n.label || '')
           .filter(Boolean)
           .slice(0, 10)
-          .join(' → ');
+          .join(' -> ');
       }
     } catch { /* ignore parse errors */ }
     const content = nodeLabels
-      ? `  📊 ${f.title} (flowchart) — ${nodeLabels}`
-      : `  📊 ${f.title} (flowchart)`;
+      ? `  ${f.title} (flowchart) — ${nodeLabels}`
+      : `  ${f.title} (flowchart)`;
     items.push({ priority: 3, text: content, charLen: nodeLabels.length });
   }
 
   // 4. Drawings (lowest priority)
   for (const d of apiData.drawings || []) {
     if (d.uid === currentUid && currentType === 'drawing') continue;
-    items.push({ priority: 4, text: `  🖼️ ${d.title} (drawing)`, charLen: 0 });
+    items.push({ priority: 4, text: `  ${d.title} (drawing)`, charLen: 0 });
   }
 
   if (items.length === 0) return null;
@@ -164,5 +153,5 @@ export async function buildSiblingContext(
     }
   }
 
-  return `[Related files in this workspace (${parts.length})]:\n${parts.join('\n')}`;
+  return `[Related files in this workspace (${parts.length})] — these share the same project. Cross-reference when relevant: ERDs may be the database backing a flowchart, notes may document a schema.\n${parts.join('\n')}`;
 }

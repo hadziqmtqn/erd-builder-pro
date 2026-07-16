@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import { localPersistence } from '@/lib/localPersistence';
 import {
   fallbackSystemPrompt,
-  buildTechnicalRules,
   fetchUserSystemPrompt,
   buildViewInstruction,
   callAiStream,
@@ -376,7 +375,6 @@ export function useAIChat(
       }
       apiMessages.push({ role: 'system', content: systemPrompt });
       apiMessages.push({ role: 'system', content: 'Always respond in the same language the user is communicating in.' });
-      apiMessages.push({ role: 'system', content: buildTechnicalRules() });
 
       // Dynamic view-specific instruction — tells AI what buttons exist
       const viewInstruction = buildViewInstruction(viewType ?? null);
@@ -449,6 +447,12 @@ export function useAIChat(
             if (siblingCtx) apiUserContent += `\n${siblingCtx}\n`;
           } catch {}
         }
+      }
+
+      // Conversation continuity — brief summary of last exchanges so AI remembers thread
+      const convSummary = buildConversationSummary(previousMessages);
+      if (convSummary) {
+        apiUserContent += `[Previous discussion]:\n${convSummary}\n\n`;
       }
 
       apiUserContent += `User request: ${trimmed}`;
@@ -546,4 +550,41 @@ export function useAIChat(
     sendMessage, clearMessages, abortStream,
     hasMoreMessages, isLoadingMore, loadMoreMessages,
   };
+}
+
+/**
+ * Build a compact summary of the last 2-3 exchanges so the AI maintains
+ * conversation thread awareness. This is injected as a user-message prefix
+ * alongside the entity context for maximum prominence.
+ */
+function buildConversationSummary(messages: AIChatMessage[]): string | null {
+  // Only take last 6 messages (3 user+assistant pairs)
+  const recent = messages.slice(-6);
+  if (recent.length === 0) return null;
+
+  const pairs: string[] = [];
+  // Walk backwards to pair user→assistant exchanges
+  for (let i = 0; i < recent.length; i++) {
+    if (recent[i].role === 'user') {
+      const userText = truncateForSummary(recent[i].content);
+      // Check if next message is assistant
+      const next = recent[i + 1];
+      if (next && next.role === 'assistant') {
+        const aiText = truncateForSummary(next.content);
+        pairs.push(`User: ${userText}\nAI: ${aiText}`);
+        i++; // skip the assistant message
+      } else {
+        pairs.push(`User: ${userText}`);
+      }
+    }
+  }
+
+  if (pairs.length === 0) return null;
+  return pairs.join('\n');
+}
+
+function truncateForSummary(text: string, maxLen = 120): string {
+  const cleaned = text.replace(/\n+/g, ' ').trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  return cleaned.slice(0, maxLen - 1) + '…';
 }

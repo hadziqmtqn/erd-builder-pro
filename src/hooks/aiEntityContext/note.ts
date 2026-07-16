@@ -26,5 +26,7 @@ export function buildNoteContext(data: EntityContextData): string | null {
 You are currently viewing this note:
 Title: ${data.title || '(untitled)'}
 Content:
-${content}`;
+${content}
+
+If the project has related ERDs or Flowcharts (listed above), this note may document their schema or business logic. Cross-reference to keep documentation consistent with the actual diagrams.`;
 }
