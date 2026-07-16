@@ -82,46 +82,7 @@ export function buildDiagramContext(data: EntityContextData): string | null {
     return `  - ${sNode.data.name} → ${tNode.data.name}${colInfo} (${e.label || '1:N'})`;
   }).filter(Boolean).join('\n');
 
-  let context = `[Database schema context]
-
-[CRITICAL — Output format instruction]
-When you respond about database schemas, tables, columns, or relationships, you MUST output valid SQL DDL statements inside a \`\`\`sql code block. The app will parse the SQL and generate an interactive ERD diagram automatically — this is the ONLY way the user can see their schema visually.
-
-Rules:
-1. ALWAYS wrap SQL in \`\`\`sql ... \`\`\` code blocks — plain text or HTML tables will NOT be parsed by the app
-2. Use CREATE TABLE for new tables with inline constraints (PRIMARY KEY, NOT NULL, NULL, DEFAULT, REFERENCES)
-3. Use ALTER TABLE ... ADD COLUMN for modifying existing tables
-4. Foreign keys can be inline in CREATE TABLE (REFERENCES) or as ALTER TABLE ... ADD FOREIGN KEY
-5. If the user asks to create an ERD or database from scratch, generate the complete SQL DDL with all tables
-6. If the user asks for an explanation, you may include a brief description before or after the SQL block
-7. Use STANDARD PORTABLE SQL types — avoid database-specific keywords:
-   - Use BIGINT for primary keys (NOT BIGSERIAL, SERIAL, or AUTO_INCREMENT)
-   - Use INT for integer, VARCHAR(n) for strings, TEXT for long text, BOOLEAN for booleans
-   - Use TIMESTAMP for datetime, DATE for date, DECIMAL(p,s) for decimals
-   - Use UUID for UUID columns, JSONB for JSON data
-   - DEFAULT values like NOW() and NULL are safe and portable
-8. You MAY split SQL into multiple \`\`\`sql blocks if that is clearer, but one block per set of related tables is preferred
-9. When telling the user to apply the SQL to their diagram, do NOT say "click Append/Replace". Instead, say "click the Database button below this message" or "use the SQL → ERD button" — the app shows a dedicated Database icon button (not Append/Replace) when SQL is detected in your response.
-10. Use ENGLISH for ALL table names and column names by default (e.g. \`users\`, \`posts\`, \`email\`, \`created_at\`). Only use the user's language if they explicitly ask (e.g. "gunakan bahasa Indonesia"). This keeps the schema portable and follows database conventions.
-11. If the user explicitly asks for a specific database dialect (e.g. "MySQL", "PostgreSQL", "use BIGSERIAL"), you may use that dialect's syntax. Otherwise stick to the portable defaults above.
-
-Example:
-\`\`\`sql
-CREATE TABLE users (
-    id BIGINT PRIMARY KEY,
-    email VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-CREATE TABLE posts (
-    id BIGINT PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title VARCHAR(255) NOT NULL,
-    body TEXT
-);
-\`\`\`
-
-[Current ERD data]
+  let context = `[Database schema — current ERD]
 Name: ${data.title || '(untitled)'}
 Tables: ${tableCount}, Relationships: ${edgeCount}
 
@@ -131,10 +92,10 @@ Tables:\n${tableLines || '  (none)'}`;
     context += `\n\nRelationships:\n${relLines}`;
   }
 
-  context += `\n\n[Schema design rules]
-- When adding columns to existing tables, check existing columns first — avoid duplicates
-- If another table stores user/auth data (email, password, role), reference it via foreign key instead of duplicating columns
-- Use consistent naming conventions across all tables`;
+  context += `\n\n- Generate SQL in \`\`\`sql blocks when user asks to create/modify schema. Explain conversationally for design questions.
+- Avoid duplicating columns across tables; use foreign keys to reference existing auth/user tables.
+- Use consistent naming across all tables.
+- If the project has related Notes or Flowcharts (listed above), they may describe business rules that this schema should support. Cross-check for consistency.`;
 
   return context;
 }

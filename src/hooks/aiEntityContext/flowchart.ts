@@ -234,25 +234,10 @@ Group-aware instructions:
 
 Use this as the single source of truth for the current flowchart. When the user asks about the flow, trace through the connections step by step.
 
+If the project has related ERDs or Notes (listed above), the ERD may be the database backing this flow — reference its tables when discussing data operations. Notes may contain business rules or requirements this flowchart implements.
+
 ---
 
 [Flowchart Editor Format]
-This app has a built-in visual flowchart editor. If the user asks you to create or modify a diagram, you can output flowchart data in this JSON format inside a \`\`\`json code block so the editor can load it:
-
-\`\`\`json
-{
-  "nodes": [
-    { "id": "n1", "type": "custom", "data": { "label": "Start", "shape": "oval", "color": "#22c55e" } },
-    { "id": "n2", "type": "custom", "data": { "label": "Process", "shape": "rectangle", "color": "#3b82f6" } }
-  ],
-  "edges": [
-    { "id": "e1", "source": "n1", "target": "n2", "type": "smoothstep" }
-  ]
-}
-\`\`\`
-
-Supported shapes: oval (start/end), rectangle (process), diamond (decision), parallelogram (i/o), database (storage), document (report), cloud (external), circle (connector).
-Supported colors: hex colors like #22c55e (green), #3b82f6 (blue), #f59e0b (amber), #ef4444 (red), #8b5cf6 (purple)
-
-If the user wants to see the result in the editor, output in this JSON format so the Append/Replace button appears. Alternatively, ask the user whether they prefer the Flowchart Editor JSON format (for visual editing), Mermaid (for documentation), or plain text explanation.`;
+This app has a built-in visual flowchart editor. If the user asks to create or modify the flowchart, output JSON in \`\`\`json blocks with this format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}. Shapes: oval, rectangle, diamond, parallelogram, database, document, cloud, circle.`;
 }

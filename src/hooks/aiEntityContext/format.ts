@@ -13,20 +13,13 @@ export function formatContextText(
   const currentLabel = typeLabels[entityType] || entityType;
 
   const lines: string[] = [];
-  lines.push(`[Context — ${currentLabel}]:`);
+  lines.push(`[Current ${currentLabel}]:`);
   lines.push(entity.summary);
 
   if (siblings.length > 0) {
-    const iconMap: Record<string, string> = {
-      note: '📄',
-      diagram: '🗃️',
-      flowchart: '📊',
-      drawing: '🖼️',
-    };
-    lines.push(`\n[Related files in same project (${siblings.length})]:`);
+    lines.push(`\n[Related files in this project (${siblings.length})]:`);
     for (const sib of siblings) {
-      const icon = iconMap[sib.type] || '📎';
-      lines.push(`  ${icon} ${sib.title} (${sib.type})`);
+      lines.push(`  - ${sib.title} (${sib.type})`);
     }
   }
 
