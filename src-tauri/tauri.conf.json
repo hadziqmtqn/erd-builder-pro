@@ -19,7 +19,7 @@
         "minHeight": 680,
         "resizable": true,
         "fullscreen": false,
-        "visible": false,
+        "center": true,
         "decorations": true,
         "useHttpsScheme": false
       }
