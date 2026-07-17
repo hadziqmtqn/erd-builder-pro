@@ -1,8 +1,8 @@
 import React, { memo, useState, useEffect, useMemo, CSSProperties } from 'react';
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyflow/react';
 import { MoreHorizontal, Pencil, Trash2, Database, AlertTriangle, Copy } from 'lucide-react';
-import { Entity } from '../types';
-import { cn } from '../lib/utils';
+import { Entity } from '../../types';
+import { cn } from '../../lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { TableDialog } from './modals/TableDialog';
-import { useWorkspace } from '../providers/WorkspaceProvider';
+import { TableDialog } from '../modals/TableDialog';
+import { useWorkspace } from '../../providers/WorkspaceProvider';
 
 import {
   AlertDialog,

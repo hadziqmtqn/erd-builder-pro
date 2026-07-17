@@ -12,9 +12,9 @@ interface RightChatSidebarProps {
  * explicit close button (or toggle) can close it.
  */
 export function RightChatSidebar({ children }: RightChatSidebarProps) {
-  const { isAIOpen } = useAIAction();
+  const { rightPanelMode } = useAIAction();
 
-  if (!isAIOpen) return null;
+  if (rightPanelMode === 'closed') return null;
 
   return (
     <aside className="fixed right-0 top-12 bottom-0 w-90 z-40 flex flex-col border-l border-border bg-card text-card-foreground shadow-xl animate-in slide-in-from-right duration-200">

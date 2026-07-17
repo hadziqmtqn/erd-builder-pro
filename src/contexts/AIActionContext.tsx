@@ -5,6 +5,8 @@ export interface PendingActionResult {
   onResult: (response: string) => void;
 }
 
+export type RightPanelMode = 'closed' | 'chat' | 'dbml';
+
 interface AIActionContextValue {
   /** Send an AI action prompt — opens chat panel and injects prompt */
   sendAction: (prompt: string, actionId?: string, onResult?: (response: string) => void) => void;
@@ -16,10 +18,10 @@ interface AIActionContextValue {
   clearPrompt: () => void;
   /** Clear the pending action after stream completes */
   clearPendingAction: () => void;
-  /** Open/close state for the AI panel */
-  isAIOpen: boolean;
-  /** Toggle the AI panel */
-  setAIOpen: (open: boolean) => void;
+  /** Which right panel mode is active */
+  rightPanelMode: RightPanelMode;
+  /** Set the right panel mode */
+  setRightPanelMode: (mode: RightPanelMode) => void;
   /** Register a global handler for manually applying content to the active view */
   registerContentHandler: (handler: (content: string, strategy: 'replace' | 'append', actionId?: string) => void, strategies?: ('replace' | 'append')[]) => () => void;
   /** Apply content using the registered handler. Returns true if successful. */
@@ -43,7 +45,7 @@ const AIActionContext = createContext<AIActionContextValue | null>(null);
 export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingActionResult | null>(null);
-  const [isAIOpen, setAIOpen] = useState(false);
+  const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('closed');
   const [contentHandler, setContentHandler] = useState<((content: string, strategy: 'replace' | 'append', actionId?: string) => void) | null>(null);
   const [contentHandlerStrategies, setContentHandlerStrategies] = useState<('replace' | 'append')[]>(['replace', 'append']);
   const [selectionText, setSelectionText] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         // Clear any stale action when sending plain prompts
         setPendingAction(null);
       }
-      setAIOpen(true);
+      setRightPanelMode('chat');
     },
     [],
   );
@@ -96,8 +98,8 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
         pendingAction,
         clearPrompt,
         clearPendingAction,
-        isAIOpen,
-        setAIOpen,
+        rightPanelMode,
+        setRightPanelMode,
         registerContentHandler,
         applyContent,
         hasContentHandler: !!contentHandler,
