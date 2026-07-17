@@ -1,39 +1,10 @@
-import { Parser } from '@dbml/core';
+import { Parser, ModelExporter } from '@dbml/core';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { COLUMN_TYPES } from '@/lib/utils';
+import { parseSQLToERD } from '@/lib/sqlParser';
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
-
-/** Shape we get from @dbml/core Parser for a single table field */
-interface DBMLField {
-  name: string;
-  type: { type_name?: string } | string;
-  pk?: boolean;
-  unique?: boolean;
-  not_null?: boolean;
-  note?: string | null;
-  dbdefault?: unknown;
-  increment?: boolean;
-}
-
-/** Shape we get from @dbml/core Parser for a single table */
-interface DBMLTable {
-  name: string;
-  headerColor?: string;
-  fields: DBMLField[];
-}
-
-/** Shape we get from @dbml/core Parser for a ref endpoint */
-interface DBMLRefEndpoint {
-  tableName: string;
-  fieldNames?: string[];
-}
-
-/** Shape we get from @dbml/core Parser for a ref */
-interface DBMLRef {
-  endpoints: DBMLRefEndpoint[];
-}
 
 /**
  * Pre-scan DBML text for invalid column types.
@@ -88,11 +59,12 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   // ── Pre-scan: find type errors ──
   const typeErrors = findTypeErrors(dbmlText);
 
-  // ── Parse ──
+  // ── DBML → SQL via @dbml/core ──
   let parseError: string | null = null;
-  let db: any;
+  let sql: string;
   try {
-    db = Parser.parse(dbmlText, 'dbml');
+    const db = Parser.parse(dbmlText, 'dbml');
+    sql = ModelExporter.export(db, 'postgres');
   } catch (e: any) {
     const diags = e?.diags;
     parseError = diags?.length
@@ -107,65 +79,8 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
     throw new Error(allErrors.join('\n'));
   }
 
-  // ── Build nodes + edges ──
-  const nodes: Node<Entity>[] = [];
-  const edges: Edge[] = [];
-
-  for (const schema of db.schemas as any[]) {
-    for (const table of schema.tables as DBMLTable[]) {
-      const nodeId = crypto.randomUUID();
-      const columns = table.fields.map((f, i) => ({
-        id: crypto.randomUUID(),
-        name: f.name,
-        type: typeof f.type === 'string' ? f.type : (f.type as any).type_name || String(f.type),
-        is_pk: !!f.pk,
-        is_nullable: !f.not_null,
-        enum_values: '',
-        sort_order: i,
-      }));
-
-      nodes.push({
-        id: nodeId,
-        type: 'entity' as const,
-        position: { x: 0, y: 0 },
-        data: {
-          id: nodeId,
-          name: table.name,
-          x: 0, y: 0,
-          color: table.headerColor || '#4f46e5',
-          columns,
-        },
-      });
-    }
-
-    for (const ref of schema.refs as DBMLRef[]) {
-      if (ref.endpoints.length !== 2) continue;
-
-      const [ep0, ep1] = ref.endpoints;
-      const sourceTable = nodes.find(n => n.data.name === ep0.tableName);
-      const targetTable = nodes.find(n => n.data.name === ep1.tableName);
-      if (!sourceTable || !targetTable) continue;
-
-      const srcCol = sourceTable.data.columns.find(c =>
-        ep0.fieldNames?.includes(c.name),
-      );
-      const tgtCol = targetTable.data.columns.find(c =>
-        ep1.fieldNames?.includes(c.name),
-      );
-      if (!srcCol || !tgtCol) continue;
-
-      edges.push({
-        id: crypto.randomUUID(),
-        source: sourceTable.id,
-        target: targetTable.id,
-        sourceHandle: `col-${srcCol.id}-source`,
-        targetHandle: `col-${tgtCol.id}-target`,
-        type: 'smoothstep',
-      });
-    }
-  }
-
-  return { nodes, edges };
+  // ── SQL → ERD via existing parser ──
+  return parseSQLToERD(sql!);
 }
 
 /**
@@ -175,13 +90,15 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
   const lines: string[] = [];
 
   for (const node of nodes) {
-    lines.push(`Table "${node.data.name}" {`);
+    const tableName = needsQuote(node.data.name) ? `"${node.data.name}"` : node.data.name;
+    lines.push(`Table ${tableName} {`);
     for (const col of node.data.columns) {
       const settings: string[] = [];
       if (col.is_pk) settings.push('pk');
       if (col.is_nullable === false) settings.push('not null');
       const suffix = settings.length ? ` [${settings.join(', ')}]` : '';
-      lines.push(`  "${col.name}" ${col.type}${suffix}`);
+      const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
+      lines.push(`  ${colName} ${col.type}${suffix}`);
     }
     lines.push('}');
     lines.push('');
@@ -201,9 +118,21 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
     if (!srcCol || !tgtCol) continue;
 
     lines.push(
-      `Ref: "${srcNode.data.name}"."${srcCol.name}" > "${tgtNode.data.name}"."${tgtCol.name}"`,
+      `Ref: ${tableNear(srcNode.data.name, srcCol.name)} > ${tableNear(tgtNode.data.name, tgtCol.name)}`,
     );
   }
 
   return lines.join('\n');
+}
+
+/** Quote only if name contains non-identifier chars */
+function needsQuote(name: string): boolean {
+  return !/^[a-zA-Z_]\w*$/.test(name);
+}
+
+/** Format as table.col, quoting each part only if needed */
+function tableNear(table: string, col: string): string {
+  const t = needsQuote(table) ? `"${table}"` : table;
+  const c = needsQuote(col) ? `"${col}"` : col;
+  return `${t}.${c}`;
 }
