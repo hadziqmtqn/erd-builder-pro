@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { Sparkles, Database, PanelRightClose } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 // Components
 import { AppSidebar } from '@/components/app-sidebar';
@@ -30,8 +32,9 @@ import {
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
-import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
+import { AIChatPanel } from '@/components/ai/AIChatPanel';
+import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
@@ -41,7 +44,8 @@ function AppLayoutInner() {
   const [searchParams] = useSearchParams();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
-  const { isAIOpen, setAIOpen, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
+  const [dbmlContent, setDbmlContent] = useState('');
+  const { rightPanelMode, setRightPanelMode, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
 
   // ─── Derive AI entity context from current route ─────
   const entityContext = useMemo(() => {
@@ -228,25 +232,27 @@ function AppLayoutInner() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [setIsSettingsOpen]);
 
-  // ── Collapse left sidebar when AI Chat opens ──
+  const rightPanelOpen = rightPanelMode !== 'closed';
+
+  // ── Collapse left sidebar when right panel opens ──
   const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();
   const prevLeftOpenRef = useRef(leftSidebarOpen);
   useEffect(() => {
-    if (isAIOpen) {
+    if (rightPanelOpen) {
       prevLeftOpenRef.current = leftSidebarOpen;
       setLeftSidebarOpen(false);
     } else if (prevLeftOpenRef.current) {
-      // Restore sidebar only if it was open before chat opened
+      // Restore sidebar only if it was open before panel opened
       setLeftSidebarOpen(true);
     }
-  }, [isAIOpen]);
+  }, [rightPanelOpen]);
 
-  // ── Auto-close chat when leaving file pages ──
+  // ── Auto-close right panel when leaving file pages ──
   useEffect(() => {
     if (!showAIChat) {
-      setAIOpen(false);
+      setRightPanelMode('closed');
     }
-  }, [showAIChat, setAIOpen]);
+  }, [showAIChat, setRightPanelMode]);
 
   return (
     <>
@@ -278,7 +284,7 @@ function AppLayoutInner() {
 
       <SidebarInset className={cn(
         isPublicView ? "w-full" : "",
-        isAIOpen && "mr-90 transition-[margin] duration-200"
+        rightPanelOpen && "mr-90 transition-[margin] duration-200"
       )}>
         <MainHeader
           featureLabel={featureLabel}
@@ -479,35 +485,80 @@ function AppLayoutInner() {
           </>
         )}
 
-        {/* AI Chat — sticky right sidebar, does not resize workspace */}
-        {showAIChat && (
+        {/* Right panel with tabs — sticky right sidebar */}
+        {showAIChat && rightPanelOpen && (
           <RightChatSidebar>
-            <AIChatPanel
-              onClose={() => setAIOpen(false)}
-              entityType={entityContext!.entityType}
-              entityUid={entityContext!.entityUid}
-              entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
-                           entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
-                           entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
-              entityContextText={entityContextText}
-              projectId={activeProjectId}
-              pendingPrompt={pendingPrompt}
-              onPromptUsed={clearPrompt}
-              pendingAction={pendingAction}
-              onClearPendingAction={clearPendingAction}
-              notes={notes}
-              diagrams={diagrams}
-              flowcharts={flowcharts}
-              drawings={drawings}
-              activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
-            />
+            <div className="h-full flex flex-col">
+              {/* ── Tab bar ── */}
+              <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
+                <div className="flex-1 flex">
+                  <button
+                    onClick={() => setRightPanelMode('chat')}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                      rightPanelMode === 'chat'
+                        ? 'border-primary text-primary bg-background/50'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                    }`}
+                  >
+                    <Sparkles className="size-3.5" />
+                    AI Chat
+                  </button>
+                  <button
+                    onClick={() => setRightPanelMode('dbml')}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                      rightPanelMode === 'dbml'
+                        ? 'border-primary text-primary bg-background/50'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                    }`}
+                  >
+                    <Database className="size-3.5" />
+                    DBML
+                  </button>
+                </div>
+                <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => setRightPanelMode('closed')} title="Close panel">
+                  <PanelRightClose className="size-3.5" />
+                </Button>
+              </div>
+
+              {/* ── Tab content ── */}
+              <div className="flex-1 min-h-0">
+                {rightPanelMode === 'dbml' ? (
+                  <DBMLEditorPanel
+                    value={dbmlContent}
+                    onChange={setDbmlContent}
+                    onClose={() => setRightPanelMode('closed')}
+                  />
+                ) : (
+                  <AIChatPanel
+                    onClose={() => setRightPanelMode('closed')}
+                    entityType={entityContext!.entityType}
+                    entityUid={entityContext!.entityUid}
+                    entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
+                                 entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
+                                 entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
+                    entityContextText={entityContextText}
+                    projectId={activeProjectId}
+                    pendingPrompt={pendingPrompt}
+                    onPromptUsed={clearPrompt}
+                    pendingAction={pendingAction}
+                    onClearPendingAction={clearPendingAction}
+                    notes={notes}
+                    diagrams={diagrams}
+                    flowcharts={flowcharts}
+                    drawings={drawings}
+                    activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+                  />
+                )}
+              </div>
+            </div>
           </RightChatSidebar>
         )}
-        {/* Floating toggle button — visible when chat is closed */}
-        {showAIChat && !isAIOpen && (
+
+        {/* Floating toggle button — visible when right panel is closed */}
+        {showAIChat && !rightPanelOpen && (
           <AIChatToggle
-            isOpen={isAIOpen}
-            onClick={() => setAIOpen(true)}
+            isOpen={false}
+            onClick={() => setRightPanelMode('chat')}
           />
         )}
       </SidebarInset>

@@ -1,10 +1,10 @@
 import React from 'react';
 import { Trash2, Link2, ArrowLeftRight } from 'lucide-react';
 import { Edge, Node } from '@xyflow/react';
-import { RELATIONSHIP_TYPES } from '../lib/utils';
+import { RELATIONSHIP_TYPES } from '../../lib/utils';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Entity } from '../types';
+import { Entity } from '../../types';
 import {
   Select,
   SelectContent,

@@ -15,10 +15,10 @@ import {
   reconnectEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
-import EntityNode from '../EntityNode';
+import EntityNode from '../diagram/EntityNode';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
@@ -111,7 +111,7 @@ const ERDViewComponent = ({
   dedupeEdgesByRelation,
 }: ERDViewProps) => {
 
-  const { registerContentHandler, setSelectionText, setActionContextData } = useAIAction();
+  const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
   const { getViewport } = useReactFlow();
   const { resolvedTheme, activeDocument } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
@@ -587,6 +587,10 @@ const ERDViewComponent = ({
                 <span className="hidden sm:inline">Import SQL</span>
               </Button>
             )}
+            <Button onClick={() => setRightPanelMode('dbml')} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
+              <Database className="w-3.5 h-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">DBML</span>
+            </Button>
             <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
               <LayoutGrid className="w-3.5 h-3.5 sm:mr-1.5" />
               <span className="hidden sm:inline">Auto Layout</span>

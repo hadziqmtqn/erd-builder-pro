@@ -14,14 +14,14 @@ interface TextBubbleMenuProps {
 }
 
 export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = false }: TextBubbleMenuProps) {
-  const { setSelectionText, setAIOpen } = useAIAction();
+  const { setSelectionText, setRightPanelMode } = useAIAction();
 
   const handleSendSelectionToAI = () => {
     const { from, to, empty } = editor.state.selection;
     if (!empty) {
       const text = editor.state.doc.textBetween(from, to, ' ');
       setSelectionText(text);
-      setAIOpen(true);
+      setRightPanelMode('chat');
     }
   };
   return (

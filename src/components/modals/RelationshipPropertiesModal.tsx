@@ -7,7 +7,7 @@ import {
   DialogDescription,
   DialogBody,
 } from "@/components/ui/dialog";
-import RelationshipPropertiesPanel from '../RelationshipPropertiesPanel';
+import RelationshipPropertiesPanel from '../diagram/RelationshipPropertiesPanel';
 
 interface RelationshipPropertiesModalProps {
   isOpen: boolean;
