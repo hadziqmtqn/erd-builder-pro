@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import type { Node, Edge } from '@xyflow/react';
+import type { Entity } from '@/types';
 import { Sparkles, Database, PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -233,6 +235,54 @@ function AppLayoutInner() {
   }, [setIsSettingsOpen]);
 
   const rightPanelOpen = rightPanelMode !== 'closed';
+
+  // ── DBML → ERD callback ──
+  const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[]) => {
+    // Preserve positions + IDs from existing canvas nodes
+    const mergedNodes = newNodes.map(n => {
+      const existing = nodes.find(cur => cur.data.name === n.data.name);
+      if (existing) {
+        return {
+          ...n,
+          id: existing.id,
+          position: existing.position,
+          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y },
+        };
+      }
+      return n;
+    });
+
+    // Compare by table structure + column properties (parser generates new UUIDs)
+    const nodesSame = mergedNodes.length === nodes.length &&
+      mergedNodes.every((n, i) => {
+        const cur = nodes[i];
+        if (!cur || n.data.name !== cur.data.name) return false;
+        if (n.data.columns.length !== cur.data.columns.length) return false;
+        return n.data.columns.every((c, j) => {
+          const cc = cur.data.columns[j];
+          return c.name === cc?.name && c.type === cc?.type &&
+            c.is_pk === cc?.is_pk && c.is_nullable === cc?.is_nullable;
+        });
+      });
+    const edgesSame = newEdges.length === edges.length &&
+      newEdges.every((e, i) => {
+        const srcName = mergedNodes.find(n => n.id === e.source)?.data.name;
+        const tgtName = mergedNodes.find(n => n.id === e.target)?.data.name;
+        const curSrcName = nodes.find(n => n.id === edges[i]?.source)?.data.name;
+        const curTgtName = nodes.find(n => n.id === edges[i]?.target)?.data.name;
+        return srcName === curSrcName && tgtName === curTgtName;
+      });
+
+    if (nodesSame && edgesSame) {
+      return;
+    }
+
+    takeSnapshot?.(nodes, edges);
+    setNodes(mergedNodes);
+    setEdges(newEdges);
+    saveDiagram?.(mergedNodes, newEdges, viewportRef?.current);
+    triggerDebouncedSync?.();
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
   // ── Collapse left sidebar when right panel opens ──
   const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();
@@ -526,7 +576,9 @@ function AppLayoutInner() {
                   <DBMLEditorPanel
                     value={dbmlContent}
                     onChange={setDbmlContent}
-                    onClose={() => setRightPanelMode('closed')}
+                    onApply={handleDBMLApply}
+                    nodes={nodes}
+                    edges={edges}
                   />
                 ) : (
                   <AIChatPanel
