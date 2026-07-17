@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Database, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
@@ -90,13 +90,14 @@ TableGroup auth_tables {
  * - Typing in DBML editor → debounced auto-apply to canvas.
  * - ERD canvas changes → debounced auto-generate DBML text.
  */
-export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBMLEditorPanelProps) {
+export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBMLEditorPanelProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const { resolvedTheme } = useWorkspace();
 
   // ── Feedback loop guards ──
   const applyingFromDBML = useRef(false);
   const generatingFromCanvas = useRef(false);
+  const isReverseApply = useRef(false);
   const applyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reverseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -155,6 +156,33 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
     const insideTableBody = /^\s/.test(line.text) && !/^\s*(Table|Ref|Enum|TableGroup|Note|Indexes)\b/i.test(line.text);
     // Column name may be quoted: "name" or bare: name
     const afterColName = /^\s+"[^"]+"\s+\w*$/.test(before) || /^\s+\w+\s+\w*$/.test(before);
+
+    // ── Ref line: suggest table/column names ──
+    const isRefLine = /^\s*Ref:\s/i.test(line.text);
+    if (isRefLine) {
+      const afterRef = before.replace(/^\s*Ref:\s*/, '');
+      // Before any > or < → suggest table names
+      if (!/[><]/.test(afterRef)) {
+        // Check if we're after a dot: table.col
+        const dotMatch = afterRef.match(/^(\w+)\.(\w*)$/);
+        if (dotMatch) {
+          const cols = tableCols.get(dotMatch[1]);
+          if (cols) {
+            const options: Completion[] = cols
+              .filter(c => c.toLowerCase().startsWith(partial))
+              .map(c => ({ label: c, type: 'property' as const, detail: dotMatch[1] }));
+            if (options.length) return { from: word.from, options };
+          }
+          return null;
+        }
+        // Suggest table names
+        const options: Completion[] = tableNames
+          .filter(t => t.toLowerCase().startsWith(partial))
+          .map(t => ({ label: t, type: 'class' as const }));
+        if (options.length) return { from: word.from, options };
+        return null;
+      }
+    }
 
     // ── Ref context: after > or < → table names ──
     const afterArrow = before.match(/>\s*(\w*)$/i) || before.match(/<\s*(\w*)$/i);
@@ -232,7 +260,8 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
           inTable = false; currentTable = ''; continue;
         }
         if (inTable && trimmed && !trimmed.startsWith('//')) {
-          const m = trimmed.match(/^"([^"]+)"\s+(\S+)/);
+          // Match quoted or unquoted column: "name" TYPE or name TYPE
+          const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
           if (m) {
             const [, colName, rawType] = m;
             const typeName = rawType.replace(/\[.*/, '').trim();
@@ -245,6 +274,79 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
                 message: `Invalid type "${typeName}" in "${currentTable}.${colName}"`,
               });
             }
+          }
+        }
+      }
+
+      // ── Relationship/reference validation ──
+      // Build table → column → type map from the text
+      const tableDefs = new Map<string, Map<string, string>>();
+      {
+        let ct = '';
+        let inT = false;
+        for (const line of lines) {
+          const t = line.trim();
+          if (/^\s*(Table|table)\s+\S/.test(line)) {
+            ct = t.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
+            inT = true;
+            if (!tableDefs.has(ct)) tableDefs.set(ct, new Map());
+            continue;
+          }
+          if (t === '}' || t.startsWith('}')) { inT = false; ct = ''; continue; }
+          if (inT && t && !t.startsWith('//')) {
+            // Match quoted or unquoted column: "name" TYPE or name TYPE
+            const m = t.match(/^"([^"]+)"\s+(\S+)/) || t.match(/^(\w+)\s+(\S+)/);
+            if (m) {
+              const colName = m[1];
+              const colType = m[2].replace(/\[.*/, '').trim();
+              tableDefs.get(ct)?.set(colName, colType);
+            }
+          }
+        }
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineFrom = doc.line(i + 1).from;
+        const trimmed = line.trim();
+
+        // Standalone Ref: table.col > table.col
+        let rm = trimmed.match(/^Ref:\s*"?(\w+)"?\."?(\w+)"?\s*[><-]\s*"?(\w+)"?\."?(\w+)"?/i);
+        if (!rm) {
+          // Inline ref: [ref: > table.col] or [ref: < table.col]
+          rm = trimmed.match(/\[ref:\s*[><-]\s*"?(\w+)"?\."?(\w+)"?\]/i);
+          if (rm) {
+            // Pad to 5 groups for uniform access: [full, fkTable, fkCol, pkTable, pkCol]
+            // For inline ref, fkTable/fkCol come from context (current table)
+            rm = [rm[0], currentTable || '?', '', rm[1], rm[2]];
+          }
+        }
+
+        if (rm && rm[1] && rm[3]) {
+          const fkTable = rm[1], fkCol = rm[2] || '';
+          const pkTable = rm[3], pkCol = rm[4];
+
+          // Validate target table exists
+          const targetCols = tableDefs.get(pkTable);
+          if (!targetCols) {
+            const idx = line.indexOf(pkTable);
+            if (idx >= 0) diagnostics.push({
+              from: lineFrom + idx, to: lineFrom + idx + pkTable.length,
+              severity: 'error',
+              message: `Table "${pkTable}" not found`,
+            });
+            continue;
+          }
+
+          // Validate target column exists
+          if (!targetCols.has(pkCol)) {
+            const idx = line.indexOf(pkCol);
+            if (idx >= 0) diagnostics.push({
+              from: lineFrom + idx, to: lineFrom + idx + pkCol.length,
+              severity: 'error',
+              message: `Column "${pkCol}" not found in "${pkTable}"`,
+            });
+            continue;
           }
         }
       }
@@ -291,6 +393,7 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
 
   const handleChange = useCallback(
     (val: string) => {
+      prevValue.current = val;
       onChange(val);
     },
     [onChange],
@@ -302,12 +405,31 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const prevValue = useRef(value);
-  const stableValue = value !== prevValue.current ? value : prevValue.current;
-  prevValue.current = value;
+  const editorRef = useRef<{ view?: { dispatch: (tr: Record<string, unknown>) => void; state: { doc: { toString: () => string }; update: (spec: Record<string, unknown>) => Record<string, unknown> } } | null } | null>(null);
+
+  // Only push external value changes to CodeMirror — don't use controlled prop
+  const prevExtValue = useRef(value);
+  useEffect(() => {
+    if (!editorRef.current?.view) return;
+    const curDoc = editorRef.current.view.state.doc.toString();
+    if (value !== curDoc && value !== prevExtValue.current) {
+      const tr = editorRef.current.view.state.update({
+        changes: { from: 0, to: curDoc.length, insert: value },
+      });
+      editorRef.current.view.dispatch(tr);
+    }
+    prevExtValue.current = value;
+  }, [value]);
 
   // ── DBML → Canvas (live, debounced) ──
   useEffect(() => {
     if (!value.trim()) return;
+
+    // Skip parse when text was generated by reverse sync (opening panel)
+    if (isReverseApply.current) {
+      isReverseApply.current = false;
+      return;
+    }
 
     // Quick structural check: braces must be balanced before attempting parse
     if (!isStructurallyComplete(value)) return;
@@ -318,8 +440,6 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
         const result = dbmlToERD(value);
         applyingFromDBML.current = true;
         onApplyRef.current(result.nodes, result.edges);
-        // Reset flag after a tick — if no re-render occurred (nodes unchanged),
-        // prevent the flag from blocking future reverse syncs
         setTimeout(() => { applyingFromDBML.current = false; }, 0);
       } catch {
         // Errors shown via lint underlines — no banner needed
@@ -350,6 +470,7 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
         lastCanvasHash.current = canvasFingerprint(nodes, edges);
         // Only update if text actually changed — prevents cursor jump
         if (dbml !== prevValue.current) {
+          isReverseApply.current = true;
           onChangeRef.current(dbml);
         }
       } catch {
@@ -384,7 +505,7 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
       {/* Editor */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <CodeMirror
-          value={stableValue}
+          ref={editorRef as any}
           height="100%"
           theme={resolvedTheme === 'dark' ? oneDark : undefined}
           extensions={extensions}
@@ -429,7 +550,11 @@ export function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBML
       </Dialog>
     </div>
   );
-}
+}, (prev, next) =>
+  prev.value === next.value &&
+  prev.nodes === next.nodes &&
+  prev.edges === next.edges
+);
 
 /** Lightweight fingerprint for canvas state — avoids deep-equal on every render. */
 function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {

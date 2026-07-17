@@ -15,6 +15,13 @@ import { Entity, Column, Diagram, DraftType, Relationship } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
 
+/** Fix double "col-" prefix from buggy parseSQLToERD output.
+ *  Works for any column ID format: "col-xxx", UUID, etc. */
+function fixDoubleColPrefix(h: string | null | undefined): string | null | undefined {
+  if (!h) return h;
+  return h.replace(/^col-col-/, 'col-');
+}
+
 export function useERDSession(
   isPublicView: boolean,
   isGuest: boolean,
@@ -251,8 +258,8 @@ export function useERDSession(
         const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
         const targetEntity = finalData.entities.find(e => e.id === r.target_entity_id);
         
-        let sHandle = r.source_handle;
-        let tHandle = r.target_handle;
+        let sHandle = fixDoubleColPrefix(r.source_handle);
+        let tHandle = fixDoubleColPrefix(r.target_handle);
 
         if (!sHandle && sourceEntity && targetEntity) {
           const sx = Number(sourceEntity.x) || 0;

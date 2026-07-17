@@ -33,6 +33,31 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+
+/** Replace parser-generated column UUID inside handle string with canvas column UUID.
+ *  parseSQLToERD's column IDs are "col-xxx", so handles are "col-col-xxx-source".
+ *  Strip the extra prefix, remap, then rebuild. */
+function remapHandle(handle: string | null | undefined, colIdMap: Map<string, string>): string | null | undefined {
+  if (!handle) return handle;
+  const m = handle.match(/^(col-)+(col-[\w-]+)-(source|target)(-[lr])?$/);
+  if (m) {
+    const colId = m[2];
+    const suffix = m[3] + (m[4] || '');
+    const mapped = colIdMap.get(colId);
+    return mapped ? `col-${mapped}-${suffix}` : handle;
+  }
+  return handle;
+}
+
+/** Remap column ID in handle string: "col-xxx-source" → "col-yyy-source" */
+function remapCol(handle: string | null | undefined, colMap: Map<string, string>): string | null | undefined {
+  if (!handle) return handle;
+  return handle.replace(/^(col-)([\w-]+)(-source|-target)(-[lr])?$/, (_, pre, id, suffix, lr) => {
+    const mapped = colMap.get(id);
+    return mapped ? `${pre}${mapped}${suffix}${lr || ''}` : _;
+  });
+}
+
 import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
@@ -238,19 +263,37 @@ function AppLayoutInner() {
 
   // ── DBML → ERD callback ──
   const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[]) => {
-    // Preserve positions + IDs from existing canvas nodes
+    const nodeIdMap = new Map<string, string>();
     const mergedNodes = newNodes.map(n => {
       const existing = nodes.find(cur => cur.data.name === n.data.name);
       if (existing) {
-        return {
-          ...n,
-          id: existing.id,
-          position: existing.position,
-          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y },
-        };
+        nodeIdMap.set(n.id, existing.id);
+        // Adopt existing column IDs (whatever format: "col-xxx" or plain UUID)
+        const colMap = new Map<string, string>();
+        n.data.columns = n.data.columns.map(nc => {
+          const ec = existing.data.columns.find(c => c.name === nc.name);
+          if (ec) { colMap.set(nc.id, ec.id); return { ...nc, id: ec.id }; }
+          return nc;
+        });
+        // Remap edge handles to existing column IDs
+        for (const e of newEdges) {
+          if (e.source === n.id) e.sourceHandle = remapCol(e.sourceHandle, colMap);
+          if (e.target === n.id) e.targetHandle = remapCol(e.targetHandle, colMap);
+        }
+        return { ...n, id: existing.id, position: existing.position,
+          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y } };
       }
+      // New table: no canvas match — add "col-" prefix for consistency
+      n.data.columns = n.data.columns.map(c =>
+        ({ ...c, id: c.id.startsWith('col-') ? c.id : `col-${c.id}` }));
       return n;
     });
+
+    const mergedEdges = newEdges.map(e => ({
+      ...e,
+      source: nodeIdMap.get(e.source) || e.source,
+      target: nodeIdMap.get(e.target) || e.target,
+    }));
 
     // Compare by table structure + column properties (parser generates new UUIDs)
     const nodesSame = mergedNodes.length === nodes.length &&
@@ -264,24 +307,26 @@ function AppLayoutInner() {
             c.is_pk === cc?.is_pk && c.is_nullable === cc?.is_nullable;
         });
       });
-    const edgesSame = newEdges.length === edges.length &&
-      newEdges.every((e, i) => {
-        const srcName = mergedNodes.find(n => n.id === e.source)?.data.name;
-        const tgtName = mergedNodes.find(n => n.id === e.target)?.data.name;
-        const curSrcName = nodes.find(n => n.id === edges[i]?.source)?.data.name;
-        const curTgtName = nodes.find(n => n.id === edges[i]?.target)?.data.name;
-        return srcName === curSrcName && tgtName === curTgtName;
-      });
-
-    if (nodesSame && edgesSame) {
-      return;
-    }
+    // Compare edges by sorted canonical keys (table names, not UUIDs)
+    const edgeKey = (e: Edge, nodeList: Node<Entity>[]) => {
+      const s = nodeList.find(n => n.id === e.source)?.data.name || '';
+      const t = nodeList.find(n => n.id === e.target)?.data.name || '';
+      return `${s}>${t}`;
+    };
+    const sortedNew = [...mergedEdges].sort((a, b) => edgeKey(a, mergedNodes).localeCompare(edgeKey(b, mergedNodes)));
+    const sortedCur = [...edges].sort((a, b) => edgeKey(a, nodes).localeCompare(edgeKey(b, nodes)));
+    const edgesSame = sortedNew.length === sortedCur.length &&
+      sortedNew.every((e, i) => edgeKey(e, mergedNodes) === edgeKey(sortedCur[i], nodes));
 
     takeSnapshot?.(nodes, edges);
+
+    // Always update React state (fixes handles/IDs), but only save if data changed
     setNodes(mergedNodes);
-    setEdges(newEdges);
-    saveDiagram?.(mergedNodes, newEdges, viewportRef?.current);
-    triggerDebouncedSync?.();
+    setEdges(mergedEdges);
+    if (!nodesSame || !edgesSame) {
+      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current);
+      triggerDebouncedSync?.();
+    }
   }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
   // ── Collapse left sidebar when right panel opens ──
