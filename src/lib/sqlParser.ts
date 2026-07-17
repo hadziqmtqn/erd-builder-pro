@@ -749,7 +749,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       const normalizedType = normalizeType(col.type);
 
       columns.push({
-        id: `col-${Math.random().toString(36).substring(2, 11)}`,
+        id: crypto.randomUUID(),
         name: col.name,
         type: normalizedType,
         is_pk: isPk,

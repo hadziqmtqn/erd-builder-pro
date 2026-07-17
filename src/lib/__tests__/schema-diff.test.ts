@@ -15,7 +15,7 @@ function makeNode(name: string, cols: string[]): Node<Entity> {
       y: 0,
       color: '#6366f1',
       columns: cols.map((c, i) => ({
-        id: `col-${i}`,
+        id: `${i}`,
         name: c,
         type: 'BIGINT',
         is_pk: false,

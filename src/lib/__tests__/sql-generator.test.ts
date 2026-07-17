@@ -22,7 +22,7 @@ function makeEntity(
     y: 0,
     color: '#6366f1',
     columns: columns.map((c, i) => ({
-      id: `col-${i}`,
+      id: `${i}`,
       name: `col_${i}`,
       type: 'VARCHAR(255)',
       is_pk: false,

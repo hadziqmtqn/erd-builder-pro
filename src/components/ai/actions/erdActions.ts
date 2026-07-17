@@ -123,13 +123,20 @@ function mergeIntoDiagram(
     let sourceHandle = parsedEdge.sourceHandle;
     let targetHandle = parsedEdge.targetHandle;
 
+    // Compute position-based suffix: source on left → -source/-target-r, source on right → -source-l/-target
+    const sx = sMergedNode?.position.x ?? 0;
+    const tx = tMergedNode?.position.x ?? 0;
+    const srcSuffix = sx < tx ? 'source' : 'source-l';
+    const tgtSuffix = sx < tx ? 'target' : 'target-r';
+
     if (sourceHandle && sMergedNode) {
       const parsedColId = sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
       const parsedCol = sNode?.data.columns.find((c: any) => c.id === parsedColId);
       if (parsedCol) {
         const mergedCol = sMergedNode.data.columns.find((c: any) => c.name.toLowerCase() === parsedCol.name.toLowerCase());
         if (mergedCol) {
-          sourceHandle = `col-${mergedCol.id}-source`;
+          const colId = String(mergedCol.id).replace(/^col-/, '');
+          sourceHandle = `col-${colId}-${srcSuffix}`;
         }
       }
     }
@@ -140,7 +147,8 @@ function mergeIntoDiagram(
       if (parsedCol) {
         const mergedCol = tMergedNode.data.columns.find((c: any) => c.name.toLowerCase() === parsedCol.name.toLowerCase());
         if (mergedCol) {
-          targetHandle = `col-${mergedCol.id}-target`;
+          const colId = String(mergedCol.id).replace(/^col-/, '');
+          targetHandle = `col-${colId}-${tgtSuffix}`;
         }
       }
     }
@@ -521,12 +529,19 @@ export function applyToErdContent(
         // Strict rule: 1 FK column = max 1 PK. Skip if this source column is already wired.
         if (usedSourceColumns.has(`${sId}:${sCol.id}`)) return;
 
+        const sx = sNode.position.x ?? 0;
+        const tx = tNode.position.x ?? 0;
+        const srcSuffix = sx < tx ? 'source' : 'source-l';
+        const tgtSuffix = sx < tx ? 'target' : 'target-r';
+        const sColId = String(sCol.id).replace(/^col-/, '');
+        const tColId = String(tCol.id).replace(/^col-/, '');
+
         additionalEdges.push({
           id: `e-${sId}-${tId}-${Math.random()}`,
           source: sId,
           target: tId,
-          sourceHandle: `col-${sCol.id}-source`,
-          targetHandle: `col-${tCol.id}-target`,
+          sourceHandle: `col-${sColId}-${srcSuffix}`,
+          targetHandle: `col-${tColId}-${tgtSuffix}`,
           label: '1:N',
           type: 'smoothstep',
           animated: false,
