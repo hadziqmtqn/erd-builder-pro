@@ -52,12 +52,68 @@ function findTypeErrors(text: string): string[] {
 }
 
 /**
+ * Pre-scan DBML text for ref type mismatches.
+ * Builds table→column→type map, then checks every Ref line.
+ */
+function findRefTypeErrors(text: string): string[] {
+  const errors: string[] = [];
+  const lines = text.split('\n');
+
+  // Build table → column → type map
+  const tableDefs = new Map<string, Map<string, string>>();
+  let currentTable = '';
+  let inTable = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\s*(Table|table)\s+\S/.test(line)) {
+      currentTable = trimmed.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
+      inTable = true;
+      if (!tableDefs.has(currentTable)) tableDefs.set(currentTable, new Map());
+      continue;
+    }
+    if (trimmed === '}' || trimmed.startsWith('}')) { inTable = false; currentTable = ''; continue; }
+    if (inTable && trimmed && !trimmed.startsWith('//')) {
+      const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
+      if (m) {
+        const colName = m[1];
+        const colType = m[2].replace(/\[.*/, '').trim();
+        tableDefs.get(currentTable)?.set(colName, colType);
+      }
+    }
+  }
+
+  // Check Ref lines for type mismatches
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Standalone Ref
+    let rm = trimmed.match(/^Ref:\s*"?(\w+)"?\.\"?(\w+)"?\s*[><-]\s*"?(\w+)"?\.\"?(\w+)"?/i);
+    if (!rm) {
+      // Inline ref
+      rm = trimmed.match(/\[ref:\s*[><-]\s*"?(\w+)"?\.\"?(\w+)"?\]/i);
+      if (rm) rm = [rm[0], currentTable || '?', '', rm[1], rm[2]];
+    }
+    if (rm && rm[1] && rm[3]) {
+      const fkTable = rm[1], fkCol = rm[2] || '';
+      const pkTable = rm[3], pkCol = rm[4];
+      const fkType = tableDefs.get(fkTable)?.get(fkCol)?.toUpperCase().replace(/\s+/g, '');
+      const pkType = tableDefs.get(pkTable)?.get(pkCol)?.toUpperCase().replace(/\s+/g, '');
+      if (fkType && pkType && fkType !== pkType) {
+        errors.push(`Type mismatch: "${fkTable}.${fkCol}" is ${tableDefs.get(fkTable)?.get(fkCol)} but "${pkTable}.${pkCol}" is ${tableDefs.get(pkTable)?.get(pkCol)}`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
  * Parse DBML text → ERD nodes + edges.
  * Tables become Entity nodes, Refs become relationship edges.
  */
 export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edge[] } {
   // ── Pre-scan: find type errors ──
   const typeErrors = findTypeErrors(dbmlText);
+  const refTypeErrors = findRefTypeErrors(dbmlText);
 
   // ── DBML → SQL via @dbml/core ──
   let parseError: string | null = null;
@@ -73,7 +129,7 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   }
 
   // ── Collect all errors ──
-  const allErrors = [...typeErrors];
+  const allErrors = [...typeErrors, ...refTypeErrors];
   if (parseError) allErrors.push(parseError);
   if (allErrors.length) {
     throw new Error(allErrors.join('\n'));

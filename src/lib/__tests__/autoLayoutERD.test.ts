@@ -19,7 +19,7 @@ function makeNode(
       y: 0,
       color: '#6366f1',
       columns: columns.map((c, i) => ({
-        id: `col-${i}`,
+        id: `${i}`,
         name: `col_${i}`,
         type: 'BIGINT',
         is_pk: false,

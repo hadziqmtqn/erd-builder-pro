@@ -264,36 +264,54 @@ function AppLayoutInner() {
   // ── DBML → ERD callback ──
   const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[]) => {
     const nodeIdMap = new Map<string, string>();
+    // Deep clone edges so we can mutate handles for column remapping
+    const clonedEdges = newEdges.map(e => ({ ...e }));
     const mergedNodes = newNodes.map(n => {
       const existing = nodes.find(cur => cur.data.name === n.data.name);
       if (existing) {
         nodeIdMap.set(n.id, existing.id);
-        // Adopt existing column IDs (whatever format: "col-xxx" or plain UUID)
+        // Remap parser column IDs → canvas column IDs by name match
         const colMap = new Map<string, string>();
         n.data.columns = n.data.columns.map(nc => {
           const ec = existing.data.columns.find(c => c.name === nc.name);
           if (ec) { colMap.set(nc.id, ec.id); return { ...nc, id: ec.id }; }
           return nc;
         });
-        // Remap edge handles to existing column IDs
-        for (const e of newEdges) {
+        // Remap edge handles to use canvas column IDs
+        for (const e of clonedEdges) {
           if (e.source === n.id) e.sourceHandle = remapCol(e.sourceHandle, colMap);
           if (e.target === n.id) e.targetHandle = remapCol(e.targetHandle, colMap);
         }
         return { ...n, id: existing.id, position: existing.position,
           data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y } };
       }
-      // New table: no canvas match — add "col-" prefix for consistency
-      n.data.columns = n.data.columns.map(c =>
-        ({ ...c, id: c.id.startsWith('col-') ? c.id : `col-${c.id}` }));
+      // New table: column IDs are already UUIDs from parser — pass through
       return n;
     });
 
-    const mergedEdges = newEdges.map(e => ({
-      ...e,
-      source: nodeIdMap.get(e.source) || e.source,
-      target: nodeIdMap.get(e.target) || e.target,
-    }));
+    // Remap edge node IDs + compute position-based handles
+    const mergedEdges = clonedEdges.map(e => {
+      const srcId = nodeIdMap.get(e.source) || e.source;
+      const tgtId = nodeIdMap.get(e.target) || e.target;
+      const srcNode = mergedNodes.find(n => n.id === srcId);
+      const tgtNode = mergedNodes.find(n => n.id === tgtId);
+      const sx = srcNode?.position.x ?? 0;
+      const tx = tgtNode?.position.x ?? 0;
+      const srcSuffix = sx < tx ? 'source' : 'source-l';
+      const tgtSuffix = sx < tx ? 'target' : 'target-r';
+
+      // Rebuild handles with correct position-based suffix
+      const srcColId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
+      const tgtColId = e.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
+
+      return {
+        ...e,
+        source: srcId,
+        target: tgtId,
+        sourceHandle: srcColId ? `col-${srcColId}-${srcSuffix}` : undefined,
+        targetHandle: tgtColId ? `col-${tgtColId}-${tgtSuffix}` : undefined,
+      };
+    });
 
     // Compare by table structure + column properties (parser generates new UUIDs)
     const nodesSame = mergedNodes.length === nodes.length &&
@@ -319,10 +337,9 @@ function AppLayoutInner() {
       sortedNew.every((e, i) => edgeKey(e, mergedNodes) === edgeKey(sortedCur[i], nodes));
 
     takeSnapshot?.(nodes, edges);
-
-    // Always update React state (fixes handles/IDs), but only save if data changed
     setNodes(mergedNodes);
     setEdges(mergedEdges);
+    // Always update React state (fixes handles/IDs), but only save if data changed
     if (!nodesSame || !edgesSame) {
       saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current);
       triggerDebouncedSync?.();

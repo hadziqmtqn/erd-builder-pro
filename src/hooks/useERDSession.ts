@@ -258,27 +258,29 @@ export function useERDSession(
         const sourceEntity = finalData.entities.find(e => e.id === r.source_entity_id);
         const targetEntity = finalData.entities.find(e => e.id === r.target_entity_id);
         
+        // Always recalculate handles from positions — ignore stored suffix
         let sHandle = fixDoubleColPrefix(r.source_handle);
         let tHandle = fixDoubleColPrefix(r.target_handle);
 
-        if (!sHandle && sourceEntity && targetEntity) {
+        if (sourceEntity && targetEntity) {
           const sx = Number(sourceEntity.x) || 0;
           const tx = Number(targetEntity.x) || 0;
-          sHandle = sx < tx ? `col-${r.source_column_id}-source` : `col-${r.source_column_id}-source-l`;
+          // Strip col- prefix AND any stale -source/-target suffix from stored column IDs
+          const colS = (r.source_column_id || '').replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+          const colT = (r.target_column_id || '').replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+          sHandle = colS ? (sx < tx ? `col-${colS}-source` : `col-${colS}-source-l`) : sHandle;
+          tHandle = colT ? (sx < tx ? `col-${colT}-target` : `col-${colT}-target-r`) : tHandle;
         }
 
-        if (!tHandle && sourceEntity && targetEntity) {
-          const sx = Number(sourceEntity.x) || 0;
-          const tx = Number(targetEntity.x) || 0;
-          tHandle = sx < tx ? `col-${r.target_column_id}-target` : `col-${r.target_column_id}-target-r`;
-        }
+        const fallbackSrc = (r.source_column_id || '').replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+        const fallbackTgt = (r.target_column_id || '').replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
 
         return {
           id: r.id,
           source: r.source_entity_id,
           target: r.target_entity_id,
-          sourceHandle: sHandle || (r.source_column_id ? `col-${r.source_column_id}-source` : undefined),
-          targetHandle: tHandle || (r.target_column_id ? `col-${r.target_column_id}-target` : undefined),
+          sourceHandle: sHandle || (fallbackSrc ? `col-${fallbackSrc}-source` : undefined),
+          targetHandle: tHandle || (fallbackTgt ? `col-${fallbackTgt}-target` : undefined),
           label: r.label,
           type: 'smoothstep',
           animated: false,
