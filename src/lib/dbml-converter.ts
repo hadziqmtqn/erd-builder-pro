@@ -80,8 +80,8 @@ function readDBMLEnums(text: string): Map<string, string> {
 }
 
 /** Map each DBML enum-typed column by table and column name. */
-function readDBMLEnumColumns(text: string, enums: Map<string, string>): Map<string, string> {
-  const columns = new Map<string, string>();
+function readDBMLEnumColumns(text: string, enums: Map<string, string>): Map<string, { name: string; values: string }> {
+  const columns = new Map<string, { name: string; values: string }>();
   const tableBlock = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{([\s\S]*?)^\s*\}/gim;
 
   for (const match of text.matchAll(tableBlock)) {
@@ -90,9 +90,10 @@ function readDBMLEnumColumns(text: string, enums: Map<string, string>): Map<stri
       const column = line.match(/^\s*(?:"([^"]+)"|(\w+))\s+(?:"([^"]+)"|([^\s\[]+))/);
       if (!column) continue;
       const columnName = (column[1] || column[2]).toLowerCase();
-      const typeName = (column[3] || column[4]).toLowerCase();
+      const rawTypeName = column[3] || column[4];
+      const typeName = rawTypeName.toLowerCase();
       const values = enums.get(typeName);
-      if (values) columns.set(`${tableName}\u0000${columnName}`, values);
+      if (values) columns.set(`${tableName}\u0000${columnName}`, { name: rawTypeName, values });
     }
   }
 
@@ -193,10 +194,11 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   const enumColumns = readDBMLEnumColumns(dbmlText, enums);
   for (const node of result.nodes) {
     for (const column of node.data.columns) {
-      const enumValues = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
-      if (enumValues) {
+      const enumColumn = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
+      if (enumColumn) {
         column.type = 'ENUM';
-        column.enum_values = enumValues;
+        column.enum_name = enumColumn.name;
+        column.enum_values = enumColumn.values;
       }
     }
   }
@@ -210,31 +212,44 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
 export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
   const lines: string[] = [];
 
-  // Collect enum columns → generate standalone Enum blocks
-  // Step 1: group by column name, detect conflicts
-  const nameToValues = new Map<string, Set<string>>(); // col name → set of normalized values
-  const enumColumns: { nodeId: string; colId: string; tableName: string; colName: string; values: string }[] = [];
+  // Collect enum columns. Explicit enum_name comes from DBML parsing and must
+  // win over column-name guessing, otherwise same-named columns with different
+  // enum domains collapse back to `status`.
+  const nameToValues = new Map<string, Set<string>>();
+  const enumColumns: { nodeId: string; colId: string; tableName: string; colName: string; values: string; enumName?: string }[] = [];
 
   for (const node of nodes) {
     for (const col of node.data.columns) {
       if (col.type.toUpperCase() === 'ENUM' && col.enum_values) {
-        const norm = col.enum_values.split(',').map(v => v.trim().toLowerCase()).sort().join(',');
+        const norm = normalizeEnumValues(col.enum_values);
         if (!nameToValues.has(col.name)) nameToValues.set(col.name, new Set());
         nameToValues.get(col.name)!.add(norm);
-        enumColumns.push({ nodeId: node.id, colId: col.id, tableName: node.data.name, colName: col.name, values: col.enum_values });
+        enumColumns.push({
+          nodeId: node.id,
+          colId: col.id,
+          tableName: node.data.name,
+          colName: col.name,
+          values: col.enum_values,
+          enumName: col.enum_name,
+        });
       }
     }
   }
 
-  // Step 2: build final enum name per column + deduplicate
-  // Key: unique enum identity → { name, values }
+  const usedEnumNames = new Map<string, string>();
   const enumMap = new Map<string, { name: string; values: string }>();
   const colEnumName = new Map<string, string>(); // `${nodeId}:${colId}` → enum name
 
   for (const ec of enumColumns) {
-    const norm = ec.values.split(',').map(v => v.trim().toLowerCase()).sort().join(',');
+    const norm = normalizeEnumValues(ec.values);
     const hasConflict = (nameToValues.get(ec.colName)?.size ?? 0) > 1;
-    const name = hasConflict ? `${ec.tableName}_${ec.colName}` : ec.colName;
+    const existingColumnNameValue = usedEnumNames.get(ec.colName.toLowerCase());
+    const baseName = ec.enumName || (
+      hasConflict && existingColumnNameValue && existingColumnNameValue !== norm
+        ? `${ec.tableName}_${ec.colName}`
+        : ec.colName
+    );
+    const name = getAvailableEnumName(baseName, norm, usedEnumNames);
     const mapKey = `${name}:${norm}`;
     if (!enumMap.has(mapKey)) {
       enumMap.set(mapKey, { name, values: ec.values });
@@ -267,7 +282,7 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
       // Use enum name instead of raw ENUM type
       const enumName = colEnumName.get(`${node.id}:${col.id}`);
-      const colType = enumName || col.type;
+      const colType = enumName ? formatIdentifier(enumName) : col.type;
       lines.push(`  ${colName} ${colType}${suffix}`);
     }
     lines.push('}');
@@ -300,9 +315,42 @@ function needsQuote(name: string): boolean {
   return !/^[a-zA-Z_]\w*$/.test(name);
 }
 
+function formatIdentifier(name: string): string {
+  return needsQuote(name) ? `"${name}"` : name;
+}
+
 /** Format as table.col, quoting each part only if needed */
 function tableNear(table: string, col: string): string {
-  const t = needsQuote(table) ? `"${table}"` : table;
-  const c = needsQuote(col) ? `"${col}"` : col;
-  return `${t}.${c}`;
+  return `${formatIdentifier(table)}.${formatIdentifier(col)}`;
+}
+
+function normalizeEnumValues(values: string): string {
+  return values
+    .split(',')
+    .map(v => v.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join(',');
+}
+
+function getAvailableEnumName(baseName: string, valueKey: string, usedNames: Map<string, string>): string {
+  const cleanBase = baseName.trim() || 'enum_value';
+  const lowerBase = cleanBase.toLowerCase();
+  const existingValueKey = usedNames.get(lowerBase);
+  if (!existingValueKey || existingValueKey === valueKey) {
+    usedNames.set(lowerBase, valueKey);
+    return cleanBase;
+  }
+
+  let i = 2;
+  while (true) {
+    const candidate = `${cleanBase}_${i}`;
+    const lowerCandidate = candidate.toLowerCase();
+    const candidateValueKey = usedNames.get(lowerCandidate);
+    if (!candidateValueKey || candidateValueKey === valueKey) {
+      usedNames.set(lowerCandidate, valueKey);
+      return candidate;
+    }
+    i += 1;
+  }
 }

@@ -336,6 +336,7 @@ function AppLayoutInner() {
             // Preserve enum_values and ENUM type from canvas
             // (parser loses enum_values during DBML→SQL→ERD roundtrip)
             return { ...nc, id: ec.id,
+              enum_name: nc.enum_name || ec.enum_name,
               enum_values: nc.enum_values || ec.enum_values,
               type: (ec.type.toUpperCase() === 'ENUM' && ec.enum_values && nc.type.toUpperCase() !== 'ENUM')
                 ? ec.type : nc.type };

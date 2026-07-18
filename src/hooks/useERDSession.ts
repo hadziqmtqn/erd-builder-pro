@@ -603,6 +603,7 @@ export function useERDSession(
       type: col.type,
       is_pk: col.is_pk,
       is_nullable: col.is_nullable,
+      enum_name: col.enum_name,
       enum_values: col.enum_values,
       sort_order: col.sort_order,
       _is_fk: false,

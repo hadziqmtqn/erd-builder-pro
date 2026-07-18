@@ -13,6 +13,7 @@ export interface Column {
   is_nullable: boolean;
   _is_fk?: boolean;
   enum_values?: string;
+  enum_name?: string;
   sort_order?: number;
 }
 
