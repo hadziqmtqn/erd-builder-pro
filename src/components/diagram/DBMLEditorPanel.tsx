@@ -555,7 +555,25 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
           ...enumExtras,
           ...(previous.match(/^(Note|TableGroup)\s+\S[\s\S]*?\}/gm) || []),
         ];
-        if (extras.length) dbml = dbml.trimEnd() + '\n\n' + extras.join('\n\n') + '\n';
+        if (extras.length) {
+          // Insert enum extras before Ref section, Note/TableGroup at the end
+          // Trim each block to prevent accumulation of blank lines on repeated auto-applies
+          const enumExtraText = enumExtras.length ? enumExtras.map(e => e.trim()).join('\n\n') : '';
+          const otherExtras = previous.match(/^(Note|TableGroup)\s+\S[\s\S]*?\}/gm) || [];
+          const otherExtraText = otherExtras.length ? '\n\n' + otherExtras.map(e => e.trim()).join('\n\n') : '';
+
+          // Find the Ref section in generated DBML to insert enums before it
+          const refMatch = dbml.match(/^Ref:/m);
+          if (refMatch && refMatch.index !== undefined) {
+            const beforeRef = dbml.slice(0, refMatch.index).trimEnd();
+            const refSection = dbml.slice(refMatch.index);
+            const enumPart = enumExtraText ? '\n\n' + enumExtraText : '';
+            dbml = beforeRef + enumPart + '\n\n' + refSection + otherExtraText + '\n';
+          } else {
+            // No Ref section — append at end
+            dbml = dbml.trimEnd() + '\n\n' + extras.map(e => e.trim()).join('\n\n') + '\n';
+          }
+        }
         lastCanvasHash.current = canvasFingerprint(nodes, edges);
         // Only update if text actually changed — prevents cursor jump
         if (dbml !== prevValue.current) {

@@ -213,17 +213,12 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
   const lines: string[] = [];
 
   // Collect enum columns. Explicit enum_name comes from DBML parsing and must
-  // win over column-name guessing, otherwise same-named columns with different
-  // enum domains collapse back to `status`.
-  const nameToValues = new Map<string, Set<string>>();
+  // win over column-name guessing.
   const enumColumns: { nodeId: string; colId: string; tableName: string; colName: string; values: string; enumName?: string }[] = [];
 
   for (const node of nodes) {
     for (const col of node.data.columns) {
       if (col.type.toUpperCase() === 'ENUM' && col.enum_values) {
-        const norm = normalizeEnumValues(col.enum_values);
-        if (!nameToValues.has(col.name)) nameToValues.set(col.name, new Set());
-        nameToValues.get(col.name)!.add(norm);
         enumColumns.push({
           nodeId: node.id,
           colId: col.id,
@@ -236,39 +231,22 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
     }
   }
 
+  // Build colEnumName map for use in Table blocks (must run before Table emit)
   const usedEnumNames = new Map<string, string>();
   const enumMap = new Map<string, { name: string; values: string }>();
   const colEnumName = new Map<string, string>(); // `${nodeId}:${colId}` → enum name
 
   for (const ec of enumColumns) {
     const norm = normalizeEnumValues(ec.values);
-    const hasConflict = (nameToValues.get(ec.colName)?.size ?? 0) > 1;
-    const existingColumnNameValue = usedEnumNames.get(ec.colName.toLowerCase());
-    const baseName = ec.enumName || (
-      hasConflict && existingColumnNameValue && existingColumnNameValue !== norm
-        ? `${ec.tableName}_${ec.colName}`
-        : ec.colName
-    );
+    // Use explicit enum_name if set by user, otherwise default to {tableName}_{colName}
+    // getAvailableEnumName handles conflicts (same name, different values) by adding suffix
+    const baseName = ec.enumName || `${ec.tableName}_${ec.colName}`;
     const name = getAvailableEnumName(baseName, norm, usedEnumNames);
     const mapKey = `${name}:${norm}`;
     if (!enumMap.has(mapKey)) {
       enumMap.set(mapKey, { name, values: ec.values });
     }
     colEnumName.set(`${ec.nodeId}:${ec.colId}`, name);
-  }
-
-  // Emit Enum blocks (deduped by name+values)
-  const emitted = new Set<string>();
-  for (const [, { name, values }] of enumMap) {
-    if (emitted.has(name)) continue;
-    emitted.add(name);
-    const enumName = needsQuote(name) ? `"${name}"` : name;
-    lines.push(`Enum ${enumName} {`);
-    for (const v of values.split(',')) {
-      lines.push(`  ${v.trim()}`);
-    }
-    lines.push('}');
-    lines.push('');
   }
 
   for (const node of nodes) {
@@ -284,6 +262,20 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       const enumName = colEnumName.get(`${node.id}:${col.id}`);
       const colType = enumName ? formatIdentifier(enumName) : col.type;
       lines.push(`  ${colName} ${colType}${suffix}`);
+    }
+    lines.push('}');
+    lines.push('');
+  }
+
+  // Emit Enum blocks between Table and Ref sections
+  const emitted = new Set<string>();
+  for (const [, { name, values }] of enumMap) {
+    if (emitted.has(name)) continue;
+    emitted.add(name);
+    const enumName = needsQuote(name) ? `"${name}"` : name;
+    lines.push(`Enum ${enumName} {`);
+    for (const v of values.split(',')) {
+      lines.push(`  ${v.trim()}`);
     }
     lines.push('}');
     lines.push('');
