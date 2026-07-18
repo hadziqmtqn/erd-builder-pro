@@ -16,6 +16,13 @@ function findTypeErrors(text: string): string[] {
   let currentTable = '';
   let inTable = false;
 
+  // Collect enum names — these are valid column types
+  const enumNames = new Set<string>();
+  for (const line of lines) {
+    const m = line.match(/^\s*Enum\s+(\S+)\s*\{/i);
+    if (m) enumNames.add(m[1].toLowerCase());
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
@@ -34,12 +41,14 @@ function findTypeErrors(text: string): string[] {
     }
 
     if (inTable && trimmed && !trimmed.startsWith('//')) {
-      // Match: "column_name" TYPE [settings]
-      const m = trimmed.match(/^"([^"]+)"\s+(\S+)/);
+      // Match quoted or bare column names. Bare names are the usual DBML form;
+      // without this branch an incomplete type such as `bi` reached the SQL
+      // converter, where unknown types are normalized to VARCHAR.
+      const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
       if (m) {
         const [, colName, rawType] = m;
         const typeName = rawType.replace(/\[.*/, '').trim();
-        if (typeName && !VALID_TYPES.has(typeName.toUpperCase())) {
+        if (typeName && !VALID_TYPES.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
           errors.push(
             `Line ${lineNum}: Invalid type "${typeName}" in table "${currentTable}" column "${colName}"`,
           );
@@ -49,6 +58,45 @@ function findTypeErrors(text: string): string[] {
   }
 
   return errors;
+}
+
+/** Read named DBML enums so their values survive the DBML → SQL → ERD bridge. */
+function readDBMLEnums(text: string): Map<string, string> {
+  const enums = new Map<string, string>();
+  const enumBlock = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{([\s\S]*?)^\s*\}/gim;
+
+  for (const match of text.matchAll(enumBlock)) {
+    const name = (match[1] || match[2]).toLowerCase();
+    const values = match[3]
+      .split('\n')
+      .map(line => line.trim().replace(/\/\/.*$/, '').trim())
+      .filter(line => line && !line.startsWith('//'))
+      .map(line => line.split(/\s+\[/, 1)[0].trim())
+      .filter(Boolean);
+    if (values.length) enums.set(name, values.join(', '));
+  }
+
+  return enums;
+}
+
+/** Map each DBML enum-typed column by table and column name. */
+function readDBMLEnumColumns(text: string, enums: Map<string, string>): Map<string, string> {
+  const columns = new Map<string, string>();
+  const tableBlock = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{([\s\S]*?)^\s*\}/gim;
+
+  for (const match of text.matchAll(tableBlock)) {
+    const tableName = (match[1] || match[2]).toLowerCase();
+    for (const line of match[3].split('\n')) {
+      const column = line.match(/^\s*(?:"([^"]+)"|(\w+))\s+(?:"([^"]+)"|([^\s\[]+))/);
+      if (!column) continue;
+      const columnName = (column[1] || column[2]).toLowerCase();
+      const typeName = (column[3] || column[4]).toLowerCase();
+      const values = enums.get(typeName);
+      if (values) columns.set(`${tableName}\u0000${columnName}`, values);
+    }
+  }
+
+  return columns;
 }
 
 /**
@@ -136,7 +184,24 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   }
 
   // ── SQL → ERD via existing parser ──
-  return parseSQLToERD(sql!);
+  const result = parseSQLToERD(sql!);
+
+  // PostgreSQL emits named enums as `CREATE TYPE name AS ENUM (...)`, while
+  // the SQL parser normalizes unknown named types to VARCHAR. Restore the enum
+  // marker and values from the authoritative DBML table definitions.
+  const enums = readDBMLEnums(dbmlText);
+  const enumColumns = readDBMLEnumColumns(dbmlText, enums);
+  for (const node of result.nodes) {
+    for (const column of node.data.columns) {
+      const enumValues = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
+      if (enumValues) {
+        column.type = 'ENUM';
+        column.enum_values = enumValues;
+      }
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -144,6 +209,52 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
  */
 export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
   const lines: string[] = [];
+
+  // Collect enum columns → generate standalone Enum blocks
+  // Step 1: group by column name, detect conflicts
+  const nameToValues = new Map<string, Set<string>>(); // col name → set of normalized values
+  const enumColumns: { nodeId: string; colId: string; tableName: string; colName: string; values: string }[] = [];
+
+  for (const node of nodes) {
+    for (const col of node.data.columns) {
+      if (col.type.toUpperCase() === 'ENUM' && col.enum_values) {
+        const norm = col.enum_values.split(',').map(v => v.trim().toLowerCase()).sort().join(',');
+        if (!nameToValues.has(col.name)) nameToValues.set(col.name, new Set());
+        nameToValues.get(col.name)!.add(norm);
+        enumColumns.push({ nodeId: node.id, colId: col.id, tableName: node.data.name, colName: col.name, values: col.enum_values });
+      }
+    }
+  }
+
+  // Step 2: build final enum name per column + deduplicate
+  // Key: unique enum identity → { name, values }
+  const enumMap = new Map<string, { name: string; values: string }>();
+  const colEnumName = new Map<string, string>(); // `${nodeId}:${colId}` → enum name
+
+  for (const ec of enumColumns) {
+    const norm = ec.values.split(',').map(v => v.trim().toLowerCase()).sort().join(',');
+    const hasConflict = (nameToValues.get(ec.colName)?.size ?? 0) > 1;
+    const name = hasConflict ? `${ec.tableName}_${ec.colName}` : ec.colName;
+    const mapKey = `${name}:${norm}`;
+    if (!enumMap.has(mapKey)) {
+      enumMap.set(mapKey, { name, values: ec.values });
+    }
+    colEnumName.set(`${ec.nodeId}:${ec.colId}`, name);
+  }
+
+  // Emit Enum blocks (deduped by name+values)
+  const emitted = new Set<string>();
+  for (const [, { name, values }] of enumMap) {
+    if (emitted.has(name)) continue;
+    emitted.add(name);
+    const enumName = needsQuote(name) ? `"${name}"` : name;
+    lines.push(`Enum ${enumName} {`);
+    for (const v of values.split(',')) {
+      lines.push(`  ${v.trim()}`);
+    }
+    lines.push('}');
+    lines.push('');
+  }
 
   for (const node of nodes) {
     const tableName = needsQuote(node.data.name) ? `"${node.data.name}"` : node.data.name;
@@ -154,7 +265,10 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       if (col.is_nullable === false) settings.push('not null');
       const suffix = settings.length ? ` [${settings.join(', ')}]` : '';
       const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
-      lines.push(`  ${colName} ${col.type}${suffix}`);
+      // Use enum name instead of raw ENUM type
+      const enumName = colEnumName.get(`${node.id}:${col.id}`);
+      const colType = enumName || col.type;
+      lines.push(`  ${colName} ${colType}${suffix}`);
     }
     lines.push('}');
     lines.push('');

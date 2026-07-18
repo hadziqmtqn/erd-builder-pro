@@ -319,7 +319,7 @@ export function useAIChat(
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, tempUserMsg]);
-    const sessionUid = currentSession.uid ?? currentSession.id;
+    const sessionUid = String(currentSession.uid ?? currentSession.id);
     const existing = messagesCacheMapRef.current.get(sessionUid) ?? [];
     messagesCacheMapRef.current.set(sessionUid, [...existing, tempUserMsg]);
 

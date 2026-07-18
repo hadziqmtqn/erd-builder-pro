@@ -8,6 +8,7 @@ import { sql as sqlLang } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion, type CompletionContext, type Completion, type CompletionResult } from '@codemirror/autocomplete';
 import { linter, type Diagnostic } from '@codemirror/lint';
+import { EditorView } from '@codemirror/view';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { COLUMN_TYPES } from '@/lib/utils';
 import {
@@ -28,6 +29,8 @@ interface DBMLEditorPanelProps {
   /** Current canvas nodes/edges for reverse sync */
   nodes: Node<Entity>[];
   edges: Edge[];
+  /** Called when cursor lands on a table name line — passes table name */
+  onSelectTable?: (tableName: string) => void;
 }
 
 const APPLY_DEBOUNCE_MS = 1500;
@@ -90,7 +93,7 @@ TableGroup auth_tables {
  * - Typing in DBML editor → debounced auto-apply to canvas.
  * - ERD canvas changes → debounced auto-generate DBML text.
  */
-export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, onApply, nodes, edges }: DBMLEditorPanelProps) {
+export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, onApply, nodes, edges, onSelectTable }: DBMLEditorPanelProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const { resolvedTheme } = useWorkspace();
 
@@ -233,7 +236,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       if (options.length) return { from: word.from, options };
     }
 
-    return null;
+    // Return empty instead of null — suppresses sqlLang() keyword leak
+    return { from: word?.from ?? ctx.pos, options: [], filter: false };
   }, [KEYWORDS, SETTINGS, TYPES]);
 
   // ── Lint source: underline errors like VS Code ──
@@ -246,6 +250,13 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       const lines = text.split('\n');
       let currentTable = '';
       let inTable = false;
+
+      // Collect enum names — valid column types
+      const enumNames = new Set<string>();
+      for (const l of lines) {
+        const em = l.match(/^\s*Enum\s+(\S+)\s*\{/i);
+        if (em) enumNames.add(em[1].toLowerCase());
+      }
 
       // ── Type errors ──
       for (let i = 0; i < lines.length; i++) {
@@ -267,7 +278,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
           if (m) {
             const [, colName, rawType] = m;
             const typeName = rawType.replace(/\[.*/, '').trim();
-            if (typeName && !validTypes.has(typeName.toUpperCase())) {
+            if (typeName && !validTypes.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
               const typeStart = line.indexOf(typeName);
               diagnostics.push({
                 from: lineFrom + typeStart,
@@ -415,12 +426,33 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
     }, { delay: 500 });
   }, []);
 
+  // ── Cursor → table name tracking ──
+  const onSelectTableRef = useRef(onSelectTable);
+  onSelectTableRef.current = onSelectTable;
+  const lastTableRef = useRef('');
+
+  const cursorTracker = useMemo(() => EditorView.updateListener.of((update) => {
+    if (!update.selectionSet && !update.docChanged) return;
+    const cb = onSelectTableRef.current;
+    if (!cb) return;
+    const pos = update.state.selection.main.head;
+    const line = update.state.doc.lineAt(pos);
+    const m = line.text.match(/^\s*(?:Table|table)\s+["']?(\w+)["']?\s*\{/);
+    if (m && m[1] !== lastTableRef.current) {
+      lastTableRef.current = m[1];
+      cb(m[1]);
+    } else if (!m) {
+      lastTableRef.current = '';
+    }
+  }), []);
+
   // ── Stable extensions array ──
   const extensions = useMemo(() => [
     sqlLang(),
-    autocompletion({ override: [dbmlCompletions] }),
+    autocompletion({ override: [dbmlCompletions], selectOnOpen: false }),
     dbmlLinter,
-  ], [dbmlCompletions, dbmlLinter]);
+    cursorTracker,
+  ], [dbmlCompletions, dbmlLinter, cursorTracker]);
 
   const handleChange = useCallback(
     (val: string) => {
@@ -440,17 +472,15 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
   const editorRef = useRef<{ view?: { dispatch: (tr: Record<string, unknown>) => void; state: { doc: { toString: () => string }; update: (spec: Record<string, unknown>) => Record<string, unknown> } } | null } | null>(null);
 
   // Only push external value changes to CodeMirror — don't use controlled prop
-  const prevExtValue = useRef(value);
   useEffect(() => {
     if (!editorRef.current?.view) return;
     const curDoc = editorRef.current.view.state.doc.toString();
-    if (value !== curDoc && value !== prevExtValue.current) {
+    if (value !== curDoc) {
       const tr = editorRef.current.view.state.update({
         changes: { from: 0, to: curDoc.length, insert: value },
       });
       editorRef.current.view.dispatch(tr);
     }
-    prevExtValue.current = value;
   }, [value]);
 
   // ── Track last parsed content to skip whitespace-only changes ──
@@ -490,6 +520,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
 
   // ── Canvas → DBML (reverse sync, debounced) ──
   useEffect(() => {
+    if (nodes.length === 0) return;
+
     // Skip if this canvas change was triggered by our own DBML apply
     if (applyingFromDBML.current) {
       applyingFromDBML.current = false;
@@ -505,7 +537,25 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       generatingFromCanvas.current = true;
 
       try {
-        const dbml = erdToDBML(nodes, edges);
+        let dbml = erdToDBML(nodes, edges);
+        // Enum blocks used by a canvas column are regenerated from enum
+        // metadata. Preserve only enum names the generated DBML does not
+        // contain (for example, a standalone enum), avoiding duplicates.
+        const previous = prevValue.current || '';
+        const generatedEnumNames = new Set(
+          [...dbml.matchAll(/^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{/gim)]
+            .map(match => (match[1] || match[2]).toLowerCase()),
+        );
+        const enumExtras = ((previous.match(/^\s*Enum\s+(?:"[^"]+"|\w+)\s*\{[\s\S]*?^\s*\}/gim) || []) as string[])
+          .filter(block => {
+            const match = block.match(/^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{/i);
+            return match && !generatedEnumNames.has((match[1] || match[2]).toLowerCase());
+          });
+        const extras = [
+          ...enumExtras,
+          ...(previous.match(/^(Note|TableGroup)\s+\S[\s\S]*?\}/gm) || []),
+        ];
+        if (extras.length) dbml = dbml.trimEnd() + '\n\n' + extras.join('\n\n') + '\n';
         lastCanvasHash.current = canvasFingerprint(nodes, edges);
         // Only update if text actually changed — prevents cursor jump
         if (dbml !== prevValue.current) {
@@ -545,6 +595,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       <div className="flex-1 min-h-0 overflow-hidden">
         <CodeMirror
           ref={editorRef as any}
+          value={value}
           height="100%"
           theme={resolvedTheme === 'dark' ? oneDark : undefined}
           extensions={extensions}
@@ -600,7 +651,10 @@ function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
   const nodeIds = nodes.map(n => n.id).sort().join(',');
   const edgeIds = edges.map(e => e.id).sort().join(',');
   const positions = nodes.map(n => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}`).sort().join(';');
-  return `${nodeIds}|${edgeIds}|${positions}`;
+  const columns = nodes.map(n =>
+    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.is_pk}:${c.is_nullable}`).join(',')}`
+  ).sort().join('|');
+  return `${nodeIds}|${edgeIds}|${positions}|${columns}`;
 }
 
 /** Quick structural check: braces balanced, at least one table-like block. */

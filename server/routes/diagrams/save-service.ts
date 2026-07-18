@@ -246,7 +246,16 @@ export async function getDiagramWithData(uid: string, userId: string) {
         where: { entityId: entity.id },
         orderBy: { sortOrder: "asc" },
       });
-      return { ...entity, columns: columns || [] };
+      // Prisma exposes the mapped database field as `enumValues`; the ERD
+      // client uses `enum_values`. Without this normalization enum metadata
+      // disappeared after a browser reload, so DBML could no longer emit it.
+      return {
+        ...entity,
+        columns: columns.map((column: any) => ({
+          ...column,
+          enum_values: column.enumValues ?? column.enum_values ?? '',
+        })),
+      };
     })
   );
 
