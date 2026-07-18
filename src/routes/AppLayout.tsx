@@ -62,6 +62,7 @@ import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
+import { erdToDBML } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
@@ -143,6 +144,18 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
+
+  // ── Generate DBML from canvas when panel opens, clear when closed ──
+  useEffect(() => {
+    if (rightPanelMode === 'dbml' && nodes.length > 0) {
+      try {
+        const dbml = erdToDBML(nodes, edges);
+        if (dbml.trim()) setDbmlContent(dbml);
+      } catch { /* ignore conversion errors */ }
+    } else if (rightPanelMode !== 'dbml') {
+      setDbmlContent('');
+    }
+  }, [rightPanelMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Build entity context text from workspace data ───
   const entityContextText = useMemo(() => {
