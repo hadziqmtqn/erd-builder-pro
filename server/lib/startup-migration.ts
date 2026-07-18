@@ -287,4 +287,7 @@ export async function applySchemaMigrations(): Promise<void> {
 
   // v2.4+ — destinations column on backups table
   await addColumnIfMissing("backups", "destinations", "destinations TEXT");
+
+  // v3.1.4+ — persist DBML source alongside ERD canvas data
+  await addColumnIfMissing("diagrams", "dbml_source", '"dbml_source" TEXT');
 }

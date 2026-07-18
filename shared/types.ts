@@ -79,6 +79,8 @@ export interface Diagram {
   _version?: number;
   source_type?: string;
   source_connection_id?: number;
+  dbml_source?: string;
+  dbmlSource?: string;
 }
 
 export interface Note {

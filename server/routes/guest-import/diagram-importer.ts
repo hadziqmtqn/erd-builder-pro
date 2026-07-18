@@ -51,6 +51,7 @@ export async function importDiagrams(
         viewportX: item.viewport_x ?? item.viewportX ?? 0,
         viewportY: item.viewport_y ?? item.viewportY ?? 0,
         viewportZoom: item.viewport_zoom ?? item.viewportZoom ?? 1.0,
+        dbmlSource: item.dbml_source ?? item.dbmlSource ?? null,
         createdAt: safeDate(item.created_at),
         updatedAt: safeDate(item.updated_at),
       },

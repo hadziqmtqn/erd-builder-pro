@@ -12,6 +12,13 @@ import { EditorView } from '@codemirror/view';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { COLUMN_TYPES } from '@/lib/utils';
 import {
+  buildDBMLTableDefinitions,
+  parseDBMLColumn,
+  parseDBMLRef,
+  parseDBMLTableName,
+  readDBMLEnumNames,
+} from '@/lib/dbml-utils';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -250,13 +257,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       const lines = text.split('\n');
       let currentTable = '';
       let inTable = false;
-
-      // Collect enum names — valid column types
-      const enumNames = new Set<string>();
-      for (const l of lines) {
-        const em = l.match(/^\s*Enum\s+(\S+)\s*\{/i);
-        if (em) enumNames.add(em[1].toLowerCase());
-      }
+      const enumNames = readDBMLEnumNames(lines);
 
       // ── Type errors ──
       for (let i = 0; i < lines.length; i++) {
@@ -264,8 +265,9 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         const trimmed = line.trim();
         const lineFrom = doc.line(i + 1).from;
 
-        if (/^\s*(Table|table)\s+\S/.test(line)) {
-          currentTable = trimmed.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
+        const tableName = parseDBMLTableName(line);
+        if (tableName) {
+          currentTable = tableName;
           inTable = true;
           continue;
         }
@@ -274,10 +276,9 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         }
         if (inTable && trimmed && !trimmed.startsWith('//')) {
           // Match quoted or unquoted column: "name" TYPE or name TYPE
-          const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
-          if (m) {
-            const [, colName, rawType] = m;
-            const typeName = rawType.replace(/\[.*/, '').trim();
+          const column = parseDBMLColumn(trimmed);
+          if (column) {
+            const { name: colName, type: typeName } = column;
             if (typeName && !validTypes.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
               const typeStart = line.indexOf(typeName);
               diagnostics.push({
@@ -292,52 +293,14 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       }
 
       // ── Relationship/reference validation ──
-      // Build table → column → type map from the text
-      const tableDefs = new Map<string, Map<string, string>>();
-      {
-        let ct = '';
-        let inT = false;
-        for (const line of lines) {
-          const t = line.trim();
-          if (/^\s*(Table|table)\s+\S/.test(line)) {
-            ct = t.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
-            inT = true;
-            if (!tableDefs.has(ct)) tableDefs.set(ct, new Map());
-            continue;
-          }
-          if (t === '}' || t.startsWith('}')) { inT = false; ct = ''; continue; }
-          if (inT && t && !t.startsWith('//')) {
-            // Match quoted or unquoted column: "name" TYPE or name TYPE
-            const m = t.match(/^"([^"]+)"\s+(\S+)/) || t.match(/^(\w+)\s+(\S+)/);
-            if (m) {
-              const colName = m[1];
-              const colType = m[2].replace(/\[.*/, '').trim();
-              tableDefs.get(ct)?.set(colName, colType);
-            }
-          }
-        }
-      }
+      const { tableDefs, lineTables } = buildDBMLTableDefinitions(lines);
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const lineFrom = doc.line(i + 1).from;
-        const trimmed = line.trim();
-
-        // Standalone Ref: table.col > table.col
-        let rm = trimmed.match(/^Ref:\s*"?(\w+)"?\."?(\w+)"?\s*[><-]\s*"?(\w+)"?\."?(\w+)"?/i);
-        if (!rm) {
-          // Inline ref: [ref: > table.col] or [ref: < table.col]
-          rm = trimmed.match(/\[ref:\s*[><-]\s*"?(\w+)"?\."?(\w+)"?\]/i);
-          if (rm) {
-            // Pad to 5 groups for uniform access: [full, fkTable, fkCol, pkTable, pkCol]
-            // For inline ref, fkTable/fkCol come from context (current table)
-            rm = [rm[0], currentTable || '?', '', rm[1], rm[2]];
-          }
-        }
-
-        if (rm && rm[1] && rm[3]) {
-          const fkTable = rm[1], fkCol = rm[2] || '';
-          const pkTable = rm[3], pkCol = rm[4];
+        const ref = parseDBMLRef(line, lineTables[i]);
+        if (ref) {
+          const { fkTable, fkCol, pkTable, pkCol } = ref;
 
           // Validate FK table exists
           const fkCols = tableDefs.get(fkTable);
