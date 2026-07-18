@@ -73,6 +73,7 @@ function AppLayoutInner() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
   const [dbmlContent, setDbmlContent] = useState('');
+  const dbmlPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { rightPanelMode, setRightPanelMode, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
 
   // ─── Derive AI entity context from current route ─────
@@ -153,30 +154,48 @@ function AppLayoutInner() {
     ? `erd-builder-dbml:${entityContext.entityUid}`
     : null;
 
-  // Keep DBML-only definitions (notably standalone enums) across a browser
-  // reload. The ERD database stores column enum values, but an enum with no
-  // column has no canvas representation to persist.
+  const activeDiagramDbmlSource = activeDiagram?.dbml_source ?? activeDiagram?.dbmlSource ?? '';
+
+  // Read the persisted DBML source from the diagram first. Fall back to the
+  // legacy browser cache once so older users keep standalone DBML constructs.
   useEffect(() => {
     if (!dbmlStorageKey) {
       setDbmlContent('');
       return;
     }
+
+    if (activeDiagramDbmlSource) {
+      setDbmlContent(activeDiagramDbmlSource);
+      return;
+    }
+
     try {
-      setDbmlContent(localStorage.getItem(dbmlStorageKey) || '');
+      const legacyDbml = localStorage.getItem(dbmlStorageKey) || '';
+      setDbmlContent(legacyDbml);
+      if (legacyDbml.trim()) {
+        dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
+        dbmlPersistTimerRef.current = setTimeout(() => {
+          saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: legacyDbml });
+          if (!isGuest) triggerDebouncedSync();
+        }, 300);
+      }
     } catch {
       setDbmlContent('');
     }
-  }, [dbmlStorageKey]);
+  }, [dbmlStorageKey, activeDiagramDbmlSource, saveDiagram, viewportRef, isGuest, triggerDebouncedSync]);
 
   const handleDBMLContentChange = useCallback((content: string) => {
     setDbmlContent(content);
-    if (!dbmlStorageKey) return;
-    try {
-      localStorage.setItem(dbmlStorageKey, content);
-    } catch {
-      // DBML editing must remain available if browser storage is unavailable.
-    }
-  }, [dbmlStorageKey]);
+    dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
+    dbmlPersistTimerRef.current = setTimeout(() => {
+      saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
+      if (!isGuest) triggerDebouncedSync();
+    }, 800);
+  }, [saveDiagram, nodes, edges, viewportRef, isGuest, triggerDebouncedSync]);
+
+  useEffect(() => () => {
+    if (dbmlPersistTimerRef.current) clearTimeout(dbmlPersistTimerRef.current);
+  }, []);
 
   const openDBMLPanel = useCallback(() => {
     setRightPanelMode('dbml');

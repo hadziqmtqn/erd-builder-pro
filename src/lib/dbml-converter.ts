@@ -3,6 +3,13 @@ import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { COLUMN_TYPES } from '@/lib/utils';
 import { parseSQLToERD } from '@/lib/sqlParser';
+import {
+  buildDBMLTableDefinitions,
+  parseDBMLColumn,
+  parseDBMLRef,
+  parseDBMLTableName,
+  readDBMLEnumNames,
+} from '@/lib/dbml-utils';
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
 
@@ -13,23 +20,18 @@ const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
 function findTypeErrors(text: string): string[] {
   const errors: string[] = [];
   const lines = text.split('\n');
+  const enumNames = readDBMLEnumNames(lines);
   let currentTable = '';
   let inTable = false;
-
-  // Collect enum names — these are valid column types
-  const enumNames = new Set<string>();
-  for (const line of lines) {
-    const m = line.match(/^\s*Enum\s+(\S+)\s*\{/i);
-    if (m) enumNames.add(m[1].toLowerCase());
-  }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
     const trimmed = line.trim();
 
-    if (/^\s*(Table|table)\s+\S/.test(line)) {
-      currentTable = trimmed.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
+    const tableName = parseDBMLTableName(line);
+    if (tableName) {
+      currentTable = tableName;
       inTable = true;
       continue;
     }
@@ -44,10 +46,9 @@ function findTypeErrors(text: string): string[] {
       // Match quoted or bare column names. Bare names are the usual DBML form;
       // without this branch an incomplete type such as `bi` reached the SQL
       // converter, where unknown types are normalized to VARCHAR.
-      const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
-      if (m) {
-        const [, colName, rawType] = m;
-        const typeName = rawType.replace(/\[.*/, '').trim();
+      const column = parseDBMLColumn(trimmed);
+      if (column) {
+        const { name: colName, type: typeName } = column;
         if (typeName && !VALID_TYPES.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
           errors.push(
             `Line ${lineNum}: Invalid type "${typeName}" in table "${currentTable}" column "${colName}"`,
@@ -107,47 +108,16 @@ function readDBMLEnumColumns(text: string, enums: Map<string, string>): Map<stri
 function findRefTypeErrors(text: string): string[] {
   const errors: string[] = [];
   const lines = text.split('\n');
-
-  // Build table → column → type map
-  const tableDefs = new Map<string, Map<string, string>>();
-  let currentTable = '';
-  let inTable = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (/^\s*(Table|table)\s+\S/.test(line)) {
-      currentTable = trimmed.replace(/^(Table|table)\s+["']?(\S+?)['"]?\s*\{.*/, '$2');
-      inTable = true;
-      if (!tableDefs.has(currentTable)) tableDefs.set(currentTable, new Map());
-      continue;
-    }
-    if (trimmed === '}' || trimmed.startsWith('}')) { inTable = false; currentTable = ''; continue; }
-    if (inTable && trimmed && !trimmed.startsWith('//')) {
-      const m = trimmed.match(/^"([^"]+)"\s+(\S+)/) || trimmed.match(/^(\w+)\s+(\S+)/);
-      if (m) {
-        const colName = m[1];
-        const colType = m[2].replace(/\[.*/, '').trim();
-        tableDefs.get(currentTable)?.set(colName, colType);
-      }
-    }
-  }
+  const { tableDefs, lineTables } = buildDBMLTableDefinitions(lines);
 
   // Check Ref lines for type mismatches
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Standalone Ref
-    let rm = trimmed.match(/^Ref:\s*"?(\w+)"?\.\"?(\w+)"?\s*[><-]\s*"?(\w+)"?\.\"?(\w+)"?/i);
-    if (!rm) {
-      // Inline ref
-      rm = trimmed.match(/\[ref:\s*[><-]\s*"?(\w+)"?\.\"?(\w+)"?\]/i);
-      if (rm) rm = [rm[0], currentTable || '?', '', rm[1], rm[2]];
-    }
-    if (rm && rm[1] && rm[3]) {
-      const fkTable = rm[1], fkCol = rm[2] || '';
-      const pkTable = rm[3], pkCol = rm[4];
-      const fkType = tableDefs.get(fkTable)?.get(fkCol)?.toUpperCase().replace(/\s+/g, '');
-      const pkType = tableDefs.get(pkTable)?.get(pkCol)?.toUpperCase().replace(/\s+/g, '');
+  for (let i = 0; i < lines.length; i += 1) {
+    const ref = parseDBMLRef(lines[i], lineTables[i]);
+    if (ref) {
+      const fkType = tableDefs.get(ref.fkTable)?.get(ref.fkCol)?.toUpperCase().replace(/\s+/g, '');
+      const pkType = tableDefs.get(ref.pkTable)?.get(ref.pkCol)?.toUpperCase().replace(/\s+/g, '');
       if (fkType && pkType && fkType !== pkType) {
-        errors.push(`Type mismatch: "${fkTable}.${fkCol}" is ${tableDefs.get(fkTable)?.get(fkCol)} but "${pkTable}.${pkCol}" is ${tableDefs.get(pkTable)?.get(pkCol)}`);
+        errors.push(`Type mismatch: "${ref.fkTable}.${ref.fkCol}" is ${tableDefs.get(ref.fkTable)?.get(ref.fkCol)} but "${ref.pkTable}.${ref.pkCol}" is ${tableDefs.get(ref.pkTable)?.get(ref.pkCol)}`);
       }
     }
   }

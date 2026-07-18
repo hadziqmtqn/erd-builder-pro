@@ -112,6 +112,7 @@ model Diagram {
   sourceType        String? @default("blank") @map("source_type")
   sourceConnectionId Int?   @map("source_connection_id")
   data             String?  @map("data")  // JSON positions untuk production DB
+  dbmlSource       String?  @map("dbml_source")
   project       Project?       @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   user          User?          @relation(fields: [userId], references: [id], onUpdate: NoAction)
   entities      Entity[]

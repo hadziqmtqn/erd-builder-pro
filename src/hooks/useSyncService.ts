@@ -129,7 +129,8 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                   const cachedVersion = await getCachedDiagramVersion(draft.id);
                   body = { 
                     data: { nodes: parsedData.nodes, viewport: parsedData.viewport, _type: parsedData._type },
-                    viewport: parsedData.viewport, 
+                    viewport: parsedData.viewport,
+                    dbml_source: parsedData.dbml_source ?? '',
                     expectedVersion: cachedVersion !== null ? cachedVersion : undefined 
                   };
                 } else {
@@ -152,7 +153,13 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                   }));
                   
                   const cachedVersion = await getCachedDiagramVersion(draft.id);
-                  body = { entities, relationships, viewport: parsedData.viewport, expectedVersion: cachedVersion !== null ? cachedVersion : undefined };
+                  body = {
+                    entities,
+                    relationships,
+                    viewport: parsedData.viewport,
+                    dbml_source: parsedData.dbml_source ?? '',
+                    expectedVersion: cachedVersion !== null ? cachedVersion : undefined,
+                  };
                 }
               } else if (draft.type === DraftType.FLOWCHART) {
                 endpoint = `/api/flowcharts/${draft.id}`;

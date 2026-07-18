@@ -21,6 +21,8 @@ export async function saveDiagram(
     viewport?: { x: number; y: number; zoom: number };
     expectedVersion?: number | null;
     data?: any;
+    dbmlSource?: string | null;
+    dbml_source?: string | null;
   }
 ) {
   if (!prisma) throw new Error("Database connection not available");
@@ -38,7 +40,7 @@ export async function saveDiagram(
 
   const currentDiagram = await prisma.diagram.findFirst({
     where: diagramWhere,
-    select: { id: true, uid: true, version: true, updatedAt: true, name: true, data: true, sourceType: true },
+    select: { id: true, uid: true, version: true, updatedAt: true, name: true, data: true, sourceType: true, dbmlSource: true },
   });
 
   if (!currentDiagram) return null;
@@ -163,6 +165,8 @@ export async function saveDiagram(
     mergedData = incomingData;
   }
 
+  const normalizedDbmlSource = body.dbmlSource ?? body.dbml_source;
+
   const updatedDiagram = await prisma.diagram.update({
     where: { id: diagramId },
     data: {
@@ -171,6 +175,7 @@ export async function saveDiagram(
       viewportY: body.viewport?.y || 0,
       viewportZoom: body.viewport?.zoom || 1.0,
       ...(mergedData !== undefined && { data: typeof mergedData === "string" ? mergedData : JSON.stringify(mergedData) }),
+      ...(normalizedDbmlSource !== undefined && { dbmlSource: normalizedDbmlSource }),
     },
     select: { version: true },
   });
@@ -196,6 +201,7 @@ export async function saveDiagram(
           relationships: body.relationships,
           viewport: body.viewport,
           name: currentDiagram.name,
+          dbml_source: normalizedDbmlSource ?? currentDiagram.dbmlSource ?? null,
         }),
         changeType: "update",
       },

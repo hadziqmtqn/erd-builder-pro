@@ -7,6 +7,20 @@ import { RELATIONSHIP_TYPES } from '../lib/utils';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 
+function normalizeDiagramRecord(diagram: any): Diagram {
+  if (!diagram) return diagram;
+  return {
+    ...diagram,
+    project_id: diagram.project_id ?? diagram.projectId ?? null,
+    source_type: diagram.source_type ?? diagram.sourceType,
+    source_connection_id: diagram.source_connection_id ?? diagram.sourceConnectionId,
+    dbml_source: diagram.dbml_source ?? diagram.dbmlSource ?? '',
+    _version: diagram._version ?? diagram.version,
+    created_at: diagram.created_at ?? diagram.createdAt,
+    updated_at: diagram.updated_at ?? diagram.updatedAt,
+  };
+}
+
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [activeDiagramId, setActiveDiagramId] = useState<number | string | null>(null);
@@ -88,7 +102,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         const data = json.data !== undefined ? json.data : (Array.isArray(json) ? json : []);
         const total = json.total !== undefined ? json.total : (Array.isArray(data) ? data.length : 0);
         
-        const diagramsList = Array.isArray(data) ? data : [];
+        const diagramsList = (Array.isArray(data) ? data : []).map(normalizeDiagramRecord);
         if (isLoadMore) {
           setDiagrams(prev => [...prev, ...diagramsList]);
         } else {
@@ -123,6 +137,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         uid: crypto.randomUUID(),
         name,
         project_id: effectiveProjectId || null,
+        dbml_source: '',
         is_deleted: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -144,7 +159,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         body: JSON.stringify({ name, project_id: effectiveProjectId, uid: createUid }),
       });
       if (res.ok) {
-        const newDiagram = await res.json();
+        const newDiagram = normalizeDiagramRecord(await res.json());
         if (!newDiagram.uid) {
           newDiagram.uid = createUid;
         }
@@ -333,15 +348,21 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     }
   };
 
-  const saveDiagram = useCallback(async (nodes: Node<Entity>[], edges: Edge[], viewport: Viewport, options?: { expectedVersion?: number; retryCount?: number }) => {
+  const saveDiagram = useCallback(async (
+    nodes: Node<Entity>[],
+    edges: Edge[],
+    viewport: Viewport,
+    options?: { expectedVersion?: number; retryCount?: number; dbmlSource?: string | null },
+  ) => {
     if (!activeDiagramId || (view !== 'erd' && view !== 'diagram')) return;
     
-    const { expectedVersion: passedVersion, retryCount = 0 } = options || {};
+    const { expectedVersion: passedVersion, dbmlSource } = options || {};
     
     try {
       // Check if this is a production DB diagram
       const currentDiagram = diagramsRef.current.find(d => String(d.id) === String(activeDiagramId) || String(d.uid) === String(activeDiagramId));
       const isProductionDb = currentDiagram?.source_connection_id;
+      const nextDbmlSource = dbmlSource ?? currentDiagram?.dbml_source ?? currentDiagram?.dbmlSource ?? '';
       
       let data: string;
       if (isProductionDb) {
@@ -360,11 +381,12 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         data = JSON.stringify({ 
           nodes: positions, 
           viewport,
-          _type: 'production_db_positions'
+          _type: 'production_db_positions',
+          dbml_source: nextDbmlSource,
         });
       } else {
         // Scratch diagram: save full nodes + edges
-        data = JSON.stringify({ nodes, edges, viewport });
+        data = JSON.stringify({ nodes, edges, viewport, dbml_source: nextDbmlSource });
       }
       
       const isSyncPending = !isGuestCheck();
@@ -399,6 +421,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           diagram.viewport_x = viewport.x;
           diagram.viewport_y = viewport.y;
           diagram.viewport_zoom = viewport.zoom;
+          diagram.dbml_source = nextDbmlSource;
           diagram.updated_at = new Date().toISOString();
           await localPersistence.saveResource(diagram);
         } else {
@@ -432,12 +455,23 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
             viewport_x: viewport.x,
             viewport_y: viewport.y,
             viewport_zoom: viewport.zoom,
+            dbml_source: nextDbmlSource,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
           await localPersistence.saveResource(fallbackResource);
         }
       }
+
+      setDiagrams(prev => prev.map((diagram: any) =>
+        String(diagram.id) === String(activeDiagramId) || String(diagram.uid) === String(activeDiagramId)
+          ? (
+            diagram.dbml_source === nextDbmlSource && diagram.dbmlSource === nextDbmlSource
+              ? diagram
+              : { ...diagram, dbml_source: nextDbmlSource, dbmlSource: nextDbmlSource }
+          )
+          : diagram
+      ));
 
       // 🔒 Get version for optimistic locking
       const expectedVersion = passedVersion !== undefined ? passedVersion : await getCachedDiagramVersion(activeDiagramId);

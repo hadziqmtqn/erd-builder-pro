@@ -245,7 +245,12 @@ export interface WorkspaceContextValue {
   confirmPermanentDelete: () => Promise<void>;
 
   // CRUD
-  saveDiagram: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
+  saveDiagram: (
+    nodes: Node<Entity>[],
+    edges: Edge[],
+    viewport: any,
+    options?: { expectedVersion?: number; retryCount?: number; dbmlSource?: string | null }
+  ) => Promise<void>;
   saveNote: (note: any) => Promise<boolean>;
   saveDrawing: (drawing: any) => Promise<boolean>;
   saveFlowchart: (flowchart: any) => Promise<boolean>;

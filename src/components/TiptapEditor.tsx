@@ -1,5 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { apiFetch, getAuthToken } from '@/lib/api';
 import StarterKit from '@tiptap/starter-kit';
@@ -37,6 +39,50 @@ import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
 import { TableBubbleMenu } from './editor/menus/TableBubbleMenu';
 import { DocumentOutline, HeadingInfo } from './editor/panels/DocumentOutline';
 import { LinkDialog } from './editor/dialogs/LinkDialog';
+
+const MARKDOWN_PATTERNS = [
+  /^\s{0,3}#{1,6}\s+\S/m,
+  /^\s{0,3}(?:[-*+])\s+\S/m,
+  /^\s{0,3}\d+\.\s+\S/m,
+  /^\s{0,3}>\s+\S/m,
+  /^\s{0,3}```[\s\S]*?^\s{0,3}```/m,
+  /^\s{0,3}[-*_]{3,}\s*$/m,
+  /^\s{0,3}- \[[ xX]\]\s+\S/m,
+  /\[[^\]]+\]\([^)]+\)/,
+  /(?:^|[^\w])(?:\*\*|__)[^\n]+(?:\*\*|__)(?:[^\w]|$)/,
+  /(?:^|[^\w])~~[^\n]+~~(?:[^\w]|$)/,
+  /`[^`\n]+`/,
+];
+
+function isMarkdownTable(text: string): boolean {
+  const lines = text.trim().split(/\r?\n/);
+  return lines.some((line, index) => {
+    if (index === 0) return false;
+    const previous = lines[index - 1];
+    return previous.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  });
+}
+
+function isLikelyMarkdown(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (isMarkdownTable(trimmed)) return true;
+  return MARKDOWN_PATTERNS.some(pattern => pattern.test(trimmed));
+}
+
+function unwrapMarkdownFence(text: string): string {
+  const match = text.trim().match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i);
+  if (!match) return text;
+  const inner = match[1].trim();
+  return isLikelyMarkdown(inner) ? inner : text;
+}
+
+function insertHtmlIntoView(view: EditorView, html: string): void {
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(container);
+  view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+}
 
 interface TiptapEditorProps {
   content: string;
@@ -187,9 +233,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain');
         const html = event.clipboardData?.getData('text/html');
-
-        const isMarkdownTable = /\|[\s-]*:?---[:\s-]*\|/.test(text || '');
-        const isMarkdownGeneral = text ? /^\s*#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>|^\s*[-*_]{3,}\s*$|^\s*```|\[.+?\]\(.+?\)|\*\*.+?\*\*|__.+?\__|~~.+?~~|`[^`]+`|^\|.+\|/m.test(text) : false;
+        const markdownText = text ? unwrapMarkdownFence(text) : '';
 
         // Detect Excel/Sheets/Table paste
         const isTablePaste = html && (
@@ -212,9 +256,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
               // Normalize structure via NoteImporter (ensures thead/tbody etc)
               const processedHtml = await NoteImporter.processHtmlForEditor(cleanHtml);
               
-              if (editor) {
-                editor.commands.insertContent(processedHtml);
-              }
+              insertHtmlIntoView(view, processedHtml);
             } catch (error) {
               console.error('Error processing table paste:', error);
             }
@@ -222,16 +264,12 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
           return true;
         }
 
-        // If it's already HTML (but not a spreadsheet table), we usually let Tiptap handle it, 
-        // UNLESS it looks like a markdown table (which Tiptap might not parse well from plain text)
-        if (html && !isMarkdownTable) return false;
-
-        if (text && (isMarkdownGeneral || isMarkdownTable)) {
+        if (markdownText && isLikelyMarkdown(markdownText)) {
             // We use an async IIFE because handlePaste expects a boolean return but processing might be async
             (async () => {
               try {
                 // Parse markdown to HTML
-                const parsedHtml = await marked.parse(text);
+                const parsedHtml = await marked.parse(markdownText, { gfm: true, breaks: true });
                 
                 // Use NoteImporter's robust processing (handles tables, task lists, etc.)
                 const processedHtml = await NoteImporter.processHtmlForEditor(parsedHtml);
@@ -242,17 +280,20 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
                   ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td']
                 });
                 
-                if (editor) {
-                  editor.commands.insertContent(cleanHtml);
-                }
+                insertHtmlIntoView(view, cleanHtml);
               } catch (error) {
                 console.error('Error parsing markdown on paste:', error);
                 // Fallback to default paste if parsing fails
-                document.execCommand('insertText', false, text);
+                view.dispatch(view.state.tr.insertText(markdownText));
               }
             })();
             return true; // We handled the paste
         }
+
+        // If it's already HTML and does not look like Markdown source, let Tiptap
+        // preserve the existing rich clipboard structure.
+        if (html) return false;
+
         return false;
       }
     },
