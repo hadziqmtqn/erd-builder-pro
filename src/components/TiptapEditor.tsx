@@ -356,15 +356,39 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const htmlContent = (html: string) =>
     html.replace(/\s*class=""\s*/g, '').replace(/\s+/g, ' ').trim();
 
+  const recentLocalContentRef = useRef<string[]>([]);
+  const rememberLocalContent = React.useCallback((html: string) => {
+    const normalized = htmlContent(html);
+    recentLocalContentRef.current = [
+      normalized,
+      ...recentLocalContentRef.current.filter(item => item !== normalized),
+    ].slice(0, 20);
+  }, []);
+
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    if (typeof content === 'string' && editor.getHTML() !== content) {
-      // Only sync if normalized HTML matches — prevents overwriting user's
-      // format-only edits (alignment, color) that don't change plain text.
-      if (htmlContent(editor.getHTML()) === htmlContent(content)) {
-        editor.commands.setContent(content);
-      }
+    if (typeof content !== 'string') return;
+
+    const currentHtml = editor.getHTML();
+    if (currentHtml === content) return;
+
+    const normalizedIncoming = htmlContent(content);
+
+    // Autosave writes the same local edits back into React state after async
+    // persistence. Re-applying that content with setContent resets ProseMirror
+    // selection and can throw the caret to another paragraph while the user is
+    // still typing.
+    if (recentLocalContentRef.current.includes(normalizedIncoming)) {
+      return;
     }
+
+    // If the only difference is serializer noise, keep the live editor document
+    // untouched so selection stays exactly where the user left it.
+    if (htmlContent(currentHtml) === normalizedIncoming) {
+      return;
+    }
+
+    editor.commands.setContent(content, { emitUpdate: false });
   }, [editor, content]);
 
   // Debounce ref for onChange — prevents cascading re-renders on every keystroke
@@ -409,7 +433,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       }
       onChangeTimeoutRef.current = setTimeout(() => {
         if (onChange) {
-          onChange(editor.getHTML());
+          const latestHtml = editor.getHTML();
+          rememberLocalContent(latestHtml);
+          onChange(latestHtml);
         }
       }, 150);
 
@@ -453,7 +479,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         clearTimeout(onChangeTimeoutRef.current);
       }
     };
-  }, [editor, onChange]);
+  }, [editor, onChange, rememberLocalContent]);
 
   const openLinkDialog = () => {
     if (editor) {
@@ -506,7 +532,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       >
         <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined">
 
-          <DocumentOutline headings={headings} scrollToHeading={scrollToHeading} editor={editor} />
+          <DocumentOutline headings={headings} scrollToHeading={scrollToHeading} />
 
           {editor && !isReadOnly && (
             <>
