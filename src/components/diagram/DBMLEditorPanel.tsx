@@ -652,7 +652,7 @@ function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
   const edgeIds = edges.map(e => e.id).sort().join(',');
   const positions = nodes.map(n => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}`).sort().join(';');
   const columns = nodes.map(n =>
-    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.is_pk}:${c.is_nullable}`).join(',')}`
+    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.enum_name || ''}:${c.enum_values || ''}:${c.is_pk}:${c.is_nullable}`).join(',')}`
   ).sort().join('|');
   return `${nodeIds}|${edgeIds}|${positions}|${columns}`;
 }
