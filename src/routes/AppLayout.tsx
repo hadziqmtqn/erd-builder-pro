@@ -145,17 +145,61 @@ function AppLayoutInner() {
     breadcrumbLabel,
   } = useWorkspace();
 
-  // ── Generate DBML from canvas when panel opens, clear when closed ──
+  // Use the URL UUID rather than activeDiagramId. The workspace can briefly
+  // switch that ID from a numeric value to a UUID while loading; using it as
+  // the key caused a later effect to read an empty key and erase DBML that had
+  // just been generated.
+  const dbmlStorageKey = entityContext?.entityType === 'diagram'
+    ? `erd-builder-dbml:${entityContext.entityUid}`
+    : null;
+
+  // Keep DBML-only definitions (notably standalone enums) across a browser
+  // reload. The ERD database stores column enum values, but an enum with no
+  // column has no canvas representation to persist.
   useEffect(() => {
-    if (rightPanelMode === 'dbml' && nodes.length > 0) {
-      try {
-        const dbml = erdToDBML(nodes, edges);
-        if (dbml.trim()) setDbmlContent(dbml);
-      } catch { /* ignore conversion errors */ }
-    } else if (rightPanelMode !== 'dbml') {
+    if (!dbmlStorageKey) {
+      setDbmlContent('');
+      return;
+    }
+    try {
+      setDbmlContent(localStorage.getItem(dbmlStorageKey) || '');
+    } catch {
       setDbmlContent('');
     }
-  }, [rightPanelMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dbmlStorageKey]);
+
+  const handleDBMLContentChange = useCallback((content: string) => {
+    setDbmlContent(content);
+    if (!dbmlStorageKey) return;
+    try {
+      localStorage.setItem(dbmlStorageKey, content);
+    } catch {
+      // DBML editing must remain available if browser storage is unavailable.
+    }
+  }, [dbmlStorageKey]);
+
+  const openDBMLPanel = useCallback(() => {
+    setRightPanelMode('dbml');
+    if (dbmlContent.trim() || nodes.length === 0) return;
+    try {
+      const dbml = erdToDBML(nodes, edges);
+      if (dbml.trim()) handleDBMLContentChange(dbml);
+    } catch {
+      // The panel still opens; the regular sync effect will retry after canvas settles.
+    }
+  }, [setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
+
+  // ── Generate DBML from canvas on the first panel open. Keep the source text
+  // while switching panels: it contains DBML-only constructs (Enum, Note and
+  // TableGroup) which the canvas does not model completely.
+  useEffect(() => {
+    if (rightPanelMode === 'dbml' && nodes.length > 0 && !dbmlContent.trim()) {
+      try {
+        const dbml = erdToDBML(nodes, edges);
+        if (dbml.trim()) handleDBMLContentChange(dbml);
+      } catch { /* ignore conversion errors */ }
+    }
+  }, [rightPanelMode, nodes, edges, dbmlContent, handleDBMLContentChange]);
 
   // ─── Build entity context text from workspace data ───
   const entityContextText = useMemo(() => {
@@ -287,7 +331,15 @@ function AppLayoutInner() {
         const colMap = new Map<string, string>();
         n.data.columns = n.data.columns.map(nc => {
           const ec = existing.data.columns.find(c => c.name === nc.name);
-          if (ec) { colMap.set(nc.id, ec.id); return { ...nc, id: ec.id }; }
+          if (ec) {
+            colMap.set(nc.id, ec.id);
+            // Preserve enum_values and ENUM type from canvas
+            // (parser loses enum_values during DBML→SQL→ERD roundtrip)
+            return { ...nc, id: ec.id,
+              enum_values: nc.enum_values || ec.enum_values,
+              type: (ec.type.toUpperCase() === 'ENUM' && ec.enum_values && nc.type.toUpperCase() !== 'ENUM')
+                ? ec.type : nc.type };
+          }
           return nc;
         });
         // Remap edge handles to use canvas column IDs
@@ -296,7 +348,9 @@ function AppLayoutInner() {
           if (e.target === n.id) e.targetHandle = remapCol(e.targetHandle, colMap);
         }
         return { ...n, id: existing.id, position: existing.position,
-          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y } };
+          data: { ...n.data, id: existing.data.id, x: existing.data.x, y: existing.data.y,
+            color: existing.data.color, collapsed: existing.data.collapsed,
+            hidden_columns: existing.data.hidden_columns, note: existing.data.note } };
       }
       // New table: column IDs are already UUIDs from parser — pass through
       return n;
@@ -629,7 +683,7 @@ function AppLayoutInner() {
                     AI Chat
                   </button>
                   <button
-                    onClick={() => setRightPanelMode('dbml')}
+                    onClick={openDBMLPanel}
                     className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
                       rightPanelMode === 'dbml'
                         ? 'border-primary text-primary bg-background/50'
@@ -650,10 +704,14 @@ function AppLayoutInner() {
                 {rightPanelMode === 'dbml' ? (
                   <DBMLEditorPanel
                     value={dbmlContent}
-                    onChange={setDbmlContent}
+                    onChange={handleDBMLContentChange}
                     onApply={handleDBMLApply}
                     nodes={nodes}
                     edges={edges}
+                    onSelectTable={(name) => {
+                      const node = nodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
+                      if (node) setSelectedNodeId(node.id);
+                    }}
                   />
                 ) : (
                   <AIChatPanel

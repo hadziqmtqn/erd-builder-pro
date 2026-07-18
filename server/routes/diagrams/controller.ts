@@ -177,7 +177,13 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
           where: { entityId: entity.id },
           orderBy: { sortOrder: "asc" },
         });
-        return { ...entity, columns: columns || [] };
+        return {
+          ...entity,
+          columns: columns.map((column: any) => ({
+            ...column,
+            enum_values: column.enumValues ?? column.enum_values ?? '',
+          })),
+        };
       })
     );
 

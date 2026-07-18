@@ -189,7 +189,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         const html = event.clipboardData?.getData('text/html');
 
         const isMarkdownTable = /\|[\s-]*:?---[:\s-]*\|/.test(text || '');
-        const isMarkdownGeneral = text ? /^\s*#|^\s*[-*+] |^\s*\||\[.*\]\(.*\)|(\*\*|__).*(\*\*|__)|`.*`|^\|.*\|/m.test(text) : false;
+        const isMarkdownGeneral = text ? /^\s*#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>|^\s*[-*_]{3,}\s*$|^\s*```|\[.+?\]\(.+?\)|\*\*.+?\*\*|__.+?\__|~~.+?~~|`[^`]+`|^\|.+\|/m.test(text) : false;
 
         // Detect Excel/Sheets/Table paste
         const isTablePaste = html && (
@@ -309,17 +309,18 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     };
   }, [editor, setSelectionText, disableAISelection]);
 
-  // Normalize HTML to plain text — strips tags and trims.
-  // Shared between content sync guard and handleUpdate.
-  const textContent = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+  // Normalize HTML for comparison — preserves format attrs (style) but strips
+  // Tiptap normalization noise (empty class, whitespace). Used to detect real
+  // content changes including format-only edits like text alignment.
+  const htmlContent = (html: string) =>
+    html.replace(/\s*class=""\s*/g, '').replace(/\s+/g, ' ').trim();
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     if (typeof content === 'string' && editor.getHTML() !== content) {
-      // Only sync if the editor doesn't have additional *substantive* edits beyond
-      // what the prop represents. Prevents overwriting the editor with stale saved
-      // content while the user is still typing (saveNote fires mid-edit).
-      if (textContent(editor.getHTML()) === textContent(content)) {
+      // Only sync if normalized HTML matches — prevents overwriting user's
+      // format-only edits (alignment, color) that don't change plain text.
+      if (htmlContent(editor.getHTML()) === htmlContent(content)) {
         editor.commands.setContent(content);
       }
     }
@@ -350,10 +351,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     };
 
     const handleUpdate = () => {
-      // Skip if editor content matches the prop value — this update came from
-      // an external content sync (setContent from API load / note switch), not a user edit.
-      // Prevents re-saving content just loaded, or saving empty content on slow networks.
-      if (textContent(editor.getHTML()) === textContent(contentPropRef.current)) {
+      // Skip if normalized HTML matches prop — this update came from
+      // an external content sync, not a user edit. Uses HTML comparison
+      // (not plain text) so format-only edits (alignment) are detected.
+      if (htmlContent(editor.getHTML()) === htmlContent(contentPropRef.current)) {
         extractHeadings();
         return;
       }
