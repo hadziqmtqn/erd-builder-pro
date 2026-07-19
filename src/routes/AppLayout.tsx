@@ -62,10 +62,20 @@ import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
-import { erdToDBML } from '@/lib/dbml-converter';
+import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
+
+function isValidDBMLSource(content: string): boolean {
+  if (!content.trim()) return false;
+  try {
+    dbmlToERD(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function AppLayoutInner() {
   const location = useLocation();
@@ -175,8 +185,9 @@ function AppLayoutInner() {
       setDbmlContent(legacyDbml);
       if (legacyDbml.trim()) {
         dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
-        dbmlPersistTimerRef.current = setTimeout(() => {
-          saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: legacyDbml });
+        dbmlPersistTimerRef.current = setTimeout(async () => {
+          if (!isValidDBMLSource(legacyDbml)) return;
+          await saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: legacyDbml });
           if (!isGuest) triggerDebouncedSync();
         }, 300);
       }
@@ -185,13 +196,22 @@ function AppLayoutInner() {
     }
   }, [dbmlStorageKey, activeDiagramDbmlSource, saveDiagram, viewportRef, isGuest, triggerDebouncedSync]);
 
-  const handleDBMLContentChange = useCallback((content: string) => {
+  const handleDBMLContentChange = useCallback((content: string, persistNow = false) => {
     setDbmlContent(content);
     dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
-    dbmlPersistTimerRef.current = setTimeout(() => {
-      saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
+
+    const persist = async () => {
+      if (!isValidDBMLSource(content)) return;
+      await saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
       if (!isGuest) triggerDebouncedSync();
-    }, 800);
+    };
+
+    if (persistNow) {
+      void persist();
+      return;
+    }
+
+    dbmlPersistTimerRef.current = setTimeout(() => { void persist(); }, 800);
   }, [saveDiagram, nodes, edges, viewportRef, isGuest, triggerDebouncedSync]);
 
   useEffect(() => () => {
@@ -204,7 +224,7 @@ function AppLayoutInner() {
     if (dbmlContent.trim() || nodes.length === 0) return;
     try {
       const dbml = erdToDBML(nodes, edges);
-      if (dbml.trim()) handleDBMLContentChange(dbml);
+      if (dbml.trim()) handleDBMLContentChange(dbml, true);
     } catch {
       // The panel still opens; the regular sync effect will retry after canvas settles.
     }
@@ -217,7 +237,7 @@ function AppLayoutInner() {
     if (rightPanelMode === 'dbml' && isActiveDiagramContext && nodes.length > 0 && !dbmlContent.trim()) {
       try {
         const dbml = erdToDBML(nodes, edges);
-        if (dbml.trim()) handleDBMLContentChange(dbml);
+        if (dbml.trim()) handleDBMLContentChange(dbml, true);
       } catch { /* ignore conversion errors */ }
     }
   }, [rightPanelMode, isActiveDiagramContext, nodes, edges, dbmlContent, handleDBMLContentChange]);
@@ -430,10 +450,10 @@ function AppLayoutInner() {
     setEdges(mergedEdges);
     // Always update React state (fixes handles/IDs), but only save if data changed
     if (!nodesSame || !edgesSame) {
-      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current);
-      triggerDebouncedSync?.();
+      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current, { dbmlSource: dbmlContent })
+        ?.then(() => triggerDebouncedSync?.());
     }
-  }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync, dbmlContent]);
 
   // ── Collapse left sidebar when right panel opens ──
   const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();

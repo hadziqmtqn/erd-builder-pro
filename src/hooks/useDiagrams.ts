@@ -31,6 +31,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   const [hasMoreDiagrams, setHasMoreDiagrams] = useState(false);
   const diagramsRef = useRef<Diagram[]>(diagrams);
   const activeDiagramIdRef = useRef(activeDiagramId);
+  const dbmlSourceRef = useRef<Record<string, string | null>>({});
 
   const isGuestRef = useRef(isGuest);
   useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
@@ -362,7 +363,12 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       // Check if this is a production DB diagram
       const currentDiagram = diagramsRef.current.find(d => String(d.id) === String(activeDiagramId) || String(d.uid) === String(activeDiagramId));
       const isProductionDb = currentDiagram?.source_connection_id;
-      const nextDbmlSource = dbmlSource ?? currentDiagram?.dbml_source ?? currentDiagram?.dbmlSource ?? '';
+      const dbmlKeys = [activeDiagramId, currentDiagram?.uid, currentDiagram?.id]
+        .filter((value): value is string | number => value !== null && value !== undefined)
+        .map(String);
+      const cachedDbmlSource = dbmlKeys.map(key => dbmlSourceRef.current[key]).find(value => value !== undefined);
+      const nextDbmlSource = dbmlSource ?? cachedDbmlSource ?? currentDiagram?.dbml_source ?? currentDiagram?.dbmlSource ?? '';
+      dbmlKeys.forEach(key => { dbmlSourceRef.current[key] = nextDbmlSource; });
       
       let data: string;
       if (isProductionDb) {
