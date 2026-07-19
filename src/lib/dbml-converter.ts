@@ -13,6 +13,162 @@ import {
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
 
+function stripTypeParameters(typeName: string): string {
+  const match = typeName.trim().match(/^([A-Za-z][\w]*)\s*\([^)]*\)$/);
+  return match ? match[1] : typeName.trim();
+}
+
+function parseInlineEnumValues(typeName: string): string[] | null {
+  const match = typeName.trim().match(/^enum\s*\(([\s\S]*)\)$/i);
+  if (!match) return null;
+
+  const values: string[] = [];
+  const valueRegex = /'([^']+)'|"([^"]+)"|([^,\s][^,]*)/g;
+  for (const valueMatch of match[1].matchAll(valueRegex)) {
+    const value = (valueMatch[1] || valueMatch[2] || valueMatch[3] || '').trim();
+    if (value) values.push(value);
+  }
+  return values.length ? values : null;
+}
+
+function normalizeEnumValue(value: string): string {
+  const cleaned = value.trim().replace(/^['"]|['"]$/g, '');
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(cleaned)
+    ? cleaned
+    : `"${cleaned.replace(/"/g, '\\"')}"`;
+}
+
+function normalizeGeneratedEnumName(tableName: string, columnName: string): string {
+  return `${tableName}_${columnName}`
+    .replace(/[^A-Za-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/^(\d)/, '_$1')
+    || 'generated_enum';
+}
+
+function parseColumnLine(line: string): { prefix: string; columnName: string; typeName: string; suffix: string } | null {
+  const match = line.match(/^(\s*(?:"([^"]+)"|(\w+))\s+)(.+)$/);
+  if (!match) return null;
+
+  const rest = match[4];
+  let depth = 0;
+  let quote: string | null = null;
+  let suffixStart = -1;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const char = rest[i];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === '(') depth += 1;
+    if (char === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /\s/.test(char) && rest.slice(i).trimStart().startsWith('[')) {
+      suffixStart = i;
+      break;
+    }
+  }
+
+  const rawType = suffixStart === -1 ? rest.trim() : rest.slice(0, suffixStart).trim();
+  const suffix = suffixStart === -1 ? '' : rest.slice(suffixStart);
+  if (!rawType) return null;
+
+  return {
+    prefix: match[1],
+    columnName: (match[2] || match[3] || '').trim(),
+    typeName: rawType,
+    suffix,
+  };
+}
+
+function normalizeInlineRef(line: string, currentTable: string): string | null {
+  const match = line.trim().match(/^Ref:\s*(?:(?:"([^"]+)"|(\w+))\.)?"?([^".\s]+)"?\s*([><-])\s*(?:"([^"]+)"|(\w+))\."?([^".\s]+)"?/i);
+  if (!match) return null;
+  const leftTable = match[1] || match[2] || currentTable;
+  const leftColumn = match[3];
+  const operator = match[4];
+  const rightTable = match[5] || match[6];
+  const rightColumn = match[7];
+  if (!leftTable || !leftColumn || !rightTable || !rightColumn) return null;
+  return `Ref: ${leftTable}.${leftColumn} ${operator} ${rightTable}.${rightColumn}`;
+}
+
+function normalizeDBMLForParser(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const normalizedLines: string[] = [];
+  const generatedEnums: { name: string; values: string[] }[] = [];
+  const generatedRefs: string[] = [];
+  let currentTable = '';
+  let inTable = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const tableName = parseDBMLTableName(line);
+    if (tableName) {
+      currentTable = tableName;
+      inTable = true;
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (inTable && trimmed.startsWith('Ref:')) {
+      const normalizedRef = normalizeInlineRef(line, currentTable);
+      if (normalizedRef) generatedRefs.push(normalizedRef);
+      continue;
+    }
+
+    if (trimmed === '}' || trimmed.startsWith('}')) {
+      inTable = false;
+      currentTable = '';
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (inTable && trimmed && !trimmed.startsWith('//')) {
+      const column = parseColumnLine(line);
+      if (column) {
+        const enumValues = parseInlineEnumValues(column.typeName);
+        if (enumValues) {
+          const enumName = normalizeGeneratedEnumName(currentTable, column.columnName);
+          generatedEnums.push({ name: enumName, values: enumValues });
+          normalizedLines.push(`${column.prefix}${enumName}${column.suffix}`);
+          continue;
+        }
+
+        const normalizedType = stripTypeParameters(column.typeName);
+        if (normalizedType !== column.typeName) {
+          normalizedLines.push(`${column.prefix}${normalizedType}${column.suffix}`);
+          continue;
+        }
+      }
+    }
+
+    normalizedLines.push(line);
+  }
+
+  if (generatedEnums.length > 0) {
+    normalizedLines.push('');
+    for (const generatedEnum of generatedEnums) {
+      normalizedLines.push(`Enum ${generatedEnum.name} {`);
+      for (const value of generatedEnum.values) {
+        normalizedLines.push(`  ${normalizeEnumValue(value)}`);
+      }
+      normalizedLines.push('}');
+      normalizedLines.push('');
+    }
+  }
+
+  if (generatedRefs.length > 0) {
+    normalizedLines.push(...generatedRefs);
+  }
+
+  return normalizedLines.join('\n').trim();
+}
+
 /**
  * Pre-scan DBML text for invalid column types.
  * Regex-based — catches type issues before the parser does.
@@ -49,7 +205,8 @@ function findTypeErrors(text: string): string[] {
       const column = parseDBMLColumn(trimmed);
       if (column) {
         const { name: colName, type: typeName } = column;
-        if (typeName && !VALID_TYPES.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
+        const normalizedTypeName = stripTypeParameters(typeName);
+        if (normalizedTypeName && !VALID_TYPES.has(normalizedTypeName.toUpperCase()) && !enumNames.has(normalizedTypeName.toLowerCase())) {
           errors.push(
             `Line ${lineNum}: Invalid type "${typeName}" in table "${currentTable}" column "${colName}"`,
           );
@@ -130,15 +287,17 @@ function findRefTypeErrors(text: string): string[] {
  * Tables become Entity nodes, Refs become relationship edges.
  */
 export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edge[] } {
+  const normalizedDBML = normalizeDBMLForParser(dbmlText);
+
   // ── Pre-scan: find type errors ──
-  const typeErrors = findTypeErrors(dbmlText);
-  const refTypeErrors = findRefTypeErrors(dbmlText);
+  const typeErrors = findTypeErrors(normalizedDBML);
+  const refTypeErrors = findRefTypeErrors(normalizedDBML);
 
   // ── DBML → SQL via @dbml/core ──
   let parseError: string | null = null;
   let sql: string;
   try {
-    const db = Parser.parse(dbmlText, 'dbml');
+    const db = Parser.parse(normalizedDBML, 'dbml');
     sql = ModelExporter.export(db, 'postgres');
   } catch (e: any) {
     const diags = e?.diags;
@@ -160,8 +319,8 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   // PostgreSQL emits named enums as `CREATE TYPE name AS ENUM (...)`, while
   // the SQL parser normalizes unknown named types to VARCHAR. Restore the enum
   // marker and values from the authoritative DBML table definitions.
-  const enums = readDBMLEnums(dbmlText);
-  const enumColumns = readDBMLEnumColumns(dbmlText, enums);
+  const enums = readDBMLEnums(normalizedDBML);
+  const enumColumns = readDBMLEnumColumns(normalizedDBML, enums);
   for (const node of result.nodes) {
     for (const column of node.data.columns) {
       const enumColumn = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, Database, Plus, AlertTriangle } from 'lucide-react';
 import type { Node, Edge } from '@xyflow/react';
 import { parseSQLToERD } from '@/lib/sqlParser';
+import { dbmlToERD } from '@/lib/dbml-converter';
 import { apiFetch } from '@/lib/api';
 import { toast } from 'sonner';
 import { Entity } from '@/types';
@@ -15,9 +16,10 @@ import {
   SelectItem, SelectGroup, SelectLabel,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { extractDBML, extractSQL } from './chatUtils';
 
 export interface ErdFromSqlDialogProps {
-  sql: string;
+  schema: string;
   onClose: () => void;
   diagrams: any[];
   targetProjectId: string | number | null | undefined;
@@ -28,7 +30,7 @@ export interface ErdFromSqlDialogProps {
 }
 
 export function ErdFromSqlDialog({
-  sql,
+  schema,
   onClose,
   diagrams,
   targetProjectId,
@@ -43,11 +45,27 @@ export function ErdFromSqlDialog({
   const [erdFetchingExisting, setErdFetchingExisting] = useState(false);
   const [erdModeConfirming, setErdModeConfirming] = useState(false);
 
-  // ── Memoized parsed SQL ──
+  const normalizedSchema = useMemo(() => {
+    if (!schema) return '';
+    return extractDBML(schema) || extractSQL(schema) || schema.trim();
+  }, [schema]);
+
+  const schemaKind = useMemo<'dbml' | 'sql'>(() => {
+    const dbmlKeywords = /^\s*(?:Table|Enum)\s+(?:"[^"]+"|[\w.]+)\s*\{|^\s*Ref\s*:/im;
+    const sqlKeywords = /\b(?:CREATE|ALTER)\s+TABLE\b/i;
+    if (dbmlKeywords.test(normalizedSchema) && !sqlKeywords.test(normalizedSchema)) return 'dbml';
+    return 'sql';
+  }, [normalizedSchema]);
+
+  // ── Memoized parsed schema ──
   const erdParsed = useMemo(() => {
-    if (!sql) return null;
-    try { return parseSQLToERD(sql); } catch { return null; }
-  }, [sql]);
+    if (!normalizedSchema) return null;
+    try {
+      return schemaKind === 'dbml' ? dbmlToERD(normalizedSchema) : parseSQLToERD(normalizedSchema);
+    } catch {
+      return null;
+    }
+  }, [normalizedSchema, schemaKind]);
 
   // ── Memoized diff lines ──
   const erdDiff = useMemo(() => {
@@ -147,17 +165,17 @@ export function ErdFromSqlDialog({
   }, [erdUpdateUid, erdMode]);
 
   const handleCreateErd = useCallback(async () => {
-    localStorage.setItem('pending_create_erd_ddl', sql);
+    localStorage.setItem('pending_create_erd_schema', normalizedSchema);
     toast.info('Creating new ERD diagram...');
     const d = await handleSidebarDiagramCreate(`ERD - ${erdDefaultName}`, targetProjectId);
     if (d?.uid) {
       localStorage.setItem('chat_erd_uid', d.uid);
     }
     onClose();
-  }, [sql, handleSidebarDiagramCreate, targetProjectId, erdDefaultName, onClose]);
+  }, [normalizedSchema, handleSidebarDiagramCreate, targetProjectId, erdDefaultName, onClose]);
 
   const handleUpdateErd = useCallback(async (uid: string) => {
-    localStorage.setItem('pending_update_erd_ddl', sql);
+    localStorage.setItem('pending_update_erd_schema', normalizedSchema);
     localStorage.setItem('chat_erd_uid', uid);
     toast.info('Review schema changes in the ERD diff panel...');
     if (window.location.pathname === `/diagrams/${uid}`) {
@@ -167,7 +185,7 @@ export function ErdFromSqlDialog({
     }
     await handleDiagramSelect(uid);
     onClose();
-  }, [sql, handleDiagramSelect, triggerPendingErdDiff, onClose]);
+  }, [normalizedSchema, handleDiagramSelect, triggerPendingErdDiff, onClose]);
 
   const eligibleDiagrams = useMemo(() => diagrams.filter((d: any) => {
     if (targetProjectId == null || targetProjectId === 'none') {
@@ -186,11 +204,11 @@ export function ErdFromSqlDialog({
               <Database className="size-4 text-indigo-400" />
             </div>
             <div>
-              <DialogTitle>Create ERD from SQL</DialogTitle>
+              <DialogTitle>Create ERD from DBML</DialogTitle>
               <DialogDescription>
                 {erdMode === 'update'
-                  ? 'Select which ERD diagram to update with this SQL'
-                  : 'Create a new ERD diagram or update an existing one'}
+                  ? `Select which ERD diagram to update with this ${schemaKind.toUpperCase()}`
+                  : 'Create a new ERD diagram or update an existing one from DBML'}
               </DialogDescription>
             </div>
           </div>
@@ -231,15 +249,15 @@ export function ErdFromSqlDialog({
               </button>
             </div>
 
-            {/* Parse error: SQL DDL invalid */}
-            {sql && !erdParsed && (
+            {/* Parse error: schema invalid */}
+            {normalizedSchema && !erdParsed && (
               <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="size-4 text-red-400 mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-xs font-semibold text-red-300">Invalid SQL DDL</p>
+                    <p className="text-xs font-semibold text-red-300">Invalid {schemaKind.toUpperCase()} schema</p>
                     <p className="text-[11px] text-red-400/70 mt-1">
-                      The SQL could not be parsed. Ensure it contains valid <code className="bg-red-500/10 px-1 rounded">CREATE TABLE</code> or <code className="bg-red-500/10 px-1 rounded">ALTER TABLE</code> statements.
+                      The schema could not be parsed. Use valid <code className="bg-red-500/10 px-1 rounded">Table</code> and <code className="bg-red-500/10 px-1 rounded">Ref</code> blocks for DBML. SQL <code className="bg-red-500/10 px-1 rounded">CREATE TABLE</code> is kept only as fallback compatibility.
                     </p>
                   </div>
                 </div>
@@ -331,7 +349,7 @@ export function ErdFromSqlDialog({
                           </div>
                         </div>
                         {deletedTables.length > 0 && (
-                          <p className="text-[9px] text-red-400/50 leading-relaxed">Tables not in new SQL will be kept as-is in the existing ERD.</p>
+                          <p className="text-[9px] text-red-400/50 leading-relaxed">Tables not in the new schema will be kept as-is in the existing ERD.</p>
                         )}
                       </div>
                     );

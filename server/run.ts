@@ -74,24 +74,34 @@ async function seedAIProviders(): Promise<void> {
     }
 
     // ── Default system prompt ──
+    const defaultSystemPrompt = `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes.
+
+Key capabilities:
+- When creating or modifying ERD/database schemas, provide DBML in \`\`\`dbml blocks
+- If a PRD, note, plan, or documentation includes a database schema section, use DBML for that section unless SQL is explicitly requested
+- Use SQL only when the user explicitly asks for SQL, migrations, DDL, queries, or seed data
+- DBML should use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships
+- For flowcharts, provide JSON with nodes/edges in \`\`\`json blocks
+- Be concise and direct in your responses
+- Help users design databases, create flowcharts, and take notes`;
+
     const hasPrompt = await (prisma as any).aiSystemPrompt.count();
     if (hasPrompt === 0) {
       await (prisma as any).aiSystemPrompt.create({
         data: {
           id: "default-simple-direct",
           name: "Simple & Direct",
-          content: `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes.
-
-Key capabilities:
-- When discussing database schemas, provide SQL DDL in \`\`\`sql blocks
-- For flowcharts, provide JSON with nodes/edges in \`\`\`json blocks
-- Be concise and direct in your responses
-- Help users design databases, create flowcharts, and take notes`,
+          content: defaultSystemPrompt,
           category: "system",
           isDefault: true,
           isBuiltIn: true,
           userId: null,
         },
+      });
+    } else {
+      await (prisma as any).aiSystemPrompt.updateMany({
+        where: { name: "Simple & Direct", category: "system", isBuiltIn: true, userId: null },
+        data: { content: defaultSystemPrompt, isDefault: true },
       });
     }
 

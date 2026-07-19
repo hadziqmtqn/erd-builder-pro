@@ -5,21 +5,61 @@
  * Extract JSON object from markdown code block, handling nested braces.
  * The naive regex `{[\s\S]*?}` fails on nested objects (stops at first `}`).
  */
-function extractJsonFromCodeBlock(content: string): string | null {
-  const blockStartRegex = /```(?:json)?\s*\{/g;
-  let match;
-  while ((match = blockStartRegex.exec(content)) !== null) {
-    const jsonStart = match.index + match[0].length - 1; // position of the opening `{`
-    let depth = 0;
-    for (let i = jsonStart; i < content.length; i++) {
-      if (content[i] === '{') depth++;
-      else if (content[i] === '}') depth--;
-      if (depth === 0) {
-        return content.substring(jsonStart, i + 1);
+function extractJsonObject(text: string, fromIndex = 0): string | null {
+  const jsonStart = text.indexOf('{', fromIndex);
+  if (jsonStart === -1) return null;
+
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = jsonStart; i < text.length; i++) {
+    const char = text[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = null;
       }
+      continue;
     }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '{') depth++;
+    if (char === '}') depth--;
+    if (depth === 0) return text.substring(jsonStart, i + 1);
   }
+
   return null;
+}
+
+function extractJsonFromCodeBlock(content: string): string | null {
+  function firstFlowchartJson(text: string): string | null {
+    let searchFrom = 0;
+    while (searchFrom < text.length) {
+      const json = extractJsonObject(text, searchFrom);
+      if (!json) return null;
+      try {
+        const parsed = JSON.parse(json);
+        if (parsed && Array.isArray(parsed.nodes)) return json;
+      } catch { /* ignore */ }
+      const nextStart = text.indexOf('{', searchFrom);
+      if (nextStart === -1) return null;
+      searchFrom = nextStart + 1;
+    }
+    return null;
+  }
+
+  for (const block of getCodeBlocks(content)) {
+    const json = firstFlowchartJson(block);
+    if (json) return json;
+  }
+  return firstFlowchartJson(content);
 }
 
 export function hasFlowchartJSON(content: string): boolean {
@@ -50,6 +90,55 @@ export function hasSQLContent(content: string): boolean {
   return false;
 }
 
+const DBML_KEYWORDS = /^\s*(?:Project|TableGroup|Table|Enum)\s+(?:"[^"]+"|[\w.]+)\s*\{|^\s*Ref\s*:/im;
+const DBML_LINE_START = /^\s*(?:Project|TableGroup|Table|Enum)\s+(?:"[^"]+"|[\w.]+)\s*\{|^\s*Ref\s*:/i;
+
+function getCodeBlocks(content: string): string[] {
+  const blockRegex = /```[^\r\n]*\r?\n?([\s\S]*?)```/g;
+  const blocks: string[] = [];
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    const block = match[1].trim();
+    if (block) blocks.push(block);
+  }
+  return blocks;
+}
+
+function trimDBMLSnippet(text: string): string | null {
+  const lines = text.split(/\r?\n/);
+  const startIndex = lines.findIndex(line => DBML_LINE_START.test(line));
+  if (startIndex === -1) return null;
+
+  const result: string[] = [];
+  let depth = 0;
+  let started = false;
+
+  for (let i = startIndex; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const isSchemaStart = DBML_LINE_START.test(line);
+    const isIgnorable = !trimmed || trimmed.startsWith('//');
+
+    if (!started && !isSchemaStart && !isIgnorable) continue;
+    if (started && depth === 0 && !isSchemaStart && !isIgnorable) break;
+
+    started = true;
+    result.push(line);
+
+    for (const char of line) {
+      if (char === '{') depth += 1;
+      if (char === '}') depth = Math.max(0, depth - 1);
+    }
+  }
+
+  const snippet = result.join('\n').trim();
+  return DBML_KEYWORDS.test(snippet) ? snippet : null;
+}
+
+export function hasDBMLContent(content: string): boolean {
+  return extractDBML(content) !== null;
+}
+
 export function extractSQL(content: string): string | null {
   const sqlKeywords = /\b(CREATE\s+TABLE|ALTER\s+TABLE|INSERT\s+INTO)\b/i;
   const blockRegex = /```(?:\w*)\n?([\s\S]*?)```/g;
@@ -63,6 +152,26 @@ export function extractSQL(content: string): string | null {
   if (blocks.length > 0) return blocks.join('\n\n');
   if (sqlKeywords.test(content)) return content.trim();
   return null;
+}
+
+export function extractDBML(content: string): string | null {
+  const blocks: string[] = [];
+
+  for (const block of getCodeBlocks(content)) {
+    const dbml = trimDBMLSnippet(block);
+    if (dbml) blocks.push(dbml);
+  }
+
+  if (blocks.length > 0) return blocks.join('\n\n');
+  return trimDBMLSnippet(content);
+}
+
+export function hasSchemaContent(content: string): boolean {
+  return hasDBMLContent(content) || hasSQLContent(content);
+}
+
+export function extractSchemaContent(content: string): string | null {
+  return extractDBML(content) || extractSQL(content);
 }
 
 export function extractFlowchartJSON(content: string): string | null {

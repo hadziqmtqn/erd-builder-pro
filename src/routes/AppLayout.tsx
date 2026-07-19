@@ -88,6 +88,7 @@ function AppLayoutInner() {
     };
     return { entityType: typeMap[m[1]], entityUid: m[2] };
   }, [location.pathname]);
+  const isActiveDiagramContext = entityContext?.entityType === 'diagram';
 
   const {
     view, sidebarView,
@@ -198,6 +199,7 @@ function AppLayoutInner() {
   }, []);
 
   const openDBMLPanel = useCallback(() => {
+    if (!isActiveDiagramContext) return;
     setRightPanelMode('dbml');
     if (dbmlContent.trim() || nodes.length === 0) return;
     try {
@@ -206,19 +208,19 @@ function AppLayoutInner() {
     } catch {
       // The panel still opens; the regular sync effect will retry after canvas settles.
     }
-  }, [setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
+  }, [isActiveDiagramContext, setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
 
   // ── Generate DBML from canvas on the first panel open. Keep the source text
   // while switching panels: it contains DBML-only constructs (Enum, Note and
   // TableGroup) which the canvas does not model completely.
   useEffect(() => {
-    if (rightPanelMode === 'dbml' && nodes.length > 0 && !dbmlContent.trim()) {
+    if (rightPanelMode === 'dbml' && isActiveDiagramContext && nodes.length > 0 && !dbmlContent.trim()) {
       try {
         const dbml = erdToDBML(nodes, edges);
         if (dbml.trim()) handleDBMLContentChange(dbml);
       } catch { /* ignore conversion errors */ }
     }
-  }, [rightPanelMode, nodes, edges, dbmlContent, handleDBMLContentChange]);
+  }, [rightPanelMode, isActiveDiagramContext, nodes, edges, dbmlContent, handleDBMLContentChange]);
 
   // ─── Build entity context text from workspace data ───
   const entityContextText = useMemo(() => {
@@ -452,6 +454,15 @@ function AppLayoutInner() {
       setRightPanelMode('closed');
     }
   }, [showAIChat, setRightPanelMode]);
+
+  // DBML is part of ERD Builder only. If the user navigates from an ERD to
+  // Notes/Flowchart while the DBML tab is active, keep the panel usable by
+  // falling back to chat instead of showing a DBML tab for the wrong feature.
+  useEffect(() => {
+    if (rightPanelMode === 'dbml' && !isActiveDiagramContext) {
+      setRightPanelMode(showAIChat ? 'chat' : 'closed');
+    }
+  }, [rightPanelMode, isActiveDiagramContext, showAIChat, setRightPanelMode]);
 
   return (
     <>
@@ -702,17 +713,19 @@ function AppLayoutInner() {
                     <Sparkles className="size-3.5" />
                     AI Chat
                   </button>
-                  <button
-                    onClick={openDBMLPanel}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                      rightPanelMode === 'dbml'
-                        ? 'border-primary text-primary bg-background/50'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                    }`}
-                  >
-                    <Database className="size-3.5" />
-                    DBML
-                  </button>
+                  {isActiveDiagramContext && (
+                    <button
+                      onClick={openDBMLPanel}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                        rightPanelMode === 'dbml'
+                          ? 'border-primary text-primary bg-background/50'
+                          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                      }`}
+                    >
+                      <Database className="size-3.5" />
+                      DBML
+                    </button>
+                  )}
                 </div>
                 <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => setRightPanelMode('closed')} title="Close panel">
                   <PanelRightClose className="size-3.5" />
@@ -721,7 +734,7 @@ function AppLayoutInner() {
 
               {/* ── Tab content ── */}
               <div className="flex-1 min-h-0">
-                {rightPanelMode === 'dbml' ? (
+                {rightPanelMode === 'dbml' && isActiveDiagramContext ? (
                   <DBMLEditorPanel
                     value={dbmlContent}
                     onChange={handleDBMLContentChange}
