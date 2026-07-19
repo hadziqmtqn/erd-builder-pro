@@ -412,7 +412,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
   // ── Stable extensions array ──
   const extensions = useMemo(() => [
     sqlLang(),
-    autocompletion({ override: [dbmlCompletions], selectOnOpen: false }),
+    autocompletion({ override: [dbmlCompletions], selectOnOpen: true }),
     dbmlLinter,
     cursorTracker,
   ], [dbmlCompletions, dbmlLinter, cursorTracker]);

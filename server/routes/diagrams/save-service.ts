@@ -165,7 +165,10 @@ export async function saveDiagram(
     mergedData = incomingData;
   }
 
-  const normalizedDbmlSource = body.dbmlSource ?? body.dbml_source;
+  const dataDbmlSource = body.data && typeof body.data === "object"
+    ? (body.data as any).dbml_source ?? (body.data as any).dbmlSource
+    : undefined;
+  const normalizedDbmlSource = body.dbmlSource ?? body.dbml_source ?? dataDbmlSource;
 
   const updatedDiagram = await prisma.diagram.update({
     where: { id: diagramId },
