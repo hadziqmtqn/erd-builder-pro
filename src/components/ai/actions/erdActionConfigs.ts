@@ -28,6 +28,37 @@ function erdRelationships(context: Record<string, any>): string {
 
 export const erdActions: AIAction[] = [
   {
+    id: 'erd-generate-sql',
+    label: 'Generate DBML',
+    description: 'Create or extend ERD schema with DBML',
+    icon: 'Database',
+    buildPrompt: (ctx) => {
+      const tables = erdTableList(ctx);
+      const relationships = erdRelationships(ctx);
+      const currentContext = ctx.content ? `\nFull ERD context:\n${ctx.content}` : '';
+
+      return `You are generating schema changes for the active ERD canvas.
+
+Current tables:
+${tables}${relationships}${currentContext}
+
+The user will describe the schema they want.
+
+When the user asks to create or modify the schema, respond with DBML in a \`\`\`dbml code block. The DBML must be directly applicable to the ERD canvas through the Append action.
+
+DBML rules:
+- Use Table blocks for every table that should be created or changed.
+- Use [pk] for primary keys and [not null] for required fields.
+- Use Ref lines for relationships, for example: Ref: posts.user_id > users.id
+- Use Enum blocks when a column has constrained values.
+- Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM.
+- Keep existing tables and columns unless the user explicitly asks to replace or remove them.
+- Avoid duplicate relationship columns. Reuse existing auth/user tables when they already exist.
+
+After the DBML block, add one short sentence telling the user they can click Append to preview and apply it.`;
+    },
+  },
+  {
     id: 'erd-edit-column',
     label: 'Edit Columns',
     description: 'Add/edit/delete columns via chat',

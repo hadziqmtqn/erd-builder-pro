@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api';
 import { MAX_CHARS_TOTAL, EntityContextData } from './types';
+import { erdToDBML } from '@/lib/dbml-converter';
 
 export async function fetchDiagram(uid: string) {
   try {
@@ -12,6 +13,7 @@ export async function fetchDiagram(uid: string) {
     const relationships = diagram.relationships || [];
 
     const parts: string[] = [`Title: ${diagram.name}`];
+    const dbmlSource = diagram.dbml_source || diagram.dbmlSource;
 
     parts.push(`\nTables (${entities.length}):`);
     for (const entity of entities) {
@@ -32,6 +34,10 @@ export async function fetchDiagram(uid: string) {
         const tgt = entities.find((e: any) => String(e.id) === String(rel.target_entity_id))?.name || rel.target_entity_id;
         parts.push(`  ${src} → ${tgt} (${rel.type || 'one-to-many'})`);
       }
+    }
+
+    if (dbmlSource) {
+      parts.push(`\nCurrent DBML:\n\`\`\`dbml\n${String(dbmlSource).slice(0, 3000)}\n\`\`\``);
     }
 
     const summary = parts.join('\n').slice(0, MAX_CHARS_TOTAL);
@@ -92,7 +98,18 @@ Tables:\n${tableLines || '  (none)'}`;
     context += `\n\nRelationships:\n${relLines}`;
   }
 
-  context += `\n\n- Generate SQL in \`\`\`sql blocks when user asks to create/modify schema. Explain conversationally for design questions.
+  try {
+    const dbml = erdToDBML(entityNodes, data.edges || []);
+    if (dbml.trim()) {
+      context += `\n\nCurrent DBML:\n\`\`\`dbml\n${dbml.slice(0, 5000)}\n\`\`\``;
+    }
+  } catch {
+    // Keep the table/relationship summary even if DBML export fails.
+  }
+
+  context += `\n\n- Generate DBML in \`\`\`dbml blocks when user asks to create/modify the ERD schema. Explain conversationally for design questions.
+- Use Table blocks for tables, [pk] for primary keys, [not null] for required columns, Enum blocks for reusable enum values, and Ref lines for relationships.
+- Prefer DBML over SQL for schema output because the ERD canvas and DBML editor share that format. Use SQL only when the user explicitly asks for SQL or seed data.
 - Avoid duplicating columns across tables; use foreign keys to reference existing auth/user tables.
 - Use consistent naming across all tables.
 - If the project has related Notes or Flowcharts (listed above), they may describe business rules that this schema should support. Cross-check for consistency.`;

@@ -10,8 +10,10 @@ Tone & Style:
 
 Database & ERD:
 - The user's current schema is provided in the message context. Reference it concretely when answering.
-- Only output SQL (inside \`\`\`sql blocks) when the user explicitly asks you to CREATE, GENERATE, or MODIFY the schema. For design questions, naming rationale, best practices, or explanations — answer conversationally using the provided schema context.
-- When generating SQL: use portable types (BIGINT not SERIAL, VARCHAR(n), TEXT, BOOLEAN, TIMESTAMP). Use English names unless user asks otherwise.
+- When the user asks to CREATE, GENERATE, or MODIFY an ERD/database schema, output DBML inside \`\`\`dbml blocks. ERD Builder can apply DBML to the canvas manually from the assistant message actions.
+- If the answer is a PRD, note, plan, or documentation that includes a database schema section, that schema section must still use DBML in a \`\`\`dbml block unless the user explicitly asks for SQL.
+- Use SQL only when the user explicitly asks for SQL queries, migrations, DDL, or seed data.
+- For DBML: use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
 
 Flowcharts:
 - When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}
@@ -26,6 +28,15 @@ Integration:
 
 export function buildTechnicalRules(): string {
   return fallbackSystemPrompt;
+}
+
+export function buildSchemaFormatOverride(): string {
+  return `[Database schema format override]
+- For ERD/database schema creation or modification, output DBML in \`\`\`dbml blocks.
+- If a PRD, note, plan, or documentation includes a database schema section, that schema section must use DBML unless the user explicitly asks for SQL.
+- Use SQL only when the user explicitly asks for SQL, migrations, DDL, queries, or seed data.
+- DBML must use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships.
+- Tell the user to click Append to preview/apply DBML to the ERD canvas when relevant.`;
 }
 
 export async function fetchUserSystemPrompt(): Promise<string | null> {
@@ -47,9 +58,9 @@ export async function fetchUserSystemPrompt(): Promise<string | null> {
 export function buildViewInstruction(viewType: string | null): string | null {
   switch (viewType) {
     case 'erd':
-      return `[Current view: ERD Diagram] The user's database schema is in the message context. Reference it concretely. Action buttons (Edit Columns, Explain Table, Suggest Indexes, Seed Data, Append/Replace) appear automatically below messages.`;
+      return `[Current view: ERD Diagram] The user's database schema and DBML context are in the message context. Reference them concretely. For schema creation or modification, respond with DBML in a \`\`\`dbml block so the user can apply it manually to the ERD canvas. Action buttons (Edit Columns, Explain Table, Suggest Indexes, Seed Data, Append/Replace) appear automatically below messages.`;
     case 'notes':
-      return `[Current view: Notes] User editing a markdown note. Action buttons (Summarize, Improve Grammar, Generate Docs, Append/Replace) appear automatically below messages.`;
+      return `[Current view: Notes] User editing a markdown note. Action buttons (Summarize, Improve Grammar, Generate Docs, Append/Replace) appear automatically below messages. If the note includes a database schema section, use DBML in a \`\`\`dbml block unless the user explicitly asks for SQL.`;
     case 'flowchart':
       return `[Current view: Flowchart] User editing a flowchart diagram. Action buttons (Generate Flowchart, Explain Flow, Generate Pseudocode, Insert Symbol, Import from Description, Append/Replace) appear automatically below messages.`;
     default:

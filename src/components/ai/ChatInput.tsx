@@ -46,7 +46,7 @@ function getPlaceholder(actionId: string | null | undefined, hasProject: boolean
     case 'notes-summarize':       return 'Describe what to summarize...';
     case 'notes-improve-grammar': return 'Describe which part to improve...';
     case 'notes-generate-docs':   return 'Describe what documentation to generate...';
-    case 'erd-generate-sql':      return 'Describe the SQL to generate...';
+    case 'erd-generate-sql':      return 'Describe the DBML schema to generate...';
     case 'erd-edit-column':       return 'Describe column changes...';
     case 'erd-explain-table':     return 'Ask about this table...';
     case 'erd-suggest-indexes':   return 'Describe indexing needs...';

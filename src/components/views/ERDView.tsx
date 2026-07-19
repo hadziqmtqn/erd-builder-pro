@@ -489,7 +489,7 @@ const ERDViewComponent = ({
       if (actionId) {
         result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, extra);
       } else {
-        // Manual chat: try SQL DDL first, then column mutations
+        // Manual chat: try schema content (DBML first, SQL fallback), then column mutations
         result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, extra);
         if (!result) {
           result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, extra);
@@ -506,10 +506,12 @@ const ERDViewComponent = ({
   }, [registerContentHandler, startDiff]);
 
   React.useEffect(() => {
-    const pendingDdl = localStorage.getItem('pending_create_erd_ddl');
-    if (pendingDdl) {
+    const pendingSchema = localStorage.getItem('pending_create_erd_schema')
+      || localStorage.getItem('pending_create_erd_ddl');
+    if (pendingSchema) {
+      localStorage.removeItem('pending_create_erd_schema');
       localStorage.removeItem('pending_create_erd_ddl');
-      const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingDdl);
+      const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingSchema);
       if (result) {
         if (nodesRef.current.length === 0) {
           takeSnapshotRef.current?.([], []);
@@ -524,7 +526,7 @@ const ERDViewComponent = ({
               console.error('Error saving generated diagram:', err);
             });
           }
-          toast.success('Applied generated architecture DDL to new diagram');
+          toast.success('Applied generated schema to new diagram');
         } else {
           startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
         }
@@ -532,28 +534,30 @@ const ERDViewComponent = ({
     }
   }, [setNodes, setEdges, startDiff, saveDiagram, triggerDebouncedSync]);
 
-  // ─── Handle pending UPDATE DDL ──
+  // ─── Handle pending UPDATE schema ──
   // Unlike create, update waits for server data to load first (nodes.length > 0),
   // then shows the diff/merge UI so the user can selectively merge changes.
   // pendingErdDiffTrigger allows re-processing when already on the same page.
   React.useEffect(() => {
-    const pendingUpdateDdl = localStorage.getItem('pending_update_erd_ddl');
-    if (!pendingUpdateDdl) return;
+    const pendingUpdateSchema = localStorage.getItem('pending_update_erd_schema')
+      || localStorage.getItem('pending_update_erd_ddl');
+    if (!pendingUpdateSchema) return;
 
     // Wait for server data to load — nodes will be empty during navigation,
     // then populated once selectDiagram completes
     if (nodes.length === 0) return;
 
-    // Consume the pending DDL
+    // Consume the pending schema
+    localStorage.removeItem('pending_update_erd_schema');
     localStorage.removeItem('pending_update_erd_ddl');
 
-    const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingUpdateDdl);
+    const result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', pendingUpdateSchema);
     if (result) {
-      // Use the visual diff/merge UI to compare existing data with proposed SQL
+      // Use the visual diff/merge UI to compare existing data with proposed schema
       startDiff(nodesRef.current, edgesRef.current, result.nodes, result.edges);
       toast.info('Review the schema changes and merge when ready');
     } else {
-      toast.error('Could not parse the SQL for diff');
+      toast.error('Could not parse the schema for diff');
     }
   }, [nodes, startDiff, pendingErdDiffTrigger]);
 
@@ -934,4 +938,3 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
     prev.dedupeEdgesByRelation === next.dedupeEdgesByRelation
   );
 });
-

@@ -6,9 +6,10 @@ const DEFAULT_RULES: Record<string, string> = {
   erd:
     "- Setiap tabel harus memiliki kolom created_at dan updated_at dengan tipe TIMESTAMP.\n" +
     "- Gunakan snake_case untuk semua penamaan tabel dan kolom.\n" +
-    "- Setiap tabel harus memiliki PRIMARY KEY bernama id dengan tipe BIGSERIAL.\n" +
-    "- Gunakan FOREIGN KEY yang konsisten dengan nama kolom berakhiran _id.\n" +
-    "- Hindari ENUM — gunakan VARCHAR dengan CHECK constraint.\n" +
+    "- Untuk skema ERD, output schema harus menggunakan DBML dalam code block ```dbml kecuali user eksplisit meminta SQL.\n" +
+    "- Setiap tabel harus memiliki primary key bernama id dengan tipe BIGINT atau UUID.\n" +
+    "- Gunakan Ref DBML untuk foreign key dan nama kolom relasi berakhiran _id.\n" +
+    "- Gunakan Enum DBML hanya jika value benar-benar terbatas dan reusable.\n" +
     "- Tambahkan kolom deleted_at untuk soft delete pada tabel master.",
   notes:
     "- Gunakan bahasa Indonesia untuk isi catatan.\n" +

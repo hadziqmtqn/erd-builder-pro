@@ -100,7 +100,7 @@ export const ChatMessages = memo(function ChatMessages({
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   // ─── ERD dialog state ───────────────────────────────────
-  const [erdDialogSql, setErdDialogSql] = useState<string | null>(null);
+  const [erdDialogSchema, setErdDialogSchema] = useState<string | null>(null);
 
   // ─── Flowchart dialog state ─────────────────────────────
   const [flowchartDialogJson, setFlowchartDialogJson] = useState<string | null>(null);
@@ -327,7 +327,7 @@ export const ChatMessages = memo(function ChatMessages({
                         applyContent={applyContent}
                         copiedMsgId={copiedMsgId}
                         onCopy={handleCopy}
-                        onOpenErdDialog={setErdDialogSql}
+                        onOpenErdDialog={setErdDialogSchema}
                         onOpenFlowchartDialog={setFlowchartDialogJson}
                         onOpenNoteDialog={setNoteDialogText}
                       />
@@ -354,10 +354,10 @@ export const ChatMessages = memo(function ChatMessages({
       )}
 
       {/* ERD from SQL dialog */}
-      {erdDialogSql && (
+      {erdDialogSchema && (
         <ErdFromSqlDialog
-          sql={erdDialogSql}
-          onClose={() => setErdDialogSql(null)}
+          schema={erdDialogSchema}
+          onClose={() => setErdDialogSchema(null)}
           diagrams={diagrams}
           targetProjectId={targetProjectId}
           erdDefaultName={erdDefaultName}

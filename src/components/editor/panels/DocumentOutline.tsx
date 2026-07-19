@@ -59,7 +59,7 @@ export function DocumentOutline({ headings, scrollToHeading }: DocumentOutlinePr
                 side="left"
                 align="center"
                 sideOffset={15}
-                className="w-[300px] bg-popover/95 backdrop-blur-xl border-border rounded-lg p-5 shadow-2xl"
+                className="w-75 bg-popover/95 backdrop-blur-xl border-border rounded-lg p-5 shadow-2xl"
               >
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b pb-2">

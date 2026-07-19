@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, PanelRightClose, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
 import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -38,7 +38,6 @@ interface AIChatPanelProps {
 }
 
 export const AIChatPanel = ({
-  onClose,
   entityType,
   entityUid,
   entityTitle,
@@ -170,10 +169,6 @@ export const AIChatPanel = ({
   }, [entityType, entityContextText, entityTitle, actionContextData, activeActionId]);
 
   const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
-  const handleClose = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
   // ─── Build mention file list from workspace file arrays ──
   const mentionFiles = useMemo<MentionFile[]>(() => {
     // Derive projectId from active entity (activeProjectId prop is always null)
@@ -273,6 +268,7 @@ export const AIChatPanel = ({
           if (res.ok) {
             const diagram = await res.json();
             const entities = diagram.entities || [];
+            const dbmlSource = diagram.dbml_source || diagram.dbmlSource;
             if (entities.length > 0) {
               const entityLines = entities.map((e: any) => {
                 const colStr = (e.columns || [])
@@ -281,8 +277,13 @@ export const AIChatPanel = ({
                 return `    - Table: ${e.name} (${colStr})`;
               }).join('\n');
               content = `ERD diagram "${file.name}" tables:\n${entityLines}`;
+              if (dbmlSource) {
+                content += `\n\nCurrent DBML:\n\`\`\`dbml\n${String(dbmlSource).slice(0, 3000)}\n\`\`\``;
+              }
             } else {
-              content = `ERD diagram "${file.name}" (no tables defined)`;
+              content = dbmlSource
+                ? `ERD diagram "${file.name}" DBML:\n\`\`\`dbml\n${String(dbmlSource).slice(0, 3000)}\n\`\`\``
+                : `ERD diagram "${file.name}" (no tables defined)`;
             }
           } else {
             content = `Referenced ERD diagram: ${file.name}`;
@@ -368,9 +369,6 @@ export const AIChatPanel = ({
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleNewSession} title="New Chat">
                   <Plus className="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
-                  <PanelRightClose className="size-3.5" />
-                </Button>
               </div>
             </div>
 
@@ -453,11 +451,6 @@ export const AIChatPanel = ({
                   <ArrowLeft className="size-4" />
                 </button>
                 <span className="text-sm font-medium truncate">{currentSession?.title || 'AI Assistant'}</span>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button variant="ghost" size="icon" className="size-8" onClick={handleClose} title="Close panel">
-                  <PanelRightClose className="size-3.5" />
-                </Button>
               </div>
             </div>
 

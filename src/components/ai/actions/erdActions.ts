@@ -1,7 +1,9 @@
 import { Node, Edge } from '@xyflow/react';
 import { Entity, Column } from '@/types';
 import { parseSQLToERD, parseSqlDdl } from '@/lib/sqlParser';
+import { dbmlToERD } from '@/lib/dbml-converter';
 import { COLUMN_TYPES } from '@/lib/utils';
+import { extractDBML } from '../chatUtils';
 
 function cleanIdentifier(id: string): string {
   return id.replace(/["`[\]]/g, '').trim();
@@ -444,6 +446,14 @@ export function applyToErdContent(
 ): ErdApplyResult | null {
   switch (actionId) {
     case 'erd-generate-sql': {
+      const dbml = extractDBML(aiResponse);
+      if (dbml) {
+        const parsed = dbmlToERD(dbml);
+        if (parsed.nodes.length === 0 && parsed.edges.length === 0) return null;
+        const merged = mergeIntoDiagram(currentNodes, currentEdges, parsed.nodes, parsed.edges);
+        return { nodes: merged.nodes, edges: merged.edges, action: 'erd-generate-sql' };
+      }
+
       const sql = extractSQLFromMarkdown(aiResponse);
       if (!sql) return null;
 

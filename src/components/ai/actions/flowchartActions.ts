@@ -1,5 +1,6 @@
 import { Node, Edge, MarkerType } from '@xyflow/react';
-import { FlowchartNodeData } from '../../FlowchartNode';
+import { FlowchartNodeData, FlowchartShape } from '../../FlowchartNode';
+import { extractFlowchartJSON } from '../chatUtils';
 
 const MAX_AI_NODES = 60;
 const MAX_AI_TEXT_BYTES = 512_000;
@@ -18,21 +19,51 @@ export interface FlowchartApplyResult {
   edges: Edge[];
 }
 
-function extractJSONFromMarkdown(text: string): string {
-  const jsonBlockRegex = /```(?:json)?\n?([\s\S]*?)```/g;
-  const blocks: string[] = [];
-  let match;
-  while ((match = jsonBlockRegex.exec(text)) !== null) {
-    const content = match[1].trim();
-    if (content.length > 0) blocks.push(content);
+function normalizeFlowchartShape(rawValue: unknown, labelValue: unknown): FlowchartShape {
+  const raw = String(rawValue || '').trim().toLowerCase().replace(/[\s_-]+/g, '-');
+  const label = String(labelValue || '').trim().toLowerCase();
+
+  if (['oval', 'start', 'end', 'terminal', 'terminator', 'start-end'].includes(raw)) return 'oval';
+  if (['diamond', 'decision', 'condition', 'if', 'branch', 'gateway'].includes(raw)) return 'diamond';
+  if (['parallelogram', 'input', 'output', 'input-output', 'io', 'i-o'].includes(raw)) return 'parallelogram';
+  if (['database', 'db', 'data-store', 'datastore', 'storage', 'cylinder'].includes(raw)) return 'database';
+  if (['document', 'docs', 'report', 'file'].includes(raw)) return 'document';
+  if (['cloud', 'external', 'external-system', 'service'].includes(raw)) return 'cloud';
+  if (['circle', 'connector', 'junction'].includes(raw)) return 'circle';
+  if (['rectangle', 'process', 'action', 'task', 'operation', 'step'].includes(raw)) return 'rectangle';
+
+  if (/\?$/.test(label) || /\b(check|validasi|verify|verifikasi|decision|condition|apakah|diperlukan|exceeded)\b/i.test(label)) {
+    return 'diamond';
   }
-  if (blocks.length > 0) return blocks.join('\n');
-  return text.trim();
+  if (/\b(start|mulai|end|finish|selesai|terminal|berhasil|gagal)$/i.test(label)) {
+    return 'oval';
+  }
+  if (/\b(input|output|kirim|terima|receive|send)\b/i.test(label)) {
+    return 'parallelogram';
+  }
+  if (/\b(database|db|store|storage|session|log|data)\b/i.test(label)) {
+    return 'database';
+  }
+
+  return 'rectangle';
+}
+
+function colorForShape(shape: FlowchartShape, labelValue: unknown): string {
+  const label = String(labelValue || '').toLowerCase();
+  if (shape === 'oval') return '#10b981';
+  if (shape === 'diamond') return '#f59e0b';
+  if (shape === 'parallelogram') return '#0ea5e9';
+  if (shape === 'database') return '#6366f1';
+  if (shape === 'document') return '#8b5cf6';
+  if (shape === 'cloud') return '#0ea5e9';
+  if (/\b(error|fail|gagal|locked|terkunci|reject|invalid)\b/.test(label)) return '#f43f5e';
+  return '#8b5cf6';
 }
 
 function parseJSON(text: string): any {
   if (text.length > MAX_AI_TEXT_BYTES) return null;
-  const jsonStr = extractJSONFromMarkdown(text);
+  const jsonStr = extractFlowchartJSON(text);
+  if (!jsonStr) return null;
   try {
     return JSON.parse(jsonStr);
   } catch {
@@ -57,6 +88,7 @@ function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<
     const id = `ai_node_${idSeed}_${index}`;
     const data = nodeData.data || nodeData;
     const label = data.label || '';
+    const shape = normalizeFlowchartShape(data.shape || data.type || nodeData.shape || nodeData.type, label);
     const lower = label.toLowerCase();
     if (lower) {
       const existing = labelToIds.get(lower) || [];
@@ -70,8 +102,8 @@ function parseNodesAndEdges(aiResponse: string): { parsed: any; labelToIds: Map<
       position: { x: 0, y: 0 },
       data: {
         label: data.label || 'New Step',
-        shape: data.shape || 'rectangle',
-        color: data.color || '#8b5cf6',
+        shape,
+        color: data.color || colorForShape(shape, label),
       },
     });
   });
@@ -545,6 +577,7 @@ export function applyInsertBetween(
   // Create new node at midpoint with slight downward offset
   const insertSeed = String(Math.abs(hashStr(aiResponse)));
   const newId = `inserted_${insertSeed}`;
+  const newShape = normalizeFlowchartShape(newNodeData.shape || newNodeData.type, newNodeData.label);
   const newNode: Node<FlowchartNodeData> = {
     id: newId,
     type: 'custom',
@@ -554,8 +587,8 @@ export function applyInsertBetween(
     },
     data: {
       label: newNodeData.label || 'New Step',
-      shape: newNodeData.shape || 'rectangle',
-      color: newNodeData.color || '#8b5cf6',
+      shape: newShape,
+      color: newNodeData.color || colorForShape(newShape, newNodeData.label),
     },
   };
 
@@ -605,5 +638,3 @@ export function applyReplaceAll(
 ): FlowchartApplyResult | null {
   return previewFlowchartContent(aiResponse);
 }
-
-

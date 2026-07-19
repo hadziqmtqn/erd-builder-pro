@@ -31,4 +31,29 @@ Ref: audit_logs."Actor Id" > "User Accounts"."Id"`;
     expect(result.nodes).toHaveLength(2);
     expect(result.edges).toHaveLength(1);
   });
+
+  it('normalizes AI-style DBML with sized types, inline enums, and local refs', () => {
+    const dbml = `Table users {
+  id bigint [pk, increment]
+  email varchar(255) [not null, unique]
+}
+
+Table login_logs {
+  id bigint [pk, increment]
+  user_id bigint [not null]
+  status enum('success', 'failed', 'locked')
+
+  Ref: user_id > users.id
+}`;
+
+    const result = dbmlToERD(dbml);
+    const loginLogs = result.nodes.find(node => node.data.name === 'login_logs');
+    const status = loginLogs?.data.columns.find(column => column.name === 'status');
+
+    expect(result.nodes.map(node => node.data.name).sort()).toEqual(['login_logs', 'users']);
+    expect(result.edges).toHaveLength(1);
+    expect(status?.type).toBe('ENUM');
+    expect(status?.enum_name).toBe('login_logs_status');
+    expect(status?.enum_values).toBe('success, failed, locked');
+  });
 });

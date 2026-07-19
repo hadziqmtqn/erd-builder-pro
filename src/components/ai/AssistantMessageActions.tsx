@@ -1,5 +1,5 @@
 import { Replace, ArrowDownToLine, Copy, Check, Database, GitBranch, FileText } from 'lucide-react';
-import { hasFlowchartJSON, hasSQLContent, extractSQL, extractFlowchartJSON } from './chatUtils';
+import { hasFlowchartJSON, hasSchemaContent, extractSchemaContent, extractFlowchartJSON } from './chatUtils';
 
 export interface AssistantMessageActionsProps {
   content: string;
@@ -11,7 +11,7 @@ export interface AssistantMessageActionsProps {
   applyContent: (content: string, strategy: 'replace' | 'append', actionId?: string) => void;
   copiedMsgId: string | null;
   onCopy: (id: string) => void;
-  onOpenErdDialog: (sql: string) => void;
+  onOpenErdDialog: (schema: string) => void;
   onOpenFlowchartDialog: (json: string) => void;
   onOpenNoteDialog: (text: string) => void;
 }
@@ -32,12 +32,12 @@ export function AssistantMessageActions({
 }: AssistantMessageActionsProps) {
   const showApplyButtons = hasContentHandler && (
     (contentCheckType === 'flowchart' && hasFlowchartJSON(content)) ||
-    (contentCheckType === 'erd' && hasSQLContent(content))
+    (contentCheckType === 'erd' && hasSchemaContent(content))
   );
 
-  const showSqlButton = hasSQLContent(content) && contentCheckType !== 'erd';
+  const showSchemaButton = hasSchemaContent(content) && contentCheckType !== 'erd';
   const showFlowchartButton = hasFlowchartJSON(content) && contentCheckType !== 'flowchart';
-  const showDivider = showSqlButton || showFlowchartButton;
+  const showDivider = showSchemaButton || showFlowchartButton;
 
   return (
     <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:translate-y-0 focus-within:pointer-events-auto">
@@ -78,14 +78,14 @@ export function AssistantMessageActions({
         <FileText className="size-4" />
       </button>
 
-      {showSqlButton && (
+      {showSchemaButton && (
         <button
           onClick={() => {
-            const sql = extractSQL(content);
-            if (sql) onOpenErdDialog(sql);
+            const schema = extractSchemaContent(content);
+            if (schema) onOpenErdDialog(schema);
           }}
           className="flex items-center justify-center size-8 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md shadow-sm transition-all cursor-pointer"
-          title="Create or update ERD from this SQL"
+          title="Create or update ERD from this DBML schema"
         >
           <Database className="size-4" />
         </button>

@@ -8,6 +8,7 @@ import { localPersistence } from '@/lib/localPersistence';
 import {
   fallbackSystemPrompt,
   fetchUserSystemPrompt,
+  buildSchemaFormatOverride,
   buildViewInstruction,
   callAiStream,
   persistGuestMessages,
@@ -410,6 +411,8 @@ export function useAIChat(
           }
         } catch {}
       }
+
+      apiMessages.push({ role: 'system', content: buildSchemaFormatOverride() });
 
       // Previous messages — send ALL cached messages so AI remembers full conversation.
       // Display is paginated (last N) but AI sees everything.
