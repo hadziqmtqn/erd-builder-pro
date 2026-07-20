@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { User, Lock, Save, Loader2, Info, Eye, EyeOff, ShieldCheck, Download } from 'lucide-react';
+import { User, Lock, Save, Loader2, Info, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { useAuth } from '@/hooks/useAuth';
 import { apiFetch } from '@/lib/api';
-import { exportGuestData } from '@/lib/guestExport';
 import { toast } from 'sonner';
 
 type AuthConfig = {
@@ -15,6 +14,10 @@ type AuthConfig = {
   supportsPasswordUpdate: boolean;
   installMode: 'desktop' | 'cli' | 'docker' | 'vercel' | 'web';
 };
+
+function getStoredName(user: any): string {
+  return user?.user_metadata?.full_name || user?.user_metadata?.name || user?.name || '';
+}
 
 export function AccountTab() {
   const { user, isGuest, setUser } = useAuth();
@@ -52,7 +55,7 @@ export function AccountTab() {
 
   useEffect(() => {
     if (user) {
-      setName(user.user_metadata?.name || user.user_metadata?.full_name || '');
+      setName(getStoredName(user));
       setEmail(user.email || '');
     }
   }, [user]);
@@ -83,11 +86,12 @@ export function AccountTab() {
   // Current password only required when changing password.
   const wantsEmailChange = email !== (user.email || '');
   const wantsPasswordChange = newPassword.length > 0;
+  const storedName = getStoredName(user);
 
   const hasChanges = isDesktop
-    ? name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
+    ? name !== storedName ||
       email !== (user.email || '')
-    : name !== (user.user_metadata?.name || user.user_metadata?.full_name || '') ||
+    : name !== storedName ||
       email !== (user.email || '') ||
       newPassword.length > 0;
 
@@ -101,7 +105,7 @@ export function AccountTab() {
     // Desktop app (Tauri): allow name and email changes
     if (isDesktop) {
       const newName = name.trim();
-      const oldName = (user.user_metadata?.name || user.user_metadata?.full_name || '').trim();
+      const oldName = storedName.trim();
       const newEmail = email.trim();
       const oldEmail = (user.email || '').trim();
       if (newName === oldName && newEmail === oldEmail) {
@@ -151,7 +155,7 @@ export function AccountTab() {
     try {
       const payload: Record<string, string> = {};
       const newName = name.trim();
-      const oldName = (user.user_metadata?.name || user.user_metadata?.full_name || '').trim();
+      const oldName = storedName.trim();
       if (newName && newName !== oldName) payload.name = newName;
       if (wantsEmailChange) payload.email = email.trim();
       if (currentPassword) payload.currentPassword = currentPassword;
@@ -375,22 +379,8 @@ export function AccountTab() {
 // ── Guest Mode View ──
 
 function GuestModeView() {
-  const [isExporting, setIsExporting] = useState(false);
-
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      await exportGuestData();
-      toast.success('Guest data exported successfully!');
-    } catch (err: any) {
-      toast.error('Export failed: ' + (err.message || 'Unknown error'));
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
-    <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full text-center space-y-8">
+    <div className="p-4 md:p-8 flex flex-col items-center justify-center h-full text-center space-y-6">
       {/* Info */}
       <div className="space-y-3 max-w-90">
         <div className="p-4 bg-muted/20 rounded-full inline-flex mx-auto">
@@ -400,45 +390,9 @@ function GuestModeView() {
           <h3 className="font-semibold text-lg">Guest Mode</h3>
           <p className="text-sm text-muted-foreground">
             You are browsing as a guest. Sign in to manage your account, or export your
-            local data to use in a full account.
+            local data from Settings → Export Data.
           </p>
         </div>
-      </div>
-
-      {/* Export Data */}
-      <div className="w-full max-w-sm bg-muted/10 border border-border/40 rounded-xl p-5 text-left">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 bg-amber-500/10 rounded-lg">
-            <Download className="size-4 text-amber-500" />
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold">Export My Data</h4>
-            <p className="text-[11px] text-muted-foreground">
-              Download all your notes, diagrams, flowcharts, drawings, and AI chat sessions
-              as a JSON file. You can import this file after signing in.
-            </p>
-          </div>
-        </div>
-
-        <Button
-          onClick={handleExport}
-          disabled={isExporting}
-          variant="outline"
-          size="sm"
-          className="w-full"
-        >
-          {isExporting ? (
-            <>
-              <Loader2 className="size-3.5 mr-2 animate-spin" />
-              Exporting…
-            </>
-          ) : (
-            <>
-              <Download className="size-3.5 mr-2" />
-              Export Guest Data
-            </>
-          )}
-        </Button>
       </div>
 
       {/* Sign in prompt */}

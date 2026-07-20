@@ -1,27 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Globe, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  RefreshCw, 
-  Save,
-  Zap,
-  Bot,
-  Check
-} from 'lucide-react';
+import { Globe, Lock, Eye, EyeOff, RefreshCw, Save, Zap, Bot, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
 import { AIProvider, UserAIConfig, AIModel } from '@/types';
+import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/SearchableSelect';
 
 interface APISettingsTabProps {
   providers: AIProvider[];
@@ -33,6 +19,8 @@ interface APISettingsTabProps {
   onTest: (code: string) => void;
   onUpdateProvider: (code: string, updates: Partial<AIProvider>) => void;
   onUpdateConfig: (code: string, updates: Partial<UserAIConfig>) => void;
+  onEnsureModel: (model: { provider_id: number | string; model_identifier: string; display_name?: string }) => Promise<AIModel>;
+  onRefreshModels: () => Promise<void>;
 }
 
 export const APISettingsTab: React.FC<APISettingsTabProps> = ({
@@ -44,9 +32,13 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
   onSave,
   onTest,
   onUpdateProvider,
-  onUpdateConfig
+  onUpdateConfig,
+  onEnsureModel,
+  onRefreshModels
 }) => {
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [liveModels, setLiveModels] = useState<Record<string, { model_identifier: string; display_name: string }[]>>({});
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [selectedProviderCode, setSelectedProviderCode] = useState<string>(
     () => {
       const sorted = [...providers].sort((a, b) => {
@@ -61,6 +53,14 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
   const selectedProvider = providers.find(p => p.code === selectedProviderCode);
   const selectedConfig = selectedProvider ? configs[selectedProvider.code] : undefined;
   const selectedModels = selectedProvider ? (models[selectedProvider.id] || []) : [];
+  const liveOptions = selectedProvider ? (liveModels[selectedProvider.code] || []) : [];
+  const combinedModels = useMemo(() => {
+    const seen = new Set(selectedModels.map(m => m.model_identifier));
+    return [
+      ...selectedModels.map(m => ({ id: String(m.id), model_identifier: m.model_identifier, display_name: m.display_name, saved: true })),
+      ...liveOptions.filter(m => !seen.has(m.model_identifier)).map(m => ({ id: `live:${m.model_identifier}`, ...m, saved: false })),
+    ];
+  }, [selectedModels, liveOptions]);
 
   // Auto-heal: if selected_model_id references a model that no longer exists
   // (e.g. after Docker deploy re-seeded models with new IDs), clear it so
@@ -82,8 +82,63 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
     });
   }, [providers]);
 
+  useEffect(() => {
+    if (sortedProviders.length && !sortedProviders.some(p => p.code === selectedProviderCode)) {
+      setSelectedProviderCode(sortedProviders[0].code);
+    }
+  }, [sortedProviders, selectedProviderCode]);
+
   const toggleShowKey = (code: string) => {
     setShowKey(prev => ({ ...prev, [code]: !prev[code] }));
+  };
+
+  const fetchLiveModels = async () => {
+    if (!selectedProvider || selectedProvider.code !== 'openai_compatible') return;
+    setIsFetchingModels(true);
+    try {
+      const res = await apiFetch('/api/ai/settings/models/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_id: selectedProvider.id,
+          provider_code: selectedProvider.code,
+          base_url: selectedProvider.base_url,
+          api_key: selectedConfig?.api_key,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch models');
+      }
+      const fetched = await res.json();
+      setLiveModels(prev => ({ ...prev, [selectedProvider.code]: fetched }));
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
+
+  const selectModel = async (value: string) => {
+    if (!selectedProvider) return;
+    if (!value.startsWith('live:')) {
+      onUpdateConfig(selectedProvider.code, { selected_model_id: value });
+      return;
+    }
+
+    try {
+      const identifier = value.slice(5);
+      const live = liveOptions.find(m => m.model_identifier === identifier);
+      const saved = await onEnsureModel({
+        provider_id: selectedProvider.id,
+        model_identifier: identifier,
+        display_name: live?.display_name || identifier,
+      });
+      onUpdateConfig(selectedProvider.code, { selected_model_id: saved.id });
+      await onRefreshModels();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
   };
 
   if (providers.length === 0) {
@@ -97,14 +152,14 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       {/* Provider tabs — same style as AIRulesTab */}
       <div 
         className="w-full overflow-x-auto"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         <style>{`.w-full.overflow-x-auto::-webkit-scrollbar { display: none; }`}</style>
-        <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 mb-2 w-fit">
+        <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-fit">
           {sortedProviders.map(provider => (
             <button
               key={provider.code}
@@ -127,20 +182,19 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
         </div>
       </div>
 
-      {/* Selected provider card */}
       {selectedProvider && (
-        <Card className="border border-border/50 bg-background/50 backdrop-blur-sm shadow-lg">
-          <CardHeader className="border-b border-border/30 pb-6">
-            <div className="flex items-center gap-3">
+        <Card className="border-border/60 shadow-none">
+          <CardContent className="space-y-5 p-4 md:p-5">
+            <div className="flex items-center gap-3 border-b border-border/40 pb-4">
               {selectedProvider.code === 'openai' && <Lock className="w-6 h-6 text-purple-500" />}
               {selectedProvider.code === 'gemini' && <Zap className="w-6 h-6 text-purple-500" />}
               {selectedProvider.code === 'openai_compatible' && <Globe className="w-6 h-6 text-purple-500" />}
-              <CardTitle className="text-xl md:text-2xl font-bold">{selectedProvider.name}</CardTitle>
+              <div>
+                <h2 className="text-base font-semibold">{selectedProvider.name}</h2>
+                <p className="text-xs text-muted-foreground">Credentials, endpoint, and default model.</p>
+              </div>
             </div>
-          </CardHeader>
-          
-          <CardContent className="space-y-6 p-4 md:p-6">
-            {/* Base URL — shown for all providers */}
+
             <Field>
               <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Globe className="size-3" />
@@ -156,12 +210,8 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                 onChange={(e) => onUpdateProvider(selectedProvider.code, { base_url: e.target.value })}
                 className="h-9 text-sm"
               />
-              <p className="text-[11px] text-muted-foreground/70 mt-1 px-1">
-                API endpoint URL for this provider. Change if you use a proxy or self-hosted endpoint.
-              </p>
             </Field>
 
-            {/* API Key */}
             <Field>
               <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Lock className="size-3" />
@@ -183,52 +233,30 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
                   {showKey[selectedProvider.code] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 px-1">
-                <Lock className="w-3 h-3" />
-                Your API Key is stored securely and never shared.
-              </div>
             </Field>
 
-            {/* Default Model */}
             <Field>
               <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
                 <Bot className="size-3" />
                 Default Model
               </FieldLabel>
-              <Select 
-                value={selectedConfig?.selected_model_id && selectedModels.some(m => String(m.id) === String(selectedConfig.selected_model_id))
+              <SearchableSelect
+                value={selectedConfig?.selected_model_id && combinedModels.some(m => m.id === String(selectedConfig.selected_model_id))
                   ? String(selectedConfig.selected_model_id)
-                  : ""} 
-                onValueChange={(val: string | null) => {
-                  if (val && selectedModels.some(m => String(m.id) === val)) {
-                    onUpdateConfig(selectedProvider.code, { selected_model_id: val });
-                  }
-                }}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue>
-                    {selectedModels.find(m => String(m.id) === String(selectedConfig?.selected_model_id))?.display_name || "Select a model"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedModels.map(m => (
-                    <SelectItem key={m.id} value={String(m.id)}>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-sm">{m.display_name}</span>
-                        <span className="text-[10px] text-muted-foreground">{m.model_identifier}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                  {selectedModels.length === 0 && (
-                    <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-                      No models available for this provider.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+                  : ""}
+                onChange={selectModel}
+                items={combinedModels}
+                placeholder={isFetchingModels ? "Fetching models..." : "Select a model"}
+                searchPlaceholder="Search models..."
+                emptyMessage={isFetchingModels ? "Fetching models..." : "No models available"}
+                className="h-9 text-sm"
+                getItemValue={(m) => m.id}
+                getItemLabel={(m) => m.display_name}
+                filterItem={(m, q) => `${m.display_name} ${m.model_identifier}`.toLowerCase().includes(q.toLowerCase())}
+                onOpen={fetchLiveModels}
+              />
             </Field>
 
-            {/* Enable Provider Checkbox - below Default Model */}
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
@@ -248,24 +276,19 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
           </CardContent>
 
           <CardFooter className="bg-muted/5 border-t border-border/30 p-4 md:px-6 md:py-4 flex flex-col sm:flex-row gap-3 sm:justify-end">
-            <button
-              type="button"
+            <Button
+              variant="outline"
               onClick={() => onTest(selectedProvider.code)}
               disabled={isTesting[selectedProvider.code] || !selectedConfig?.api_key}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium whitespace-nowrap transition-colors h-10 px-4 bg-background hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none"
+              className="gap-2 px-6"
             >
               {isTesting[selectedProvider.code] ? (
-                <>
-                  <RefreshCw className="w-4 h-4 shrink-0 animate-spin pointer-events-none" />
-                  <span className="pointer-events-none">Testing...</span>
-                </>
+                <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 shrink-0 pointer-events-none" />
-                  <span className="pointer-events-none">Test Connection</span>
-                </>
+                <RefreshCw className="w-4 h-4" />
               )}
-            </button>
+              {isTesting[selectedProvider.code] ? 'Testing...' : 'Test Connection'}
+            </Button>
             <Button 
               onClick={() => onSave(selectedProvider.code)}
               className="gap-2 px-6"

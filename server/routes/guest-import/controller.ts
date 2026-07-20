@@ -15,6 +15,129 @@ if (!prisma) {
   throw new Error("Prisma is not available (server started without database)");
 }
 
+function iso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function parseDbmlFromData(data: string | null | undefined): string | null {
+  if (!data) return null;
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.dbml_source ?? parsed?.dbmlSource ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function exportHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const userId = (req as any).user.id;
+    const [
+      projects,
+      notes,
+      diagrams,
+      flowcharts,
+      drawings,
+      sessions,
+    ] = await Promise.all([
+      prisma!.project.findMany({ where: { userId, isDeleted: false }, orderBy: { createdAt: "asc" } }),
+      prisma!.note.findMany({ where: { userId, isDeleted: false }, orderBy: { createdAt: "asc" } }),
+      prisma!.diagram.findMany({
+        where: { userId, isDeleted: false },
+        orderBy: { createdAt: "asc" },
+        include: {
+          entities: { include: { columns: { orderBy: { sortOrder: "asc" } } } },
+          relationships: true,
+        },
+      }),
+      prisma!.flowchart.findMany({ where: { userId, isDeleted: false }, orderBy: { createdAt: "asc" } }),
+      prisma!.drawing.findMany({ where: { userId, isDeleted: false }, orderBy: { createdAt: "asc" } }),
+      prisma!.aiChatSession.findMany({
+        where: { userId },
+        orderBy: { createdAt: "asc" },
+        include: { messages: { orderBy: { createdAt: "asc" } } },
+      }),
+    ]);
+
+    const data = {
+      projects: projects.map((p: any) => ({
+        id: p.id, uid: p.uid, name: p.name, color: p.color,
+        created_at: iso(p.createdAt), updated_at: iso(p.updatedAt),
+      })),
+      notes: notes.map((n: any) => ({
+        id: n.id, uid: n.uid, title: n.title, content: n.content || "",
+        project_id: n.projectId, created_at: iso(n.createdAt), updated_at: iso(n.updatedAt),
+      })),
+      diagrams: diagrams.map((d: any) => {
+        const dbmlSource = d.dbmlSource ?? parseDbmlFromData(d.data);
+        return {
+          id: d.id, uid: d.uid, name: d.name, project_id: d.projectId,
+          viewport_x: d.viewportX ?? 0, viewport_y: d.viewportY ?? 0, viewport_zoom: d.viewportZoom ?? 1,
+          dbml_source: dbmlSource,
+          dbmlSource,
+          created_at: iso(d.createdAt), updated_at: iso(d.updatedAt),
+          entities: (d.entities || []).map((e: any) => ({
+            id: e.id, name: e.name, x: e.x, y: e.y, color: e.color,
+            created_at: iso(e.createdAt),
+            columns: (e.columns || []).map((c: any) => ({
+              id: c.id, name: c.name, type: c.type,
+              is_pk: c.isPk, is_nullable: c.isNullable,
+              enum_values: c.enumValues, sort_order: c.sortOrder,
+              created_at: iso(c.createdAt),
+            })),
+          })),
+          relationships: (d.relationships || []).map((r: any) => ({
+            id: r.id, source_entity_id: r.sourceEntityId, target_entity_id: r.targetEntityId,
+            source_column_id: r.sourceColumnId, target_column_id: r.targetColumnId,
+            source_handle: r.sourceHandle, target_handle: r.targetHandle,
+            type: r.type, label: r.label, created_at: iso(r.createdAt),
+          })),
+        };
+      }),
+      flowcharts: flowcharts.map((f: any) => ({
+        id: f.id, uid: f.uid, title: f.title, data: f.data || '{"nodes":[],"edges":[]}',
+        project_id: f.projectId, created_at: iso(f.createdAt), updated_at: iso(f.updatedAt),
+      })),
+      drawings: drawings.map((d: any) => ({
+        id: d.id, uid: d.uid, title: d.title, data: d.data || "[]",
+        project_id: d.projectId, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt),
+      })),
+      ai_chat_sessions: sessions.map((s: any) => ({
+        uid: s.uid, title: s.title, entity_type: s.entityType, entity_uid: s.entityUid,
+        project_id: s.projectId, created_at: iso(s.createdAt), updated_at: iso(s.updatedAt),
+        messages: (s.messages || []).map((m: any) => ({
+          id: m.id, role: m.role, content: m.content,
+          selection_text: m.selectionText, created_at: iso(m.createdAt),
+        })),
+      })),
+    };
+
+    res.json({
+      version: "1.1",
+      exported_at: new Date().toISOString(),
+      application: "ERD Builder Pro",
+      total_items: {
+        projects: data.projects.length,
+        notes: data.notes.length,
+        diagrams: data.diagrams.length,
+        flowcharts: data.flowcharts.length,
+        drawings: data.drawings.length,
+        ai_chat_sessions: data.ai_chat_sessions.length,
+      },
+      data,
+    });
+  } catch (err: any) {
+    handleExportError(res, err);
+  }
+}
+
+function handleExportError(res: ExpressResponse, err: any): void {
+  logger.error({ err }, "Data export error");
+  res.status(500).json({ error: "Failed to export data" });
+}
+
 export async function importHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   const userId = (req as any).user.id;
 
@@ -107,7 +230,7 @@ export async function importHandler(req: ExpressRequest, res: ExpressResponse): 
     sendProgress(res, {
       type: "complete",
       success: true,
-      message: "Guest data imported successfully.",
+      message: "Data imported successfully.",
       summary: {
         projects: stats.projects,
         notes: stats.notes,

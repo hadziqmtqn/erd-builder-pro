@@ -75,6 +75,7 @@ export async function localLogin(email: string, password: string) {
     user: {
       id: (user as any).id,
       email: (user as any).email,
+      name: (user as any).name,
       user_metadata: { name: (user as any).name },
     },
   };
@@ -131,6 +132,7 @@ export async function ensureDesktopUser(): Promise<{
       user: {
         id: (user as any).id,
         email: (user as any).email,
+        name: (user as any).name,
         user_metadata: { name: (user as any).name },
       },
       token,
@@ -168,13 +170,14 @@ export async function getLocalSession(token: string) {
 
   const user = await prisma.user.findFirst({
     where: { id: session.userId } as any,
-    select: { id: true, email: true },
+    select: { id: true, email: true, name: true },
   });
   if (!user) return null;
 
   return {
     id: (user as any).id,
     email: (user as any).email,
+    name: (user as any).name,
     user_metadata: { name: (user as any).name },
   };
 }
@@ -239,7 +242,7 @@ export async function updateLocalAccount(
   const updated = await prisma.user.update({
     where: { id: userId } as any,
     data: updateData,
-    select: { id: true, email: true },
+    select: { id: true, email: true, name: true },
   });
 
   return {
@@ -247,6 +250,7 @@ export async function updateLocalAccount(
     user: {
       id: (updated as any).id,
       email: (updated as any).email,
+      name: (updated as any).name,
       user_metadata: { name: (updated as any).name },
     },
   };

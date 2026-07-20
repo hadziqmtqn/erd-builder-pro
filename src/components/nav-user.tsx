@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useWorkspace } from "../providers/WorkspaceContext"
 import { AppView } from "../types"
-import { GuestExportDialog } from "@/components/ai/GuestExportDialog"
+import { GuestExportDialog } from "@/components/settings/GuestExportDialog"
 import { AboutDialog } from "@/components/modals/AboutDialog"
 
 export function NavUser({
@@ -61,7 +61,7 @@ export function NavUser({
   if (!user) return null;
 
   const email = user.email || "";
-  const name = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User";
+  const name = user.name || user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0] || "User";
   const avatar = user.user_metadata?.avatar_url || "";
   const initials = name.substring(0, 2).toUpperCase();
 

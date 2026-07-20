@@ -1,16 +1,48 @@
 import { prisma } from "../../lib/prisma.js";
 
-function getUserId(req: any): string {
-  return req.user.id;
+function providerDto(p: any) {
+  return p && {
+    id: p.id,
+    name: p.name,
+    code: p.code,
+    base_url: p.baseUrl,
+    is_active: p.isActive,
+    created_at: p.createdAt,
+  };
+}
+
+function modelDto(m: any) {
+  return m && {
+    id: m.id,
+    provider_id: m.providerId,
+    model_identifier: m.modelIdentifier,
+    display_name: m.displayName,
+    context_window: m.contextWindow,
+    is_active: m.isActive,
+    created_at: m.createdAt,
+  };
+}
+
+function configDto(c: any) {
+  return c && {
+    id: c.id,
+    user_id: c.userId,
+    provider_id: c.providerId,
+    selected_model_id: c.selectedModelId,
+    api_key: c.apiKey ? "***" : null,
+    is_enabled: c.isEnabled,
+    updated_at: c.updatedAt,
+  };
 }
 
 // ── Providers ──
 
 export async function listProviders() {
-  return prisma?.aiProvider.findMany({
+  const providers = await prisma?.aiProvider.findMany({
     where: { isActive: true },
     orderBy: { id: "asc" },
   }) || [];
+  return providers.map(providerDto);
 }
 
 export async function updateProvider(providerId: number, baseUrl: string) {
@@ -27,10 +59,7 @@ export async function listConfigs(userId: string) {
   const data = await prisma?.userAiConfig.findMany({
     where: { userId },
   }) || [];
-  return data.map((c: any) => ({
-    ...c,
-    apiKey: c.apiKey ? "***" : null,
-  }));
+  return data.map(configDto);
 }
 
 export async function upsertConfig(
@@ -67,22 +96,24 @@ export async function upsertConfig(
       updatedAt: new Date(),
     } as any,
   });
-  return data ? { ...data, apiKey: data.apiKey ? "***" : null } : null;
+  return configDto(data);
 }
 
 // ── Models ──
 
 export async function listModels() {
-  return prisma?.aiModel.findMany({
+  const models = await prisma?.aiModel.findMany({
     where: { isActive: true },
+    orderBy: [{ providerId: "asc" }, { displayName: "asc" }],
   }) || [];
+  return models.map(modelDto);
 }
 
 export async function createModel(data: {
   provider_id?: number; model_identifier: string; display_name: string;
 }) {
   const providerId = data.provider_id ? Number(data.provider_id) : null;
-  return prisma?.aiModel.create({
+  const model = await prisma?.aiModel.create({
     data: {
       providerId: providerId || null,
       modelIdentifier: data.model_identifier,
@@ -90,13 +121,14 @@ export async function createModel(data: {
       isActive: true,
     },
   });
+  return modelDto(model);
 }
 
 export async function updateModel(modelId: number, data: {
   provider_id?: number; model_identifier?: string; display_name?: string;
 }) {
   const providerId = data.provider_id ? Number(data.provider_id) : null;
-  await prisma?.aiModel.update({
+  const model = await prisma?.aiModel.update({
     where: { id: modelId as any },
     data: {
       ...(providerId != null ? { providerId: providerId || null } : {}),
@@ -104,7 +136,7 @@ export async function updateModel(modelId: number, data: {
       ...(data.display_name !== undefined ? { displayName: data.display_name } : {}),
     },
   });
-  return { success: true };
+  return modelDto(model);
 }
 
 export async function deleteModel(modelId: number) {
@@ -112,6 +144,70 @@ export async function deleteModel(modelId: number) {
     where: { id: modelId as any },
   });
   return { success: true };
+}
+
+export async function ensureModel(data: {
+  provider_id: number; model_identifier: string; display_name?: string;
+}) {
+  const providerId = Number(data.provider_id);
+  const identifier = String(data.model_identifier || "").trim();
+  if (!providerId || !identifier) throw new Error("provider_id and model_identifier are required");
+
+  const existing = await prisma?.aiModel.findFirst({
+    where: { providerId, modelIdentifier: identifier },
+  });
+  if (existing) {
+    if (existing.isActive) return modelDto(existing);
+    return modelDto(await prisma?.aiModel.update({
+      where: { id: existing.id },
+      data: { isActive: true },
+    }));
+  }
+
+  const model = await prisma?.aiModel.create({
+    data: {
+      providerId,
+      modelIdentifier: identifier,
+      displayName: data.display_name || identifier,
+      isActive: true,
+    },
+  });
+  return modelDto(model);
+}
+
+export async function fetchProviderModels(body: {
+  user_id: string; provider_id?: number; provider_code: string; base_url?: string; api_key?: string;
+}) {
+  if (body.provider_code !== "openai_compatible" && body.provider_code !== "openai") {
+    return [];
+  }
+
+  let apiKey = body.api_key && body.api_key !== "***" ? body.api_key : "";
+  if (!apiKey && body.provider_id) {
+    const config = await prisma?.userAiConfig.findUnique({
+      where: { userId_providerId: { userId: body.user_id, providerId: Number(body.provider_id) } },
+      select: { apiKey: true },
+    });
+    apiKey = config?.apiKey || "";
+  }
+  if (!apiKey) throw new Error("API key is required to fetch models");
+
+  const baseUrl = (body.base_url || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `API Error: ${response.status} ${response.statusText}`);
+  }
+
+  const data: any = await response.json();
+  return (Array.isArray(data.data) ? data.data : [])
+    .map((m: any) => String(m.id || "").trim())
+    .filter(Boolean)
+    .sort()
+    .map((id: string) => ({ model_identifier: id, display_name: id }));
 }
 
 // ── Prompts ──
@@ -249,7 +345,7 @@ export async function testConnection(
   modelIdentifier?: string
 ) {
   const config = await prisma?.userAiConfig.findFirst({
-    where: { userId, isEnabled: true },
+    where: { userId, provider: { code: providerCode } },
     include: { provider: true },
     orderBy: { updatedAt: "desc" },
   });

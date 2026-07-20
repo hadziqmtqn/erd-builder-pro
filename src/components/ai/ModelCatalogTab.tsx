@@ -3,7 +3,6 @@ import {
   Plus,
   Trash,
   Pencil,
-  Library,
   Bot,
   Hash,
   Type,
@@ -106,34 +105,28 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
   };
 
   return (
-    <div className="p-6 space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Library className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">Model Catalog</h2>
-            <p className="text-xs text-muted-foreground">Manage AI models and their identifiers.</p>
-          </div>
+    <div className="space-y-4 animate-in fade-in duration-300">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">AI Models</h2>
+          <p className="text-xs text-muted-foreground">Models saved from provider setup and manual entries.</p>
         </div>
-        <Button onClick={handleOpenAdd} size="sm" className="gap-2 h-9" disabled={isDialogOpen}>
-          <Plus className="size-4" />
+        <Button onClick={handleOpenAdd} size="sm" className="gap-2" disabled={isDialogOpen}>
+          <Plus/>
           Register Model
         </Button>
       </div>
 
       {/* Table Section */}
-      <div className="rounded-xl border border-border/40 bg-background/50 overflow-hidden shadow-sm">
+      <div className="rounded-lg border border-border/60 bg-background overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-muted/30 text-muted-foreground/70 border-b border-border/40">
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Provider</th>
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Display Name</th>
-                <th className="px-6 py-3.5 text-left font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Identifier</th>
-                <th className="px-6 py-3.5 text-right font-bold uppercase tracking-widest text-[10px] whitespace-nowrap">Actions</th>
+              <tr className="bg-muted/30 text-muted-foreground border-b border-border/40">
+                <th className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap">Provider</th>
+                <th className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap">Display Name</th>
+                <th className="px-4 py-3 text-left font-medium text-xs whitespace-nowrap">Identifier</th>
+                <th className="px-4 py-3 text-right font-medium text-xs whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">
@@ -141,29 +134,29 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
                 <tr>
                   <td colSpan={4} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-3 opacity-20">
-                      <Settings2 className="size-12 stroke-[1]" />
+                      <Settings2 className="size-12 stroke-1" />
                       <p className="text-sm">No models registered yet</p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 models.map((m) => {
-                  const provider = providers.find(p => p.id === m.provider_id);
+                  const provider = providers.find(p => String(p.id) === String(m.provider_id));
                   return (
                     <tr key={m.id} className="group hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <Badge variant="outline" className="font-semibold text-[11px] px-2 py-0.5 bg-muted/20 border-border/50">
                           {provider?.name || 'Unknown'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 font-medium whitespace-nowrap">{m.display_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 font-medium whitespace-nowrap">{m.display_name}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <code className="text-[11px] font-mono bg-muted/30 px-1.5 py-0.5 rounded text-muted-foreground border border-border/30">
                           {m.model_identifier}
                         </code>
                       </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <div className="flex justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -194,14 +187,14 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
       </div>
 
       {/* Stats Footer */}
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40 uppercase font-bold tracking-widest px-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
         <div className="size-1 rounded-full bg-current" />
-        {models.length} Models in Catalog
+        {models.length} models
       </div>
 
       {/* Add/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={(val) => !val && handleClose()}>
-        <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-border/40 shadow-2xl">
+        <DialogContent className="sm:max-w-110 p-0 overflow-hidden border-border/40 shadow-2xl">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 bg-muted/5">
             <DialogTitle className="text-lg font-bold tracking-tight">
               {editingModelId ? 'Edit Model' : 'Register New Model'}
@@ -275,7 +268,7 @@ export const ModelCatalogTab: React.FC<ModelCatalogTabProps> = ({
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent size="sm" className="max-w-[400px] p-0 overflow-hidden border-border/40">
+        <AlertDialogContent size="sm" className="max-w-100 p-0 overflow-hidden border-border/40">
           <AlertDialogHeader className="px-6 pt-6 pb-4">
             <AlertDialogMedia className="bg-destructive/10 mb-4">
               <AlertTriangle className="size-5 text-destructive" />

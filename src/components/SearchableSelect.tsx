@@ -18,6 +18,7 @@ export interface SearchableSelectProps<T> {
   getItemValue: (item: T) => string;
   getItemLabel: (item: T) => string;
   filterItem: (item: T, query: string) => boolean;
+  onOpen?: () => void;
 }
 
 export function SearchableSelect<T>({
@@ -31,6 +32,7 @@ export function SearchableSelect<T>({
   getItemValue,
   getItemLabel,
   filterItem,
+  onOpen,
 }: SearchableSelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -168,7 +170,13 @@ export function SearchableSelect<T>({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen(v => { if (!v) calcPos(); return !v; })}
+        onClick={() => setOpen(v => {
+          if (!v) {
+            calcPos();
+            onOpen?.();
+          }
+          return !v;
+        })}
         className={cn(
           "flex h-8 w-full items-center justify-between rounded-md border border-border/50 bg-background/50 px-2 text-[11px] font-medium whitespace-nowrap transition-all outline-none cursor-pointer",
           "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20",

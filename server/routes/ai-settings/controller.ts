@@ -87,6 +87,29 @@ export async function createModel(req: ExpressRequest, res: ExpressResponse): Pr
   }
 }
 
+export async function ensureModel(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const { provider_id, model_identifier, display_name } = req.body;
+    if (!provider_id || !model_identifier) {
+      res.status(400).json({ error: "provider_id and model_identifier are required" });
+      return;
+    }
+    res.json(await aiService.ensureModel({ provider_id: Number(provider_id), model_identifier, display_name }));
+  } catch (err: any) {
+    handleError(res, err, "Failed to save model");
+  }
+}
+
+export async function fetchProviderModels(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const { provider_id, provider_code, base_url, api_key } = req.body;
+    if (!provider_code) { res.status(400).json({ error: "provider_code is required" }); return; }
+    res.json(await aiService.fetchProviderModels({ user_id: getUserId(req), provider_id, provider_code, base_url, api_key }));
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch provider models");
+  }
+}
+
 export async function updateModel(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     if (!requireAdmin(req, res)) return;

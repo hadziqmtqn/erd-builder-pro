@@ -105,6 +105,30 @@ export const useAIModels = () => {
     }
   };
 
+  const ensureModel = async (model: { provider_id: number | string; model_identifier: string; display_name?: string }) => {
+    const res = await apiFetch('/api/ai/settings/models/ensure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(model),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save model');
+    }
+    const saved: AIModel = await res.json();
+    setModels(prev => {
+      const key = String(saved.provider_id);
+      const current = prev[key] || [];
+      return {
+        ...prev,
+        [key]: current.some(m => String(m.id) === String(saved.id))
+          ? current.map(m => String(m.id) === String(saved.id) ? saved : m)
+          : [...current, saved].sort((a, b) => a.display_name.localeCompare(b.display_name)),
+      };
+    });
+    return saved;
+  };
+
   const startEditingModel = (model: AIModel) => {
     setEditingModelId(model.id);
     setNewModel({
@@ -129,6 +153,7 @@ export const useAIModels = () => {
     setEditingModelId,
     handleAddModel,
     handleDeleteModel,
+    ensureModel,
     startEditingModel,
     cancelEdit,
     refresh: fetchModelsData,
