@@ -1,14 +1,13 @@
 /**
- * Guest Mode — Data Export Utility
+ * Data Export Utility
  *
- * Reads all user-created data from IndexedDB (localPersistence) and packages
- * it into a downloadable JSON file that can be imported into a real database
- * (SQLite / PostgreSQL) via the server-side import endpoint.
+ * Guest mode reads IndexedDB. Authenticated modes read the server database.
  *
  * The exported JSON uses a portable schema that maps to the Prisma models.
  */
 
 import { localPersistence } from './localPersistence';
+import { apiFetch } from './api';
 
 export interface GuestExportPayload {
   version: string;
@@ -47,6 +46,29 @@ export interface GuestExportMessage {
 const GUEST_TYPES = ['notes', 'erd', 'flowchart', 'drawings', 'project', 'ai_chat_session'] as const;
 type GuestResourceType = (typeof GUEST_TYPES)[number];
 
+function isGuestMode(): boolean {
+  return sessionStorage.getItem('auth_mode') === 'guest';
+}
+
+function readDbmlFromData(data: unknown): string | null {
+  if (!data || typeof data !== 'string') return null;
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.dbml_source ?? parsed?.dbmlSource ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDiagramForExport(diagram: any): any {
+  const dbmlSource = diagram.dbml_source ?? diagram.dbmlSource ?? readDbmlFromData(diagram.data);
+  return {
+    ...diagram,
+    dbml_source: dbmlSource ?? null,
+    dbmlSource: dbmlSource ?? null,
+  };
+}
+
 /**
  * Read ALL resources of a given type from IndexedDB.
  * Filters out soft-deleted items (is_deleted === true).
@@ -76,9 +98,18 @@ function collectMessages(session: any): GuestExportMessage[] {
 }
 
 /**
- * Build the full export payload by reading all IndexedDB stores.
+ * Build the full export payload by reading local stores or the server database.
  */
 export async function buildExportPayload(): Promise<GuestExportPayload> {
+  if (!isGuestMode()) {
+    const res = await apiFetch('/api/guest/export');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to export data');
+    }
+    return res.json();
+  }
+
   const [projects, notes, diagrams, flowcharts, drawings, sessions] = await Promise.all([
     collectResources('project'),
     collectResources('notes'),
@@ -116,7 +147,7 @@ export async function buildExportPayload(): Promise<GuestExportPayload> {
     data: {
       projects,
       notes,
-      diagrams,
+      diagrams: diagrams.map(normalizeDiagramForExport),
       flowcharts,
       drawings,
       ai_chat_sessions: exportSessions,
@@ -132,7 +163,7 @@ export function downloadExportPayload(payload: GuestExportPayload): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `erd-guest-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `erd-data-export-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -146,3 +177,5 @@ export async function exportGuestData(): Promise<void> {
   const payload = await buildExportPayload();
   downloadExportPayload(payload);
 }
+
+export const exportData = exportGuestData;

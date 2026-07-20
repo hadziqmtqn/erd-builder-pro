@@ -8,9 +8,9 @@ import {
   Palette,
   Settings,
   Brain,
-  Library,
   ListChecks,
   Upload,
+  Download,
   HardDrive,
 } from 'lucide-react';
 import {
@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useAIProviders } from '@/hooks/useAIProviders';
@@ -58,11 +59,12 @@ import { APISettingsTab } from '@/components/ai/APISettingsTab';
 import { ModelCatalogTab } from '@/components/ai/ModelCatalogTab';
 import { DefaultPromptsTab } from '@/components/ai/DefaultPromptsTab';
 import { AIRulesTab } from '@/components/ai/AIRulesTab';
-import { AccountTab } from '@/components/ai/AccountTab';
-import { AppearanceTab } from '@/components/ai/AppearanceTab';
+import { AccountTab } from '@/components/settings/AccountTab';
+import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { BackupsView } from '@/components/views/BackupsView';
 import { ChangelogView } from '@/components/views/ChangelogView';
-import { DataImport } from '@/components/ai/DataImport';
+import { DataImport } from '@/components/settings/DataImport';
+import { DataExport } from '@/components/settings/DataExport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -78,6 +80,7 @@ export function SettingsModal() {
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__) ||
     (window as any).ERD_INSTALL_MODE === 'cli'
   );
+  const [aiSettingsTab, setAiSettingsTab] = React.useState('configuration');
 
   const {
     providers,
@@ -100,8 +103,10 @@ export function SettingsModal() {
     setNewModel,
     handleAddModel,
     handleDeleteModel,
+    ensureModel,
     startEditingModel,
     cancelEdit,
+    refresh: refreshModels,
   } = useAIModels();
 
   const {
@@ -124,6 +129,7 @@ export function SettingsModal() {
         {
           label: "More",
           items: [
+            { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
             { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
           ]
         },
@@ -143,7 +149,6 @@ export function SettingsModal() {
         label: "Feature",
         items: [
           { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
-          { id: 'ai-models', label: 'Model Catalog', icon: <Library className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
         ]
@@ -151,6 +156,7 @@ export function SettingsModal() {
       {
         label: "More",
         items: [
+          { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
           { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
           { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
           { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
@@ -266,32 +272,41 @@ export function SettingsModal() {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {settingsTab === 'ai-config' && (
-                <APISettingsTab 
-                    providers={providers}
-                    configs={configs}
-                    models={models}
-                    isSaving={isSavingProviders}
-                    isTesting={isTesting}
-                    onSave={handleSaveConfig}
-                    onTest={(code) => handleTestConnection(code, Object.values(models).flat())}
-                    onUpdateProvider={updateProviderLocal}
-                    onUpdateConfig={updateConfigLocal}
-                  />
-              )}
-
-              {settingsTab === 'ai-models' && (
-                <ModelCatalogTab 
-                    providers={providers}
-                    models={Object.values(models).flat()}
-                    newModel={newModel}
-                    editingModelId={editingModelId}
-                    isSaving={isSavingModels}
-                    onSetNewModel={setNewModel}
-                    onAddModel={handleAddModel}
-                    onEditModel={startEditingModel}
-                    onDeleteModel={handleDeleteModel}
-                    onCancelEdit={cancelEdit}
-                  />
+                <Tabs value={aiSettingsTab} onValueChange={setAiSettingsTab} className="p-4 md:p-6">
+                  <TabsList className="w-full mb-4 bg-muted/30">
+                    <TabsTrigger value="configuration" className="flex-1">Configuration</TabsTrigger>
+                    <TabsTrigger value="models" className="flex-1">AI Models</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="configuration" className="m-0">
+                    <APISettingsTab
+                      providers={providers}
+                      configs={configs}
+                      models={models}
+                      isSaving={isSavingProviders}
+                      isTesting={isTesting}
+                      onSave={handleSaveConfig}
+                      onTest={(code) => handleTestConnection(code, Object.values(models).flat())}
+                      onUpdateProvider={updateProviderLocal}
+                      onUpdateConfig={updateConfigLocal}
+                      onEnsureModel={ensureModel}
+                      onRefreshModels={refreshModels}
+                    />
+                  </TabsContent>
+                  <TabsContent value="models" className="m-0">
+                    <ModelCatalogTab
+                      providers={providers}
+                      models={Object.values(models).flat()}
+                      newModel={newModel}
+                      editingModelId={editingModelId}
+                      isSaving={isSavingModels}
+                      onSetNewModel={setNewModel}
+                      onAddModel={handleAddModel}
+                      onEditModel={startEditingModel}
+                      onDeleteModel={handleDeleteModel}
+                      onCancelEdit={cancelEdit}
+                    />
+                  </TabsContent>
+                </Tabs>
               )}
 
               {settingsTab === 'ai-prompts' && (
@@ -321,6 +336,12 @@ export function SettingsModal() {
               {settingsTab === 'changelog' && (
                 <div className="p-6 space-y-6">
                   <ChangelogView />
+                </div>
+              )}
+
+              {settingsTab === 'export-data' && (
+                <div className="p-4 md:p-6 overflow-y-auto h-full">
+                  <DataExport />
                 </div>
               )}
 

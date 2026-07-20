@@ -10,6 +10,8 @@ router.get("/configs", authenticate, ctrl.listConfigs);
 router.post("/configs", authenticate, ctrl.saveConfig);
 router.post("/configs/test", authenticate, ctrl.testConfigConnection);
 router.get("/models", authenticate, ctrl.listModels);
+router.post("/models/fetch", authenticate, ctrl.fetchProviderModels);
+router.post("/models/ensure", authenticate, ctrl.ensureModel);
 router.post("/models", authenticate, ctrl.createModel);
 router.put("/models/:id", authenticate, ctrl.updateModel);
 router.delete("/models/:id", authenticate, ctrl.deleteModel);

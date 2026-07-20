@@ -40,7 +40,7 @@ export function GuestExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px] bg-background border-border/40 shadow-2xl">
+      <DialogContent className="sm:max-w-105 bg-background border-border/40 shadow-2xl">
         <DialogTitle className="sr-only">Guest Data Backup</DialogTitle>
         <DialogDescription className="sr-only">
           Export your Guest Mode data as a JSON file for safe keeping or future import.

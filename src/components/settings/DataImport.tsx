@@ -1,9 +1,8 @@
 /**
  * DataImport — Unified Import UI
  *
- * Supports two modes:
- * 1. **Guest mode** — JSON only, via `/api/guest/import`
- * 2. **Desktop app** — JSON via `/api/desktop/import`, `.db` via `/api/desktop/restore/database`
+ * Supports JSON data import via `/api/guest/import` in all auth modes.
+ * Desktop app also supports `.db` via `/api/desktop/restore/database`.
  *
  * Guest mode is available on all platforms (web + desktop).
  * Database file restore is only available in Desktop (SQLite) mode.
@@ -226,13 +225,11 @@ export function DataImport() {
     setErrorMsg('');
     setProgress({ current: 0, total: totalWork, phase: 'Preparing import…' });
 
-    const endpoint = mode === 'guest' ? '/api/guest/import' : '/api/desktop/import';
-
     try {
       const abort = new AbortController();
       abortRef.current = abort;
 
-      const res = await apiFetch(endpoint, {
+      const res = await apiFetch('/api/guest/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

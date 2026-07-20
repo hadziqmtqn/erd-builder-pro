@@ -147,8 +147,8 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
             <p className="text-xs text-muted-foreground">Define system instructions and context for AI behavior.</p>
           </div>
         </div>
-        <Button onClick={handleOpenAdd} size="sm" className="gap-2 h-9">
-          <Plus className="size-4" />
+        <Button onClick={handleOpenAdd} size="sm" className="gap-2">
+          <Plus/>
           Create Prompt
         </Button>
       </div>
@@ -182,7 +182,7 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
                 key={prompt.id}
                 className={`group relative flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/5 ${
                   prompt.is_default 
-                    ? 'bg-purple-500/[0.03] border-purple-500/30 ring-1 ring-purple-500/10' 
+                    ? 'bg-purple-500/3 border-purple-500/30 ring-1 ring-purple-500/10' 
                     : 'bg-background border-border/40 hover:border-purple-500/20'
                 }`}
               >
@@ -194,7 +194,7 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-sm truncate">{prompt.name}</h3>
-                        <span className="shrink-0 px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-muted text-muted-foreground/70 uppercase tracking-tighter">
+                        <span className="shrink-0 px-1.5 py-0.5 rounded-lg text-[8px] font-bold bg-muted text-muted-foreground/70 uppercase tracking-tighter">
                           {prompt.category}
                         </span>
                       </div>
@@ -236,7 +236,7 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden border-border/40 shadow-2xl">
+        <DialogContent className="sm:max-w-125 p-0 overflow-hidden border-border/40 shadow-2xl">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 bg-muted/5">
             <DialogTitle className="text-lg font-bold tracking-tight">
               {editingId ? 'Edit Prompt' : 'Create New Prompt'}
@@ -280,7 +280,7 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
               </FieldLabel>
               <textarea 
                 placeholder="You are an expert architect. Always answer in JSON format..."
-                className="w-full min-h-[150px] p-3 text-sm rounded-lg bg-muted/20 border border-border/40 focus:bg-background focus:ring-1 focus:ring-purple-500/20 transition-all outline-none"
+                className="w-full min-h-37.5 p-3 text-sm rounded-lg bg-muted/20 border border-border/40 focus:bg-background focus:ring-1 focus:ring-purple-500/20 transition-all outline-none"
                 value={formData.content}
                 onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
               />
@@ -311,7 +311,7 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent size="sm" className="max-w-[400px] p-0 overflow-hidden border-border/40">
+        <AlertDialogContent size="sm" className="max-w-100 p-0 overflow-hidden border-border/40">
           <AlertDialogHeader className="px-6 pt-6 pb-4">
             <AlertDialogMedia className="bg-destructive/10 mb-4">
               <AlertTriangle className="size-5 text-destructive" />
