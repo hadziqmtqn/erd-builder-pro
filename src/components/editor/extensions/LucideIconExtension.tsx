@@ -39,7 +39,7 @@ export const LucideIconExtension = Node.create({
       const IconComponent = (LucideIcons as Record<string, any>)[name] || LucideIcons.HelpCircle;
 
       return (
-        <NodeViewWrapper className="inline-flex items-center align-middle ml-0.5 mr-1.5 leading-none translate-y-[-1px]">
+        <NodeViewWrapper className="inline-flex items-center align-middle ml-0.5 mr-1.5 leading-none -translate-y-px">
           <IconComponent 
             size={18} 
             strokeWidth={2} 
