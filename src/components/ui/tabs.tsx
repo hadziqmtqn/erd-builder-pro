@@ -41,9 +41,9 @@ function TabsTrigger({
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
         // Default variant
-        "data-[variant=default]:rounded-md data-[variant=default]:px-3 data-[variant=default]:py-1.5 data-[variant=default]:data-[selected]:bg-background data-[variant=default]:data-[selected]:text-foreground data-[variant=default]:data-[selected]:shadow-sm",
+        "data-[variant=default]:rounded-md data-[variant=default]:px-3 data-[variant=default]:py-1.5 data-[variant=default]:data-selected:bg-background data-[variant=default]:data-selected:text-foreground data-[variant=default]:data-selected:shadow-sm",
         // Line variant - Standard shadcn/ui
-        "data-[variant=line]:px-4 data-[variant=line]:py-3 data-[variant=line]:-mb-px data-[variant=line]:border-b-2 data-[variant=line]:border-transparent data-[variant=line]:data-[selected]:border-primary data-[variant=line]:text-muted-foreground data-[variant=line]:hover:text-foreground data-[variant=line]:data-[selected]:text-foreground data-[variant=line]:bg-transparent",
+        "data-[variant=line]:px-4 data-[variant=line]:py-3 data-[variant=line]:-mb-px data-[variant=line]:border-b-2 data-[variant=line]:border-transparent data-[variant=line]:data-selected:border-primary data-[variant=line]:text-muted-foreground data-[variant=line]:hover:text-foreground data-[variant=line]:data-selected:text-foreground data-[variant=line]:bg-transparent",
         className
       )}
       {...props}
