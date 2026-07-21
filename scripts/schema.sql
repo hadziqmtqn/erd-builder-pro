@@ -54,6 +54,7 @@ CREATE TABLE "diagrams" (
     "share_token" TEXT,
     "expiry_date" DATETIME,
     "published_at" DATETIME,
+    "dbml_source" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
 );
@@ -385,4 +386,3 @@ CREATE UNIQUE INDEX "user_ai_rules_user_id_view_type_key" ON "user_ai_rules"("us
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_preferences_user_id_key" ON "user_preferences"("user_id");
-

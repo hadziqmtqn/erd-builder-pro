@@ -56,4 +56,18 @@ Table login_logs {
     expect(status?.enum_name).toBe('login_logs_status');
     expect(status?.enum_values).toBe('success, failed, locked');
   });
+
+  it('accepts a single remaining table with uppercase DBML types', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  name VARCHAR [not null]
+}`;
+
+    const result = dbmlToERD(dbml);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0].data.name).toBe('users');
+    expect(result.nodes[0].data.columns.map(column => column.name)).toEqual(['id', 'name']);
+    expect(result.edges).toHaveLength(0);
+  });
 });

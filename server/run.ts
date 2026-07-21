@@ -252,6 +252,10 @@ async function startup(): Promise<void> {
     // negligible latency even on cold start.
     await seedAIProviders();
 
+    // Schema migrations must finish before /api/me lets the UI load. Prisma
+    // already expects these columns, so background ALTERs can race first load.
+    await applySchemaMigrations();
+
     // DB is functional — signal /api/me to start responding immediately.
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
@@ -265,9 +269,6 @@ async function startup(): Promise<void> {
     }
 
     backfillUids().catch(err => logger.warn({ err }, "backfillUids failed (non-fatal)"));
-
-    // Apply incremental schema migrations (add new columns, etc.)
-    applySchemaMigrations().catch(err => logger.warn({ err }, "applySchemaMigrations failed (non-fatal)"));
   } else {
     logger.error("[startup] Database NOT ready. prisma is likely null (better-sqlite3 ABI mismatch). /api/me will return db_error.");
     setDbError("better-sqlite3 native addon failed to load. See server-startup.log for details.");

@@ -359,7 +359,7 @@ function AppLayoutInner() {
   const rightPanelOpen = rightPanelMode !== 'closed';
 
   // ── DBML → ERD callback ──
-  const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[]) => {
+  const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[], source: string) => {
     const nodeIdMap = new Map<string, string>();
     // Deep clone edges so we can mutate handles for column remapping
     const clonedEdges = newEdges.map(e => ({ ...e }));
@@ -449,10 +449,10 @@ function AppLayoutInner() {
     setEdges(mergedEdges);
     // Always update React state (fixes handles/IDs), but only save if data changed
     if (!nodesSame || !edgesSame) {
-      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current, { dbmlSource: dbmlContent })
+      saveDiagram?.(mergedNodes, mergedEdges, viewportRef?.current, { dbmlSource: source })
         ?.then(() => triggerDebouncedSync?.());
     }
-  }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync, dbmlContent]);
+  }, [nodes, edges, setNodes, setEdges, takeSnapshot, saveDiagram, viewportRef, triggerDebouncedSync]);
 
   // ── Collapse left sidebar when right panel opens ──
   const { setOpen: setLeftSidebarOpen, open: leftSidebarOpen } = useSidebar();

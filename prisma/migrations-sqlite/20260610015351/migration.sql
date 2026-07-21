@@ -54,6 +54,7 @@ CREATE TABLE "diagrams" (
     "share_token" TEXT,
     "expiry_date" DATETIME,
     "published_at" DATETIME,
+    "dbml_source" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
 );

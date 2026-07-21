@@ -6,6 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 import { RELATIONSHIP_TYPES } from '../lib/utils';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
+import { dbmlToERD, erdToDBML } from '../lib/dbml-converter';
 
 function normalizeDiagramRecord(diagram: any): Diagram {
   if (!diagram) return diagram;
@@ -19,6 +20,53 @@ function normalizeDiagramRecord(diagram: any): Diagram {
     created_at: diagram.created_at ?? diagram.createdAt,
     updated_at: diagram.updated_at ?? diagram.updatedAt,
   };
+}
+
+function schemaFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
+  const tableById = new Map(nodes.map(n => [n.id, n]));
+  const columnName = (nodeId: string, handle?: string | null) => {
+    const node = tableById.get(nodeId);
+    const colId = handle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+    return node?.data.columns.find(c => c.id === colId)?.name ?? '';
+  };
+  return JSON.stringify({
+    nodes: nodes.map(n => ({
+      name: n.data.name,
+      columns: (n.data.columns || []).map(c => ({
+        name: c.name,
+        type: c.type,
+        is_pk: c.is_pk,
+        is_nullable: c.is_nullable,
+        enum_name: c.enum_name,
+        enum_values: c.enum_values,
+      })).sort((a, b) => a.name.localeCompare(b.name)),
+    })).sort((a, b) => a.name.localeCompare(b.name)),
+    edges: edges.map(e => ({
+      source: tableById.get(e.source)?.data.name,
+      target: tableById.get(e.target)?.data.name,
+      sourceColumn: columnName(e.source, e.sourceHandle),
+      targetColumn: columnName(e.target, e.targetHandle),
+    })).sort((a, b) => `${a.source}.${a.sourceColumn}>${a.target}.${a.targetColumn}`.localeCompare(`${b.source}.${b.sourceColumn}>${b.target}.${b.targetColumn}`)),
+  });
+}
+
+function readDraftSchemaFingerprint(data: any): string | null {
+  try {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    return parsed?.schema_fingerprint ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function dbmlMatchesCanvas(dbml: string | null | undefined, nodes: Node<Entity>[], edges: Edge[]): boolean {
+  if (!dbml?.trim()) return true;
+  try {
+    const parsed = dbmlToERD(dbml);
+    return schemaFingerprint(parsed.nodes, parsed.edges) === schemaFingerprint(nodes, edges);
+  } catch {
+    return true;
+  }
 }
 
 export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diagram' | string, isGuest: boolean = false) {
@@ -236,9 +284,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const identifier = diagram?.uid || id;
       const res = await apiFetch(`/api/diagrams/${identifier}`, { method: 'DELETE' });
       if (res.ok) {
-        setDiagrams(prev => prev.filter(f => f.id !== id));
+        setDiagrams(prev => prev.filter(f => String(f.id) !== String(id) && String(f.uid) !== String(id)));
         setDiagramsTotal(prev => Math.max(0, prev - 1));
-        if (activeDiagramId === id) setActiveDiagramId(null);
+        if (String(activeDiagramId) === String(id)) setActiveDiagramId(null);
         toast.success('Diagram moved to trash');
       } else {
         toast.error('Failed to delete diagram');
@@ -303,7 +351,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const identifier = diagram?.uid || id;
       const res = await apiFetch(`/api/diagrams/${identifier}/permanent`, { method: 'DELETE' });
       if (res.ok) {
-        setDiagrams(prev => prev.filter(f => f.id !== id));
+        setDiagrams(prev => prev.filter(f => String(f.id) !== String(id) && String(f.uid) !== String(id)));
         toast.success('Diagram permanently deleted');
       } else {
         toast.error('Failed to permanently delete diagram');
@@ -367,7 +415,21 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         .filter((value): value is string | number => value !== null && value !== undefined)
         .map(String);
       const cachedDbmlSource = dbmlKeys.map(key => dbmlSourceRef.current[key]).find(value => value !== undefined);
-      const nextDbmlSource = dbmlSource ?? cachedDbmlSource ?? currentDiagram?.dbml_source ?? currentDiagram?.dbmlSource ?? '';
+      const nextSchemaFingerprint = schemaFingerprint(nodes, edges);
+      const previousSchemaFingerprint = readDraftSchemaFingerprint((currentDiagram as any)?.data);
+      const fallbackDbmlSource = cachedDbmlSource ?? currentDiagram?.dbml_source ?? currentDiagram?.dbmlSource ?? '';
+      const shouldRefreshDbmlFromCanvas = dbmlSource === undefined &&
+        !!fallbackDbmlSource &&
+        (
+          previousSchemaFingerprint !== null
+            ? previousSchemaFingerprint !== nextSchemaFingerprint
+            : !dbmlMatchesCanvas(fallbackDbmlSource, nodes, edges)
+        );
+      const nextDbmlSource = dbmlSource ?? (
+        shouldRefreshDbmlFromCanvas
+          ? erdToDBML(nodes, edges)
+          : fallbackDbmlSource
+      );
       dbmlKeys.forEach(key => { dbmlSourceRef.current[key] = nextDbmlSource; });
       
       let data: string;
@@ -389,10 +451,11 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           viewport,
           _type: 'production_db_positions',
           dbml_source: nextDbmlSource,
+          schema_fingerprint: nextSchemaFingerprint,
         });
       } else {
         // Scratch diagram: save full nodes + edges
-        data = JSON.stringify({ nodes, edges, viewport, dbml_source: nextDbmlSource });
+        data = JSON.stringify({ nodes, edges, viewport, dbml_source: nextDbmlSource, schema_fingerprint: nextSchemaFingerprint });
       }
       
       const isSyncPending = !isGuestCheck();

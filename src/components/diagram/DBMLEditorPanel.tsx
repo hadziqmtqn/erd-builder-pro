@@ -32,7 +32,7 @@ interface DBMLEditorPanelProps {
   value: string;
   onChange: (value: string) => void;
   /** Push parsed DBML to the ERD canvas */
-  onApply: (nodes: Node<Entity>[], edges: Edge[]) => void;
+  onApply: (nodes: Node<Entity>[], edges: Edge[], source: string) => void;
   /** Current canvas nodes/edges for reverse sync */
   nodes: Node<Entity>[];
   edges: Edge[];
@@ -471,7 +471,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         const result = dbmlToERD(value);
         lastParsedValue.current = value.replace(/\s+/g, ' ');
         applyingFromDBML.current = true;
-        onApplyRef.current(result.nodes, result.edges);
+        onApplyRef.current(result.nodes, result.edges, value);
         setTimeout(() => { applyingFromDBML.current = false; }, 0);
       } catch {
         // Errors shown via lint — no parse/apply/save until fully valid

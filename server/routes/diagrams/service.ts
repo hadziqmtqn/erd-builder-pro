@@ -253,8 +253,19 @@ export async function restoreDiagram(uid: string, userId: string) {
 }
 
 export async function permanentDeleteDiagram(diagramId: number) {
-  await prisma?.diagram.deleteMany({
-    where: { id: diagramId },
+  if (!prisma) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.relationship.deleteMany({ where: { diagramId } });
+    const entities = await tx.entity.findMany({
+      where: { diagramId },
+      select: { id: true },
+    });
+    const entityIds = entities.map(e => e.id);
+    if (entityIds.length > 0) {
+      await tx.column.deleteMany({ where: { entityId: { in: entityIds } } });
+    }
+    await tx.entity.deleteMany({ where: { diagramId } });
+    await tx.diagram.deleteMany({ where: { id: diagramId } });
   });
 }
 
