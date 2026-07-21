@@ -2,6 +2,7 @@ import { prisma } from "./prisma.js";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.js";
 import { isDesktopMode } from "./config.js";
+import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 
 type PrismaRecord = { id: number | bigint | string };
 
@@ -116,6 +117,65 @@ async function addColumnIfMissing(
       return;
     }
     logger.warn({ err: err?.message, table, column }, "Failed to add column (non-fatal)");
+  }
+}
+
+async function normalizeLegacyColumnIds(): Promise<void> {
+  if (!prisma) return;
+
+  try {
+    const columns: { id: string }[] = await prisma.$queryRawUnsafe(
+      `SELECT id FROM "columns"`,
+    );
+    const legacy = columns.filter((column) => column.id && !isUuid(column.id));
+    if (legacy.length === 0) return;
+
+    await prisma.$transaction(async (tx) => {
+      for (const column of legacy) {
+        const newId = randomUUID();
+        await tx.$executeRawUnsafe(
+          `UPDATE "columns" SET "id" = ? WHERE "id" = ?`,
+          newId,
+          column.id,
+        );
+        const relationships: {
+          id: string;
+          source_column_id: string | null;
+          target_column_id: string | null;
+          source_handle: string | null;
+          target_handle: string | null;
+        }[] = await tx.$queryRawUnsafe(
+          `SELECT id, source_column_id, target_column_id, source_handle, target_handle
+           FROM "relationships"
+           WHERE source_column_id = ? OR target_column_id = ?
+             OR source_handle LIKE ? OR target_handle LIKE ?`,
+          column.id,
+          column.id,
+          `%${column.id}%`,
+          `%${column.id}%`,
+        );
+        for (const relationship of relationships) {
+          await tx.$executeRawUnsafe(
+            `UPDATE "relationships"
+             SET source_column_id = ?, target_column_id = ?, source_handle = ?, target_handle = ?
+             WHERE id = ?`,
+            relationship.source_column_id === column.id ? newId : relationship.source_column_id,
+            relationship.target_column_id === column.id ? newId : relationship.target_column_id,
+            replaceColumnIdInHandle(relationship.source_handle, column.id, newId),
+            replaceColumnIdInHandle(relationship.target_handle, column.id, newId),
+            relationship.id,
+          );
+        }
+      }
+    }, { timeout: 30000 });
+
+    logger.info({ count: legacy.length }, "Normalized legacy ERD column ids to UUIDs");
+  } catch (err: any) {
+    if (err?.message?.includes("no such table")) {
+      logger.warn("ERD tables not found, skipping column id normalization");
+      return;
+    }
+    logger.warn({ err: err?.message }, "Failed to normalize ERD column ids (non-fatal)");
   }
 }
 
@@ -290,4 +350,7 @@ export async function applySchemaMigrations(): Promise<void> {
 
   // v3.1.4+ — persist DBML source alongside ERD canvas data
   await addColumnIfMissing("diagrams", "dbml_source", '"dbml_source" TEXT');
+
+  // v3.1.4+ — normalize old random column ids and keep relationships wired.
+  await normalizeLegacyColumnIds();
 }
