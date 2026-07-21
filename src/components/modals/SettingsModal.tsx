@@ -49,7 +49,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { ChevronDown } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useAIProviders } from '@/hooks/useAIProviders';
@@ -272,12 +271,35 @@ export function SettingsModal() {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {settingsTab === 'ai-config' && (
-                <Tabs value={aiSettingsTab} onValueChange={setAiSettingsTab} className="p-4 md:p-6">
-                  <TabsList className="w-full mb-4 bg-muted/30">
-                    <TabsTrigger value="configuration" className="flex-1">Configuration</TabsTrigger>
-                    <TabsTrigger value="models" className="flex-1">AI Models</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="configuration" className="m-0">
+                <div className="p-4 md:p-6">
+                  {/* Button tabs */}
+                  <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-full mb-4">
+                    <button
+                      onClick={() => setAiSettingsTab('configuration')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${
+                        aiSettingsTab === 'configuration'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Configuration
+                    </button>
+                    <button
+                      onClick={() => setAiSettingsTab('models')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold transition-all ${
+                        aiSettingsTab === 'models'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Brain className="w-3.5 h-3.5" />
+                      AI Models
+                    </button>
+                  </div>
+
+                  {/* Tab content */}
+                  {aiSettingsTab === 'configuration' && (
                     <APISettingsTab
                       providers={providers}
                       configs={configs}
@@ -291,8 +313,8 @@ export function SettingsModal() {
                       onEnsureModel={ensureModel}
                       onRefreshModels={refreshModels}
                     />
-                  </TabsContent>
-                  <TabsContent value="models" className="m-0">
+                  )}
+                  {aiSettingsTab === 'models' && (
                     <ModelCatalogTab
                       providers={providers}
                       models={Object.values(models).flat()}
@@ -305,8 +327,8 @@ export function SettingsModal() {
                       onDeleteModel={handleDeleteModel}
                       onCancelEdit={cancelEdit}
                     />
-                  </TabsContent>
-                </Tabs>
+                  )}
+                </div>
               )}
 
               {settingsTab === 'ai-prompts' && (

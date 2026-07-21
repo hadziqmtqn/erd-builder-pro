@@ -119,7 +119,6 @@ function AppLayoutInner() {
     activeFileUid, currentActiveId, initialShareSettings,
     activeDocument, isGuest,
     featureLabel, activeProjectName, activeFileName, hasActiveItem,
-    fileSearchRef, fileSearchQuery, setFileSearchQuery,
     activeNote, activeDrawing, activeFlowchart, activeDiagram,
     notes, diagrams, flowcharts, drawings,
     nodes, edges, setNodes, setEdges,
@@ -546,10 +545,6 @@ function AppLayoutInner() {
           onImportMarkdown={handleImportMarkdown}
           onDuplicate={handleDuplicate}
           isGuest={isGuest}
-          fileSearchRef={fileSearchRef}
-          fileSearchQuery={fileSearchQuery}
-          onFileSearchChange={setFileSearchQuery}
-          hideFileSearch={location.pathname === '/'}
           breadcrumbLabel={breadcrumbLabel}
           noteContent={activeNote?.content}
         />

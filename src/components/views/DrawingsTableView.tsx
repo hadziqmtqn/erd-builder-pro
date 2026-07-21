@@ -17,8 +17,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
-import { Plus, PenTool, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Columns3 } from 'lucide-react';
+import { Plus, PenTool, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Columns3, Search } from 'lucide-react';
 import { useColumnVisibility, ColumnDef } from '@/hooks/useColumnVisibility';
+import { Input } from '@/components/ui/input';
 
 interface DrawingsTableViewProps {
   drawings: Drawing[];
@@ -33,6 +34,9 @@ interface DrawingsTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteDrawing: (uid: string) => void;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  searchRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -61,6 +65,9 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteDrawing,
+  searchQuery,
+  onSearchChange,
+  searchRef,
 }: DrawingsTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalDrawings / ITEMS_PER_PAGE));
   const { toggle, visibleCols } = useColumnVisibility(STORAGE_KEY, COLUMNS);
@@ -124,7 +131,7 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
 
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+      <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <PenTool className="w-5 h-5 text-fuchsia-400" />
           <h2 className="text-lg font-semibold">Drawings</h2>
@@ -143,30 +150,43 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
             ({totalDrawings} drawings)
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={
-              <Button variant="outline" size="sm">
-                <Columns3 className="w-4 h-4 mr-1.5" />
-                Columns
-              </Button>
-            } />
-            <DropdownMenuContent align="end" className="w-44">
-              {COLUMNS.filter(c => c.hideable).map(col => (
-                <DropdownMenuCheckboxItem
-                  key={col.id}
-                  checked={cols.some(v => v.id === col.id)}
-                  onCheckedChange={() => toggle(col.id)}
-                >
-                  {col.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" onClick={onCreateDrawing}>
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create Drawing
-          </Button>
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative flex items-center max-w-64 w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="Search drawings..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button variant="outline" size="sm">
+                  <Columns3 className="w-4 h-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Columns</span>
+                </Button>
+              } />
+              <DropdownMenuContent align="end" className="w-44">
+                {COLUMNS.filter(c => c.hideable).map(col => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={cols.some(v => v.id === col.id)}
+                    onCheckedChange={() => toggle(col.id)}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button size="sm" onClick={onCreateDrawing}>
+              <Plus className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Create Drawing</span>
+            </Button>
+          </div>
         </div>
       </div>
 

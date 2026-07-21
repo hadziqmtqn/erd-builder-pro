@@ -17,8 +17,9 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable, Database } from 'lucide-react';
+import { Plus, Columns3, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Cable, Database, Search } from 'lucide-react';
 import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
+import { Input } from '@/components/ui/input';
 
 interface ErdTableViewProps {
   diagrams: Diagram[];
@@ -33,6 +34,9 @@ interface ErdTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteDiagram: (uid: string) => void;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  searchRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -88,6 +92,9 @@ export const ErdTableView = React.memo(function ErdTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteDiagram,
+  searchQuery,
+  onSearchChange,
+  searchRef,
 }: ErdTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalDiagrams / ITEMS_PER_PAGE));
   const [dbConnectOpen, setDbConnectOpen] = useState(false);
@@ -178,7 +185,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+      <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <Columns3 className="w-5 h-5 text-emerald-400" />
           <h2 className="text-lg font-semibold">ERD Builder</h2>
@@ -197,38 +204,51 @@ export const ErdTableView = React.memo(function ErdTableView({
             ({totalDiagrams} diagrams)
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Columns Toggle */}
-          <DropdownMenu>
-            <DropdownMenuTrigger render={
-              <Button variant="outline" size="sm">
-                <Columns3 className="w-4 h-4 mr-1.5" />
-                Columns
-              </Button>
-            } />
-            <DropdownMenuContent align="end" className="w-44">
-              {columns.filter(c => c.hideable).map(col => (
-                <DropdownMenuCheckboxItem
-                  key={col.id}
-                  checked={isColVisible(col.id)}
-                  onCheckedChange={() => toggleColumn(col.id)}
-                >
-                  {col.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative flex items-center max-w-64 w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="Search diagrams..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Columns Toggle */}
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button variant="outline" size="sm">
+                  <Columns3 className="w-4 h-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Columns</span>
+                </Button>
+              } />
+              <DropdownMenuContent align="end" className="w-44">
+                {columns.filter(c => c.hideable).map(col => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={isColVisible(col.id)}
+                    onCheckedChange={() => toggleColumn(col.id)}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <Button size="sm" onClick={onCreateDiagram}>
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create Diagram
-          </Button>
-          {showDbConnect && (
-            <Button size="sm" variant="outline" onClick={() => setDbConnectOpen(true)}>
-              <Cable className="w-4 h-4 mr-1.5" />
-              DB Connect
+            <Button size="sm" onClick={onCreateDiagram}>
+              <Plus className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Create Diagram</span>
             </Button>
-          )}
+            {showDbConnect && (
+              <Button size="sm" variant="outline" onClick={() => setDbConnectOpen(true)}>
+                <Cable className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">DB Connect</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

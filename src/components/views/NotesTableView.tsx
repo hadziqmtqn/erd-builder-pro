@@ -17,8 +17,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
-import { Plus, FileText, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Columns3 } from 'lucide-react';
+import { Plus, FileText, MoreHorizontal, Pencil, Trash2, ChevronLeft, ChevronRight, Columns3, Search } from 'lucide-react';
 import { useColumnVisibility, ColumnDef } from '@/hooks/useColumnVisibility';
+import { Input } from '@/components/ui/input';
 
 interface NotesTableViewProps {
   notes: Note[];
@@ -33,6 +34,9 @@ interface NotesTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteNote: (uid: string) => void;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  searchRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -61,6 +65,9 @@ export const NotesTableView = React.memo(function NotesTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteNote,
+  searchQuery,
+  onSearchChange,
+  searchRef,
 }: NotesTableViewProps) {
   const totalPages = Math.max(1, Math.ceil(totalNotes / ITEMS_PER_PAGE));
   const { toggle, visibleCols } = useColumnVisibility(STORAGE_KEY, COLUMNS);
@@ -125,7 +132,7 @@ export const NotesTableView = React.memo(function NotesTableView({
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+      <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-yellow-400" />
           <h2 className="text-lg font-semibold">Notes</h2>
@@ -144,30 +151,43 @@ export const NotesTableView = React.memo(function NotesTableView({
             ({totalNotes} notes)
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={
-              <Button variant="outline" size="sm">
-                <Columns3 className="w-4 h-4 mr-1.5" />
-                Columns
-              </Button>
-            } />
-            <DropdownMenuContent align="end" className="w-44">
-              {COLUMNS.filter(c => c.hideable).map(col => (
-                <DropdownMenuCheckboxItem
-                  key={col.id}
-                  checked={cols.some(v => v.id === col.id)}
-                  onCheckedChange={() => toggle(col.id)}
-                >
-                  {col.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" onClick={onCreateNote}>
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create Note
-          </Button>
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative flex items-center max-w-64 w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              type="text"
+              placeholder="Search notes..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button variant="outline" size="sm">
+                  <Columns3 className="w-4 h-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Columns</span>
+                </Button>
+              } />
+              <DropdownMenuContent align="end" className="w-44">
+                {COLUMNS.filter(c => c.hideable).map(col => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={cols.some(v => v.id === col.id)}
+                    onCheckedChange={() => toggle(col.id)}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button size="sm" onClick={onCreateNote}>
+              <Plus className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Create Note</span>
+            </Button>
+          </div>
         </div>
       </div>
 

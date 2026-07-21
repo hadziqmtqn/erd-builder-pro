@@ -22,6 +22,7 @@ export function TableRoute() {
     setTableDeleteDoc,
     isNotesLoading, isDiagramsLoading, isDrawingsLoading, isFlowchartsLoading,
     setTableLoadingState,
+    fileSearchQuery, setFileSearchQuery, fileSearchRef,
   } = useWorkspace();
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
@@ -69,6 +70,9 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteNote={makeDeleteHandler(notes)}
+          searchQuery={fileSearchQuery}
+          onSearchChange={setFileSearchQuery}
+          searchRef={fileSearchRef}
         />
       );
     case 'erd':
@@ -86,6 +90,9 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteDiagram={makeDeleteHandler(diagrams)}
+          searchQuery={fileSearchQuery}
+          onSearchChange={setFileSearchQuery}
+          searchRef={fileSearchRef}
         />
       );
     case 'drawings':
@@ -103,6 +110,9 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteDrawing={makeDeleteHandler(drawings)}
+          searchQuery={fileSearchQuery}
+          onSearchChange={setFileSearchQuery}
+          searchRef={fileSearchRef}
         />
       );
     case 'flowchart':
@@ -120,6 +130,9 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteFlowchart={makeDeleteHandler(flowcharts)}
+          searchQuery={fileSearchQuery}
+          onSearchChange={setFileSearchQuery}
+          searchRef={fileSearchRef}
         />
       );
     default:
