@@ -11,9 +11,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff, Cloud, Save, Check, Search } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
@@ -55,10 +54,6 @@ interface MainHeaderProps {
   onImportMarkdown?: () => void;
   onDuplicate?: () => void;
   isGuest?: boolean;
-  fileSearchRef?: React.RefObject<HTMLInputElement | null>;
-  fileSearchQuery?: string;
-  onFileSearchChange?: (value: string) => void;
-  hideFileSearch?: boolean;
   breadcrumbLabel?: string | null;
   noteContent?: string;
 }
@@ -93,18 +88,12 @@ export const MainHeader = React.memo(({
   onImportMarkdown,
   onDuplicate,
   isGuest = false,
-  fileSearchRef,
-  fileSearchQuery = '',
-  onFileSearchChange,
-  hideFileSearch,
   breadcrumbLabel,
   noteContent,
 }: MainHeaderProps) => {
   const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [isMac, setIsMac] = React.useState(false);
-
-  const isTableView = location.pathname.startsWith('/table/');
 
   React.useEffect(() => {
     setIsMac(window.navigator.userAgent.toLowerCase().includes('mac'));
@@ -247,25 +236,6 @@ export const MainHeader = React.memo(({
       </div>
 
       <div className="px-2 sm:px-4 flex items-center gap-1 sm:gap-4">
-        {/* File search — only in table list view */}
-        {!isPublicView && isTableView && !hideFileSearch && (
-          <div className="relative flex items-center mr-1 sm:mr-2">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 select-none text-muted-foreground" />
-            <Input
-              ref={fileSearchRef}
-              type="text"
-              placeholder="Search files..."
-              value={fileSearchQuery}
-              onChange={(e) => onFileSearchChange?.(e.target.value)}
-              className="h-8 w-[120px] sm:w-[180px] md:w-[220px] pl-8 pr-8 text-xs"
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-0.5 opacity-40">
-              <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[9px] font-medium text-muted-foreground">
-                <span className="text-[10px]">{isMac ? '⌘' : 'Ctrl'}</span>K
-              </kbd>
-            </div>
-          </div>
-        )}
         {!!location.pathname.match(/^\/(notes|diagrams|drawings|flowcharts)\/[^/]+$/) && (
           <div className="flex items-center gap-1 sm:gap-4">
             {!isPublicView && (
