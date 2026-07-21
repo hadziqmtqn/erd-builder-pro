@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install npm dependencies
@@ -76,6 +76,7 @@ jobs:
         shell: bash
         run: npx tauri build
         env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
           CARGO_NET_RETRY: '5'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -108,6 +109,7 @@ jobs:
         shell: bash
         run: npx tauri build --bundles app
         env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
@@ -170,6 +172,7 @@ jobs:
         shell: bash
         run: npx tauri build --target x86_64-apple-darwin --bundles app
         env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
           npm_config_arch: x64
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
