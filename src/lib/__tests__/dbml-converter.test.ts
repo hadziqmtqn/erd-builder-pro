@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dbmlToERD } from '../dbml-converter';
+import { dedupeDBMLEnumBlocks, parseDBMLRef } from '../dbml-utils';
 
 describe('dbmlToERD', () => {
   it('throws on inline ref type mismatch with the local FK column name', () => {
@@ -69,5 +70,42 @@ Table login_logs {
     expect(result.nodes[0].data.name).toBe('users');
     expect(result.nodes[0].data.columns.map(column => column.name)).toEqual(['id', 'name']);
     expect(result.edges).toHaveLength(0);
+  });
+
+  it('trims standalone ref columns before validation', () => {
+    const ref = parseDBMLRef('Ref: addresses.user_id > users.id', '');
+
+    expect(ref).toMatchObject({
+      fkTable: 'addresses',
+      fkCol: 'user_id',
+      pkTable: 'users',
+      pkCol: 'id',
+    });
+  });
+
+  it('dedupes enum blocks added during DBML panel reverse sync', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  name VARCHAR [not null]
+  status users_status
+}
+
+Table employees {
+  id BIGINT [pk, not null]
+  user_id BIGINT [not null]
+}
+
+Enum users_status {
+  active
+  notactive
+}
+
+Enum users_status {
+  active
+  notactive
+}
+Ref: employees.user_id > users.id`;
+
+    expect(dedupeDBMLEnumBlocks(dbml).match(/Enum users_status/g)).toHaveLength(1);
   });
 });

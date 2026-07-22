@@ -13,6 +13,7 @@ import { useWorkspace } from '@/providers/WorkspaceContext';
 import { COLUMN_TYPES } from '@/lib/utils';
 import {
   buildDBMLTableDefinitions,
+  dedupeDBMLEnumBlocks,
   parseDBMLColumn,
   parseDBMLRef,
   parseDBMLTableName,
@@ -537,6 +538,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
             dbml = dbml.trimEnd() + '\n\n' + extras.map(e => e.trim()).join('\n\n') + '\n';
           }
         }
+        dbml = dedupeDBMLEnumBlocks(dbml);
         lastCanvasHash.current = canvasFingerprint(nodes, edges);
         // Only update if text actually changed — prevents cursor jump
         if (dbml !== prevValue.current) {
