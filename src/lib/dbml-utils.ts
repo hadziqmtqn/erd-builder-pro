@@ -15,6 +15,11 @@ const ENUM_HEADER_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{/i;
 const COLUMN_DEF_RE = /^\s*(?:"([^"]+)"|(\w+))\s+(\[[^\]]+\]|"[^"]+"|[^\s\[]+)/;
 const STANDALONE_REF_RE = /^\s*Ref:\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?/i;
 const INLINE_REF_RE = /\[\s*ref\s*:\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".\]]+)"?\s*\]/i;
+const ENUM_BLOCK_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{[\s\S]*?^\s*\}/gim;
+
+function cleanDBMLRefPart(value: string | undefined): string {
+  return (value || '').trim();
+}
 
 export function parseDBMLTableName(line: string): string {
   const match = line.match(TABLE_HEADER_RE);
@@ -37,6 +42,18 @@ export function readDBMLEnumNames(lines: string[]): Set<string> {
     if (match) enumNames.add((match[1] || match[2]).toLowerCase());
   }
   return enumNames;
+}
+
+export function dedupeDBMLEnumBlocks(text: string): string {
+  const seen = new Set<string>();
+  return text
+    .replace(ENUM_BLOCK_RE, (block, quotedName, bareName) => {
+      const name = String(quotedName || bareName || '').toLowerCase();
+      if (seen.has(name)) return '';
+      seen.add(name);
+      return block;
+    })
+    .replace(/\n{3,}/g, '\n\n');
 }
 
 export function buildDBMLTableDefinitions(lines: string[]): TableParseResult {
@@ -80,10 +97,10 @@ export function parseDBMLRef(line: string, currentTable: string): DBMLRef | null
   const standalone = line.match(STANDALONE_REF_RE);
   if (standalone) {
     return {
-      fkTable: standalone[1] || standalone[2],
-      fkCol: standalone[3],
-      pkTable: standalone[4] || standalone[5],
-      pkCol: standalone[6],
+      fkTable: cleanDBMLRefPart(standalone[1] || standalone[2]),
+      fkCol: cleanDBMLRefPart(standalone[3]),
+      pkTable: cleanDBMLRefPart(standalone[4] || standalone[5]),
+      pkCol: cleanDBMLRefPart(standalone[6]),
     };
   }
 
@@ -95,7 +112,7 @@ export function parseDBMLRef(line: string, currentTable: string): DBMLRef | null
   return {
     fkTable: currentTable,
     fkCol: localColumn.name,
-    pkTable: inline[1] || inline[2],
-    pkCol: inline[3],
+    pkTable: cleanDBMLRefPart(inline[1] || inline[2]),
+    pkCol: cleanDBMLRefPart(inline[3]),
   };
 }

@@ -749,19 +749,7 @@ function AppLayoutInner() {
 
               {/* ── Tab content ── */}
               <div className="flex-1 min-h-0">
-                {rightPanelMode === 'dbml' && isActiveDiagramContext ? (
-                  <DBMLEditorPanel
-                    value={dbmlContent}
-                    onChange={handleDBMLContentChange}
-                    onApply={handleDBMLApply}
-                    nodes={nodes}
-                    edges={edges}
-                    onSelectTable={(name) => {
-                      const node = nodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
-                      if (node) setSelectedNodeId(node.id);
-                    }}
-                  />
-                ) : (
+                <div className={cn('h-full', rightPanelMode === 'dbml' && 'hidden')}>
                   <AIChatPanel
                     onClose={() => setRightPanelMode('closed')}
                     entityType={entityContext!.entityType}
@@ -780,6 +768,19 @@ function AppLayoutInner() {
                     flowcharts={flowcharts}
                     drawings={drawings}
                     activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
+                  />
+                </div>
+                {rightPanelMode === 'dbml' && isActiveDiagramContext && (
+                  <DBMLEditorPanel
+                    value={dbmlContent}
+                    onChange={handleDBMLContentChange}
+                    onApply={handleDBMLApply}
+                    nodes={nodes}
+                    edges={edges}
+                    onSelectTable={(name) => {
+                      const node = nodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
+                      if (node) setSelectedNodeId(node.id);
+                    }}
                   />
                 )}
               </div>
