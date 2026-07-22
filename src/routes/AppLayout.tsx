@@ -83,8 +83,16 @@ function AppLayoutInner() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
   const [dbmlContent, setDbmlContent] = useState('');
+  const dbmlContentRef = useRef('');
+  const dbmlDraftDirtyRef = useRef(false);
+  const dbmlSourceKeyRef = useRef<string | null>(null);
   const dbmlPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { rightPanelMode, setRightPanelMode, pendingPrompt, clearPrompt, pendingAction, clearPendingAction } = useAIAction();
+
+  const setLocalDbmlContent = useCallback((content: string) => {
+    dbmlContentRef.current = content;
+    setDbmlContent(content);
+  }, []);
 
   // ─── Derive AI entity context from current route ─────
   const entityContext = useMemo(() => {
@@ -169,19 +177,29 @@ function AppLayoutInner() {
   // Read the persisted DBML source from the diagram first. Fall back to the
   // legacy browser cache once so older users keep standalone DBML constructs.
   useEffect(() => {
+    const keyChanged = dbmlSourceKeyRef.current !== dbmlStorageKey;
+    if (keyChanged) {
+      dbmlSourceKeyRef.current = dbmlStorageKey;
+      dbmlDraftDirtyRef.current = false;
+    }
+
     if (!dbmlStorageKey) {
-      setDbmlContent('');
+      setLocalDbmlContent('');
       return;
     }
 
     if (activeDiagramDbmlSource) {
-      setDbmlContent(activeDiagramDbmlSource);
+      if (keyChanged || !dbmlDraftDirtyRef.current || !dbmlContentRef.current.trim()) {
+        setLocalDbmlContent(activeDiagramDbmlSource);
+      }
       return;
     }
 
+    if (!keyChanged && dbmlDraftDirtyRef.current) return;
+
     try {
       const legacyDbml = localStorage.getItem(dbmlStorageKey) || '';
-      setDbmlContent(legacyDbml);
+      setLocalDbmlContent(legacyDbml);
       if (legacyDbml.trim()) {
         dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
         dbmlPersistTimerRef.current = setTimeout(async () => {
@@ -191,17 +209,19 @@ function AppLayoutInner() {
         }, 300);
       }
     } catch {
-      setDbmlContent('');
+      setLocalDbmlContent('');
     }
-  }, [dbmlStorageKey, activeDiagramDbmlSource, saveDiagram, viewportRef, isGuest, triggerDebouncedSync]);
+  }, [dbmlStorageKey, activeDiagramDbmlSource, saveDiagram, viewportRef, isGuest, triggerDebouncedSync, setLocalDbmlContent]);
 
   const handleDBMLContentChange = useCallback((content: string, persistNow = false) => {
-    setDbmlContent(content);
+    setLocalDbmlContent(content);
+    dbmlDraftDirtyRef.current = !persistNow;
     dbmlPersistTimerRef.current && clearTimeout(dbmlPersistTimerRef.current);
 
     const persist = async () => {
       if (!isValidDBMLSource(content)) return;
       await saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
+      if (dbmlContentRef.current === content) dbmlDraftDirtyRef.current = false;
       if (!isGuest) triggerDebouncedSync();
     };
 
@@ -211,7 +231,7 @@ function AppLayoutInner() {
     }
 
     dbmlPersistTimerRef.current = setTimeout(() => { void persist(); }, 800);
-  }, [saveDiagram, nodes, edges, viewportRef, isGuest, triggerDebouncedSync]);
+  }, [saveDiagram, nodes, edges, viewportRef, isGuest, triggerDebouncedSync, setLocalDbmlContent]);
 
   useEffect(() => () => {
     if (dbmlPersistTimerRef.current) clearTimeout(dbmlPersistTimerRef.current);

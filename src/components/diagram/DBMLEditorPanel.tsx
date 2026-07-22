@@ -14,6 +14,7 @@ import { COLUMN_TYPES } from '@/lib/utils';
 import {
   buildDBMLTableDefinitions,
   dedupeDBMLEnumBlocks,
+  findEnumNamingErrors,
   parseDBMLColumn,
   parseDBMLRef,
   parseDBMLTableName,
@@ -31,7 +32,7 @@ import type { Entity } from '@/types';
 
 interface DBMLEditorPanelProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, persistNow?: boolean) => void;
   /** Push parsed DBML to the ERD canvas */
   onApply: (nodes: Node<Entity>[], edges: Edge[], source: string) => void;
   /** Current canvas nodes/edges for reverse sync */
@@ -44,55 +45,50 @@ interface DBMLEditorPanelProps {
 const APPLY_DEBOUNCE_MS = 1500;
 const REVERSE_DEBOUNCE_MS = 800;
 
-const DBML_REFERENCE = `Table users {
-  id integer [pk, increment]
-  username varchar [unique, not null]
-  email varchar [note: 'user email']
-  created_at timestamp [default: \`now()\`]
+const DBML_REFERENCE = `// ERD Builder DBML standard: Table, Enum, and Ref are applied to the canvas.
+// Use portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE,
+// TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM.
+// Enum names must use table_column format, for example users_role.
+
+Table users {
+  id BIGINT [pk, not null]
+  name VARCHAR [not null]
+  email VARCHAR [unique, not null]
+  role users_role
+  created_at TIMESTAMP [not null]
+  updated_at TIMESTAMP [not null]
+  deleted_at TIMESTAMP
 }
 
-// Inline FK
 Table posts {
-  id integer [pk]
-  user_id integer [ref: > users.id]
-  title varchar
+  id BIGINT [pk, not null]
+  user_id BIGINT [not null]
+  status posts_status [not null]
+  title VARCHAR [not null]
+  body TEXT
+  published_at TIMESTAMP
 }
 
-// Separate ref
-Ref: posts.user_id > users.id
-Ref: orders.user_id < users.id   // < = many-to-one
-
-// Composite PK
-Table bookmarks {
-  user_id integer [pk, ref: > users.id]
-  post_id integer [pk, ref: > posts.id]
+Enum users_role {
+  super_admin
+  admin
+  member
 }
 
-// Enum
-Enum status {
+Enum posts_status {
   draft
   published
   archived
 }
 
-// Indexes
-Table logs {
-  id integer [pk]
-  event varchar
-  Indexes {
-    (event) [name: idx_event]
-  }
-}
+// Relationship direction: foreign_key > primary_key.
+Ref: posts.user_id > users.id
 
-// Notes
-Note default_note {
-  'This is a project note'
-}
-
-// Table group
-TableGroup auth_tables {
-  users
-  sessions
+// Inline refs are also accepted, but standalone Ref lines are easier to review.
+Table comments {
+  id BIGINT [pk, not null]
+  post_id BIGINT [not null, ref: > posts.id]
+  body TEXT [not null]
 }`;
 
 /**
@@ -357,6 +353,18 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         }
       }
 
+      for (const error of findEnumNamingErrors(text)) {
+        const line = lines[error.line - 1] || '';
+        const lineFrom = doc.line(error.line).from;
+        const idx = line.indexOf(error.actual);
+        diagnostics.push({
+          from: lineFrom + Math.max(0, idx),
+          to: lineFrom + Math.max(0, idx) + error.actual.length,
+          severity: 'warning',
+          message: `Recommended enum name is "${error.expected}". Rename "${error.actual}" to avoid duplicate enum blocks; save is paused until fixed.`,
+        });
+      }
+
       // ── Parse errors (lazy — only if structurally complete) ──
       let depth = 0;
       for (const ch of text) {
@@ -433,17 +441,18 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const prevValue = useRef(value);
-  const editorRef = useRef<{ view?: { dispatch: (tr: Record<string, unknown>) => void; state: { doc: { toString: () => string }; update: (spec: Record<string, unknown>) => Record<string, unknown> } } | null } | null>(null);
+  const editorRef = useRef<{ view?: { hasFocus: boolean; dispatch: (tr: Record<string, unknown>) => void; state: { doc: { toString: () => string }; update: (spec: Record<string, unknown>) => Record<string, unknown> } } | null } | null>(null);
 
   // Only push external value changes to CodeMirror — don't use controlled prop
   useEffect(() => {
-    if (!editorRef.current?.view) return;
-    const curDoc = editorRef.current.view.state.doc.toString();
+    const view = editorRef.current?.view;
+    if (!view || view.hasFocus) return;
+    const curDoc = view.state.doc.toString();
     if (value !== curDoc) {
-      const tr = editorRef.current.view.state.update({
+      const tr = view.state.update({
         changes: { from: 0, to: curDoc.length, insert: value },
       });
-      editorRef.current.view.dispatch(tr);
+      view.dispatch(tr);
     }
   }, [value]);
 
@@ -543,7 +552,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         // Only update if text actually changed — prevents cursor jump
         if (dbml !== prevValue.current) {
           isReverseApply.current = true;
-          onChangeRef.current(dbml);
+          onChangeRef.current(dbml, true);
         }
       } catch {
         // ignore
