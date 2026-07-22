@@ -486,14 +486,21 @@ const ERDViewComponent = ({
         selectedNodeIds: allSelectedIdsRef.current,
       };
 
-      if (actionId) {
-        result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, extra);
-      } else {
-        // Manual chat: try schema content (DBML first, SQL fallback), then column mutations
-        result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, extra);
-        if (!result) {
-          result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, extra);
+      try {
+        if (actionId) {
+          result = applyToErdContent(nodesRef.current, edgesRef.current, actionId, content, extra);
+        } else {
+          // Manual chat: try schema content (DBML first, SQL fallback), then column mutations
+          result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', content, extra);
+          if (!result) {
+            result = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-edit-column', content, extra);
+          }
         }
+      } catch (error: any) {
+        toast.error('Invalid ERD schema in AI response', {
+          description: error?.message || 'Fix the DBML/SQL block and try Append again.',
+        });
+        return;
       }
 
       if (result) {

@@ -109,6 +109,36 @@ Tables:\n${tableLines || '  (none)'}`;
 
   context += `\n\n- Generate DBML in \`\`\`dbml blocks when user asks to create/modify the ERD schema. Explain conversationally for design questions.
 - Use Table blocks for tables, [pk] for primary keys, [not null] for required columns, Enum blocks for reusable enum values, and Ref lines for relationships.
+- Before telling the user to click Append, make sure the DBML block is syntactically valid and directly parseable by ERD Builder.
+- Keep DBML simple and canvas-compatible: Table, Enum, and Ref. Do not output Indexes, TableGroup, Note, SQL DDL, or unsupported DBML constructs unless the user explicitly asks for documentation instead of applying to the canvas.
+- Use plain supported types such as BIGINT, INT, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, JSON, JSONB, UUID, and ENUM. Avoid sized types like VARCHAR(255) unless necessary, and never output malformed types like VARCHAR(10].
+- Every Ref must connect columns with exactly matching types. For example, if users.id is BIGINT then addresses.user_id must also be BIGINT; do not pair BIGSERIAL with BIGINT.
+- If the user asks to change one column or a few columns, still rewrite the complete DBML for all affected tables and preserve every existing column, enum, and Ref that was not explicitly changed.
+- Use standalone Ref lines for relationships, for example: Ref: addresses.user_id > users.id
+- Valid DBML example:
+\`\`\`dbml
+Table users {
+  id BIGINT [pk, not null]
+  name VARCHAR [not null]
+  email VARCHAR [unique]
+  status users_status
+  created_at TIMESTAMP [not null]
+}
+
+Table addresses {
+  id BIGINT [pk, not null]
+  user_id BIGINT [not null]
+  street VARCHAR [not null]
+  city VARCHAR [not null]
+}
+
+Enum users_status {
+  active
+  inactive
+}
+
+Ref: addresses.user_id > users.id
+\`\`\`
 - Prefer DBML over SQL for schema output because the ERD canvas and DBML editor share that format. Use SQL only when the user explicitly asks for SQL or seed data.
 - Avoid duplicating columns across tables; use foreign keys to reference existing auth/user tables.
 - Use consistent naming across all tables.

@@ -47,6 +47,15 @@ ${dbml}
     expect(result?.nodes.map(node => node.data.name).sort()).toEqual(['posts', 'users']);
     expect(result?.edges).toHaveLength(1);
   });
+
+  it('throws parse errors for invalid AI DBML so Append can show feedback', () => {
+    expect(() => applyToErdContent([], [], 'erd-generate-sql', `\`\`\`dbml
+Table addresses {
+  id BIGSERIAL [pk]
+  postal_code VARCHAR(10]
+}
+\`\`\``)).toThrow();
+  });
 });
 
 describe('chat flowchart extraction', () => {
