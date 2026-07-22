@@ -5,10 +5,12 @@ import { COLUMN_TYPES } from '@/lib/utils';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import {
   buildDBMLTableDefinitions,
+  findEnumNamingErrors,
   parseDBMLColumn,
   parseDBMLRef,
   parseDBMLTableName,
   readDBMLEnumNames,
+  recommendedDBMLEnumName,
 } from '@/lib/dbml-utils';
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
@@ -39,11 +41,7 @@ function normalizeEnumValue(value: string): string {
 }
 
 function normalizeGeneratedEnumName(tableName: string, columnName: string): string {
-  return `${tableName}_${columnName}`
-    .replace(/[^A-Za-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^(\d)/, '_$1')
-    || 'generated_enum';
+  return recommendedDBMLEnumName(tableName, columnName);
 }
 
 function parseColumnLine(line: string): { prefix: string; columnName: string; typeName: string; suffix: string } | null {
@@ -292,6 +290,9 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   // ── Pre-scan: find type errors ──
   const typeErrors = findTypeErrors(normalizedDBML);
   const refTypeErrors = findRefTypeErrors(normalizedDBML);
+  const enumNameErrors = findEnumNamingErrors(normalizedDBML).map(error =>
+    `Line ${error.line}: Enum type "${error.actual}" in "${error.table}.${error.column}" must be named "${error.expected}"`,
+  );
 
   // ── DBML → SQL via @dbml/core ──
   let parseError: string | null = null;
@@ -307,7 +308,7 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   }
 
   // ── Collect all errors ──
-  const allErrors = [...typeErrors, ...refTypeErrors];
+  const allErrors = [...typeErrors, ...refTypeErrors, ...enumNameErrors];
   if (parseError) allErrors.push(parseError);
   if (allErrors.length) {
     throw new Error(allErrors.join('\n'));
@@ -369,7 +370,7 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
     const norm = normalizeEnumValues(ec.values);
     // Use explicit enum_name if set by user, otherwise default to {tableName}_{colName}
     // getAvailableEnumName handles conflicts (same name, different values) by adding suffix
-    const baseName = ec.enumName || `${ec.tableName}_${ec.colName}`;
+    const baseName = ec.enumName || recommendedDBMLEnumName(ec.tableName, ec.colName);
     const name = getAvailableEnumName(baseName, norm, usedEnumNames);
     const mapKey = `${name}:${norm}`;
     if (!enumMap.has(mapKey)) {

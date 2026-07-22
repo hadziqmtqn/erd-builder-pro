@@ -21,6 +21,18 @@ function cleanDBMLRefPart(value: string | undefined): string {
   return (value || '').trim();
 }
 
+function cleanDBMLIdentifier(value: string): string {
+  return value.trim().replace(/^"|"$/g, '');
+}
+
+export function recommendedDBMLEnumName(tableName: string, columnName: string): string {
+  return `${tableName}_${columnName}`
+    .replace(/[^A-Za-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/^(\d)/, '_$1')
+    || 'generated_enum';
+}
+
 export function parseDBMLTableName(line: string): string {
   const match = line.match(TABLE_HEADER_RE);
   return (match?.[1] || match?.[2] || '').trim();
@@ -39,9 +51,47 @@ export function readDBMLEnumNames(lines: string[]): Set<string> {
   const enumNames = new Set<string>();
   for (const line of lines) {
     const match = line.match(ENUM_HEADER_RE);
-    if (match) enumNames.add((match[1] || match[2]).toLowerCase());
+    if (match) enumNames.add(cleanDBMLIdentifier(match[1] || match[2]).toLowerCase());
   }
   return enumNames;
+}
+
+export function findEnumNamingErrors(text: string): { line: number; table: string; column: string; actual: string; expected: string }[] {
+  const errors: { line: number; table: string; column: string; actual: string; expected: string }[] = [];
+  const lines = text.split(/\r?\n/);
+  const enumNames = readDBMLEnumNames(lines);
+  let currentTable = '';
+  let inTable = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const tableName = parseDBMLTableName(line);
+    if (tableName) {
+      currentTable = tableName;
+      inTable = true;
+      continue;
+    }
+
+    if (trimmed === '}' || trimmed.startsWith('}')) {
+      inTable = false;
+      currentTable = '';
+      continue;
+    }
+
+    if (!inTable || !trimmed || trimmed.startsWith('//')) continue;
+    const column = parseDBMLColumn(line);
+    if (!column) continue;
+
+    const actual = cleanDBMLIdentifier(column.type);
+    if (!enumNames.has(actual.toLowerCase())) continue;
+    const expected = recommendedDBMLEnumName(currentTable, column.name);
+    if (actual.toLowerCase() !== expected.toLowerCase()) {
+      errors.push({ line: i + 1, table: currentTable, column: column.name, actual, expected });
+    }
+  }
+
+  return errors;
 }
 
 export function dedupeDBMLEnumBlocks(text: string): string {
