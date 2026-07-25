@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X, Plus, Minus, ArrowDown, ArrowUp } from 'lucide-react';
 import { useDataViewer } from '@/hooks/useDataViewer';
 
 interface DataViewerProps {
@@ -13,11 +14,12 @@ interface DataViewerProps {
 
 export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
-    tables, activeTable, openTabs, records, page, totalPages,
+    tables, activeTable, openTabs, filters, sort, records, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, selectTable, pinTable, closeTable, nextPage, prevPage,
+    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
@@ -30,22 +32,51 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     return tables.filter((t: any) => String(t.table_name).toLowerCase().includes(q));
   }, [tables, tableSearch]);
 
+  const columnOptions = useMemo(() => {
+    const table = tables.find((t: any) => t.table_name === activeTable);
+    return (table?.columns || records?.columns || []).map((col: any) => typeof col === 'string' ? col : col.name).filter(Boolean);
+  }, [activeTable, tables, records]);
+
+  const operators = [
+    '=', '!=', '<>', '>', '>=', '<', '<=',
+    'LIKE', 'NOT LIKE', 'CONTAINS', 'NOT CONTAINS',
+    'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN',
+    'IS', 'IS NOT',
+  ];
+
   useEffect(() => {
     fetchTables();
   }, [fetchTables]);
 
+  const openFilters = useCallback(() => {
+    if (!activeTable) return;
+    setShowFilters(true);
+    if (filters.length === 0 && columnOptions.length > 0) addFilter(columnOptions[0]);
+  }, [activeTable, filters.length, columnOptions, addFilter]);
+
+  useEffect(() => {
+    setShowFilters(false);
+  }, [activeTable]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'p') return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-      searchRef.current?.select();
+      const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      if (key === 'p' && !isTyping) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      } else if (key === 'f' && activeTable) {
+        e.preventDefault();
+        openFilters();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [activeTable, openFilters]);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -154,6 +185,106 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   ))}
                 </div>
               )}
+              {activeTable && showFilters && filters.length > 0 && (
+                <div className="shrink-0 border-b bg-muted/10 px-3 py-2">
+                  <div className="space-y-1.5">
+                    {filters.map(filter => {
+                      const isNullCheck = filter.operator === 'IS' || filter.operator === 'IS NOT';
+                      const isBetween = filter.operator === 'BETWEEN' || filter.operator === 'NOT BETWEEN';
+                      return (
+                        <div key={filter.id} className="flex min-w-0 items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={filter.enabled}
+                            onChange={e => updateFilter(filter.id, { enabled: e.target.checked })}
+                            className="size-4 shrink-0 accent-primary"
+                            aria-label="Enable filter"
+                          />
+                          <Select
+                            value={filter.column}
+                            onValueChange={value => value && updateFilter(filter.id, { column: value })}
+                          >
+                            <SelectTrigger className="h-8 min-w-32 max-w-48 text-xs">
+                              <SelectValue>{filter.column || 'Column'}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {columnOptions.map((col: string) => <SelectItem key={col} value={col} className="text-xs">{col}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={filter.operator}
+                            onValueChange={value => value && updateFilter(filter.id, { operator: value })}
+                          >
+                            <SelectTrigger className="h-8 w-36 text-xs">
+                              <SelectValue>{filter.operator}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operators.map(op => <SelectItem key={op} value={op} className="text-xs">{op}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={isNullCheck ? 'NULL' : filter.value}
+                            disabled={isNullCheck}
+                            onChange={e => updateFilter(filter.id, { value: e.target.value })}
+                            placeholder={filter.operator.includes('IN') ? 'a, b, c' : 'Value'}
+                            className="h-8 min-w-28 flex-1 text-xs"
+                          />
+                          {isBetween && (
+                            <Input
+                              value={filter.value2 || ''}
+                              onChange={e => updateFilter(filter.id, { value2: e.target.value })}
+                              placeholder="And"
+                              className="h-8 min-w-28 flex-1 text-xs"
+                            />
+                          )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => applyFilter(filter)}
+                          >
+                            Apply
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon-xs"
+                            disabled={filters.length <= 1}
+                            onClick={() => removeFilter(filter.id)}
+                            title="Remove filter"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon-xs"
+                            onClick={() => addFilter(filter.column || columnOptions[0] || '')}
+                            title="Add filter"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => { clearFilters(); setShowFilters(false); }}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        onClick={() => applyFilters(filters)}
+                      >
+                        Apply All
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {isLoadingRecords ? (
                 <div className="flex-1 flex items-center justify-center">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -206,8 +337,33 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                         <TableHeader>
                           <TableRow className="sticky top-0 bg-background z-10">
                             {records.columns.map((col: string) => (
-                              <TableHead key={col} className="text-xs font-mono whitespace-nowrap">
-                                {col}
+                              <TableHead
+                                key={col}
+                                aria-sort={sort?.column === col ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+                                className="cursor-pointer select-none whitespace-nowrap px-4 py-0 hover:bg-muted/60"
+                                onClick={() => toggleSort(col)}
+                                title={`Sort by ${col}`}
+                              >
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      toggleSort(col);
+                                    }
+                                  }}
+                                  className="flex h-10 items-center gap-1.5 font-mono text-xs font-medium"
+                                >
+                                  <span>{col}</span>
+                                  <span className="flex h-3 w-3 items-center justify-center">
+                                    {sort?.column === col && (
+                                      sort.direction === 'asc'
+                                        ? <ArrowUp className="h-3 w-3 text-primary" />
+                                        : <ArrowDown className="h-3 w-3 text-primary" />
+                                    )}
+                                  </span>
+                                </div>
                               </TableHead>
                             ))}
                           </TableRow>
@@ -225,7 +381,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                                 {records.columns.map((col: string) => {
                                   const val = row[col];
                                   return (
-                                    <TableCell key={col} className="text-sm font-mono max-w-[300px] truncate">
+                                    <TableCell key={col} className="text-sm font-mono max-w-75 truncate">
                                       {val === null ? (
                                         <span className="text-muted-foreground/40 italic">NULL</span>
                                       ) : typeof val === 'object' ? (

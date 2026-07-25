@@ -7,6 +7,89 @@ import { buildConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
 
+type RecordFilterInput = {
+  enabled?: boolean;
+  column?: string;
+  operator?: string;
+  value?: string;
+  value2?: string;
+};
+
+type RecordSortInput = {
+  column?: string;
+  direction?: string;
+};
+
+function quoteIdentifier(type: string, name: string) {
+  return type === "mysql" ? `\`${name.replace(/`/g, "``")}\`` : `"${name.replace(/"/g, '""')}"`;
+}
+
+function quoteSqliteValue(value: string) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function splitList(value = "") {
+  return value.split(",").map(item => item.trim()).filter(Boolean);
+}
+
+function buildRecordOrder(type: string, sort: RecordSortInput | undefined, allowedColumns: Set<string>) {
+  if (!sort?.column) return "";
+  const direction = String(sort.direction || "").toLowerCase();
+  if (!allowedColumns.has(sort.column)) throw new Error(`Invalid sort column: ${sort.column}`);
+  if (direction !== "asc" && direction !== "desc") throw new Error("Invalid sort direction");
+  return ` ORDER BY ${quoteIdentifier(type, sort.column)} ${direction.toUpperCase()}`;
+}
+
+function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined, allowedColumns: Set<string>) {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  const placeholder = () => type === "postgresql" ? `$${params.length}` : "?";
+  const valueRef = (value: string) => {
+    params.push(value);
+    return type === "sqlite" ? quoteSqliteValue(value) : placeholder();
+  };
+
+  for (const filter of filters || []) {
+    if (!filter?.enabled) continue;
+    const column = String(filter.column || "");
+    const operator = String(filter.operator || "").toUpperCase();
+    if (!column || !allowedColumns.has(column)) throw new Error(`Invalid filter column: ${column}`);
+
+    const columnSql = quoteIdentifier(type, column);
+    const value = String(filter.value ?? "");
+    const value2 = String(filter.value2 ?? "");
+
+    if (["=", "!=", "<>", ">", ">=", "<", "<="].includes(operator)) {
+      if (!value) continue;
+      clauses.push(`${columnSql} ${operator} ${valueRef(value)}`);
+    } else if (operator === "LIKE" || operator === "NOT LIKE") {
+      if (!value) continue;
+      clauses.push(`${columnSql} ${operator} ${valueRef(value)}`);
+    } else if (operator === "CONTAINS" || operator === "NOT CONTAINS") {
+      if (!value) continue;
+      clauses.push(`${columnSql} ${operator === "NOT CONTAINS" ? "NOT LIKE" : "LIKE"} ${valueRef(`%${value}%`)}`);
+    } else if (operator === "IN" || operator === "NOT IN") {
+      const values = splitList(value);
+      if (values.length === 0) continue;
+      clauses.push(`${columnSql} ${operator} (${values.map(valueRef).join(", ")})`);
+    } else if (operator === "BETWEEN" || operator === "NOT BETWEEN") {
+      if (!value || !value2) continue;
+      clauses.push(`${columnSql} ${operator} ${valueRef(value)} AND ${valueRef(value2)}`);
+    } else if (operator === "IS") {
+      clauses.push(`${columnSql} IS NULL`);
+    } else if (operator === "IS NOT") {
+      clauses.push(`${columnSql} IS NOT NULL`);
+    } else {
+      throw new Error(`Invalid filter operator: ${operator}`);
+    }
+  }
+
+  return {
+    sql: clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "",
+    params,
+  };
+}
+
 export async function listCatalogs(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
@@ -185,7 +268,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
 export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const { id } = req.params;
-  const { table, page = 1, pageSize = 50 } = req.body;
+  const { table, page = 1, pageSize = 50, filters, sort } = req.body;
 
   if (!table?.trim()) {
     return res.status(400).json({ error: "table name is required" });
@@ -204,11 +287,25 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
       database: (catalog as any).databaseName,
     });
 
-    const { client, release } = await getConnector(info.type).connect(info);
+    const connector = getConnector(info.type);
+    const { client, release } = await connector.connect(info);
 
     try {
       const limit = Math.min(Math.max(1, pageSize), 200);
       const offset = (Math.max(1, page) - 1) * limit;
+      const schema = await connector.fetchSchema(client, info);
+      const tableSchema = schema.find((item: any) => item.table_name === table);
+      if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
+
+      const allowedColumns = new Set((tableSchema.columns || []).map((column: any) => column.name));
+      let where: ReturnType<typeof buildRecordWhere>;
+      let orderSql = "";
+      try {
+        where = buildRecordWhere(info.type, Array.isArray(filters) ? filters : [], allowedColumns);
+        orderSql = buildRecordOrder(info.type, sort, allowedColumns);
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message || "Invalid query options" });
+      }
 
       let columns: string[] = [];
       let rows: Record<string, any>[] = [];
@@ -216,25 +313,26 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
 
       if (info.type === "postgresql") {
         const pgClient = client as any;
-        const countRes = await pgClient.query(`SELECT COUNT(*)::int AS total FROM "${table.replace(/"/g, '""')}"`);
+        const tableSql = quoteIdentifier(info.type, table);
+        const countRes = await pgClient.query(`SELECT COUNT(*)::int AS total FROM ${tableSql}${where.sql}`, where.params);
         total = countRes.rows[0]?.total || 0;
-        const dataRes = await pgClient.query(`SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT $1 OFFSET $2`, [limit, offset]);
+        const dataRes = await pgClient.query(`SELECT * FROM ${tableSql}${where.sql}${orderSql} LIMIT $${where.params.length + 1} OFFSET $${where.params.length + 2}`, [...where.params, limit, offset]);
         columns = dataRes.fields.map((f: any) => f.name);
         rows = dataRes.rows;
       } else if (info.type === "mysql") {
         const mysqlClient = client as any;
-        const escapedTable = table.replace(/`/g, "``");
-        const [countRows] = await mysqlClient.execute(`SELECT COUNT(*) AS total FROM \`${escapedTable}\``);
+        const tableSql = quoteIdentifier(info.type, table);
+        const [countRows] = await mysqlClient.execute(`SELECT COUNT(*) AS total FROM ${tableSql}${where.sql}`, where.params);
         total = countRows[0]?.total || 0;
-        const [dataRows, dataFields] = await mysqlClient.execute(`SELECT * FROM \`${escapedTable}\` LIMIT ${limit} OFFSET ${offset}`);
+        const [dataRows, dataFields] = await mysqlClient.execute(`SELECT * FROM ${tableSql}${where.sql}${orderSql} LIMIT ${limit} OFFSET ${offset}`, where.params);
         columns = (dataFields || []).map((f: any) => f.name || f.column || f);
         rows = dataRows;
       } else if (info.type === "sqlite") {
         const sqdb = client as any;
-        const escapedTable = table.replace(/"/g, '""');
-        const countResult = sqdb.exec(`SELECT COUNT(*) AS total FROM "${escapedTable}"`);
+        const tableSql = quoteIdentifier(info.type, table);
+        const countResult = sqdb.exec(`SELECT COUNT(*) AS total FROM ${tableSql}${where.sql}`);
         total = countResult[0]?.values[0]?.[0] || 0;
-        const dataResult = sqdb.exec(`SELECT * FROM "${escapedTable}" LIMIT ${limit} OFFSET ${offset}`);
+        const dataResult = sqdb.exec(`SELECT * FROM ${tableSql}${where.sql}${orderSql} LIMIT ${limit} OFFSET ${offset}`);
         if (dataResult[0]) {
           columns = dataResult[0].columns;
           rows = dataResult[0].values.map((vals: any[]) => {

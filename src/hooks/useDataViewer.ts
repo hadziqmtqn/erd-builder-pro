@@ -14,18 +14,46 @@ interface OpenTableTab {
   pinned: boolean;
 }
 
+export interface RecordFilter {
+  id: string;
+  enabled: boolean;
+  column: string;
+  operator: string;
+  value: string;
+  value2?: string;
+}
+
+interface RecordSort {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
 const STORAGE_PREFIX = 'erd-production-db-tabs:';
+
+const makeFilter = (column = ''): RecordFilter => ({
+  id: crypto.randomUUID(),
+  enabled: true,
+  column,
+  operator: 'CONTAINS',
+  value: '',
+  value2: '',
+});
 
 export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [tables, setTables] = useState<any[]>([]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<OpenTableTab[]>([]);
+  const [filters, setFilters] = useState<RecordFilter[]>([]);
+  const [sort, setSort] = useState<RecordSort | null>(null);
   const [records, setRecords] = useState<RecordsResult | null>(null);
   const [page, setPage] = useState(1);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const appliedFiltersRef = useRef<RecordFilter[]>([]);
+  const sortRef = useRef<RecordSort | null>(null);
+  const filtersRef = useRef<RecordFilter[]>([]);
   const hydratedKeyRef = useRef<string | null>(null);
   const skipNextSaveRef = useRef(false);
   const storageKey = stateKey ? `${STORAGE_PREFIX}${stateKey}` : null;
@@ -46,8 +74,15 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     }
   }, [connectionId]);
 
-  const fetchRecords = useCallback(async (table: string, p: number = 1) => {
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  const fetchRecords = useCallback(async (table: string, p: number = 1, nextFilters = appliedFiltersRef.current, nextSort = sortRef.current) => {
     if (!connectionId) return;
+    appliedFiltersRef.current = nextFilters;
+    sortRef.current = nextSort;
+    setSort(nextSort);
     // Abort previous request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -59,7 +94,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table, page: p, pageSize: 50 }),
+        body: JSON.stringify({ table, page: p, pageSize: 50, filters: nextFilters, sort: nextSort }),
         signal: controller.signal,
       });
       const data = await res.json();
@@ -87,9 +122,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     hydratedKeyRef.current = storageKey;
     setOpenTabs(nextTabs);
     setActiveTable(nextActive);
+    setFilters([]);
+    appliedFiltersRef.current = [];
+    sortRef.current = null;
+    setSort(null);
     setRecords(null);
     setPage(1);
-    if (nextActive) fetchRecords(nextActive, 1);
+    if (nextActive) fetchRecords(nextActive, 1, []);
   }, [storageKey, fetchRecords]);
 
   useEffect(() => {
@@ -113,9 +152,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       return next;
     });
     setActiveTable(tableName);
+    setFilters([]);
+    appliedFiltersRef.current = [];
+    sortRef.current = null;
+    setSort(null);
     setRecords(null);
     setPage(1);
-    fetchRecords(tableName, 1);
+    fetchRecords(tableName, 1, []);
   }, [fetchRecords]);
 
   const pinTable = useCallback((tableName: string) => {
@@ -128,9 +171,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     if (activeTable !== tableName) return;
     const fallback = next[next.length - 1]?.name ?? null;
     setActiveTable(fallback);
+    setFilters([]);
+    appliedFiltersRef.current = [];
+    sortRef.current = null;
+    setSort(null);
     setRecords(null);
     setPage(1);
-    if (fallback) fetchRecords(fallback, 1);
+    if (fallback) fetchRecords(fallback, 1, []);
   }, [activeTable, openTabs, fetchRecords]);
 
   const nextPage = useCallback(() => {
@@ -152,10 +199,51 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     fetchRecords(activeTable, p);
   }, [activeTable, totalPages, fetchRecords]);
 
+  const addFilter = useCallback((column = '') => {
+    setFilters(prev => [...prev, makeFilter(column)]);
+  }, []);
+
+  const removeFilter = useCallback((id: string) => {
+    setFilters(prev => prev.filter(filter => filter.id !== id));
+  }, []);
+
+  const updateFilter = useCallback((id: string, patch: Partial<RecordFilter>) => {
+    setFilters(prev => prev.map(filter => filter.id === id ? { ...filter, ...patch } : filter));
+  }, []);
+
+  const applyFilters = useCallback((nextFilters = filtersRef.current) => {
+    if (!activeTable) return;
+    fetchRecords(activeTable, 1, nextFilters);
+  }, [activeTable, fetchRecords]);
+
+  const applyFilter = useCallback((filter: RecordFilter) => {
+    if (!activeTable) return;
+    fetchRecords(activeTable, 1, [{ ...filter, enabled: true }]);
+  }, [activeTable, fetchRecords]);
+
+  const clearFilters = useCallback(() => {
+    setFilters([]);
+    appliedFiltersRef.current = [];
+    if (activeTable) fetchRecords(activeTable, 1, []);
+  }, [activeTable, fetchRecords]);
+
+  const toggleSort = useCallback((column: string) => {
+    if (!activeTable) return;
+    const current = sortRef.current;
+    const nextSort = current?.column !== column
+      ? { column, direction: 'asc' as const }
+      : current.direction === 'asc'
+        ? { column, direction: 'desc' as const }
+        : null;
+    fetchRecords(activeTable, 1, appliedFiltersRef.current, nextSort);
+  }, [activeTable, fetchRecords]);
+
   return {
     tables,
     activeTable,
     openTabs,
+    filters,
+    sort,
     records,
     page,
     totalPages,
@@ -166,6 +254,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     selectTable,
     pinTable,
     closeTable,
+    addFilter,
+    removeFilter,
+    updateFilter,
+    applyFilter,
+    applyFilters,
+    clearFilters,
+    toggleSort,
     nextPage,
     prevPage,
     goToPage,
