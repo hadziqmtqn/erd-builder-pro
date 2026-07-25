@@ -16,14 +16,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogBody,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
+  AlertDialogMedia,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Database, Search, Loader2, HardDrive } from 'lucide-react';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Plus, Database, Search, Loader2, HardDrive, Trash2, Unplug } from 'lucide-react';
 import { ConnectionCard } from './ConnectionCard';
 import { ConnectionForm } from './ConnectionForm';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import {
   useDbAccounts,
   useDbCatalogs,
@@ -33,17 +37,18 @@ import {
   type DatabaseEntry,
 } from '@/hooks/useConnections';
 import { toast } from 'sonner';
-import { apiFetch } from '@/lib/api';
 
 interface DBConnectPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projects: any[];
   onImportComplete?: (diagramUid: string) => void;
 }
 
 export function DBConnectPanel({
   open,
   onOpenChange,
+  projects,
   onImportComplete,
 }: DBConnectPanelProps) {
   const {
@@ -76,6 +81,11 @@ export function DBConnectPanel({
   const [addDbAccount, setAddDbAccount] = useState<DbAccount | null>(null);
   const [availableDbs, setAvailableDbs] = useState<DatabaseEntry[]>([]);
   const [isLoadingDbs, setIsLoadingDbs] = useState(false);
+  const [dbPickMode, setDbPickMode] = useState<'connect' | 'import'>('connect');
+  const [importingDbName, setImportingDbName] = useState<string | null>(null);
+  const [selectedDbName, setSelectedDbName] = useState('');
+  const [erdName, setErdName] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('none');
 
   // Import flow
   const [importCat, setImportCat] = useState<DbCatalog | null>(null);
@@ -89,22 +99,26 @@ export function DBConnectPanel({
         a.host?.toLowerCase().includes(search.toLowerCase())
       )
     : accounts;
+  const selectedDb = availableDbs.find(db => db.name === selectedDbName);
 
   const handleAdd = () => {
     setEditingAcc(null);
+    setDbPickMode('import');
     setShowForm(true);
   };
 
   const handleEdit = (acc: DbAccount) => {
     setEditingAcc(acc);
+    setDbPickMode('connect');
     setShowForm(true);
   };
 
   const handleSave = async (data: DbAccountFormData): Promise<DbAccount | null> => {
-    if (editingAcc) {
-      return updateAccount(editingAcc.id, data);
+    const account = editingAcc ? await updateAccount(editingAcc.id, data) : await createAccount(data);
+    if (account && !editingAcc) {
+      setTimeout(() => handleAddDatabase(account, 'import'), 0);
     }
-    return createAccount(data);
+    return account;
   };
 
   const handleTest = async (data: DbAccountFormData) => {
@@ -147,27 +161,48 @@ export function DBConnectPanel({
     setDeletingAcc(null);
   };
 
-  const handleAddDatabase = async (acc: DbAccount) => {
+  const handleAddDatabase = async (acc: DbAccount, mode: 'connect' | 'import' = 'connect') => {
+    setDbPickMode(mode);
     setIsLoadingDbs(true);
     setAddDbAccount(acc);
     setAvailableDbs([]);
+    setSelectedDbName('');
+    setErdName('');
+    setSelectedProjectId('none');
     const dbs = await listDatabases(acc.id);
     setAvailableDbs(dbs);
     setIsLoadingDbs(false);
   };
 
-  const handleSelectDatabase = async (dbName: string) => {
-    if (!addDbAccount) return;
-    const catalog = await createCatalog(addDbAccount.id, dbName);
+  const handleDatabaseChange = (dbName: string) => {
+    setSelectedDbName(dbName);
+    if (!erdName.trim() || erdName === selectedDbName) setErdName(dbName);
+  };
+
+  const handleConfirmDatabase = async () => {
+    if (!addDbAccount || !selectedDbName) return;
+    setImportingDbName(selectedDbName);
+    const existing = catalogs.find(c => c.accountId === addDbAccount.id && c.databaseName === selectedDbName);
+    const catalog = existing || await createCatalog(addDbAccount.id, selectedDbName);
     if (catalog) {
       setAddDbAccount(null);
       fetchCatalogs();
       fetchAccounts();
+      if (dbPickMode === 'import') {
+        const targetProjectId = selectedProjectId === 'none' ? null : selectedProjectId;
+        const result = await importAsDiagram(catalog.id, erdName.trim() || selectedDbName, targetProjectId);
+        if (result?.diagram?.uid) {
+          onOpenChange(false);
+          onImportComplete?.(result.diagram.uid);
+        }
+      }
     }
+    setImportingDbName(null);
   };
 
   const handleStartImport = (cat: DbCatalog) => {
     setImportName(cat.label || cat.databaseName);
+    setSelectedProjectId('none');
     setImportCat(cat);
   };
 
@@ -175,7 +210,8 @@ export function DBConnectPanel({
     if (!importCat || !importName.trim()) return;
     setIsImporting(true);
     try {
-      const result = await importAsDiagram(importCat.id, importName.trim());
+      const targetProjectId = selectedProjectId === 'none' ? null : selectedProjectId;
+      const result = await importAsDiagram(importCat.id, importName.trim(), targetProjectId);
       if (result?.diagram?.uid) {
         setImportCat(null);
         setImportName('');
@@ -217,7 +253,7 @@ export function DBConnectPanel({
             <div className="flex items-center gap-2">
               <Button size="sm" className="h-9 shrink-0" onClick={handleAdd}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                New
+                New ERD from DB
               </Button>
             </div>
           </div>
@@ -255,7 +291,7 @@ export function DBConnectPanel({
                     onEdit={handleEdit}
                     onDelete={setDeletingAcc}
                     onTest={handleTestExisting}
-                    onAddCatalog={handleAddDatabase}
+                    onAddCatalog={(account) => handleAddDatabase(account, 'import')}
                     onImportCatalog={handleStartImport}
                     onDeleteCatalog={async (cat) => {
                       const result = await deleteCatalog(cat.id);
@@ -289,20 +325,23 @@ export function DBConnectPanel({
 
       {/* Delete account confirmation */}
       <AlertDialog open={deletingAcc !== null} onOpenChange={open => !open && setDeletingAcc(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent size="sm" className="max-w-100">
           <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10">
+              <Trash2 className="w-5 h-5 text-destructive" />
+            </AlertDialogMedia>
             <AlertDialogTitle>Delete Account</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
-            <p className="text-sm text-muted-foreground">
+            <AlertDialogDescription>
               Delete server account <strong>{deletingAcc?.name}</strong>?
               All connected databases ({catalogs.filter(c => c.accountId === deletingAcc?.id).length}) will be disconnected.
               Diagrams using these databases still exist, but can no longer sync.
-            </p>
+            </AlertDialogDescription>
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -313,7 +352,7 @@ export function DBConnectPanel({
       <AlertDialog open={addDbAccount !== null} onOpenChange={open => !open && setAddDbAccount(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Select Database</AlertDialogTitle>
+            <AlertDialogTitle>{dbPickMode === 'import' ? 'Create ERD from Database' : 'Select Database'}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
             {isLoadingDbs ? (
@@ -325,33 +364,79 @@ export function DBConnectPanel({
                 No databases found on <strong>{addDbAccount?.name}</strong>
               </p>
             ) : (
-              <ScrollArea className="max-h-64">
-                <div className="space-y-1">
-                  {availableDbs.map(db => (
-                    <button
-                      key={db.name}
-                      className={`w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm text-left ${
-                        db.isConnected
-                          ? 'opacity-50 cursor-not-allowed bg-muted/30'
-                          : 'hover:bg-accent transition-colors'
-                      }`}
-                      onClick={() => {
-                        if (!db.isConnected) handleSelectDatabase(db.name);
-                      }}
-                    >
-                      <Database className={`h-4 w-4 shrink-0 ${db.isConnected ? 'text-green-500' : 'text-muted-foreground'}`} />
-                      <span className="flex-1 truncate">{db.name}</span>
-                      {db.isConnected && (
-                        <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Connected</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </ScrollArea>
+              <div className="space-y-3">
+                <Field>
+                  <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                    Production Database
+                  </FieldLabel>
+                  <SearchableSelect
+                    value={selectedDbName}
+                    onChange={handleDatabaseChange}
+                    items={availableDbs}
+                    placeholder="Select production database"
+                    searchPlaceholder="Search database..."
+                    emptyMessage="No database found"
+                    getItemValue={(db) => db.name}
+                    getItemLabel={(db) => db.isConnected ? `${db.name} (connected)` : db.name}
+                    filterItem={(db, q) => db.name.toLowerCase().includes(q.toLowerCase())}
+                    className="h-9 text-sm"
+                  />
+                </Field>
+                {dbPickMode === 'import' && (
+                  <>
+                    <Field>
+                      <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                        ERD File Name
+                      </FieldLabel>
+                      <Input
+                        value={erdName}
+                        onChange={e => setErdName(e.target.value)}
+                        placeholder="ERD file name"
+                        className="h-9"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && selectedDbName && erdName.trim() && !importingDbName) {
+                            handleConfirmDatabase();
+                          }
+                        }}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                        Workspace
+                      </FieldLabel>
+                      <SearchableSelect
+                        value={selectedProjectId}
+                        onChange={setSelectedProjectId}
+                        items={[{ id: 'none', name: 'Uncategorized' }, ...projects]}
+                        placeholder="Workspace (optional)"
+                        searchPlaceholder="Search workspace..."
+                        emptyMessage="No workspace found"
+                        getItemValue={(project) => String(project.id)}
+                        getItemLabel={(project) => project.name}
+                        filterItem={(project, q) => project.name.toLowerCase().includes(q.toLowerCase())}
+                        className="h-9 text-sm"
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
             )}
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {availableDbs.length > 0 && (
+              <AlertDialogAction
+                onClick={handleConfirmDatabase}
+                disabled={!selectedDbName || (dbPickMode === 'connect' && selectedDb?.isConnected) || (dbPickMode === 'import' && !erdName.trim()) || importingDbName !== null}
+              >
+                {importingDbName ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : dbPickMode === 'import' ? 'Create ERD' : 'Connect'}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -366,17 +451,39 @@ export function DBConnectPanel({
             <p className="text-sm text-muted-foreground mb-4">
               Create a new ERD diagram from <strong>{importCat?.label || importCat?.databaseName}</strong> tables.
             </p>
-            <Input
-              value={importName}
-              onChange={e => setImportName(e.target.value)}
-              placeholder="Diagram name"
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter' && importName.trim() && !isImporting) {
-                  handleImport();
-                }
-              }}
-            />
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                ERD File Name
+              </FieldLabel>
+              <Input
+                value={importName}
+                onChange={e => setImportName(e.target.value)}
+                placeholder="Diagram name"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && importName.trim() && !isImporting) {
+                    handleImport();
+                  }
+                }}
+              />
+            </Field>
+            <Field className="mt-3">
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                Workspace
+              </FieldLabel>
+              <SearchableSelect
+                value={selectedProjectId}
+                onChange={setSelectedProjectId}
+                items={[{ id: 'none', name: 'Uncategorized' }, ...projects]}
+                placeholder="Workspace (optional)"
+                searchPlaceholder="Search workspace..."
+                emptyMessage="No workspace found"
+                getItemValue={(project) => String(project.id)}
+                getItemLabel={(project) => project.name}
+                filterItem={(project, q) => project.name.toLowerCase().includes(q.toLowerCase())}
+                className="h-9 text-sm"
+              />
+            </Field>
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

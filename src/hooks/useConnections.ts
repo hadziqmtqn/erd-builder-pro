@@ -424,12 +424,12 @@ export function useDbCatalogs(accountId?: number) {
     }
   };
 
-  const importAsDiagram = async (catalogId: number, name: string): Promise<{ diagram: any; tableCount: number } | null> => {
+  const importAsDiagram = async (catalogId: number, name: string, projectId?: number | string | null): Promise<{ diagram: any; tableCount: number } | null> => {
     try {
       const res = await apiFetch(`/api/catalogs/${catalogId}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, project_id: projectId ?? null }),
       });
       if (!res.ok) {
         const err = await res.json();
