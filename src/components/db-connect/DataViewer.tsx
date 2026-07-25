@@ -1,24 +1,51 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X } from 'lucide-react';
 import { useDataViewer } from '@/hooks/useDataViewer';
 
 interface DataViewerProps {
   connectionId: number;
+  stateKey?: string;
 }
 
-export function DataViewer({ connectionId }: DataViewerProps) {
+export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
-    tables, activeTable, records, page, totalPages,
+    tables, activeTable, openTabs, records, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, selectTable, nextPage, prevPage,
-  } = useDataViewer(connectionId);
+    fetchTables, selectTable, pinTable, closeTable, nextPage, prevPage,
+  } = useDataViewer(connectionId, stateKey);
+  const [tableSearch, setTableSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const shortcutLabel = useMemo(() => {
+    if (typeof navigator === 'undefined') return 'Ctrl+P';
+    return /mac|iphone|ipad|ipod/i.test(navigator.platform) ? '⌘P' : 'Ctrl+P';
+  }, []);
+
+  const filteredTables = useMemo(() => {
+    const q = tableSearch.trim().toLowerCase();
+    if (!q) return tables;
+    return tables.filter((t: any) => String(t.table_name).toLowerCase().includes(q));
+  }, [tables, tableSearch]);
 
   useEffect(() => {
     fetchTables();
   }, [fetchTables]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'p') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -29,6 +56,16 @@ export function DataViewer({ connectionId }: DataViewerProps) {
             <Database className="w-3.5 h-3.5" />
             Tables
           </h3>
+          <div className="relative mt-2">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+            <Input
+              ref={searchRef}
+              value={tableSearch}
+              onChange={e => setTableSearch(e.target.value)}
+              placeholder={`Search tables... (${shortcutLabel})`}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="p-1.5 space-y-0.5">
@@ -47,8 +84,10 @@ export function DataViewer({ connectionId }: DataViewerProps) {
                   'No tables found'
                 )}
               </div>
+            ) : filteredTables.length === 0 ? (
+              <div className="p-3 text-center text-xs text-muted-foreground">No matching tables</div>
             ) : (
-              tables.map((t: any) => (
+              filteredTables.map((t: any) => (
                 <button
                   key={t.table_name}
                   onClick={() => selectTable(t.table_name)}
@@ -80,6 +119,41 @@ export function DataViewer({ connectionId }: DataViewerProps) {
           <>
             {/* Content area — always takes 1fr (remaining space) */}
             <div className="min-h-0 overflow-hidden flex flex-col">
+              {openTabs.length > 0 && (
+                <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/10 px-2 py-1 scrollbar-hide">
+                  {openTabs.map(tab => (
+                    <button
+                      key={tab.name}
+                      onClick={() => selectTable(tab.name)}
+                      onDoubleClick={() => pinTable(tab.name)}
+                      className={`group flex h-8 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
+                        activeTable === tab.name
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      }`}
+                      title={tab.pinned ? `${tab.name} (pinned)` : `${tab.name} (double click to pin)`}
+                    >
+                      <span className={`truncate ${tab.pinned ? 'not-italic' : 'italic'}`}>{tab.name}</span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); closeTable(tab.name); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            closeTable(tab.name);
+                          }
+                        }}
+                        className="ml-1 rounded p-0.5 opacity-60 hover:bg-muted hover:opacity-100"
+                        title="Close table"
+                      >
+                        <X className="h-3 w-3" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {isLoadingRecords ? (
                 <div className="flex-1 flex items-center justify-center">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 
 interface RecordsResult {
@@ -9,15 +9,26 @@ interface RecordsResult {
   pageSize: number;
 }
 
-export function useDataViewer(connectionId: number | null) {
+interface OpenTableTab {
+  name: string;
+  pinned: boolean;
+}
+
+const STORAGE_PREFIX = 'erd-production-db-tabs:';
+
+export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [tables, setTables] = useState<any[]>([]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
+  const [openTabs, setOpenTabs] = useState<OpenTableTab[]>([]);
   const [records, setRecords] = useState<RecordsResult | null>(null);
   const [page, setPage] = useState(1);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const hydratedKeyRef = useRef<string | null>(null);
+  const skipNextSaveRef = useRef(false);
+  const storageKey = stateKey ? `${STORAGE_PREFIX}${stateKey}` : null;
 
   const fetchTables = useCallback(async () => {
     if (!connectionId) return;
@@ -63,12 +74,64 @@ export function useDataViewer(connectionId: number | null) {
     }
   }, [connectionId]);
 
+  useEffect(() => {
+    if (!storageKey) return;
+    let nextTabs: OpenTableTab[] = [];
+    let nextActive: string | null = null;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+      nextTabs = Array.isArray(saved.openTabs) ? saved.openTabs.filter((tab: any) => tab?.name) : [];
+      nextActive = typeof saved.activeTable === 'string' ? saved.activeTable : null;
+    } catch {}
+    skipNextSaveRef.current = true;
+    hydratedKeyRef.current = storageKey;
+    setOpenTabs(nextTabs);
+    setActiveTable(nextActive);
+    setRecords(null);
+    setPage(1);
+    if (nextActive) fetchRecords(nextActive, 1);
+  }, [storageKey, fetchRecords]);
+
+  useEffect(() => {
+    if (!storageKey || hydratedKeyRef.current !== storageKey) return;
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ openTabs, activeTable }));
+    } catch {}
+  }, [storageKey, openTabs, activeTable]);
+
   const selectTable = useCallback((tableName: string) => {
+    setOpenTabs(prev => {
+      if (prev.some(tab => tab.name === tableName)) return prev;
+      const tempIndex = prev.findIndex(tab => !tab.pinned);
+      if (tempIndex === -1) return [...prev, { name: tableName, pinned: false }];
+      const next = [...prev];
+      next[tempIndex] = { name: tableName, pinned: false };
+      return next;
+    });
     setActiveTable(tableName);
     setRecords(null);
     setPage(1);
     fetchRecords(tableName, 1);
   }, [fetchRecords]);
+
+  const pinTable = useCallback((tableName: string) => {
+    setOpenTabs(prev => prev.map(tab => tab.name === tableName ? { ...tab, pinned: true } : tab));
+  }, []);
+
+  const closeTable = useCallback((tableName: string) => {
+    const next = openTabs.filter(tab => tab.name !== tableName);
+    setOpenTabs(next);
+    if (activeTable !== tableName) return;
+    const fallback = next[next.length - 1]?.name ?? null;
+    setActiveTable(fallback);
+    setRecords(null);
+    setPage(1);
+    if (fallback) fetchRecords(fallback, 1);
+  }, [activeTable, openTabs, fetchRecords]);
 
   const nextPage = useCallback(() => {
     if (!activeTable || !records) return;
@@ -92,6 +155,7 @@ export function useDataViewer(connectionId: number | null) {
   return {
     tables,
     activeTable,
+    openTabs,
     records,
     page,
     totalPages,
@@ -100,6 +164,8 @@ export function useDataViewer(connectionId: number | null) {
     error,
     fetchTables,
     selectTable,
+    pinTable,
+    closeTable,
     nextPage,
     prevPage,
     goToPage,

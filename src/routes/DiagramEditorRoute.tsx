@@ -159,7 +159,10 @@ export function DiagramEditorRoute() {
 
       {/* Content */}
       {diagramTab === 'data' && isProductionDb && !isPublicView && sourceConnectionId ? (
-        <DataViewer connectionId={sourceConnectionId} />
+        <DataViewer
+          connectionId={sourceConnectionId}
+          stateKey={`${show?.uid || show?.id}:${sourceConnectionId}`}
+        />
       ) : (
         <ERDView
           key={isPublicView ? publicData?.id : activeDiagramId}
