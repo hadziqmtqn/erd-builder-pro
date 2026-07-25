@@ -2,6 +2,7 @@ import { Request as ExpressRequest, Response as ExpressResponse } from "express"
 import { fetchSchema, testConnection, getConnector } from "../../lib/db-connectors/registry.js";
 import { decrypt } from "../../lib/crypto.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolveOwnedProjectId } from "../../lib/security.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
@@ -108,7 +109,7 @@ export async function fetchCatalogSchema(req: ExpressRequest, res: ExpressRespon
 export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const { id } = req.params;
-  const { name } = req.body;
+  const { name, project_id } = req.body;
 
   if (!name?.trim()) {
     return res.status(400).json({ error: "Diagram name is required" });
@@ -117,6 +118,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
   try {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
+    const projectId = await resolveOwnedProjectId(prisma as any, userId, project_id);
 
     // 1. Fetch schema from the database
     const tables = await fetchSchema(buildConnectionInfo({
@@ -161,6 +163,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
         name: name.trim(),
         uid: crypto.randomUUID(),
         userId,
+        projectId,
         sourceType: "production_db",
         sourceConnectionId: Number(id),
         data: JSON.stringify(diagramData),

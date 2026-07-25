@@ -15,9 +15,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogBody,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
+  AlertDialogMedia,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import {
@@ -215,19 +217,23 @@ export function ConnectionCard({
 
       {/* Delete catalog confirmation */}
       <AlertDialog open={deletingCatalog !== null} onOpenChange={open => !open && setDeletingCatalog(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent size="sm" className="max-w-[400px]">
           <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10">
+              <Unplug className="w-5 h-5 text-destructive" />
+            </AlertDialogMedia>
             <AlertDialogTitle>Disconnect Database</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
-            <p className="text-sm text-muted-foreground">
+            <AlertDialogDescription>
               Disconnect <strong>{deletingCatalog?.label || deletingCatalog?.databaseName}</strong>?
               Diagrams using this database still exist, but can no longer sync.
-            </p>
+            </AlertDialogDescription>
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (deletingCatalog) onDeleteCatalog(deletingCatalog);
                 setDeletingCatalog(null);

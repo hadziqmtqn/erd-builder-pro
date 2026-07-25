@@ -238,6 +238,7 @@ function AppLayoutInner() {
   }, []);
 
   const openDBMLPanel = useCallback(() => {
+    if ((activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db') return;
     if (!isActiveDiagramContext) return;
     setRightPanelMode('dbml');
     if (dbmlContent.trim() || nodes.length === 0) return;
@@ -247,7 +248,7 @@ function AppLayoutInner() {
     } catch {
       // The panel still opens; the regular sync effect will retry after canvas settles.
     }
-  }, [isActiveDiagramContext, setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
+  }, [activeDiagram, isActiveDiagramContext, setRightPanelMode, dbmlContent, nodes, edges, handleDBMLContentChange]);
 
   // ── Generate DBML from canvas on the first panel open. Keep the source text
   // while switching panels: it contains DBML-only constructs (Enum, Note and
@@ -318,6 +319,7 @@ function AppLayoutInner() {
     const resolvedTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
     return resolvedTab === 'erd';
   }, [entityContext, isPublicView, activeDiagram, searchParams]);
+  const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
   const activeProjectId = useMemo<string | number | null>(() => {
@@ -498,10 +500,10 @@ function AppLayoutInner() {
   // Notes/Flowchart while the DBML tab is active, keep the panel usable by
   // falling back to chat instead of showing a DBML tab for the wrong feature.
   useEffect(() => {
-    if (rightPanelMode === 'dbml' && !isActiveDiagramContext) {
+    if (rightPanelMode === 'dbml' && !showDBMLPanel) {
       setRightPanelMode(showAIChat ? 'chat' : 'closed');
     }
-  }, [rightPanelMode, isActiveDiagramContext, showAIChat, setRightPanelMode]);
+  }, [rightPanelMode, showDBMLPanel, showAIChat, setRightPanelMode]);
 
   return (
     <>
@@ -748,7 +750,7 @@ function AppLayoutInner() {
                     <Sparkles className="size-3.5" />
                     AI Chat
                   </button>
-                  {isActiveDiagramContext && (
+                  {showDBMLPanel && (
                     <button
                       onClick={openDBMLPanel}
                       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
@@ -790,7 +792,7 @@ function AppLayoutInner() {
                     activeNoteContent={entityContext?.entityType === 'note' ? activeNote?.content : undefined}
                   />
                 </div>
-                {rightPanelMode === 'dbml' && isActiveDiagramContext && (
+                {rightPanelMode === 'dbml' && showDBMLPanel && (
                   <DBMLEditorPanel
                     value={dbmlContent}
                     onChange={handleDBMLContentChange}

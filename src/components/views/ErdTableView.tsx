@@ -445,6 +445,7 @@ export const ErdTableView = React.memo(function ErdTableView({
         <DBConnectPanel
           open={dbConnectOpen}
           onOpenChange={setDbConnectOpen}
+          projects={projects}
           onImportComplete={(uid) => onSelectDiagram(uid)}
         />
       )}
