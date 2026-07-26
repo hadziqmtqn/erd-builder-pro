@@ -219,7 +219,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update record');
-    if (activeTable === table) fetchRecords(table, page);
+    if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
     return data;
   }, [activeTable, connectionId, fetchRecords, page]);
 

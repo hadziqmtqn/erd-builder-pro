@@ -32,6 +32,7 @@ export const sqliteConnector: DbConnector = {
       const columns = colInfo[0]?.values.map((col: any[]) => ({
         name: col[1],
         type: col[2],
+        column_default: col[4],
         is_pk: col[5] === 1,
         is_nullable: col[3] === 0,
         sort_order: col[0] + 1,
@@ -46,7 +47,18 @@ export const sqliteConnector: DbConnector = {
         constraint_name: `fk_${tableName}_${fk[3]}`,
       })) || [];
 
-      rows.push({ table_name: tableName, columns, foreign_keys });
+      const indexInfo = db.exec(`PRAGMA index_list("${tableName}")`);
+      const indexes = indexInfo[0]?.values.map((idx: any[]) => {
+        const cols = db.exec(`PRAGMA index_info("${idx[1]}")`);
+        return {
+          name: idx[1],
+          algorithm: 'BTREE',
+          is_unique: idx[2] === 1,
+          column_name: cols[0]?.values.map((col: any[]) => col[2]).join(',') || '',
+        };
+      }) || [];
+
+      rows.push({ table_name: tableName, columns, foreign_keys, indexes });
     }
     return rows;
   },

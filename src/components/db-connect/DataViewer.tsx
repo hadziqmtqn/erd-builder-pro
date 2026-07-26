@@ -8,6 +8,7 @@ import { DataViewerDetailsPanel } from './DataViewerDetailsPanel';
 import { DataViewerFilters } from './DataViewerFilters';
 import { DataViewerRecordsTable } from './DataViewerRecordsTable';
 import { DataViewerSidebar } from './DataViewerSidebar';
+import { DataViewerStructure } from './DataViewerStructure';
 import { createColumnHelpers, draftValue, submitValue } from './data-viewer-utils';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; }
@@ -20,6 +21,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [activeView, setActiveView] = useState<'data' | 'structure'>('data');
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
   const [draftRow, setDraftRow] = useState<Record<string, any>>({});
@@ -47,6 +49,10 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const foreignKeyByColumn = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return new Map<string, any>((table?.foreign_keys || []).map((fk: any) => [fk.column, fk]));
+  }, [activeTable, tables]);
+
+  const activeTableSchema = useMemo(() => {
+    return tables.find((item: any) => item.table_name === activeTable);
   }, [activeTable, tables]);
 
   const columnHelpers = useMemo(() => {
@@ -95,6 +101,12 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     setSelectedRow(row);
     setDetailsOpen(true);
   }, [selectedRow, warnUnsaved]);
+  const handleViewChange = useCallback((view: 'data' | 'structure') => {
+    if (view === activeView) return;
+    if (!warnUnsaved()) return;
+    setActiveView(view);
+    if (view === 'structure') setDetailsOpen(false);
+  }, [activeView, warnUnsaved]);
 
   const handleSubmitRecord = useCallback(async () => {
     if (!activeTable || !selectedRow || !records) return;
@@ -161,6 +173,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   useEffect(() => {
     setShowFilters(false);
     setSelectedRow(null);
+    setActiveView('data');
   }, [activeTable]);
 
   useEffect(() => {
@@ -213,65 +226,86 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
         ) : (
           <>
             <div className="min-h-0 overflow-hidden flex flex-col">
-              <DataViewerRecordsTable
-                activeTable={activeTable}
-                columnHelpers={columnHelpers}
-                error={error}
-                foreignKeyByColumn={foreignKeyByColumn}
-                isLoadingRecords={isLoadingRecords}
-                openTabs={openTabs}
-                records={records}
-                selectedRow={selectedRow}
-                sort={sort}
-                detailsOpen={detailsOpen}
-                handleCloseTable={handleCloseTable}
-                handleSelectRow={handleSelectRow}
-                handleSelectTable={handleSelectTable}
-                openRelatedRecord={openRelatedRecord}
-                pinTable={pinTable}
-                setDetailsOpen={setDetailsOpen}
-                toggleSort={toggleSort}
-                warnUnsaved={warnUnsaved}
-              >
-                {showFilters && filters.length > 0 && (
-                  <DataViewerFilters
-                    columnOptions={columnOptions}
-                    filters={filters}
-                    addFilter={addFilter}
-                    applyFilter={applyFilter}
-                    applyFilters={applyFilters}
-                    clearFilters={clearFilters}
-                    removeFilter={removeFilter}
-                    setShowFilters={setShowFilters}
-                    updateFilter={updateFilter}
-                    warnUnsaved={warnUnsaved}
-                  />
-                )}
-              </DataViewerRecordsTable>
+              {activeView === 'structure' && activeTableSchema ? (
+                <DataViewerStructure table={activeTableSchema} />
+              ) : (
+                <DataViewerRecordsTable
+                  activeTable={activeTable}
+                  columnHelpers={columnHelpers}
+                  error={error}
+                  foreignKeyByColumn={foreignKeyByColumn}
+                  isLoadingRecords={isLoadingRecords}
+                  openTabs={openTabs}
+                  records={records}
+                  selectedRow={selectedRow}
+                  sort={sort}
+                  detailsOpen={detailsOpen}
+                  handleCloseTable={handleCloseTable}
+                  handleSelectRow={handleSelectRow}
+                  handleSelectTable={handleSelectTable}
+                  openRelatedRecord={openRelatedRecord}
+                  pinTable={pinTable}
+                  setDetailsOpen={setDetailsOpen}
+                  toggleSort={toggleSort}
+                  warnUnsaved={warnUnsaved}
+                >
+                  {showFilters && filters.length > 0 && (
+                    <DataViewerFilters
+                      columnOptions={columnOptions}
+                      filters={filters}
+                      addFilter={addFilter}
+                      applyFilter={applyFilter}
+                      applyFilters={applyFilters}
+                      clearFilters={clearFilters}
+                      removeFilter={removeFilter}
+                      setShowFilters={setShowFilters}
+                      updateFilter={updateFilter}
+                      warnUnsaved={warnUnsaved}
+                    />
+                  )}
+                </DataViewerRecordsTable>
+              )}
             </div>
 
-            {records && (
-              <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/10 shrink-0">
-                <span className="text-xs text-muted-foreground">
-                  {records.total > 0
-                    ? `${((page || 1) - 1) * (records.pageSize || 50) + 1}-${Math.min((page || 1) * (records.pageSize || 50), Number(records.total))} of ${records.total}`
-                    : '0 rows'}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon-xs" disabled={page <= 1} onClick={() => warnUnsaved() && prevPage()}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="icon-xs" disabled={page >= totalPages} onClick={() => warnUnsaved() && nextPage()}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+            {(records || activeTableSchema) && (
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-2 border-t bg-muted/10 shrink-0">
+                <div className="flex items-center gap-1 justify-self-start">
+                  {(['data', 'structure'] as const).map(view => (
+                    <Button
+                      key={view}
+                      variant={activeView === view ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-7 px-3 capitalize"
+                      onClick={() => handleViewChange(view)}
+                    >
+                      {view}
+                    </Button>
+                  ))}
                 </div>
+                <span className="text-xs text-muted-foreground justify-self-center">
+                  {activeView === 'structure'
+                    ? `${activeTableSchema?.columns?.length || 0} columns`
+                    : records && records.total > 0
+                      ? `${((page || 1) - 1) * (records.pageSize || 50) + 1}-${Math.min((page || 1) * (records.pageSize || 50), Number(records.total))} of ${records.total} rows`
+                      : '0 rows'}
+                </span>
+                {activeView === 'data' && records && (
+                  <div className="flex items-center gap-1 justify-self-end">
+                    <Button variant="outline" size="icon-xs" disabled={page <= 1} onClick={() => warnUnsaved() && prevPage()}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon-xs" disabled={page >= totalPages} onClick={() => warnUnsaved() && nextPage()}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </>
         )}
       </div>
 
-      {detailsOpen && (
+      {activeView === 'data' && detailsOpen && (
         <DataViewerDetailsPanel
           activeTable={activeTable}
           columnHelpers={columnHelpers}

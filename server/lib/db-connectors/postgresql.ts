@@ -46,6 +46,13 @@ export const postgresqlConnector: DbConnector = {
                 'name', c.column_name,
                 'type', CASE WHEN c.data_type = 'USER-DEFINED' THEN c.udt_name ELSE c.data_type END,
                 'full_type', c.data_type,
+                'collation', c.collation_name,
+                'column_default', c.column_default,
+                'extra', CASE
+                  WHEN c.is_identity = 'YES' THEN 'identity'
+                  WHEN c.is_generated = 'ALWAYS' THEN 'generated'
+                  ELSE ''
+                END,
                 'is_pk', COALESCE(pk.column_name IS NOT NULL, false),
                 'is_nullable', c.is_nullable = 'YES',
                 'sort_order', c.ordinal_position,
@@ -117,7 +124,33 @@ export const postgresqlConnector: DbConnector = {
           WHERE fd.source_schema = td.table_schema
             AND fd.source_table = td.table_name),
           '[]'::json
-        ) AS foreign_keys
+        ) AS foreign_keys,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'name', idx.index_name,
+            'algorithm', idx.algorithm,
+            'is_unique', idx.is_unique,
+            'column_name', idx.column_name
+          ) ORDER BY idx.index_name)
+          FROM (
+            SELECT
+              ci.relname AS index_name,
+              am.amname AS algorithm,
+              ix.indisunique AS is_unique,
+              string_agg(a.attname, ',' ORDER BY cols.ordinality) AS column_name
+            FROM pg_index ix
+            JOIN pg_class ct ON ct.oid = ix.indrelid
+            JOIN pg_namespace ns ON ns.oid = ct.relnamespace
+            JOIN pg_class ci ON ci.oid = ix.indexrelid
+            JOIN pg_am am ON am.oid = ci.relam
+            JOIN unnest(ix.indkey) WITH ORDINALITY AS cols(attnum, ordinality) ON true
+            JOIN pg_attribute a ON a.attrelid = ct.oid AND a.attnum = cols.attnum
+            WHERE ns.nspname = td.table_schema
+              AND ct.relname = td.table_name
+            GROUP BY ci.relname, am.amname, ix.indisunique
+          ) idx),
+          '[]'::json
+        ) AS indexes
       FROM table_data td
       ORDER BY td.table_name
     `);
@@ -126,6 +159,7 @@ export const postgresqlConnector: DbConnector = {
       table_schema: row.table_schema,
       columns: row.columns || [],
       foreign_keys: row.foreign_keys || [],
+      indexes: row.indexes || [],
     }));
   },
 };
