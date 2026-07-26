@@ -3,6 +3,7 @@ import initSqlJs from "sql.js";
 import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
+import { buildStructureStatements } from "./structure-helpers.js";
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);
@@ -108,6 +109,54 @@ describe("fetchTableInfo", () => {
     expect(sql).toContain("$1::text");
     expect(sql).toContain("$2::text");
     expect(params).toEqual(["public", "users"]);
+  });
+});
+
+describe("buildStructureStatements", () => {
+  const table = {
+    table_name: "posts",
+    table_schema: "public",
+    columns: [{ name: "user_id", type: "integer", full_type: "integer", is_nullable: false }],
+    foreign_keys: [{ column: "user_id", ref_table: "users", ref_column: "id", constraint_name: "posts_user_id_fkey" }],
+  };
+
+  it("builds PostgreSQL structure edits with quoted identifiers", () => {
+    expect(buildStructureStatements("postgresql", table, {
+      tableName: "articles",
+      columnName: "user_id",
+      column: { name: "author_id", type: "bigint", is_nullable: true, column_default: null },
+      foreignKey: { enabled: true, ref_table: "users", ref_column: "id" },
+    })).toEqual([
+      'ALTER TABLE "public"."posts" RENAME TO "articles"',
+      'ALTER TABLE "public"."articles" RENAME COLUMN "user_id" TO "author_id"',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" TYPE bigint',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP NOT NULL',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP DEFAULT',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" SET DEFAULT NULL',
+      'ALTER TABLE "public"."articles" DROP CONSTRAINT IF EXISTS "posts_user_id_fkey"',
+      'ALTER TABLE "public"."articles" ADD CONSTRAINT "fk_articles_author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")',
+    ]);
+  });
+
+  it("rejects unsafe structure identifiers and column types", () => {
+    expect(() => buildStructureStatements("postgresql", table, { tableName: "posts;drop" })).toThrow("Invalid table name");
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "text;drop table users", is_nullable: true },
+    })).toThrow("Invalid column type");
+  });
+
+  it("rejects foreign keys with incompatible column types", () => {
+    const schema = [
+      table,
+      { table_name: "users", columns: [{ name: "id", type: "uuid", full_type: "uuid" }] },
+    ];
+
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "integer", is_nullable: false },
+      foreignKey: { enabled: true, ref_table: "users", ref_column: "id" },
+    }, schema)).toThrow("Foreign key column type must match");
   });
 });
 
