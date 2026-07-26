@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X, Plus, Minus, ArrowDown, ArrowUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X, Plus, Minus, ArrowDown, ArrowUp, ArrowRight, PanelRightOpen } from 'lucide-react';
 import { useDataViewer } from '@/hooks/useDataViewer';
 
 interface DataViewerProps {
@@ -16,10 +16,12 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, sort, records, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, clearFilters, toggleSort, nextPage, prevPage,
+    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
@@ -37,12 +39,36 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     return (table?.columns || records?.columns || []).map((col: any) => typeof col === 'string' ? col : col.name).filter(Boolean);
   }, [activeTable, tables, records]);
 
+  const foreignKeyByColumn = useMemo(() => {
+    const table = tables.find((t: any) => t.table_name === activeTable);
+    return new Map((table?.foreign_keys || []).map((fk: any) => [fk.column, fk]));
+  }, [activeTable, tables]);
+
   const operators = [
     '=', '!=', '<>', '>', '>=', '<', '<=',
     'LIKE', 'NOT LIKE', 'CONTAINS', 'NOT CONTAINS',
     'IN', 'NOT IN', 'BETWEEN', 'NOT BETWEEN',
     'IS', 'IS NOT',
   ];
+
+  const formatBytes = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return 'Unavailable';
+    if (value < 1024) return `${value} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = value / 1024;
+    let unit = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+      size /= 1024;
+      unit += 1;
+    }
+    return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`;
+  };
+
+  const formatCellValue = (value: any) => {
+    if (value === null) return 'NULL';
+    if (value === undefined) return '';
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+  };
 
   useEffect(() => {
     fetchTables();
@@ -56,7 +82,12 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
 
   useEffect(() => {
     setShowFilters(false);
+    setSelectedRow(null);
   }, [activeTable]);
+
+  useEffect(() => {
+    setSelectedRow(null);
+  }, [page]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -328,6 +359,14 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                         {records.total} row{records.total !== 1 ? 's' : ''}
                       </span>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setDetailsOpen(open => !open)}
+                      title={detailsOpen ? 'Close details' : selectedRow ? 'Open record details' : 'Open table information'}
+                    >
+                      <PanelRightOpen className="h-4 w-4" />
+                    </Button>
                   </div>
 
                   {/* Records grid */}
@@ -377,18 +416,44 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                             </TableRow>
                           ) : (
                             records.rows.map((row: any, idx: number) => (
-                              <TableRow key={idx} className="hover:bg-muted/50">
+                              <TableRow
+                                key={idx}
+                                className={`cursor-pointer hover:bg-muted/50 ${selectedRow === row ? 'bg-muted/70' : ''}`}
+                                onClick={() => {
+                                  setSelectedRow(row);
+                                  setDetailsOpen(true);
+                                }}
+                              >
                                 {records.columns.map((col: string) => {
                                   const val = row[col];
+                                  const fk = foreignKeyByColumn.get(col) as any;
                                   return (
-                                    <TableCell key={col} className="text-sm font-mono max-w-75 truncate">
-                                      {val === null ? (
-                                        <span className="text-muted-foreground/40 italic">NULL</span>
-                                      ) : typeof val === 'object' ? (
-                                        <span className="text-xs">{JSON.stringify(val)}</span>
-                                      ) : (
-                                        String(val)
-                                      )}
+                                    <TableCell key={col} className="max-w-75 text-sm font-mono">
+                                      <div className="flex min-w-0 items-center gap-2">
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {val === null ? (
+                                            <span className="text-muted-foreground/40 italic">NULL</span>
+                                          ) : typeof val === 'object' ? (
+                                            <span className="text-xs">{JSON.stringify(val)}</span>
+                                          ) : (
+                                            String(val)
+                                          )}
+                                        </span>
+                                        {fk && val !== null && val !== undefined && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="size-6 shrink-0 opacity-60 hover:opacity-100"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openRelatedRecord(fk.ref_table, fk.ref_column, val);
+                                            }}
+                                            title={`Open ${fk.ref_table}.${fk.ref_column} = ${String(val)}`}
+                                          >
+                                            <ArrowRight className="h-3.5 w-3.5" />
+                                          </Button>
+                                        )}
+                                      </div>
                                     </TableCell>
                                   );
                                 })}
@@ -434,6 +499,48 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
           </>
         )}
       </div>
+      {detailsOpen && (
+        <aside className="w-80 shrink-0 border-l bg-background">
+          <div className="flex h-full flex-col">
+            <div className="flex items-start justify-between gap-3 border-b p-4">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-medium">{selectedRow ? 'Record Details' : 'Table Information'}</h3>
+                <p className="truncate text-xs text-muted-foreground">{activeTable || 'No table selected'}</p>
+              </div>
+              <Button variant="ghost" size="icon-xs" onClick={() => setDetailsOpen(false)} title="Close details">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {selectedRow && records ? (
+                <div className="space-y-2">
+                  {records.columns.map((col: string) => (
+                    <div key={col} className="rounded-md border px-3 py-2">
+                      <div className="truncate font-mono text-xs text-muted-foreground">{col}</div>
+                      <div className={`mt-1 break-words font-mono text-xs ${selectedRow[col] === null ? 'italic text-muted-foreground/50' : ''}`}>
+                        {formatCellValue(selectedRow[col])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="divide-y rounded-md border">
+                  {[
+                    ['Data size', formatBytes(records?.tableInfo?.dataSize)],
+                    ['Index size', formatBytes(records?.tableInfo?.indexSize)],
+                    ['Total size', formatBytes(records?.tableInfo?.totalSize)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-mono text-xs">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

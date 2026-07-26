@@ -20,6 +20,12 @@ type RecordSortInput = {
   direction?: string;
 };
 
+type TableInfo = {
+  dataSize: number | null;
+  indexSize: number | null;
+  totalSize: number | null;
+};
+
 function quoteIdentifier(type: string, name: string) {
   return type === "mysql" ? `\`${name.replace(/`/g, "``")}\`` : `"${name.replace(/"/g, '""')}"`;
 }
@@ -40,7 +46,7 @@ function buildRecordOrder(type: string, sort: RecordSortInput | undefined, allow
   return ` ORDER BY ${quoteIdentifier(type, sort.column)} ${direction.toUpperCase()}`;
 }
 
-function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined, allowedColumns: Set<string>) {
+export function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined, allowedColumns: Set<string>) {
   const clauses: string[] = [];
   const params: string[] = [];
   const placeholder = () => type === "postgresql" ? `$${params.length}` : "?";
@@ -64,10 +70,12 @@ function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined
       clauses.push(`${columnSql} ${operator} ${valueRef(value)}`);
     } else if (operator === "LIKE" || operator === "NOT LIKE") {
       if (!value) continue;
-      clauses.push(`${columnSql} ${operator} ${valueRef(value)}`);
+      const sqlOperator = type === "postgresql" ? operator.replace("LIKE", "ILIKE") : operator;
+      clauses.push(`${columnSql} ${sqlOperator} ${valueRef(value)}`);
     } else if (operator === "CONTAINS" || operator === "NOT CONTAINS") {
       if (!value) continue;
-      clauses.push(`${columnSql} ${operator === "NOT CONTAINS" ? "NOT LIKE" : "LIKE"} ${valueRef(`%${value}%`)}`);
+      const sqlOperator = operator === "NOT CONTAINS" ? "NOT LIKE" : "LIKE";
+      clauses.push(`${columnSql} ${type === "postgresql" ? sqlOperator.replace("LIKE", "ILIKE") : sqlOperator} ${valueRef(`%${value}%`)}`);
     } else if (operator === "IN" || operator === "NOT IN") {
       const values = splitList(value);
       if (values.length === 0) continue;
@@ -88,6 +96,40 @@ function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined
     sql: clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "",
     params,
   };
+}
+
+async function fetchTableInfo(type: string, client: any, database: string, tableSchema: any): Promise<TableInfo> {
+  if (type === "postgresql") {
+    const result = await client.query(
+      `SELECT
+        pg_relation_size(format('%I.%I', $1, $2)::regclass)::bigint AS data_size,
+        pg_indexes_size(format('%I.%I', $1, $2)::regclass)::bigint AS index_size,
+        pg_total_relation_size(format('%I.%I', $1, $2)::regclass)::bigint AS total_size`,
+      [tableSchema.table_schema || "public", tableSchema.table_name],
+    );
+    return {
+      dataSize: Number(result.rows[0]?.data_size ?? 0),
+      indexSize: Number(result.rows[0]?.index_size ?? 0),
+      totalSize: Number(result.rows[0]?.total_size ?? 0),
+    };
+  }
+
+  if (type === "mysql") {
+    const [rows] = await client.execute(
+      `SELECT DATA_LENGTH AS data_size, INDEX_LENGTH AS index_size, DATA_LENGTH + INDEX_LENGTH AS total_size
+       FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+      [database, tableSchema.table_name],
+    );
+    const row = rows[0] || {};
+    return {
+      dataSize: Number(row.data_size ?? 0),
+      indexSize: Number(row.index_size ?? 0),
+      totalSize: Number(row.total_size ?? 0),
+    };
+  }
+
+  return { dataSize: null, indexSize: null, totalSize: null };
 }
 
 export async function listCatalogs(req: ExpressRequest, res: ExpressResponse) {
@@ -310,6 +352,7 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
       let columns: string[] = [];
       let rows: Record<string, any>[] = [];
       let total = 0;
+      const tableInfo = await fetchTableInfo(info.type, client, info.database, tableSchema);
 
       if (info.type === "postgresql") {
         const pgClient = client as any;
@@ -345,7 +388,7 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
         }
       }
 
-      res.json({ columns, rows, total, page, pageSize: limit });
+      res.json({ columns, rows, total, page, pageSize: limit, tableInfo });
     } finally {
       release();
     }

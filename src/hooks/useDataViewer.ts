@@ -7,6 +7,11 @@ interface RecordsResult {
   total: number;
   page: number;
   pageSize: number;
+  tableInfo?: {
+    dataSize: number | null;
+    indexSize: number | null;
+    totalSize: number | null;
+  };
 }
 
 interface OpenTableTab {
@@ -54,6 +59,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const appliedFiltersRef = useRef<RecordFilter[]>([]);
   const sortRef = useRef<RecordSort | null>(null);
   const filtersRef = useRef<RecordFilter[]>([]);
+  const pageByTableRef = useRef<Record<string, number>>({});
   const hydratedKeyRef = useRef<string | null>(null);
   const skipNextSaveRef = useRef(false);
   const storageKey = stateKey ? `${STORAGE_PREFIX}${stateKey}` : null;
@@ -99,6 +105,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch records');
+      pageByTableRef.current[table] = p;
       setRecords(data);
       setPage(p);
     } catch (err: any) {
@@ -128,6 +135,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setSort(null);
     setRecords(null);
     setPage(1);
+    pageByTableRef.current = {};
     if (nextActive) fetchRecords(nextActive, 1, []);
   }, [storageKey, fetchRecords]);
 
@@ -143,6 +151,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [storageKey, openTabs, activeTable]);
 
   const selectTable = useCallback((tableName: string) => {
+    const nextPage = openTabs.some(tab => tab.name === tableName)
+      ? pageByTableRef.current[tableName] ?? 1
+      : 1;
     setOpenTabs(prev => {
       if (prev.some(tab => tab.name === tableName)) return prev;
       const tempIndex = prev.findIndex(tab => !tab.pinned);
@@ -157,9 +168,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     sortRef.current = null;
     setSort(null);
     setRecords(null);
-    setPage(1);
-    fetchRecords(tableName, 1, []);
-  }, [fetchRecords]);
+    setPage(nextPage);
+    fetchRecords(tableName, nextPage, []);
+  }, [fetchRecords, openTabs]);
 
   const pinTable = useCallback((tableName: string) => {
     setOpenTabs(prev => prev.map(tab => tab.name === tableName ? { ...tab, pinned: true } : tab));
@@ -167,17 +178,19 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   const closeTable = useCallback((tableName: string) => {
     const next = openTabs.filter(tab => tab.name !== tableName);
+    delete pageByTableRef.current[tableName];
     setOpenTabs(next);
     if (activeTable !== tableName) return;
     const fallback = next[next.length - 1]?.name ?? null;
+    const fallbackPage = fallback ? pageByTableRef.current[fallback] ?? 1 : 1;
     setActiveTable(fallback);
     setFilters([]);
     appliedFiltersRef.current = [];
     sortRef.current = null;
     setSort(null);
     setRecords(null);
-    setPage(1);
-    if (fallback) fetchRecords(fallback, 1, []);
+    setPage(fallbackPage);
+    if (fallback) fetchRecords(fallback, fallbackPage, []);
   }, [activeTable, openTabs, fetchRecords]);
 
   const nextPage = useCallback(() => {
@@ -213,13 +226,36 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   const applyFilters = useCallback((nextFilters = filtersRef.current) => {
     if (!activeTable) return;
+    pinTable(activeTable);
     fetchRecords(activeTable, 1, nextFilters);
-  }, [activeTable, fetchRecords]);
+  }, [activeTable, fetchRecords, pinTable]);
 
   const applyFilter = useCallback((filter: RecordFilter) => {
     if (!activeTable) return;
+    pinTable(activeTable);
     fetchRecords(activeTable, 1, [{ ...filter, enabled: true }]);
-  }, [activeTable, fetchRecords]);
+  }, [activeTable, fetchRecords, pinTable]);
+
+  const openRelatedRecord = useCallback((tableName: string, column: string, value: any) => {
+    const nextFilters = [makeFilter(column)];
+    nextFilters[0].operator = '=';
+    nextFilters[0].value = String(value);
+
+    setOpenTabs(prev => {
+      if (prev.some(tab => tab.name === tableName)) {
+        return prev.map(tab => tab.name === tableName ? { ...tab, pinned: true } : tab);
+      }
+      return [...prev, { name: tableName, pinned: true }];
+    });
+    setActiveTable(tableName);
+    setFilters(nextFilters);
+    appliedFiltersRef.current = nextFilters;
+    sortRef.current = null;
+    setSort(null);
+    setRecords(null);
+    setPage(1);
+    fetchRecords(tableName, 1, nextFilters);
+  }, [fetchRecords]);
 
   const clearFilters = useCallback(() => {
     setFilters([]);
@@ -259,6 +295,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     updateFilter,
     applyFilter,
     applyFilters,
+    openRelatedRecord,
     clearFilters,
     toggleSort,
     nextPage,
