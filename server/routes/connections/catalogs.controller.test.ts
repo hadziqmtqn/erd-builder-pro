@@ -138,12 +138,31 @@ describe("buildStructureStatements", () => {
     ]);
   });
 
+  it("allows character length on compatible column types", () => {
+    expect(buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "varchar(120)", is_nullable: true },
+    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "user_id" TYPE varchar(120)');
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "varchar(0)", is_nullable: true },
+    })).toThrow("Invalid column length");
+  });
+
   it("rejects unsafe structure identifiers and column types", () => {
     expect(() => buildStructureStatements("postgresql", table, { tableName: "posts;drop" })).toThrow("Invalid table name");
     expect(() => buildStructureStatements("postgresql", table, {
       columnName: "user_id",
       column: { name: "user_id", type: "text;drop table users", is_nullable: true },
     })).toThrow("Invalid column type");
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "longtext", is_nullable: true },
+    })).toThrow("Invalid postgresql column type");
+    expect(() => buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "uuid", is_nullable: true },
+    })).toThrow("Invalid mysql column type");
   });
 
   it("rejects foreign keys with incompatible column types", () => {

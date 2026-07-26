@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Loader2, PanelRightOpen, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, PanelRightOpen, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
@@ -22,6 +22,10 @@ type DataViewerRecordsTableProps = {
   warnUnsaved: () => boolean;
   children?: ReactNode;
 };
+
+function RefreshProgress({ active }: { active: boolean }) {
+  return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
+}
 
 export function DataViewerRecordsTable({
   activeTable,
@@ -69,14 +73,16 @@ export function DataViewerRecordsTable({
             )}
           </div>
         </div>
-      ) : records ? (
+      ) : (
         <>
           <div className="px-4 py-2 border-b bg-muted/10 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium">{activeTable}</h3>
-              <span className="text-xs text-muted-foreground">
-                {records.total} row{records.total !== 1 ? 's' : ''}
-              </span>
+              {records && (
+                <span className="text-xs text-muted-foreground">
+                  {records.total} row{records.total !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon-sm" onClick={() => warnUnsaved() && onRefresh()} title="Refresh records">
@@ -92,13 +98,10 @@ export function DataViewerRecordsTable({
               </Button>
             </div>
           </div>
+          <RefreshProgress active={isLoadingRecords} />
           <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
-            {isLoadingRecords ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-            <div className="min-w-fit inline-block align-middle">
+            {records && (
+              <div className="min-w-fit inline-block align-middle">
               <Table>
                 <TableHeader>
                   <TableRow className="sticky top-0 bg-background z-10">
@@ -186,15 +189,11 @@ export function DataViewerRecordsTable({
                   )}
                 </TableBody>
               </Table>
-            </div>
+              </div>
             )}
           </div>
         </>
-      ) : isLoadingRecords ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }

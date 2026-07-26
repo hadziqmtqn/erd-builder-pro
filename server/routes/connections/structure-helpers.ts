@@ -19,13 +19,30 @@ type StructurePatch = {
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 const TYPE_RE = /^[A-Za-z][A-Za-z0-9_\s(),.[\]]{0,120}$/;
 const DEFAULT_FUNCTIONS = new Set(["CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME", "NULL"]);
+const COMMON_TYPES = new Set(["int", "integer", "bigint", "smallint", "varchar", "char", "text", "float", "decimal", "numeric", "real", "boolean", "bool", "date", "time", "timestamp", "json"]);
+const MYSQL_TYPES = new Set(["tinyint", "mediumint", "tinytext", "mediumtext", "longtext", "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "double", "year", "datetime", "bit", "enum"]);
+const POSTGRES_TYPES = new Set(["serial", "bigserial", "smallserial", "money", "bytea", "uuid", "ulid", "jsonb", "interval", "timestamptz", "timetz", "cidr", "inet", "macaddr", "macaddr8", "tsvector", "tsquery", "character varying", "double precision"]);
+const SQLITE_TYPES = new Set(["integer", "text", "real", "blob", "numeric"]);
 
 function assertIdentifier(value: string, label: string) {
   if (!IDENTIFIER_RE.test(value || "")) throw new Error(`Invalid ${label}`);
 }
 
-function assertColumnType(value: string) {
+function baseColumnType(value: string) {
+  return value.toLowerCase().replace(/\(.*/, "").replace(/\s+/g, " ").trim();
+}
+
+function assertColumnType(type: string, value: string) {
   if (!TYPE_RE.test(value || "") || /;|--|\/\*/.test(value)) throw new Error("Invalid column type");
+  const length = value.match(/\((\d+)\)/)?.[1];
+  if (length && (Number(length) < 1 || Number(length) > 65535)) throw new Error("Invalid column length");
+  const base = baseColumnType(value);
+  const allowed = type === "sqlite"
+    ? SQLITE_TYPES
+    : type === "mysql"
+      ? new Set([...COMMON_TYPES, ...MYSQL_TYPES])
+      : new Set([...COMMON_TYPES, ...POSTGRES_TYPES]);
+  if (!allowed.has(base)) throw new Error(`Invalid ${type} column type`);
 }
 
 function defaultSql(value: any) {
@@ -98,7 +115,7 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
   const nextType = String(patch.column.type || existingColumn.full_type || existingColumn.type || "");
   assertIdentifier(currentColumn, "column name");
   assertIdentifier(nextColumn, "column name");
-  assertColumnType(nextType);
+  assertColumnType(type, nextType);
 
   const workingTableSql = tableSql(type, tableSchema.table_schema, nextTable);
   const currentColumnSql = quoteIdentifier(type, currentColumn);

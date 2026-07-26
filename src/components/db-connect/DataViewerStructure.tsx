@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 type DataViewerStructureProps = {
   table: any;
+  isLoading?: boolean;
   selectedColumnName?: string | null;
   onEditTable: () => void;
   onSelectColumn: (columnName: string) => void;
@@ -18,7 +19,11 @@ function ValueCell({ value, className = '' }: { value: any; className?: string }
   return <TableCell className={`font-mono ${valueClass(value)} ${className}`}>{empty(value)}</TableCell>;
 }
 
-export function DataViewerStructure({ table, selectedColumnName, onEditTable, onSelectColumn, onRefresh }: DataViewerStructureProps) {
+function RefreshProgress({ active }: { active: boolean }) {
+  return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
+}
+
+export function DataViewerStructure({ table, isLoading = false, selectedColumnName, onEditTable, onSelectColumn, onRefresh }: DataViewerStructureProps) {
   const columns = (table?.columns || [])
     .map((column: any, index: number) => ({ column, index }))
     .sort((a: any, b: any) => (Number(a.column.sort_order) || a.index + 1) - (Number(b.column.sort_order) || b.index + 1))
@@ -53,6 +58,7 @@ export function DataViewerStructure({ table, selectedColumnName, onEditTable, on
           </Button>
         </div>
       </div>
+      <RefreshProgress active={isLoading} />
 
       <div className="min-h-0 flex-[3] overflow-auto custom-scrollbar">
         <Table>

@@ -1,9 +1,11 @@
 import { Dispatch, SetStateAction } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/SearchableSelect';
+import { COLUMN_TYPES } from '@/lib/utils';
 import { StructureDraft, StructureTarget } from '@/hooks/useStructureEditor';
 
 type DataViewerStructurePanelProps = {
@@ -12,6 +14,7 @@ type DataViewerStructurePanelProps = {
   isDirty: boolean;
   isSaving: boolean;
   tables: any[];
+  dbType: string | null;
   referenceColumns: any[];
   setDraft: Dispatch<SetStateAction<StructureDraft | null>>;
   onClose: () => void;
@@ -22,12 +25,26 @@ const patchDraft = (setDraft: DataViewerStructurePanelProps['setDraft'], patch: 
   setDraft(current => current ? { ...current, ...patch } : current);
 };
 
+const SQLITE_TYPES = ['INTEGER', 'TEXT', 'REAL', 'BLOB', 'NUMERIC'];
+const MYSQL_ONLY = new Set(['TINYINT', 'MEDIUMINT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT', 'BINARY', 'VARBINARY', 'TINYBLOB', 'MEDIUMBLOB', 'LONGBLOB', 'DOUBLE', 'YEAR', 'DATETIME', 'BIT', 'ENUM']);
+const PG_ONLY = new Set(['SERIAL', 'BIGSERIAL', 'SMALLSERIAL', 'MONEY', 'BYTEA', 'UUID', 'ULID', 'JSONB', 'INTERVAL', 'TIMESTAMPTZ', 'TIMETZ', 'CIDR', 'INET', 'MACADDR', 'MACADDR8', 'TSVECTOR', 'TSQUERY']);
+
+function typeOptions(dbType: string | null, currentType: string) {
+  const base = dbType === 'sqlite'
+    ? SQLITE_TYPES
+    : COLUMN_TYPES.filter(type => dbType === 'mysql' ? !PG_ONLY.has(type) : !MYSQL_ONLY.has(type));
+  const current = currentType.trim();
+  return [...new Set(current ? [current, ...base] : base)].sort((a, b) => a.localeCompare(b));
+}
+const lengthType = (type: string) => /^(var)?char|^character varying|^(var)?binary$/i.test(type.replace(/\(\d+\)/, '').trim());
+
 export function DataViewerStructurePanel({
   target,
   draft,
   isDirty,
   isSaving,
   tables,
+  dbType,
   referenceColumns,
   setDraft,
   onClose,
@@ -62,8 +79,32 @@ export function DataViewerStructurePanel({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="structure-column-type">Data type</Label>
-                <Input id="structure-column-type" value={draft.columnType} onChange={e => patchDraft(setDraft, { columnType: e.target.value })} />
+                <SearchableSelect
+                  value={draft.columnType}
+                  onChange={value => patchDraft(setDraft, { columnType: value, characterLength: lengthType(value) ? draft.characterLength : '', refColumn: '' })}
+                  items={typeOptions(dbType, draft.columnType)}
+                  placeholder="Type"
+                  searchPlaceholder="Search type..."
+                  emptyMessage="No valid types"
+                  className="h-9 text-sm"
+                  getItemValue={type => type}
+                  getItemLabel={type => type}
+                  filterItem={(type, query) => type.toLowerCase().includes(query.toLowerCase())}
+                />
               </div>
+              {lengthType(draft.columnType) && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="structure-column-length">Length</Label>
+                  <Input
+                    id="structure-column-length"
+                    type="number"
+                    min={1}
+                    value={draft.characterLength}
+                    placeholder="255"
+                    onChange={e => patchDraft(setDraft, { characterLength: e.target.value.replace(/\D/g, '') })}
+                  />
+                </div>
+              )}
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -117,7 +158,6 @@ export function DataViewerStructurePanel({
         <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-background p-3">
           <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>
           <Button onClick={onSave} disabled={!isDirty || isSaving}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Submit
           </Button>
         </div>
