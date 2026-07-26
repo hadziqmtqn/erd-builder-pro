@@ -1,48 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-
-interface RecordsResult {
-  columns: string[];
-  rows: Record<string, any>[];
-  total: number;
-  page: number;
-  pageSize: number;
-  tableInfo?: {
-    dataSize: number | null;
-    indexSize: number | null;
-    totalSize: number | null;
-  };
-}
-
-interface OpenTableTab {
-  name: string;
-  pinned: boolean;
-}
-
-export interface RecordFilter {
-  id: string;
-  enabled: boolean;
-  column: string;
-  operator: string;
-  value: string;
-  value2?: string;
-}
-
-interface RecordSort {
-  column: string;
-  direction: 'asc' | 'desc';
-}
-
-const STORAGE_PREFIX = 'erd-production-db-tabs:';
-
-const makeFilter = (column = ''): RecordFilter => ({
-  id: crypto.randomUUID(),
-  enabled: true,
-  column,
-  operator: 'CONTAINS',
-  value: '',
-  value2: '',
-});
+import { DATA_VIEWER_STORAGE_PREFIX, makeRecordFilter, OpenTableTab, RecordFilter, RecordsResult, RecordSort } from './useDataViewerHelpers';
 
 export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [tables, setTables] = useState<any[]>([]);
@@ -62,7 +20,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const pageByTableRef = useRef<Record<string, number>>({});
   const hydratedKeyRef = useRef<string | null>(null);
   const skipNextSaveRef = useRef(false);
-  const storageKey = stateKey ? `${STORAGE_PREFIX}${stateKey}` : null;
+  const storageKey = stateKey ? `${DATA_VIEWER_STORAGE_PREFIX}${stateKey}` : null;
 
   const fetchTables = useCallback(async () => {
     if (!connectionId) return;
@@ -207,13 +165,8 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   const totalPages = records ? Math.ceil(records.total / (records.pageSize || 50)) : 0;
 
-  const goToPage = useCallback((p: number) => {
-    if (!activeTable || p < 1 || (totalPages && p > totalPages)) return;
-    fetchRecords(activeTable, p);
-  }, [activeTable, totalPages, fetchRecords]);
-
   const addFilter = useCallback((column = '') => {
-    setFilters(prev => [...prev, makeFilter(column)]);
+    setFilters(prev => [...prev, makeRecordFilter(column)]);
   }, []);
 
   const removeFilter = useCallback((id: string) => {
@@ -237,7 +190,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [activeTable, fetchRecords, pinTable]);
 
   const openRelatedRecord = useCallback((tableName: string, column: string, value: any) => {
-    const nextFilters = [makeFilter(column)];
+    const nextFilters = [makeRecordFilter(column)];
     nextFilters[0].operator = '=';
     nextFilters[0].value = String(value);
 
@@ -314,7 +267,5 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     toggleSort,
     nextPage,
     prevPage,
-    goToPage,
-    refresh: () => activeTable && fetchRecords(activeTable, page),
   };
 }
