@@ -19,9 +19,15 @@ export interface ForeignKeySchema {
 export interface ColumnSchema {
   name: string;
   type: string;
+  full_type?: string | null;
   is_pk: boolean;
   is_nullable: boolean;
   sort_order: number;
+  max_length?: number | null;
+  numeric_precision?: number | null;
+  numeric_scale?: number | null;
+  is_generated?: boolean;
+  enum_values?: string[] | string | null;
   is_fk?: boolean;
   ref_table?: string;
   ref_column?: string;

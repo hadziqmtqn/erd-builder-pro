@@ -39,9 +39,18 @@ export const mysqlConnector: DbConnector = {
             JSON_OBJECT(
               'name', c.COLUMN_NAME,
               'type', c.DATA_TYPE,
+              'full_type', c.COLUMN_TYPE,
               'is_pk', c.COLUMN_KEY = 'PRI',
               'is_nullable', c.IS_NULLABLE = 'YES',
-              'sort_order', c.ORDINAL_POSITION
+              'sort_order', c.ORDINAL_POSITION,
+              'max_length', c.CHARACTER_MAXIMUM_LENGTH,
+              'numeric_precision', c.NUMERIC_PRECISION,
+              'numeric_scale', c.NUMERIC_SCALE,
+              'is_generated', c.EXTRA LIKE '%GENERATED%',
+              'enum_values', CASE
+                WHEN c.DATA_TYPE IN ('enum', 'set') THEN c.COLUMN_TYPE
+                ELSE NULL
+              END
             )
           )
           FROM information_schema.COLUMNS c

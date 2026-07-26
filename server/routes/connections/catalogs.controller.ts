@@ -26,6 +26,13 @@ type TableInfo = {
   totalSize: number | null;
 };
 
+const INTEGER_TYPES = new Set(["smallint", "integer", "int", "bigint", "serial", "bigserial", "smallserial", "tinyint", "mediumint"]);
+const NUMERIC_TYPES = new Set(["decimal", "numeric", "real", "double precision", "double", "float", "money"]);
+const DECIMAL_TYPES = new Set(["decimal", "numeric"]);
+const DATE_TYPES = new Set(["date"]);
+const TIME_TYPES = new Set(["time", "time without time zone", "time with time zone"]);
+const DATETIME_TYPES = new Set(["timestamp", "timestamp without time zone", "timestamp with time zone", "datetime"]);
+
 function quoteIdentifier(type: string, name: string) {
   return type === "mysql" ? `\`${name.replace(/`/g, "``")}\`` : `"${name.replace(/"/g, '""')}"`;
 }
@@ -36,6 +43,102 @@ function quoteSqliteValue(value: string) {
 
 function splitList(value = "") {
   return value.split(",").map(item => item.trim()).filter(Boolean);
+}
+
+function parseMySqlEnumValues(columnType: any) {
+  if (Array.isArray(columnType)) return columnType.map(String);
+  const match = String(columnType || "").match(/^(?:enum|set)\((.*)\)$/i);
+  if (!match) return [];
+  return [...match[1].matchAll(/'((?:''|[^'])*)'/g)].map(item => item[1].replace(/''/g, "'"));
+}
+
+function isBooleanColumn(type: string, column: any) {
+  const columnType = String(column.type || "").toLowerCase();
+  const fullType = String(column.full_type || column.enum_values || "").toLowerCase();
+  return columnType === "boolean" || columnType === "bool" || (type === "mysql" && /^tinyint\(1\)/.test(fullType));
+}
+
+function isValidDateText(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() + 1 === Number(match[2]) &&
+    date.getUTCDate() === Number(match[3]);
+}
+
+function isValidTimeText(value: string) {
+  return /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,6})?)?$/.test(value);
+}
+
+function isValidDateTimeText(value: string) {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})[ T]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?)([+-]\d{2}:?\d{2}|Z)?$/);
+  return !!match && isValidDateText(match[1]) && isValidTimeText(match[2]);
+}
+
+export function validateRecordValues(type: string, values: Record<string, any>, columnByName: Map<string, any>) {
+  const normalized: Record<string, any> = {};
+  for (const [columnName, value] of Object.entries(values)) {
+    const column = columnByName.get(columnName);
+    if (!column) throw new Error(`Invalid update column: ${columnName}`);
+    if (column.is_pk) throw new Error(`Primary key column cannot be updated: ${columnName}`);
+    if (column.is_generated) throw new Error(`Generated column cannot be updated: ${columnName}`);
+    if ((value === null || value === undefined) && !column.is_nullable) throw new Error(`Column cannot be null: ${columnName}`);
+    if (value === null || value === undefined) {
+      normalized[columnName] = null;
+      continue;
+    }
+
+    const columnType = String(column.type || "").toLowerCase();
+    const fullType = String(column.full_type || column.enum_values || "").toLowerCase();
+    if (isBooleanColumn(type, column)) {
+      if (value !== 0 && value !== 1) throw new Error(`Boolean column must be 0 or 1: ${columnName}`);
+      normalized[columnName] = type === "postgresql" ? value === 1 : value;
+      continue;
+    }
+
+    const enumValues = Array.isArray(column.enum_values) ? column.enum_values : parseMySqlEnumValues(column.enum_values);
+    if (enumValues.length) {
+      const values = columnType === "set" ? String(value).split(",").filter(Boolean) : [String(value)];
+      if (values.some(item => !enumValues.includes(item))) throw new Error(`Invalid enum value for ${columnName}`);
+    }
+
+    if (typeof value === "string" && column.max_length && value.length > Number(column.max_length)) {
+      throw new Error(`Value too long for ${columnName}; max ${column.max_length} characters`);
+    }
+    if (INTEGER_TYPES.has(columnType) && (typeof value !== "number" || !Number.isInteger(value))) {
+      throw new Error(`Column must be an integer: ${columnName}`);
+    }
+    if (NUMERIC_TYPES.has(columnType) && (typeof value !== "number" || !Number.isFinite(value))) {
+      throw new Error(`Column must be numeric: ${columnName}`);
+    }
+    if (DECIMAL_TYPES.has(columnType) && column.numeric_precision) {
+      const [whole, fraction = ""] = String(Math.abs(value)).split(".");
+      if (whole.replace(/^0+/, "").length + fraction.length > Number(column.numeric_precision)) {
+        throw new Error(`Value exceeds numeric precision for ${columnName}`);
+      }
+      if (column.numeric_scale !== null && column.numeric_scale !== undefined && fraction.length > Number(column.numeric_scale)) {
+        throw new Error(`Value exceeds numeric scale for ${columnName}`);
+      }
+    }
+    if (type === "mysql" && INTEGER_TYPES.has(columnType) && fullType.includes("unsigned") && value < 0) {
+      throw new Error(`Column must be unsigned: ${columnName}`);
+    }
+    if (DATE_TYPES.has(columnType) && !isValidDateText(String(value))) {
+      throw new Error(`Column must be a date in YYYY-MM-DD format: ${columnName}`);
+    }
+    if (TIME_TYPES.has(columnType) && !isValidTimeText(String(value))) {
+      throw new Error(`Column must be a time in HH:MM[:SS] format: ${columnName}`);
+    }
+    if (DATETIME_TYPES.has(columnType) && !isValidDateTimeText(String(value))) {
+      throw new Error(`Column must be a timestamp/datetime value: ${columnName}`);
+    }
+    if ((columnType === "json" || columnType === "jsonb") && typeof value === "string") {
+      try { JSON.parse(value); } catch { throw new Error(`Column must contain valid JSON: ${columnName}`); }
+    }
+    normalized[columnName] = value;
+  }
+  return normalized;
 }
 
 function buildRecordOrder(type: string, sort: RecordSortInput | undefined, allowedColumns: Set<string>) {
@@ -451,16 +554,23 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
       const tableSchema = schema.find((item: any) => item.table_name === table);
       if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
 
-      const allowedColumns = new Set((tableSchema.columns || []).map((column: any) => column.name));
+      const columnByName = new Map<string, any>((tableSchema.columns || []).map((column: any) => [column.name, column]));
+      const allowedColumns = new Set(columnByName.keys());
       const pkColumns = (tableSchema.columns || []).filter((column: any) => column.is_pk).map((column: any) => column.name);
       if (pkColumns.length === 0) return res.status(400).json({ error: "Table has no primary key" });
       for (const column of pkColumns) {
         if (!(column in key)) return res.status(400).json({ error: `Missing primary key column: ${column}` });
       }
+      let normalizedValues;
+      try {
+        normalizedValues = validateRecordValues(info.type, values, columnByName);
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message || "Invalid update values" });
+      }
 
       let update;
       try {
-        update = buildRecordUpdate(info.type, values, key, allowedColumns);
+        update = buildRecordUpdate(info.type, normalizedValues, key, allowedColumns);
       } catch (err: any) {
         return res.status(400).json({ error: err.message || "Invalid update options" });
       }
