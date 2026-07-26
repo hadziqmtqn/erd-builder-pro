@@ -4,24 +4,28 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { useDataViewer } from '@/hooks/useDataViewer';
+import { useStructureEditor } from '@/hooks/useStructureEditor';
 import { DataViewerDetailsPanel } from './DataViewerDetailsPanel';
 import { DataViewerFilters } from './DataViewerFilters';
 import { DataViewerRecordsTable } from './DataViewerRecordsTable';
 import { DataViewerSidebar } from './DataViewerSidebar';
 import { DataViewerStructure } from './DataViewerStructure';
+import { DataViewerStructurePanel } from './DataViewerStructurePanel';
+import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers, draftValue, submitValue } from './data-viewer-utils';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; }
+type DataViewerView = 'data' | 'structure';
 
 export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, sort, records, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, updateRecord, clearFilters, toggleSort, nextPage, prevPage,
+    fetchTables, refreshTables, refreshRecords, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [activeView, setActiveView] = useState<'data' | 'structure'>('data');
+  const [activeView, setActiveView] = useState<DataViewerView>('data');
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
   const [draftRow, setDraftRow] = useState<Record<string, any>>({});
@@ -29,6 +33,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const [datePickerOpenColumn, setDatePickerOpenColumn] = useState<string | null>(null);
   const [isSavingRecord, setIsSavingRecord] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const viewByTableRef = useRef<Record<string, DataViewerView>>({});
 
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
@@ -54,6 +59,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const activeTableSchema = useMemo(() => {
     return tables.find((item: any) => item.table_name === activeTable);
   }, [activeTable, tables]);
+  const structureEditor = useStructureEditor(activeTableSchema, tables, updateStructure);
 
   const columnHelpers = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
@@ -78,10 +84,10 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   }, [columnHelpers, draftRow, records, selectedRow]);
 
   const warnUnsaved = useCallback(() => {
-    if (!isRecordDirty) return true;
-    toast.warning('Save the record changes before switching.');
+    if (!isRecordDirty && !structureEditor.isDirty) return true;
+    toast.warning(`Save the ${isRecordDirty ? 'record' : 'structure'} changes before switching.`);
     return false;
-  }, [isRecordDirty]);
+  }, [isRecordDirty, structureEditor.isDirty]);
 
   const openFilters = useCallback(() => {
     if (!activeTable) return;
@@ -90,10 +96,12 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   }, [activeTable, filters.length, columnOptions, addFilter]);
   const handleSelectTable = useCallback((tableName: string) => {
     if (!warnUnsaved()) return;
+    setActiveView(viewByTableRef.current[tableName] || 'data');
     selectTable(tableName);
   }, [selectTable, warnUnsaved]);
   const handleCloseTable = useCallback((tableName: string) => {
     if (!warnUnsaved()) return;
+    delete viewByTableRef.current[tableName];
     closeTable(tableName);
   }, [closeTable, warnUnsaved]);
   const handleSelectRow = useCallback((row: Record<string, any>) => {
@@ -101,12 +109,13 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     setSelectedRow(row);
     setDetailsOpen(true);
   }, [selectedRow, warnUnsaved]);
-  const handleViewChange = useCallback((view: 'data' | 'structure') => {
+  const handleViewChange = useCallback((view: DataViewerView) => {
     if (view === activeView) return;
     if (!warnUnsaved()) return;
+    if (activeTable) viewByTableRef.current[activeTable] = view;
     setActiveView(view);
     if (view === 'structure') setDetailsOpen(false);
-  }, [activeView, warnUnsaved]);
+  }, [activeTable, activeView, warnUnsaved]);
 
   const handleSubmitRecord = useCallback(async () => {
     if (!activeTable || !selectedRow || !records) return;
@@ -124,6 +133,16 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
       setIsSavingRecord(false);
     }
   }, [activeTable, changedValues, primaryKeyColumns, records, selectedRow, updateRecord]);
+
+  const handleSubmitStructure = useCallback(async () => {
+    if (!structureEditor.isDirty) return;
+    try {
+      await structureEditor.save();
+      toast.success('Structure updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update structure');
+    }
+  }, [structureEditor]);
 
   useEffect(() => {
     fetchTables();
@@ -173,7 +192,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   useEffect(() => {
     setShowFilters(false);
     setSelectedRow(null);
-    setActiveView('data');
+    structureEditor.close();
   }, [activeTable]);
 
   useEffect(() => {
@@ -194,11 +213,18 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
       } else if (key === 'f' && activeTable) {
         e.preventDefault();
         openFilters();
+      } else if (key === 's') {
+        e.preventDefault();
+        if (activeView === 'structure') {
+          handleSubmitStructure();
+        } else {
+          handleSubmitRecord();
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTable, openFilters]);
+  }, [activeTable, activeView, handleSubmitRecord, handleSubmitStructure, openFilters]);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -226,8 +252,21 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
         ) : (
           <>
             <div className="min-h-0 overflow-hidden flex flex-col">
+              <DataViewerTableTabs
+                activeTable={activeTable}
+                openTabs={openTabs}
+                onCloseTable={handleCloseTable}
+                onSelectTable={handleSelectTable}
+                onPinTable={pinTable}
+              />
               {activeView === 'structure' && activeTableSchema ? (
-                <DataViewerStructure table={activeTableSchema} />
+                <DataViewerStructure
+                  table={activeTableSchema}
+                  selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
+                  onEditTable={structureEditor.editTable}
+                  onSelectColumn={structureEditor.editColumn}
+                  onRefresh={() => warnUnsaved() && refreshTables()}
+                />
               ) : (
                 <DataViewerRecordsTable
                   activeTable={activeTable}
@@ -235,17 +274,14 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   error={error}
                   foreignKeyByColumn={foreignKeyByColumn}
                   isLoadingRecords={isLoadingRecords}
-                  openTabs={openTabs}
                   records={records}
                   selectedRow={selectedRow}
                   sort={sort}
                   detailsOpen={detailsOpen}
-                  handleCloseTable={handleCloseTable}
                   handleSelectRow={handleSelectRow}
-                  handleSelectTable={handleSelectTable}
                   openRelatedRecord={openRelatedRecord}
-                  pinTable={pinTable}
                   setDetailsOpen={setDetailsOpen}
+                  onRefresh={refreshRecords}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
                 >
@@ -323,6 +359,19 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
           setDraftRow={setDraftRow}
           onSubmitRecord={handleSubmitRecord}
           warnUnsaved={warnUnsaved}
+        />
+      )}
+      {activeView === 'structure' && structureEditor.target && structureEditor.draft && (
+        <DataViewerStructurePanel
+          target={structureEditor.target}
+          draft={structureEditor.draft}
+          isDirty={structureEditor.isDirty}
+          isSaving={structureEditor.isSaving}
+          tables={tables}
+          referenceColumns={structureEditor.referenceColumns}
+          setDraft={structureEditor.setDraft}
+          onClose={structureEditor.close}
+          onSave={handleSubmitStructure}
         />
       )}
     </div>

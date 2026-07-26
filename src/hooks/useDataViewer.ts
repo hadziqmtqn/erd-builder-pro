@@ -38,6 +38,8 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     }
   }, [connectionId]);
 
+  const refreshTables = useCallback(() => fetchTables(), [fetchTables]);
+
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
@@ -223,6 +225,29 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, connectionId, fetchRecords, page]);
 
+  const updateStructure = useCallback(async (patch: Record<string, any>) => {
+    if (!connectionId || !activeTable) return;
+    const res = await apiFetch(`/api/catalogs/${connectionId}/structure`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: activeTable, ...patch }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update structure');
+    const nextTable = patch.tableName || activeTable;
+    setActiveTable(nextTable);
+    setOpenTabs(prev => prev.map(tab => tab.name === activeTable ? { ...tab, name: nextTable, pinned: true } : tab));
+    pageByTableRef.current[nextTable] = pageByTableRef.current[activeTable] ?? page;
+    if (nextTable !== activeTable) delete pageByTableRef.current[activeTable];
+    await fetchTables();
+    fetchRecords(nextTable, pageByTableRef.current[nextTable] ?? page);
+    return data;
+  }, [activeTable, connectionId, fetchRecords, fetchTables, page]);
+
+  const refreshRecords = useCallback(() => {
+    if (activeTable) fetchRecords(activeTable, pageByTableRef.current[activeTable] ?? page);
+  }, [activeTable, fetchRecords, page]);
+
   const clearFilters = useCallback(() => {
     setFilters([]);
     appliedFiltersRef.current = [];
@@ -253,6 +278,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     isLoadingRecords,
     error,
     fetchTables,
+    refreshTables,
     selectTable,
     pinTable,
     closeTable,
@@ -263,6 +289,8 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     applyFilters,
     openRelatedRecord,
     updateRecord,
+    updateStructure,
+    refreshRecords,
     clearFilters,
     toggleSort,
     nextPage,

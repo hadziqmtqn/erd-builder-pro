@@ -1,7 +1,13 @@
+import { PanelRightOpen, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type DataViewerStructureProps = {
   table: any;
+  selectedColumnName?: string | null;
+  onEditTable: () => void;
+  onSelectColumn: (columnName: string) => void;
+  onRefresh: () => void;
 };
 
 const empty = (value: any) => value === null ? 'NULL' : value === undefined || value === '' ? 'EMPTY' : String(value);
@@ -12,7 +18,7 @@ function ValueCell({ value, className = '' }: { value: any; className?: string }
   return <TableCell className={`font-mono ${valueClass(value)} ${className}`}>{empty(value)}</TableCell>;
 }
 
-export function DataViewerStructure({ table }: DataViewerStructureProps) {
+export function DataViewerStructure({ table, selectedColumnName, onEditTable, onSelectColumn, onRefresh }: DataViewerStructureProps) {
   const columns = (table?.columns || [])
     .map((column: any, index: number) => ({ column, index }))
     .sort((a: any, b: any) => (Number(a.column.sort_order) || a.index + 1) - (Number(b.column.sort_order) || b.index + 1))
@@ -25,15 +31,26 @@ export function DataViewerStructure({ table }: DataViewerStructureProps) {
       <div className="flex shrink-0 items-center gap-4 border-b bg-muted/10 px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Name</span>
-          <div className="h-8 w-64 max-w-[32vw] truncate rounded-md border bg-background px-3 py-1.5 text-sm font-medium">
+          <button
+            className="h-8 w-64 max-w-[32vw] truncate rounded-md border bg-background px-3 py-1.5 text-left text-sm font-medium hover:bg-muted/50"
+            onClick={onEditTable}
+          >
             {table.table_name}
-          </div>
+          </button>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Primary</span>
           <div className="h-8 min-w-32 flex-1 truncate rounded-md border bg-background px-3 py-1.5 text-sm">
             {columns.filter((col: any) => col.is_pk).map((col: any) => col.name).join(', ') || 'EMPTY'}
           </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="Refresh structure">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon-sm" onClick={onEditTable} title="Open table structure details">
+            <PanelRightOpen className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -50,7 +67,11 @@ export function DataViewerStructure({ table }: DataViewerStructureProps) {
             {columns.map((column: any, index: number) => {
               const fk = foreignKeys.find((item: any) => item.column === column.name);
               return (
-                <TableRow key={column.name}>
+                <TableRow
+                  key={column.name}
+                  className={`cursor-pointer ${selectedColumnName === column.name ? 'bg-muted/70' : ''}`}
+                  onClick={() => onSelectColumn(column.name)}
+                >
                   <TableCell className="w-14 text-right font-mono text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-mono font-medium text-foreground">{column.name}</TableCell>
                   <ValueCell value={column.full_type || column.type} />

@@ -26,6 +26,7 @@ catalogsRouter.post("/:id/schema", authenticate, desktopOnly, catalogsController
 catalogsRouter.post("/:id/import", authenticate, desktopOnly, catalogsController.importSchema);
 catalogsRouter.post("/:id/records", authenticate, desktopOnly, catalogsController.queryRecords);
 catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsController.updateRecord);
+catalogsRouter.patch("/:id/structure", authenticate, desktopOnly, catalogsController.updateStructure);
 
 // ── Legacy backward-compat ──
 import * as legacyController from "./legacy.controller.js";

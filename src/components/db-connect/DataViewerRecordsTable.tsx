@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Loader2, PanelRightOpen, X } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Loader2, PanelRightOpen, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
@@ -10,17 +10,14 @@ type DataViewerRecordsTableProps = {
   error: string | null;
   foreignKeyByColumn: Map<string, any>;
   isLoadingRecords: boolean;
-  openTabs: any[];
   records: any;
   selectedRow: Record<string, any> | null;
   sort: any;
   detailsOpen: boolean;
-  handleCloseTable: (tableName: string) => void;
   handleSelectRow: (row: Record<string, any>) => void;
-  handleSelectTable: (tableName: string) => void;
   openRelatedRecord: (table: string, column: string, value: any) => void;
-  pinTable: (tableName: string) => void;
   setDetailsOpen: (open: boolean | ((open: boolean) => boolean)) => void;
+  onRefresh: () => void;
   toggleSort: (column: string) => void;
   warnUnsaved: () => boolean;
   children?: ReactNode;
@@ -32,65 +29,23 @@ export function DataViewerRecordsTable({
   error,
   foreignKeyByColumn,
   isLoadingRecords,
-  openTabs,
   records,
   selectedRow,
   sort,
   detailsOpen,
-  handleCloseTable,
   handleSelectRow,
-  handleSelectTable,
   openRelatedRecord,
-  pinTable,
   setDetailsOpen,
+  onRefresh,
   toggleSort,
   warnUnsaved,
   children,
 }: DataViewerRecordsTableProps) {
   return (
     <div className="min-h-0 overflow-hidden flex flex-col">
-      {openTabs.length > 0 && (
-        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/10 px-2 py-1 scrollbar-hide">
-          {openTabs.map(tab => (
-            <button
-              key={tab.name}
-              onClick={() => handleSelectTable(tab.name)}
-              onDoubleClick={() => pinTable(tab.name)}
-              className={`group flex h-8 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
-                activeTable === tab.name
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-              title={tab.pinned ? `${tab.name} (pinned)` : `${tab.name} (double click to pin)`}
-            >
-              <span className={`truncate ${tab.pinned ? 'not-italic' : 'italic'}`}>{tab.name}</span>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); handleCloseTable(tab.name); }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleCloseTable(tab.name);
-                  }
-                }}
-                className="ml-1 rounded p-0.5 opacity-60 hover:bg-muted hover:opacity-100"
-                title="Close table"
-              >
-                <X className="h-3 w-3" />
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
       {children}
 
-      {isLoadingRecords ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : error ? (
+      {error ? (
         <div className="flex-1 flex items-center justify-center text-sm">
           <div className="flex flex-col items-center gap-3 max-w-xs text-center">
             {error.includes('Catalog not found') ? (
@@ -123,16 +78,26 @@ export function DataViewerRecordsTable({
                 {records.total} row{records.total !== 1 ? 's' : ''}
               </span>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true)}
-              title={detailsOpen ? 'Close details' : selectedRow ? 'Open record details' : 'Open table information'}
-            >
-              <PanelRightOpen className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" onClick={() => warnUnsaved() && onRefresh()} title="Refresh records">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true)}
+                title={detailsOpen ? 'Close details' : selectedRow ? 'Open record details' : 'Open table information'}
+              >
+                <PanelRightOpen className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
+            {isLoadingRecords ? (
+              <div className="flex h-full items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
             <div className="min-w-fit inline-block align-middle">
               <Table>
                 <TableHeader>
@@ -222,8 +187,13 @@ export function DataViewerRecordsTable({
                 </TableBody>
               </Table>
             </div>
+            )}
           </div>
         </>
+      ) : isLoadingRecords ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
       ) : null}
     </div>
   );
