@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRecordWhere } from "./catalogs.controller.js";
+import { buildRecordUpdate, buildRecordWhere } from "./catalogs.controller.js";
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);
@@ -13,6 +13,15 @@ describe("buildRecordWhere", () => {
     expect(where).toEqual({
       sql: ' WHERE "email" ILIKE $1 AND "role" ILIKE $2',
       params: ["%admin%", "%owner%"],
+    });
+  });
+
+  it("builds PostgreSQL update statements with valid placeholders", () => {
+    const update = buildRecordUpdate("postgresql", { email: "admin@example.com" }, { id: 7 }, new Set(["id", "email"]));
+
+    expect(update).toEqual({
+      sql: ' SET "email" = $1 WHERE "id" = $2',
+      params: ["admin@example.com", 7],
     });
   });
 });

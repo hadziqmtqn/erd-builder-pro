@@ -4,8 +4,15 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X, Plus, Minus, ArrowDown, ArrowUp, ArrowRight, PanelRightOpen } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { ChevronLeft, ChevronRight, Database, TableIcon, Loader2, AlertCircle, Search, X, Plus, Minus, ArrowDown, ArrowUp, ArrowRight, PanelRightOpen, CalendarIcon, ChevronDownIcon } from 'lucide-react';
 import { useDataViewer } from '@/hooks/useDataViewer';
+import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
+import { format } from 'date-fns';
 
 interface DataViewerProps {
   connectionId: number;
@@ -16,12 +23,16 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, sort, records, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, clearFilters, toggleSort, nextPage, prevPage,
+    fetchTables, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, updateRecord, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
+  const [draftRow, setDraftRow] = useState<Record<string, any>>({});
+  const [fkOptionsByColumn, setFkOptionsByColumn] = useState<Record<string, Record<string, any>[]>>({});
+  const [datePickerOpenColumn, setDatePickerOpenColumn] = useState<string | null>(null);
+  const [isSavingRecord, setIsSavingRecord] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
@@ -42,6 +53,16 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const foreignKeyByColumn = useMemo(() => {
     const table = tables.find((t: any) => t.table_name === activeTable);
     return new Map((table?.foreign_keys || []).map((fk: any) => [fk.column, fk]));
+  }, [activeTable, tables]);
+
+  const columnByName = useMemo(() => {
+    const table = tables.find((t: any) => t.table_name === activeTable);
+    return new Map((table?.columns || []).map((col: any) => [col.name, col]));
+  }, [activeTable, tables]);
+
+  const primaryKeyColumns = useMemo(() => {
+    const table = tables.find((t: any) => t.table_name === activeTable);
+    return (table?.columns || []).filter((col: any) => col.is_pk).map((col: any) => col.name);
   }, [activeTable, tables]);
 
   const operators = [
@@ -70,9 +91,113 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     return typeof value === 'object' ? JSON.stringify(value) : String(value);
   };
 
+  const editableValue = (value: any) => {
+    if (value === null || value === undefined) return '';
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+  };
+
+  const columnType = (column: string) => String((columnByName.get(column) as any)?.type || '').toLowerCase();
+  const isBooleanColumn = (column: string) => /bool|tinyint\(1\)/.test(columnType(column));
+  const isNumericColumn = (column: string) => /int|decimal|numeric|float|double|real|serial|money/.test(columnType(column));
+  const isDateColumn = (column: string) => /date/.test(columnType(column)) && !/time/.test(columnType(column));
+  const isDateTimeColumn = (column: string) => /timestamp|datetime/.test(columnType(column));
+  const isLongColumn = (column: string) => /text|json|xml/.test(columnType(column));
+  const draftValue = (column: string, value: any) => isBooleanColumn(column) ? Boolean(value) : editableValue(value);
+  const submitValue = (column: string, value: any) => {
+    if (isBooleanColumn(column)) return Boolean(value);
+    if (isNumericColumn(column) && value !== '') return Number(value);
+    if (/json/.test(columnType(column)) && value !== '') {
+      try { return JSON.parse(value); } catch {}
+    }
+    return value;
+  };
+  const parseDraftDate = (value: any) => {
+    const text = String(value || '');
+    const [datePart] = text.split(/[T ]/);
+    const [year, month, day] = datePart.split('-').map(Number);
+    if (!year || !month || !day) return undefined;
+    return new Date(year, month - 1, day);
+  };
+  const datePart = (value: any) => String(value || '').split(/[T ]/)[0] || '';
+  const timePart = (value: any) => {
+    const text = String(value || '');
+    const match = text.match(/[T ](\d{2}:\d{2})/);
+    return match?.[1] || '00:00';
+  };
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const setDraftDate = (column: string, date: Date | undefined) => {
+    if (!date) return;
+    const nextDate = formatDate(date);
+    setDraftRow(prev => ({
+      ...prev,
+      [column]: isDateTimeColumn(column) ? `${nextDate}T${timePart(prev[column])}` : nextDate,
+    }));
+  };
+
+  const isRecordDirty = useMemo(() => {
+    if (!selectedRow || !records) return false;
+    return records.columns.some((col: string) => (draftRow[col] ?? '') !== draftValue(col, selectedRow[col]));
+  }, [draftRow, records, selectedRow]);
+
+  const warnUnsaved = useCallback(() => {
+    if (!isRecordDirty) return true;
+    toast.warning('Save the record changes before switching.');
+    return false;
+  }, [isRecordDirty]);
+
+  const changedValues = useMemo(() => {
+    if (!selectedRow || !records) return {};
+    return Object.fromEntries(records.columns
+      .filter((col: string) => (draftRow[col] ?? '') !== draftValue(col, selectedRow[col]))
+      .map((col: string) => [col, submitValue(col, draftRow[col] ?? '')]));
+  }, [draftRow, records, selectedRow]);
+
   useEffect(() => {
     fetchTables();
   }, [fetchTables]);
+
+  useEffect(() => {
+    if (!selectedRow || !records) {
+      setDraftRow({});
+      return;
+    }
+    setDraftRow(Object.fromEntries(records.columns.map((col: string) => [col, draftValue(col, selectedRow[col])])));
+  }, [records, selectedRow]);
+
+  useEffect(() => {
+    if (!activeTable || !selectedRow || foreignKeyByColumn.size === 0) {
+      setFkOptionsByColumn({});
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all([...foreignKeyByColumn.entries()].map(async ([column, fk]: any) => {
+      const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: fk.ref_table,
+          page: 1,
+          pageSize: 200,
+          sort: { column: fk.ref_column, direction: 'asc' },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load related records');
+      return [column, data.rows || []] as const;
+    })).then(entries => {
+      if (!cancelled) setFkOptionsByColumn(Object.fromEntries(entries));
+    }).catch(() => {
+      if (!cancelled) setFkOptionsByColumn({});
+    });
+
+    return () => { cancelled = true; };
+  }, [activeTable, connectionId, foreignKeyByColumn, selectedRow]);
 
   const openFilters = useCallback(() => {
     if (!activeTable) return;
@@ -108,6 +233,165 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [activeTable, openFilters]);
+
+  const handleSelectTable = useCallback((tableName: string) => {
+    if (!warnUnsaved()) return;
+    selectTable(tableName);
+  }, [selectTable, warnUnsaved]);
+
+  const handleCloseTable = useCallback((tableName: string) => {
+    if (!warnUnsaved()) return;
+    closeTable(tableName);
+  }, [closeTable, warnUnsaved]);
+
+  const handleSelectRow = useCallback((row: Record<string, any>) => {
+    if (selectedRow !== row && !warnUnsaved()) return;
+    setSelectedRow(row);
+    setDetailsOpen(true);
+  }, [selectedRow, warnUnsaved]);
+
+  const handleSubmitRecord = useCallback(async () => {
+    if (!activeTable || !selectedRow || !records) return;
+    const key = Object.fromEntries(primaryKeyColumns.map((col: string) => [col, selectedRow[col]]));
+    if (primaryKeyColumns.length === 0 || Object.keys(changedValues).length === 0) return;
+
+    setIsSavingRecord(true);
+    try {
+      await updateRecord(activeTable, key, changedValues);
+      toast.success('Record updated');
+      setSelectedRow(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update record');
+    } finally {
+      setIsSavingRecord(false);
+    }
+  }, [activeTable, changedValues, primaryKeyColumns, records, selectedRow, updateRecord]);
+
+  const renderRecordField = (col: string) => {
+    const fieldId = `record-field-${col}`;
+    const fk = foreignKeyByColumn.get(col) as any;
+    if (fk) {
+      const options = fkOptionsByColumn[col] || [];
+      const current = draftRow[col] ?? '';
+      const values = new Set(options.map(row => String(row[fk.ref_column])));
+      const mergedOptions = current !== '' && !values.has(String(current))
+        ? [{ [fk.ref_column]: current }, ...options]
+        : options;
+
+      return (
+        <Select value={String(current)} onValueChange={value => setDraftRow(prev => ({ ...prev, [col]: value }))}>
+          <SelectTrigger id={fieldId} className="mt-1 h-8 font-mono text-xs">
+            <SelectValue>{String(current)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {mergedOptions.length === 0 ? (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">No parent records</div>
+            ) : mergedOptions.map((row: any) => {
+              const value = String(row[fk.ref_column]);
+              const labelColumn = Object.keys(row).find(key => key !== fk.ref_column && row[key] !== null && row[key] !== undefined);
+              const label = labelColumn ? `${value} - ${formatCellValue(row[labelColumn])}` : value;
+              return <SelectItem key={value} value={value} className="text-xs">{label}</SelectItem>;
+            })}
+          </SelectContent>
+        </Select>
+      );
+    }
+
+    if (isBooleanColumn(col)) {
+      return (
+        <label className="mt-2 flex items-center gap-2 text-xs">
+          <input
+            id={fieldId}
+            type="checkbox"
+            checked={Boolean(draftRow[col])}
+            onChange={e => setDraftRow(prev => ({ ...prev, [col]: e.target.checked }))}
+            className="size-4 accent-primary"
+          />
+          {Boolean(draftRow[col]) ? 'true' : 'false'}
+        </label>
+      );
+    }
+
+    if (isLongColumn(col)) {
+      return (
+        <Textarea
+          id={fieldId}
+          value={draftRow[col] ?? ''}
+          onChange={e => setDraftRow(prev => ({ ...prev, [col]: e.target.value }))}
+          className="mt-1 min-h-16 resize-y font-mono text-xs"
+          placeholder={selectedRow?.[col] === null ? 'NULL' : ''}
+        />
+      );
+    }
+
+    if (isDateColumn(col) || isDateTimeColumn(col)) {
+      const current = String(draftRow[col] ?? '');
+      const selectedDate = parseDraftDate(current);
+      return (
+        <FieldGroup className={`mt-1 gap-2 ${isDateTimeColumn(col) ? 'grid-cols-[1fr_6.5rem]' : ''}`}>
+          <Field>
+            <Popover open={datePickerOpenColumn === col} onOpenChange={open => setDatePickerOpenColumn(open ? col : null)}>
+              <PopoverTrigger
+                render={
+                  <Button id={fieldId} type="button" variant="outline" className="h-8 w-full justify-between font-mono text-xs font-normal">
+                    <span className="flex min-w-0 items-center gap-2 truncate">
+                      <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      {selectedDate ? format(selectedDate, 'PPP') : 'Select date'}
+                    </span>
+                    <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </Button>
+                }
+              />
+              <PopoverContent align="start" className="w-auto overflow-hidden p-0">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  captionLayout="dropdown"
+                  defaultMonth={selectedDate}
+                  onSelect={date => {
+                    setDraftDate(col, date);
+                    setDatePickerOpenColumn(null);
+                  }}
+                  classNames={{
+                    month_caption: 'flex justify-center px-2 pt-2',
+                    caption_label: 'pointer-events-none relative z-[1] inline-flex whitespace-nowrap text-sm font-medium leading-none',
+                    dropdowns: 'flex items-center gap-2',
+                    dropdown_root: 'relative flex h-8 min-w-24 flex-row items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium shadow-sm [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground',
+                    dropdown: 'absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0',
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </Field>
+          {isDateTimeColumn(col) && (
+            <Field>
+              <FieldLabel htmlFor={`${fieldId}-time`} className="sr-only">Time</FieldLabel>
+              <Input
+                id={`${fieldId}-time`}
+                type="time"
+                step="1"
+                value={timePart(current)}
+                onChange={e => setDraftRow(prev => ({ ...prev, [col]: `${datePart(prev[col]) || formatDate(new Date())}T${e.target.value}` }))}
+                className="h-8 bg-background font-mono text-xs"
+              />
+            </Field>
+          )}
+        </FieldGroup>
+      );
+    }
+
+    const type = isNumericColumn(col) ? 'number' : 'text';
+    return (
+      <Input
+        id={fieldId}
+        type={type}
+        value={String(draftRow[col] ?? '')}
+        onChange={e => setDraftRow(prev => ({ ...prev, [col]: e.target.value }))}
+        className="mt-1 h-8 font-mono text-xs"
+        placeholder={selectedRow?.[col] === null ? 'NULL' : ''}
+      />
+    );
+  };
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -152,7 +436,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
               filteredTables.map((t: any) => (
                 <button
                   key={t.table_name}
-                  onClick={() => selectTable(t.table_name)}
+                  onClick={() => handleSelectTable(t.table_name)}
                   className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
                     activeTable === t.table_name
                       ? 'bg-accent text-accent-foreground font-medium'
@@ -186,7 +470,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   {openTabs.map(tab => (
                     <button
                       key={tab.name}
-                      onClick={() => selectTable(tab.name)}
+                      onClick={() => handleSelectTable(tab.name)}
                       onDoubleClick={() => pinTable(tab.name)}
                       className={`group flex h-8 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
                         activeTable === tab.name
@@ -199,12 +483,12 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                       <span
                         role="button"
                         tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); closeTable(tab.name); }}
+                        onClick={(e) => { e.stopPropagation(); handleCloseTable(tab.name); }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
                             e.stopPropagation();
-                            closeTable(tab.name);
+                            handleCloseTable(tab.name);
                           }
                         }}
                         className="ml-1 rounded p-0.5 opacity-60 hover:bg-muted hover:opacity-100"
@@ -272,7 +556,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                             variant="secondary"
                             size="sm"
                             className="h-8"
-                            onClick={() => applyFilter(filter)}
+                            onClick={() => warnUnsaved() && applyFilter(filter)}
                           >
                             Apply
                           </Button>
@@ -301,14 +585,18 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                         variant="ghost"
                         size="sm"
                         className="h-8"
-                        onClick={() => { clearFilters(); setShowFilters(false); }}
+                        onClick={() => {
+                          if (!warnUnsaved()) return;
+                          clearFilters();
+                          setShowFilters(false);
+                        }}
                       >
                         Clear
                       </Button>
                       <Button
                         size="sm"
                         className="h-8"
-                        onClick={() => applyFilters(filters)}
+                        onClick={() => warnUnsaved() && applyFilters(filters)}
                       >
                         Apply All
                       </Button>
@@ -362,7 +650,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      onClick={() => setDetailsOpen(open => !open)}
+                      onClick={() => setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true)}
                       title={detailsOpen ? 'Close details' : selectedRow ? 'Open record details' : 'Open table information'}
                     >
                       <PanelRightOpen className="h-4 w-4" />
@@ -380,7 +668,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                                 key={col}
                                 aria-sort={sort?.column === col ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                                 className="cursor-pointer select-none whitespace-nowrap px-4 py-0 hover:bg-muted/60"
-                                onClick={() => toggleSort(col)}
+                                onClick={() => warnUnsaved() && toggleSort(col)}
                                 title={`Sort by ${col}`}
                               >
                                 <div
@@ -389,7 +677,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                       e.preventDefault();
-                                      toggleSort(col);
+                                      if (warnUnsaved()) toggleSort(col);
                                     }
                                   }}
                                   className="flex h-10 items-center gap-1.5 font-mono text-xs font-medium"
@@ -419,10 +707,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                               <TableRow
                                 key={idx}
                                 className={`cursor-pointer hover:bg-muted/50 ${selectedRow === row ? 'bg-muted/70' : ''}`}
-                                onClick={() => {
-                                  setSelectedRow(row);
-                                  setDetailsOpen(true);
-                                }}
+                                onClick={() => handleSelectRow(row)}
                               >
                                 {records.columns.map((col: string) => {
                                   const val = row[col];
@@ -446,7 +731,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                                             className="size-6 shrink-0 opacity-60 hover:opacity-100"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              openRelatedRecord(fk.ref_table, fk.ref_column, val);
+                                              if (warnUnsaved()) openRelatedRecord(fk.ref_table, fk.ref_column, val);
                                             }}
                                             title={`Open ${fk.ref_table}.${fk.ref_column} = ${String(val)}`}
                                           >
@@ -481,7 +766,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                     variant="outline"
                     size="icon-xs"
                     disabled={page <= 1}
-                    onClick={prevPage}
+                    onClick={() => warnUnsaved() && prevPage()}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -489,7 +774,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                     variant="outline"
                     size="icon-xs"
                     disabled={page >= totalPages}
-                    onClick={nextPage}
+                    onClick={() => warnUnsaved() && nextPage()}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -507,7 +792,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                 <h3 className="truncate text-sm font-medium">{selectedRow ? 'Record Details' : 'Table Information'}</h3>
                 <p className="truncate text-xs text-muted-foreground">{activeTable || 'No table selected'}</p>
               </div>
-              <Button variant="ghost" size="icon-xs" onClick={() => setDetailsOpen(false)} title="Close details">
+              <Button variant="ghost" size="icon-xs" onClick={() => warnUnsaved() && setDetailsOpen(false)} title="Close details">
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -516,12 +801,32 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                 <div className="space-y-2">
                   {records.columns.map((col: string) => (
                     <div key={col} className="rounded-md border px-3 py-2">
-                      <div className="truncate font-mono text-xs text-muted-foreground">{col}</div>
-                      <div className={`mt-1 break-words font-mono text-xs ${selectedRow[col] === null ? 'italic text-muted-foreground/50' : ''}`}>
-                        {formatCellValue(selectedRow[col])}
-                      </div>
+                      <label className="truncate font-mono text-xs text-muted-foreground" htmlFor={`record-field-${col}`}>{col}</label>
+                      {renderRecordField(col)}
                     </div>
                   ))}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (!selectedRow || !records) return;
+                        setDraftRow(Object.fromEntries(records.columns.map((col: string) => [col, draftValue(col, selectedRow[col])])));
+                      }}
+                      disabled={!isRecordDirty || isSavingRecord}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSubmitRecord}
+                      disabled={isSavingRecord || !isRecordDirty || primaryKeyColumns.length === 0}
+                    >
+                      {isSavingRecord && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Submit
+                    </Button>
+                  </div>
+                  {primaryKeyColumns.length === 0 && (
+                    <p className="text-xs text-muted-foreground">This table has no primary key, so record editing is disabled.</p>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y rounded-md border">

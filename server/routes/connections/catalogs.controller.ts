@@ -46,6 +46,29 @@ function buildRecordOrder(type: string, sort: RecordSortInput | undefined, allow
   return ` ORDER BY ${quoteIdentifier(type, sort.column)} ${direction.toUpperCase()}`;
 }
 
+export function buildRecordUpdate(type: string, values: Record<string, any>, key: Record<string, any>, allowedColumns: Set<string>) {
+  const params: any[] = [];
+  const placeholder = () => type === "postgresql" ? `$${params.length}` : "?";
+  const valueRef = (value: any) => {
+    params.push(value);
+    return placeholder();
+  };
+
+  const set = Object.entries(values).map(([column, value]) => {
+    if (!allowedColumns.has(column)) throw new Error(`Invalid update column: ${column}`);
+    return `${quoteIdentifier(type, column)} = ${valueRef(value)}`;
+  });
+  const where = Object.entries(key).map(([column, value]) => {
+    if (!allowedColumns.has(column)) throw new Error(`Invalid key column: ${column}`);
+    return `${quoteIdentifier(type, column)} = ${valueRef(value)}`;
+  });
+
+  if (set.length === 0) throw new Error("No update values provided");
+  if (where.length === 0) throw new Error("No record key provided");
+
+  return { sql: ` SET ${set.join(", ")} WHERE ${where.join(" AND ")}`, params };
+}
+
 export function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined, allowedColumns: Set<string>) {
   const clauses: string[] = [];
   const params: string[] = [];
@@ -395,5 +418,66 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
   } catch (err: any) {
     console.error("Error querying records:", err);
     res.status(500).json({ error: `Failed to query records: ${err.message}` });
+  }
+}
+
+export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
+  const userId = (req as any).user.id;
+  const { id } = req.params;
+  const { table, key, values } = req.body;
+
+  if (!table?.trim()) return res.status(400).json({ error: "table name is required" });
+  if (!key || typeof key !== "object") return res.status(400).json({ error: "record key is required" });
+  if (!values || typeof values !== "object") return res.status(400).json({ error: "update values are required" });
+
+  try {
+    const catalog = await catalogsService.findCatalogById(id, userId);
+    if (!catalog) return res.status(404).json({ error: "Catalog not found" });
+
+    const info = buildConnectionInfo({
+      type: (catalog as any).account.type,
+      host: (catalog as any).account.host,
+      port: (catalog as any).account.port,
+      user: (catalog as any).account.user,
+      password: (catalog as any).account.password,
+      database: (catalog as any).databaseName,
+    });
+    if (info.type === "sqlite") return res.status(400).json({ error: "Record editing is not supported for SQLite catalogs" });
+
+    const connector = getConnector(info.type);
+    const { client, release } = await connector.connect(info);
+    try {
+      const schema = await connector.fetchSchema(client, info);
+      const tableSchema = schema.find((item: any) => item.table_name === table);
+      if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
+
+      const allowedColumns = new Set((tableSchema.columns || []).map((column: any) => column.name));
+      const pkColumns = (tableSchema.columns || []).filter((column: any) => column.is_pk).map((column: any) => column.name);
+      if (pkColumns.length === 0) return res.status(400).json({ error: "Table has no primary key" });
+      for (const column of pkColumns) {
+        if (!(column in key)) return res.status(400).json({ error: `Missing primary key column: ${column}` });
+      }
+
+      let update;
+      try {
+        update = buildRecordUpdate(info.type, values, key, allowedColumns);
+      } catch (err: any) {
+        return res.status(400).json({ error: err.message || "Invalid update options" });
+      }
+
+      const tableSql = quoteIdentifier(info.type, table);
+      if (info.type === "postgresql") {
+        await (client as any).query(`UPDATE ${tableSql}${update.sql}`, update.params);
+      } else {
+        await (client as any).execute(`UPDATE ${tableSql}${update.sql}`, update.params);
+      }
+
+      res.json({ success: true });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    console.error("Error updating record:", err);
+    res.status(500).json({ error: `Failed to update record: ${err.message}` });
   }
 }

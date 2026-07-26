@@ -257,6 +257,19 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     fetchRecords(tableName, 1, nextFilters);
   }, [fetchRecords]);
 
+  const updateRecord = useCallback(async (table: string, key: Record<string, any>, values: Record<string, any>) => {
+    if (!connectionId) return;
+    const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, key, values }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update record');
+    if (activeTable === table) fetchRecords(table, page);
+    return data;
+  }, [activeTable, connectionId, fetchRecords, page]);
+
   const clearFilters = useCallback(() => {
     setFilters([]);
     appliedFiltersRef.current = [];
@@ -296,6 +309,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     applyFilter,
     applyFilters,
     openRelatedRecord,
+    updateRecord,
     clearFilters,
     toggleSort,
     nextPage,
