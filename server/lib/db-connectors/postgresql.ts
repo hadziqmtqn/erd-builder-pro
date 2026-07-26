@@ -44,10 +44,23 @@ export const postgresqlConnector: DbConnector = {
             SELECT json_agg(
               json_build_object(
                 'name', c.column_name,
-                'type', c.data_type,
+                'type', CASE WHEN c.data_type = 'USER-DEFINED' THEN c.udt_name ELSE c.data_type END,
+                'full_type', c.data_type,
                 'is_pk', COALESCE(pk.column_name IS NOT NULL, false),
                 'is_nullable', c.is_nullable = 'YES',
-                'sort_order', c.ordinal_position
+                'sort_order', c.ordinal_position,
+                'max_length', c.character_maximum_length,
+                'numeric_precision', c.numeric_precision,
+                'numeric_scale', c.numeric_scale,
+                'is_generated', c.is_generated = 'ALWAYS' OR c.is_identity = 'YES',
+                'enum_values', (
+                  SELECT json_agg(e.enumlabel ORDER BY e.enumsortorder)
+                  FROM pg_type pt
+                  JOIN pg_enum e ON e.enumtypid = pt.oid
+                  JOIN pg_namespace pn ON pn.oid = pt.typnamespace
+                  WHERE pt.typname = c.udt_name
+                    AND pn.nspname = c.udt_schema
+                )
               ) ORDER BY c.ordinal_position
             )
             FROM information_schema.columns c

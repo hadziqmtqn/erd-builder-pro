@@ -96,15 +96,25 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     return typeof value === 'object' ? JSON.stringify(value) : String(value);
   };
 
-  const columnType = (column: string) => String((columnByName.get(column) as any)?.type || '').toLowerCase();
-  const isBooleanColumn = (column: string) => /bool|tinyint\(1\)/.test(columnType(column));
-  const isNumericColumn = (column: string) => /int|decimal|numeric|float|double|real|serial|money/.test(columnType(column));
+  const columnMeta = (column: string) => columnByName.get(column) as any;
+  const columnType = (column: string) => String(columnMeta(column)?.type || '').toLowerCase();
+  const columnFullType = (column: string) => String(columnMeta(column)?.full_type || columnMeta(column)?.enum_values || '').toLowerCase();
+  const isBooleanColumn = (column: string) => /bool/.test(columnType(column)) || /^tinyint\(1\)/.test(columnFullType(column));
+  const isNumericColumn = (column: string) => !isBooleanColumn(column) && /int|decimal|numeric|float|double|real|serial|money/.test(columnType(column));
   const isDateColumn = (column: string) => /date/.test(columnType(column)) && !/time/.test(columnType(column));
   const isDateTimeColumn = (column: string) => /timestamp|datetime/.test(columnType(column));
   const isLongColumn = (column: string) => /text|json|xml/.test(columnType(column));
-  const draftValue = (column: string, value: any) => isBooleanColumn(column) ? Boolean(value) : editableValue(value);
+  const isReadOnlyColumn = (column: string) => {
+    const meta = columnByName.get(column) as any;
+    return Boolean(meta?.is_pk || meta?.is_generated);
+  };
+  const draftValue = (column: string, value: any) => {
+    if (!isBooleanColumn(column)) return editableValue(value);
+    if (value === null || value === undefined || value === '') return '';
+    return value === true || value === 1 || value === '1' ? '1' : '0';
+  };
   const submitValue = (column: string, value: any) => {
-    if (isBooleanColumn(column)) return Boolean(value);
+    if (isBooleanColumn(column)) return value === '' ? null : Number(value);
     if (isNumericColumn(column) && value !== '') return Number(value);
     if (/json/.test(columnType(column)) && value !== '') {
       try { return JSON.parse(value); } catch {}
@@ -269,6 +279,18 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
 
   const renderRecordField = (col: string) => {
     const fieldId = `record-field-${col}`;
+    if (isReadOnlyColumn(col)) {
+      return (
+        <Input
+          id={fieldId}
+          value={String(draftRow[col] ?? '')}
+          disabled
+          className="mt-1 h-8 font-mono text-xs"
+          placeholder={selectedRow?.[col] === null ? 'NULL' : ''}
+        />
+      );
+    }
+
     const fk = foreignKeyByColumn.get(col) as any;
     if (fk) {
       const options = fkOptionsByColumn[col] || [];
@@ -299,16 +321,17 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
 
     if (isBooleanColumn(col)) {
       return (
-        <label className="mt-2 flex items-center gap-2 text-xs">
-          <input
-            id={fieldId}
-            type="checkbox"
-            checked={Boolean(draftRow[col])}
-            onChange={e => setDraftRow(prev => ({ ...prev, [col]: e.target.checked }))}
-            className="size-4 accent-primary"
-          />
-          {Boolean(draftRow[col]) ? 'true' : 'false'}
-        </label>
+        <Input
+          id={fieldId}
+          type="number"
+          min={0}
+          max={1}
+          step={1}
+          value={draftRow[col] ?? ''}
+          onChange={e => setDraftRow(prev => ({ ...prev, [col]: e.target.value }))}
+          className="mt-1 h-8 font-mono text-xs"
+          placeholder={selectedRow?.[col] === null ? 'NULL' : '0 or 1'}
+        />
       );
     }
 
