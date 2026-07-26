@@ -40,6 +40,11 @@ export const mysqlConnector: DbConnector = {
               'name', c.COLUMN_NAME,
               'type', c.DATA_TYPE,
               'full_type', c.COLUMN_TYPE,
+              'character_set', c.CHARACTER_SET_NAME,
+              'collation', c.COLLATION_NAME,
+              'column_default', c.COLUMN_DEFAULT,
+              'extra', c.EXTRA,
+              'comment', c.COLUMN_COMMENT,
               'is_pk', c.COLUMN_KEY = 'PRI',
               'is_nullable', c.IS_NULLABLE = 'YES',
               'sort_order', c.ORDINAL_POSITION,
@@ -71,7 +76,25 @@ export const mysqlConnector: DbConnector = {
             AND kcu.TABLE_NAME = t.TABLE_NAME
             AND kcu.REFERENCED_TABLE_NAME IS NOT NULL),
           JSON_ARRAY()
-        ) AS foreign_keys
+        ) AS foreign_keys,
+        COALESCE(
+          (SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'name', s.INDEX_NAME,
+              'algorithm', s.INDEX_TYPE,
+              'is_unique', s.NON_UNIQUE = 0,
+              'column_name', s.column_names
+            )
+          )
+          FROM (
+            SELECT INDEX_NAME, INDEX_TYPE, NON_UNIQUE, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX SEPARATOR ',') AS column_names
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = t.TABLE_SCHEMA
+              AND TABLE_NAME = t.TABLE_NAME
+            GROUP BY INDEX_NAME, INDEX_TYPE, NON_UNIQUE
+          ) s),
+          JSON_ARRAY()
+        ) AS indexes
       FROM information_schema.TABLES t
       WHERE t.TABLE_SCHEMA = ?
         AND t.TABLE_TYPE = 'BASE TABLE'
@@ -82,6 +105,7 @@ export const mysqlConnector: DbConnector = {
       table_schema: row.table_schema,
       columns: row.columns || [],
       foreign_keys: row.foreign_keys || [],
+      indexes: row.indexes || [],
     }));
   },
 };

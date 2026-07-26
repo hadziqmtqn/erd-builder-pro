@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import initSqlJs from "sql.js";
+import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
+import { fetchTableInfo } from "./record-helpers.js";
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);
@@ -85,5 +88,58 @@ describe("buildRecordWhere", () => {
       starts_at: "17:30:00",
       created_at: "2026-07-26 17:30:00",
     });
+  });
+});
+
+describe("fetchTableInfo", () => {
+  it("casts PostgreSQL table-info parameters so pg can infer their type", async () => {
+    let sql = "";
+    let params: any[] = [];
+    const client = {
+      query: async (nextSql: string, nextParams: any[]) => {
+        sql = nextSql;
+        params = nextParams;
+        return { rows: [{ data_size: "1", index_size: "2", total_size: "3" }] };
+      },
+    };
+
+    await fetchTableInfo("postgresql", client, "unused", { table_schema: "public", table_name: "users" });
+
+    expect(sql).toContain("$1::text");
+    expect(sql).toContain("$2::text");
+    expect(params).toEqual(["public", "users"]);
+  });
+});
+
+describe("SQLite schema metadata", () => {
+  it("includes defaults, foreign keys, and indexes for Structure view", async () => {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run(`
+      CREATE TABLE users (id integer PRIMARY KEY);
+      CREATE TABLE posts (
+        id integer PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        title text DEFAULT 'draft'
+      );
+      CREATE UNIQUE INDEX posts_user_title_index ON posts(user_id, title);
+    `);
+
+    const schema = await sqliteConnector.fetchSchema(db, { type: "sqlite", database: "" });
+    const posts = schema.find(table => table.table_name === "posts");
+
+    expect(posts?.columns.find(column => column.name === "title")?.column_default).toBe("'draft'");
+    expect(posts?.foreign_keys).toContainEqual(expect.objectContaining({
+      column: "user_id",
+      ref_table: "users",
+      ref_column: "id",
+    }));
+    expect(posts?.indexes).toContainEqual(expect.objectContaining({
+      name: "posts_user_title_index",
+      is_unique: true,
+      column_name: "user_id,title",
+    }));
+
+    db.close();
   });
 });

@@ -219,9 +219,9 @@ export async function fetchTableInfo(type: string, client: any, database: string
   if (type === "postgresql") {
     const result = await client.query(
       `SELECT
-        pg_relation_size(format('%I.%I', $1, $2)::regclass)::bigint AS data_size,
-        pg_indexes_size(format('%I.%I', $1, $2)::regclass)::bigint AS index_size,
-        pg_total_relation_size(format('%I.%I', $1, $2)::regclass)::bigint AS total_size`,
+        pg_relation_size(format('%I.%I', $1::text, $2::text)::regclass)::bigint AS data_size,
+        pg_indexes_size(format('%I.%I', $1::text, $2::text)::regclass)::bigint AS index_size,
+        pg_total_relation_size(format('%I.%I', $1::text, $2::text)::regclass)::bigint AS total_size`,
       [tableSchema.table_schema || "public", tableSchema.table_name],
     );
     return {

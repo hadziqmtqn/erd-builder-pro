@@ -20,6 +20,11 @@ export interface ColumnSchema {
   name: string;
   type: string;
   full_type?: string | null;
+  character_set?: string | null;
+  collation?: string | null;
+  column_default?: string | null;
+  extra?: string | null;
+  comment?: string | null;
   is_pk: boolean;
   is_nullable: boolean;
   sort_order: number;
@@ -38,6 +43,12 @@ export interface TableSchema {
   table_schema?: string;
   columns: ColumnSchema[];
   foreign_keys?: ForeignKeySchema[];
+  indexes?: {
+    name: string;
+    algorithm?: string | null;
+    is_unique: boolean;
+    column_name: string;
+  }[];
 }
 
 export interface ConnectorClient {
