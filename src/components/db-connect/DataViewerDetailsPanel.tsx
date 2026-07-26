@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createColumnHelpers, draftValue, formatBytes } from './data-viewer-utils';
 import { RecordFieldEditor } from './RecordFieldEditor';
@@ -92,7 +92,6 @@ export function DataViewerDetailsPanel({
                   onClick={onSubmitRecord}
                   disabled={isSavingRecord || !isRecordDirty || primaryKeyColumns.length === 0}
                 >
-                  {isSavingRecord && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Submit
                 </Button>
               </div>

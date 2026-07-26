@@ -6,6 +6,7 @@ export type StructureDraft = {
   tableName: string;
   columnName: string;
   columnType: string;
+  characterLength: string;
   isNullable: boolean;
   columnDefault: string;
   fkEnabled: boolean;
@@ -14,6 +15,12 @@ export type StructureDraft = {
 };
 
 const columnType = (column: any) => String(column?.full_type || column?.type || '');
+const parseLength = (type: string) => type.match(/\((\d+)\)/)?.[1] || '';
+const supportsLength = (type: string) => /^(var)?char|^character varying|^(var)?binary$/i.test(type.trim());
+const typeWithLength = (type: string, length: string) => {
+  const cleanType = type.replace(/\(\d+\)/, '').trim();
+  return supportsLength(cleanType) && length ? `${cleanType}(${length})` : cleanType;
+};
 const normalizeType = (value: string) => value
   .toLowerCase()
   .replace(/[`"]/g, '')
@@ -61,6 +68,7 @@ export function useStructureEditor(
       tableName: activeTableSchema.table_name || '',
       columnName: column?.name || '',
       columnType: columnType(column),
+      characterLength: String(column?.max_length || parseLength(columnType(column)) || ''),
       isNullable: Boolean(column?.is_nullable),
       columnDefault: column?.column_default ?? '',
       fkEnabled: Boolean(fk),
@@ -74,7 +82,7 @@ export function useStructureEditor(
     if (draft.tableName !== activeTableSchema.table_name) return true;
     if (target.kind !== 'column' || !selectedColumn) return false;
     return draft.columnName !== selectedColumn.name ||
-      draft.columnType !== columnType(selectedColumn) ||
+      typeWithLength(draft.columnType, draft.characterLength) !== typeWithLength(columnType(selectedColumn), String(selectedColumn.max_length || parseLength(columnType(selectedColumn)) || '')) ||
       draft.isNullable !== Boolean(selectedColumn.is_nullable) ||
       draft.columnDefault !== (selectedColumn.column_default ?? '') ||
       draft.fkEnabled !== Boolean(currentFk) ||
@@ -96,7 +104,7 @@ export function useStructureEditor(
         columnName: target.kind === 'column' ? target.columnName : undefined,
         column: target.kind === 'column' ? {
           name: draft.columnName,
-          type: draft.columnType,
+          type: typeWithLength(draft.columnType, draft.characterLength),
           is_nullable: draft.isNullable,
           column_default: draft.columnDefault,
         } : undefined,

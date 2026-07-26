@@ -9,6 +9,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [filters, setFilters] = useState<RecordFilter[]>([]);
   const [sort, setSort] = useState<RecordSort | null>(null);
   const [records, setRecords] = useState<RecordsResult | null>(null);
+  const [dbType, setDbType] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
@@ -31,6 +32,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch tables');
       setTables(data.schema || []);
+      setDbType(data.dbType || null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -272,6 +274,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     filters,
     sort,
     records,
+    dbType,
     page,
     totalPages,
     isLoadingTables,

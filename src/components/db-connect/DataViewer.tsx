@@ -19,7 +19,7 @@ type DataViewerView = 'data' | 'structure';
 
 export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
-    tables, activeTable, openTabs, filters, sort, records, page, totalPages,
+    tables, activeTable, openTabs, filters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
     fetchTables, refreshTables, refreshRecords, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
@@ -262,6 +262,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
               {activeView === 'structure' && activeTableSchema ? (
                 <DataViewerStructure
                   table={activeTableSchema}
+                  isLoading={isLoadingTables}
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
                   onEditTable={structureEditor.editTable}
                   onSelectColumn={structureEditor.editColumn}
@@ -368,6 +369,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
           isDirty={structureEditor.isDirty}
           isSaving={structureEditor.isSaving}
           tables={tables}
+          dbType={dbType}
           referenceColumns={structureEditor.referenceColumns}
           setDraft={structureEditor.setDraft}
           onClose={structureEditor.close}
