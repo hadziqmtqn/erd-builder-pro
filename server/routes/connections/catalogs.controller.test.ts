@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import initSqlJs from "sql.js";
 import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
-import { buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
+import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
-import { buildStructureStatements } from "./structure-helpers.js";
+import { buildCreateTableSql, buildIndexStatements, buildStructureStatements } from "./structure-helpers.js";
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);
@@ -92,6 +92,21 @@ describe("buildRecordWhere", () => {
   });
 });
 
+describe("record mutations", () => {
+  const columns = new Set(["id", "email"]);
+
+  it("builds insert and delete statements with PostgreSQL placeholders", () => {
+    expect(buildRecordInsert("postgresql", { email: "a@test.dev", id: 1 }, columns)).toEqual({
+      sql: ' ("email", "id") VALUES ($1, $2)',
+      params: ["a@test.dev", 1],
+    });
+    expect(buildRecordDelete("postgresql", { id: 1 }, columns)).toEqual({
+      sql: ' WHERE "id" = $1',
+      params: [1],
+    });
+  });
+});
+
 describe("fetchTableInfo", () => {
   it("casts PostgreSQL table-info parameters so pg can infer their type", async () => {
     let sql = "";
@@ -176,6 +191,48 @@ describe("buildStructureStatements", () => {
       column: { name: "user_id", type: "integer", is_nullable: false },
       foreignKey: { enabled: true, ref_table: "users", ref_column: "id" },
     }, schema)).toThrow("Foreign key column type must match");
+  });
+
+  it("builds add-column edits with MySQL comment and extra metadata", () => {
+    expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "__new__",
+      column: { name: "id", type: "bigint", is_nullable: false, column_default: "", extra: "AUTO_INCREMENT", comment: "primary id" },
+    })).toEqual([
+      "ALTER TABLE `posts` ADD COLUMN `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'primary id'",
+    ]);
+  });
+
+  it("builds create and replace index statements", () => {
+    const indexedTable = {
+      ...table,
+      indexes: [{ name: "posts_user_id_idx", is_unique: false, is_primary: false, column_name: "user_id", algorithm: "btree" }],
+    };
+
+    expect(buildIndexStatements("postgresql", indexedTable, {
+      indexName: "posts_user_id_idx",
+      index: { name: "posts_user_id_unique", columns: ["user_id"], is_unique: true, algorithm: "btree" },
+    })).toEqual([
+      'DROP INDEX "public"."posts_user_id_idx"',
+      'CREATE UNIQUE INDEX "posts_user_id_unique" ON "public"."posts" USING btree ("user_id")',
+    ]);
+    expect(() => buildIndexStatements("postgresql", {
+      ...indexedTable,
+      indexes: [{ name: "posts_pkey", is_primary: true, column_name: "user_id" }],
+    }, {
+      indexName: "posts_pkey",
+      index: { name: "posts_pkey", columns: ["user_id"], is_unique: true },
+    })).toThrow("Invalid index name");
+    expect(() => buildIndexStatements("postgresql", indexedTable, {
+      indexName: "__new__",
+      index: { name: "another_idx", columns: ["user_id"], is_unique: false, algorithm: "btree" },
+    })).toThrow("Duplicate index definition");
+  });
+
+  it("renders PostgreSQL table SQL with indexes as separate statements", () => {
+    expect(buildCreateTableSql("postgresql", {
+      ...table,
+      indexes: [{ name: "posts_user_id_idx", is_unique: false, is_primary: false, column_name: "user_id", algorithm: "btree" }],
+    })).toContain('CREATE INDEX "posts_user_id_idx" ON "public"."posts" USING btree ("user_id");');
   });
 });
 

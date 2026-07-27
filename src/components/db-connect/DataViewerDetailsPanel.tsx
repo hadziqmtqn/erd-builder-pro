@@ -12,6 +12,7 @@ type DataViewerDetailsPanelProps = {
   fkOptionsByColumn: Record<string, Record<string, any>[]>;
   foreignKeyByColumn: Map<string, any>;
   isRecordDirty: boolean;
+  isCreatingRecord: boolean;
   isSavingRecord: boolean;
   primaryKeyColumns: string[];
   records: any;
@@ -19,6 +20,8 @@ type DataViewerDetailsPanelProps = {
   setDatePickerOpenColumn: Dispatch<SetStateAction<string | null>>;
   setDetailsOpen: Dispatch<SetStateAction<boolean>>;
   setDraftRow: Dispatch<SetStateAction<Record<string, any>>>;
+  onCancelCreateRecord: () => void;
+  onSubmitCreateRecord: () => void;
   onSubmitRecord: () => void;
   warnUnsaved: () => boolean;
 };
@@ -31,6 +34,7 @@ export function DataViewerDetailsPanel({
   fkOptionsByColumn,
   foreignKeyByColumn,
   isRecordDirty,
+  isCreatingRecord,
   isSavingRecord,
   primaryKeyColumns,
   records,
@@ -38,15 +42,18 @@ export function DataViewerDetailsPanel({
   setDatePickerOpenColumn,
   setDetailsOpen,
   setDraftRow,
+  onCancelCreateRecord,
+  onSubmitCreateRecord,
   onSubmitRecord,
   warnUnsaved,
 }: DataViewerDetailsPanelProps) {
+  const editableRow = isCreatingRecord ? {} : selectedRow;
   return (
     <aside className="w-80 shrink-0 border-l bg-background">
       <div className="flex h-full flex-col">
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-medium">{selectedRow ? 'Record Details' : 'Table Information'}</h3>
+            <h3 className="truncate text-sm font-medium">{isCreatingRecord ? 'New Record' : selectedRow ? 'Record Details' : 'Table Information'}</h3>
             <p className="truncate text-xs text-muted-foreground">{activeTable || 'No table selected'}</p>
           </div>
           <Button variant="ghost" size="icon-xs" onClick={() => warnUnsaved() && setDetailsOpen(false)} title="Close details">
@@ -54,10 +61,10 @@ export function DataViewerDetailsPanel({
           </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {selectedRow && records ? (
+          {(selectedRow || isCreatingRecord) && records ? (
             <div className="flex h-full flex-col">
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                {records.columns.map((column: string) => (
+                {records.columns.filter((column: string) => !isCreatingRecord || columnHelpers.isInsertableColumn(column)).map((column: string) => (
                   <div key={column} className="rounded-md border px-3 py-2">
                     <label className="truncate font-mono text-xs text-muted-foreground" htmlFor={`record-field-${column}`}>{column}</label>
                     <RecordFieldEditor
@@ -67,7 +74,8 @@ export function DataViewerDetailsPanel({
                       draftRow={draftRow}
                       fkOptionsByColumn={fkOptionsByColumn}
                       foreignKeyByColumn={foreignKeyByColumn}
-                      selectedRow={selectedRow}
+                      selectedRow={editableRow}
+                      allowPrimaryKey={isCreatingRecord}
                       setDatePickerOpenColumn={setDatePickerOpenColumn}
                       setDraftRow={setDraftRow}
                     />
@@ -80,17 +88,19 @@ export function DataViewerDetailsPanel({
               <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-background p-3">
                 <Button
                   variant="outline"
-                  onClick={() => setDraftRow(Object.fromEntries(records.columns.map((column: string) => [
-                    column,
-                    draftValue(column, selectedRow[column], columnHelpers),
-                  ])))}
-                  disabled={!isRecordDirty || isSavingRecord}
+                  onClick={() => isCreatingRecord
+                    ? onCancelCreateRecord()
+                    : setDraftRow(Object.fromEntries(records.columns.map((column: string) => [
+                      column,
+                      draftValue(column, selectedRow?.[column], columnHelpers),
+                    ])))}
+                  disabled={(!isCreatingRecord && !isRecordDirty) || isSavingRecord}
                 >
                   Cancel
                 </Button>
                 <Button
-                  onClick={onSubmitRecord}
-                  disabled={isSavingRecord || !isRecordDirty || primaryKeyColumns.length === 0}
+                  onClick={isCreatingRecord ? onSubmitCreateRecord : onSubmitRecord}
+                  disabled={isSavingRecord || !isRecordDirty || (!isCreatingRecord && primaryKeyColumns.length === 0)}
                 >
                   Submit
                 </Button>

@@ -5,9 +5,9 @@ import { resolveOwnedProjectId } from "../../lib/security.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
-export { buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./record-helpers.js";
-export { queryRecords, updateRecord } from "./records.controller.js";
-export { updateStructure } from "./structure.controller.js";
+export { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./record-helpers.js";
+export { createRecord, deleteRecord, queryRecords, updateRecord } from "./records.controller.js";
+export { getStructureSql, updateStructure } from "./structure.controller.js";
 
 export async function listCatalogs(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;

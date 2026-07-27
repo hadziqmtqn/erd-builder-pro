@@ -25,6 +25,7 @@ type RecordFieldEditorProps = {
   fkOptionsByColumn: Record<string, Record<string, any>[]>;
   foreignKeyByColumn: Map<string, any>;
   selectedRow: Record<string, any> | null;
+  allowPrimaryKey?: boolean;
   setDatePickerOpenColumn: Dispatch<SetStateAction<string | null>>;
   setDraftRow: Dispatch<SetStateAction<Record<string, any>>>;
 };
@@ -37,6 +38,7 @@ export function RecordFieldEditor({
   fkOptionsByColumn,
   foreignKeyByColumn,
   selectedRow,
+  allowPrimaryKey = false,
   setDatePickerOpenColumn,
   setDraftRow,
 }: RecordFieldEditorProps) {
@@ -52,7 +54,7 @@ export function RecordFieldEditor({
     isReadOnlyColumn,
   } = columnHelpers;
 
-  if (isReadOnlyColumn(column)) {
+  if (isReadOnlyColumn(column, allowPrimaryKey)) {
     return (
       <Input
         id={fieldId}

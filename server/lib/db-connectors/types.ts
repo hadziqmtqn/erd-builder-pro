@@ -48,6 +48,7 @@ export interface TableSchema {
     algorithm?: string | null;
     is_unique: boolean;
     column_name: string;
+    is_primary?: boolean;
   }[];
 }
 

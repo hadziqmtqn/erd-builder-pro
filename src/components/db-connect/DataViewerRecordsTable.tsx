@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, PanelRightOpen, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, PanelRightOpen, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
@@ -11,13 +11,20 @@ type DataViewerRecordsTableProps = {
   foreignKeyByColumn: Map<string, any>;
   isLoadingRecords: boolean;
   records: any;
+  primaryKeyColumns: string[];
   selectedRow: Record<string, any> | null;
+  selectedRowKeys: Set<string>;
+  selectedRecordCount: number;
   sort: any;
   detailsOpen: boolean;
   handleSelectRow: (row: Record<string, any>) => void;
   openRelatedRecord: (table: string, column: string, value: any) => void;
   setDetailsOpen: (open: boolean | ((open: boolean) => boolean)) => void;
   onRefresh: () => void;
+  onAddRecord: () => void;
+  onDeleteSelectedRecords: () => void;
+  onTogglePageRows: (rows: Record<string, any>[], checked: boolean) => void;
+  onToggleSelectedRow: (row: Record<string, any>, checked: boolean) => void;
   toggleSort: (column: string) => void;
   warnUnsaved: () => boolean;
   children?: ReactNode;
@@ -34,17 +41,28 @@ export function DataViewerRecordsTable({
   foreignKeyByColumn,
   isLoadingRecords,
   records,
+  primaryKeyColumns,
   selectedRow,
+  selectedRowKeys,
+  selectedRecordCount,
   sort,
   detailsOpen,
   handleSelectRow,
   openRelatedRecord,
   setDetailsOpen,
   onRefresh,
+  onAddRecord,
+  onDeleteSelectedRecords,
+  onTogglePageRows,
+  onToggleSelectedRow,
   toggleSort,
   warnUnsaved,
   children,
 }: DataViewerRecordsTableProps) {
+  const canSelectRows = primaryKeyColumns.length > 0;
+  const rowKey = (row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column]));
+  const pageRows = records?.rows || [];
+  const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   return (
     <div className="min-h-0 overflow-hidden flex flex-col">
       {children}
@@ -85,6 +103,16 @@ export function DataViewerRecordsTable({
               )}
             </div>
             <div className="flex items-center gap-1">
+              {selectedRecordCount > 0 && (
+                <Button variant="destructive" size="sm" className="h-8 px-2" onClick={onDeleteSelectedRecords}>
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete {selectedRecordCount}
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="h-8 px-2" onClick={onAddRecord}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Record
+              </Button>
               <Button variant="ghost" size="icon-sm" onClick={() => warnUnsaved() && onRefresh()} title="Refresh records">
                 <RefreshCw className="h-4 w-4" />
               </Button>
@@ -105,6 +133,17 @@ export function DataViewerRecordsTable({
               <Table>
                 <TableHeader>
                   <TableRow className="sticky top-0 bg-background z-10">
+                    {canSelectRows && (
+                      <TableHead className="w-10 px-3">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-primary"
+                          checked={allPageRowsSelected}
+                          disabled={pageRows.length === 0}
+                          onChange={e => onTogglePageRows(pageRows, e.target.checked)}
+                        />
+                      </TableHead>
+                    )}
                     {records.columns.map((column: string) => (
                       <TableHead
                         key={column}
@@ -140,7 +179,7 @@ export function DataViewerRecordsTable({
                 <TableBody>
                   {records.rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={records.columns.length} className="h-24 text-center text-muted-foreground text-sm">
+                      <TableCell colSpan={records.columns.length + (canSelectRows ? 1 : 0)} className="h-24 text-center text-muted-foreground text-sm">
                         No rows
                       </TableCell>
                     </TableRow>
@@ -151,6 +190,16 @@ export function DataViewerRecordsTable({
                         className={`cursor-pointer hover:bg-muted/50 ${selectedRow === row ? 'bg-muted/70' : ''}`}
                         onClick={() => handleSelectRow(row)}
                       >
+                        {canSelectRows && (
+                          <TableCell className="w-10 px-3" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-primary"
+                              checked={selectedRowKeys.has(rowKey(row))}
+                              onChange={e => onToggleSelectedRow(row, e.target.checked)}
+                            />
+                          </TableCell>
+                        )}
                         {records.columns.map((column: string) => {
                           const val = row[column];
                           const fk = foreignKeyByColumn.get(column) as any;

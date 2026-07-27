@@ -227,6 +227,32 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, connectionId, fetchRecords, page]);
 
+  const createRecord = useCallback(async (table: string, values: Record<string, any>) => {
+    if (!connectionId) return;
+    const res = await apiFetch(`/api/catalogs/${connectionId}/records/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, values }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create record');
+    if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
+    return data;
+  }, [activeTable, connectionId, fetchRecords, page]);
+
+  const deleteRecord = useCallback(async (table: string, key: Record<string, any> | Record<string, any>[]) => {
+    if (!connectionId) return;
+    const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Array.isArray(key) ? { table, keys: key } : { table, key }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete record');
+    if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
+    return data;
+  }, [activeTable, connectionId, fetchRecords, page]);
+
   const updateStructure = useCallback(async (patch: Record<string, any>) => {
     if (!connectionId || !activeTable) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/structure`, {
@@ -291,6 +317,8 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     applyFilter,
     applyFilters,
     openRelatedRecord,
+    createRecord,
+    deleteRecord,
     updateRecord,
     updateStructure,
     refreshRecords,

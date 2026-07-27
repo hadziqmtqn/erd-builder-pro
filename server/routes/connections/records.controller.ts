@@ -4,12 +4,38 @@ import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import {
   buildRecordOrder,
+  buildRecordDelete,
+  buildRecordInsert,
   buildRecordUpdate,
   buildRecordWhere,
   fetchTableInfo,
   quoteIdentifier,
   validateRecordValues,
 } from "./record-helpers.js";
+
+async function recordContext(req: ExpressRequest, id: string, table: string) {
+  const userId = (req as any).user.id;
+  const catalog = await catalogsService.findCatalogById(id, userId);
+  if (!catalog) throw new Error("Catalog not found");
+  const info = buildConnectionInfo({
+    type: (catalog as any).account.type,
+    host: (catalog as any).account.host,
+    port: (catalog as any).account.port,
+    user: (catalog as any).account.user,
+    password: (catalog as any).account.password,
+    database: (catalog as any).databaseName,
+  });
+  if (info.type === "sqlite") throw new Error("Record editing is not supported for SQLite catalogs");
+  const connector = getConnector(info.type);
+  const { client, release } = await connector.connect(info);
+  const schema = await connector.fetchSchema(client, info);
+  const tableSchema = schema.find((item: any) => item.table_name === table);
+  if (!tableSchema) {
+    release();
+    throw new Error("Invalid table name");
+  }
+  return { info, client, release, tableSchema };
+}
 
 export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
@@ -157,5 +183,65 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
   } catch (err: any) {
     console.error("Error updating record:", err);
     res.status(500).json({ error: `Failed to update record: ${err.message}` });
+  }
+}
+
+export async function createRecord(req: ExpressRequest, res: ExpressResponse) {
+  const { id } = req.params;
+  const { table, values } = req.body;
+  if (!table?.trim()) return res.status(400).json({ error: "table name is required" });
+  if (!values || typeof values !== "object") return res.status(400).json({ error: "insert values are required" });
+
+  try {
+    const { info, client, release, tableSchema } = await recordContext(req, id, table);
+    try {
+      const columnByName = new Map<string, any>((tableSchema.columns || []).map((column: any) => [column.name, column]));
+      const allowedColumns = new Set(columnByName.keys());
+      const normalizedValues = validateRecordValues(info.type, values, columnByName, true);
+      const insert = buildRecordInsert(info.type, normalizedValues, allowedColumns);
+      const tableSql = quoteIdentifier(info.type, table);
+      if (info.type === "postgresql") await (client as any).query(`INSERT INTO ${tableSql}${insert.sql}`, insert.params);
+      else await (client as any).execute(`INSERT INTO ${tableSql}${insert.sql}`, insert.params);
+      res.status(201).json({ success: true });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    const status = /Catalog not found/.test(err.message) ? 404 : 400;
+    res.status(status).json({ error: `Failed to create record: ${err.message}` });
+  }
+}
+
+export async function deleteRecord(req: ExpressRequest, res: ExpressResponse) {
+  const { id } = req.params;
+  const { table, key, keys } = req.body;
+  if (!table?.trim()) return res.status(400).json({ error: "table name is required" });
+  const keyList = Array.isArray(keys) ? keys : key ? [key] : [];
+  if (keyList.length === 0 || keyList.some(item => !item || typeof item !== "object")) return res.status(400).json({ error: "record key is required" });
+
+  try {
+    const { info, client, release, tableSchema } = await recordContext(req, id, table);
+    try {
+      const allowedColumns = new Set((tableSchema.columns || []).map((column: any) => column.name));
+      const pkColumns = (tableSchema.columns || []).filter((column: any) => column.is_pk).map((column: any) => column.name);
+      if (pkColumns.length === 0) return res.status(400).json({ error: "Table has no primary key" });
+      for (const item of keyList) {
+        for (const column of pkColumns) {
+          if (!(column in item)) return res.status(400).json({ error: `Missing primary key column: ${column}` });
+        }
+      }
+      const tableSql = quoteIdentifier(info.type, table);
+      for (const item of keyList) {
+        const del = buildRecordDelete(info.type, item, allowedColumns);
+        if (info.type === "postgresql") await (client as any).query(`DELETE FROM ${tableSql}${del.sql}`, del.params);
+        else await (client as any).execute(`DELETE FROM ${tableSql}${del.sql}`, del.params);
+      }
+      res.json({ success: true });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    const status = /Catalog not found/.test(err.message) ? 404 : 400;
+    res.status(status).json({ error: `Failed to delete record: ${err.message}` });
   }
 }

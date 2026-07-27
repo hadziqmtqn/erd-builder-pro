@@ -47,9 +47,15 @@ export function createColumnHelpers(columnByName: Map<string, any>) {
   const isLongColumn = (column: string) => /text|json|xml/.test(columnType(column));
   const enumValues = (column: string) => parseEnumValues(columnMeta(column)?.enum_values);
   const isEnumColumn = (column: string) => enumValues(column).length > 0;
-  const isReadOnlyColumn = (column: string) => {
+  const isReadOnlyColumn = (column: string, allowPrimaryKey = false) => {
     const meta = columnMeta(column);
-    return Boolean(meta?.is_pk || meta?.is_generated);
+    return Boolean((meta?.is_pk && !allowPrimaryKey) || meta?.is_generated);
+  };
+  const isInsertableColumn = (column: string) => {
+    const meta = columnMeta(column);
+    const extra = String(meta?.extra || '').toLowerCase();
+    const columnDefault = String(meta?.column_default || '').toLowerCase();
+    return !meta?.is_generated && !(meta?.is_pk && (extra.includes('auto_increment') || columnDefault.includes('nextval') || columnDefault.includes('autoincrement')));
   };
 
   return {
@@ -61,6 +67,7 @@ export function createColumnHelpers(columnByName: Map<string, any>) {
     isLongColumn,
     enumValues,
     isEnumColumn,
+    isInsertableColumn,
     isReadOnlyColumn,
   };
 }

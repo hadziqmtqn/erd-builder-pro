@@ -130,6 +130,7 @@ export const postgresqlConnector: DbConnector = {
             'name', idx.index_name,
             'algorithm', idx.algorithm,
             'is_unique', idx.is_unique,
+            'is_primary', idx.is_primary,
             'column_name', idx.column_name
           ) ORDER BY idx.index_name)
           FROM (
@@ -137,6 +138,7 @@ export const postgresqlConnector: DbConnector = {
               ci.relname AS index_name,
               am.amname AS algorithm,
               ix.indisunique AS is_unique,
+              ix.indisprimary AS is_primary,
               string_agg(a.attname, ',' ORDER BY cols.ordinality) AS column_name
             FROM pg_index ix
             JOIN pg_class ct ON ct.oid = ix.indrelid
@@ -147,7 +149,7 @@ export const postgresqlConnector: DbConnector = {
             JOIN pg_attribute a ON a.attrelid = ct.oid AND a.attnum = cols.attnum
             WHERE ns.nspname = td.table_schema
               AND ct.relname = td.table_name
-            GROUP BY ci.relname, am.amname, ix.indisunique
+            GROUP BY ci.relname, am.amname, ix.indisunique, ix.indisprimary
           ) idx),
           '[]'::json
         ) AS indexes
