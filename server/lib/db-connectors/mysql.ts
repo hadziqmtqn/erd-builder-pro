@@ -83,6 +83,7 @@ export const mysqlConnector: DbConnector = {
               'name', s.INDEX_NAME,
               'algorithm', s.INDEX_TYPE,
               'is_unique', s.NON_UNIQUE = 0,
+              'is_primary', s.INDEX_NAME = 'PRIMARY',
               'column_name', s.column_names
             )
           )

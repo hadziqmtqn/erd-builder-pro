@@ -6,8 +6,10 @@ type DataViewerStructureProps = {
   table: any;
   isLoading?: boolean;
   selectedColumnName?: string | null;
+  selectedIndexName?: string | null;
   onEditTable: () => void;
   onSelectColumn: (columnName: string) => void;
+  onSelectIndex: (indexName: string) => void;
   onRefresh: () => void;
 };
 
@@ -23,7 +25,7 @@ function RefreshProgress({ active }: { active: boolean }) {
   return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
 }
 
-export function DataViewerStructure({ table, isLoading = false, selectedColumnName, onEditTable, onSelectColumn, onRefresh }: DataViewerStructureProps) {
+export function DataViewerStructure({ table, isLoading = false, selectedColumnName, selectedIndexName, onEditTable, onSelectColumn, onSelectIndex, onRefresh }: DataViewerStructureProps) {
   const columns = (table?.columns || [])
     .map((column: any, index: number) => ({ column, index }))
     .sort((a: any, b: any) => (Number(a.column.sort_order) || a.index + 1) - (Number(b.column.sort_order) || b.index + 1))
@@ -60,7 +62,7 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
       </div>
       <RefreshProgress active={isLoading} />
 
-      <div className="min-h-0 flex-[3] overflow-auto custom-scrollbar">
+      <div className="min-h-0 flex-3 overflow-auto custom-scrollbar">
         <Table>
           <TableHeader>
             <TableRow className="sticky top-0 z-10 bg-background">
@@ -95,7 +97,7 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
         </Table>
       </div>
 
-      <div className="grid min-h-56 flex-[2] grid-cols-2 border-t">
+      <div className="grid min-h-56 flex-2 grid-cols-2 border-t">
         <div className="min-w-0 overflow-auto custom-scrollbar border-r">
           <Table>
             <TableHeader>
@@ -131,7 +133,11 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
               {indexes.length === 0 ? (
                 <TableRow><TableCell colSpan={4} className="h-20 text-center text-muted-foreground">No indexes</TableCell></TableRow>
               ) : indexes.map((index: any) => (
-                <TableRow key={index.name}>
+                <TableRow
+                  key={index.name}
+                  className={`cursor-pointer ${selectedIndexName === index.name ? 'bg-muted/70' : ''}`}
+                  onClick={() => onSelectIndex(index.name)}
+                >
                   <ValueCell value={index.name} />
                   <ValueCell value={index.algorithm} />
                   <TableCell className="font-mono">{String(Boolean(index.is_unique)).toUpperCase()}</TableCell>

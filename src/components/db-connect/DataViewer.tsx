@@ -1,93 +1,85 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Database } from 'lucide-react';
+import { Database } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { useDataViewer } from '@/hooks/useDataViewer';
+import { useRecordEditor } from '@/hooks/useRecordEditor';
 import { useStructureEditor } from '@/hooks/useStructureEditor';
+import { DataViewerConfirmModal } from './DataViewerConfirmModal';
 import { DataViewerDetailsPanel } from './DataViewerDetailsPanel';
 import { DataViewerFilters } from './DataViewerFilters';
+import { DataViewerFooter } from './DataViewerFooter';
 import { DataViewerRecordsTable } from './DataViewerRecordsTable';
 import { DataViewerSidebar } from './DataViewerSidebar';
 import { DataViewerStructure } from './DataViewerStructure';
 import { DataViewerStructurePanel } from './DataViewerStructurePanel';
+import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
-import { createColumnHelpers, draftValue, submitValue } from './data-viewer-utils';
+import { createColumnHelpers } from './data-viewer-utils';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; }
 type DataViewerView = 'data' | 'structure';
-
 export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, refreshTables, refreshRecords, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
+    fetchTables, refreshTables, refreshRecords, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [activeView, setActiveView] = useState<DataViewerView>('data');
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedRow, setSelectedRow] = useState<Record<string, any> | null>(null);
-  const [draftRow, setDraftRow] = useState<Record<string, any>>({});
   const [fkOptionsByColumn, setFkOptionsByColumn] = useState<Record<string, Record<string, any>[]>>({});
-  const [datePickerOpenColumn, setDatePickerOpenColumn] = useState<string | null>(null);
-  const [isSavingRecord, setIsSavingRecord] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | 'records' | 'column' | 'index'>(null);
+  const [sqlDialogOpen, setSqlDialogOpen] = useState(false);
+  const [structureSql, setStructureSql] = useState('');
+  const [isLoadingSql, setIsLoadingSql] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const viewByTableRef = useRef<Record<string, DataViewerView>>({});
-
+  const viewKey = useCallback((tableName: string) => `${stateKey || connectionId}:${tableName}`, [connectionId, stateKey]);
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
     return /mac|iphone|ipad|ipod/i.test(navigator.platform) ? '⌘P' : 'Ctrl+P';
   }, []);
-
   const filteredTables = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
     if (!q) return tables;
     return tables.filter((table: any) => String(table.table_name).toLowerCase().includes(q));
   }, [tables, tableSearch]);
-
   const columnOptions = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return (table?.columns || records?.columns || []).map((col: any) => typeof col === 'string' ? col : col.name).filter(Boolean);
   }, [activeTable, tables, records]);
-
   const foreignKeyByColumn = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return new Map<string, any>((table?.foreign_keys || []).map((fk: any) => [fk.column, fk]));
   }, [activeTable, tables]);
-
   const activeTableSchema = useMemo(() => {
     return tables.find((item: any) => item.table_name === activeTable);
   }, [activeTable, tables]);
   const structureEditor = useStructureEditor(activeTableSchema, tables, updateStructure);
-
   const columnHelpers = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return createColumnHelpers(new Map<string, any>((table?.columns || []).map((col: any) => [col.name, col])));
   }, [activeTable, tables]);
-
   const primaryKeyColumns = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return (table?.columns || []).filter((col: any) => col.is_pk).map((col: any) => col.name);
   }, [activeTable, tables]);
 
-  const isRecordDirty = useMemo(() => {
-    if (!selectedRow || !records) return false;
-    return records.columns.some((col: string) => (draftRow[col] ?? '') !== draftValue(col, selectedRow[col], columnHelpers));
-  }, [columnHelpers, draftRow, records, selectedRow]);
-
-  const changedValues = useMemo(() => {
-    if (!selectedRow || !records) return {};
-    return Object.fromEntries(records.columns
-      .filter((col: string) => (draftRow[col] ?? '') !== draftValue(col, selectedRow[col], columnHelpers))
-      .map((col: string) => [col, submitValue(col, draftRow[col] ?? '', columnHelpers)]));
-  }, [columnHelpers, draftRow, records, selectedRow]);
-
+  const recordEditor = useRecordEditor({
+    activeTable,
+    columnHelpers,
+    createRecord,
+    deleteRecord,
+    primaryKeyColumns,
+    records,
+    updateRecord,
+  });
   const warnUnsaved = useCallback(() => {
-    if (!isRecordDirty && !structureEditor.isDirty) return true;
-    toast.warning(`Save the ${isRecordDirty ? 'record' : 'structure'} changes before switching.`);
+    if (!recordEditor.isRecordDirty && !structureEditor.isDirty) return true;
+    toast.warning(`Save the ${recordEditor.isRecordDirty ? 'record' : 'structure'} changes before switching.`);
     return false;
-  }, [isRecordDirty, structureEditor.isDirty]);
+  }, [recordEditor.isRecordDirty, structureEditor.isDirty]);
 
   const openFilters = useCallback(() => {
     if (!activeTable) return;
@@ -96,44 +88,25 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   }, [activeTable, filters.length, columnOptions, addFilter]);
   const handleSelectTable = useCallback((tableName: string) => {
     if (!warnUnsaved()) return;
-    setActiveView(viewByTableRef.current[tableName] || 'data');
+    setActiveView(viewByTableRef.current[viewKey(tableName)] || 'data');
     selectTable(tableName);
-  }, [selectTable, warnUnsaved]);
+  }, [selectTable, viewKey, warnUnsaved]);
   const handleCloseTable = useCallback((tableName: string) => {
     if (!warnUnsaved()) return;
-    delete viewByTableRef.current[tableName];
+    delete viewByTableRef.current[viewKey(tableName)];
     closeTable(tableName);
-  }, [closeTable, warnUnsaved]);
+  }, [closeTable, viewKey, warnUnsaved]);
   const handleSelectRow = useCallback((row: Record<string, any>) => {
-    if (selectedRow !== row && !warnUnsaved()) return;
-    setSelectedRow(row);
-    setDetailsOpen(true);
-  }, [selectedRow, warnUnsaved]);
+    if (recordEditor.selectedRow !== row && !warnUnsaved()) return;
+    recordEditor.selectRow(row);
+  }, [recordEditor.selectedRow, recordEditor.selectRow, warnUnsaved]);
   const handleViewChange = useCallback((view: DataViewerView) => {
     if (view === activeView) return;
     if (!warnUnsaved()) return;
-    if (activeTable) viewByTableRef.current[activeTable] = view;
+    if (activeTable) viewByTableRef.current[viewKey(activeTable)] = view;
     setActiveView(view);
-    if (view === 'structure') setDetailsOpen(false);
-  }, [activeTable, activeView, warnUnsaved]);
-
-  const handleSubmitRecord = useCallback(async () => {
-    if (!activeTable || !selectedRow || !records) return;
-    const key = Object.fromEntries(primaryKeyColumns.map((col: string) => [col, selectedRow[col]]));
-    if (primaryKeyColumns.length === 0 || Object.keys(changedValues).length === 0) return;
-
-    setIsSavingRecord(true);
-    try {
-      await updateRecord(activeTable, key, changedValues);
-      toast.success('Record updated');
-      setSelectedRow(null);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update record');
-    } finally {
-      setIsSavingRecord(false);
-    }
-  }, [activeTable, changedValues, primaryKeyColumns, records, selectedRow, updateRecord]);
-
+    if (view === 'structure') recordEditor.setDetailsOpen(false);
+  }, [activeTable, activeView, viewKey, warnUnsaved]);
   const handleSubmitStructure = useCallback(async () => {
     if (!structureEditor.isDirty) return;
     try {
@@ -143,24 +116,53 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
       toast.error(err.message || 'Failed to update structure');
     }
   }, [structureEditor]);
-
-  useEffect(() => {
-    fetchTables();
-  }, [fetchTables]);
-
-  useEffect(() => {
-    if (!selectedRow || !records) {
-      setDraftRow({});
-      return;
+  const openStructureSql = useCallback(async () => {
+    if (!activeTable) return;
+    setSqlDialogOpen(true);
+    setIsLoadingSql(true);
+    setStructureSql('');
+    try {
+      const res = await apiFetch(`/api/catalogs/${connectionId}/structure/sql`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: activeTable }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load table SQL');
+      setStructureSql(data.sql || '');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load table SQL');
+      setStructureSql('');
+    } finally {
+      setIsLoadingSql(false);
     }
-    setDraftRow(Object.fromEntries(records.columns.map((col: string) => [
-      col,
-      draftValue(col, selectedRow[col], columnHelpers),
-    ])));
-  }, [columnHelpers, records, selectedRow]);
+  }, [activeTable, connectionId]);
+  const handleDeleteStructure = useCallback(async () => {
+    const target = structureEditor.target;
+    if (!target || (target.kind !== 'column' && target.kind !== 'index')) return;
+    try {
+      await updateStructure(target.kind === 'column'
+        ? { deleteColumnName: target.columnName }
+        : { deleteIndexName: target.indexName });
+      toast.success(target.kind === 'column' ? 'Column deleted' : 'Index deleted');
+      structureEditor.close();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete structure item');
+    } finally {
+      setConfirmAction(null);
+    }
+  }, [structureEditor, updateStructure]);
+  const handleConfirmDeleteRecord = useCallback(async () => {
+    await recordEditor.removeSelectedRecords();
+    setConfirmAction(null);
+  }, [recordEditor.removeSelectedRecords]);
+  useEffect(() => { fetchTables(); }, [fetchTables]);
+  useEffect(() => {
+    recordEditor.syncSelectedRowDraft();
+  }, [recordEditor.syncSelectedRowDraft]);
 
   useEffect(() => {
-    if (!activeTable || !selectedRow || foreignKeyByColumn.size === 0) {
+    if (!activeTable || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {
       setFkOptionsByColumn({});
       return;
     }
@@ -187,16 +189,15 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     });
 
     return () => { cancelled = true; };
-  }, [activeTable, connectionId, foreignKeyByColumn, selectedRow]);
-
+  }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.selectedRow]);
   useEffect(() => {
     setShowFilters(false);
-    setSelectedRow(null);
+    recordEditor.resetRecordEditor();
     structureEditor.close();
   }, [activeTable]);
 
   useEffect(() => {
-    setSelectedRow(null);
+    recordEditor.resetRecordEditor();
   }, [page]);
 
   useEffect(() => {
@@ -213,18 +214,23 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
       } else if (key === 'f' && activeTable) {
         e.preventDefault();
         openFilters();
+      } else if (key === 'r' && activeTable && !isTyping) {
+        e.preventDefault();
+        if (warnUnsaved()) {
+          activeView === 'structure' ? refreshTables() : refreshRecords();
+        }
       } else if (key === 's') {
         e.preventDefault();
         if (activeView === 'structure') {
           handleSubmitStructure();
         } else {
-          handleSubmitRecord();
+          recordEditor.submitRecord();
         }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTable, activeView, handleSubmitRecord, handleSubmitStructure, openFilters]);
+  }, [activeTable, activeView, handleSubmitStructure, openFilters, recordEditor.submitRecord, refreshRecords, refreshTables, warnUnsaved]);
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -264,8 +270,10 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   table={activeTableSchema}
                   isLoading={isLoadingTables}
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
+                  selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
                   onEditTable={structureEditor.editTable}
                   onSelectColumn={structureEditor.editColumn}
+                  onSelectIndex={structureEditor.editIndex}
                   onRefresh={() => warnUnsaved() && refreshTables()}
                 />
               ) : (
@@ -276,13 +284,20 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   foreignKeyByColumn={foreignKeyByColumn}
                   isLoadingRecords={isLoadingRecords}
                   records={records}
-                  selectedRow={selectedRow}
+                  primaryKeyColumns={primaryKeyColumns}
+                  selectedRow={recordEditor.selectedRow}
+                  selectedRowKeys={recordEditor.selectedRowKeys}
+                  selectedRecordCount={recordEditor.selectedRecordCount}
                   sort={sort}
-                  detailsOpen={detailsOpen}
+                  detailsOpen={recordEditor.detailsOpen}
                   handleSelectRow={handleSelectRow}
                   openRelatedRecord={openRelatedRecord}
-                  setDetailsOpen={setDetailsOpen}
+                  setDetailsOpen={recordEditor.setDetailsOpen}
                   onRefresh={refreshRecords}
+                  onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
+                  onDeleteSelectedRecords={() => setConfirmAction('records')}
+                  onTogglePageRows={recordEditor.toggleSelectedRows}
+                  onToggleSelectedRow={recordEditor.toggleSelectedRow}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
                 >
@@ -305,60 +320,45 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
             </div>
 
             {(records || activeTableSchema) && (
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-2 border-t bg-muted/10 shrink-0">
-                <div className="flex items-center gap-1 justify-self-start">
-                  {(['data', 'structure'] as const).map(view => (
-                    <Button
-                      key={view}
-                      variant={activeView === view ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-7 px-3 capitalize"
-                      onClick={() => handleViewChange(view)}
-                    >
-                      {view}
-                    </Button>
-                  ))}
-                </div>
-                <span className="text-xs text-muted-foreground justify-self-center">
-                  {activeView === 'structure'
-                    ? `${activeTableSchema?.columns?.length || 0} columns`
-                    : records && records.total > 0
-                      ? `${((page || 1) - 1) * (records.pageSize || 50) + 1}-${Math.min((page || 1) * (records.pageSize || 50), Number(records.total))} of ${records.total} rows`
-                      : '0 rows'}
-                </span>
-                {activeView === 'data' && records && (
-                  <div className="flex items-center gap-1 justify-self-end">
-                    <Button variant="outline" size="icon-xs" disabled={page <= 1} onClick={() => warnUnsaved() && prevPage()}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="icon-xs" disabled={page >= totalPages} onClick={() => warnUnsaved() && nextPage()}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <DataViewerFooter
+                activeView={activeView}
+                page={page}
+                records={records}
+                tableColumnCount={activeTableSchema?.columns?.length || 0}
+                totalPages={totalPages}
+                warnUnsaved={warnUnsaved}
+                onAddColumn={structureEditor.addColumn}
+                onAddIndex={structureEditor.addIndex}
+                onInfo={openStructureSql}
+                onNextPage={nextPage}
+                onPrevPage={prevPage}
+                onViewChange={handleViewChange}
+              />
             )}
           </>
         )}
       </div>
 
-      {activeView === 'data' && detailsOpen && (
+      {activeView === 'data' && recordEditor.detailsOpen && (
         <DataViewerDetailsPanel
           activeTable={activeTable}
           columnHelpers={columnHelpers}
-          datePickerOpenColumn={datePickerOpenColumn}
-          draftRow={draftRow}
+          datePickerOpenColumn={recordEditor.datePickerOpenColumn}
+          draftRow={recordEditor.draftRow}
           fkOptionsByColumn={fkOptionsByColumn}
           foreignKeyByColumn={foreignKeyByColumn}
-          isRecordDirty={isRecordDirty}
-          isSavingRecord={isSavingRecord}
+          isRecordDirty={recordEditor.isRecordDirty}
+          isCreatingRecord={recordEditor.isCreatingRecord}
+          isSavingRecord={recordEditor.isSavingRecord}
           primaryKeyColumns={primaryKeyColumns}
           records={records}
-          selectedRow={selectedRow}
-          setDatePickerOpenColumn={setDatePickerOpenColumn}
-          setDetailsOpen={setDetailsOpen}
-          setDraftRow={setDraftRow}
-          onSubmitRecord={handleSubmitRecord}
+          selectedRow={recordEditor.selectedRow}
+          setDatePickerOpenColumn={recordEditor.setDatePickerOpenColumn}
+          setDetailsOpen={recordEditor.setDetailsOpen}
+          setDraftRow={recordEditor.setDraftRow}
+          onCancelCreateRecord={recordEditor.cancelCreateRecord}
+          onSubmitCreateRecord={recordEditor.submitCreateRecord}
+          onSubmitRecord={recordEditor.submitRecord}
           warnUnsaved={warnUnsaved}
         />
       )}
@@ -373,9 +373,24 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
           referenceColumns={structureEditor.referenceColumns}
           setDraft={structureEditor.setDraft}
           onClose={structureEditor.close}
+          onDeleteColumn={() => setConfirmAction('column')}
+          onDeleteIndex={() => setConfirmAction('index')}
           onSave={handleSubmitStructure}
         />
       )}
+      <DataViewerStructureSqlDialog
+        activeTable={activeTable}
+        isLoading={isLoadingSql}
+        open={sqlDialogOpen}
+        sql={structureSql}
+        onOpenChange={setSqlDialogOpen}
+      />
+      <DataViewerConfirmModal
+        action={confirmAction}
+        onCancel={() => setConfirmAction(null)}
+        onDeleteRecords={handleConfirmDeleteRecord}
+        onDeleteStructure={handleDeleteStructure}
+      />
     </div>
   );
 }

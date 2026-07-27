@@ -67,12 +67,12 @@ function isValidDateTimeText(value: string) {
   return !!match && isValidDateText(match[1]) && isValidTimeText(match[2]);
 }
 
-export function validateRecordValues(type: string, values: Record<string, any>, columnByName: Map<string, any>) {
+export function validateRecordValues(type: string, values: Record<string, any>, columnByName: Map<string, any>, allowPrimaryKey = false) {
   const normalized: Record<string, any> = {};
   for (const [columnName, value] of Object.entries(values)) {
     const column = columnByName.get(columnName);
     if (!column) throw new Error(`Invalid update column: ${columnName}`);
-    if (column.is_pk) throw new Error(`Primary key column cannot be updated: ${columnName}`);
+    if (column.is_pk && !allowPrimaryKey) throw new Error(`Primary key column cannot be updated: ${columnName}`);
     if (column.is_generated) throw new Error(`Generated column cannot be updated: ${columnName}`);
     if ((value === null || value === undefined) && !column.is_nullable) throw new Error(`Column cannot be null: ${columnName}`);
     if (value === null || value === undefined) {
@@ -161,6 +161,36 @@ export function buildRecordUpdate(type: string, values: Record<string, any>, key
   if (where.length === 0) throw new Error("No record key provided");
 
   return { sql: ` SET ${set.join(", ")} WHERE ${where.join(" AND ")}`, params };
+}
+
+export function buildRecordInsert(type: string, values: Record<string, any>, allowedColumns: Set<string>) {
+  const params: any[] = [];
+  const placeholder = () => type === "postgresql" ? `$${params.length}` : "?";
+  const valueRef = (value: any) => {
+    params.push(value);
+    return placeholder();
+  };
+  const columns = Object.keys(values);
+  if (columns.length === 0) throw new Error("No insert values provided");
+  for (const column of columns) {
+    if (!allowedColumns.has(column)) throw new Error(`Invalid insert column: ${column}`);
+  }
+  return {
+    sql: ` (${columns.map(column => quoteIdentifier(type, column)).join(", ")}) VALUES (${columns.map(column => valueRef(values[column])).join(", ")})`,
+    params,
+  };
+}
+
+export function buildRecordDelete(type: string, key: Record<string, any>, allowedColumns: Set<string>) {
+  const params: any[] = [];
+  const placeholder = () => type === "postgresql" ? `$${params.length}` : "?";
+  const where = Object.entries(key).map(([column, value]) => {
+    if (!allowedColumns.has(column)) throw new Error(`Invalid key column: ${column}`);
+    params.push(value);
+    return `${quoteIdentifier(type, column)} = ${placeholder()}`;
+  });
+  if (where.length === 0) throw new Error("No record key provided");
+  return { sql: ` WHERE ${where.join(" AND ")}`, params };
 }
 
 export function buildRecordWhere(type: string, filters: RecordFilterInput[] | undefined, allowedColumns: Set<string>) {

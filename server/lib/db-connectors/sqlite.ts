@@ -54,6 +54,7 @@ export const sqliteConnector: DbConnector = {
           name: idx[1],
           algorithm: 'BTREE',
           is_unique: idx[2] === 1,
+          is_primary: idx[3] === 'pk',
           column_name: cols[0]?.values.map((col: any[]) => col[2]).join(',') || '',
         };
       }) || [];

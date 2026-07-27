@@ -25,8 +25,11 @@ catalogsRouter.delete("/:id", authenticate, desktopOnly, catalogsController.dele
 catalogsRouter.post("/:id/schema", authenticate, desktopOnly, catalogsController.fetchCatalogSchema);
 catalogsRouter.post("/:id/import", authenticate, desktopOnly, catalogsController.importSchema);
 catalogsRouter.post("/:id/records", authenticate, desktopOnly, catalogsController.queryRecords);
+catalogsRouter.post("/:id/records/create", authenticate, desktopOnly, catalogsController.createRecord);
 catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsController.updateRecord);
+catalogsRouter.delete("/:id/records", authenticate, desktopOnly, catalogsController.deleteRecord);
 catalogsRouter.patch("/:id/structure", authenticate, desktopOnly, catalogsController.updateStructure);
+catalogsRouter.post("/:id/structure/sql", authenticate, desktopOnly, catalogsController.getStructureSql);
 
 // ── Legacy backward-compat ──
 import * as legacyController from "./legacy.controller.js";
