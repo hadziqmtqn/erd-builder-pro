@@ -435,15 +435,6 @@ export default function PropertiesPanel({
                 </Button>
               </div>
 
-              <Input
-                type="text"
-                value={col.comment || ''}
-                onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
-                onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
-                placeholder="Comment"
-                className="h-8 text-[10px] bg-background/50 border-border/50"
-              />
-
               {col.type === 'ENUM' && (
                 <Input
                   type="text"
@@ -454,6 +445,15 @@ export default function PropertiesPanel({
                   className="h-8 text-[10px] bg-background/50 border-border/50"
                 />
               )}
+
+              <Input
+                type="text"
+                value={col.comment || ''}
+                onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
+                onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
+                placeholder="Comment"
+                className="h-8 text-[10px] bg-background/50 border-border/50"
+              />
             </Card>
           ))}
           <div ref={scrollRef} />

@@ -2,6 +2,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_window_state::StateFlags;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 #[cfg(target_os = "macos")]
@@ -30,16 +31,34 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 fn suppress_window(cmd: &mut Command) {
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    #[cfg(not(target_os = "windows"))]
+    let _ = cmd;
 }
 
 /// Holds the Node.js server child process so it can be killed on exit.
 struct ServerProcess(Mutex<Option<Child>>);
 
+fn stop_backend_server(app_handle: &tauri::AppHandle) {
+    if let Some(state) = app_handle.try_state::<ServerProcess>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+                log::info!("Backend server stopped");
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -159,15 +178,11 @@ pub fn run() {
 
     // Run the event loop — on exit, kill the backend server process.
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::Exit = event {
-            if let Some(state) = app_handle.try_state::<ServerProcess>() {
-                if let Ok(mut guard) = state.0.lock() {
-                    if let Some(ref mut child) = *guard {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                }
-            }
+        if matches!(
+            event,
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+        ) {
+            stop_backend_server(app_handle);
         }
     });
 }
