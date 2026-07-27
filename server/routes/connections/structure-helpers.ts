@@ -184,6 +184,15 @@ function assertCompatibleType(sourceType: string, refColumn: any) {
   }
 }
 
+function assertTableRenameAllowed(currentTable: string, nextTable: string, schema: any[]) {
+  if (nextTable === currentTable) return;
+  const children = schema
+    .filter((table: any) => table.table_name !== currentTable)
+    .filter((table: any) => (table.foreign_keys || []).some((fk: any) => fk.ref_table === currentTable))
+    .map((table: any) => table.table_name);
+  if (children.length > 0) throw new Error(`Table "${currentTable}" is referenced by child table "${children[0]}" and cannot be renamed`);
+}
+
 function addPostgresEnumValuesStatements(type: string, column: any, values: string[] | undefined) {
   if (type !== "postgresql" || !Array.isArray(values) || values.length === 0 || !Array.isArray(column?.enum_values)) return [];
   const current = new Set(parseEnumValues(column.enum_values));
@@ -277,6 +286,7 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
     return [`ALTER TABLE ${oldTableSql} DROP COLUMN ${quoteIdentifier(type, columnName)}`];
   }
   if (nextTable !== currentTable) {
+    assertTableRenameAllowed(currentTable, nextTable, schema);
     statements.push(type === "postgresql"
       ? `ALTER TABLE ${oldTableSql} RENAME TO ${quoteIdentifier(type, nextTable)}`
       : `RENAME TABLE ${quoteIdentifier(type, currentTable)} TO ${quoteIdentifier(type, nextTable)}`);

@@ -67,13 +67,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   }, [activeTable, tables]);
 
   const recordEditor = useRecordEditor({
-    activeTable,
-    columnHelpers,
-    createRecord,
-    deleteRecord,
-    primaryKeyColumns,
-    records,
-    updateRecord,
+    activeTable, columnHelpers, createRecord, deleteRecord, primaryKeyColumns, records, updateRecord,
   });
   const warnUnsaved = useCallback(() => {
     if (!recordEditor.isRecordDirty && !structureEditor.isDirty) return true;
@@ -197,6 +191,14 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   }, [page]);
 
   useEffect(() => {
+    const refresh = () => warnUnsaved() && refreshRecords();
+    const toggleDetails = () => recordEditor.setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true);
+    const events: [string, EventListener][] = [['db-connect-refresh-records', refresh], ['db-connect-toggle-details', toggleDetails]];
+    events.forEach(([name, handler]) => window.addEventListener(name, handler));
+    return () => { events.forEach(([name, handler]) => window.removeEventListener(name, handler)); };
+  }, [recordEditor.setDetailsOpen, refreshRecords, warnUnsaved]);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const key = e.key.toLowerCase();
@@ -263,19 +265,14 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
               <DataViewerTableTabs
                 activeTable={activeTable}
                 openTabs={openTabs}
-                onCloseTable={handleCloseTable}
-                onSelectTable={handleSelectTable}
-                onPinTable={pinTable}
+                onCloseTable={handleCloseTable} onSelectTable={handleSelectTable} onPinTable={pinTable}
               />
               {activeView === 'structure' && activeTableSchema ? (
                 <DataViewerStructure
-                  table={activeTableSchema}
-                  isLoading={isLoadingTables}
+                  table={activeTableSchema} isLoading={isLoadingTables}
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
                   selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
-                  onEditTable={structureEditor.editTable}
-                  onSelectColumn={structureEditor.editColumn}
-                  onSelectIndex={structureEditor.editIndex}
+                  onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}
                   onRefresh={() => warnUnsaved() && refreshTables()}
                 />
               ) : (
@@ -291,11 +288,8 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   selectedRowKeys={recordEditor.selectedRowKeys}
                   selectedRecordCount={recordEditor.selectedRecordCount}
                   sort={sort}
-                  detailsOpen={recordEditor.detailsOpen}
                   handleSelectRow={handleSelectRow}
                   openRelatedRecord={openRelatedRecord}
-                  setDetailsOpen={recordEditor.setDetailsOpen}
-                  onRefresh={refreshRecords}
                   onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
                   onClearSelectedRecords={recordEditor.clearSelectedRows}
                   onDeleteSelectedRecords={() => setConfirmAction('records')}

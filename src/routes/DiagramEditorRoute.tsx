@@ -1,12 +1,13 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Database, Columns, TableIcon } from 'lucide-react';
+import { Database, Columns, PanelRightOpen, RefreshCw, TableIcon } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 import { DataViewer } from '@/components/db-connect/DataViewer';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export function DiagramEditorRoute() {
@@ -129,31 +130,43 @@ export function DiagramEditorRoute() {
       <ProjectFileTabs currentView="erd" />
       {/* Tab bar — only for production DB diagrams */}
       {isProductionDb && !isPublicView && (
-        <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-muted/5 shrink-0">
-          <button
-            onClick={() => setDiagramTab('data')}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              diagramTab === 'data'
-                ? 'bg-accent text-accent-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            )}
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-            Data
-          </button>
-          <button
-            onClick={() => setDiagramTab('erd')}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              diagramTab === 'erd'
-                ? 'bg-accent text-accent-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            )}
-          >
-            <Columns className="w-3.5 h-3.5" />
-            ERD
-          </button>
+        <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-b bg-muted/5 shrink-0">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDiagramTab('data')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                diagramTab === 'data'
+                  ? 'bg-accent text-accent-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              Data
+            </button>
+            <button
+              onClick={() => setDiagramTab('erd')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                diagramTab === 'erd'
+                  ? 'bg-accent text-accent-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <Columns className="w-3.5 h-3.5" />
+              ERD
+            </button>
+          </div>
+          {diagramTab === 'data' && (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-refresh-records'))} title="Refresh records">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-toggle-details'))} title="Open table information">
+                <PanelRightOpen className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
