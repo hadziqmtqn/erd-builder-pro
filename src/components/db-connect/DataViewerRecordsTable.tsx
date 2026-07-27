@@ -22,6 +22,7 @@ type DataViewerRecordsTableProps = {
   setDetailsOpen: (open: boolean | ((open: boolean) => boolean)) => void;
   onRefresh: () => void;
   onAddRecord: () => void;
+  onClearSelectedRecords: () => void;
   onDeleteSelectedRecords: () => void;
   onTogglePageRows: (rows: Record<string, any>[], checked: boolean) => void;
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean) => void;
@@ -52,6 +53,7 @@ export function DataViewerRecordsTable({
   setDetailsOpen,
   onRefresh,
   onAddRecord,
+  onClearSelectedRecords,
   onDeleteSelectedRecords,
   onTogglePageRows,
   onToggleSelectedRow,
@@ -104,10 +106,13 @@ export function DataViewerRecordsTable({
             </div>
             <div className="flex items-center gap-1">
               {selectedRecordCount > 0 && (
-                <Button variant="destructive" size="sm" className="h-8 px-2" onClick={onDeleteSelectedRecords}>
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Delete {selectedRecordCount}
-                </Button>
+                <>
+                  <Button variant="outline" size="sm" className="h-8 px-2" onClick={onClearSelectedRecords}>Uncheck All</Button>
+                  <Button variant="destructive" size="sm" className="h-8 px-2" onClick={onDeleteSelectedRecords}>
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Delete {selectedRecordCount}
+                  </Button>
+                </>
               )}
               <Button variant="outline" size="sm" className="h-8 px-2" onClick={onAddRecord}>
                 <Plus className="mr-1 h-3.5 w-3.5" />

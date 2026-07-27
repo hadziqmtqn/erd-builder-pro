@@ -1,16 +1,23 @@
 import { quoteIdentifier } from "./record-helpers.js";
 
+type StructureColumnPatch = {
+  name?: string;
+  type?: string;
+  is_nullable?: boolean;
+  column_default?: string | null;
+  extra?: string | null;
+  comment?: string | null;
+  enum_values?: string[];
+};
+
 type StructurePatch = {
+  createTable?: {
+    name?: string;
+    column?: StructureColumnPatch;
+  };
   tableName?: string;
   columnName?: string;
-  column?: {
-    name?: string;
-    type?: string;
-    is_nullable?: boolean;
-    column_default?: string | null;
-    extra?: string | null;
-    comment?: string | null;
-  };
+  column?: StructureColumnPatch;
   foreignKey?: {
     enabled?: boolean;
     ref_table?: string;
@@ -34,8 +41,11 @@ const INDEX_ALGORITHMS = new Set(["", "btree", "hash"]);
 const DEFAULT_FUNCTIONS = new Set(["CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME", "NULL"]);
 const COMMON_TYPES = new Set(["int", "integer", "bigint", "smallint", "varchar", "char", "text", "float", "decimal", "numeric", "real", "boolean", "bool", "date", "time", "timestamp", "json"]);
 const MYSQL_TYPES = new Set(["tinyint", "mediumint", "tinytext", "mediumtext", "longtext", "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "double", "year", "datetime", "bit", "enum"]);
-const POSTGRES_TYPES = new Set(["serial", "bigserial", "smallserial", "money", "bytea", "uuid", "ulid", "jsonb", "interval", "timestamptz", "timetz", "cidr", "inet", "macaddr", "macaddr8", "tsvector", "tsquery", "character varying", "double precision"]);
+const POSTGRES_TYPES = new Set(["int2", "int4", "int8", "serial", "bigserial", "smallserial", "money", "bytea", "uuid", "ulid", "jsonb", "interval", "timestamptz", "timetz", "cidr", "inet", "macaddr", "macaddr8", "tsvector", "tsquery", "character", "character varying", "double precision"]);
 const SQLITE_TYPES = new Set(["integer", "text", "real", "blob", "numeric"]);
+const LENGTH_TYPES = new Set(["varchar", "char", "character", "character varying", "binary", "varbinary"]);
+const PRECISION_TYPES = new Set(["decimal", "numeric"]);
+const ENUM_VALUE_RE = /^[^'\\\0]{1,255}$/;
 
 function assertIdentifier(value: string, label: string) {
   if (!IDENTIFIER_RE.test(value || "")) throw new Error(`Invalid ${label}`);
@@ -46,16 +56,67 @@ function baseColumnType(value: string) {
 }
 
 function assertColumnType(type: string, value: string) {
+  if (/^(enum|set)\(/i.test(value)) {
+    if (type !== "mysql") throw new Error(`Invalid ${type} column type`);
+    parseEnumValues(value).forEach(enumValue => {
+      if (!ENUM_VALUE_RE.test(enumValue)) throw new Error("Invalid enum value");
+    });
+    return;
+  }
   if (!TYPE_RE.test(value || "") || /;|--|\/\*/.test(value)) throw new Error("Invalid column type");
-  const length = value.match(/\((\d+)\)/)?.[1];
-  if (length && (Number(length) < 1 || Number(length) > 65535)) throw new Error("Invalid column length");
   const base = baseColumnType(value);
+  const args = value.match(/\(([^)]*)\)/)?.[1];
+  if (args && LENGTH_TYPES.has(base)) {
+    if (!/^\d+$/.test(args) || Number(args) < 1 || Number(args) > 65535) throw new Error("Invalid column length");
+  } else if (args && PRECISION_TYPES.has(base)) {
+    const [precision, scale] = args.split(",").map(item => item.trim());
+    if (!/^\d+$/.test(precision) || Number(precision) < 1 || Number(precision) > 1000) throw new Error("Invalid numeric precision");
+    if (scale !== undefined && (!/^\d+$/.test(scale) || Number(scale) > Number(precision))) throw new Error("Invalid numeric scale");
+  } else if (args && type === "postgresql") {
+    throw new Error("Invalid column type");
+  }
   const allowed = type === "sqlite"
     ? SQLITE_TYPES
     : type === "mysql"
       ? new Set([...COMMON_TYPES, ...MYSQL_TYPES])
       : new Set([...COMMON_TYPES, ...POSTGRES_TYPES]);
   if (!allowed.has(base)) throw new Error(`Invalid ${type} column type`);
+}
+
+export function parseEnumValues(value: any) {
+  if (Array.isArray(value)) return value.map(String);
+  const match = String(value || "").match(/^(?:enum|set)\((.*)\)$/i);
+  if (!match) return [];
+  return [...match[1].matchAll(/'((?:''|[^'])*)'/g)].map(item => item[1].replace(/''/g, "'"));
+}
+
+export function removedEnumValues(column: any, nextValues: any) {
+  if (!Array.isArray(nextValues)) return [];
+  const next = new Set(nextValues.map(String));
+  return parseEnumValues(column?.enum_values).filter(value => !next.has(value));
+}
+
+function enumTypeSql(baseType: string, values: string[] | undefined) {
+  if (!values || values.length === 0 || !/^(enum|set)\b/i.test(baseType.trim())) return baseType;
+  for (const value of values) {
+    if (!ENUM_VALUE_RE.test(value)) throw new Error("Invalid enum value");
+  }
+  const kind = baseType.trim().toLowerCase().startsWith("set") ? "set" : "enum";
+  return `${kind}(${values.map(value => `'${value.replace(/'/g, "''")}'`).join(",")})`;
+}
+
+function typeWithDefaultModifiers(type: string, value: string) {
+  const base = baseColumnType(value);
+  if (type === "mysql" && !/\(/.test(value) && (base === "varchar" || base === "varbinary")) {
+    return `${value}(255)`;
+  }
+  return value;
+}
+
+function isAutoPrimaryColumn(type: string, columnType: string, extra: any) {
+  return type === "mysql"
+    ? /\bAUTO_INCREMENT\b/i.test(String(extra || ""))
+    : /^(smallserial|serial|bigserial)$/i.test(columnType.trim());
 }
 
 function defaultSql(value: any) {
@@ -92,7 +153,7 @@ function tableSql(type: string, schema: string | undefined, table: string) {
 }
 
 function columnType(column: any) {
-  return String(column?.full_type || column?.type || "");
+  return String(column?.full_type === "USER-DEFINED" ? column?.type : column?.full_type || column?.type || "");
 }
 
 function ddlColumnType(column: any) {
@@ -121,6 +182,19 @@ function assertCompatibleType(sourceType: string, refColumn: any) {
   if (normalizeType(sourceType) !== normalizeType(columnType(refColumn))) {
     throw new Error("Foreign key column type must match the referenced column type");
   }
+}
+
+function addPostgresEnumValuesStatements(type: string, column: any, values: string[] | undefined) {
+  if (type !== "postgresql" || !Array.isArray(values) || values.length === 0 || !Array.isArray(column?.enum_values)) return [];
+  const current = new Set(parseEnumValues(column.enum_values));
+  const enumType = columnType(column);
+  assertIdentifier(enumType, "enum type");
+  return values
+    .filter(value => !current.has(value))
+    .map(value => {
+      if (!ENUM_VALUE_RE.test(value)) throw new Error("Invalid enum value");
+      return `ALTER TYPE ${quoteIdentifier(type, enumType)} ADD VALUE IF NOT EXISTS '${value.replace(/'/g, "''")}'`;
+    });
 }
 
 function splitColumns(value: string[] | string | undefined) {
@@ -166,6 +240,29 @@ function indexSql(type: string, tableNameSql: string, index: NonNullable<Structu
 export function buildStructureStatements(type: string, tableSchema: any, patch: StructurePatch, schema: any[] = []) {
   if (type !== "postgresql" && type !== "mysql") throw new Error("Structure editing is only supported for PostgreSQL and MySQL catalogs");
 
+  if (patch.createTable) {
+    const tableName = String(patch.createTable.name || "");
+    const column = patch.createTable.column || {};
+    const columnName = String(column.name || "");
+    const rawColumnType = String(column.type || "");
+    const columnTypeSql = typeWithDefaultModifiers(type, type === "mysql" ? enumTypeSql(rawColumnType, column.enum_values) : rawColumnType);
+    assertIdentifier(tableName, "table name");
+    assertIdentifier(columnName, "column name");
+    assertColumnType(type, columnTypeSql);
+    const nullableClause = column.is_nullable ? "NULL" : "NOT NULL";
+    const extraClause = assertColumnExtra(type, column.extra);
+    const columnSql = `${quoteIdentifier(type, columnName)} ${columnTypeSql} ${nullableClause}${defaultSql(column.column_default)}${extraClause}${commentSql(type, column.comment)}`;
+    const primaryKeySql = isAutoPrimaryColumn(type, columnTypeSql, column.extra)
+      ? `, PRIMARY KEY (${quoteIdentifier(type, columnName)})`
+      : "";
+    const statements = [`CREATE TABLE ${quoteIdentifier(type, tableName)} (${columnSql}${primaryKeySql})`];
+    if (type === "postgresql" && column.comment !== undefined) {
+      const comment = column.comment ? `'${String(column.comment).replace(/'/g, "''")}'` : "NULL";
+      statements.push(`COMMENT ON COLUMN ${quoteIdentifier(type, tableName)}.${quoteIdentifier(type, columnName)} IS ${comment}`);
+    }
+    return statements;
+  }
+
   const currentTable = String(tableSchema.table_name || "");
   const nextTable = String(patch.tableName || currentTable);
   assertIdentifier(currentTable, "table name");
@@ -192,16 +289,21 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
   if (!isNewColumn && !existingColumn) throw new Error("Invalid column name");
 
   const nextColumn = String(patch.column.name || (isNewColumn ? "" : currentColumn));
-  const nextType = String(patch.column.type || existingColumn?.full_type || existingColumn?.type || "");
+  const rawNextType = String(patch.column.type || existingColumn?.full_type || existingColumn?.type || "");
+  const nextType = typeWithDefaultModifiers(type, type === "mysql" ? enumTypeSql(rawNextType, patch.column.enum_values) : rawNextType);
   if (!isNewColumn) assertIdentifier(currentColumn, "column name");
   assertIdentifier(nextColumn, "column name");
-  assertColumnType(type, nextType);
+  if (!(type === "postgresql" && Array.isArray(existingColumn?.enum_values) && nextType === columnType(existingColumn))) {
+    assertColumnType(type, nextType);
+  }
 
   const workingTableSql = tableSql(type, tableSchema.table_schema, nextTable);
   const currentColumnSql = quoteIdentifier(type, currentColumn);
   const nextColumnSql = quoteIdentifier(type, nextColumn);
   const extraClause = assertColumnExtra(type, patch.column.extra);
   const nullableClause = patch.column.is_nullable ? "NULL" : "NOT NULL";
+
+  statements.push(...addPostgresEnumValuesStatements(type, existingColumn, patch.column.enum_values));
 
   if (isNewColumn) {
     statements.push(`ALTER TABLE ${workingTableSql} ADD COLUMN ${nextColumnSql} ${nextType} ${nullableClause}${defaultSql(patch.column.column_default)}${extraClause}${commentSql(type, patch.column.comment)}`);
@@ -210,9 +312,9 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
   }
 
   if (!isNewColumn && type === "postgresql") {
-    statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} TYPE ${nextType}`);
-    statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} ${patch.column.is_nullable ? "DROP" : "SET"} NOT NULL`);
     statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} DROP DEFAULT`);
+    statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} TYPE ${nextType} USING ${nextColumnSql}::${nextType}`);
+    statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} ${patch.column.is_nullable ? "DROP" : "SET"} NOT NULL`);
     const defaultClause = defaultSql(patch.column.column_default).trim();
     if (defaultClause) statements.push(`ALTER TABLE ${workingTableSql} ALTER COLUMN ${nextColumnSql} SET ${defaultClause}`);
   } else if (!isNewColumn) {

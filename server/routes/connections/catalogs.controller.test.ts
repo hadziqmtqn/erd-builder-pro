@@ -3,7 +3,7 @@ import initSqlJs from "sql.js";
 import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
-import { buildCreateTableSql, buildIndexStatements, buildStructureStatements } from "./structure-helpers.js";
+import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);
@@ -144,9 +144,9 @@ describe("buildStructureStatements", () => {
     })).toEqual([
       'ALTER TABLE "public"."posts" RENAME TO "articles"',
       'ALTER TABLE "public"."articles" RENAME COLUMN "user_id" TO "author_id"',
-      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" TYPE bigint',
-      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP NOT NULL',
       'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP DEFAULT',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" TYPE bigint USING "author_id"::bigint',
+      'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP NOT NULL',
       'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" SET DEFAULT NULL',
       'ALTER TABLE "public"."articles" DROP CONSTRAINT IF EXISTS "posts_user_id_fkey"',
       'ALTER TABLE "public"."articles" ADD CONSTRAINT "fk_articles_author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")',
@@ -157,11 +157,41 @@ describe("buildStructureStatements", () => {
     expect(buildStructureStatements("postgresql", table, {
       columnName: "user_id",
       column: { name: "user_id", type: "varchar(120)", is_nullable: true },
-    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "user_id" TYPE varchar(120)');
+    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "user_id" TYPE varchar(120) USING "user_id"::varchar(120)');
+    expect(buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "numeric(10,2)", is_nullable: true },
+    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "user_id" TYPE numeric(10,2) USING "user_id"::numeric(10,2)');
+    expect(buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "int2", is_nullable: true },
+    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "user_id" TYPE int2 USING "user_id"::int2');
     expect(() => buildStructureStatements("postgresql", table, {
       columnName: "user_id",
       column: { name: "user_id", type: "varchar(0)", is_nullable: true },
     })).toThrow("Invalid column length");
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "integer(10)", is_nullable: true },
+    })).toThrow("Invalid column type");
+  });
+
+  it("builds create table statements", () => {
+    expect(buildStructureStatements("postgresql", {}, {
+      createTable: { name: "customers", column: { name: "id", type: "int8", is_nullable: false } },
+    })).toEqual(['CREATE TABLE "customers" ("id" int8 NOT NULL)']);
+    expect(buildStructureStatements("postgresql", {}, {
+      createTable: { name: "customers", column: { name: "id", type: "bigserial", is_nullable: false } },
+    })).toEqual(['CREATE TABLE "customers" ("id" bigserial NOT NULL, PRIMARY KEY ("id"))']);
+    expect(buildStructureStatements("mysql", {}, {
+      createTable: { name: "customers", column: { name: "amount", type: "decimal(10,2)", is_nullable: false } },
+    })).toEqual(['CREATE TABLE `customers` (`amount` decimal(10,2) NOT NULL)']);
+    expect(buildStructureStatements("mysql", {}, {
+      createTable: { name: "customers", column: { name: "id", type: "bigint", is_nullable: false, extra: "AUTO_INCREMENT" } },
+    })).toEqual(['CREATE TABLE `customers` (`id` bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`))']);
+    expect(buildStructureStatements("mysql", {}, {
+      createTable: { name: "customers", column: { name: "name", type: "varchar", is_nullable: false } },
+    })).toEqual(['CREATE TABLE `customers` (`name` varchar(255) NOT NULL)']);
   });
 
   it("rejects unsafe structure identifiers and column types", () => {
@@ -196,10 +226,25 @@ describe("buildStructureStatements", () => {
   it("builds add-column edits with MySQL comment and extra metadata", () => {
     expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
       columnName: "__new__",
-      column: { name: "id", type: "bigint", is_nullable: false, column_default: "", extra: "AUTO_INCREMENT", comment: "primary id" },
+      column: { name: "name", type: "varchar", is_nullable: false, column_default: "", extra: "", comment: "person name" },
     })).toEqual([
-      "ALTER TABLE `posts` ADD COLUMN `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'primary id'",
+      "ALTER TABLE `posts` ADD COLUMN `name` varchar(255) NOT NULL COMMENT 'person name'",
     ]);
+  });
+
+  it("builds enum value edits for MySQL and PostgreSQL", () => {
+    expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "enum", is_nullable: false, enum_values: ["admin", "user"] },
+    })).toContain("ALTER TABLE `posts` MODIFY COLUMN `user_id` enum('admin','user') NOT NULL");
+    expect(buildStructureStatements("postgresql", {
+      ...table,
+      columns: [{ name: "status", type: "post_status", full_type: "USER-DEFINED", is_nullable: false, enum_values: ["draft"] }],
+    }, {
+      columnName: "status",
+      column: { name: "status", type: "post_status", is_nullable: false, enum_values: ["draft", "published"] },
+    })).toContain('ALTER TYPE "post_status" ADD VALUE IF NOT EXISTS \'published\'');
+    expect(removedEnumValues({ enum_values: ["draft", "published"] }, ["draft"])).toEqual(["published"]);
   });
 
   it("builds create and replace index statements", () => {

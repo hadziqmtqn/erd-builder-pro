@@ -1,10 +1,12 @@
 import { RefObject } from 'react';
-import { AlertCircle, Database, Search, TableIcon } from 'lucide-react';
+import { AlertCircle, Database, Plus, Search, TableIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type DataViewerSidebarProps = {
   activeTable: string | null;
+  dbType: string | null;
   error: string | null;
   filteredTables: any[];
   isLoadingTables: boolean;
@@ -12,12 +14,14 @@ type DataViewerSidebarProps = {
   shortcutLabel: string;
   tableSearch: string;
   tables: any[];
+  onAddTable: () => void;
   onSelectTable: (tableName: string) => void;
   setTableSearch: (value: string) => void;
 };
 
 export function DataViewerSidebar({
   activeTable,
+  dbType,
   error,
   filteredTables,
   isLoadingTables,
@@ -25,6 +29,7 @@ export function DataViewerSidebar({
   shortcutLabel,
   tableSearch,
   tables,
+  onAddTable,
   onSelectTable,
   setTableSearch,
 }: DataViewerSidebarProps) {
@@ -34,6 +39,11 @@ export function DataViewerSidebar({
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <Database className="w-3.5 h-3.5" />
           Tables
+          {dbType && (
+            <span className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+              {dbType}
+            </span>
+          )}
         </h3>
         <div className="relative mt-2">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
@@ -82,6 +92,12 @@ export function DataViewerSidebar({
             ))
           )}
         </div>
+      </div>
+      <div className="border-t bg-background/95 p-2">
+        <Button type="button" className="h-8 w-full justify-start text-xs" onClick={onAddTable}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Table
+        </Button>
       </div>
     </div>
   );

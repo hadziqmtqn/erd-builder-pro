@@ -332,6 +332,26 @@ export function useDbAccounts() {
     }
   };
 
+  const createDatabase = async (id: number, name: string): Promise<DatabaseEntry | null> => {
+    try {
+      const res = await apiFetch(`/api/accounts/${id}/databases/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create database');
+      }
+      const database: DatabaseEntry = await res.json();
+      toast.success(`Database "${database.name}" created`);
+      return database;
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to create database');
+      return null;
+    }
+  };
+
   const testAccount = async (id: number): Promise<TestResult> => {
     try {
       const res = await apiFetch(`/api/accounts/${id}/test`, { method: 'POST' });
@@ -355,6 +375,7 @@ export function useDbAccounts() {
     updateAccount,
     deleteAccount,
     listDatabases,
+    createDatabase,
     testAccount,
     getDefaultPort,
   };

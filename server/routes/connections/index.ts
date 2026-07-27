@@ -14,6 +14,7 @@ accountsRouter.post("/:id/test", authenticate, desktopOnly, accountsController.t
 accountsRouter.post("/test-cred", authenticate, desktopOnly, accountsController.testRawCredentials);
 accountsRouter.post("/:id/test-probe", authenticate, desktopOnly, accountsController.testAccountProbe);
 accountsRouter.post("/:id/databases", authenticate, desktopOnly, accountsController.listDatabases);
+accountsRouter.post("/:id/databases/create", authenticate, desktopOnly, accountsController.createDatabase);
 
 // ── Catalogs ──
 import * as catalogsController from "./catalogs.controller.js";
