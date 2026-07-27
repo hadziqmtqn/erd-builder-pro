@@ -143,12 +143,12 @@ export function RecordFieldEditor({
     const current = String(draftRow[column] ?? '');
     const selectedDate = parseDraftDate(current);
     return (
-      <FieldGroup className={`mt-1 gap-2 ${isDateTimeColumn(column) ? 'grid-cols-[1fr_7.5rem]' : ''}`}>
-        <Field>
+      <FieldGroup className={`mt-1 gap-2 ${isDateTimeColumn(column) ? 'grid-cols-[minmax(0,1fr)_minmax(0,6.5rem)]' : ''}`}>
+        <Field className="min-w-0">
           <Popover open={datePickerOpenColumn === column} onOpenChange={open => setDatePickerOpenColumn(open ? column : null)}>
             <PopoverTrigger
               render={
-                <Button id={fieldId} type="button" variant="outline" className="h-8 w-full justify-between font-mono text-xs font-normal">
+                <Button id={fieldId} type="button" variant="outline" className="h-8 w-full min-w-0 justify-between font-mono text-xs font-normal">
                   <span className="flex min-w-0 items-center gap-2 truncate">
                     <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     {selectedDate ? format(selectedDate, 'PPP') : 'Select date'}
@@ -184,7 +184,7 @@ export function RecordFieldEditor({
           </Popover>
         </Field>
         {isDateTimeColumn(column) && (
-          <Field>
+          <Field className="min-w-0">
             <FieldLabel htmlFor={`${fieldId}-time`} className="sr-only">Time</FieldLabel>
             <Input
               id={`${fieldId}-time`}
@@ -195,7 +195,7 @@ export function RecordFieldEditor({
                 const nextTime = e.target.value.length === 5 ? `${e.target.value}:00` : e.target.value;
                 setDraftRow(prev => ({ ...prev, [column]: `${datePart(prev[column]) || formatDate(new Date())} ${nextTime}` }));
               }}
-              className="h-8 bg-background font-mono text-xs"
+              className="h-8 min-w-0 bg-background px-2 font-mono text-xs"
             />
           </Field>
         )}
