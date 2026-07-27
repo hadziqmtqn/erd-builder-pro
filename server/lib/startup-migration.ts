@@ -135,6 +135,44 @@ async function addColumnIfMissing(
   }
 }
 
+async function createSqlQueriesTableIfMissing(): Promise<void> {
+  if (!prisma) return;
+  try {
+    const cols = await getColumns("sql_queries");
+    if (cols.length > 0) return;
+    if (isLocalPostgres()) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "sql_queries" (
+          "id" SERIAL PRIMARY KEY,
+          "uid" TEXT UNIQUE,
+          "diagram_id" INTEGER NOT NULL REFERENCES "diagrams"("id") ON DELETE CASCADE,
+          "group_name" TEXT NOT NULL DEFAULT 'Ungrouped',
+          "name" TEXT NOT NULL,
+          "script" TEXT NOT NULL,
+          "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_sql_queries_diagram" ON "sql_queries"("diagram_id")`);
+      return;
+    }
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "sql_queries" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "uid" TEXT UNIQUE,
+        "diagram_id" INTEGER NOT NULL,
+        "group_name" TEXT NOT NULL DEFAULT 'Ungrouped',
+        "name" TEXT NOT NULL,
+        "script" TEXT NOT NULL,
+        "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "sql_queries_diagram_id_fkey" FOREIGN KEY ("diagram_id") REFERENCES "diagrams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_sql_queries_diagram" ON "sql_queries"("diagram_id")`);
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to create sql_queries table (non-fatal)");
+  }
+}
+
 async function normalizeLegacyColumnIds(): Promise<void> {
   if (!prisma) return;
 
@@ -370,6 +408,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("columns", "max_length", '"max_length" INTEGER');
   await addColumnIfMissing("columns", "numeric_precision", '"numeric_precision" INTEGER');
   await addColumnIfMissing("columns", "numeric_scale", '"numeric_scale" INTEGER');
+  await createSqlQueriesTableIfMissing();
 
   // v3.1.4+ — normalize old random column ids and keep relationships wired.
   if (isDesktopMode()) await normalizeLegacyColumnIds();

@@ -1,11 +1,12 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Database, Columns, PanelRightOpen, RefreshCw, TableIcon } from 'lucide-react';
+import { Database, Columns, PanelRightOpen, RefreshCw, TableIcon, TerminalSquare } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 import { DataViewer } from '@/components/db-connect/DataViewer';
+import { DataQueryView } from '@/components/db-connect/DataQueryView';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -33,6 +34,7 @@ export function DiagramEditorRoute() {
 
   // URL search params for tab state — AppLayout uses this to hide AI Chat on Data tab
   const [searchParams, setSearchParams] = useSearchParams();
+  const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
 
   // Read snake_case fields from API response (camelToSnake middleware converts all)
   const isProductionDb = useMemo(() => {
@@ -61,6 +63,15 @@ export function DiagramEditorRoute() {
       }, { replace: true });
     }
   }, [isProductionDb, setSearchParams]);
+
+  useEffect(() => {
+    const openQuery = (event: Event) => {
+      setQueryInitialTable((event as CustomEvent).detail?.table || null);
+      setDiagramTab('query');
+    };
+    window.addEventListener('db-connect-open-query', openQuery);
+    return () => window.removeEventListener('db-connect-open-query', openQuery);
+  }, [setDiagramTab]);
 
   const handleAutoLayout = useCallback(() => {
     if (!nodes || nodes.length === 0) return;
@@ -156,6 +167,18 @@ export function DiagramEditorRoute() {
               <Columns className="w-3.5 h-3.5" />
               ERD
             </button>
+            <button
+              onClick={() => setDiagramTab('query')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                diagramTab === 'query'
+                  ? 'bg-accent text-accent-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              )}
+            >
+              <TerminalSquare className="w-3.5 h-3.5" />
+              Query
+            </button>
           </div>
           {diagramTab === 'data' && (
             <div className="flex items-center gap-1">
@@ -175,6 +198,12 @@ export function DiagramEditorRoute() {
         <DataViewer
           connectionId={sourceConnectionId}
           stateKey={`${show?.uid || show?.id}:${sourceConnectionId}`}
+        />
+      ) : diagramTab === 'query' && isProductionDb && !isPublicView && sourceConnectionId && show?.id ? (
+        <DataQueryView
+          connectionId={sourceConnectionId}
+          diagramId={Number(show.id)}
+          initialTable={queryInitialTable}
         />
       ) : (
         <ERDView

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Database } from 'lucide-react';
+import { Database, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { useDataViewer } from '@/hooks/useDataViewer';
@@ -16,6 +16,7 @@ import { DataViewerStructurePanel } from './DataViewerStructurePanel';
 import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers } from './data-viewer-utils';
+import { Button } from '@/components/ui/button';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; }
 type DataViewerView = 'data' | 'structure';
@@ -266,6 +267,11 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                 activeTable={activeTable}
                 openTabs={openTabs}
                 onCloseTable={handleCloseTable} onSelectTable={handleSelectTable} onPinTable={pinTable}
+                rightActions={(
+                  <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => window.dispatchEvent(new CustomEvent('db-connect-open-query', { detail: { table: activeTable } }))}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> SQL Query
+                  </Button>
+                )}
               />
               {activeView === 'structure' && activeTableSchema ? (
                 <DataViewerStructure

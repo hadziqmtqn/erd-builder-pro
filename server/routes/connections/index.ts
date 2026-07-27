@@ -18,6 +18,7 @@ accountsRouter.post("/:id/databases/create", authenticate, desktopOnly, accounts
 
 // ── Catalogs ──
 import * as catalogsController from "./catalogs.controller.js";
+import * as queriesController from "./queries.controller.js";
 
 const catalogsRouter = Router();
 catalogsRouter.get("/", authenticate, desktopOnly, catalogsController.listCatalogs);
@@ -26,6 +27,9 @@ catalogsRouter.delete("/:id", authenticate, desktopOnly, catalogsController.dele
 catalogsRouter.post("/:id/schema", authenticate, desktopOnly, catalogsController.fetchCatalogSchema);
 catalogsRouter.post("/:id/import", authenticate, desktopOnly, catalogsController.importSchema);
 catalogsRouter.post("/:id/records", authenticate, desktopOnly, catalogsController.queryRecords);
+catalogsRouter.get("/:id/queries", authenticate, desktopOnly, queriesController.listQueries);
+catalogsRouter.post("/:id/queries", authenticate, desktopOnly, queriesController.saveQuery);
+catalogsRouter.post("/:id/query/run", authenticate, desktopOnly, queriesController.runQuery);
 catalogsRouter.post("/:id/records/create", authenticate, desktopOnly, catalogsController.createRecord);
 catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsController.updateRecord);
 catalogsRouter.delete("/:id/records", authenticate, desktopOnly, catalogsController.deleteRecord);
