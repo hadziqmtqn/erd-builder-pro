@@ -80,7 +80,6 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     toast.warning(`Save the ${recordEditor.isRecordDirty ? 'record' : 'structure'} changes before switching.`);
     return false;
   }, [recordEditor.isRecordDirty, structureEditor.isDirty]);
-
   const openFilters = useCallback(() => {
     if (!activeTable) return;
     setShowFilters(true);
@@ -157,10 +156,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     setConfirmAction(null);
   }, [recordEditor.removeSelectedRecords]);
   useEffect(() => { fetchTables(); }, [fetchTables]);
-  useEffect(() => {
-    recordEditor.syncSelectedRowDraft();
-  }, [recordEditor.syncSelectedRowDraft]);
-
+  useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
   useEffect(() => {
     if (!activeTable || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {
       setFkOptionsByColumn({});
@@ -236,6 +232,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     <div className="flex flex-1 overflow-hidden">
       <DataViewerSidebar
         activeTable={activeTable}
+        dbType={dbType}
         error={error}
         filteredTables={filteredTables}
         isLoadingTables={isLoadingTables}
@@ -243,6 +240,11 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
         shortcutLabel={shortcutLabel}
         tableSearch={tableSearch}
         tables={tables}
+        onAddTable={() => {
+          if (!warnUnsaved()) return;
+          setActiveView('structure');
+          structureEditor.addTable();
+        }}
         onSelectTable={handleSelectTable}
         setTableSearch={setTableSearch}
       />
@@ -295,6 +297,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                   setDetailsOpen={recordEditor.setDetailsOpen}
                   onRefresh={refreshRecords}
                   onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
+                  onClearSelectedRecords={recordEditor.clearSelectedRows}
                   onDeleteSelectedRecords={() => setConfirmAction('records')}
                   onTogglePageRows={recordEditor.toggleSelectedRows}
                   onToggleSelectedRow={recordEditor.toggleSelectedRow}

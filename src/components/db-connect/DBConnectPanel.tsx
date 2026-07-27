@@ -58,6 +58,7 @@ export function DBConnectPanel({
     updateAccount,
     deleteAccount,
     listDatabases,
+    createDatabase,
     testAccount,
     getDefaultPort,
     fetchAccounts,
@@ -84,6 +85,8 @@ export function DBConnectPanel({
   const [dbPickMode, setDbPickMode] = useState<'connect' | 'import'>('connect');
   const [importingDbName, setImportingDbName] = useState<string | null>(null);
   const [selectedDbName, setSelectedDbName] = useState('');
+  const [newDbName, setNewDbName] = useState('');
+  const [isCreatingDb, setIsCreatingDb] = useState(false);
   const [erdName, setErdName] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('none');
 
@@ -167,6 +170,7 @@ export function DBConnectPanel({
     setAddDbAccount(acc);
     setAvailableDbs([]);
     setSelectedDbName('');
+    setNewDbName('');
     setErdName('');
     setSelectedProjectId('none');
     const dbs = await listDatabases(acc.id);
@@ -177,6 +181,20 @@ export function DBConnectPanel({
   const handleDatabaseChange = (dbName: string) => {
     setSelectedDbName(dbName);
     if (!erdName.trim() || erdName === selectedDbName) setErdName(dbName);
+  };
+
+  const handleCreateDatabase = async () => {
+    if (!addDbAccount || !newDbName.trim()) return;
+    setIsCreatingDb(true);
+    try {
+      const database = await createDatabase(addDbAccount.id, newDbName.trim());
+      if (!database) return;
+      setAvailableDbs(prev => [...prev.filter(db => db.name !== database.name), database].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewDbName('');
+      handleDatabaseChange(database.name);
+    } finally {
+      setIsCreatingDb(false);
+    }
   };
 
   const handleConfirmDatabase = async () => {
@@ -359,29 +377,52 @@ export function DBConnectPanel({
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : availableDbs.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No databases found on <strong>{addDbAccount?.name}</strong>
-              </p>
             ) : (
               <div className="space-y-3">
-                <Field>
-                  <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
-                    Production Database
-                  </FieldLabel>
-                  <SearchableSelect
-                    value={selectedDbName}
-                    onChange={handleDatabaseChange}
-                    items={availableDbs}
-                    placeholder="Select production database"
-                    searchPlaceholder="Search database..."
-                    emptyMessage="No database found"
-                    getItemValue={(db) => db.name}
-                    getItemLabel={(db) => db.isConnected ? `${db.name} (connected)` : db.name}
-                    filterItem={(db, q) => db.name.toLowerCase().includes(q.toLowerCase())}
-                    className="h-9 text-sm"
-                  />
-                </Field>
+                {availableDbs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2 text-center">
+                    No databases found on <strong>{addDbAccount?.name}</strong>
+                  </p>
+                ) : (
+                  <Field>
+                    <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                      Production Database
+                    </FieldLabel>
+                    <SearchableSelect
+                      value={selectedDbName}
+                      onChange={handleDatabaseChange}
+                      items={availableDbs}
+                      placeholder="Select production database"
+                      searchPlaceholder="Search database..."
+                      emptyMessage="No database found"
+                      getItemValue={(db) => db.name}
+                      getItemLabel={(db) => db.isConnected ? `${db.name} (connected)` : db.name}
+                      filterItem={(db, q) => db.name.toLowerCase().includes(q.toLowerCase())}
+                      className="h-9 text-sm"
+                    />
+                  </Field>
+                )}
+                {addDbAccount?.type !== 'sqlite' && (
+                  <Field>
+                    <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                      New Database
+                    </FieldLabel>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newDbName}
+                        onChange={e => setNewDbName(e.target.value)}
+                        placeholder="new_database"
+                        className="h-9"
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && newDbName.trim() && !isCreatingDb) handleCreateDatabase();
+                        }}
+                      />
+                      <Button type="button" variant="outline" className="h-9 shrink-0" onClick={handleCreateDatabase} disabled={!newDbName.trim() || isCreatingDb}>
+                        {isCreatingDb ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Create'}
+                      </Button>
+                    </div>
+                  </Field>
+                )}
                 {dbPickMode === 'import' && (
                   <>
                     <Field>

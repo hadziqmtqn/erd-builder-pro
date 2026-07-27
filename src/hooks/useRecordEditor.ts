@@ -157,6 +157,8 @@ export function useRecordEditor({
     }
   }, [activeTable, deleteRecord, primaryKeyColumns, selectedRows]);
 
+  const clearSelectedRows = useCallback(() => setSelectedRows([]), []);
+
   const resetRecordEditor = useCallback(() => {
     setSelectedRow(null);
     setIsCreatingRecord(false);
@@ -175,6 +177,7 @@ export function useRecordEditor({
     selectedRecordCount: selectedRows.length,
     addRecord,
     cancelCreateRecord,
+    clearSelectedRows,
     removeRecord,
     removeSelectedRecords,
     resetRecordEditor,

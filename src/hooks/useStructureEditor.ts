@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 export type StructureTarget =
   | { kind: 'table' }
+  | { kind: 'addTable' }
   | { kind: 'column'; columnName: string }
   | { kind: 'addColumn' }
   | { kind: 'index'; indexName: string }
@@ -12,10 +13,13 @@ export type StructureDraft = {
   columnName: string;
   columnType: string;
   characterLength: string;
+  numericPrecision: string;
+  numericScale: string;
   isNullable: boolean;
   columnDefault: string;
   columnExtra: string;
   columnComment: string;
+  enumValues: string[];
   fkEnabled: boolean;
   refTable: string;
   refColumn: string;
@@ -25,12 +29,26 @@ export type StructureDraft = {
   indexAlgorithm: string;
 };
 
-const columnType = (column: any) => String(column?.full_type || column?.type || '');
+const columnType = (column: any) => String(column?.full_type === 'USER-DEFINED' ? column?.type : column?.full_type || column?.type || '');
+const parseEnumValues = (value: any) => {
+  if (Array.isArray(value)) return value.map(String);
+  const match = String(value || '').match(/^(?:enum|set)\((.*)\)$/i);
+  if (!match) return [];
+  return [...match[1].matchAll(/'((?:''|[^'])*)'/g)].map(item => item[1].replace(/''/g, "'"));
+};
 const parseLength = (type: string) => type.match(/\((\d+)\)/)?.[1] || '';
+const parsePrecision = (type: string) => {
+  const [, precision = '', scale = ''] = type.match(/\((\d+)(?:\s*,\s*(\d+))?\)/) || [];
+  return { precision, scale };
+};
 const supportsLength = (type: string) => /^(var)?char|^character varying|^(var)?binary$/i.test(type.trim());
-const typeWithLength = (type: string, length: string) => {
-  const cleanType = type.replace(/\(\d+\)/, '').trim();
-  return supportsLength(cleanType) && length ? `${cleanType}(${length})` : cleanType;
+const defaultLength = (type: string) => /^(var)?char|^(var)?binary$/i.test(type.trim()) ? '255' : '';
+const supportsPrecision = (type: string) => /^(decimal|numeric)$/i.test(type.replace(/\(.*/, '').trim());
+const typeWithModifiers = (type: string, length: string, precision: string, scale: string) => {
+  const cleanType = type.replace(/\([^)]*\)/, '').trim();
+  if (supportsLength(cleanType)) return `${cleanType}(${length || defaultLength(cleanType)})`;
+  if (supportsPrecision(cleanType) && precision) return `${cleanType}(${scale ? `${precision},${scale}` : precision})`;
+  return cleanType;
 };
 const normalizeType = (value: string) => value
   .toLowerCase()
@@ -72,6 +90,29 @@ export function useStructureEditor(
   }, [activeTableSchema, target]);
 
   useEffect(() => {
+    if (target?.kind === 'addTable') {
+      setDraft({
+        tableName: '',
+        columnName: 'id',
+        columnType: 'BIGINT',
+        characterLength: '',
+        numericPrecision: '',
+        numericScale: '',
+        isNullable: false,
+        columnDefault: '',
+        columnExtra: '',
+        columnComment: '',
+        enumValues: [],
+        fkEnabled: false,
+        refTable: '',
+        refColumn: '',
+        indexName: '',
+        indexColumns: [],
+        indexUnique: false,
+        indexAlgorithm: '',
+      });
+      return;
+    }
     if (!activeTableSchema || !target) {
       setDraft(null);
       return;
@@ -83,15 +124,19 @@ export function useStructureEditor(
     const index = target.kind === 'index'
       ? activeTableSchema.indexes?.find((item: any) => item.name === target.indexName)
       : null;
+    const precision = parsePrecision(columnType(column));
     setDraft({
       tableName: activeTableSchema.table_name || '',
       columnName: column?.name || '',
       columnType: columnType(column),
       characterLength: String(column?.max_length || parseLength(columnType(column)) || ''),
+      numericPrecision: String(column?.numeric_precision || precision.precision || ''),
+      numericScale: String(column?.numeric_scale || precision.scale || ''),
       isNullable: Boolean(column?.is_nullable),
       columnDefault: column?.column_default ?? '',
       columnExtra: column?.extra ?? '',
       columnComment: column?.comment ?? '',
+      enumValues: parseEnumValues(column?.enum_values),
       fkEnabled: Boolean(fk),
       refTable: fk?.ref_table || '',
       refColumn: fk?.ref_column || '',
@@ -103,7 +148,9 @@ export function useStructureEditor(
   }, [activeTableSchema, target]);
 
   const isDirty = useMemo(() => {
-    if (!activeTableSchema || !target || !draft) return false;
+    if (!target || !draft) return false;
+    if (target.kind === 'addTable') return Boolean(draft.tableName.trim() && draft.columnName.trim() && draft.columnType.trim());
+    if (!activeTableSchema) return false;
     if (draft.tableName !== activeTableSchema.table_name) return true;
     if (target.kind === 'addColumn') return Boolean(draft.columnName.trim() && draft.columnType.trim());
     if (target.kind === 'addIndex') return Boolean(draft.indexName.trim() && draft.indexColumns.length > 0);
@@ -115,11 +162,12 @@ export function useStructureEditor(
     }
     if (target.kind !== 'column' || !selectedColumn) return false;
     return draft.columnName !== selectedColumn.name ||
-      typeWithLength(draft.columnType, draft.characterLength) !== typeWithLength(columnType(selectedColumn), String(selectedColumn.max_length || parseLength(columnType(selectedColumn)) || '')) ||
+      typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale) !== typeWithModifiers(columnType(selectedColumn), String(selectedColumn.max_length || parseLength(columnType(selectedColumn)) || ''), String(selectedColumn.numeric_precision || parsePrecision(columnType(selectedColumn)).precision || ''), String(selectedColumn.numeric_scale || parsePrecision(columnType(selectedColumn)).scale || '')) ||
       draft.isNullable !== Boolean(selectedColumn.is_nullable) ||
       draft.columnDefault !== (selectedColumn.column_default ?? '') ||
       draft.columnExtra !== (selectedColumn.extra ?? '') ||
       draft.columnComment !== (selectedColumn.comment ?? '') ||
+      draft.enumValues.join('\u0000') !== parseEnumValues(selectedColumn.enum_values).join('\u0000') ||
       draft.fkEnabled !== Boolean(currentFk) ||
       draft.refTable !== (currentFk?.ref_table || '') ||
       draft.refColumn !== (currentFk?.ref_column || '');
@@ -131,19 +179,32 @@ export function useStructureEditor(
   }, [draft?.columnType, draft?.refTable, tables]);
 
   const save = useCallback(async () => {
-    if (!activeTableSchema || !target || !draft || !isDirty) return;
+    if (!target || !draft || !isDirty) return;
     setIsSaving(true);
     try {
       await updateStructure({
+        createTable: target.kind === 'addTable' ? {
+          name: draft.tableName,
+          column: {
+            name: draft.columnName,
+            type: typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
+            is_nullable: draft.isNullable,
+            column_default: draft.columnDefault,
+            extra: draft.columnExtra,
+            comment: draft.columnComment,
+            enum_values: draft.enumValues,
+          },
+        } : undefined,
         tableName: draft.tableName,
         columnName: target.kind === 'column' ? target.columnName : target.kind === 'addColumn' ? '__new__' : undefined,
         column: target.kind === 'column' || target.kind === 'addColumn' ? {
           name: draft.columnName,
-          type: typeWithLength(draft.columnType, draft.characterLength),
+          type: typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
           is_nullable: draft.isNullable,
           column_default: draft.columnDefault,
           extra: draft.columnExtra,
           comment: draft.columnComment,
+          enum_values: draft.enumValues,
         } : undefined,
         foreignKey: target.kind === 'column' || target.kind === 'addColumn' ? {
           enabled: draft.fkEnabled,
@@ -158,12 +219,13 @@ export function useStructureEditor(
           algorithm: draft.indexAlgorithm,
         } : undefined,
       });
+      if (target.kind === 'addTable') setTarget(null);
       if (target.kind === 'addColumn' || target.kind === 'column') setTarget({ kind: 'column', columnName: draft.columnName });
       if (target.kind === 'addIndex' || target.kind === 'index') setTarget({ kind: 'index', indexName: draft.indexName });
     } finally {
       setIsSaving(false);
     }
-  }, [activeTableSchema, draft, isDirty, target, updateStructure]);
+  }, [draft, isDirty, target, updateStructure]);
 
   return {
     target,
@@ -177,6 +239,7 @@ export function useStructureEditor(
     editTable: () => setTarget({ kind: 'table' }),
     editColumn: (columnName: string) => setTarget({ kind: 'column', columnName }),
     addColumn: () => setTarget({ kind: 'addColumn' }),
+    addTable: () => setTarget({ kind: 'addTable' }),
     editIndex: (indexName: string) => setTarget({ kind: 'index', indexName }),
     addIndex: () => setTarget({ kind: 'addIndex' }),
     close: () => setTarget(null),

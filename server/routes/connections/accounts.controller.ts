@@ -4,6 +4,9 @@ import { encrypt } from "../../lib/crypto.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildConnectionInfo, maskPassword } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
+import { quoteIdentifier } from "./record-helpers.js";
+
+const DATABASE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_$-]{0,62}$/;
 
 export async function listAccounts(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
@@ -229,5 +232,53 @@ export async function listDatabases(req: ExpressRequest, res: ExpressResponse) {
   } catch (err: any) {
     console.error("Error listing databases:", err);
     res.status(500).json({ error: `Failed to list databases: ${err.message}` });
+  }
+}
+
+export async function createDatabase(req: ExpressRequest, res: ExpressResponse) {
+  const userId = (req as any).user.id;
+  const { id } = req.params;
+  const name = String(req.body?.name || "").trim();
+
+  if (!DATABASE_NAME_RE.test(name)) {
+    return res.status(400).json({ error: "Invalid database name" });
+  }
+
+  try {
+    const account = await accountsService.findAccountById(id, userId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const type = (account as any).type;
+    if (type !== "postgresql" && type !== "mysql") {
+      return res.status(400).json({ error: "Creating databases is not supported for this type" });
+    }
+
+    const connector = getConnector(type);
+    const { client, release } = await connector.connect(buildConnectionInfo({
+      type,
+      host: (account as any).host,
+      port: (account as any).port,
+      user: (account as any).user,
+      password: (account as any).password,
+      database: type === "postgresql" ? "postgres" : "information_schema",
+    }));
+
+    try {
+      if (type === "postgresql") {
+        const exists = await (client as any).query("SELECT 1 FROM pg_database WHERE datname = $1", [name]);
+        if (exists.rowCount > 0) return res.status(409).json({ error: "Database already exists" });
+        await (client as any).query(`CREATE DATABASE ${quoteIdentifier(type, name)}`);
+      } else {
+        const [rows] = await (client as any).execute("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?", [name]);
+        if ((rows as any[]).length > 0) return res.status(409).json({ error: "Database already exists" });
+        await (client as any).execute(`CREATE DATABASE ${quoteIdentifier(type, name)}`);
+      }
+      res.status(201).json({ name, isConnected: false });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    console.error("Error creating database:", err);
+    res.status(500).json({ error: `Failed to create database: ${err.message}` });
   }
 }

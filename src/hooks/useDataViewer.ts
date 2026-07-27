@@ -254,19 +254,22 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [activeTable, connectionId, fetchRecords, page]);
 
   const updateStructure = useCallback(async (patch: Record<string, any>) => {
-    if (!connectionId || !activeTable) return;
+    const targetTable = activeTable || (patch.createTable ? '__new__' : null);
+    if (!connectionId || !targetTable) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/structure`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table: activeTable, ...patch }),
+      body: JSON.stringify({ table: targetTable, ...patch }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update structure');
-    const nextTable = patch.tableName || activeTable;
+    const nextTable = patch.createTable?.name || patch.tableName || activeTable;
     setActiveTable(nextTable);
-    setOpenTabs(prev => prev.map(tab => tab.name === activeTable ? { ...tab, name: nextTable, pinned: true } : tab));
-    pageByTableRef.current[nextTable] = pageByTableRef.current[activeTable] ?? page;
-    if (nextTable !== activeTable) delete pageByTableRef.current[activeTable];
+    setOpenTabs(prev => prev.some(tab => tab.name === nextTable)
+      ? prev.map(tab => tab.name === activeTable ? { ...tab, name: nextTable, pinned: true } : tab)
+      : [...prev, { name: nextTable, pinned: true }]);
+    pageByTableRef.current[nextTable] = activeTable ? pageByTableRef.current[activeTable] ?? page : 1;
+    if (activeTable && nextTable !== activeTable) delete pageByTableRef.current[activeTable];
     await fetchTables();
     fetchRecords(nextTable, pageByTableRef.current[nextTable] ?? page);
     return data;
