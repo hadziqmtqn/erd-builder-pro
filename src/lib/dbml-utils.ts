@@ -12,7 +12,7 @@ interface TableParseResult {
 
 const TABLE_HEADER_RE = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{/i;
 const ENUM_HEADER_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{/i;
-const COLUMN_DEF_RE = /^\s*(?:"([^"]+)"|(\w+))\s+(\[[^\]]+\]|"[^"]+"|[^\s\[]+)/;
+const COLUMN_DEF_RE = /^\s*(?:"([^"]+)"|(\w+))\s+(\[[^\]]+\]|"[^"]+"|[A-Za-z_][\w]*(?:\s*\([^)]*\))?|[^\s\[]+)/;
 const STANDALONE_REF_RE = /^\s*Ref:\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?/i;
 const INLINE_REF_RE = /\[\s*ref\s*:\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".\]]+)"?\s*\]/i;
 const ENUM_BLOCK_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{[\s\S]*?^\s*\}/gim;
@@ -45,6 +45,11 @@ export function parseDBMLColumn(line: string): { name: string; type: string } | 
     name: (match[1] || match[2] || '').trim(),
     type: match[3].replace(/\[.*/, '').trim(),
   };
+}
+
+export function normalizeDBMLTypeName(typeName: string): string {
+  const match = typeName.trim().match(/^([A-Za-z][\w]*)\s*\([^)]*\)$/);
+  return match ? match[1] : typeName.trim();
 }
 
 export function readDBMLEnumNames(lines: string[]): Set<string> {

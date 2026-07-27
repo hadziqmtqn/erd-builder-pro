@@ -400,6 +400,10 @@ function AppLayoutInner() {
             return { ...nc, id: ec.id,
               enum_name: nc.enum_name || ec.enum_name,
               enum_values: nc.enum_values || ec.enum_values,
+              comment: nc.comment || ec.comment,
+              max_length: nc.max_length ?? ec.max_length,
+              numeric_precision: nc.numeric_precision ?? ec.numeric_precision,
+              numeric_scale: nc.numeric_scale ?? ec.numeric_scale,
               type: (ec.type.toUpperCase() === 'ENUM' && ec.enum_values && nc.type.toUpperCase() !== 'ENUM')
                 ? ec.type : nc.type };
           }
@@ -452,7 +456,9 @@ function AppLayoutInner() {
         return n.data.columns.every((c, j) => {
           const cc = cur.data.columns[j];
           return c.name === cc?.name && c.type === cc?.type &&
-            c.is_pk === cc?.is_pk && c.is_nullable === cc?.is_nullable;
+            c.is_pk === cc?.is_pk && c.is_nullable === cc?.is_nullable &&
+            c.comment === cc?.comment && c.max_length === cc?.max_length &&
+            c.numeric_precision === cc?.numeric_precision && c.numeric_scale === cc?.numeric_scale;
         });
       });
     // Compare edges by sorted canonical keys (table names, not UUIDs)

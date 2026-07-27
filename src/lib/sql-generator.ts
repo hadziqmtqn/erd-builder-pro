@@ -1,13 +1,15 @@
 import { Entity } from '../types';
+import { supportsColumnLength } from './column-metadata';
 
 export type SQLType = 'mysql' | 'postgresql' | 'laravel';
 
-function mapType(type: string, target: SQLType): string {
+function mapType(type: string, target: SQLType, maxLength?: number | null, precision?: number | null, scale?: number | null): string {
   const t = type.toLowerCase();
+  const decimal = precision ? `DECIMAL(${precision}${scale !== null && scale !== undefined ? `,${scale}` : ''})` : 'DECIMAL(10,2)';
   
   if (target === 'mysql') {
     switch (t) {
-      case 'varchar': return 'VARCHAR(255)';
+      case 'varchar': return `VARCHAR(${maxLength || 255})`;
       case 'integer':
       case 'int': return 'INT';
       case 'bigint': return 'BIGINT';
@@ -18,7 +20,8 @@ function mapType(type: string, target: SQLType): string {
       case 'timestamp': return 'TIMESTAMP';
       case 'datetime': return 'DATETIME';
       case 'date': return 'DATE';
-      case 'decimal': return 'DECIMAL(10,2)';
+      case 'decimal':
+      case 'numeric': return decimal;
       case 'float': return 'FLOAT';
       case 'uuid': return 'VARCHAR(36)';
       case 'ulid': return 'CHAR(26)';
@@ -29,7 +32,7 @@ function mapType(type: string, target: SQLType): string {
   
   if (target === 'postgresql') {
     switch (t) {
-      case 'varchar': return 'VARCHAR(255)';
+      case 'varchar': return `VARCHAR(${maxLength || 255})`;
       case 'integer':
       case 'int': return 'INTEGER';
       case 'bigint': return 'BIGINT';
@@ -40,7 +43,8 @@ function mapType(type: string, target: SQLType): string {
       case 'timestamp': return 'TIMESTAMP';
       case 'datetime': return 'TIMESTAMP';
       case 'date': return 'DATE';
-      case 'decimal': return 'DECIMAL(10,2)';
+      case 'decimal':
+      case 'numeric': return decimal;
       case 'float': return 'REAL';
       case 'uuid': return 'UUID';
       case 'ulid': return 'CHAR(26)';
@@ -79,14 +83,15 @@ export function toPascalCase(str: string, shouldSingularize: boolean = false): s
 export function generateMySQL(entity: Entity): string {
   const tableName = entity.name.toLowerCase();
   const columns = entity.columns.map(col => {
-    const type = mapType(col.type, 'mysql');
+    const type = mapType(col.type, 'mysql', col.max_length, col.numeric_precision, col.numeric_scale);
     const nullable = col.is_nullable ? 'NULL' : 'NOT NULL';
     const pk = col.is_pk ? ' AUTO_INCREMENT PRIMARY KEY' : '';
     const enumValues = col.type.toLowerCase() === 'enum' && col.enum_values 
       ? `ENUM(${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')})`
       : type;
+    const comment = col.comment ? ` COMMENT '${col.comment.replace(/'/g, "''")}'` : '';
       
-    return `  \`${col.name}\` ${enumValues} ${nullable}${pk}`;
+    return `  \`${col.name}\` ${enumValues} ${nullable}${pk}${comment}`;
   }).join(',\n');
 
   return `CREATE TABLE \`${tableName}\` (\n${columns}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`;
@@ -94,8 +99,9 @@ export function generateMySQL(entity: Entity): string {
 
 export function generatePostgreSQL(entity: Entity): string {
   const tableName = entity.name.toLowerCase();
+  const comments: string[] = [];
   const columns = entity.columns.map(col => {
-    const type = mapType(col.type, 'postgresql');
+    const type = mapType(col.type, 'postgresql', col.max_length, col.numeric_precision, col.numeric_scale);
     const nullable = col.is_nullable ? 'NULL' : 'NOT NULL';
     
     let columnType = type;
@@ -108,13 +114,15 @@ export function generatePostgreSQL(entity: Entity): string {
     // Handle ENUM for PG (simplified to CHECK constraint for direct SQL export)
     if (col.type.toLowerCase() === 'enum' && col.enum_values) {
       const values = col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ');
-      return `  "${col.name}" VARCHAR(255) ${nullable}${pk} CHECK ("${col.name}" IN (${values}))`;
+      if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
+      return `  "${col.name}" VARCHAR(${col.max_length || 255}) ${nullable}${pk} CHECK ("${col.name}" IN (${values}))`;
     }
       
+    if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
     return `  "${col.name}" ${columnType} ${nullable}${pk}`;
   }).join(',\n');
 
-  return `CREATE TABLE "${tableName}" (\n${columns}\n);`;
+  return `CREATE TABLE "${tableName}" (\n${columns}\n);${comments.length ? `\n\n${comments.join('\n')}` : ''}`;
 }
 
 export function generateLaravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
@@ -149,7 +157,7 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
           case 'timestamp': method = 'timestamp'; break;
           case 'datetime': method = 'dateTime'; break;
           case 'date': method = 'date'; break;
-          case 'decimal': method = 'decimal'; args = `'${col.name}', 10, 2`; break;
+          case 'decimal': method = 'decimal'; args = `'${col.name}', ${col.numeric_precision || 10}, ${col.numeric_scale ?? 2}`; break;
           case 'float': method = 'float'; break;
           case 'uuid': method = 'uuid'; break;
           case 'ulid': method = 'ulid'; break;
@@ -161,9 +169,11 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
           default: method = 'string';
         }
       }
+      if (method === 'string' && col.max_length && supportsColumnLength(col.type)) args = `'${col.name}', ${col.max_length}`;
 
       let chain = `$table->${method}(${args})`;
       if (col.is_nullable && !col.is_pk) chain += '->nullable()';
+      if (col.comment) chain += `->comment('${col.comment.replace(/'/g, "\\'")}')`;
       
       return `    ${chain};`;
     }).join('\n');
@@ -521,6 +531,9 @@ export function generateZod(entity: Entity): string {
       default: zod = 'z.string()';
     }
 
+    if (supportsColumnLength(t)) {
+      if (col.max_length) zod += `.max(${col.max_length})`;
+    }
     if (col.is_nullable) zod += '.nullable().optional()';
     
     return `  ${col.name}: ${zod},`;

@@ -1,7 +1,7 @@
 import { prisma } from "./prisma.js";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.js";
-import { isDesktopMode } from "./config.js";
+import { isDesktopMode, isLocalPostgres } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 
 type PrismaRecord = { id: number | bigint | string };
@@ -80,6 +80,21 @@ export type ColumnInfo = {
 async function getColumns(table: string): Promise<ColumnInfo[]> {
   if (!prisma) return [];
   try {
+    if (isLocalPostgres()) {
+      const rows: any[] = await prisma.$queryRawUnsafe(
+        `SELECT column_name AS name, data_type AS type, is_nullable, column_default
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1`,
+        table,
+      );
+      return rows.map((r: any) => ({
+        name: r.name,
+        type: (r.type || "TEXT").toUpperCase(),
+        notnull: r.is_nullable === "NO",
+        dflt_value: r.column_default,
+        pk: false,
+      }));
+    }
     const rows: any[] = await prisma.$queryRawUnsafe(
       `PRAGMA table_info("${table}")`,
     );
@@ -341,9 +356,8 @@ async function ensureColumnType(
  *   // castExpr is optional — omit if existing data is compatible (e.g. TEXT→VARCHAR)
  */
 export async function applySchemaMigrations(): Promise<void> {
-  // SQLite-only: PRAGMA & ALTER TABLE ADD COLUMN used below
-  // Web (PostgreSQL/Supabase) uses standard `prisma migrate` for schema changes
-  if (!prisma || !isDesktopMode()) return;
+  // Supabase uses managed migrations. Installed SQLite/CLI Postgres self-heal here.
+  if (!prisma || (!isDesktopMode() && !isLocalPostgres())) return;
 
   // v2.4+ — destinations column on backups table
   await addColumnIfMissing("backups", "destinations", "destinations TEXT");
@@ -351,6 +365,12 @@ export async function applySchemaMigrations(): Promise<void> {
   // v3.1.4+ — persist DBML source alongside ERD canvas data
   await addColumnIfMissing("diagrams", "dbml_source", '"dbml_source" TEXT');
 
+  // v3.2+ — ERD column comments and type modifier metadata.
+  await addColumnIfMissing("columns", "comment", '"comment" TEXT');
+  await addColumnIfMissing("columns", "max_length", '"max_length" INTEGER');
+  await addColumnIfMissing("columns", "numeric_precision", '"numeric_precision" INTEGER');
+  await addColumnIfMissing("columns", "numeric_scale", '"numeric_scale" INTEGER');
+
   // v3.1.4+ — normalize old random column ids and keep relationships wired.
-  await normalizeLegacyColumnIds();
+  if (isDesktopMode()) await normalizeLegacyColumnIds();
 }

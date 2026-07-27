@@ -272,7 +272,7 @@ export const AIChatPanel = ({
             if (entities.length > 0) {
               const entityLines = entities.map((e: any) => {
                 const colStr = (e.columns || [])
-                  .map((c: any) => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}`)
+                  .map((c: any) => `${c.name}: ${c.type}${c.max_length ? `(${c.max_length})` : c.numeric_precision ? `(${c.numeric_precision}${c.numeric_scale !== null && c.numeric_scale !== undefined ? `,${c.numeric_scale}` : ''})` : ''}${c.is_pk ? ' PK' : ''}${c.comment ? ` -- ${c.comment}` : ''}`)
                   .join(', ');
                 return `    - Table: ${e.name} (${colStr})`;
               }).join('\n');

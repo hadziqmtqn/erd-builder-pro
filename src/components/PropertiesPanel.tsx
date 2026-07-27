@@ -9,6 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ColumnTypeSelect } from './ColumnTypeSelect';
+import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
+
+const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+
+const optionalInt = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
 
 interface PropertiesPanelProps {
   selectedEntity: Entity | null;
@@ -173,6 +183,13 @@ export default function PropertiesPanel({
       // Use trimmed name
       updates = { ...updates, name: newName };
     }
+    if ('type' in updates) {
+      updates = {
+        ...updates,
+        ...(!supportsColumnLength(updates.type) && { max_length: null }),
+        ...(!supportsNumericPrecision(updates.type) && { numeric_precision: null, numeric_scale: null }),
+      };
+    }
     const updated = {
       ...editingEntity,
       columns: editingEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
@@ -224,7 +241,7 @@ export default function PropertiesPanel({
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Theme Color</Label>
             <div className="flex flex-wrap gap-2 pt-1">
-              {['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
+              {THEME_COLORS.map(color => (
                 <button
                   key={color}
                   onClick={() => handleColorChange(color)}
@@ -235,6 +252,24 @@ export default function PropertiesPanel({
                   style={{ backgroundColor: color }}
                 />
               ))}
+              <label
+                className={cn(
+                  "relative w-7 h-7 rounded-full border-2 transition-all shadow-sm cursor-pointer ring-offset-background focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                  !THEME_COLORS.includes(editingEntity.color) ? "border-foreground scale-110 shadow-md" : "hover:scale-105"
+                )}
+                style={{
+                  borderColor: !THEME_COLORS.includes(editingEntity.color) ? undefined : editingEntity.color,
+                  backgroundColor: !THEME_COLORS.includes(editingEntity.color) ? editingEntity.color : 'transparent',
+                }}
+                title="Custom color"
+              >
+                <Input
+                  type="color"
+                  value={editingEntity.color}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </label>
             </div>
           </div>
         </section>
@@ -263,119 +298,162 @@ export default function PropertiesPanel({
           </Button>
         </div>
 
-      <section className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3 min-h-0">
-        <div className="space-y-3">
+      <section className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2 min-h-0">
+        <div className="space-y-2">
           {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col, index, arr) => (
-            <Card key={col.id} className="p-3 bg-muted/10 space-y-3 border border-border/30 shadow-none hover:border-primary/30 transition-all">
-              <div className="flex items-start gap-3">
-                {/* Re-order Controls (Always Visible) */}
-                <div className="flex flex-col gap-1 mt-1">
+            <Card key={col.id} className="p-2.5 bg-muted/10 space-y-2 border border-border/30 shadow-none hover:border-primary/30 transition-all">
+              <div className="flex items-center gap-1.5">
+                <div className="flex shrink-0">
                   <Button 
                     variant="ghost" 
                     size="icon"
                     disabled={index === 0}
                     onClick={() => moveColumn(col.id, 'up')}
-                    className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                    className="h-7 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                    title="Move up"
                   >
-                    <ChevronUp className="w-4 h-4" />
+                    <ChevronUp className="w-3.5 h-3.5" />
                   </Button>
                   <Button 
                     variant="ghost" 
                     size="icon"
                     disabled={index === arr.length - 1}
                     onClick={() => moveColumn(col.id, 'down')}
-                    className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                    className="h-7 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
+                    title="Move down"
                   >
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="w-3.5 h-3.5" />
                   </Button>
                 </div>
 
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      ref={(el) => {
-                        if (el && col.id === lastAddedIdRef.current) {
-                          el.focus();
-                          el.select();
-                          lastAddedIdRef.current = null;
-                        }
-                      }}
-                      placeholder="Column name"
-                      value={col.name}
-                      onChange={(e) => updateColumnLocal(col.id, { name: e.target.value })}
-                      onBlur={(e) => updateColumnSync(col.id, { name: e.target.value })}
-                      className="h-8 text-xs font-bold bg-background/50 border-border/50 focus-visible:ring-1 shadow-sm transition-all"
-                    />
-                    <Button 
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setConfirmModal({
-                        isOpen: true,
-                        title: 'Delete Column',
-                        message: `Are you sure you want to delete the column "${col.name}"?`,
-                        onConfirm: () => {
-                          deleteColumn(col.id);
-                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        }
-                      })}
-                      className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10 shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <ColumnTypeSelect
-                        value={col.type}
-                        onValueChange={(value) => updateColumnSync(col.id, { type: value }, true)}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant={col.is_pk ? "default" : "outline"}
-                        size="icon"
-                        onClick={() => updateColumnSync(col.id, { is_pk: !col.is_pk }, true)}
-                        className={cn(
-                          "h-8 w-8 transition-all",
-                          col.is_pk ? "bg-yellow-500 hover:bg-yellow-600 text-white" : "text-muted-foreground hover:text-foreground bg-background/50"
-                        )}
-                        title="Primary Key"
-                      >
-                        <Key className="w-3.5 h-3.5" />
-                      </Button>
-
-                      <Button
-                        variant={!col.is_nullable ? "default" : "outline"}
-                        size="icon"
-                        onClick={() => updateColumnSync(col.id, { is_nullable: !col.is_nullable }, true)}
-                        className={cn(
-                          "h-8 w-8 transition-all",
-                          !col.is_nullable ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "text-muted-foreground hover:text-foreground bg-background/50"
-                        )}
-                        title="Not Null"
-                      >
-                        {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {col.type === 'ENUM' && (
-                    <div className="space-y-1.5 animate-in slide-in-from-top-1 duration-200">
-                      <Label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Enum Values</Label>
-                      <Input
-                        type="text"
-                        value={col.enum_values || ''}
-                        onChange={(e) => updateColumnLocal(col.id, { enum_values: e.target.value })}
-                        onBlur={() => syncWithParent(editingEntity)}
-                        placeholder="active, inactive..."
-                        className="h-7 text-[10px] bg-background/50 border-border/50"
-                      />
-                    </div>
-                  )}
-                </div>
+                <Input
+                  ref={(el) => {
+                    if (el && col.id === lastAddedIdRef.current) {
+                      el.focus();
+                      el.select();
+                      lastAddedIdRef.current = null;
+                    }
+                  }}
+                  placeholder="Column name"
+                  value={col.name}
+                  onChange={(e) => updateColumnLocal(col.id, { name: e.target.value })}
+                  onBlur={(e) => updateColumnSync(col.id, { name: e.target.value })}
+                  className="h-8 min-w-0 flex-1 text-xs font-bold bg-background/50 border-border/50 focus-visible:ring-1 shadow-sm transition-all"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Column',
+                    message: `Are you sure you want to delete the column "${col.name}"?`,
+                    onConfirm: () => {
+                      deleteColumn(col.id);
+                      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    }
+                  })}
+                  className="h-8 w-8 text-destructive/70 hover:text-destructive hover:bg-destructive/10 shrink-0"
+                  title="Delete column"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
+
+              <div className={cn(
+                "grid gap-1.5",
+                supportsNumericPrecision(col.type)
+                  ? "grid-cols-[minmax(0,1fr)_3.75rem_3.75rem_2rem_2rem]"
+                  : supportsColumnLength(col.type)
+                    ? "grid-cols-[minmax(0,1fr)_3.75rem_2rem_2rem]"
+                    : "grid-cols-[minmax(0,1fr)_2rem_2rem]"
+              )}>
+                <ColumnTypeSelect
+                  value={col.type}
+                  onValueChange={(value) => updateColumnSync(col.id, { type: value }, true)}
+                  className="min-w-0"
+                />
+
+                {supportsColumnLength(col.type) && (
+                  <Input
+                    type="number"
+                    min={1}
+                    value={col.max_length ?? ''}
+                    onChange={(e) => updateColumnLocal(col.id, { max_length: optionalInt(e.target.value) })}
+                    onBlur={(e) => updateColumnSync(col.id, { max_length: optionalInt(e.target.value) })}
+                    placeholder="Max"
+                    className="h-8 px-2 text-[10px] bg-background/50 border-border/50"
+                  />
+                )}
+
+                {supportsNumericPrecision(col.type) && (
+                  <>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={col.numeric_precision ?? ''}
+                    onChange={(e) => updateColumnLocal(col.id, { numeric_precision: optionalInt(e.target.value) })}
+                    onBlur={(e) => updateColumnSync(col.id, { numeric_precision: optionalInt(e.target.value) })}
+                    placeholder="Prec"
+                    className="h-8 px-2 text-[10px] bg-background/50 border-border/50"
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    value={col.numeric_scale ?? ''}
+                    onChange={(e) => updateColumnLocal(col.id, { numeric_scale: optionalInt(e.target.value) })}
+                    onBlur={(e) => updateColumnSync(col.id, { numeric_scale: optionalInt(e.target.value) })}
+                    placeholder="Scale"
+                    className="h-8 px-2 text-[10px] bg-background/50 border-border/50"
+                  />
+                  </>
+                )}
+
+                <Button
+                  variant={col.is_pk ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => updateColumnSync(col.id, { is_pk: !col.is_pk }, true)}
+                  className={cn(
+                    "h-8 w-8 transition-all",
+                    col.is_pk ? "bg-yellow-500 hover:bg-yellow-600 text-white" : "text-muted-foreground hover:text-foreground bg-background/50"
+                  )}
+                  title="Primary Key"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                </Button>
+
+                <Button
+                  variant={!col.is_nullable ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => updateColumnSync(col.id, { is_nullable: !col.is_nullable }, true)}
+                  className={cn(
+                    "h-8 w-8 transition-all",
+                    !col.is_nullable ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "text-muted-foreground hover:text-foreground bg-background/50"
+                  )}
+                  title="Not Null"
+                >
+                  {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
+
+              <Input
+                type="text"
+                value={col.comment || ''}
+                onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
+                onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
+                placeholder="Comment"
+                className="h-8 text-[10px] bg-background/50 border-border/50"
+              />
+
+              {col.type === 'ENUM' && (
+                <Input
+                  type="text"
+                  value={col.enum_values || ''}
+                  onChange={(e) => updateColumnLocal(col.id, { enum_values: e.target.value })}
+                  onBlur={() => syncWithParent(editingEntity)}
+                  placeholder="Enum values: active, inactive..."
+                  className="h-8 text-[10px] bg-background/50 border-border/50"
+                />
+              )}
             </Card>
           ))}
           <div ref={scrollRef} />

@@ -216,6 +216,10 @@ model Column {
   isPk       Boolean?  @default(false) @map("is_pk")
   isNullable Boolean?  @default(true) @map("is_nullable")
   enumValues String?   @map("enum_values")
+  comment    String?
+  maxLength  Int?      @map("max_length")
+  numericPrecision Int? @map("numeric_precision")
+  numericScale Int? @map("numeric_scale")
   sortOrder  Int?      @default(0) @map("sort_order")
   createdAt  DateTime? @default(now()) @map("created_at")
   entity     Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -402,5 +406,3 @@ model UserPreference {
 
   @@map("user_preferences")
 }
-
-

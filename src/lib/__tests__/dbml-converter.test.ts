@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { dbmlToERD } from '../dbml-converter';
-import { dedupeDBMLEnumBlocks, parseDBMLRef } from '../dbml-utils';
+import { dbmlToERD, erdToDBML } from '../dbml-converter';
+import { dedupeDBMLEnumBlocks, normalizeDBMLTypeName, parseDBMLColumn, parseDBMLRef } from '../dbml-utils';
 
 describe('dbmlToERD', () => {
+  it('normalizes DBML type modifiers for editor validation', () => {
+    const column = parseDBMLColumn('  amount DECIMAL(10, 2) [not null]');
+
+    expect(column?.type).toBe('DECIMAL(10, 2)');
+    expect(normalizeDBMLTypeName(column?.type || '')).toBe('DECIMAL');
+  });
+
   it('throws on inline ref type mismatch with the local FK column name', () => {
     const dbml = `Table users {
   id uuid [pk]
@@ -88,6 +95,31 @@ Table login_logs {
     expect(result.nodes[0].data.name).toBe('users');
     expect(result.nodes[0].data.columns.map(column => column.name)).toEqual(['id', 'name']);
     expect(result.edges).toHaveLength(0);
+  });
+
+  it('round-trips column comment and max length through DBML', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  email VARCHAR(100) [not null, note: 'Harus unik']
+}`;
+
+    const result = dbmlToERD(dbml);
+    const email = result.nodes[0].data.columns.find(column => column.name === 'email');
+    expect(email?.comment).toBe('Harus unik');
+    expect(email?.max_length).toBe(100);
+    expect(erdToDBML(result.nodes, result.edges)).toContain("email VARCHAR(100) [not null, note: 'Harus unik']");
+  });
+
+  it('round-trips decimal precision and scale through DBML', () => {
+    const dbml = `Table orders {
+  amount DECIMAL(10,2) [not null]
+}`;
+
+    const result = dbmlToERD(dbml);
+    const amount = result.nodes[0].data.columns.find(column => column.name === 'amount');
+    expect(amount?.numeric_precision).toBe(10);
+    expect(amount?.numeric_scale).toBe(2);
+    expect(erdToDBML(result.nodes, result.edges)).toContain('amount DECIMAL(10,2) [not null]');
   });
 
   it('rejects enum names that do not match table_column', () => {

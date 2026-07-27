@@ -263,6 +263,9 @@ export async function getDiagramWithData(uid: string, userId: string) {
         columns: columns.map((column: any) => ({
           ...column,
           enum_values: column.enumValues ?? column.enum_values ?? '',
+          max_length: column.maxLength ?? column.max_length ?? null,
+          numeric_precision: column.numericPrecision ?? column.numeric_precision ?? null,
+          numeric_scale: column.numericScale ?? column.numeric_scale ?? null,
         })),
       };
     })
@@ -317,6 +320,10 @@ export async function createDiagramFromDB(data: {
       type: c.type,
       is_pk: !!c.is_pk,
       is_nullable: !!c.is_nullable,
+      comment: c.comment || "",
+      max_length: c.max_length ?? null,
+      numeric_precision: c.numeric_precision ?? null,
+      numeric_scale: c.numeric_scale ?? null,
       sort_order: c.sort_order || 0,
       _is_fk: (t.foreign_keys || []).some((fk: any) => fk.column === c.name),
     })),

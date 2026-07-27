@@ -143,6 +143,10 @@ CREATE TABLE "columns" (
     "is_pk" BOOLEAN DEFAULT false,
     "is_nullable" BOOLEAN DEFAULT true,
     "enum_values" TEXT,
+    "comment" TEXT,
+    "max_length" INTEGER,
+    "numeric_precision" INTEGER,
+    "numeric_scale" INTEGER,
     "sort_order" INTEGER DEFAULT 0,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "columns_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION

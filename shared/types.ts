@@ -14,6 +14,10 @@ export interface Column {
   _is_fk?: boolean;
   enum_values?: string;
   enum_name?: string;
+  comment?: string;
+  max_length?: number | null;
+  numeric_precision?: number | null;
+  numeric_scale?: number | null;
   sort_order?: number;
 }
 

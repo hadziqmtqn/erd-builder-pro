@@ -80,7 +80,7 @@ Key capabilities:
 - When creating or modifying ERD/database schemas, provide DBML in \`\`\`dbml blocks
 - If a PRD, note, plan, or documentation includes a database schema section, use DBML for that section unless SQL is explicitly requested
 - Use SQL only when the user explicitly asks for SQL, migrations, DDL, queries, or seed data
-- DBML should use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships
+- DBML should use Table blocks, [pk], [not null], [note: '...'] for column comments, sized types like VARCHAR(100) and DECIMAL(10,2) when modifiers matter, Enum blocks when needed, and Ref lines for relationships
 - For flowcharts, provide JSON with nodes/edges in \`\`\`json blocks
 - Be concise and direct in your responses
 - Help users design databases, create flowcharts, and take notes`;

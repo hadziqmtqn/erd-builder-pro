@@ -13,7 +13,7 @@ Database & ERD:
 - When the user asks to CREATE, GENERATE, or MODIFY an ERD/database schema, output DBML inside \`\`\`dbml blocks. ERD Builder can apply DBML to the canvas manually from the assistant message actions.
 - If the answer is a PRD, note, plan, or documentation that includes a database schema section, that schema section must still use DBML in a \`\`\`dbml block unless the user explicitly asks for SQL.
 - Use SQL only when the user explicitly asks for SQL queries, migrations, DDL, or seed data.
-- For DBML: use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
+- For DBML: use Table blocks, [pk], [not null], [note: '...'] for column comments, sized types like VARCHAR(100) and DECIMAL(10,2) when modifiers matter, Enum blocks when needed, and Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
 
 Flowcharts:
 - When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}

@@ -2,10 +2,12 @@ import { Parser, ModelExporter } from '@dbml/core';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { COLUMN_TYPES } from '@/lib/utils';
+import { parseTypeModifiers, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import {
   buildDBMLTableDefinitions,
   findEnumNamingErrors,
+  normalizeDBMLTypeName,
   parseDBMLColumn,
   parseDBMLRef,
   parseDBMLTableName,
@@ -14,11 +16,6 @@ import {
 } from '@/lib/dbml-utils';
 
 const VALID_TYPES = new Set(COLUMN_TYPES.map(t => t.toUpperCase()));
-
-function stripTypeParameters(typeName: string): string {
-  const match = typeName.trim().match(/^([A-Za-z][\w]*)\s*\([^)]*\)$/);
-  return match ? match[1] : typeName.trim();
-}
 
 function parseInlineEnumValues(typeName: string): string[] | null {
   const match = typeName.trim().match(/^enum\s*\(([\s\S]*)\)$/i);
@@ -137,7 +134,7 @@ function normalizeDBMLForParser(text: string): string {
           continue;
         }
 
-        const normalizedType = stripTypeParameters(column.typeName);
+        const normalizedType = normalizeDBMLTypeName(column.typeName);
         if (normalizedType !== column.typeName) {
           normalizedLines.push(`${column.prefix}${normalizedType}${column.suffix}`);
           continue;
@@ -165,6 +162,26 @@ function normalizeDBMLForParser(text: string): string {
   }
 
   return normalizedLines.join('\n').trim();
+}
+
+function readDBMLColumnMetadata(text: string): Map<string, { comment?: string; max_length?: number | null; numeric_precision?: number | null; numeric_scale?: number | null }> {
+  const columns = new Map<string, { comment?: string; max_length?: number | null; numeric_precision?: number | null; numeric_scale?: number | null }>();
+  const tableBlock = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{([\s\S]*?)^\s*\}/gim;
+
+  for (const match of text.matchAll(tableBlock)) {
+    const tableName = (match[1] || match[2]).toLowerCase();
+    for (const line of match[3].split('\n')) {
+      const column = parseColumnLine(line);
+      if (!column) continue;
+      const note = column.suffix.match(/note\s*:\s*(?:'((?:\\'|[^'])*)'|"((?:\\"|[^"])*)")/i);
+      columns.set(`${tableName}\u0000${column.columnName.toLowerCase()}`, {
+        comment: note ? (note[1] || note[2] || '').replace(/\\'/g, "'").replace(/\\"/g, '"') : undefined,
+        ...parseTypeModifiers(column.typeName),
+      });
+    }
+  }
+
+  return columns;
 }
 
 /**
@@ -203,7 +220,7 @@ function findTypeErrors(text: string): string[] {
       const column = parseDBMLColumn(trimmed);
       if (column) {
         const { name: colName, type: typeName } = column;
-        const normalizedTypeName = stripTypeParameters(typeName);
+        const normalizedTypeName = normalizeDBMLTypeName(typeName);
         if (normalizedTypeName && !VALID_TYPES.has(normalizedTypeName.toUpperCase()) && !enumNames.has(normalizedTypeName.toLowerCase())) {
           errors.push(
             `Line ${lineNum}: Invalid type "${typeName}" in table "${currentTable}" column "${colName}"`,
@@ -322,8 +339,16 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   // marker and values from the authoritative DBML table definitions.
   const enums = readDBMLEnums(normalizedDBML);
   const enumColumns = readDBMLEnumColumns(normalizedDBML, enums);
+  const columnMetadata = readDBMLColumnMetadata(dbmlText);
   for (const node of result.nodes) {
     for (const column of node.data.columns) {
+      const metadata = columnMetadata.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
+      if (metadata) {
+        column.comment = metadata.comment || '';
+        column.max_length = metadata.max_length;
+        column.numeric_precision = metadata.numeric_precision;
+        column.numeric_scale = metadata.numeric_scale;
+      }
       const enumColumn = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
       if (enumColumn) {
         column.type = 'ENUM';
@@ -386,11 +411,12 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       const settings: string[] = [];
       if (col.is_pk) settings.push('pk');
       if (col.is_nullable === false) settings.push('not null');
+      if (col.comment) settings.push(`note: '${col.comment.replace(/'/g, "\\'")}'`);
       const suffix = settings.length ? ` [${settings.join(', ')}]` : '';
       const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
       // Use enum name instead of raw ENUM type
       const enumName = colEnumName.get(`${node.id}:${col.id}`);
-      const colType = enumName ? formatIdentifier(enumName) : col.type;
+      const colType = enumName ? formatIdentifier(enumName) : formatTypeWithModifiers(col.type, col.max_length, col.numeric_precision, col.numeric_scale);
       lines.push(`  ${colName} ${colType}${suffix}`);
     }
     lines.push('}');
@@ -439,6 +465,11 @@ function needsQuote(name: string): boolean {
 
 function formatIdentifier(name: string): string {
   return needsQuote(name) ? `"${name}"` : name;
+}
+
+function formatTypeWithModifiers(type: string, maxLength?: number | null, precision?: number | null, scale?: number | null): string {
+  if (precision && supportsNumericPrecision(type)) return `${type}(${precision}${scale !== null && scale !== undefined ? `,${scale}` : ''})`;
+  return maxLength && supportsColumnLength(type) ? `${type}(${maxLength})` : type;
 }
 
 /** Format as table.col, quoting each part only if needed */

@@ -182,6 +182,9 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
           columns: columns.map((column: any) => ({
             ...column,
             enum_values: column.enumValues ?? column.enum_values ?? '',
+            max_length: column.maxLength ?? column.max_length ?? null,
+            numeric_precision: column.numericPrecision ?? column.numeric_precision ?? null,
+            numeric_scale: column.numericScale ?? column.numeric_scale ?? null,
           })),
         };
       })

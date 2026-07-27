@@ -3,6 +3,7 @@ import { Entity, Column } from '@/types';
 import { parseSQLToERD, parseSqlDdl } from '@/lib/sqlParser';
 import { dbmlToERD } from '@/lib/dbml-converter';
 import { COLUMN_TYPES } from '@/lib/utils';
+import { parseTypeModifiers, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 import { extractDBML } from '../chatUtils';
 
 function cleanIdentifier(id: string): string {
@@ -319,12 +320,22 @@ function applySingleColumnChanges(
         if (!mutation.column || !mutation.column.name || !mutation.column.type) continue;
         const rawType = mutation.column.type.toUpperCase().replace(/\(.*\)/, '');
         const normalizedType = COLUMN_TYPES.includes(rawType) ? rawType : 'VARCHAR';
+        const modifiers = parseTypeModifiers(mutation.column.type);
+        const maxLength = mutation.column.max_length ?? mutation.column.maxLength ?? modifiers.max_length;
+        const numericPrecision = mutation.column.numeric_precision ?? mutation.column.numericPrecision ?? modifiers.numeric_precision;
+        const numericScale = mutation.column.numeric_scale ?? mutation.column.numericScale ?? modifiers.numeric_scale;
+        const hasLength = supportsColumnLength(normalizedType);
+        const hasPrecision = supportsNumericPrecision(normalizedType);
         columns.push({
           id: `col_${Date.now()}_${columns.length}`,
           name: mutation.column.name,
           type: normalizedType,
           is_pk: mutation.column.is_pk || false,
           is_nullable: mutation.column.is_nullable || false,
+          comment: mutation.column.comment || '',
+          max_length: hasLength && maxLength ? Number(maxLength) : null,
+          numeric_precision: hasPrecision && numericPrecision ? Number(numericPrecision) : null,
+          numeric_scale: hasPrecision && numericScale !== null && numericScale !== undefined ? Number(numericScale) : null,
           sort_order: columns.length,
         });
         changed = true;
@@ -345,6 +356,7 @@ function applySingleColumnChanges(
         if (!colName || !mutation.changes) continue;
         const idx = columns.findIndex(c => c.name.toLowerCase() === colName.toLowerCase());
         if (idx === -1) continue;
+        const typeModifiers = mutation.changes.type ? parseTypeModifiers(mutation.changes.type) : null;
         columns[idx] = {
           ...columns[idx],
           ...(mutation.changes.type !== undefined && {
@@ -356,7 +368,19 @@ function applySingleColumnChanges(
           ...(mutation.changes.is_nullable !== undefined && { is_nullable: mutation.changes.is_nullable }),
           ...(mutation.changes.is_pk !== undefined && { is_pk: mutation.changes.is_pk }),
           ...(mutation.changes.name !== undefined && { name: mutation.changes.name }),
+          ...(mutation.changes.comment !== undefined && { comment: mutation.changes.comment }),
         };
+        if (!supportsColumnLength(columns[idx].type)) columns[idx].max_length = null;
+        else if ((mutation.changes.max_length ?? mutation.changes.maxLength) !== undefined) columns[idx].max_length = mutation.changes.max_length ?? mutation.changes.maxLength;
+        if (!supportsNumericPrecision(columns[idx].type)) {
+          columns[idx].numeric_precision = null;
+          columns[idx].numeric_scale = null;
+        } else {
+          if (typeModifiers?.numeric_precision !== null && typeModifiers?.numeric_precision !== undefined) columns[idx].numeric_precision = typeModifiers.numeric_precision;
+          if (typeModifiers?.numeric_scale !== null && typeModifiers?.numeric_scale !== undefined) columns[idx].numeric_scale = typeModifiers.numeric_scale;
+          if ((mutation.changes.numeric_precision ?? mutation.changes.numericPrecision) !== undefined) columns[idx].numeric_precision = mutation.changes.numeric_precision ?? mutation.changes.numericPrecision;
+          if ((mutation.changes.numeric_scale ?? mutation.changes.numericScale) !== undefined) columns[idx].numeric_scale = mutation.changes.numeric_scale ?? mutation.changes.numericScale;
+        }
         changed = true;
         break;
       }
@@ -414,6 +438,11 @@ function parseAlterTableAddColumn(sql: string): Map<string, Column[]> {
         type: normalizedType,
         is_pk: c.is_pk,
         is_nullable: c.is_nullable,
+        enum_values: c.enum_values,
+        comment: c.comment || '',
+        max_length: c.max_length ?? null,
+        numeric_precision: c.numeric_precision ?? null,
+        numeric_scale: c.numeric_scale ?? null,
         sort_order: 0,
       });
     });

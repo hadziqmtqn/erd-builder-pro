@@ -101,7 +101,11 @@ export function SQLImportForm({
       } else if (
         match.type !== parsedCol.type ||
         match.is_pk !== parsedCol.is_pk ||
-        match.is_nullable !== parsedCol.is_nullable
+        match.is_nullable !== parsedCol.is_nullable ||
+        (match.comment || '') !== (parsedCol.comment || '') ||
+        (match.max_length ?? null) !== (parsedCol.max_length ?? null) ||
+        (match.numeric_precision ?? null) !== (parsedCol.numeric_precision ?? null) ||
+        (match.numeric_scale ?? null) !== (parsedCol.numeric_scale ?? null)
       ) {
         changes.push({ type: 'modify', column: { ...parsedCol }, existing: { ...match } });
       }
@@ -222,6 +226,10 @@ export function SQLImportForm({
                   type: colChange.column.type,
                   is_pk: colChange.column.is_pk,
                   is_nullable: colChange.column.is_nullable,
+                  comment: colChange.column.comment,
+                  max_length: colChange.column.max_length,
+                  numeric_precision: colChange.column.numeric_precision,
+                  numeric_scale: colChange.column.numeric_scale,
                 };
               }
             }
