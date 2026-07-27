@@ -3,7 +3,18 @@ import initSqlJs from "sql.js";
 import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
+import { limitSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
+
+describe("custom query helpers", () => {
+  it("allows one SELECT/WITH statement and wraps it with a row limit", () => {
+    expect(normalizeSelectQuery(" SELECT * FROM users; ")).toBe("SELECT * FROM users");
+    expect(limitSelectQuery("SELECT * FROM users", 50)).toBe("SELECT * FROM (SELECT * FROM users) AS erd_custom_query LIMIT 50");
+    expect(() => normalizeSelectQuery("UPDATE users SET name = 'x'")).toThrow("Only SELECT queries are allowed");
+    expect(() => normalizeSelectQuery("SELECT 1; SELECT 2")).toThrow("Only one SQL statement is allowed");
+    expect(() => normalizeSelectQuery("WITH changed AS (DELETE FROM users RETURNING id) SELECT * FROM changed")).toThrow("Only read-only SQL queries are allowed");
+  });
+});
 
 describe("buildRecordWhere", () => {
   const columns = new Set(["email", "role"]);

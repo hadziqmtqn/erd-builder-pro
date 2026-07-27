@@ -1,0 +1,96 @@
+import { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import { prisma } from "../../lib/prisma.js";
+import { getConnector } from "../../lib/db-connectors/registry.js";
+import { buildConnectionInfo } from "./middleware.js";
+import * as catalogsService from "./catalogs.service.js";
+import { limitSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
+
+function querySelect() {
+  return {
+    id: true, uid: true, diagramId: true, groupName: true, name: true, script: true,
+    createdAt: true, updatedAt: true,
+  };
+}
+
+async function assertDiagram(req: ExpressRequest, diagramId: unknown) {
+  const id = Number(diagramId);
+  if (!id) throw new Error("diagramId is required");
+  const diagram = await (prisma as any)?.diagram.findFirst({
+    where: { id, userId: String((req as any).user.id), isDeleted: false },
+    select: { id: true },
+  });
+  if (!diagram) throw new Error("Diagram not found");
+  return id;
+}
+
+export async function listQueries(req: ExpressRequest, res: ExpressResponse) {
+  try {
+    const diagramId = await assertDiagram(req, req.query.diagramId);
+    const queries = await (prisma as any)?.sqlQuery.findMany({
+      where: { diagramId },
+      select: querySelect(),
+      orderBy: [{ groupName: "asc" }, { updatedAt: "desc" }],
+    });
+    res.json({ queries: queries || [] });
+  } catch (err: any) {
+    res.status(/not found/i.test(err.message) ? 404 : 400).json({ error: err.message || "Failed to load SQL queries" });
+  }
+}
+
+export async function saveQuery(req: ExpressRequest, res: ExpressResponse) {
+  try {
+    const diagramId = await assertDiagram(req, req.body.diagramId);
+    const name = String(req.body.name || "").trim();
+    const script = String(req.body.script || "");
+    if (!name) return res.status(400).json({ error: "Query name is required" });
+    normalizeSelectQuery(script);
+    const data = { diagramId, groupName: String(req.body.groupName || "Ungrouped").trim() || "Ungrouped", name, script };
+    let query;
+    if (req.body.id) {
+      const current = await (prisma as any).sqlQuery.findFirst({ where: { id: Number(req.body.id), diagramId }, select: { id: true } });
+      if (!current) return res.status(404).json({ error: "SQL query not found" });
+      query = await (prisma as any).sqlQuery.update({ where: { id: current.id }, data, select: querySelect() });
+    } else {
+      query = await (prisma as any).sqlQuery.create({ data, select: querySelect() });
+    }
+    res.json({ query });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Failed to save SQL query" });
+  }
+}
+
+export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
+  const userId = (req as any).user.id;
+  const { id } = req.params;
+  try {
+    const sql = limitSelectQuery(normalizeSelectQuery(req.body.script), req.body.limit);
+    const catalog = await catalogsService.findCatalogById(id, userId);
+    if (!catalog) return res.status(404).json({ error: "Catalog not found" });
+
+    const info = buildConnectionInfo({
+      type: (catalog as any).account.type,
+      host: (catalog as any).account.host,
+      port: (catalog as any).account.port,
+      user: (catalog as any).account.user,
+      password: (catalog as any).account.password,
+      database: (catalog as any).databaseName,
+    });
+    if (info.type === "sqlite") return res.status(400).json({ error: "Custom query is supported for MySQL and PostgreSQL only" });
+
+    const connector = getConnector(info.type);
+    const { client, release } = await connector.connect(info);
+    const started = Date.now();
+    try {
+      if (info.type === "postgresql") {
+        const result = await (client as any).query(sql);
+        return res.json({ columns: result.fields.map((f: any) => f.name), rows: result.rows, durationMs: Date.now() - started });
+      }
+      const [rows, fields] = await (client as any).execute(sql);
+      res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows, durationMs: Date.now() - started });
+    } finally {
+      release();
+    }
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Failed to run SQL query" });
+  }
+}
