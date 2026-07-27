@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, PanelRightOpen, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
@@ -16,11 +16,8 @@ type DataViewerRecordsTableProps = {
   selectedRowKeys: Set<string>;
   selectedRecordCount: number;
   sort: any;
-  detailsOpen: boolean;
   handleSelectRow: (row: Record<string, any>) => void;
   openRelatedRecord: (table: string, column: string, value: any) => void;
-  setDetailsOpen: (open: boolean | ((open: boolean) => boolean)) => void;
-  onRefresh: () => void;
   onAddRecord: () => void;
   onClearSelectedRecords: () => void;
   onDeleteSelectedRecords: () => void;
@@ -47,11 +44,8 @@ export function DataViewerRecordsTable({
   selectedRowKeys,
   selectedRecordCount,
   sort,
-  detailsOpen,
   handleSelectRow,
   openRelatedRecord,
-  setDetailsOpen,
-  onRefresh,
   onAddRecord,
   onClearSelectedRecords,
   onDeleteSelectedRecords,
@@ -117,17 +111,6 @@ export function DataViewerRecordsTable({
               <Button variant="outline" size="sm" className="h-8 px-2" onClick={onAddRecord}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Record
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => warnUnsaved() && onRefresh()} title="Refresh records">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true)}
-                title={detailsOpen ? 'Close details' : selectedRow ? 'Open record details' : 'Open table information'}
-              >
-                <PanelRightOpen className="h-4 w-4" />
               </Button>
             </div>
           </div>

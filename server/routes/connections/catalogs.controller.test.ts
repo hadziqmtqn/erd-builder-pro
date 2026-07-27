@@ -223,6 +223,13 @@ describe("buildStructureStatements", () => {
     }, schema)).toThrow("Foreign key column type must match");
   });
 
+  it("rejects renaming parent tables used by child tables", () => {
+    const users = { table_name: "users", columns: [{ name: "id", type: "integer", full_type: "integer" }] };
+    const posts = { table_name: "posts", foreign_keys: [{ column: "user_id", ref_table: "users", ref_column: "id" }] };
+    expect(() => buildStructureStatements("postgresql", users, { tableName: "accounts" }, [users, posts])).toThrow('Table "users" is referenced by child table "posts"');
+    expect(() => buildStructureStatements("mysql", users, { tableName: "accounts" }, [users, posts])).toThrow('Table "users" is referenced by child table "posts"');
+  });
+
   it("builds add-column edits with MySQL comment and extra metadata", () => {
     expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
       columnName: "__new__",
