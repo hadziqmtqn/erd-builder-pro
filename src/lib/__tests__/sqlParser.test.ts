@@ -97,6 +97,27 @@ describe('parseSqlDdl', () => {
     expect(valCol.type).toBe('VARCHAR(500)');
   });
 
+  it('parses MySQL column comments and max length', () => {
+    const sql = `CREATE TABLE users (
+      email VARCHAR(100) NOT NULL COMMENT 'Harus unik'
+    );`;
+
+    const result = parseSqlDdl(sql);
+    const email = result.tables[0].columns[0];
+    expect(email.comment).toBe('Harus unik');
+    expect(email.max_length).toBe(100);
+  });
+
+  it('does not treat decimal precision as max length', () => {
+    const sql = `CREATE TABLE orders (amount DECIMAL(10,2) NOT NULL);`;
+
+    const result = parseSqlDdl(sql);
+    const amount = result.tables[0].columns[0];
+    expect(amount.max_length).toBeNull();
+    expect(amount.numeric_precision).toBe(10);
+    expect(amount.numeric_scale).toBe(2);
+  });
+
   it('handles multiple CREATE TABLE statements', () => {
     const sql = `
       CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(255));

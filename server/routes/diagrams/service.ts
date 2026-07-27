@@ -112,6 +112,10 @@ async function upsertColumns(rows: any[]) {
           isPk: col.is_pk || false,
           isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
           enumValues: col.enum_values || null,
+          comment: col.comment || null,
+          maxLength: col.max_length ?? null,
+          numericPrecision: col.numeric_precision ?? null,
+          numericScale: col.numeric_scale ?? null,
           sortOrder: col.sort_order || 0,
         },
         update: {
@@ -119,6 +123,10 @@ async function upsertColumns(rows: any[]) {
           isPk: col.is_pk || false,
           isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
           enumValues: col.enum_values || null,
+          comment: col.comment || null,
+          maxLength: col.max_length ?? null,
+          numericPrecision: col.numeric_precision ?? null,
+          numericScale: col.numeric_scale ?? null,
           sortOrder: col.sort_order || 0,
         },
       })

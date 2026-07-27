@@ -259,7 +259,7 @@ const ERDViewComponent = ({
 
       const tableDetails = selectedNodes.map(n => {
         const name = n.data.name || n.data.label || n.id;
-        const cols = (n.data.columns || []).map((c: any) => `${c.name}: ${c.type}${c.is_pk ? ' PK' : ''}${c.is_nullable ? ' NULL' : ''}`);
+        const cols = (n.data.columns || []).map((c: any) => `${c.name}: ${c.type}${c.max_length ? `(${c.max_length})` : ''}${c.numeric_precision ? `(${c.numeric_precision}${c.numeric_scale !== null && c.numeric_scale !== undefined ? `,${c.numeric_scale}` : ''})` : ''}${c.is_pk ? ' PK' : ''}${c.is_nullable ? ' NULL' : ''}${c.comment ? ` -- ${c.comment}` : ''}`);
         return `${name} (${cols.join(', ')})`;
       }).join('; ');
       setSelectionText(`Tables: ${tableDetails}`);
@@ -338,7 +338,11 @@ const ERDViewComponent = ({
               type: c.type,
               is_pk: !!c.is_pk,
               is_nullable: !!c.is_nullable,
-              enum_values: null,
+              enum_values: c.enum_values ?? null,
+              comment: c.comment || '',
+              max_length: c.max_length ?? null,
+              numeric_precision: c.numeric_precision ?? null,
+              numeric_scale: c.numeric_scale ?? null,
               sort_order: c.sort_order || 0,
               _is_fk: false,
             })),
@@ -906,7 +910,9 @@ function nodesEqual(a: Node<Entity>[], b: Node<Entity>[]): boolean {
       for (let j = 0; j < ca.length; j++) {
         const ca2 = ca[j], cb2 = cb[j];
         if (ca2.id !== cb2.id || ca2.name !== cb2.name || ca2.type !== cb2.type ||
-            ca2.sort_order !== cb2.sort_order || ca2.is_pk !== cb2.is_pk || ca2.is_nullable !== cb2.is_nullable) return false;
+            ca2.sort_order !== cb2.sort_order || ca2.is_pk !== cb2.is_pk || ca2.is_nullable !== cb2.is_nullable ||
+            ca2.comment !== cb2.comment || ca2.max_length !== cb2.max_length ||
+            ca2.numeric_precision !== cb2.numeric_precision || ca2.numeric_scale !== cb2.numeric_scale) return false;
       }
     }
   }

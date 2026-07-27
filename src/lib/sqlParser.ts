@@ -1,6 +1,7 @@
 import { Entity, Column } from '../types';
 import { Node, Edge } from '@xyflow/react';
 import { COLUMN_TYPES } from './utils';
+import { parseTypeModifiers } from './column-metadata';
 
 /**
  * Normalizes SQL data types to match the ERD tool's internal types.
@@ -54,7 +55,7 @@ const KEYWORDS = new Set([
   'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES',
   'UNIQUE', 'CHECK', 'INDEX', 'DEFAULT', 'NULL',
   'ON', 'UPDATE', 'DELETE', 'CASCADE', 'RESTRICT',
-  'SET', 'NO', 'ACTION', 'AUTO_INCREMENT', 'SERIAL', 'BIGSERIAL', 'COLLATE',
+  'SET', 'NO', 'ACTION', 'AUTO_INCREMENT', 'SERIAL', 'BIGSERIAL', 'COLLATE', 'COMMENT',
   'UNSIGNED', 'ZEROFILL'
 ]);
 
@@ -291,6 +292,7 @@ function parseDataType(stream: TokenStream): string {
 interface InlineColumnConstraints {
   isPk: boolean;
   isNullable: boolean;
+  comment?: string;
   refTable?: string;
   refColumn?: string;
 }
@@ -298,6 +300,7 @@ interface InlineColumnConstraints {
 function parseColumnConstraints(stream: TokenStream): InlineColumnConstraints {
   let isPk = false;
   let isNullable = true;
+  let comment: string | undefined;
   let refTable: string | undefined;
   let refColumn: string | undefined;
   let parenDepth = 0;
@@ -391,10 +394,16 @@ function parseColumnConstraints(stream: TokenStream): InlineColumnConstraints {
       continue;
     }
 
+    if (stream.consumeKeyword('COMMENT')) {
+      const commentToken = stream.next();
+      if (commentToken?.type === 'STRING') comment = commentToken.value;
+      continue;
+    }
+
     stream.next();
   }
 
-  return { isPk, isNullable, refTable, refColumn };
+  return { isPk, isNullable, comment, refTable, refColumn };
 }
 
 interface ParsedColumn {
@@ -403,6 +412,10 @@ interface ParsedColumn {
   is_pk: boolean;
   is_nullable: boolean;
   enum_values?: string;
+  comment?: string;
+  max_length?: number | null;
+  numeric_precision?: number | null;
+  numeric_scale?: number | null;
 }
 
 interface ParsedTableConstraint {
@@ -500,7 +513,8 @@ function parseTableItems(stream: TokenStream, table: ParsedTable) {
       if (colNameToken && (colNameToken.type === 'IDENTIFIER' || colNameToken.type === 'KEYWORD')) {
         const colName = cleanIdentifier(colNameToken.value);
         const colType = parseDataType(stream);
-        const { isPk, isNullable, refTable, refColumn } = parseColumnConstraints(stream);
+        const { isPk, isNullable, comment, refTable, refColumn } = parseColumnConstraints(stream);
+        const modifiers = parseTypeModifiers(colType);
 
         let enumValues = '';
         if (colType.toUpperCase().startsWith('ENUM')) {
@@ -519,6 +533,8 @@ function parseTableItems(stream: TokenStream, table: ParsedTable) {
           is_pk: isPk,
           is_nullable: isNullable,
           enum_values: enumValues,
+          comment,
+          ...modifiers,
         });
 
         if (refTable && refColumn) {
@@ -647,7 +663,8 @@ export function parseSqlDdl(sql: string): ParsedSchema {
                 if (colNameToken && (colNameToken.type === 'IDENTIFIER' || colNameToken.type === 'KEYWORD')) {
                   const colName = cleanIdentifier(colNameToken.value);
                   const colType = parseDataType(stream);
-                  const { isPk, isNullable, refTable, refColumn } = parseColumnConstraints(stream);
+                  const { isPk, isNullable, comment, refTable, refColumn } = parseColumnConstraints(stream);
+                  const modifiers = parseTypeModifiers(colType);
 
                   let enumValues = '';
                   if (colType.toUpperCase().startsWith('ENUM')) {
@@ -666,6 +683,8 @@ export function parseSqlDdl(sql: string): ParsedSchema {
                     is_pk: isPk,
                     is_nullable: isNullable,
                     enum_values: enumValues,
+                    comment,
+                    ...modifiers,
                   };
 
                   let existingAlter = alterAddColumns.find(
@@ -755,6 +774,10 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         is_pk: isPk,
         is_nullable: !isPk && col.is_nullable,
         enum_values: col.enum_values || '',
+        comment: col.comment || '',
+        max_length: col.max_length,
+        numeric_precision: col.numeric_precision,
+        numeric_scale: col.numeric_scale,
         sort_order: idx,
       });
     });

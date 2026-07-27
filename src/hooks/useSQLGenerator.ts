@@ -1,5 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { Entity } from '../types';
+import { supportsNumericPrecision } from '../lib/column-metadata';
 
 export function useSQLGenerator() {
   const handleExportSQL = (
@@ -18,13 +19,21 @@ export function useSQLGenerator() {
         const typeLower = col.type.toLowerCase();
         let resolvedType = col.type;
 
-        if (typeLower === 'varchar') resolvedType = 'VARCHAR(255)';
-        else if (typeLower === 'char') resolvedType = 'CHAR(255)';
+        if (typeLower === 'varchar') resolvedType = `VARCHAR(${col.max_length || 255})`;
+        else if (typeLower === 'char') resolvedType = `CHAR(${col.max_length || 255})`;
+        else if (supportsNumericPrecision(typeLower)) resolvedType = `DECIMAL(${col.numeric_precision || 10},${col.numeric_scale ?? 2})`;
         else if (typeLower === 'longtext' && dialect === 'postgresql') resolvedType = 'TEXT';
 
-        sql += `  ${col.name} ${resolvedType}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${i === entity.columns.length - 1 ? '' : ','}\n`;
+        const comment = col.comment && dialect === 'mysql' ? ` COMMENT '${col.comment.replace(/'/g, "''")}'` : '';
+        sql += `  ${col.name} ${resolvedType}${col.is_pk ? ' PRIMARY KEY' : ''}${col.is_nullable ? '' : ' NOT NULL'}${comment}${i === entity.columns.length - 1 ? '' : ','}\n`;
       });
       sql += `);\n\n`;
+      if (dialect === 'postgresql') {
+        for (const col of entity.columns) {
+          if (col.comment) sql += `COMMENT ON COLUMN ${entity.name}.${col.name} IS '${col.comment.replace(/'/g, "''")}';\n`;
+        }
+        if (entity.columns.some(col => col.comment)) sql += '\n';
+      }
     });
 
     const relationshipsGenerated = new Set<string>();

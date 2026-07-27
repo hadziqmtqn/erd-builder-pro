@@ -1,5 +1,11 @@
 import { AIAction } from './types';
 
+const typeSuffix = (c: any) => c.max_length
+  ? `(${c.max_length})`
+  : c.numeric_precision
+    ? `(${c.numeric_precision}${c.numeric_scale !== null && c.numeric_scale !== undefined ? `,${c.numeric_scale}` : ''})`
+    : '';
+
 function erdTableList(context: Record<string, any>): string {
   const nodes = context.nodes || [];
   if (nodes.length === 0) return '(empty diagram — no tables yet)';
@@ -8,7 +14,8 @@ function erdTableList(context: Record<string, any>): string {
       const data = n.data || {};
       const cols = (data.columns || []).map((c: any) => {
         const pk = c.primaryKey || c.is_pk ? ' 🔑' : '';
-        return `    - ${c.name}: ${c.type || c.columnType || 'unknown'}${pk}`;
+        const comment = c.comment ? ` -- ${c.comment}` : '';
+        return `    - ${c.name}: ${c.type || c.columnType || 'unknown'}${typeSuffix(c)}${pk}${comment}`;
       }).join('\n');
       return `  ${data.name || data.label || 'unnamed'}:\n${cols || '    (no columns)'}`;
     })
@@ -49,6 +56,7 @@ When the user asks to create or modify the schema, respond with DBML in a \`\`\`
 DBML rules:
 - Use Table blocks for every table that should be created or changed.
 - Use [pk] for primary keys and [not null] for required fields.
+- Use [note: '...'] for column comments and sized types like VARCHAR(100) when max length matters.
 - Use Ref lines for relationships, for example: Ref: posts.user_id > users.id
 - Use Enum blocks when a column has constrained values.
 - Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM.
@@ -84,7 +92,8 @@ After the DBML block, add one short sentence telling the user they can click App
         const cols = (data.columns || []).map((c: any) => {
           const pk = c.primaryKey || c.is_pk ? ' 🔑' : '';
           const nullable = c.is_nullable ? ' NULL' : ' NOT NULL';
-          return `  - ${c.name}: ${c.type || c.columnType || 'unknown'}${nullable}${pk}`;
+          const comment = c.comment ? ` -- ${c.comment}` : '';
+          return `  - ${c.name}: ${c.type || c.columnType || 'unknown'}${typeSuffix(c)}${nullable}${pk}${comment}`;
         }).join('\n');
         return `Table: ${data.name || data.label || 'unnamed'}\n${cols || '  (no columns defined)'}`;
       }).join('\n\n');
@@ -101,15 +110,16 @@ The user will tell you what column changes to make.
 If the user specifies column changes, respond with a JSON code block ONLY, followed by a brief user-facing message on the next line telling the user they can click the Append button to apply the changes. Example:
 
 ${isMulti
-  ? '```json\n{\n  "users": {\n    "mutations": [\n      {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},\n      {"type": "drop_column", "column": "old_field"}\n    ]\n  },\n  "admins": {\n    "mutations": [\n      {"type": "modify_column", "column": "role", "changes": {"type": "VARCHAR", "is_nullable": true}}\n    ]\n  }\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel users dan admins.'
-  : '```json\n{\n  "mutations": [\n    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false}},\n    {"type": "drop_column", "column": "old_field"},\n    {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true}}\n  ]\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel ' + tableList + '.'}
+  ? '```json\n{\n  "users": {\n    "mutations": [\n      {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false, "max_length": 100, "comment": "Harus unik"}},\n      {"type": "drop_column", "column": "old_field"}\n    ]\n  },\n  "admins": {\n    "mutations": [\n      {"type": "modify_column", "column": "role", "changes": {"type": "DECIMAL", "numeric_precision": 10, "numeric_scale": 2, "comment": "Role akses"}}\n    ]\n  }\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel users dan admins.'
+  : '```json\n{\n  "mutations": [\n    {"type": "add_column", "column": {"name": "email", "type": "VARCHAR", "is_nullable": false, "is_pk": false, "max_length": 100, "comment": "Harus unik"}},\n    {"type": "drop_column", "column": "old_field"},\n    {"type": "modify_column", "column": "existing_name", "changes": {"type": "TEXT", "is_nullable": true, "comment": "Catatan baru"}}\n  ]\n}\n```\n\nKlik tombol **Append** untuk menerapkan perubahan ke tabel ' + tableList + '.'}
 
 Rules:
 - For add_column: all fields required (name, type, is_nullable, is_pk)
 - For drop_column: only column name
 - For modify_column: only include fields that changed
+- Optional metadata: comment, max_length for VARCHAR/CHAR/TEXT/BINARY types, numeric_precision and numeric_scale for DECIMAL/NUMERIC
 - Keep existing columns that aren't mentioned
-- Use plain type names only: INT, BIGINT, VARCHAR, CHAR, TEXT, LONGTEXT, BOOLEAN, DATE, TIMESTAMP, FLOAT, DOUBLE, DECIMAL, UUID, JSON, ENUM (no size parameters like VARCHAR(255))
+- Use plain type names only: INT, BIGINT, VARCHAR, CHAR, TEXT, LONGTEXT, BOOLEAN, DATE, TIMESTAMP, FLOAT, DOUBLE, DECIMAL, NUMERIC, UUID, JSON, ENUM. Put VARCHAR size in max_length and DECIMAL(10,2) in numeric_precision/numeric_scale.
 ${isMulti ? '- Use the multi-table format with table names as keys. Edit ONLY the tables listed above.' : ''}
 
 If the user does NOT specify any column changes, ask them what columns they want to add, remove, or modify instead.`;
@@ -126,7 +136,8 @@ If the user does NOT specify any column changes, ask them what columns they want
       const data = selectedNode.data || {};
       const cols = (data.columns || []).map((c: any) => {
         const pk = c.primaryKey || c.is_pk ? ' (PK)' : '';
-        return `- ${c.name}: ${c.type || c.columnType || 'unknown'}${pk}`;
+        const comment = c.comment ? ` -- ${c.comment}` : '';
+        return `- ${c.name}: ${c.type || c.columnType || 'unknown'}${typeSuffix(c)}${pk}${comment}`;
       }).join('\n');
       return `Explain this database table in plain language — what it stores, what each column means, and common use cases:\n\nTable: ${data.name || data.label || 'unnamed'}\nColumns:\n${cols || '(no columns defined)'}`;
     },

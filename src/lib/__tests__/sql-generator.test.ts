@@ -95,6 +95,24 @@ describe('generateMySQL', () => {
     expect(sql).toContain('TINYINT(1)'); // boolean
     expect(sql).toContain('JSON');
   });
+
+  it('exports column comments and max length', () => {
+    const entity = makeEntity('users', [
+      { name: 'email', type: 'VARCHAR', is_nullable: false, max_length: 100, comment: 'Harus unik' },
+    ]);
+
+    const sql = generateMySQL(entity);
+    expect(sql).toContain("`email` VARCHAR(100) NOT NULL COMMENT 'Harus unik'");
+  });
+
+  it('exports decimal precision and scale', () => {
+    const entity = makeEntity('orders', [
+      { name: 'amount', type: 'DECIMAL', is_nullable: false, numeric_precision: 12, numeric_scale: 4 },
+    ]);
+
+    const sql = generateMySQL(entity);
+    expect(sql).toContain('`amount` DECIMAL(12,4) NOT NULL');
+  });
 });
 
 describe('generatePostgreSQL', () => {
@@ -125,6 +143,16 @@ describe('generatePostgreSQL', () => {
 
     const sql = generatePostgreSQL(entity);
     expect(sql).toContain('SERIAL');
+  });
+
+  it('exports PostgreSQL comments and max length', () => {
+    const entity = makeEntity('users', [
+      { name: 'email', type: 'VARCHAR', is_nullable: false, max_length: 100, comment: 'Harus unik' },
+    ]);
+
+    const sql = generatePostgreSQL(entity);
+    expect(sql).toContain('"email" VARCHAR(100) NOT NULL');
+    expect(sql).toContain('COMMENT ON COLUMN "users"."email" IS \'Harus unik\';');
   });
 
   it('handles ENUM with CHECK constraint', () => {

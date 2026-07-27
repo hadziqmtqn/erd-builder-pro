@@ -15,6 +15,7 @@ import {
   buildDBMLTableDefinitions,
   dedupeDBMLEnumBlocks,
   findEnumNamingErrors,
+  normalizeDBMLTypeName,
   parseDBMLColumn,
   parseDBMLRef,
   parseDBMLTableName,
@@ -47,13 +48,14 @@ const REVERSE_DEBOUNCE_MS = 800;
 
 const DBML_REFERENCE = `// ERD Builder DBML standard: Table, Enum, and Ref are applied to the canvas.
 // Use portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE,
-// TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM.
+// TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use VARCHAR(100),
+// CHAR(26), or DECIMAL(10,2) when modifiers matter, and [note: '...'] for comments.
 // Enum names must use table_column format, for example users_role.
 
 Table users {
   id BIGINT [pk, not null]
   name VARCHAR [not null]
-  email VARCHAR [unique, not null]
+  email VARCHAR(100) [unique, not null, note: 'Harus unik']
   role users_role
   created_at TIMESTAMP [not null]
   updated_at TIMESTAMP [not null]
@@ -276,7 +278,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
           const column = parseDBMLColumn(trimmed);
           if (column) {
             const { name: colName, type: typeName } = column;
-            if (typeName && !validTypes.has(typeName.toUpperCase()) && !enumNames.has(typeName.toLowerCase())) {
+            const normalizedTypeName = normalizeDBMLTypeName(typeName);
+            if (normalizedTypeName && !validTypes.has(normalizedTypeName.toUpperCase()) && !enumNames.has(normalizedTypeName.toLowerCase())) {
               const typeStart = line.indexOf(typeName);
               diagnostics.push({
                 from: lineFrom + typeStart,
@@ -644,7 +647,7 @@ function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
   const edgeIds = edges.map(e => e.id).sort().join(',');
   const positions = nodes.map(n => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}`).sort().join(';');
   const columns = nodes.map(n =>
-    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.enum_name || ''}:${c.enum_values || ''}:${c.is_pk}:${c.is_nullable}`).join(',')}`
+    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.enum_name || ''}:${c.enum_values || ''}:${c.comment || ''}:${c.max_length || ''}:${c.numeric_precision || ''}:${c.numeric_scale || ''}:${c.is_pk}:${c.is_nullable}`).join(',')}`
   ).sort().join('|');
   return `${nodeIds}|${edgeIds}|${positions}|${columns}`;
 }

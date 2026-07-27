@@ -85,7 +85,11 @@ export function computeSchemaDiff(
           const changed =
             origCol.type.toLowerCase() !== propCol.type.toLowerCase() ||
             !!origCol.is_pk !== !!propCol.is_pk ||
-            !!origCol.is_nullable !== !!propCol.is_nullable;
+            !!origCol.is_nullable !== !!propCol.is_nullable ||
+            (origCol.comment || '') !== (propCol.comment || '') ||
+            (origCol.max_length ?? null) !== (propCol.max_length ?? null) ||
+            (origCol.numeric_precision ?? null) !== (propCol.numeric_precision ?? null) ||
+            (origCol.numeric_scale ?? null) !== (propCol.numeric_scale ?? null);
           if (changed) {
             columnsChanged = true;
             combinedColumns.push({ ...propCol, diffState: 'new' });
