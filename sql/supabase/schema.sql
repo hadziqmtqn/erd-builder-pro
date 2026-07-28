@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS diagrams (
   _version INTEGER DEFAULT 0,
   source_type TEXT DEFAULT 'blank',
   source_connection_id INTEGER,
-  data TEXT
+  data TEXT,
+  dbml_source TEXT
 );
 
 -- Entities Table
@@ -68,9 +69,12 @@ CREATE TABLE IF NOT EXISTS columns (
   is_pk BOOLEAN DEFAULT FALSE,
   is_nullable BOOLEAN DEFAULT TRUE,
   enum_values TEXT, -- comma separated
+  comment TEXT,
+  max_length INTEGER,
+  numeric_precision INTEGER,
+  numeric_scale INTEGER,
   sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Relationships Table
@@ -192,6 +196,7 @@ CREATE TABLE IF NOT EXISTS backups (
     status TEXT NOT NULL DEFAULT 'pending',
     file_path TEXT,
     file_size BIGINT,
+    destinations TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -245,7 +250,7 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
 
 -- System Prompts Table
 CREATE TABLE IF NOT EXISTS ai_system_prompts (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     category VARCHAR(50) NOT NULL DEFAULT 'custom', -- 'system', 'context', 'format', 'custom'
@@ -276,6 +281,11 @@ CREATE INDEX IF NOT EXISTS idx_entity_changes_lookup ON entity_changes(entity_ty
 CREATE INDEX IF NOT EXISTS idx_entity_changes_user ON entity_changes(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entity_changes_retention ON entity_changes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entity_changes_entity_id ON entity_changes(entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_diagrams_project_deleted ON diagrams(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_notes_project_deleted ON notes(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_drawings_project_deleted ON drawings(project_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_flowcharts_project_deleted ON flowcharts(project_id, is_deleted);
 
 CREATE INDEX IF NOT EXISTS idx_diagrams_version ON diagrams(_version);
 CREATE INDEX IF NOT EXISTS idx_diagrams_updated_at ON diagrams(updated_at DESC);
@@ -507,6 +517,8 @@ DROP TRIGGER IF EXISTS tr_drawings_audit ON drawings;
 CREATE TRIGGER tr_drawings_audit AFTER INSERT OR UPDATE ON drawings FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
 
 -- Flowcharts
+DROP TRIGGER IF EXISTS tr_flowcharts_version ON flowcharts;
+CREATE TRIGGER tr_flowcharts_version BEFORE UPDATE ON flowcharts FOR EACH ROW EXECUTE FUNCTION increment_version();
 DROP TRIGGER IF EXISTS tr_flowcharts_audit ON flowcharts;
 CREATE TRIGGER tr_flowcharts_audit AFTER INSERT OR UPDATE ON flowcharts FOR EACH ROW EXECUTE FUNCTION log_entity_changes();
 
