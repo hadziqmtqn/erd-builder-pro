@@ -35,6 +35,7 @@ export function DiagramEditorRoute() {
   // URL search params for tab state — AppLayout uses this to hide AI Chat on Data tab
   const [searchParams, setSearchParams] = useSearchParams();
   const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
+  const [queryOpenNonce, setQueryOpenNonce] = useState(0);
 
   // Read snake_case fields from API response (camelToSnake middleware converts all)
   const isProductionDb = useMemo(() => {
@@ -67,6 +68,7 @@ export function DiagramEditorRoute() {
   useEffect(() => {
     const openQuery = (event: Event) => {
       setQueryInitialTable((event as CustomEvent).detail?.table || null);
+      setQueryOpenNonce((n) => n + 1);
       setDiagramTab('query');
     };
     window.addEventListener('db-connect-open-query', openQuery);
@@ -204,6 +206,7 @@ export function DiagramEditorRoute() {
           connectionId={sourceConnectionId}
           diagramId={Number(show.id)}
           initialTable={queryInitialTable}
+          openNonce={queryOpenNonce}
         />
       ) : (
         <ERDView

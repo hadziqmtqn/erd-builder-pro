@@ -105,27 +105,11 @@ model Diagram {
   project      Project? @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   entities     Entity[]
   relationships Relationship[]
-  sqlQueries    SqlQuery[]
 
   @@index([projectId, isDeleted], map: "idx_diagrams_project_deleted")
   @@index([updatedAt], map: "idx_diagrams_updated_at")
   @@index([version], map: "idx_diagrams_version")
   @@map("diagrams")
-}
-
-model SqlQuery {
-  id        Int      @id @default(autoincrement())
-  uid       String?  @unique @default(uuid())
-  diagramId Int      @map("diagram_id")
-  groupName String   @default("Ungrouped") @map("group_name")
-  name      String
-  script    String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  diagram   Diagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([diagramId], map: "idx_sql_queries_diagram")
-  @@map("sql_queries")
 }
 
 // ── Note ──

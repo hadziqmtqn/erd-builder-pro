@@ -1,4 +1,5 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import { randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
 import { getConnector } from "../../lib/db-connectors/registry.js";
 import { buildConnectionInfo } from "./middleware.js";
@@ -51,11 +52,25 @@ export async function saveQuery(req: ExpressRequest, res: ExpressResponse) {
       if (!current) return res.status(404).json({ error: "SQL query not found" });
       query = await (prisma as any).sqlQuery.update({ where: { id: current.id }, data, select: querySelect() });
     } else {
-      query = await (prisma as any).sqlQuery.create({ data, select: querySelect() });
+      query = await (prisma as any).sqlQuery.create({ data: { ...data, uid: randomUUID() }, select: querySelect() });
     }
     res.json({ query });
   } catch (err: any) {
     res.status(400).json({ error: err.message || "Failed to save SQL query" });
+  }
+}
+
+export async function deleteQuery(req: ExpressRequest, res: ExpressResponse) {
+  try {
+    const diagramId = await assertDiagram(req, req.query.diagramId);
+    const id = Number(req.params.queryId);
+    if (!id) return res.status(400).json({ error: "queryId is required" });
+    const current = await (prisma as any).sqlQuery.findFirst({ where: { id, diagramId }, select: { id: true } });
+    if (!current) return res.status(404).json({ error: "SQL query not found" });
+    await (prisma as any).sqlQuery.delete({ where: { id: current.id } });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(/not found/i.test(err.message) ? 404 : 400).json({ error: err.message || "Failed to delete SQL query" });
   }
 }
 
