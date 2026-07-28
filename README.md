@@ -1,7 +1,6 @@
-# 💎 ERD Builder Pro
-
-> [!WARNING]
-> **ERD Builder Pro** is under active development and not yet stable — features and config may still change. Give the repo a Star ⭐ and Watch 👀 it to get notified the moment a release lands.
+<div align="center">
+  <img width="400" alt="ERD Builder Pro Dashboard" src="public/img/ERD-Builder-Pro-Ori-Light.png" />
+</div>
 
 <div align="center">
 
@@ -14,13 +13,18 @@
 **ERD Builder Pro** is a database design and documentation tool for developers. Build ERDs, flowcharts, notes, and drawings — all in one workspace.
 
 <div align="center">
-  <img width="1200" alt="ERD Builder Pro Dashboard" src="public/img/erd-intro.png" />
+  <img width="1200" alt="ERD Builder Pro Dashboard" src="public/img/erd-intro.gif" />
 </div>
+
+> [!WARNING]
+> **ERD Builder Pro** is under active development and not yet stable — features and config may still change. Give the repo a Star ⭐ and Watch 👀 it to get notified the moment a release lands.
 
 ## 🚀 Key Features
 
 - **🎨 Visual Workspace**: ERD diagrams (XYFlow), flowcharts, free-hand drawing (Excalidraw), and rich-text notes (TipTap).
+- **📝 DBML Editor**: Write and edit DBML (Database Markup Language) with syntax highlighting, live bidirectional sync with ERD, and auto-generated column/relationship definitions.
 - **📤 Export**: Generate SQL DDL (PostgreSQL, MySQL), export as images or PDF.
+- **🔗 Remote Database Connection**: Connect to remote PostgreSQL, MySQL, or SQLite databases — browse tables, inspect schemas, and import structures into your ERD.
 - **📁 Project Management**: Organize assets into projects with soft-delete trash system.
 - **🤖 AI Assistant**: Context-aware chat per view — generate SQL, seed data, summarize notes, create flowcharts. Streaming responses with auto-apply.
 - **🔐 Security**: Supabase authentication, Cloudflare R2 storage, rate limiting, Helmet middleware.
@@ -90,15 +94,15 @@ src/lib/__tests__/
 
 <div align="center">
   <a href="https://www.idcloudhost.com" target="_blank">
-    <img src="/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="60" />
+    <img src="/public/img/sponsors/IDCloudhost.png" alt="IDCloudhost" height="50" />
   </a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://doktainer.com" target="_blank">
-    <img src="/public/img/sponsors/Doktainer.png" alt="Doktainer" height="60" />
+    <img src="/public/img/sponsors/Doktainer.png" alt="Doktainer" height="50" />
   </a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://sumopod.com" target="_blank">
-    <img src="/public/img/sponsors/Sumopod.png" alt="SumoPod" height="60" />
+    <img src="/public/img/sponsors/Sumopod.png" alt="SumoPod" height="50" />
   </a>
 </div>
 
