@@ -118,7 +118,7 @@ model Diagram {
 
 model SqlQuery {
   id        Int      @id @default(autoincrement())
-  uid       String?  @unique
+  uid       String?  @unique @default(uuid())
   diagramId Int      @map("diagram_id")
   groupName String   @default("Ungrouped") @map("group_name")
   name      String

@@ -29,6 +29,7 @@ catalogsRouter.post("/:id/import", authenticate, desktopOnly, catalogsController
 catalogsRouter.post("/:id/records", authenticate, desktopOnly, catalogsController.queryRecords);
 catalogsRouter.get("/:id/queries", authenticate, desktopOnly, queriesController.listQueries);
 catalogsRouter.post("/:id/queries", authenticate, desktopOnly, queriesController.saveQuery);
+catalogsRouter.delete("/:id/queries/:queryId", authenticate, desktopOnly, queriesController.deleteQuery);
 catalogsRouter.post("/:id/query/run", authenticate, desktopOnly, queriesController.runQuery);
 catalogsRouter.post("/:id/records/create", authenticate, desktopOnly, catalogsController.createRecord);
 catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsController.updateRecord);
