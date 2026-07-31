@@ -1,15 +1,14 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Database, Columns, PanelRightOpen, RefreshCw, TableIcon, TerminalSquare } from 'lucide-react';
+import { Database } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
 import { ERDView } from '@/components/views/ERDView';
 import { DataViewer } from '@/components/db-connect/DataViewer';
+import { DataViewerModeToolbar, type DataViewerMode } from '@/components/db-connect/DataViewerModeToolbar';
 import { DataQueryView } from '@/components/db-connect/DataQueryView';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
@@ -44,9 +43,9 @@ export function DiagramEditorRoute() {
   }, [isPublicView, publicData, activeDiagram]);
 
   // Tab default: Data for production DB (browse records first), ERD for normal diagrams
-  const diagramTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
+  const diagramTab = (searchParams.get('tab') || (isProductionDb ? 'data' : 'erd')) as DataViewerMode;
 
-  const setDiagramTab = useCallback((tab: string) => {
+  const setDiagramTab = useCallback((tab: DataViewerMode) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', tab);
@@ -143,56 +142,7 @@ export function DiagramEditorRoute() {
       <ProjectFileTabs currentView="erd" />
       {/* Tab bar — only for production DB diagrams */}
       {isProductionDb && !isPublicView && (
-        <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-b bg-muted/5 shrink-0">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setDiagramTab('data')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                diagramTab === 'data'
-                  ? 'bg-accent text-accent-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              )}
-            >
-              <TableIcon className="w-3.5 h-3.5" />
-              Data
-            </button>
-            <button
-              onClick={() => setDiagramTab('erd')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                diagramTab === 'erd'
-                  ? 'bg-accent text-accent-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              )}
-            >
-              <Columns className="w-3.5 h-3.5" />
-              ERD
-            </button>
-            <button
-              onClick={() => setDiagramTab('query')}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                diagramTab === 'query'
-                  ? 'bg-accent text-accent-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              )}
-            >
-              <TerminalSquare className="w-3.5 h-3.5" />
-              Query
-            </button>
-          </div>
-          {diagramTab === 'data' && (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-refresh-records'))} title="Refresh records">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-toggle-details'))} title="Open table information">
-                <PanelRightOpen className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
+        <DataViewerModeToolbar activeMode={diagramTab} onModeChange={setDiagramTab} />
       )}
 
       {/* Content */}

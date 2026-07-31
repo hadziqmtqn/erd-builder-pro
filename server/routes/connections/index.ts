@@ -36,6 +36,7 @@ catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsControll
 catalogsRouter.delete("/:id/records", authenticate, desktopOnly, catalogsController.deleteRecord);
 catalogsRouter.patch("/:id/structure", authenticate, desktopOnly, catalogsController.updateStructure);
 catalogsRouter.post("/:id/structure/sql", authenticate, desktopOnly, catalogsController.getStructureSql);
+catalogsRouter.post("/:id/structure/import-sql", authenticate, desktopOnly, catalogsController.importStructureSql);
 
 // ── Legacy backward-compat ──
 import * as legacyController from "./legacy.controller.js";

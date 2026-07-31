@@ -15,6 +15,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const newTableTab = '__new_table__';
   const abortRef = useRef<AbortController | null>(null);
   const appliedFiltersRef = useRef<RecordFilter[]>([]);
   const sortRef = useRef<RecordSort | null>(null);
@@ -42,11 +43,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     }
   }, [connectionId]);
 
-  const refreshTables = useCallback(() => fetchTables(), [fetchTables]);
-
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
 
   const fetchRecords = useCallback(async (table: string, p: number = 1, nextFilters = appliedFiltersRef.current, nextSort = sortRef.current) => {
     if (!connectionId) return;
@@ -83,11 +80,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   const saveTableState = useCallback((table: string | null) => {
     if (!table) return;
-    tableStateRef.current[table] = {
-      filters: filtersRef.current,
-      appliedFilters: appliedFiltersRef.current,
-      sort: sortRef.current,
-    };
+    tableStateRef.current[table] = { filters: filtersRef.current, appliedFilters: appliedFiltersRef.current, sort: sortRef.current };
   }, []);
 
   const restoreTableState = useCallback((table: string) => {
@@ -136,7 +129,15 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     } catch {}
   }, [storageKey, openTabs, activeTable]);
 
+  const openNewTableTab = useCallback(() => {
+    saveTableState(activeTable);
+    setOpenTabs(prev => prev.some(tab => tab.name === newTableTab) ? prev : [...prev, { name: newTableTab, pinned: true, label: 'New table' } as any]);
+    setActiveTable(newTableTab);
+    setRecords(null);
+  }, [activeTable, saveTableState]);
+
   const selectTable = useCallback((tableName: string) => {
+    if (tableName === newTableTab) return openNewTableTab();
     saveTableState(activeTable);
     const nextPage = openTabs.some(tab => tab.name === tableName)
       ? pageByTableRef.current[tableName] ?? 1
@@ -154,7 +155,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setRecords(null);
     setPage(nextPage);
     fetchRecords(tableName, nextPage, state.appliedFilters, state.sort);
-  }, [activeTable, fetchRecords, openTabs, restoreTableState, saveTableState]);
+  }, [activeTable, fetchRecords, openNewTableTab, openTabs, restoreTableState, saveTableState]);
 
   const pinTable = useCallback((tableName: string) => {
     setOpenTabs(prev => prev.map(tab => tab.name === tableName ? { ...tab, pinned: true } : tab));
@@ -179,7 +180,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     }
     setRecords(null);
     setPage(fallbackPage);
-    if (fallback) fetchRecords(fallback, fallbackPage, state.appliedFilters, state.sort);
+    if (fallback && fallback !== newTableTab) fetchRecords(fallback, fallbackPage, state.appliedFilters, state.sort);
   }, [activeTable, openTabs, fetchRecords, restoreTableState]);
 
   const nextPage = useCallback(() => {
@@ -294,6 +295,35 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, connectionId, fetchRecords, page]);
 
+  const mutateTables = useCallback(async (patch: Record<string, any>) => {
+    if (!connectionId) return;
+    const res = await apiFetch(`/api/catalogs/${connectionId}/structure`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: patch.deleteTables?.[0] || patch.truncateTables?.[0] || patch.cloneTable?.source || "__table_action__", ...patch }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update tables');
+    await fetchTables();
+    return data;
+  }, [connectionId, fetchTables]);
+
+  const deleteTables = useCallback(async (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => {
+    if (!connectionId || tableNames.length === 0) return;
+    const data = await mutateTables({ deleteTables: tableNames, ...options });
+    const deleted = new Set(tableNames);
+    setOpenTabs(prev => prev.filter(tab => !deleted.has(tab.name)));
+    tableNames.forEach(name => { delete pageByTableRef.current[name]; delete tableStateRef.current[name]; });
+    if (activeTable && deleted.has(activeTable)) {
+      const fallback = openTabs.find(tab => !deleted.has(tab.name))?.name ?? null;
+      setActiveTable(fallback);
+      setRecords(null); setFilters([]); setAppliedFilters([]);
+      appliedFiltersRef.current = []; sortRef.current = null; setSort(null);
+      if (fallback) fetchRecords(fallback, pageByTableRef.current[fallback] ?? 1);
+    }
+    return data;
+  }, [activeTable, connectionId, fetchRecords, mutateTables, openTabs]);
+
   const updateStructure = useCallback(async (patch: Record<string, any>) => {
     const targetTable = activeTable || (patch.createTable ? '__new__' : null);
     if (!connectionId || !targetTable) return;
@@ -316,9 +346,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, connectionId, fetchRecords, fetchTables, page]);
 
-  const refreshRecords = useCallback(() => {
-    if (activeTable) fetchRecords(activeTable, pageByTableRef.current[activeTable] ?? page);
-  }, [activeTable, fetchRecords, page]);
+  const refreshAll = useCallback(async () => {
+    await fetchTables();
+    if (activeTable && activeTable !== newTableTab) fetchRecords(activeTable, pageByTableRef.current[activeTable] ?? page);
+  }, [activeTable, fetchRecords, fetchTables, page]);
 
   const clearFilters = useCallback(() => {
     filtersRef.current = [];
@@ -340,38 +371,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [activeTable, fetchRecords]);
 
   return {
-    tables,
-    activeTable,
-    openTabs,
-    filters,
-    appliedFilters,
-    sort,
-    records,
-    dbType,
-    page,
-    totalPages,
-    isLoadingTables,
-    isLoadingRecords,
-    error,
-    fetchTables,
-    refreshTables,
-    selectTable,
-    pinTable,
-    closeTable,
-    addFilter,
-    removeFilter,
-    updateFilter,
-    applyFilter,
-    applyFilters,
-    openRelatedRecord,
-    createRecord,
-    deleteRecord,
-    updateRecord,
-    updateStructure,
-    refreshRecords,
-    clearFilters,
-    toggleSort,
-    nextPage,
-    prevPage,
+    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
+    isLoadingTables, isLoadingRecords, error, fetchTables, selectTable, openNewTableTab, pinTable, closeTable,
+    addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord,
+    deleteTables, mutateTables, updateRecord, updateStructure, refreshAll, clearFilters, toggleSort, nextPage, prevPage,
   };
 }

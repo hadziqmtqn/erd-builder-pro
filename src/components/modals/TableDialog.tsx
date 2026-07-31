@@ -29,7 +29,6 @@ import {
   generateGoravelModel,
   generateGoravelMigration,
 } from '@/lib/sql-generator';
-import { cn } from '@/lib/utils';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import PropertiesPanel from '../PropertiesPanel';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
@@ -143,6 +142,11 @@ export const TableDialog = ({
     if (open) setActiveMainTab(defaultTab);
   }, [open, defaultTab]);
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) setActiveMainTab(defaultTab);
+    onOpenChange(nextOpen);
+  };
+
   if (!entity) return null;
 
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
@@ -191,11 +195,9 @@ export const TableDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className={cn(
-          activeMainTab === 'schema' ? 'sm:max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl' : 'sm:max-w-md'
-        )}
+        className="sm:max-w-md bg-popover border-border text-popover-foreground shadow-2xl"
         onDoubleClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
@@ -291,7 +293,7 @@ export const TableDialog = ({
             </div>
 
             <div className="p-0 overflow-hidden bg-muted relative flex-1 min-h-0">
-              <div className="h-[min(52vh,520px)] min-h-0">
+              <div className="h-[min(42vh,420px)] min-h-0">
                 <CodeMirror
                   value={currentCode}
                   extensions={codeMirrorExtensions}
@@ -313,7 +315,7 @@ export const TableDialog = ({
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border p-4 bg-muted/20 gap-3">
+            <DialogFooter className="sticky bottom-0 z-10 border-t border-border p-4 bg-muted/20 gap-3">
               <div className="flex items-center gap-2 mr-auto">
                 <Button
                   variant="outline"
@@ -344,7 +346,7 @@ export const TableDialog = ({
                 </Button>
               </div>
               <Button
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleOpenChange(false)}
                 className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
               >
                 Close
