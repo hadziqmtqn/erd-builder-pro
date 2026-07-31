@@ -41,6 +41,31 @@ export async function detachDiagramsFromCatalog(catalogId: number | string) {
   });
 }
 
+export async function deleteDiagramsForCatalog(catalogId: number | string) {
+  if (!prisma) return 0;
+  const diagrams = await prisma.diagram.findMany({
+    where: { sourceConnectionId: Number(catalogId) },
+    select: { id: true },
+  });
+  if (diagrams.length === 0) return 0;
+  await prisma.$transaction(async (tx) => {
+    for (const diagram of diagrams) {
+      await tx.relationship.deleteMany({ where: { diagramId: diagram.id } });
+      const entities = await tx.entity.findMany({
+        where: { diagramId: diagram.id },
+        select: { id: true },
+      });
+      const entityIds = entities.map(entity => entity.id);
+      if (entityIds.length > 0) {
+        await tx.column.deleteMany({ where: { entityId: { in: entityIds } } });
+      }
+      await tx.entity.deleteMany({ where: { diagramId: diagram.id } });
+      await tx.diagram.deleteMany({ where: { id: diagram.id } });
+    }
+  });
+  return diagrams.length;
+}
+
 export async function detachDiagramsFromCatalogs(catalogIds: number[]) {
   if (catalogIds.length === 0) return;
   return prisma?.diagram.updateMany({

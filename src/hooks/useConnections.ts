@@ -55,6 +55,9 @@ export interface DbAccountFormData {
   port: number;
   user: string;
   password: string;
+  database?: string;
+  erdName?: string;
+  projectId?: string;
 }
 
 // ── New: DbCatalog (a specific database on a server) ──
@@ -431,14 +434,14 @@ export function useDbCatalogs(accountId?: number) {
     }
   };
 
-  const deleteCatalog = async (id: number): Promise<{ detachedDiagrams: number; diagramNames: string[] } | null> => {
+  const deleteCatalog = async (id: number): Promise<{ detachedDiagrams: number; deletedDiagrams?: number; diagramNames: string[] } | null> => {
     try {
       const res = await apiFetch(`/api/catalogs/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete catalog');
       const result = await res.json();
       setCatalogs(prev => prev.filter(c => c.id !== id));
       toast.success('Database disconnected');
-      return result as { detachedDiagrams: number; diagramNames: string[] };
+      return result as { detachedDiagrams: number; deletedDiagrams?: number; diagramNames: string[] };
     } catch (e: any) {
       toast.error(e.message || 'Failed to disconnect database');
       return null;

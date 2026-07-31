@@ -66,12 +66,13 @@ export async function deleteCatalog(req: ExpressRequest, res: ExpressResponse) {
 
     const affectedDiagrams = await catalogsService.findAffectedDiagrams(id);
 
-    await catalogsService.detachDiagramsFromCatalog(id);
+    const deletedDiagrams = await catalogsService.deleteDiagramsForCatalog(id);
     await catalogsService.deleteCatalog(id);
 
     res.json({
       success: true,
-      detachedDiagrams: affectedDiagrams?.length ?? 0,
+      detachedDiagrams: deletedDiagrams,
+      deletedDiagrams,
       diagramNames: affectedDiagrams?.map((d: any) => d.name) ?? [],
     });
   } catch (err) {

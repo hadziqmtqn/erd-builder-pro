@@ -130,7 +130,7 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
+    <div className="flex-1 flex flex-col gap-4 overflow-hidden">
       <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <Network className="w-5 h-5 text-cyan-400" />
@@ -222,7 +222,7 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
                       if (col.id === 'name') {
                         return (
                           <TableCell key="name" className="font-medium">
-                            <span className="truncate block max-w-[280px]">{flowchart.title || 'Untitled'}</span>
+                            <span className="truncate block max-w-70">{flowchart.title || 'Untitled'}</span>
                           </TableCell>
                         );
                       }

@@ -20,6 +20,7 @@ describe("custom query helpers", () => {
 describe("validateImportSql", () => {
   it("accepts table import SQL and rejects obvious wrong-driver files", () => {
     expect(validateImportSql("postgresql", 'CREATE TABLE "users" ("id" integer); INSERT INTO "users" ("id") VALUES (1);')).toHaveLength(2);
+    expect(validateImportSql("mysql", '-- dump\n/* table */\nCREATE TABLE `users` (`id` int);')).toEqual(['CREATE TABLE `users` (`id` int)']);
     expect(() => validateImportSql("postgresql", "CREATE TABLE `users` (`id` int AUTO_INCREMENT);")).toThrow("not PostgreSQL");
     expect(() => validateImportSql("mysql", 'CREATE TABLE "users" ("id" serial);')).toThrow("not MySQL");
     expect(() => validateImportSql("sqlite", "CREATE TABLE users (id int) ENGINE=InnoDB;")).toThrow("incompatible with SQLite");

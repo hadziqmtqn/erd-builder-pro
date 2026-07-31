@@ -78,7 +78,7 @@ export function ConnectionCard({
   const { id, name, type, host, port } = account;
 
   const hostDisplay = type === 'sqlite'
-    ? 'Local file'
+    ? host || 'Local file'
     : host ? `${host}:${port || ''}` : '-';
 
   const toggleExpanded = (e: React.MouseEvent) => {
@@ -104,7 +104,7 @@ export function ConnectionCard({
               </Badge>
               {catalogs.length > 0 && (
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                  {catalogs.length} DB
+                  {type === 'sqlite' ? '1 DB' : `${catalogs.length} DB`}
                 </Badge>
               )}
             </div>
@@ -202,15 +202,17 @@ export function ConnectionCard({
               </ScrollArea>
             )}
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full h-7 text-xs justify-start text-muted-foreground hover:text-foreground"
-              onClick={(e) => { e.stopPropagation(); onAddCatalog(account); }}
-            >
-              <Plus className="h-3 w-3 mr-1.5" />
-              Add Database
-            </Button>
+            {type !== 'sqlite' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full h-7 text-xs justify-start text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); onAddCatalog(account); }}
+              >
+                <Plus className="h-3 w-3 mr-1.5" />
+                Add Database
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -227,7 +229,7 @@ export function ConnectionCard({
           <AlertDialogBody>
             <AlertDialogDescription>
               Disconnect <strong>{deletingCatalog?.label || deletingCatalog?.databaseName}</strong>?
-              Diagrams using this database still exist, but can no longer sync.
+              ERD Builder files created from this database will also be deleted.
             </AlertDialogDescription>
           </AlertDialogBody>
           <AlertDialogFooter>

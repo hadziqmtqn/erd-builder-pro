@@ -177,18 +177,22 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
     }
   };
 
-  const fkOptions = (action: 'delete' | 'truncate') => (
+  const actionOptions = (action: 'delete' | 'truncate') => (
     <div className="space-y-3">
+      <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+        <span className="text-muted-foreground">Table: </span>
+        <span className="font-mono font-medium">{tableName}</span>
+      </div>
       {isMysql(dbType) && (
         <label className="flex items-start gap-3 text-sm">
           <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={ignoreFk} onChange={e => { setIgnoreFk(e.target.checked); if (e.target.checked) setCascade(false); }} />
-          <span><span className="block font-medium">Ignore foreign key checks</span><span className="text-xs text-muted-foreground">Disable MySQL FK checks during {action}.</span></span>
+          <span><span className="block font-medium">Disable foreign key checks</span><span className="text-xs text-muted-foreground">Use only when related tables block this {action}.</span></span>
         </label>
       )}
-      {(isMysql(dbType) || isPg(dbType)) && (
+      {isPg(dbType) && (
         <label className="flex items-start gap-3 text-sm">
-          <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={cascade} disabled={isMysql(dbType) && ignoreFk} onChange={e => setCascade(e.target.checked)} />
-          <span><span className="block font-medium">Cascade</span><span className="text-xs text-muted-foreground">Apply database-supported cascade behavior.</span></span>
+          <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={cascade} onChange={e => setCascade(e.target.checked)} />
+          <span><span className="block font-medium">Cascade dependent tables</span><span className="text-xs text-muted-foreground">Include tables connected by foreign keys.</span></span>
         </label>
       )}
     </div>
@@ -212,7 +216,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   const handleTableAction = async (action: 'truncate' | 'delete') => {
     try {
       setBusy(true);
-      const options = { ignoreForeignKeys: isMysql(dbType) ? ignoreFk : false, cascade };
+      const options = { ignoreForeignKeys: isMysql(dbType) ? ignoreFk : false, cascade: isPg(dbType) ? cascade : false };
       action === 'delete'
         ? await onDeleteTables([tableName], options)
         : await onMutateTables({ truncateTables: [tableName], ...options });
@@ -311,7 +315,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
 
       {(['truncate', 'delete'] as const).map(action => (
         <AlertDialog key={action} open={dialog === action} onOpenChange={open => !open && setDialog(null)}>
-          <AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{action === 'delete' ? 'Delete table' : 'Truncate table'}</AlertDialogTitle></AlertDialogHeader><AlertDialogBody>{fkOptions(action)}</AlertDialogBody><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={busy} onClick={() => handleTableAction(action)}>{action === 'delete' ? 'Delete' : 'Truncate'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+          <AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{action === 'delete' ? 'Delete table' : 'Truncate table'}</AlertDialogTitle></AlertDialogHeader><AlertDialogBody>{actionOptions(action)}</AlertDialogBody><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={busy} onClick={() => handleTableAction(action)}>{action === 'delete' ? 'Delete' : 'Truncate'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
         </AlertDialog>
       ))}
     </>

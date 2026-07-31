@@ -27,11 +27,15 @@ export function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
 
 export function DialogOverlay({
   className,
+  onPointerDown,
+  onClick,
   ...props
 }: DialogPrimitive.Backdrop.Props) {
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
+      onPointerDown={(e) => { onPointerDown?.(e); e.stopPropagation(); }}
+      onClick={(e) => { onClick?.(e); e.stopPropagation(); }}
       className={cn(
         "fixed inset-0 isolate z-50 bg-black/50 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
@@ -47,7 +51,7 @@ export const DialogContent = React.forwardRef<
     showCloseButton?: boolean;
     size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "full";
   }
->(({ className, children, showCloseButton = true, size = "sm", ...props }, ref) => {
+>(({ className, children, showCloseButton = true, size = "sm", onPointerDown, onClick, ...props }, ref) => {
   const sizeClasses = {
     sm: "sm:max-w-sm",
     md: "sm:max-w-md",
@@ -65,6 +69,8 @@ export const DialogContent = React.forwardRef<
       <DialogPrimitive.Popup
         ref={ref}
         data-slot="dialog-content"
+        onPointerDown={(e) => { onPointerDown?.(e); e.stopPropagation(); }}
+        onClick={(e) => { onClick?.(e); e.stopPropagation(); }}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 flex flex-col w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 max-h-[85vh] rounded-xl bg-popover p-0 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 overflow-hidden shadow-2xl",
           sizeClasses[size as keyof typeof sizeClasses] || sizeClasses.sm,
@@ -168,4 +174,3 @@ export function DialogDescription({
     />
   )
 }
-
