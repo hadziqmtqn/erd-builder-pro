@@ -29,10 +29,22 @@ export function splitSqlStatements(sql: string) {
   return statements;
 }
 
+const stripLeadingSqlComments = (statement: string) => {
+  let text = statement.trim();
+  while (true) {
+    const next = text
+      .replace(/^--[^\n]*(?:\n|$)/, "")
+      .replace(/^\/\*[\s\S]*?\*\//, "")
+      .trim();
+    if (next === text) return text;
+    text = next;
+  }
+};
+
 export function validateImportSql(type: string, sql: string) {
   if (!sql.trim()) throw new Error("SQL file is empty");
   if (sql.length > 2_000_000) throw new Error("SQL file is too large");
-  const statements = splitSqlStatements(sql);
+  const statements = splitSqlStatements(sql).map(stripLeadingSqlComments).filter(Boolean);
   if (statements.length === 0) throw new Error("No SQL statements found");
   const allowed = /^(create\s+(table|index|unique\s+index)|alter\s+table|drop\s+table|drop\s+index|truncate\s+table|insert\s+into|set\s+foreign_key_checks|pragma\s+foreign_keys|begin|commit|rollback)\b/i;
   for (const statement of statements) {

@@ -104,7 +104,9 @@ export async function testAccountConnection(req: ExpressRequest, res: ExpressRes
     if (!account) return res.status(404).json({ error: "Account not found" });
 
     const firstCatalog = await accountsService.findFirstCatalog(id);
-    const probeDb = firstCatalog?.databaseName || "postgres";
+    const probeDb = (account as any).type === "sqlite"
+      ? firstCatalog?.databaseName || (account as any).host
+      : firstCatalog?.databaseName || "postgres";
 
     const result = await testConnection(buildConnectionInfo({
       type: (account as any).type,
@@ -130,7 +132,7 @@ export async function testRawCredentials(req: ExpressRequest, res: ExpressRespon
   if (!type) return res.status(400).json({ error: "type is required" });
 
   try {
-    const probeDb = type === "postgresql" ? "postgres" : type === "mysql" ? "mysql" : undefined;
+    const probeDb = type === "postgresql" ? "postgres" : type === "mysql" ? "mysql" : host;
     const result = await testConnection({ type, host, port, user, password, database: probeDb } as any);
     if (result === "OK" || result.startsWith("OK")) {
       res.json({ success: true, message: "Connection successful" });

@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import {
   Select,
   SelectTrigger,
@@ -18,7 +19,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { FileUp, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import type { DbAccountFormData, DbType, TestResult, DbAccount } from '@/hooks/useConnections';
 
 const DB_OPTIONS: { value: DbType; label: string; defaultPort: number }[] = [
@@ -34,6 +35,7 @@ interface ConnectionFormProps {
   onSave: (data: DbAccountFormData) => Promise<DbAccount | null>;
   onTest: (data: DbAccountFormData) => Promise<TestResult>;
   getDefaultPort: (type: DbType) => number;
+  projects?: any[];
 }
 
 export function ConnectionForm({
@@ -43,6 +45,7 @@ export function ConnectionForm({
   onSave,
   onTest,
   getDefaultPort,
+  projects = [],
 }: ConnectionFormProps) {
   const [type, setType] = useState<DbType>(editing?.type || 'postgresql');
   const [name, setName] = useState(editing?.name || '');
@@ -50,6 +53,8 @@ export function ConnectionForm({
   const [port, setPort] = useState(String(editing?.port ?? getDefaultPort(type)));
   const [user, setUser] = useState(editing?.user || '');
   const [password, setPassword] = useState('');
+  const [erdName, setErdName] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('none');
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -65,6 +70,8 @@ export function ConnectionForm({
         setPort(String(editing.port ?? getDefaultPort(editing.type)));
         setUser(editing.user || '');
         setPassword('');
+        setErdName('');
+        setSelectedProjectId('none');
       } else {
         setType('postgresql');
         setName('');
@@ -72,6 +79,8 @@ export function ConnectionForm({
         setPort('5432');
         setUser('postgres');
         setPassword('');
+        setErdName('');
+        setSelectedProjectId('none');
       }
       setTestResult(null);
     }
@@ -82,6 +91,14 @@ export function ConnectionForm({
     const t = val as DbType;
     setType(t);
     setPort(String(getDefaultPort(t)));
+    if (t === 'sqlite') {
+      setHost('');
+      setUser('');
+      setPassword('');
+      setErdName(name);
+    } else if (!host) {
+      setHost('localhost');
+    }
     setTestResult(null);
   };
 
@@ -92,7 +109,27 @@ export function ConnectionForm({
     port: Number(port),
     user,
     password,
+    database: type === 'sqlite' ? host : undefined,
+    erdName: type === 'sqlite' ? erdName : undefined,
+    projectId: type === 'sqlite' ? selectedProjectId : undefined,
   });
+
+  const pickSqliteFile = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'SQLite database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+      });
+      if (typeof selected === 'string') {
+        setHost(selected);
+        if (!name.trim()) setName(selected.split(/[\\/]/).pop()?.replace(/\.(db|sqlite3?|sqlite)$/i, '') || 'SQLite database');
+        if (!erdName.trim()) setErdName(selected.split(/[\\/]/).pop()?.replace(/\.(db|sqlite3?|sqlite)$/i, '') || 'SQLite ERD');
+      }
+    } catch {
+      setTestResult({ success: false, message: 'File picker is unavailable. Enter the SQLite file path manually.' });
+    }
+  };
 
   const handleTest = async () => {
     setIsTesting(true);
@@ -156,7 +193,25 @@ export function ConnectionForm({
           </Field>
 
           {/* Host + Port (hidden for SQLite) */}
-          {!isSqlite && (
+          {isSqlite ? (
+            <Field>
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                SQLite File Path
+              </FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  className="h-10"
+                  placeholder="/path/to/database.sqlite"
+                  value={host}
+                  onChange={e => setHost(e.target.value)}
+                />
+                <Button type="button" variant="outline" className="h-10 shrink-0" onClick={pickSqliteFile}>
+                  <FileUp className="mr-1.5 h-3.5 w-3.5" />
+                  Choose
+                </Button>
+              </div>
+            </Field>
+          ) : (
             <div className="grid grid-cols-3 gap-3">
               <Field className="col-span-2">
                 <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
@@ -212,6 +267,39 @@ export function ConnectionForm({
             </div>
           )}
 
+          {isSqlite && !isEditing && (
+            <>
+              <Field>
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                  ERD New Name
+                </FieldLabel>
+                <Input
+                  className="h-10"
+                  placeholder="SQLite ERD name"
+                  value={erdName}
+                  onChange={e => setErdName(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
+                  Workspace
+                </FieldLabel>
+                <SearchableSelect
+                  value={selectedProjectId}
+                  onChange={setSelectedProjectId}
+                  items={[{ id: 'none', name: 'Uncategorized' }, ...projects]}
+                  placeholder="Workspace (optional)"
+                  searchPlaceholder="Search workspace..."
+                  emptyMessage="No workspace found"
+                  getItemValue={(project) => String(project.id)}
+                  getItemLabel={(project) => project.name}
+                  filterItem={(project, q) => project.name.toLowerCase().includes(q.toLowerCase())}
+                  className="h-9 text-sm"
+                />
+              </Field>
+            </>
+          )}
+
           {/* Test result */}
           {testResult && (
             <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
@@ -240,7 +328,7 @@ export function ConnectionForm({
           </DialogClose>
           <Button
             className="h-9 px-6"
-            disabled={!name.trim() || isSaving}
+            disabled={!name.trim() || (isSqlite && (!host.trim() || (!isEditing && !erdName.trim()))) || isSaving}
             onClick={handleSave}
           >
             {isSaving ? (

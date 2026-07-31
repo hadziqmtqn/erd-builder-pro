@@ -183,7 +183,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4 overflow-hidden pt-6">
+    <div className="flex-1 flex flex-col gap-4 overflow-hidden">
       {/* Header */}
       <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">

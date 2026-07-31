@@ -86,6 +86,7 @@ export function DBConnectPanel({
   const [importingDbName, setImportingDbName] = useState<string | null>(null);
   const [selectedDbName, setSelectedDbName] = useState('');
   const [newDbName, setNewDbName] = useState('');
+  const [createDbOpen, setCreateDbOpen] = useState(false);
   const [isCreatingDb, setIsCreatingDb] = useState(false);
   const [erdName, setErdName] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('none');
@@ -119,7 +120,22 @@ export function DBConnectPanel({
   const handleSave = async (data: DbAccountFormData): Promise<DbAccount | null> => {
     const account = editingAcc ? await updateAccount(editingAcc.id, data) : await createAccount(data);
     if (account && !editingAcc) {
-      setTimeout(() => handleAddDatabase(account, 'import'), 0);
+      if (data.type === 'sqlite') {
+        const databaseName = data.database?.trim() || data.host.trim();
+        const catalog = await createCatalog(account.id, databaseName, account.name);
+        if (catalog) {
+          fetchCatalogs();
+          fetchAccounts();
+          const targetProjectId = data.projectId === 'none' ? null : data.projectId;
+          const result = await importAsDiagram(catalog.id, data.erdName?.trim() || account.name, targetProjectId);
+          if (result?.diagram?.uid) {
+            onOpenChange(false);
+            onImportComplete?.(result.diagram.uid);
+          }
+        }
+      } else {
+        setTimeout(() => handleAddDatabase(account, 'import'), 0);
+      }
     }
     return account;
   };
@@ -171,6 +187,7 @@ export function DBConnectPanel({
     setAvailableDbs([]);
     setSelectedDbName('');
     setNewDbName('');
+    setCreateDbOpen(false);
     setErdName('');
     setSelectedProjectId('none');
     const dbs = await listDatabases(acc.id);
@@ -191,6 +208,7 @@ export function DBConnectPanel({
       if (!database) return;
       setAvailableDbs(prev => [...prev.filter(db => db.name !== database.name), database].sort((a, b) => a.name.localeCompare(b.name)));
       setNewDbName('');
+      setCreateDbOpen(false);
       handleDatabaseChange(database.name);
     } finally {
       setIsCreatingDb(false);
@@ -253,7 +271,7 @@ export function DBConnectPanel({
               </Badge>
             </div>
             <SheetDescription>
-              Connect to external databases and import schemas as ERD diagrams
+              Create DB clients from external databases and local SQLite files
             </SheetDescription>
           </SheetHeader>
 
@@ -271,7 +289,7 @@ export function DBConnectPanel({
             <div className="flex items-center gap-2">
               <Button size="sm" className="h-9 shrink-0" onClick={handleAdd}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                New ERD from DB
+                New DB Client
               </Button>
             </div>
           </div>
@@ -295,7 +313,7 @@ export function DBConnectPanel({
                 {!search.trim() && (
                   <Button variant="outline" size="sm" className="mt-3" onClick={handleAdd}>
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
-                    Add Account
+                    New DB Client
                   </Button>
                 )}
               </div>
@@ -315,9 +333,9 @@ export function DBConnectPanel({
                       const result = await deleteCatalog(cat.id);
                       fetchCatalogs();
                       fetchAccounts();
-                      if (result && result.detachedDiagrams > 0) {
+                      if (result && (result.deletedDiagrams || result.detachedDiagrams) > 0) {
                         toast.info(
-                          `${result.detachedDiagrams} diagram(s) disconnected: ${result.diagramNames.join(', ')}`,
+                          `${result.deletedDiagrams || result.detachedDiagrams} ERD file(s) deleted: ${result.diagramNames.join(', ')}`,
                           { duration: 5000 }
                         );
                       }
@@ -339,6 +357,7 @@ export function DBConnectPanel({
         onSave={handleSave}
         onTest={handleTest}
         getDefaultPort={getDefaultPort}
+        projects={projects}
       />
 
       {/* Delete account confirmation */}
@@ -370,7 +389,7 @@ export function DBConnectPanel({
       <AlertDialog open={addDbAccount !== null} onOpenChange={open => !open && setAddDbAccount(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{dbPickMode === 'import' ? 'Create ERD from Database' : 'Select Database'}</AlertDialogTitle>
+            <AlertDialogTitle>{dbPickMode === 'import' ? 'Create DB Client' : 'Select Database'}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogBody>
             {isLoadingDbs ? (
@@ -379,35 +398,36 @@ export function DBConnectPanel({
               </div>
             ) : (
               <div className="space-y-3">
-                {availableDbs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2 text-center">
-                    No databases found on <strong>{addDbAccount?.name}</strong>
-                  </p>
-                ) : (
-                  <Field>
+                <Field>
                     <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                       Production Database
                     </FieldLabel>
-                    <SearchableSelect
-                      value={selectedDbName}
-                      onChange={handleDatabaseChange}
-                      items={availableDbs}
-                      placeholder="Select production database"
-                      searchPlaceholder="Search database..."
-                      emptyMessage="No database found"
-                      getItemValue={(db) => db.name}
-                      getItemLabel={(db) => db.isConnected ? `${db.name} (connected)` : db.name}
-                      filterItem={(db, q) => db.name.toLowerCase().includes(q.toLowerCase())}
-                      className="h-9 text-sm"
-                    />
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <SearchableSelect
+                        value={selectedDbName}
+                        onChange={handleDatabaseChange}
+                        items={availableDbs}
+                        placeholder="Select production database"
+                        searchPlaceholder="Search database..."
+                        emptyMessage="No database found"
+                        getItemValue={(db) => db.name}
+                        getItemLabel={(db) => db.isConnected ? `${db.name} (connected)` : db.name}
+                        filterItem={(db, q) => db.name.toLowerCase().includes(q.toLowerCase())}
+                        className="h-9 text-sm"
+                      />
+                      {addDbAccount?.type !== 'sqlite' ? (
+                        <Button type="button" variant="outline" size="icon-sm" className="h-9 w-9" onClick={() => setCreateDbOpen(open => !open)} title="Create database">
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </div>
                   </Field>
-                )}
-                {addDbAccount?.type !== 'sqlite' && (
+                {createDbOpen && addDbAccount?.type !== 'sqlite' && (
                   <Field>
                     <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 px-1">
                       New Database
                     </FieldLabel>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                       <Input
                         value={newDbName}
                         onChange={e => setNewDbName(e.target.value)}
@@ -417,7 +437,7 @@ export function DBConnectPanel({
                           if (e.key === 'Enter' && newDbName.trim() && !isCreatingDb) handleCreateDatabase();
                         }}
                       />
-                      <Button type="button" variant="outline" className="h-9 shrink-0" onClick={handleCreateDatabase} disabled={!newDbName.trim() || isCreatingDb}>
+                      <Button type="button" className="h-9" onClick={handleCreateDatabase} disabled={!newDbName.trim() || isCreatingDb}>
                         {isCreatingDb ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Create'}
                       </Button>
                     </div>
@@ -475,7 +495,7 @@ export function DBConnectPanel({
                     <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
                     Creating...
                   </>
-                ) : dbPickMode === 'import' ? 'Create ERD' : 'Connect'}
+                ) : dbPickMode === 'import' ? 'Create DB Client' : 'Connect'}
               </AlertDialogAction>
             )}
           </AlertDialogFooter>

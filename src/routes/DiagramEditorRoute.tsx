@@ -35,6 +35,7 @@ export function DiagramEditorRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
   const [queryOpenNonce, setQueryOpenNonce] = useState(0);
+  const [dbType, setDbType] = useState<string | null>(null);
 
   // Read snake_case fields from API response (camelToSnake middleware converts all)
   const isProductionDb = useMemo(() => {
@@ -142,7 +143,7 @@ export function DiagramEditorRoute() {
       <ProjectFileTabs currentView="erd" />
       {/* Tab bar — only for production DB diagrams */}
       {isProductionDb && !isPublicView && (
-        <DataViewerModeToolbar activeMode={diagramTab} onModeChange={setDiagramTab} />
+        <DataViewerModeToolbar activeMode={diagramTab} dbType={dbType} onModeChange={setDiagramTab} />
       )}
 
       {/* Content */}
@@ -150,6 +151,7 @@ export function DiagramEditorRoute() {
         <DataViewer
           connectionId={sourceConnectionId}
           stateKey={`${show?.uid || show?.id}:${sourceConnectionId}`}
+          onDbTypeChange={setDbType}
         />
       ) : diagramTab === 'query' && isProductionDb && !isPublicView && sourceConnectionId && show?.id ? (
         <DataQueryView

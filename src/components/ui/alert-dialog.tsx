@@ -32,12 +32,15 @@ function AlertDialogPortal({ ...props }: AlertDialogPrimitive.Portal.Props) {
 
 function AlertDialogOverlay({
   className,
+  onPointerDown,
+  onClick,
   ...props
 }: AlertDialogPrimitive.Backdrop.Props) {
   return (
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => { onPointerDown?.(e); e.stopPropagation(); }}
+      onClick={(e) => { onClick?.(e); e.stopPropagation(); }}
       className={cn(
         "fixed inset-0 isolate z-50 bg-black/10 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
@@ -50,6 +53,8 @@ function AlertDialogOverlay({
 function AlertDialogContent({
   className,
   size = "default",
+  onPointerDown,
+  onClick,
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   size?: "default" | "sm"
@@ -59,7 +64,8 @@ function AlertDialogContent({
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Popup
         data-slot="alert-dialog-content"
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => { onPointerDown?.(e); e.stopPropagation(); }}
+        onClick={(e) => { onClick?.(e); e.stopPropagation(); }}
         data-size={size}
         className={cn(
           "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex flex-col w-full -translate-x-1/2 -translate-y-1/2 rounded-xl bg-popover p-0 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 max-h-[85vh] overflow-hidden shadow-2xl",

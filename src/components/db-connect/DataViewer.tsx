@@ -17,8 +17,8 @@ import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers } from './data-viewer-utils';
 
-interface DataViewerProps { connectionId: number; stateKey?: string; } type DataViewerView = 'data' | 'structure';
-export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
+interface DataViewerProps { connectionId: number; stateKey?: string; onDbTypeChange?: (dbType: string | null) => void; } type DataViewerView = 'data' | 'structure';
+export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
@@ -157,6 +157,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     setConfirmAction(null);
   }, [recordEditor.removeSelectedRecords]);
   useEffect(() => { fetchTables(); }, [fetchTables]);
+  useEffect(() => { onDbTypeChange?.(dbType); }, [dbType, onDbTypeChange]);
   useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
   useEffect(() => {
     if (!activeTable || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {
@@ -190,8 +191,8 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   useEffect(() => { recordEditor.resetRecordEditor(); if (!isNewTableTab) structureEditor.close(); }, [activeTable, isNewTableTab]);
   useEffect(() => { recordEditor.resetRecordEditor(); }, [page]);
   useEffect(() => {
-    if (isNewTableTab && activeView === 'structure' && structureEditor.target?.kind !== 'addTable') handleCloseTable('__new_table__');
-  }, [activeView, handleCloseTable, isNewTableTab, structureEditor.target?.kind]);
+    if (isNewTableTab && structureEditor.target?.kind !== 'addTable') handleCloseTable('__new_table__');
+  }, [handleCloseTable, isNewTableTab, structureEditor.target?.kind]);
   useEffect(() => {
     const refresh = () => warnUnsaved() && refreshAll();
     const toggleDetails = () => recordEditor.setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true);
@@ -279,7 +280,7 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
                 <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Create a new table</div>
               ) : activeView === 'structure' && activeTableSchema ? (
                 <DataViewerStructure
-                  table={activeTableSchema} dbType={dbType} isLoading={isLoadingTables}
+                  table={activeTableSchema} isLoading={isLoadingTables}
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
                   selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
                   onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}

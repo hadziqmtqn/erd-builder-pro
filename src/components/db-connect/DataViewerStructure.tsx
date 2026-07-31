@@ -1,11 +1,9 @@
 import { PanelRightOpen, RefreshCw } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type DataViewerStructureProps = {
   table: any;
-  dbType: string | null;
   isLoading?: boolean;
   selectedColumnName?: string | null;
   selectedIndexName?: string | null;
@@ -26,17 +24,8 @@ function ValueCell({ value, className = '' }: { value: any; className?: string }
 function RefreshProgress({ active }: { active: boolean }) {
   return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
 }
-function DriverBadge({ dbType }: { dbType: string | null }) {
-  if (!dbType) return null;
-  const cls = dbType === 'mysql'
-    ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
-    : dbType === 'postgresql'
-      ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-      : 'bg-muted text-muted-foreground';
-  return <Badge className={cls}>{dbType}</Badge>;
-}
 
-export function DataViewerStructure({ table, dbType, isLoading = false, selectedColumnName, selectedIndexName, onEditTable, onSelectColumn, onSelectIndex, onRefresh }: DataViewerStructureProps) {
+export function DataViewerStructure({ table, isLoading = false, selectedColumnName, selectedIndexName, onEditTable, onSelectColumn, onSelectIndex, onRefresh }: DataViewerStructureProps) {
   const columns = (table?.columns || [])
     .map((column: any, index: number) => ({ column, index }))
     .sort((a: any, b: any) => (Number(a.column.sort_order) || a.index + 1) - (Number(b.column.sort_order) || b.index + 1))
@@ -63,7 +52,6 @@ export function DataViewerStructure({ table, dbType, isLoading = false, selected
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <DriverBadge dbType={dbType} />
           <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="Refresh structure">
             <RefreshCw className="h-4 w-4" />
           </Button>
