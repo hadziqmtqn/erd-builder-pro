@@ -158,6 +158,9 @@ export function useRecordEditor({
   }, [activeTable, deleteRecord, primaryKeyColumns, selectedRows]);
 
   const clearSelectedRows = useCallback(() => setSelectedRows([]), []);
+  const selectRows = useCallback((rows: Record<string, any>[]) => {
+    setSelectedRows(rows);
+  }, []);
 
   const resetRecordEditor = useCallback(() => {
     setSelectedRow(null);
@@ -182,6 +185,7 @@ export function useRecordEditor({
     removeSelectedRecords,
     resetRecordEditor,
     selectRow,
+    selectRows,
     setDatePickerOpenColumn,
     setDetailsOpen,
     setDraftRow,

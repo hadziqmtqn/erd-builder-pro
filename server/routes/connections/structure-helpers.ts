@@ -32,6 +32,11 @@ type StructurePatch = {
   };
   deleteColumnName?: string;
   deleteIndexName?: string;
+  deleteTables?: string[];
+  truncateTables?: string[];
+  cloneTable?: { source?: string; target?: string; withData?: boolean };
+  ignoreForeignKeys?: boolean;
+  cascade?: boolean;
 };
 
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_$]*$/;
@@ -248,6 +253,40 @@ function indexSql(type: string, tableNameSql: string, index: NonNullable<Structu
 
 export function buildStructureStatements(type: string, tableSchema: any, patch: StructurePatch, schema: any[] = []) {
   if (type !== "postgresql" && type !== "mysql") throw new Error("Structure editing is only supported for PostgreSQL and MySQL catalogs");
+
+  const validTables = (tableNames: string[]) => {
+    const tables = [...new Set(tableNames.map(String))];
+    for (const table of tables) {
+      assertIdentifier(table, "table name");
+      if (!schema.some((item: any) => item.table_name === table)) throw new Error(`Invalid table name: ${table}`);
+    }
+    return tables;
+  };
+
+  if (Array.isArray(patch.deleteTables) && patch.deleteTables.length > 0) {
+    const tables = validTables(patch.deleteTables);
+    const drops = tables.map(table => `DROP TABLE ${quoteIdentifier(type, table)}${type === "postgresql" && patch.cascade ? " CASCADE" : ""}`);
+    if (type === "mysql" && patch.ignoreForeignKeys) return ["SET FOREIGN_KEY_CHECKS=0", ...drops, "SET FOREIGN_KEY_CHECKS=1"];
+    return drops;
+  }
+  if (Array.isArray(patch.truncateTables) && patch.truncateTables.length > 0) {
+    const tables = validTables(patch.truncateTables);
+    const truncates = tables.map(table => `TRUNCATE TABLE ${quoteIdentifier(type, table)}${type === "postgresql" && patch.cascade ? " CASCADE" : ""}`);
+    if (type === "mysql" && patch.ignoreForeignKeys) return ["SET FOREIGN_KEY_CHECKS=0", ...truncates, "SET FOREIGN_KEY_CHECKS=1"];
+    return truncates;
+  }
+  if (patch.cloneTable) {
+    const source = String(patch.cloneTable.source || "");
+    const target = String(patch.cloneTable.target || "");
+    validTables([source]);
+    assertIdentifier(target, "table name");
+    if (schema.some((item: any) => item.table_name === target)) throw new Error("Table already exists");
+    const sourceSql = quoteIdentifier(type, source);
+    const targetSql = quoteIdentifier(type, target);
+    return type === "postgresql"
+      ? [`CREATE TABLE ${targetSql} (LIKE ${sourceSql} INCLUDING ALL)`, ...(patch.cloneTable.withData ? [`INSERT INTO ${targetSql} SELECT * FROM ${sourceSql}`] : [])]
+      : [`CREATE TABLE ${targetSql} LIKE ${sourceSql}`, ...(patch.cloneTable.withData ? [`INSERT INTO ${targetSql} SELECT * FROM ${sourceSql}`] : [])];
+  }
 
   if (patch.createTable) {
     const tableName = String(patch.createTable.name || "");

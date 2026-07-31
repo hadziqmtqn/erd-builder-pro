@@ -24,6 +24,9 @@ export function DataViewerTableTabs({
     <div className="flex shrink-0 items-center gap-2 border-b bg-muted/10 px-2 py-1">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-hide">
         {openTabs.map(tab => (
+          (() => {
+            const label = tab.label || tab.name;
+            return (
           <button
             key={tab.name}
             onClick={() => onSelectTable(tab.name)}
@@ -33,9 +36,9 @@ export function DataViewerTableTabs({
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
-            title={tab.pinned ? `${tab.name} (pinned)` : `${tab.name} (double click to pin)`}
+            title={tab.pinned ? `${label} (pinned)` : `${label} (double click to pin)`}
           >
-            <span className={`truncate ${tab.pinned ? 'not-italic' : 'italic'}`}>{tab.name}</span>
+            <span className={`truncate ${tab.pinned ? 'not-italic' : 'italic'}`}>{label}</span>
             <span
               role="button"
               tabIndex={0}
@@ -53,6 +56,8 @@ export function DataViewerTableTabs({
               <X className="h-3 w-3" />
             </span>
           </button>
+            );
+          })()
         ))}
       </div>
       {rightActions}

@@ -12,6 +12,7 @@ import { ColumnTypeSelect } from './ColumnTypeSelect';
 import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 
 const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+const DEFAULT_VARCHAR_LENGTH = 255;
 
 const optionalInt = (value: string) => {
   const trimmed = value.trim();
@@ -97,6 +98,7 @@ export default function PropertiesPanel({
       id: Math.random().toString(36).substring(2, 11),
       name: 'new_column',
       type: 'VARCHAR',
+      max_length: DEFAULT_VARCHAR_LENGTH,
       is_pk: false,
       is_nullable: true,
       sort_order: maxSortOrder + 1,
@@ -184,8 +186,10 @@ export default function PropertiesPanel({
       updates = { ...updates, name: newName };
     }
     if ('type' in updates) {
+      const currentCol = editingEntity.columns.find(c => c.id === colId);
       updates = {
         ...updates,
+        ...(/^varchar$/i.test(String(updates.type)) && currentCol?.max_length == null && { max_length: DEFAULT_VARCHAR_LENGTH }),
         ...(!supportsColumnLength(updates.type) && { max_length: null }),
         ...(!supportsNumericPrecision(updates.type) && { numeric_precision: null, numeric_scale: null }),
       };

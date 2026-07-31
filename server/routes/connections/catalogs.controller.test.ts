@@ -5,6 +5,7 @@ import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhe
 import { fetchTableInfo } from "./record-helpers.js";
 import { limitSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
+import { validateImportSql } from "./structure.controller.js";
 
 describe("custom query helpers", () => {
   it("allows one SELECT/WITH statement and wraps it with a row limit", () => {
@@ -13,6 +14,15 @@ describe("custom query helpers", () => {
     expect(() => normalizeSelectQuery("UPDATE users SET name = 'x'")).toThrow("Only SELECT queries are allowed");
     expect(() => normalizeSelectQuery("SELECT 1; SELECT 2")).toThrow("Only one SQL statement is allowed");
     expect(() => normalizeSelectQuery("WITH changed AS (DELETE FROM users RETURNING id) SELECT * FROM changed")).toThrow("Only read-only SQL queries are allowed");
+  });
+});
+
+describe("validateImportSql", () => {
+  it("accepts table import SQL and rejects obvious wrong-driver files", () => {
+    expect(validateImportSql("postgresql", 'CREATE TABLE "users" ("id" integer); INSERT INTO "users" ("id") VALUES (1);')).toHaveLength(2);
+    expect(() => validateImportSql("postgresql", "CREATE TABLE `users` (`id` int AUTO_INCREMENT);")).toThrow("not PostgreSQL");
+    expect(() => validateImportSql("mysql", 'CREATE TABLE "users" ("id" serial);')).toThrow("not MySQL");
+    expect(() => validateImportSql("sqlite", "CREATE TABLE users (id int) ENGINE=InnoDB;")).toThrow("incompatible with SQLite");
   });
 });
 
@@ -203,6 +213,36 @@ describe("buildStructureStatements", () => {
     expect(buildStructureStatements("mysql", {}, {
       createTable: { name: "customers", column: { name: "name", type: "varchar", is_nullable: false } },
     })).toEqual(['CREATE TABLE `customers` (`name` varchar(255) NOT NULL)']);
+  });
+
+  it("builds safe table delete statements", () => {
+    const schema = [{ table_name: "posts" }, { table_name: "comments" }];
+    expect(buildStructureStatements("postgresql", {}, { deleteTables: ["posts"], cascade: true }, schema)).toEqual([
+      'DROP TABLE "posts" CASCADE',
+    ]);
+    expect(buildStructureStatements("mysql", {}, { deleteTables: ["posts", "comments"], ignoreForeignKeys: true }, schema)).toEqual([
+      "SET FOREIGN_KEY_CHECKS=0",
+      "DROP TABLE `posts`",
+      "DROP TABLE `comments`",
+      "SET FOREIGN_KEY_CHECKS=1",
+    ]);
+    expect(() => buildStructureStatements("postgresql", {}, { deleteTables: ["posts;drop"] }, schema)).toThrow("Invalid table name");
+  });
+
+  it("builds truncate and clone table statements", () => {
+    const schema = [{ table_name: "posts" }];
+    expect(buildStructureStatements("postgresql", {}, { truncateTables: ["posts"], cascade: true }, schema)).toEqual([
+      'TRUNCATE TABLE "posts" CASCADE',
+    ]);
+    expect(buildStructureStatements("mysql", {}, { truncateTables: ["posts"], ignoreForeignKeys: true }, schema)).toEqual([
+      "SET FOREIGN_KEY_CHECKS=0",
+      "TRUNCATE TABLE `posts`",
+      "SET FOREIGN_KEY_CHECKS=1",
+    ]);
+    expect(buildStructureStatements("mysql", {}, { cloneTable: { source: "posts", target: "posts_copy", withData: true } }, schema)).toEqual([
+      "CREATE TABLE `posts_copy` LIKE `posts`",
+      "INSERT INTO `posts_copy` SELECT * FROM `posts`",
+    ]);
   });
 
   it("rejects unsafe structure identifiers and column types", () => {

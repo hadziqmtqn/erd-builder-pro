@@ -1,16 +1,12 @@
-import { ReactNode, useEffect, useState } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Download, Plus, Trash2 } from 'lucide-react';
+import { ReactNode, useRef } from 'react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { apiFetch } from '@/lib/api';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
-import { toast } from 'sonner';
 
 type DataViewerRecordsTableProps = {
   activeTable: string;
-  appliedFilters: any[];
   columnHelpers: ReturnType<typeof createColumnHelpers>;
-  connectionId: number;
   error: string | null;
   foreignKeyByColumn: Map<string, any>;
   isLoadingRecords: boolean;
@@ -18,13 +14,10 @@ type DataViewerRecordsTableProps = {
   primaryKeyColumns: string[];
   selectedRow: Record<string, any> | null;
   selectedRowKeys: Set<string>;
-  selectedRecordCount: number;
   sort: any;
   handleSelectRow: (row: Record<string, any>) => void;
   openRelatedRecord: (table: string, column: string, value: any) => void;
   onAddRecord: () => void;
-  onClearSelectedRecords: () => void;
-  onDeleteSelectedRecords: () => void;
   onTogglePageRows: (rows: Record<string, any>[], checked: boolean) => void;
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean) => void;
   toggleSort: (column: string) => void;
@@ -35,37 +28,9 @@ type DataViewerRecordsTableProps = {
 function RefreshProgress({ active }: { active: boolean }) {
   return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
 }
-
-function downloadText(name: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function csvCell(value: any) {
-  if (value === null || value === undefined) return '';
-  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function sqlValue(value: any) {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return `'${text.replace(/'/g, "''")}'`;
-}
-
 export function DataViewerRecordsTable({
   activeTable,
-  appliedFilters,
   columnHelpers,
-  connectionId,
   error,
   foreignKeyByColumn,
   isLoadingRecords,
@@ -73,13 +38,10 @@ export function DataViewerRecordsTable({
   primaryKeyColumns,
   selectedRow,
   selectedRowKeys,
-  selectedRecordCount,
   sort,
   handleSelectRow,
   openRelatedRecord,
   onAddRecord,
-  onClearSelectedRecords,
-  onDeleteSelectedRecords,
   onTogglePageRows,
   onToggleSelectedRow,
   toggleSort,
@@ -89,48 +51,8 @@ export function DataViewerRecordsTable({
   const canSelectRows = primaryKeyColumns.length > 0;
   const rowKey = (row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column]));
   const pageRows = records?.rows || [];
+  const scrollRef = useRef<HTMLDivElement>(null);
   const columns = records?.columns || [];
-  const [exportColumns, setExportColumns] = useState<string[]>([]);
-  const [isExporting, setIsExporting] = useState(false);
-  useEffect(() => { setExportColumns(columns); }, [columns.join('\0')]);
-  const pickColumns = (rows: any[]) => rows.map((row: any) => Object.fromEntries(exportColumns.map(column => [column, row[column]])));
-  const exportData = async (format: 'json' | 'csv' | 'sql') => {
-    if (exportColumns.length === 0) return;
-    setIsExporting(true);
-    const allRows: any[] = [];
-    try {
-      const total = records?.total || pageRows.length;
-      const pages = Math.max(1, Math.ceil(total / 200));
-      for (let p = 1; p <= pages; p += 1) {
-        const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ table: activeTable, page: p, pageSize: 200, filters: appliedFilters, sort }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to export records');
-        allRows.push(...(data.rows || []));
-      }
-      const exportRows = pickColumns(allRows);
-      const base = activeTable.toLowerCase().replace(/\s+/g, '_');
-      if (format === 'json') {
-        downloadText(`${base}.json`, JSON.stringify(exportRows, null, 2), 'application/json');
-        return;
-      }
-      if (format === 'csv') {
-        downloadText(`${base}.csv`, [exportColumns.map(csvCell).join(','), ...exportRows.map(row => exportColumns.map(column => csvCell(row[column])).join(','))].join('\n'), 'text/csv');
-        return;
-      }
-      const names = exportColumns.map(column => `"${column.replace(/"/g, '""')}"`).join(', ');
-      const table = `"${activeTable.replace(/"/g, '""')}"`;
-      const sql = exportRows.map(row => `INSERT INTO ${table} (${names}) VALUES (${exportColumns.map(column => sqlValue(row[column])).join(', ')});`).join('\n');
-      downloadText(`${base}.sql`, sql, 'text/plain');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to export records');
-    } finally {
-      setIsExporting(false);
-    }
-  };
   const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   return (
     <div className="min-h-0 overflow-hidden flex flex-col">
@@ -172,45 +94,6 @@ export function DataViewerRecordsTable({
               )}
             </div>
             <div className="flex items-center gap-1">
-              {records && (
-                <details className="relative">
-                  <summary className="flex h-8 cursor-pointer list-none items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent hover:text-accent-foreground">
-                    <Download className="h-3.5 w-3.5" />
-                    Export
-                  </summary>
-                  <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border bg-popover p-2 text-popover-foreground shadow-lg">
-                    <div className="mb-2 max-h-44 overflow-auto pr-1">
-                      {columns.map((column: string) => (
-                        <label key={column} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted">
-                          <input
-                            type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={exportColumns.includes(column)}
-                            onChange={e => setExportColumns(prev => e.target.checked ? [...prev, column] : prev.filter(item => item !== column))}
-                          />
-                          <span className="truncate font-mono">{column}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(['json', 'csv', 'sql'] as const).map(format => (
-                        <Button key={format} variant="outline" size="sm" className="h-7 px-2 text-[11px] uppercase" disabled={exportColumns.length === 0 || isExporting} onClick={() => exportData(format)}>
-                          {format}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-              )}
-              {selectedRecordCount > 0 && (
-                <>
-                  <Button variant="outline" size="sm" className="h-8 px-2" onClick={onClearSelectedRecords}>Uncheck All</Button>
-                  <Button variant="destructive" size="sm" className="h-8 px-2" onClick={onDeleteSelectedRecords}>
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    Delete {selectedRecordCount}
-                  </Button>
-                </>
-              )}
               <Button variant="outline" size="sm" className="h-8 px-2" onClick={onAddRecord}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Record
@@ -218,7 +101,13 @@ export function DataViewerRecordsTable({
             </div>
           </div>
           <RefreshProgress active={isLoadingRecords} />
-          <div className="flex-1 overflow-auto custom-scrollbar min-h-0">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-auto custom-scrollbar min-h-0"
+            onWheel={(e) => {
+              if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) scrollRef.current!.scrollLeft += e.deltaX;
+            }}
+          >
             {records && (
               <div className="min-w-fit inline-block align-middle">
               <Table>
