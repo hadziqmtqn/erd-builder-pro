@@ -613,8 +613,8 @@ export function useERDSession(
     const newEntity: Entity = {
       id: newId,
       name: uniqueName,
-      x: sourceNode.data.x + 60,
-      y: sourceNode.data.y + 120,
+      x: sourceNode.data.x + 36,
+      y: sourceNode.data.y + 36,
       color: sourceNode.data.color,
       columns: clonedColumns,
     };

@@ -391,6 +391,10 @@ export async function applySchemaMigrations(): Promise<void> {
 
   // v2.4+ — destinations column on backups table
   await addColumnIfMissing("backups", "destinations", "destinations TEXT");
+  await addColumnIfMissing("user_preferences", "auto_backup_enabled", '"auto_backup_enabled" BOOLEAN DEFAULT false');
+  await addColumnIfMissing("user_preferences", "auto_backup_interval", '"auto_backup_interval" INTEGER DEFAULT 3600');
+  await addColumnIfMissing("user_preferences", "auto_backup_retention", '"auto_backup_retention" INTEGER DEFAULT 10');
+  await addColumnIfMissing("user_preferences", "storage_config", '"storage_config" TEXT');
 
   // v3.1.4+ — persist DBML source alongside ERD canvas data
   await addColumnIfMissing("diagrams", "dbml_source", '"dbml_source" TEXT');

@@ -285,6 +285,10 @@ CREATE TABLE "user_preferences" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "user_id" TEXT NOT NULL,
     "backup_folder" TEXT,
+    "auto_backup_enabled" BOOLEAN DEFAULT false,
+    "auto_backup_interval" INTEGER DEFAULT 3600,
+    "auto_backup_retention" INTEGER DEFAULT 10,
+    "storage_config" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "user_preferences_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION

@@ -324,11 +324,11 @@ export function ChangelogView() {
                 <div className="flex items-center gap-3 mb-2">
                   <Badge className="font-mono text-xs">v{selectedRelease.tag_name.replace('v', '')}</Badge>
                   {selectedRelease.prerelease ? (
-                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-amber-500/10 text-amber-400 border-amber-500/30">
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-amber-500/10 text-amber-700 border-amber-500/30 dark:text-amber-400">
                       Pre-release
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                    <Badge variant="outline" className="text-[10px] uppercase tracking-tighter bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:text-emerald-400">
                       Stable
                     </Badge>
                   )}
@@ -341,7 +341,7 @@ export function ChangelogView() {
               </DialogHeader>
 
               <DialogBody className="bg-muted/50">
-                <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-border">
+                <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border dark:prose-pre:bg-black/50">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {selectedRelease.body}
                   </ReactMarkdown>

@@ -519,11 +519,11 @@ code:not(pre code) {
 
 .tiptap-editor-lined ul[data-type="taskList"] li {
   margin-bottom: 0 !important;
-  align-items: center !important;
+  align-items: flex-start !important;
 }
 
 .tiptap-editor-lined ul[data-type="taskList"] input[type="checkbox"] {
-  margin-top: 0 !important;
+  margin-top: 0.35rem !important;
 }
 
 /* Table Grid Alignment */
@@ -738,7 +738,7 @@ ul[data-type="taskList"] li {
 
 ul[data-type="taskList"] li>label {
   display: flex !important;
-  align-items: center !important;
+  align-items: flex-start !important;
   flex: 0 0 auto !important;
   margin-right: 0.5rem !important;
   user-select: none !important;

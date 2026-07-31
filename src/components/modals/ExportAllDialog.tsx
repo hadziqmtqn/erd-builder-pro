@@ -229,8 +229,8 @@ export const ExportAllDialog = ({
           </div>
         </DialogHeader>
 
-          <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-y-auto">
-            <div className="h-full min-h-75">
+          <DialogBody className="p-0 bg-muted relative flex-1 min-h-0 overflow-hidden">
+            <div className="h-[min(52vh,520px)] min-h-0">
               <CodeMirror
                 value={generatedCode}
                 extensions={codeMirrorExtensions}

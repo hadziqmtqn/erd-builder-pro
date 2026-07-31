@@ -76,11 +76,11 @@ export default function RelationshipPropertiesPanel({
       <div className="rounded-xl bg-muted/20 p-4 border border-border/40">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-blue-400">Source</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Source</span>
             <span className="text-[11px] font-mono text-foreground font-bold">{getDisplayName(selectedEdge.source, selectedEdge.sourceHandle)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-purple-400">Target</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Target</span>
             <span className="text-[11px] font-mono text-foreground font-bold">{getDisplayName(selectedEdge.target, selectedEdge.targetHandle)}</span>
           </div>
         </div>
