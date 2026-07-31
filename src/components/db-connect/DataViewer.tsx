@@ -22,7 +22,7 @@ interface DataViewerProps { connectionId: number; stateKey?: string; }
 type DataViewerView = 'data' | 'structure';
 export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
   const {
-    tables, activeTable, openTabs, filters, sort, records, dbType, page, totalPages,
+    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
     fetchTables, refreshTables, refreshRecords, selectTable, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
@@ -66,7 +66,6 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return (table?.columns || []).filter((col: any) => col.is_pk).map((col: any) => col.name);
   }, [activeTable, tables]);
-
   const recordEditor = useRecordEditor({
     activeTable, columnHelpers, createRecord, deleteRecord, primaryKeyColumns, records, updateRecord,
   });
@@ -182,7 +181,6 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
     return () => { cancelled = true; };
   }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.selectedRow]);
   useEffect(() => {
-    setShowFilters(false);
     recordEditor.resetRecordEditor();
     structureEditor.close();
   }, [activeTable]);
@@ -284,7 +282,9 @@ export function DataViewer({ connectionId, stateKey }: DataViewerProps) {
               ) : (
                 <DataViewerRecordsTable
                   activeTable={activeTable}
+                  appliedFilters={appliedFilters}
                   columnHelpers={columnHelpers}
+                  connectionId={connectionId}
                   error={error}
                   foreignKeyByColumn={foreignKeyByColumn}
                   isLoadingRecords={isLoadingRecords}

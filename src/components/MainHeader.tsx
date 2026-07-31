@@ -11,7 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff, Cloud, Save, Check } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -244,9 +244,9 @@ export const MainHeader = React.memo(({
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-amber-500/10 sm:border sm:border-amber-500/20 text-amber-500 sm:shadow-sm transition-all duration-300">
-                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Saving...</span>
+                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span className="hidden xs:inline">Saving</span>
                         </div>
                       } />
                       <TooltipContent side="bottom" className="text-[10px] font-medium">
@@ -269,9 +269,9 @@ export const MainHeader = React.memo(({
                     </Tooltip>
                   </TooltipProvider>
                 ) : isSyncing ? (
-                  <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-primary/10 sm:border sm:border-primary/20 text-primary sm:shadow-sm transition-all duration-300">
-                    <Cloud className="w-3.5 h-3.5 animate-bounce" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Syncing...</span>
+                  <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span className="hidden xs:inline">Syncing</span>
                   </div>
                 ) : hasPendingSyncs ? (
                   <TooltipProvider delay={0}>
@@ -300,9 +300,9 @@ export const MainHeader = React.memo(({
                   <TooltipProvider delay={0}>
                     <Tooltip>
                       <TooltipTrigger render={
-                        <div className="flex items-center gap-1.5 p-0.5 sm:px-2 sm:py-1 rounded-md bg-green-500/5 sm:border sm:border-green-500/10 text-green-500/60 sm:shadow-sm transition-all duration-300">
+                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
                           <Check className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Synced</span>
+                          <span className="hidden xs:inline">Saved</span>
                         </div>
                       } />
                       <TooltipContent side="bottom" className="text-[10px] font-medium">

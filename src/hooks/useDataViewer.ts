@@ -7,6 +7,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [activeTable, setActiveTable] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<OpenTableTab[]>([]);
   const [filters, setFilters] = useState<RecordFilter[]>([]);
+  const [appliedFilters, setAppliedFilters] = useState<RecordFilter[]>([]);
   const [sort, setSort] = useState<RecordSort | null>(null);
   const [records, setRecords] = useState<RecordsResult | null>(null);
   const [dbType, setDbType] = useState<string | null>(null);
@@ -19,6 +20,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const sortRef = useRef<RecordSort | null>(null);
   const filtersRef = useRef<RecordFilter[]>([]);
   const pageByTableRef = useRef<Record<string, number>>({});
+  const tableStateRef = useRef<Record<string, { filters: RecordFilter[]; appliedFilters: RecordFilter[]; sort: RecordSort | null }>>({});
   const hydratedKeyRef = useRef<string | null>(null);
   const skipNextSaveRef = useRef(false);
   const storageKey = stateKey ? `${DATA_VIEWER_STORAGE_PREFIX}${stateKey}` : null;
@@ -49,6 +51,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const fetchRecords = useCallback(async (table: string, p: number = 1, nextFilters = appliedFiltersRef.current, nextSort = sortRef.current) => {
     if (!connectionId) return;
     appliedFiltersRef.current = nextFilters;
+    setAppliedFilters(nextFilters);
     sortRef.current = nextSort;
     setSort(nextSort);
     // Abort previous request
@@ -78,6 +81,25 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     }
   }, [connectionId]);
 
+  const saveTableState = useCallback((table: string | null) => {
+    if (!table) return;
+    tableStateRef.current[table] = {
+      filters: filtersRef.current,
+      appliedFilters: appliedFiltersRef.current,
+      sort: sortRef.current,
+    };
+  }, []);
+
+  const restoreTableState = useCallback((table: string) => {
+    const state = tableStateRef.current[table] || { filters: [], appliedFilters: [], sort: null };
+    setFilters(state.filters);
+    appliedFiltersRef.current = state.appliedFilters;
+    setAppliedFilters(state.appliedFilters);
+    sortRef.current = state.sort;
+    setSort(state.sort);
+    return state;
+  }, []);
+
   useEffect(() => {
     if (!storageKey) return;
     let nextTabs: OpenTableTab[] = [];
@@ -92,12 +114,14 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setOpenTabs(nextTabs);
     setActiveTable(nextActive);
     setFilters([]);
+    setAppliedFilters([]);
     appliedFiltersRef.current = [];
     sortRef.current = null;
     setSort(null);
     setRecords(null);
     setPage(1);
     pageByTableRef.current = {};
+    tableStateRef.current = {};
     if (nextActive) fetchRecords(nextActive, 1, []);
   }, [storageKey, fetchRecords]);
 
@@ -113,6 +137,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [storageKey, openTabs, activeTable]);
 
   const selectTable = useCallback((tableName: string) => {
+    saveTableState(activeTable);
     const nextPage = openTabs.some(tab => tab.name === tableName)
       ? pageByTableRef.current[tableName] ?? 1
       : 1;
@@ -125,14 +150,11 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       return next;
     });
     setActiveTable(tableName);
-    setFilters([]);
-    appliedFiltersRef.current = [];
-    sortRef.current = null;
-    setSort(null);
+    const state = restoreTableState(tableName);
     setRecords(null);
     setPage(nextPage);
-    fetchRecords(tableName, nextPage, []);
-  }, [fetchRecords, openTabs]);
+    fetchRecords(tableName, nextPage, state.appliedFilters, state.sort);
+  }, [activeTable, fetchRecords, openTabs, restoreTableState, saveTableState]);
 
   const pinTable = useCallback((tableName: string) => {
     setOpenTabs(prev => prev.map(tab => tab.name === tableName ? { ...tab, pinned: true } : tab));
@@ -141,19 +163,24 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const closeTable = useCallback((tableName: string) => {
     const next = openTabs.filter(tab => tab.name !== tableName);
     delete pageByTableRef.current[tableName];
+    delete tableStateRef.current[tableName];
     setOpenTabs(next);
     if (activeTable !== tableName) return;
     const fallback = next[next.length - 1]?.name ?? null;
     const fallbackPage = fallback ? pageByTableRef.current[fallback] ?? 1 : 1;
     setActiveTable(fallback);
-    setFilters([]);
-    appliedFiltersRef.current = [];
-    sortRef.current = null;
-    setSort(null);
+    const state = fallback ? restoreTableState(fallback) : { appliedFilters: [], sort: null };
+    if (!fallback) {
+      setFilters([]);
+      setAppliedFilters([]);
+      appliedFiltersRef.current = [];
+      sortRef.current = null;
+      setSort(null);
+    }
     setRecords(null);
     setPage(fallbackPage);
-    if (fallback) fetchRecords(fallback, fallbackPage, []);
-  }, [activeTable, openTabs, fetchRecords]);
+    if (fallback) fetchRecords(fallback, fallbackPage, state.appliedFilters, state.sort);
+  }, [activeTable, openTabs, fetchRecords, restoreTableState]);
 
   const nextPage = useCallback(() => {
     if (!activeTable || !records) return;
@@ -170,15 +197,27 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const totalPages = records ? Math.ceil(records.total / (records.pageSize || 50)) : 0;
 
   const addFilter = useCallback((column = '') => {
-    setFilters(prev => [...prev, makeRecordFilter(column)]);
+    setFilters(prev => {
+      const next = [...prev, makeRecordFilter(column)];
+      filtersRef.current = next;
+      return next;
+    });
   }, []);
 
   const removeFilter = useCallback((id: string) => {
-    setFilters(prev => prev.filter(filter => filter.id !== id));
+    setFilters(prev => {
+      const next = prev.filter(filter => filter.id !== id);
+      filtersRef.current = next;
+      return next;
+    });
   }, []);
 
   const updateFilter = useCallback((id: string, patch: Partial<RecordFilter>) => {
-    setFilters(prev => prev.map(filter => filter.id === id ? { ...filter, ...patch } : filter));
+    setFilters(prev => {
+      const next = prev.map(filter => filter.id === id ? { ...filter, ...patch } : filter);
+      filtersRef.current = next;
+      return next;
+    });
   }, []);
 
   const applyFilters = useCallback((nextFilters = filtersRef.current) => {
@@ -204,15 +243,17 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       }
       return [...prev, { name: tableName, pinned: true }];
     });
+    saveTableState(activeTable);
     setActiveTable(tableName);
     setFilters(nextFilters);
     appliedFiltersRef.current = nextFilters;
+    setAppliedFilters(nextFilters);
     sortRef.current = null;
     setSort(null);
     setRecords(null);
     setPage(1);
     fetchRecords(tableName, 1, nextFilters);
-  }, [fetchRecords]);
+  }, [activeTable, fetchRecords, saveTableState]);
 
   const updateRecord = useCallback(async (table: string, key: Record<string, any>, values: Record<string, any>) => {
     if (!connectionId) return;
@@ -280,8 +321,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [activeTable, fetchRecords, page]);
 
   const clearFilters = useCallback(() => {
+    filtersRef.current = [];
     setFilters([]);
     appliedFiltersRef.current = [];
+    setAppliedFilters([]);
     if (activeTable) fetchRecords(activeTable, 1, []);
   }, [activeTable, fetchRecords]);
 
@@ -301,6 +344,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     activeTable,
     openTabs,
     filters,
+    appliedFilters,
     sort,
     records,
     dbType,

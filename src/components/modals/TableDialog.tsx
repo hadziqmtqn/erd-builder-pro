@@ -194,7 +194,7 @@ export const TableDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          activeMainTab === 'schema' ? 'max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl sm:max-w-md' : 'sm:max-w-md'
+          activeMainTab === 'schema' ? 'sm:max-w-5xl bg-popover border-border text-popover-foreground shadow-2xl' : 'sm:max-w-md'
         )}
         onDoubleClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -253,7 +253,7 @@ export const TableDialog = ({
             </DialogBody>
           </TabsContent>
 
-          <TabsContent value="schema" className="m-0">
+          <TabsContent value="schema" className="m-0 flex flex-1 min-h-0 flex-col">
             <div className="px-6 pt-4 space-y-2 mb-3 overflow-x-auto scrollbar-hide w-full">
               {/* Category pills */}
               <div className="flex gap-1 bg-muted/40 border border-border rounded-lg p-0.5 w-fit">
@@ -290,8 +290,8 @@ export const TableDialog = ({
               </div>
             </div>
 
-            <div className="p-0 overflow-hidden bg-muted relative">
-              <div className="h-full min-h-75">
+            <div className="p-0 overflow-hidden bg-muted relative flex-1 min-h-0">
+              <div className="h-[min(52vh,520px)] min-h-0">
                 <CodeMirror
                   value={currentCode}
                   extensions={codeMirrorExtensions}
