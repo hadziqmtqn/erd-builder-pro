@@ -45,10 +45,9 @@ export function useRecordEditor({
       .map((col: string) => [col, submitValue(col, draftRow[col] ?? '', columnHelpers)]));
   }, [columnHelpers, draftRow, records, selectedRow]);
 
-  const selectRow = useCallback((row: Record<string, any>) => {
+  const selectRow = useCallback((row: Record<string, any> | null) => {
     setIsCreatingRecord(false);
     setSelectedRow(row);
-    setDetailsOpen(true);
   }, []);
 
   const syncSelectedRowDraft = useCallback(() => {

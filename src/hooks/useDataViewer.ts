@@ -269,6 +269,20 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, connectionId, fetchRecords, page]);
 
+  const updateRecords = useCallback(async (table: string, updates: { key: Record<string, any>; values: Record<string, any> }[]) => {
+    if (!connectionId || updates.length === 0) return;
+    for (const update of updates) {
+      const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, key: update.key, values: update.values }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update record');
+    }
+    if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
+  }, [activeTable, connectionId, fetchRecords, page]);
+
   const createRecord = useCallback(async (table: string, values: Record<string, any>) => {
     if (!connectionId) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/records/create`, {
@@ -375,6 +389,6 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error, fetchTables, selectTable, openNewTableTab, pinTable, closeTable,
     addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord,
-    deleteTables, mutateTables, updateRecord, updateStructure, refreshAll, clearFilters, toggleSort, nextPage, prevPage,
+    deleteTables, mutateTables, updateRecord, updateRecords, updateStructure, refreshAll, clearFilters, toggleSort, nextPage, prevPage,
   };
 }
