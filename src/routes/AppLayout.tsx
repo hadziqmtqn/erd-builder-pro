@@ -594,11 +594,11 @@ function AppLayoutInner() {
               if (format === 'markdown') {
                 // executeExportMarkdown
               } else if (format === 'pdf') {
-                NoteExporter.exportToPDF(activeNote, options, pageSize);
+                NoteExporter.exportToPDF(activeNote, options, pageSize, activeProjectName || undefined);
               } else if (format === 'print') {
-                NoteExporter.printNote(activeNote, options);
+                NoteExporter.printNote(activeNote, options, activeProjectName || undefined);
               } else if (format === 'word') {
-                NoteExporter.exportToWord(activeNote, options);
+                NoteExporter.exportToWord(activeNote, options, activeProjectName || undefined);
               }
             }
           }}

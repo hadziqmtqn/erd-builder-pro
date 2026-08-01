@@ -30,6 +30,7 @@ interface ExportNoteModalProps {
 }
 
 export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalProps) => {
+  const isDesktopApp = typeof window !== 'undefined' && !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('markdown');
   const [options, setOptions] = useState({
     includeTitle: true,
@@ -39,7 +40,9 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
     hideEmpty: true,
     showTypeLabels: false
   });
+  const isDesktopPrint = isDesktopApp && selectedFormat === 'print';
   const handleExport = () => {
+    if (isDesktopPrint) return;
     if (['markdown', 'pdf', 'print', 'word'].includes(selectedFormat)) {
       onExport(selectedFormat, options, 'a4');
       onClose();
@@ -113,6 +116,12 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
             </div>
           )}
 
+          {isDesktopPrint && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
+              Direct printing from the desktop app is not fully available yet. Export a PDF to print it for now.
+            </div>
+          )}
+
           {/* Options Section */}
           {selectedFormat !== 'markdown' && (
             <div className="space-y-4">
@@ -149,9 +158,9 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-          <Button onClick={handleExport}>
+          <Button onClick={handleExport} disabled={isDesktopPrint}>
             <Download />
-            Export
+            {isDesktopPrint ? 'Print unavailable' : 'Export'}
           </Button>
         </DialogFooter>
       </DialogContent>
