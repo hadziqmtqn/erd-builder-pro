@@ -50,6 +50,8 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
 
   const navigate = useNavigate();
   const location = useLocation();
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
 
   // ── Stable refs for useCallback ──
   const flowchartsRef = useRef(flowcharts);
@@ -75,6 +77,8 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
 
   // ── handleFlowchartSelect: the core orchestration ──
   const handleFlowchartSelect = useCallback(async (uid: string) => {
+    const targetPath = '/flowcharts/' + uid;
+    const isRouteSelection = pathnameRef.current === targetPath;
     // Guard: prevent sequential duplicate within 1.5s
     const now = Date.now();
     if (lastSelectedFlowchartRef.current?.uid === uid && now - lastSelectedFlowchartRef.current.time < 1500) {
@@ -88,6 +92,7 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
     }
 
     await flushPendingSavesStable();
+    if (isRouteSelection && pathnameRef.current !== targetPath) return;
     setView('flowchart');
     setSidebarView('flowchart');
     setActiveFlowchartId(uid);
@@ -96,10 +101,10 @@ export function useFlowchartNavigation(props: UseFlowchartNavigationProps): UseF
     setFlowcharts(prev => prev.map(f => f.uid === uid ? { ...f, data: undefined } : f));
 
     // Mark this URL as processed before navigate, so URL effect skips its own call
-    lastProcessedFlowchartsUrlRef.current = '/flowcharts/' + uid;
+    lastProcessedFlowchartsUrlRef.current = targetPath;
     lastProcessedFlowchartsUrlTimeRef.current = Date.now();
-    if (!getSharePathInfo() && location.pathname !== '/flowcharts/' + uid) {
-      navigate('/flowcharts/' + uid);
+    if (!getSharePathInfo() && pathnameRef.current !== targetPath) {
+      navigate(targetPath);
     }
 
     // Pass fallback from projects data (same pattern as notes)

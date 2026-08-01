@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File } from 'lucide-react';
+import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File, ChevronDown, X } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -101,7 +101,9 @@ export const ChatInput = memo(function ChatInput({
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionStart, setMentionStart] = useState(-1);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const mentionRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDetailsElement>(null);
   const [, forceUpdate] = useState(0);
 
   const filtered = useMemo(() => {
@@ -193,7 +195,19 @@ export const ChatInput = memo(function ChatInput({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [mentionOpen]);
 
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(event.target as Node)) setToolsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [toolsOpen]);
+
   const showActions = !isStreaming && actions.length > 0;
+  const erdPrimaryAction = entityType === 'diagram' ? actions.find(action => action.id === 'erd-generate-sql') : undefined;
+  const erdToolActions = entityType === 'diagram' ? actions.filter(action => action.id !== 'erd-generate-sql') : [];
+  const activeAction = actions.find(action => action.id === activeActionId);
 
   if (!hasActiveSession) return null;
 
@@ -257,7 +271,59 @@ export const ChatInput = memo(function ChatInput({
       <div className="flex items-center justify-between min-h-7">
         {showActions ? (
           <div className="flex items-center gap-1 flex-wrap">
-            {actions.map((action) => {
+            {erdPrimaryAction ? (
+              <>
+                <button
+                  onClick={() => onSelectAction(erdPrimaryAction)}
+                  className={`inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border transition-all cursor-pointer ${
+                    activeActionId === erdPrimaryAction.id
+                      ? 'bg-primary/10 border-primary/30 text-primary'
+                      : 'bg-muted/40 border-border/40 text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted/70 hover:border-border/60'
+                  }`}
+                >
+                  <Database className="size-3" />
+                  Build DBML
+                </button>
+                <details
+                  ref={toolsRef}
+                  open={toolsOpen}
+                  onToggle={(event) => setToolsOpen(event.currentTarget.open)}
+                  className="group relative"
+                >
+                  <summary className="inline-flex list-none items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border border-border bg-background text-muted-foreground hover:bg-muted cursor-pointer [&::-webkit-details-marker]:hidden">
+                    ERD tools <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="absolute bottom-8 left-0 z-50 w-64 rounded-lg border bg-popover p-1.5 shadow-lg">
+                    <p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Focused ERD actions</p>
+                    {erdToolActions.map(action => (
+                      <button
+                        key={action.id}
+                        onClick={() => {
+                          onSelectAction(action);
+                          setToolsOpen(false);
+                        }}
+                        className={`flex w-full items-start gap-2 rounded-md px-2 py-2 text-left cursor-pointer hover:bg-accent ${activeActionId === action.id ? 'bg-accent' : ''}`}
+                      >
+                        <span className="mt-0.5 text-muted-foreground">{getActionIcon(action.id)}</span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium">{action.label}</span>
+                          <span className="block text-[10px] leading-relaxed text-muted-foreground">{action.description}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+                {activeAction && activeActionId !== erdPrimaryAction.id && (
+                  <button
+                    onClick={() => onSelectAction(activeAction)}
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border border-primary/30 bg-primary/10 text-primary cursor-pointer"
+                    title="Clear active ERD action"
+                  >
+                    {getActionIcon(activeAction.id)} {activeAction.label} <X className="size-3" />
+                  </button>
+                )}
+              </>
+            ) : actions.map((action) => {
               const isActive = activeActionId === action.id;
               return (
                 <HoverCard key={action.id} openDelay={300} closeDelay={100}>

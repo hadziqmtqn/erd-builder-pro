@@ -105,6 +105,8 @@ export function WorkspaceProvider({
 }: WorkspaceProviderProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
   const [tableSearchParams, setTableSearchParams] = useSearchParams();
 
   // ── Derived view from URL ──
@@ -457,12 +459,15 @@ export function WorkspaceProvider({
   });
 
   async function handleDrawingSelect(uid: string) {
+    const targetPath = '/drawings/' + uid;
+    const isRouteSelection = pathnameRef.current === targetPath;
     if (activeDrawingId === uid && view === 'drawings') return;
     await flushPendingSaves();
+    if (isRouteSelection && pathnameRef.current !== targetPath) return;
     setSidebarViewState('drawings');
     setDrawings(prev => prev.map(d => String(d.uid ?? d.id) === uid ? { ...d, data: undefined } : d));
-    lastProcessedDrawingUrlRef.current = '/drawings/' + uid;
-    navigate('/drawings/' + uid, { replace: true });
+    lastProcessedDrawingUrlRef.current = targetPath;
+    if (pathnameRef.current !== targetPath) navigate(targetPath, { replace: true });
     await selectDrawing(uid);
     lastLoadedDrawingIdRef.current = uid;
   }

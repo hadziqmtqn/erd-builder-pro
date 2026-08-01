@@ -52,6 +52,8 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
 
   const navigate = useNavigate();
   const location = useLocation();
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
 
   // ── Stable refs for useCallback (break dependency on frequently-changing values) ──
   const notesRef = useRef(notes);
@@ -76,6 +78,8 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
 
   // ── handleNoteSelect: the core orchestration ──
   const handleNoteSelect = useCallback(async (uid: string) => {
+    const targetPath = '/notes/' + uid;
+    const isRouteSelection = pathnameRef.current === targetPath;
     // Guard: prevent sequential duplicate within 1.5s (e.g. double-click, Effect 1 + sidebar)
     const now = Date.now();
     if (lastSelectedNoteRef.current?.uid === uid && now - lastSelectedNoteRef.current.time < 1500) {
@@ -88,6 +92,7 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
     // skips overwriting their in-flight edits.
     const versionAtStart = getContentVersion();
     await flushPendingSavesStable();
+    if (isRouteSelection && pathnameRef.current !== targetPath) return;
     setView('notes');
     setSidebarView('notes');
     // Set activeNoteUid early so breadcrumb can appear from list data (fetchProjects)
@@ -102,9 +107,9 @@ export function useNoteNavigation(props: UseNoteNavigationProps): UseNoteNavigat
     } : n));
     // Mark this URL as processed before navigate, so the URL effect skips its
     // own handleNoteSelect call (preventing double API load)
-    lastProcessedNotesUrlRef.current = '/notes/' + uid;
-    if (!getSharePathInfo() && location.pathname !== '/notes/' + uid) {
-      navigate('/notes/' + uid);
+    lastProcessedNotesUrlRef.current = targetPath;
+    if (!getSharePathInfo() && pathnameRef.current !== targetPath) {
+      navigate(targetPath);
     }
     // Pass fallbackNote from projects data — selectNote uses it directly
     // instead of waiting for notesRef to update on the next React render
