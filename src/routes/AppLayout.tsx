@@ -315,7 +315,7 @@ function AppLayoutInner() {
   const showAIChat = useMemo(() => {
     if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
     // Apply same default logic as DiagramEditorRoute: Data tab → hide AI Chat
-    const isProductionDb = !isPublicView && activeDiagram?.source_type === 'production_db';
+    const isProductionDb = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
     const resolvedTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
     return resolvedTab === 'erd';
   }, [entityContext, isPublicView, activeDiagram, searchParams]);

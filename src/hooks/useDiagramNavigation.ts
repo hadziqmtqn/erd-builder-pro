@@ -57,6 +57,8 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
 
   const navigate = useNavigate();
   const location = useLocation();
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
 
   // ── Stable refs for useCallback (break dependency on frequently-changing values) ──
   const diagramsRef = useRef(diagrams);
@@ -90,6 +92,8 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
         (d) => String(d.id) === String(id) || d.uid === id,
       );
       const urlIdentifier = diagram?.uid || id;
+      const targetPath = '/diagrams/' + urlIdentifier;
+      const isRouteSelection = pathnameRef.current === targetPath;
 
       // Already on this diagram — just ensure URL is correct
       if (currentActiveId === id && currentView === 'erd') {
@@ -102,12 +106,13 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
 
       // Flush pending saves before switching
       await flushPendingSaves();
+      if (isRouteSelection && pathnameRef.current !== targetPath) return;
 
       // Set ref + navigate BEFORE state updates so the DiagramsPage URL effect
       // (now in this hook's own useEffect) sees the correct pathname
-      lastProcessedDiagramUrlRef.current = '/diagrams/' + urlIdentifier;
-      if (!getSharePathInfo() && currentPathname !== '/diagrams/' + urlIdentifier) {
-        navigate('/diagrams/' + urlIdentifier);
+      lastProcessedDiagramUrlRef.current = targetPath;
+      if (!getSharePathInfo() && pathnameRef.current !== targetPath) {
+        navigate(targetPath);
       }
 
       // State updates (batched by React 18)
