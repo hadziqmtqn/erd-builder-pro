@@ -12,7 +12,6 @@ export interface UseWorkspaceCallbacksParams {
   diagrams: any[];
   activeDiagramId: any;
   handleExportSQL: (dialect: 'postgresql' | 'mysql', target: any, nodes: Node<Entity>[], edges: Edge[]) => void;
-  handleExportPDF: (name: string) => void;
   handleExportImage: (name: string) => void;
   nodes: Node<Entity>[];
   edges: Edge[];
@@ -35,7 +34,7 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     setIsImportModalOpen,
     viewportRef,
     publicData, diagrams, activeDiagramId,
-    handleExportSQL, handleExportPDF, handleExportImage,
+    handleExportSQL, handleExportImage,
     nodes, edges,
     view,
     isDiagramsLoading, isERDItemLoading,
@@ -85,13 +84,6 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     if (target) handleExportSQL(dialect, target, nodes, edges);
   }, [isPublicView, publicData, diagrams, activeDiagramId, handleExportSQL, nodes, edges]);
 
-  const handleWorkspaceExportPDF = useCallback(() => {
-    const targetName = isPublicView
-      ? (publicData?.name || 'Shared')
-      : (diagrams.find(f => f.id === activeDiagramId)?.name || 'Diagram');
-    handleExportPDF(targetName);
-  }, [isPublicView, publicData, diagrams, activeDiagramId, handleExportPDF]);
-
   const handleWorkspaceExportImage = useCallback(() => {
     const targetName = isPublicView
       ? (publicData?.name || 'Shared')
@@ -115,7 +107,6 @@ export function useWorkspaceCallbacks(params: UseWorkspaceCallbacksParams) {
     handleMove,
     handleOpenImportModal,
     handleWorkspaceExportSQL,
-    handleWorkspaceExportPDF,
     handleWorkspaceExportImage,
     workspaceIsLoading,
     selectedEntity,

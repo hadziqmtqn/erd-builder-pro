@@ -119,7 +119,7 @@ function AppLayoutInner() {
     handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
     handleWorkspaceFilter, selectedWorkspaceUid,
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
-    handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
+    handleHeaderExportSQL, handleHeaderExportImage,
     handleOpenImportModal, isImportModalOpen, setIsImportModalOpen,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
     handleDuplicate,
@@ -566,7 +566,6 @@ function AppLayoutInner() {
           onRename={handleHeaderRename}
            onExportAll={() => setIsExportAllOpen(true)}
           onExportSQL={handleHeaderExportSQL}
-          onExportPDF={handleHeaderExportPDF}
           onExportImage={handleHeaderExportImage}
           onExportMarkdown={handleExportMarkdown}
           onCopyMarkdown={handleCopyMarkdown}
@@ -716,8 +715,6 @@ function AppLayoutInner() {
               nodes={nodes}
               edges={edges}
               fileName={activeFileName || 'Untitled'}
-              onExportPDF={handleHeaderExportPDF}
-              onExportImage={handleHeaderExportImage}
             />
             <ImportSQLModal
               isOpen={isImportModalOpen}

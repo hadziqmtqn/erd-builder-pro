@@ -1,5 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 import { FlowchartNodeData } from '../components/FlowchartNode';
+export { downloadSVG } from './downloadSVG';
 
 export const NODE_W = 160;
 export const NODE_H = 70;
@@ -180,16 +181,4 @@ export function generateFlowchartSVG(nodes: Node<FlowchartNodeData>[], edges: Ed
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-}
-
-export function downloadSVG(svgString: string, filename: string) {
-  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename.endsWith('.svg') ? filename : `${filename}.svg`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

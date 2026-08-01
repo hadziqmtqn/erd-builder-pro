@@ -53,7 +53,6 @@ interface ERDViewProps {
   handleExportSQL: (dialect: 'postgresql' | 'mysql') => void;
   onNodeDragStop?: () => void;
 
-  handleExportPDF: () => void;
   handleExportImage: () => void;
   isReadOnly?: boolean;
 

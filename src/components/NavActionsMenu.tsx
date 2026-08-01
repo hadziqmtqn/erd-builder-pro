@@ -30,7 +30,6 @@ interface NavActionsMenuProps {
   onDuplicate?: () => void;
   onExportAll?: () => void;
   onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
-  onExportPDF?: () => void;
   onExportImage?: () => void;
   onExportMarkdown?: () => void;
   onCopyMarkdown?: () => void;
@@ -53,6 +52,7 @@ export const NavActionsMenu = ({
   onExportMarkdown,
   onCopyMarkdown,
   onImportMarkdown,
+  onExportImage,
   isOnline,
   isPublicView = false,
   isPublic = false,
@@ -183,13 +183,20 @@ export const NavActionsMenu = ({
           {documentType === 'erd' && !isPublicView && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={onExportAll}
-                className="gap-2 cursor-pointer"
-              >
-                <Download className="h-4 w-4 text-muted-foreground" />
-                <span>Export All</span>
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="gap-2 cursor-pointer">
+                  <Download className="h-4 w-4 text-muted-foreground" />
+                  <span>Export All</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-48">
+                  <DropdownMenuItem onClick={onExportAll} className="gap-2 cursor-pointer">
+                    <span>Export Schemas</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onExportImage} className="gap-2 cursor-pointer">
+                    <span>Download SVG</span>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </>
           )}
 

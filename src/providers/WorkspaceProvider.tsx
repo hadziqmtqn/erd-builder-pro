@@ -225,7 +225,7 @@ export function WorkspaceProvider({
   const { triggerDebouncedSync, isSyncing, syncError, syncDrafts, checkAndClearStaleDrafts, hasPendingSyncs } = useSyncService(isAuthenticated, isGuest);
   const { isInstallable, installApp } = usePWAInstall();
   const { handleExportSQL } = useSQLGenerator();
-  const { handleExportImage, handleExportPDF } = useImageExporter();
+  const { handleExportImage } = useImageExporter();
 
   // Use props instead of local hook
   const isPublicView = _isPublicView;
@@ -539,10 +539,6 @@ export function WorkspaceProvider({
       handleExportSQL(dialect, { name: activeFileName || 'Untitled' }, nodesRef.current, edgesRef.current);
     }
   }, [activeDocument, activeFileName, handleExportSQL]);
-
-  const handleHeaderExportPDF = useCallback(() => {
-    if (activeDocument) handleExportPDF(activeFileName || 'Untitled');
-  }, [activeDocument, activeFileName, handleExportPDF]);
 
   const handleHeaderExportImage = useCallback(() => {
     if (activeDocument) handleExportImage(activeFileName || 'Untitled');
@@ -1003,13 +999,13 @@ export function WorkspaceProvider({
   const {
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal, handleWorkspaceExportSQL,
-    handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleWorkspaceExportImage,
     selectedEntity,
   } = useWorkspaceCallbacks({
     isPublicView, setSelectedNodeId, setSelectedEdgeId,
     setIsImportModalOpen,
     viewportRef, publicData, diagrams, activeDiagramId,
-    handleExportSQL, handleExportPDF, handleExportImage,
+    handleExportSQL, handleExportImage,
     nodes, edges, view,
     isDiagramsLoading, isERDItemLoading,
     isNotesLoading, isNoteItemLoading,
@@ -1132,7 +1128,7 @@ export function WorkspaceProvider({
     theme, setTheme, resolvedTheme,
 
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
-    handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
+    handleHeaderExportSQL, handleHeaderExportImage,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
     handleDuplicate, executeDuplicate,
 
@@ -1143,7 +1139,7 @@ export function WorkspaceProvider({
     selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
-    handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleWorkspaceExportSQL, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
     extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
 
@@ -1215,7 +1211,7 @@ export function WorkspaceProvider({
     editDialogNote, setEditDialogNote, tableDeleteDoc, setTableDeleteDoc,
     // Header handlers
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
-    handleHeaderExportSQL, handleHeaderExportPDF, handleHeaderExportImage,
+    handleHeaderExportSQL, handleHeaderExportImage,
     handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
     handleDuplicate, executeDuplicate,
     handleOpenEditDocument, handleOpenCreateDocument,
@@ -1225,7 +1221,7 @@ export function WorkspaceProvider({
     selectedEntity, canUndo, canRedo, undo, redo, addEntity, duplicateEntity, deleteEntity, deleteEdge, handleEdgeUpdate, handleEdgeFlip,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick,
     handleMove, handleOpenImportModal,
-    handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleWorkspaceExportSQL, handleWorkspaceExportImage,
     takeSnapshot, onNodeDragStop, onMoveEnd,
     extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
     viewportRef, lastLoadedDiagramIdRef,

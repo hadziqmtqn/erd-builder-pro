@@ -29,8 +29,6 @@ interface ExportAllDialogProps {
   nodes: Node<Entity>[];
   edges: Edge[];
   fileName: string;
-  onExportPDF: () => void;
-  onExportImage: () => void;
 }
 
 const CATEGORIES = [
@@ -83,8 +81,6 @@ export const ExportAllDialog = ({
   nodes,
   edges,
   fileName,
-  onExportPDF,
-  onExportImage,
 }: ExportAllDialogProps) => {
   const [activeCategory, setActiveCategory] = React.useState(CATEGORIES[0].id);
   const [activeTab, setActiveTab] = React.useState(CATEGORIES[0].formats[0].id);
