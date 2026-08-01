@@ -60,10 +60,10 @@ export class NoteExporter {
     return node.innerHTML;
   }
 
-  static buildExportHtml(note: Note, options?: ExportOptions, content = note.content || ''): string {
+  static buildExportHtml(note: Note, options?: ExportOptions, content = note.content || '', projectName?: string): string {
     const opts = this.options(options);
     const title = opts.includeTitle ? `<h1 class="export-title">${this.escape(note.title)}</h1>` : '';
-    const meta = opts.includeMetadata ? `<p class="export-meta">Project: ${this.escape(note.projects?.name || 'Untitled')} &middot; Updated: ${this.escape(new Date(note.updated_at).toLocaleDateString())}</p>` : '';
+    const meta = opts.includeMetadata ? `<p class="export-meta">Project: ${this.escape(projectName || note.projects?.name || 'Untitled')} &middot; Updated: ${this.escape(new Date(note.updated_at).toLocaleDateString())}</p>` : '';
     const preservedContent = opts.preserveFormatting ? content : this.escape(new DOMParser().parseFromString(content, 'text/html').body.textContent || '');
     return `<!doctype html><html><head><meta charset="utf-8"><style>${exportStyles}</style></head><body><article class="note-export">${title}${meta}<div class="tiptap-editor">${preservedContent}</div></article></body></html>`;
   }
@@ -89,18 +89,30 @@ export class NoteExporter {
     return documentFragment.body.innerHTML;
   }
 
-  static printNote(note: Note, options?: ExportOptions): void {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(this.buildExportHtml(note, options));
-    printWindow.document.close();
-    printWindow.addEventListener('load', () => {
-      printWindow.print();
-      printWindow.close();
-    }, { once: true });
+  static printNote(note: Note, options?: ExportOptions, projectName?: string): void {
+    const parsed = new DOMParser().parseFromString(this.buildExportHtml(note, options, note.content, projectName), 'text/html');
+    const id = `note-print-${Date.now()}`;
+    const container = document.createElement('div');
+    container.id = id;
+    container.style.display = 'none';
+    const styles = document.createElement('style');
+    styles.media = 'print';
+    styles.textContent = parsed.querySelector('style')?.textContent || '';
+    const visibility = document.createElement('style');
+    visibility.textContent = `@media print { body > :not(#${id}) { display: none !important; } #${id} { display: block !important; } }`;
+    container.append(styles, parsed.body.firstElementChild || document.createElement('article'));
+    document.head.appendChild(visibility);
+    document.body.appendChild(container);
+    const cleanup = () => {
+      container.remove();
+      visibility.remove();
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    window.setTimeout(cleanup, 30_000);
   }
 
-  static async exportToPDF(note: Note, options?: ExportOptions, pageSize: PageSize = 'a4'): Promise<void> {
+  static async exportToPDF(note: Note, options?: ExportOptions, pageSize: PageSize = 'a4', projectName?: string): Promise<void> {
     if (!note.content) return void toast.error('No content to export');
     const toastId = toast.loading('Generating PDF...');
     try {
@@ -108,7 +120,7 @@ export class NoteExporter {
       const content = opts.preserveFormatting
         ? await this.inlineExternalImages(note.content)
         : new DOMParser().parseFromString(note.content, 'text/html').body.textContent || '';
-      const blob = await pdf(createNotePdfDocument({ note, options: opts, content, pageSize })).toBlob();
+      const blob = await pdf(createNotePdfDocument({ note, options: opts, content, pageSize, projectName })).toBlob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = `${note.title.toLowerCase().replace(/\s+/g, '_')}.pdf`;
@@ -123,13 +135,13 @@ export class NoteExporter {
     }
   }
 
-  static async exportToWord(note: Note, options?: ExportOptions): Promise<void> {
+  static async exportToWord(note: Note, options?: ExportOptions, projectName?: string): Promise<void> {
     if (!note.content) return void toast.error('No content to export');
     const toastId = toast.loading('Generating DOCX...');
     try {
       const opts = this.options(options);
       const content = opts.preserveFormatting ? await this.inlineExternalImages(note.content) : new DOMParser().parseFromString(note.content, 'text/html').body.textContent || '';
-      const blob = await Packer.toBlob(createNoteDocxDocument(note, opts, content));
+      const blob = await Packer.toBlob(createNoteDocxDocument(note, opts, content, projectName));
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

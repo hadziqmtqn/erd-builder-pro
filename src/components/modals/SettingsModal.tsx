@@ -12,6 +12,7 @@ import {
   Upload,
   Download,
   HardDrive,
+  Keyboard,
 } from 'lucide-react';
 import {
   Dialog,
@@ -65,6 +66,7 @@ import { ChangelogView } from '@/components/views/ChangelogView';
 import { DataImport } from '@/components/settings/DataImport';
 import { DataExport } from '@/components/settings/DataExport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
+import { KeymapTab } from '@/components/settings/KeymapTab';
 import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
@@ -128,6 +130,7 @@ export function SettingsModal() {
         {
           label: "More",
           items: [
+            { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
             { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
             { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
           ]
@@ -155,6 +158,7 @@ export function SettingsModal() {
       {
         label: "More",
         items: [
+          { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
           { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
           { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
           { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
@@ -360,6 +364,8 @@ export function SettingsModal() {
                   <ChangelogView />
                 </div>
               )}
+
+              {settingsTab === 'keymap' && <KeymapTab />}
 
               {settingsTab === 'export-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
