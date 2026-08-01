@@ -486,6 +486,7 @@ export function WorkspaceProvider({
   // ── File operations ──
   const {
     handleExportMarkdown, handleImportMarkdown, handleCopyMarkdown,
+    executeImportMarkdown,
   } = useFileOperations({
     activeNote, activeNoteUid, activeProjectId, createNote, saveNote,
     setActiveNoteUid, handleNoteChange, setIsExportNoteModalOpen, setIsImportNoteModalOpen,
@@ -1134,7 +1135,7 @@ export function WorkspaceProvider({
 
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportImage,
-    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
+    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown, executeImportMarkdown,
     handleDuplicate, executeDuplicate,
 
     handleOpenEditDocument, handleOpenCreateDocument,
@@ -1217,7 +1218,7 @@ export function WorkspaceProvider({
     // Header handlers
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportImage,
-    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
+    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown, executeImportMarkdown,
     handleDuplicate, executeDuplicate,
     handleOpenEditDocument, handleOpenCreateDocument,
     // ERD helpers

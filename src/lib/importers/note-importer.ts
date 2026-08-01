@@ -1,14 +1,11 @@
 /**
  * NoteImporter Service
- * Handles conversion of various file formats (DOCX, DOC, MD) into HTML for the editor.
+ * Handles conversion of DOCX, Markdown, and text files into HTML for the editor.
  */
 
 import { compressImage } from '../image-compression';
 import { apiFetch, getAuthToken } from '../api';
-
-// CDN URLs
-const MAMMOTH_CDN = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
-const JSZIP_CDN = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+import JSZip from 'jszip';
 
 /** Append auth token to proxy/serve URLs so images load from private S3 buckets. */
 function resolveImageUrl(url: string): string {
@@ -22,48 +19,12 @@ function resolveImageUrl(url: string): string {
 }
 
 export class NoteImporter {
-  private static isMammothLoaded = false;
-  private static isJSZipLoaded = false;
   private static uploadQueue: Promise<any> = Promise.resolve();
 
-  /**
-   * Dynamically loads Mammoth.js from CDN
-   */
+  /** Load the browser build only when a DOCX is imported. */
   private static async loadMammoth(): Promise<any> {
-    if (this.isMammothLoaded && (window as any).mammoth) {
-      return (window as any).mammoth;
-    }
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = MAMMOTH_CDN;
-      script.onload = () => {
-        this.isMammothLoaded = true;
-        resolve((window as any).mammoth);
-      };
-      script.onerror = () => reject(new Error("Failed to load Mammoth.js"));
-      document.head.appendChild(script);
-    });
-  }
-
-  /**
-   * Dynamically loads JSZip from CDN
-   */
-  private static async loadJSZip(): Promise<any> {
-    if (this.isJSZipLoaded && (window as any).JSZip) {
-      return (window as any).JSZip;
-    }
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = JSZIP_CDN;
-      script.onload = () => {
-        this.isJSZipLoaded = true;
-        resolve((window as any).JSZip);
-      };
-      script.onerror = () => reject(new Error("Failed to load JSZip"));
-      document.head.appendChild(script);
-    });
+    const module = await import('mammoth/mammoth.browser.js');
+    return module.default || module;
   }
 
   /**
@@ -76,7 +37,6 @@ export class NoteImporter {
       // 1. Try to detect and extract AltChunk using OpenXML relationships
       // This is the most reliable way to find embedded HTML
       try {
-        const JSZip = await this.loadJSZip();
         const zip = await JSZip.loadAsync(arrayBuffer);
         
         // Step A: Check the main relationships file
@@ -96,7 +56,14 @@ export class NoteImporter {
             if (type && type.includes("aFChunk")) {
               const target = rel.getAttribute("Target");
               if (target) {
-                altChunkPath = target.startsWith("/") ? target.substring(1) : `word/${target}`;
+                const parts = (target.startsWith("/") ? target.slice(1) : `word/${target}`).split('/');
+                const resolved: string[] = [];
+                for (const part of parts) {
+                  if (!part || part === '.') continue;
+                  if (part === '..') resolved.pop();
+                  else resolved.push(part);
+                }
+                altChunkPath = resolved.join('/');
                 break;
               }
             }
@@ -126,6 +93,9 @@ export class NoteImporter {
       // 2. Standard Mammoth.js conversion for normal Word documents
       const mammoth = await this.loadMammoth();
       const options = {
+        includeEmbeddedStyleMap: true,
+        includeDefaultStyleMap: true,
+        ignoreEmptyParagraphs: false,
         convertImage: mammoth.images.imgElement(async (image: any) => {
           // Use sequential queue to prevent parallel upload congestion
           return this.uploadQueue = this.uploadQueue.then(async () => {
@@ -205,18 +175,12 @@ export class NoteImporter {
         table.appendChild(tbody);
       }
 
-      // Remove problematic inline styles that cause layout issues
-      table.style.width = "100%";
-      table.style.tableLayout = "fixed";
-      table.removeAttribute("width");
+      // Keep semantic formatting; Tiptap owns the final table layout.
       
       const cells = table.querySelectorAll("td, th");
       cells.forEach(cell => {
-        const htmlCell = cell as HTMLElement;
-        htmlCell.style.width = ""; // Reset forced widths
-        htmlCell.style.height = "";
-        htmlCell.removeAttribute("width");
-        htmlCell.removeAttribute("height");
+        cell.removeAttribute("width");
+        cell.removeAttribute("height");
       });
     });
 
@@ -343,8 +307,8 @@ export class NoteImporter {
   static async convertMarkdownToHtml(file: File): Promise<string> {
     try {
       const text = await file.text();
-      const marked = (window as any).marked || (await import('marked')).marked;
-      const html = await marked.parse(text);
+      const { marked } = await import('marked');
+      const html = await marked.parse(text, { gfm: true, breaks: true });
       return this.processHtmlForEditor(html);
     } catch (error) {
       console.error("Markdown conversion error:", error);
@@ -352,23 +316,4 @@ export class NoteImporter {
     }
   }
 
-  /**
-   * Handles legacy .doc files
-   * If it's the HTML-wrapped version (like our export), it parses as HTML.
-   * Otherwise, it warns the user.
-   */
-  static async convertDocToHtml(file: File): Promise<string> {
-    const text = await file.text();
-    
-    // Check if it's our HTML-based .doc export
-    if (text.includes("<html") && (text.includes("xmlns:w") || text.includes("office:word"))) {
-      // It's HTML-based, extract the content area if possible
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(text, "text/html");
-      const content = doc.querySelector(".content") || doc.body;
-      return this.processHtmlForEditor(content.innerHTML);
-    }
-    
-    throw new Error("Binary .doc files (Word 97-2003) are not supported. Please save as .docx first.");
-  }
 }

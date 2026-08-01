@@ -15,11 +15,11 @@ import { toast } from 'sonner';
 interface ImportNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImport: (file: File) => void;
+  onImport: (file: File) => void | Promise<void>;
 }
 
 const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
-const ALLOWED_EXTENSIONS = ['.md', '.docx', '.doc', '.txt'];
+const ALLOWED_EXTENSIONS = ['.md', '.docx', '.txt'];
 
 export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalProps) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -39,8 +39,8 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
         setProgress(100);
         clearInterval(interval);
         
-        setTimeout(() => {
-          onImport(file);
+        setTimeout(async () => {
+          await onImport(file);
           setIsUploading(false);
           setProgress(0);
           onClose();
@@ -119,7 +119,7 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
           <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex gap-3 text-zinc-300">
             <Info className="w-5 h-5 text-zinc-500 shrink-0 mt-0.5" />
             <p className="text-sm leading-relaxed">
-              Select a single file <span className="text-zinc-200 font-semibold">(.md, .docx, .doc, .txt)</span>.<br />
+              Select a single file <span className="text-zinc-200 font-semibold">(.md, .docx, .txt)</span>.<br />
               <span className="text-zinc-500">Maximum file size is 3MB.</span>
             </p>
           </div>
@@ -158,7 +158,7 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept=".md,.txt,.doc,.docx"
+              accept=".md,.txt,.docx"
               onChange={handleFileSelect}
             />
           </div>

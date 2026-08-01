@@ -4,7 +4,7 @@ import { fetchDiagram, buildDiagramContext } from './diagram';
 import { fetchFlowchart, buildFlowchartContext } from './flowchart';
 import { fetchDrawing, buildDrawingContext } from './drawing';
 import { fetchSiblings, buildSiblingContext } from './siblings';
-import { formatContextText } from './format';
+import { buildEntityContextInstruction, formatContextText } from './format';
 
 async function fetchCurrentEntity(ctx: EntityContext) {
   switch (ctx.entityType) {
@@ -60,4 +60,4 @@ export async function fetchEntityContext(
 }
 
 export type { EntityContext, EntityContextResult, EntityContextData };
-export { buildSiblingContext };
+export { buildSiblingContext, buildEntityContextInstruction };

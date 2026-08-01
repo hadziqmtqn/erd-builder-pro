@@ -64,8 +64,6 @@ export const useFileOperations = ({
 
       if (extension === 'docx') {
         html = await NoteImporter.convertDocxToHtml(file);
-      } else if (extension === 'doc') {
-        html = await NoteImporter.convertDocToHtml(file);
       } else {
         html = await NoteImporter.convertMarkdownToHtml(file);
       }
