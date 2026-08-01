@@ -165,9 +165,8 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
           <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger render={
-                <Button variant="outline" size="sm">
-                  <Columns3 className="w-4 h-4 sm:mr-1.5" />
-                  <span className="hidden sm:inline">Columns</span>
+                <Button variant="outline" size="icon-sm" aria-label="Columns" title="Columns">
+                  <Columns3 className="w-4 h-4" />
                 </Button>
               } />
               <DropdownMenuContent align="end" className="w-44">

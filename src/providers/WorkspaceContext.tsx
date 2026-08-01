@@ -169,6 +169,7 @@ export interface WorkspaceContextValue {
   handleExportMarkdown: () => void;
   handleCopyMarkdown: () => void;
   handleImportMarkdown: () => void;
+  executeImportMarkdown: (file: File) => Promise<void>;
   handleDuplicate: () => void;
   executeDuplicate: () => Promise<void>;
 

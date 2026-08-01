@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { AIChatSession, AIChatMessage } from '@/types';
-import { fetchEntityContext, buildSiblingContext, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
+import { fetchEntityContext, buildSiblingContext, buildEntityContextInstruction, EntityContext as EntityCtxType } from '@/hooks/aiEntityContext';
 import { toast } from 'sonner';
 import { localPersistence } from '@/lib/localPersistence';
 import {
@@ -413,6 +413,7 @@ export function useAIChat(
       }
 
       apiMessages.push({ role: 'system', content: buildSchemaFormatOverride() });
+      apiMessages.push({ role: 'system', content: buildEntityContextInstruction(entityContext?.entityType) });
 
       // Previous messages — send ALL cached messages so AI remembers full conversation.
       // Display is paginated (last N) but AI sees everything.

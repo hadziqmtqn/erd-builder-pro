@@ -121,7 +121,7 @@ function AppLayoutInner() {
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
     handleHeaderExportSQL, handleHeaderExportImage,
     handleOpenImportModal, isImportModalOpen, setIsImportModalOpen,
-    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown,
+    handleExportMarkdown, handleCopyMarkdown, handleImportMarkdown, executeImportMarkdown,
     handleDuplicate,
     syncError, isSyncing, isLocalSaving, isRefreshing, hasPendingSyncs, syncDrafts,
     activeFileUid, currentActiveId, initialShareSettings,
@@ -583,7 +583,7 @@ function AppLayoutInner() {
         <ImportNoteModal
           isOpen={isImportNoteModalOpen}
           onClose={() => setIsImportNoteModalOpen(false)}
-          onImport={() => {}}
+          onImport={executeImportMarkdown}
         />
 
         <ExportNoteModal
