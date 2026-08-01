@@ -23,7 +23,7 @@ function buildNumberedHeadings(headings: HeadingInfo[]): { heading: HeadingInfo;
     const idx = h.level - 1;
     counters[idx]++;
     for (let i = idx + 1; i < counters.length; i++) counters[i] = 0;
-    const number = counters.slice(0, idx + 1).join('.');
+    const number = counters.slice(0, idx + 1).filter(Boolean).join('.');
     return { heading: h, number };
   });
 }
@@ -74,16 +74,16 @@ export function DocumentOutline({ headings, scrollToHeading }: DocumentOutlinePr
                           key={`${heading.pos}-${i}`}
                           onClick={() => scrollToHeading(heading.pos)}
                           className={cn(
-                            "text-left transition-all duration-200 py-1.5 px-3 rounded-md hover:bg-accent text-sm font-medium text-foreground/80 hover:text-foreground truncate",
+                            "flex w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground",
                             heading.level === 1 ? "text-primary font-bold bg-primary/5" :
-                              heading.level === 2 ? "pl-4 text-foreground/70" :
-                                heading.level === 3 ? "pl-7 text-foreground/60 scale-95 origin-left" :
-                                  heading.level === 4 ? "pl-10 text-foreground/50 scale-90 origin-left" :
-                                    "pl-12 text-foreground/40 scale-90 origin-left"
+                              heading.level === 2 ? "pl-5 text-foreground/70" :
+                                heading.level === 3 ? "pl-7 text-foreground/60" :
+                                  heading.level === 4 ? "pl-9 text-foreground/50" :
+                                    "pl-11 text-foreground/40"
                           )}
                         >
-                          <span className="tabular-nums text-muted-foreground/50 mr-2 shrink-0">{number}.</span>
-                          <span className="truncate">{heading.text}</span>
+                          <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground/50">{number}.</span>
+                          <span className="min-w-0 flex-1 truncate">{heading.text}</span>
                         </button>
                       ))}
                     </div>
