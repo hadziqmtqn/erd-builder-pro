@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Copy, RefreshCw, Check, Share2, Globe, Lock } from 'lucide-react';
@@ -144,12 +145,10 @@ export function ShareModal({
                 </div>
                 <p className="text-[11px] text-muted-foreground">Enable sharing via public link</p>
               </div>
-              <input 
+              <Checkbox
                 id="public-status"
-                type="checkbox" 
                 checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="w-4 h-4 cursor-pointer accent-primary"
+                onCheckedChange={checked => setIsPublic(checked)}
               />
             </div>
           )}

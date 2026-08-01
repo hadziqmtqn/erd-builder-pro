@@ -18,6 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import EntityNode from '../diagram/EntityNode';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -856,17 +857,16 @@ const ERDViewComponent = ({
                       )}
                     >
                       <div className="flex items-center gap-2.5">
-                        <input 
-                          type="checkbox"
+                        <Checkbox
                           checked={isChecked}
-                          onChange={() => {
+                          onCheckedChange={() => {
                             setApprovedTableIds(prev => 
                               prev.includes(n.id) 
                                 ? prev.filter(id => id !== n.id) 
                                 : [...prev, n.id]
                             );
                           }}
-                          className="rounded border-border bg-transparent text-emerald-500 focus:ring-0 cursor-pointer h-4 w-4"
+                          className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
                         />
                         <span className="text-xs font-semibold">{label}</span>
                       </div>

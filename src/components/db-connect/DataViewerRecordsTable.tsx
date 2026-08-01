@@ -1,6 +1,7 @@
 import { ReactNode, useRef } from 'react';
-import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Plus } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowRight, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers, displayCellValue } from './data-viewer-utils';
 
@@ -18,6 +19,7 @@ type DataViewerRecordsTableProps = {
   handleSelectRow: (row: Record<string, any>) => void;
   openRelatedRecord: (table: string, column: string, value: any) => void;
   onAddRecord: () => void;
+  onDeleteSelectedRecords: () => void;
   onTogglePageRows: (rows: Record<string, any>[], checked: boolean) => void;
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean) => void;
   toggleSort: (column: string) => void;
@@ -42,6 +44,7 @@ export function DataViewerRecordsTable({
   handleSelectRow,
   openRelatedRecord,
   onAddRecord,
+  onDeleteSelectedRecords,
   onTogglePageRows,
   onToggleSelectedRow,
   toggleSort,
@@ -94,6 +97,10 @@ export function DataViewerRecordsTable({
               )}
             </div>
             <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={selectedRowKeys.size === 0} onClick={onDeleteSelectedRecords}>
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                Delete All
+              </Button>
               <Button variant="outline" size="sm" className="h-8 px-2" onClick={onAddRecord}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Record
@@ -115,12 +122,10 @@ export function DataViewerRecordsTable({
                   <TableRow className="sticky top-0 bg-background z-10">
                     {canSelectRows && (
                       <TableHead className="w-10 px-3">
-                        <input
-                          type="checkbox"
-                          className="size-4 accent-primary"
+                        <Checkbox
                           checked={allPageRowsSelected}
                           disabled={pageRows.length === 0}
-                          onChange={e => onTogglePageRows(pageRows, e.target.checked)}
+                          onCheckedChange={checked => onTogglePageRows(pageRows, checked)}
                         />
                       </TableHead>
                     )}
@@ -172,11 +177,9 @@ export function DataViewerRecordsTable({
                       >
                         {canSelectRows && (
                           <TableCell className="w-10 px-3" onClick={e => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              className="size-4 accent-primary"
+                            <Checkbox
                               checked={selectedRowKeys.has(rowKey(row))}
-                              onChange={e => onToggleSelectedRow(row, e.target.checked)}
+                              onCheckedChange={checked => onToggleSelectedRow(row, checked)}
                             />
                           </TableCell>
                         )}

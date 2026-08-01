@@ -1,5 +1,6 @@
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RECORD_FILTER_OPERATORS } from './data-viewer-utils';
@@ -37,11 +38,9 @@ export function DataViewerFilters({
           const isBetween = filter.operator === 'BETWEEN' || filter.operator === 'NOT BETWEEN';
           return (
             <div key={filter.id} className="flex min-w-0 items-center gap-1.5">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={filter.enabled}
-                onChange={e => updateFilter(filter.id, { enabled: e.target.checked })}
-                className="size-4 shrink-0 accent-primary"
+                onCheckedChange={checked => updateFilter(filter.id, { enabled: checked })}
                 aria-label="Enable filter"
               />
               <Select value={filter.column} onValueChange={value => value && updateFilter(filter.id, { column: value })}>

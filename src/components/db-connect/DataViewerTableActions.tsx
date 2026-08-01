@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ type Props = {
   label?: string;
   mode?: 'menu' | 'button';
   buttonClassName?: string;
+  disabled?: boolean;
   onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
   onMutateTables: (patch: Record<string, any>) => Promise<any>;
 };
@@ -82,7 +84,7 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function DataViewerTableActions({ connectionId, dbType, table, tables, exportTables, label = 'Export', mode = 'menu', buttonClassName = 'h-8 px-2', onDeleteTables, onMutateTables }: Props) {
+export function DataViewerTableActions({ connectionId, dbType, table, tables, exportTables, label = 'Export', mode = 'menu', buttonClassName = 'h-8 px-2', disabled = false, onDeleteTables, onMutateTables }: Props) {
   const tableName = table.table_name;
   const columns = useMemo<string[]>(() => (table.columns || []).map((col: any) => String(col.name || '')).filter(Boolean), [table]);
   const [dialog, setDialog] = useState<null | 'export' | 'clone' | 'truncate' | 'delete'>(null);
@@ -185,13 +187,13 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
       </div>
       {isMysql(dbType) && (
         <label className="flex items-start gap-3 text-sm">
-          <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={ignoreFk} onChange={e => { setIgnoreFk(e.target.checked); if (e.target.checked) setCascade(false); }} />
+          <Checkbox className="mt-0.5" checked={ignoreFk} onCheckedChange={checked => { setIgnoreFk(checked); if (checked) setCascade(false); }} />
           <span><span className="block font-medium">Disable foreign key checks</span><span className="text-xs text-muted-foreground">Use only when related tables block this {action}.</span></span>
         </label>
       )}
       {isPg(dbType) && (
         <label className="flex items-start gap-3 text-sm">
-          <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={cascade} onChange={e => setCascade(e.target.checked)} />
+          <Checkbox className="mt-0.5" checked={cascade} onCheckedChange={checked => setCascade(checked)} />
           <span><span className="block font-medium">Cascade dependent tables</span><span className="text-xs text-muted-foreground">Include tables connected by foreign keys.</span></span>
         </label>
       )}
@@ -230,7 +232,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   };
 
   const trigger = mode === 'button' ? (
-        <Button type="button" variant="outline" size="sm" className={buttonClassName} disabled={targetTables.length === 0} onClick={e => { e.stopPropagation(); setSelectedColumns(columns); setDialog('export'); }}>
+        <Button type="button" variant="outline" size="sm" className={buttonClassName} disabled={disabled || targetTables.length === 0} onClick={e => { e.stopPropagation(); setSelectedColumns(columns); setDialog('export'); }}>
           <Download className="mr-1 h-3.5 w-3.5" />
           {label}
         </Button>
@@ -275,7 +277,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
                   Select the columns to include. {selectedColumns.length} of {columns.length} columns selected.
                 </p>
                 <div className="grid max-h-36 grid-cols-2 gap-2 overflow-y-auto rounded-md border p-2">
-                  {columns.map(col => <label key={col} className="flex items-center gap-2 text-xs"><input type="checkbox" className="accent-primary" checked={selectedColumns.includes(col)} onChange={e => setSelectedColumns(prev => e.target.checked ? [...prev, col] : prev.filter(item => item !== col))} />{col}</label>)}
+                  {columns.map(col => <label key={col} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedColumns.includes(col)} onCheckedChange={checked => setSelectedColumns(prev => checked ? [...prev, col] : prev.filter(item => item !== col))} />{col}</label>)}
                 </div>
               </div>
             )}
@@ -299,9 +301,9 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
             )}
             {format === 'sql' && (
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-primary" checked={includeStructure} onChange={e => setIncludeStructure(e.target.checked)} />Include table structure</label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-primary" checked={includeContents} onChange={e => setIncludeContents(e.target.checked)} />Include table contents</label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-primary" checked={gzip} onChange={e => setGzip(e.target.checked)} />Compress Gzip</label>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={includeStructure} onCheckedChange={checked => setIncludeStructure(checked)} />Include table structure</label>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={includeContents} onCheckedChange={checked => setIncludeContents(checked)} />Include table contents</label>
+                <label className="flex items-center gap-2 text-sm"><Checkbox checked={gzip} onCheckedChange={checked => setGzip(checked)} />Compress Gzip</label>
               </div>
             )}
           </DialogBody>
@@ -310,7 +312,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
       </Dialog>
 
       <Dialog open={dialog === 'clone'} onOpenChange={open => !open && setDialog(null)}>
-        <DialogContent size="sm"><DialogHeader><DialogTitle>Clone table</DialogTitle></DialogHeader><DialogBody className="space-y-3"><Input value={cloneName} onChange={e => setCloneName(e.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-primary" checked={cloneData} onChange={e => setCloneData(e.target.checked)} />Copy records</label></DialogBody><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button onClick={handleClone} disabled={busy}>Clone</Button></DialogFooter></DialogContent>
+        <DialogContent size="sm"><DialogHeader><DialogTitle>Clone table</DialogTitle></DialogHeader><DialogBody className="space-y-3"><Input value={cloneName} onChange={e => setCloneName(e.target.value)} /><label className="flex items-center gap-2 text-sm"><Checkbox checked={cloneData} onCheckedChange={checked => setCloneData(checked)} />Copy records</label></DialogBody><DialogFooter><Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button><Button onClick={handleClone} disabled={busy}>Clone</Button></DialogFooter></DialogContent>
       </Dialog>
 
       {(['truncate', 'delete'] as const).map(action => (

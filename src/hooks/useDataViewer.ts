@@ -305,8 +305,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update tables');
     await fetchTables();
+    if (activeTable && patch.truncateTables?.includes(activeTable)) fetchRecords(activeTable, 1);
     return data;
-  }, [connectionId, fetchTables]);
+  }, [activeTable, connectionId, fetchRecords, fetchTables]);
 
   const deleteTables = useCallback(async (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => {
     if (!connectionId || tableNames.length === 0) return;
