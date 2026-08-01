@@ -24,7 +24,8 @@ import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
 import { toast } from 'sonner';
-import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
+import { computeSchemaDiff, DiffResult, type SchemaDiffChange } from '@/lib/schema-diff';
+import { mergeSchemaChanges } from '@/lib/schema-merge';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { apiFetch } from '@/lib/api';
@@ -134,19 +135,27 @@ const ERDViewComponent = ({
     diffEdges: Edge[];
     diffResult: DiffResult;
   } | null>(null);
-  const [approvedTableIds, setApprovedTableIds] = useState<string[]>([]);
+  const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
 
   // Memoized diff-derived values — prevent filter/map re-run on every ReactFlow render
-  const diffNodesWithChanges = React.useMemo(() =>
-    pendingDiff?.diffNodes.filter(n => n.data.diffState) ?? []
-  , [pendingDiff?.diffNodes]);
-  const allChangedIds = React.useMemo(() =>
-    diffNodesWithChanges.map(n => n.id)
-  , [diffNodesWithChanges]);
+  const diffChanges = pendingDiff?.diffResult.changes ?? [];
+  const allChangedIds = diffChanges.map(change => change.id);
   const diffNewCount = pendingDiff?.diffResult.newCount ?? 0;
   const diffModCount = pendingDiff?.diffResult.modifiedCount ?? 0;
   const diffDelCount = pendingDiff?.diffResult.deletedCount ?? 0;
+  const diffKindSummary = React.useMemo(() => ['table', 'column', 'relation'].map(kind => {
+    const count = diffChanges.filter(change => change.kind === kind).length;
+    return count ? `${count} ${kind}${count === 1 ? '' : 's'}` : null;
+  }).filter(Boolean).join(' · '), [diffChanges]);
+  const groupedDiffChanges = React.useMemo(() => {
+    const groups = new Map<string, SchemaDiffChange[]>();
+    for (const change of diffChanges) {
+      const table = changeTableName(change);
+      groups.set(table, [...(groups.get(table) || []), change]);
+    }
+    return [...groups];
+  }, [diffChanges]);
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
@@ -286,11 +295,7 @@ const ERDViewComponent = ({
   // ─── Visual Schema Diffing Callbacks ────────────────
   const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[]) => {
     const diffData = computeSchemaDiff(origNodes, origEdges, propNodes, propEdges);
-    const changedIds = diffData.nodes
-      .filter(n => n.data.diffState)
-      .map(n => n.id);
-    
-    setApprovedTableIds(changedIds);
+    setApprovedChangeIds(diffData.changes.map(change => change.id));
     setPendingDiff({
       originalNodes: origNodes,
       originalEdges: origEdges,
@@ -396,64 +401,10 @@ const ERDViewComponent = ({
   const handleApplyMerge = useCallback(() => {
     if (!pendingDiff) return;
 
-    const { originalNodes, originalEdges, proposedNodes, proposedEdges } = pendingDiff;
-    const finalNodes: Node<Entity>[] = [];
-
-    // Process all proposed nodes
-    proposedNodes.forEach(pNode => {
-      const isApproved = approvedTableIds.includes(pNode.id);
-      if (isApproved) {
-        const cleanedNode = {
-          ...pNode,
-          data: {
-            ...pNode.data,
-            columns: (pNode.data.columns || [])
-              .filter((c: any) => c.diffState !== 'deleted')
-              .map((c: any) => {
-                const { diffState, ...cleanedCol } = c;
-                return cleanedCol;
-              })
-          }
-        };
-        delete (cleanedNode.data as Record<string, any>).diffState;
-        finalNodes.push(cleanedNode);
-      } else {
-        const orig = originalNodes.find(o => o.id === pNode.id);
-        if (orig) {
-          finalNodes.push(orig);
-        }
-      }
-    });
-
-    // Process deleted nodes (in original but not in proposed)
-    originalNodes.forEach(oNode => {
-      const proposed = proposedNodes.find(p => p.id === oNode.id);
-      if (!proposed) {
-        const deleteApproved = approvedTableIds.includes(oNode.id);
-        if (!deleteApproved) {
-          finalNodes.push(oNode);
-        }
-      }
-    });
-
-    // Reconstruct edges (relations)
-    const finalEdges = proposedEdges.filter(edge => {
-      const sourceExists = finalNodes.some(n => n.id === edge.source);
-      const targetExists = finalNodes.some(n => n.id === edge.target);
-      return sourceExists && targetExists;
-    });
-
-    // Bring back original edges for tables that were NOT deleted
-    originalEdges.forEach(origEdge => {
-      const alreadyHas = finalEdges.some(e => e.id === origEdge.id);
-      if (!alreadyHas) {
-        const sourceExists = finalNodes.some(n => n.id === origEdge.source);
-        const targetExists = finalNodes.some(n => n.id === origEdge.target);
-        if (sourceExists && targetExists) {
-          finalEdges.push(origEdge);
-        }
-      }
-    });
+    const { originalNodes, originalEdges, proposedNodes, proposedEdges, diffResult } = pendingDiff;
+    const { nodes: finalNodes, edges: finalEdges } = mergeSchemaChanges(
+      originalNodes, originalEdges, proposedNodes, proposedEdges, diffResult, approvedChangeIds,
+    );
 
     takeSnapshotRef.current?.(nodesRef.current, edgesRef.current);
     setNodes(finalNodes);
@@ -465,7 +416,7 @@ const ERDViewComponent = ({
         triggerDebouncedSync?.();
       }).catch(err => console.error('Error saving after merge:', err));
     }
-  }, [pendingDiff, approvedTableIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport]);
+  }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport]);
 
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
@@ -773,6 +724,65 @@ const ERDViewComponent = ({
       {/* Floating Diff Merge Panel */}
       {pendingDiff && (
         <div className="absolute bottom-6 inset-x-0 z-50 flex flex-col items-center justify-center gap-2.5 pointer-events-none">
+          {/* Checklist opens above the bottom toolbar. */}
+          {showChecklist && (
+            <div className="w-[min(560px,calc(100vw-2rem))] bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Select changes to merge:</span>
+                <button
+                  onClick={() => {
+                    setApprovedChangeIds(approvedChangeIds.length === allChangedIds.length ? [] : [...allChangedIds]);
+                  }}
+                  className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline font-medium"
+                >
+                  {approvedChangeIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
+                </button>
+              </div>
+
+              <div className="max-h-75 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                {groupedDiffChanges.map(([table, changes]) => (
+                  <section key={table} className="overflow-hidden rounded-lg border border-border">
+                    <div className="flex items-center justify-between border-b border-border bg-muted/50 px-3 py-2">
+                      <span className="text-xs font-semibold text-foreground">{table}</span>
+                      <span className="text-[10px] text-muted-foreground">{changes.length} change{changes.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] gap-3 border-b border-border px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <span />
+                      <span>Column</span>
+                      <span>Type</span>
+                      <span>Change</span>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {changes.map(change => {
+                        const isChecked = approvedChangeIds.includes(change.id);
+                        return (
+                          <label key={change.id} className={cn(
+                            "grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
+                            isChecked ? "bg-background text-foreground hover:bg-muted/50" : "bg-muted/20 text-muted-foreground hover:bg-muted/40",
+                          )}>
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={() => setApprovedChangeIds(prev => prev.includes(change.id) ? prev.filter(id => id !== change.id) : [...prev, change.id])}
+                              className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
+                            />
+                            <span className="min-w-0 truncate text-sm font-medium">{changeFieldName(change)}</span>
+                            <code className="truncate font-mono text-xs text-muted-foreground">{changeType(change)}</code>
+                            <span className={cn(
+                              "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                              change.state === 'new' && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                              change.state === 'deleted' && "border-destructive/30 bg-destructive/10 text-destructive",
+                              change.state === 'modified' && "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                            )}>{change.state}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Main Diff Bar */}
           <div className="flex items-center gap-4 p-2.5 bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw]">
             <div className="flex items-center gap-2 px-2.5 text-foreground">
@@ -793,103 +803,58 @@ const ERDViewComponent = ({
                   <span className="text-red-400">{diffDelCount} Del</span>
                 )}
               </div>
+              {diffKindSummary && <span className="text-[10px] text-muted-foreground">{diffKindSummary}</span>}
             </div>
 
             <div className="h-6 w-px bg-border" />
 
             <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
                 onClick={() => setShowChecklist(!showChecklist)}
-                className="h-8 px-3 bg-muted border-border text-foreground hover:bg-muted/80"
               >
                 Review Changes
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="destructive"
                 onClick={handleRejectAll}
-                className="h-8 px-3 text-red-400 border-red-500/50 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300 font-bold"
               >
                 Reject All
               </Button>
-              <Button 
-                size="sm" 
+              <Button
                 onClick={handleApplyMerge}
-                className="h-8 px-4 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold shadow-lg shadow-emerald-500/20"
               >
                 Merge Selected
               </Button>
             </div>
           </div>
-
-          {/* Checklist Panel */}
-          {showChecklist && (
-            <div className="w-[320px] bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Select tables to merge:</span>
-                <button 
-                  onClick={() => {
-                    setApprovedTableIds(approvedTableIds.length === allChangedIds.length ? [] : [...allChangedIds]);
-                  }}
-                  className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline font-medium"
-                >
-                  {approvedTableIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
-                </button>
-              </div>
-
-              <div className="max-h-50 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                {diffNodesWithChanges.map(n => {
-                  const label = n.data.name || n.data.label || n.id;
-                  const type = n.data.diffState;
-                  const isChecked = approvedTableIds.includes(n.id);
-                  
-                  return (
-                    <label 
-                      key={n.id} 
-                      className={cn(
-                        "flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all",
-                        isChecked
-                          ? "bg-muted border-border text-foreground"
-                          : "bg-transparent border-transparent text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => {
-                            setApprovedTableIds(prev => 
-                              prev.includes(n.id) 
-                                ? prev.filter(id => id !== n.id) 
-                                : [...prev, n.id]
-                            );
-                          }}
-                          className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
-                        />
-                        <span className="text-xs font-semibold">{label}</span>
-                      </div>
-                      
-                      {type === 'new' && (
-                        <span className="px-1 py-0.5 text-[8px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded uppercase tracking-wider">NEW</span>
-                      )}
-                      {type === 'deleted' && (
-                        <span className="px-1 py-0.5 text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/25 rounded uppercase tracking-wider">DEL</span>
-                      )}
-                      {type === 'modified' && (
-                        <span className="px-1 py-0.5 text-[8px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25 rounded uppercase tracking-wider">MOD</span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
   );
 };
+
+function changeTableName(change: SchemaDiffChange) {
+  if (change.kind === 'column') {
+    const path = change.id.replace(/^column:/, '');
+    return path.slice(0, path.lastIndexOf('.'));
+  }
+  if (change.kind === 'relation') return change.label.split('.')[0];
+  return change.label;
+}
+
+function changeFieldName(change: SchemaDiffChange) {
+  if (change.kind === 'column') return change.label.slice(change.label.lastIndexOf('.') + 1);
+  if (change.kind === 'table') return 'Table definition';
+  return change.label;
+}
+
+function changeType(change: SchemaDiffChange) {
+  if (change.kind === 'table') return 'TABLE';
+  if (change.kind === 'relation') return 'FK';
+  const column = change.proposed ?? change.current;
+  return column && 'is_pk' in column ? column.type : '—';
+}
 
 // Custom comparator: skip function props to prevent unnecessary re-renders
 // from App.tsx's inline callbacks (save/sync cycle triggers re-render but
