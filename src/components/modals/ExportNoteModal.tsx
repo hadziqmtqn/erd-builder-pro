@@ -5,7 +5,8 @@ import {
   DialogHeader, 
   DialogTitle,
   DialogBody,
-  DialogFooter
+  DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,7 +34,6 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
   const [options, setOptions] = useState({
     includeTitle: true,
     includeMetadata: true,
-    includeOutline: false,
     preserveFormatting: true,
     includeEmbedded: false,
     hideEmpty: true,
@@ -47,25 +47,25 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
   };
 
   const formats = [
-    { id: 'markdown', label: 'MD', sub: 'Markdown', icon: FileEdit, color: 'text-indigo-400' },
-    { id: 'pdf', label: 'PDF', sub: 'Compact', icon: FileBox, color: 'text-red-400' },
-    { id: 'print', label: 'Print', sub: 'High Quality', icon: FileText, color: 'text-emerald-400' },
-    { id: 'word', label: 'Word', sub: 'Microsoft', icon: FileCode, color: 'text-blue-400' },
+    { id: 'markdown', label: 'MD', sub: 'Markdown', icon: FileEdit },
+    { id: 'pdf', label: 'PDF', sub: 'Compact', icon: FileBox },
+    { id: 'print', label: 'Print', sub: 'High Quality', icon: FileText },
+    { id: 'word', label: 'Word', sub: 'Microsoft', icon: FileCode },
   ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-none shadow-2xl bg-popover text-foreground">
-        <DialogHeader className="p-6 pb-4 border-none bg-transparent flex flex-row items-center justify-between">
-          <DialogTitle className="text-xl font-semibold tracking-tight pr-0">
+      <DialogContent size="lg">
+        <DialogHeader className="flex-row items-center justify-between">
+          <DialogTitle className="text-xl pr-0">
             Export
-            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wider uppercase rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            <span className="ml-2 inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wider text-muted-foreground uppercase">
               experimental
             </span>
           </DialogTitle>
         </DialogHeader>
 
-        <DialogBody className="p-6 pt-0 space-y-8 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+        <DialogBody className="space-y-6">
           {/* Format Selection Cards - 4 in 1 row on medium screens */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {formats.map((format) => (
@@ -73,31 +73,28 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
                 key={format.id}
                 onClick={() => setSelectedFormat(format.id as ExportFormat)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-2.5 p-3.5 rounded-2xl border-2 transition-all duration-300 group min-h-[120px]",
+                  "group relative flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border p-3 transition-colors",
                   selectedFormat === format.id 
-                    ? "border-zinc-100 bg-zinc-900 shadow-[0_0_30px_rgba(255,255,255,0.05)]" 
-                    : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-800/60"
+                    ? "border-primary bg-accent text-accent-foreground" 
+                    : "border-border bg-background hover:bg-muted"
                 )}
               >
                 <div className={cn(
-                  "w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300",
-                  selectedFormat === format.id ? "bg-zinc-800" : "bg-zinc-800/50 group-hover:bg-zinc-800"
+                  "flex size-10 items-center justify-center rounded-md bg-muted transition-colors",
+                  selectedFormat === format.id && "bg-background"
                 )}>
-                  <format.icon className={cn("w-5 h-5", format.color)} />
+                  <format.icon className="size-5 text-primary" />
                 </div>
                 <div className="flex flex-col items-center gap-0.5">
-                  <span className={cn(
-                    "text-xs font-bold tracking-tight text-center leading-tight transition-colors",
-                    selectedFormat === format.id ? "text-white" : "text-zinc-500 group-hover:text-zinc-300"
-                  )}>
+                  <span className="text-center text-xs font-semibold leading-tight">
                     {format.label}
                   </span>
-                  <span className="text-[10px] text-zinc-600 font-medium">{format.sub}</span>
+                  <span className="text-[10px] font-medium text-muted-foreground">{format.sub}</span>
                 </div>
                 
                 {selectedFormat === format.id && (
                   <div className="absolute top-2 right-2">
-                    <Check className="w-3 h-3 text-zinc-100" />
+                    <Check className="size-3 text-primary" />
                   </div>
                 )}
               </button>
@@ -105,12 +102,12 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
           </div>
 
           {selectedFormat === 'markdown' && (
-            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-6 flex gap-4 text-zinc-400 items-center animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
-                <FileEdit className="w-5 h-5 text-indigo-400" />
+            <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/50 p-4 text-muted-foreground">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-background">
+                <FileEdit className="size-5 text-primary" />
               </div>
               <p className="text-sm leading-relaxed">
-                <span className="text-zinc-200 font-semibold block mb-0.5">Plain-text Markdown</span>
+                <span className="mb-0.5 block font-semibold text-foreground">Plain-text Markdown</span>
                 Export your notes in a clean, portable format. Paging and advanced layouts are not applicable to Markdown files.
               </p>
             </div>
@@ -118,31 +115,30 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
 
           {/* Options Section */}
           {selectedFormat !== 'markdown' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-4">
             <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2 text-zinc-400">
-                <FileBox className="w-4 h-4" />
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <FileBox className="size-4" />
                 <span className="text-xs font-bold uppercase tracking-widest">Options</span>
               </div>
-              <ChevronDown className="w-4 h-4 text-zinc-600" />
+              <ChevronDown className="size-4 text-muted-foreground" />
             </div>
 
-            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-6 space-y-6">
+            <div className="space-y-5 rounded-lg border border-border bg-muted/30 p-4">
               {[
                 { id: 'includeTitle', label: 'Include Document Title', sub: 'Adds the title at the top of the exported file.' },
                 { id: 'includeMetadata', label: 'Include Metadata', sub: 'Includes project name and last updated timestamp.' },
-                { id: 'includeOutline', label: 'Include Table of Contents', sub: 'Generates an outline based on your headings.' },
                 { id: 'preserveFormatting', label: 'Preserve Formatting', sub: 'Maintains colors, styles, and font weights precisely.' },
               ].map((opt) => (
-                <label key={opt.id} className="flex items-start gap-5 cursor-pointer group">
+                <label key={opt.id} className="group flex cursor-pointer items-start gap-3">
                   <Checkbox
                     checked={(options as Record<string, any>)[opt.id]}
                     onCheckedChange={checked => setOptions(prev => ({ ...prev, [opt.id]: checked }))}
-                    className="mt-1 size-5 border-2 border-zinc-700 bg-transparent text-zinc-950 data-checked:border-zinc-100 data-checked:bg-zinc-100"
+                    className="mt-0.5"
                   />
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">{opt.label}</span>
-                    <span className="text-xs text-zinc-500 leading-relaxed">{opt.sub}</span>
+                    <span className="text-sm font-semibold text-foreground">{opt.label}</span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">{opt.sub}</span>
                   </div>
                 </label>
               ))}
@@ -151,12 +147,10 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
         )}
       </DialogBody>
 
-        <DialogFooter className="p-4 bg-zinc-900/40 border-t border-zinc-800/80">
-          <Button 
-            onClick={handleExport}
-            className="bg-zinc-100 hover:bg-white text-zinc-950 font-bold px-8 h-10 rounded-lg shadow-lg active:scale-95 transition-all"
-          >
-            <Download className="w-4 h-4 mr-2" />
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <Button onClick={handleExport}>
+            <Download />
             Export
           </Button>
         </DialogFooter>
