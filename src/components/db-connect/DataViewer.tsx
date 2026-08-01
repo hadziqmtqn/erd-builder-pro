@@ -3,6 +3,7 @@ import { Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { useDataViewer } from '@/hooks/useDataViewer';
+import { useInlineRecordDrafts } from '@/hooks/useInlineRecordDrafts';
 import { useRecordEditor } from '@/hooks/useRecordEditor';
 import { useStructureEditor } from '@/hooks/useStructureEditor';
 import { DataViewerConfirmModal } from './DataViewerConfirmModal';
@@ -16,13 +17,14 @@ import { DataViewerStructurePanel } from './DataViewerStructurePanel';
 import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers } from './data-viewer-utils';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; onDbTypeChange?: (dbType: string | null) => void; } type DataViewerView = 'data' | 'structure';
 export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
   const {
     tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
-    fetchTables, refreshAll, selectTable, openNewTableTab, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord, deleteTables, mutateTables, updateRecord, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
+    fetchTables, refreshAll, selectTable, openNewTableTab, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord, deleteTables, mutateTables, updateRecord, updateRecords, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
   const [tableSearch, setTableSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -32,8 +34,11 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   const [sqlDialogOpen, setSqlDialogOpen] = useState(false);
   const [structureSql, setStructureSql] = useState('');
   const [isLoadingSql, setIsLoadingSql] = useState(false);
+  const [discardRefreshOpen, setDiscardRefreshOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const viewByTableRef = useRef<Record<string, DataViewerView>>({});
+  const lastRecordRowKeyRef = useRef<string | null>(null);
+  const recordsAreaActiveRef = useRef(false);
   const viewKey = useCallback((tableName: string) => `${stateKey || connectionId}:${tableName}`, [connectionId, stateKey]);
   const shortcutLabel = useMemo(() => {
     if (typeof navigator === 'undefined') return 'Ctrl+P';
@@ -68,11 +73,17 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   const recordEditor = useRecordEditor({
     activeTable, columnHelpers, createRecord, deleteRecord, primaryKeyColumns, records, updateRecord,
   });
+  const inlineDrafts = useInlineRecordDrafts({ activeTable, columnHelpers, primaryKeyColumns, updateRecords });
+  const recordDraftCount = inlineDrafts.count;
   const warnUnsaved = useCallback(() => {
+    if (recordDraftCount > 0) {
+      toast.warning('Save or discard inline record changes first.');
+      return false;
+    }
     if (!recordEditor.isRecordDirty && !structureEditor.isDirty) return true;
     toast.warning(`Save the ${recordEditor.isRecordDirty ? 'record' : 'structure'} changes before switching.`);
     return false;
-  }, [recordEditor.isRecordDirty, structureEditor.isDirty]);
+  }, [recordDraftCount, recordEditor.isRecordDirty, structureEditor.isDirty]);
   const openFilters = useCallback(() => {
     if (!activeTable) return;
     setShowFilters(true);
@@ -96,10 +107,37 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     delete viewByTableRef.current[viewKey(tableName)];
     closeTable(tableName);
   }, [closeTable, viewKey, warnUnsaved]);
-  const handleSelectRow = useCallback((row: Record<string, any>) => {
-    if (recordEditor.selectedRow !== row && !warnUnsaved()) return;
+  const rowKey = useCallback((row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column])), [primaryKeyColumns]);
+  const selectRecordRange = useCallback((row: Record<string, any>) => {
+    const rows = records?.rows || [];
+    const from = rows.findIndex((item: any) => rowKey(item) === lastRecordRowKeyRef.current);
+    const to = rows.findIndex((item: any) => rowKey(item) === rowKey(row));
+    if (from === -1 || to === -1) return false;
+    const [start, end] = from < to ? [from, to] : [to, from];
+    recordEditor.selectRows(rows.slice(start, end + 1));
     recordEditor.selectRow(row);
-  }, [recordEditor.selectedRow, recordEditor.selectRow, warnUnsaved]);
+    return true;
+  }, [recordEditor.selectRow, recordEditor.selectRows, records, rowKey]);
+  const handleSelectRow = useCallback((row: Record<string, any>, event: React.MouseEvent) => {
+    if (recordEditor.selectedRow !== row && recordEditor.isRecordDirty && !warnUnsaved()) return;
+    if (event.shiftKey && selectRecordRange(row)) return;
+    lastRecordRowKeyRef.current = rowKey(row);
+    recordEditor.selectRows([row]);
+    recordEditor.selectRow(row);
+  }, [recordEditor.isRecordDirty, recordEditor.selectedRow, recordEditor.selectRow, recordEditor.selectRows, rowKey, selectRecordRange, warnUnsaved]);
+  const handleToggleSelectedRow = useCallback((row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => {
+    if (recordEditor.selectedRow !== row && recordEditor.isRecordDirty && !warnUnsaved()) return;
+    if (checked && event?.shiftKey && selectRecordRange(row)) return;
+    lastRecordRowKeyRef.current = checked ? rowKey(row) : null;
+    recordEditor.toggleSelectedRow(row, checked);
+    recordEditor.selectRow(checked ? row : null);
+  }, [recordEditor.isRecordDirty, recordEditor.selectedRow, recordEditor.selectRow, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
+  const handleTogglePageRows = useCallback((rows: Record<string, any>[], checked: boolean) => {
+    if (recordEditor.isRecordDirty && !warnUnsaved()) return;
+    recordEditor.toggleSelectedRows(rows, checked);
+    recordEditor.selectRow(checked ? rows[0] || null : null);
+    lastRecordRowKeyRef.current = checked && rows[0] ? rowKey(rows[0]) : null;
+  }, [recordEditor.isRecordDirty, recordEditor.selectRow, recordEditor.toggleSelectedRows, rowKey, warnUnsaved]);
   const handleViewChange = useCallback((view: DataViewerView) => {
     if (view === activeView) return;
     if (!warnUnsaved()) return;
@@ -156,6 +194,13 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     await recordEditor.removeSelectedRecords();
     setConfirmAction(null);
   }, [recordEditor.removeSelectedRecords]);
+  const handleRefresh = useCallback(() => {
+    if (recordDraftCount > 0) {
+      setDiscardRefreshOpen(true);
+      return;
+    }
+    if (warnUnsaved()) refreshAll();
+  }, [recordDraftCount, refreshAll, warnUnsaved]);
   const handleMutateTables = useCallback(async (patch: Record<string, any>) => {
     const data = await mutateTables(patch);
     if (activeTable && patch.truncateTables?.includes(activeTable)) recordEditor.resetRecordEditor();
@@ -193,13 +238,13 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
 
     return () => { cancelled = true; };
   }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.selectedRow]);
-  useEffect(() => { recordEditor.resetRecordEditor(); if (!isNewTableTab) structureEditor.close(); }, [activeTable, isNewTableTab]);
-  useEffect(() => { recordEditor.resetRecordEditor(); }, [page]);
+  useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); if (!isNewTableTab) structureEditor.close(); }, [activeTable, isNewTableTab]);
+  useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); lastRecordRowKeyRef.current = null; }, [page]);
   useEffect(() => {
     if (isNewTableTab && structureEditor.target?.kind !== 'addTable') handleCloseTable('__new_table__');
   }, [handleCloseTable, isNewTableTab, structureEditor.target?.kind]);
   useEffect(() => {
-    const refresh = () => warnUnsaved() && refreshAll();
+    const refresh = () => handleRefresh();
     const toggleDetails = () => recordEditor.setDetailsOpen(open => open ? (warnUnsaved() ? false : true) : true);
     const toggleRecordFilters = () => toggleFilters();
     const events: [string, EventListener][] = [
@@ -209,7 +254,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     ];
     events.forEach(([name, handler]) => window.addEventListener(name, handler));
     return () => { events.forEach(([name, handler]) => window.removeEventListener(name, handler)); };
-  }, [recordEditor.setDetailsOpen, refreshAll, toggleFilters, warnUnsaved]);
+  }, [handleRefresh, recordEditor.setDetailsOpen, toggleFilters, warnUnsaved]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -218,6 +263,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
       const target = e.target as HTMLElement | null;
       const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
       const isSidebar = !!target?.closest('[data-db-client-sidebar]');
+      const isRecordsArea = !!target?.closest('[data-db-client-records]') || recordsAreaActiveRef.current;
 
       if (key === 'p' && !isTyping) {
         e.preventDefault();
@@ -226,15 +272,18 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
       } else if (key === 'f' && activeTable) {
         e.preventDefault();
         toggleFilters();
-      } else if (key === 'r' && !isTyping) {
+      } else if (key === 'r' && (!isTyping || recordDraftCount > 0)) {
         e.preventDefault();
-        if (warnUnsaved()) refreshAll();
-      } else if (key === 'a' && activeView === 'data' && activeTable && !isTyping && !isSidebar) {
+        handleRefresh();
+      } else if (key === 'a' && activeView === 'data' && activeTable && !isTyping && !isSidebar && isRecordsArea) {
         e.preventDefault();
         recordEditor.selectRows(records?.rows || []);
+        recordEditor.selectRow(records?.rows?.[0] || null);
       } else if (key === 's') {
         e.preventDefault();
-        if (activeView === 'structure') {
+        if (recordDraftCount > 0) {
+          inlineDrafts.save();
+        } else if (activeView === 'structure') {
           handleSubmitStructure();
         } else {
           recordEditor.submitRecord();
@@ -243,10 +292,15 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTable, activeView, handleSubmitStructure, toggleFilters, recordEditor.selectRows, recordEditor.submitRecord, records, refreshAll, warnUnsaved]);
+  }, [activeTable, activeView, handleRefresh, handleSubmitStructure, inlineDrafts.save, recordDraftCount, toggleFilters, recordEditor.selectRows, recordEditor.submitRecord, records, warnUnsaved]);
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className="flex flex-1 overflow-hidden"
+      onMouseDownCapture={e => {
+        recordsAreaActiveRef.current = !!(e.target as HTMLElement | null)?.closest('[data-db-client-records]');
+      }}
+    >
       <DataViewerSidebar
         activeTable={activeTable} connectionId={connectionId} dbType={dbType} error={error}
         filteredTables={filteredTables}
@@ -298,16 +352,20 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   foreignKeyByColumn={foreignKeyByColumn}
                   isLoadingRecords={isLoadingRecords}
                   records={records}
+                  tableSchema={activeTableSchema}
                   primaryKeyColumns={primaryKeyColumns}
                   selectedRow={recordEditor.selectedRow}
                   selectedRowKeys={recordEditor.selectedRowKeys}
                   sort={sort}
+                  recordDrafts={inlineDrafts.drafts}
                   handleSelectRow={handleSelectRow}
                   openRelatedRecord={openRelatedRecord}
                   onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
+                  onDraftCell={inlineDrafts.draftCell}
+                  onDiscardDraftCell={inlineDrafts.discardCell}
                   onDeleteSelectedRecords={() => warnUnsaved() && setConfirmAction('records')}
-                  onTogglePageRows={recordEditor.toggleSelectedRows}
-                  onToggleSelectedRow={recordEditor.toggleSelectedRow}
+                  onTogglePageRows={handleTogglePageRows}
+                  onToggleSelectedRow={handleToggleSelectedRow}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
                 >
@@ -400,6 +458,19 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
         onCancel={() => setConfirmAction(null)}
         onDeleteRecords={handleConfirmDeleteRecord}
         onDeleteStructure={handleDeleteStructure}
+      />
+      <ConfirmModal
+        isOpen={discardRefreshOpen}
+        title="Discard all changes?"
+        message="Refresh will discard unsaved inline record changes."
+        confirmText="Discard"
+        cancelText="Cancel"
+        onCancel={() => setDiscardRefreshOpen(false)}
+        onConfirm={() => {
+          inlineDrafts.clear();
+          setDiscardRefreshOpen(false);
+          refreshAll();
+        }}
       />
     </div>
   );

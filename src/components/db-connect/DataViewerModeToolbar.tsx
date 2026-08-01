@@ -59,7 +59,7 @@ export function DataViewerModeToolbar({ activeMode, dbType, onModeChange }: Data
           <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-toggle-filters'))} title="Toggle record filters">
             <Search className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-toggle-details'))} title="Open table information">
+          <Button variant="ghost" size="icon-sm" onClick={() => window.dispatchEvent(new Event('db-connect-toggle-details'))} title="Toggle record panel">
             <PanelRightOpen className="h-4 w-4" />
           </Button>
         </div>
