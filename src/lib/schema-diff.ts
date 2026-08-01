@@ -1,124 +1,138 @@
-import { Node, Edge } from '@xyflow/react';
-import { Entity, Column } from '@/types';
+import { Edge, Node } from '@xyflow/react';
+import { Column, Entity } from '@/types';
+
+export type DiffState = 'new' | 'modified' | 'deleted';
+export type SchemaChangeKind = 'table' | 'column' | 'relation';
+
+export interface SchemaDiffChange {
+  id: string;
+  kind: SchemaChangeKind;
+  state: DiffState;
+  label: string;
+  current?: Node<Entity> | Column | Edge;
+  proposed?: Node<Entity> | Column | Edge;
+}
 
 export interface DiffResult {
   nodes: Node<Entity>[];
   edges: Edge[];
+  changes: SchemaDiffChange[];
   newCount: number;
   modifiedCount: number;
   deletedCount: number;
+}
+
+const key = (value: string) => value.trim().toLowerCase();
+const columnIdFromHandle = (handle?: string | null) => handle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+const columnFromHandle = (node: Node<Entity>, handle?: string | null) =>
+  node.data.columns.find(column => String(column.id) === columnIdFromHandle(handle));
+
+export function relationKey(edge: Edge, nodes: Node<Entity>[]): string | null {
+  const source = nodes.find(node => node.id === edge.source);
+  const target = nodes.find(node => node.id === edge.target);
+  if (!source || !target) return null;
+  const sourceColumn = columnFromHandle(source, edge.sourceHandle);
+  const targetColumn = columnFromHandle(target, edge.targetHandle);
+  if (!sourceColumn || !targetColumn) return null;
+  return `${key(source.data.name)}.${key(sourceColumn.name)}>${key(target.data.name)}.${key(targetColumn.name)}`;
+}
+
+function columnChanged(current: Column, proposed: Column) {
+  return current.type.toLowerCase() !== proposed.type.toLowerCase()
+    || !!current.is_pk !== !!proposed.is_pk
+    || !!current.is_nullable !== !!proposed.is_nullable
+    || (current.comment || '') !== (proposed.comment || '')
+    || (current.max_length ?? null) !== (proposed.max_length ?? null)
+    || (current.numeric_precision ?? null) !== (proposed.numeric_precision ?? null)
+    || (current.numeric_scale ?? null) !== (proposed.numeric_scale ?? null)
+    || (current.enum_name || '') !== (proposed.enum_name || '')
+    || (current.enum_values || '') !== (proposed.enum_values || '');
 }
 
 export function computeSchemaDiff(
   currentNodes: Node<Entity>[],
   currentEdges: Edge[],
   proposedNodes: Node<Entity>[],
-  proposedEdges: Edge[]
+  proposedEdges: Edge[],
 ): DiffResult {
-  const diffNodes: Node<Entity>[] = [];
-  let newCount = 0;
-  let modifiedCount = 0;
-  let deletedCount = 0;
+  const changes: SchemaDiffChange[] = [];
+  const currentByName = new Map(currentNodes.map(node => [key(node.data.name), node]));
+  const proposedByName = new Map(proposedNodes.map(node => [key(node.data.name), node]));
+  const allNames = new Set([...currentByName.keys(), ...proposedByName.keys()]);
+  const nodes: Node<Entity>[] = [];
 
-  // Build name-based lookup tables
-  const currentByName = new Map<string, Node<Entity>>();
-  currentNodes.forEach(n => currentByName.set(n.data.name.toLowerCase(), n));
-  const proposedByName = new Map<string, Node<Entity>>();
-  proposedNodes.forEach(n => proposedByName.set(n.data.name.toLowerCase(), n));
-
-  // 1. Process all unique names from both sets
-  const allNames = new Set([
-    ...currentByName.keys(),
-    ...proposedByName.keys(),
-  ]);
-
-  allNames.forEach(name => {
-    const origNode = currentByName.get(name);
-    const propNode = proposedByName.get(name);
-
-    if (!origNode && propNode) {
-      // NEW table — only in proposed
-      newCount++;
-      diffNodes.push({
-        ...propNode,
-        data: {
-          ...propNode.data,
-          diffState: 'new' as const,
-        },
-      });
-    } else if (origNode && !propNode) {
-      // DELETED table — only in current
-      deletedCount++;
-      const deletedCols = (origNode.data.columns || []).map(col => ({
-        ...col,
-        diffState: 'deleted' as const,
-      }));
-      diffNodes.push({
-        ...origNode,
-        data: {
-          ...origNode.data,
-          columns: deletedCols,
-          diffState: 'deleted' as const,
-        },
-      });
-    } else if (origNode && propNode) {
-      // EXISTING — compare columns
-      const origCols = origNode.data.columns || [];
-      const propCols = propNode.data.columns || [];
-      const origColMap = new Map(origCols.map(c => [c.name.toLowerCase(), c]));
-      const propColMap = new Map(propCols.map(c => [c.name.toLowerCase(), c]));
-      const allColNames = new Set([...origColMap.keys(), ...propColMap.keys()]);
-      const combinedColumns: (Column & { diffState?: 'new' | 'deleted' })[] = [];
-      let columnsChanged = false;
-
-      allColNames.forEach(colName => {
-        const origCol = origColMap.get(colName);
-        const propCol = propColMap.get(colName);
-
-        if (!origCol && propCol) {
-          columnsChanged = true;
-          combinedColumns.push({ ...propCol, diffState: 'new' });
-        } else if (origCol && !propCol) {
-          columnsChanged = true;
-          combinedColumns.push({ ...origCol, diffState: 'deleted' });
-        } else if (origCol && propCol) {
-          const changed =
-            origCol.type.toLowerCase() !== propCol.type.toLowerCase() ||
-            !!origCol.is_pk !== !!propCol.is_pk ||
-            !!origCol.is_nullable !== !!propCol.is_nullable ||
-            (origCol.comment || '') !== (propCol.comment || '') ||
-            (origCol.max_length ?? null) !== (propCol.max_length ?? null) ||
-            (origCol.numeric_precision ?? null) !== (propCol.numeric_precision ?? null) ||
-            (origCol.numeric_scale ?? null) !== (propCol.numeric_scale ?? null);
-          if (changed) {
-            columnsChanged = true;
-            combinedColumns.push({ ...propCol, diffState: 'new' });
-          } else {
-            combinedColumns.push(origCol);
-          }
-        }
-      });
-
-      // Preserve original position (so user sees where the table is on the real canvas)
-      diffNodes.push({
-        ...(columnsChanged ? propNode : origNode),
-        position: origNode.position,
-        data: {
-          ...(propNode.data),
-          columns: combinedColumns,
-          diffState: columnsChanged ? ('modified' as const) : undefined,
-        },
-      });
-      if (columnsChanged) modifiedCount++;
+  for (const name of allNames) {
+    const current = currentByName.get(name);
+    const proposed = proposedByName.get(name);
+    const tableChangeId = `table:${name}`;
+    if (!current && proposed) {
+      changes.push({ id: tableChangeId, kind: 'table', state: 'new', label: proposed.data.name, proposed });
+      nodes.push({ ...proposed, data: { ...proposed.data, diffState: 'new' } });
+      continue;
     }
-  });
+    if (current && !proposed) {
+      changes.push({ id: tableChangeId, kind: 'table', state: 'deleted', label: current.data.name, current });
+      nodes.push({ ...current, data: { ...current.data, columns: current.data.columns.map(column => ({ ...column, diffState: 'deleted' })), diffState: 'deleted' } });
+      continue;
+    }
+    if (!current || !proposed) continue;
 
-  // 3. For edges, keep proposed edges
+    const currentColumns = new Map(current.data.columns.map(column => [key(column.name), column]));
+    const proposedColumns = new Map(proposed.data.columns.map(column => [key(column.name), column]));
+    const columnNames = new Set([...currentColumns.keys(), ...proposedColumns.keys()]);
+    let changed = false;
+    const columns: (Column & { diffState?: DiffState })[] = [];
+
+    for (const columnName of columnNames) {
+      const before = currentColumns.get(columnName);
+      const after = proposedColumns.get(columnName);
+      const id = `column:${name}.${columnName}`;
+      const label = `${current.data.name}.${before?.name || after?.name || columnName}`;
+      if (!before && after) {
+        changed = true;
+        changes.push({ id, kind: 'column', state: 'new', label, proposed: after });
+        columns.push({ ...after, diffState: 'new' });
+      } else if (before && !after) {
+        changed = true;
+        changes.push({ id, kind: 'column', state: 'deleted', label, current: before });
+        columns.push({ ...before, diffState: 'deleted' });
+      } else if (before && after && columnChanged(before, after)) {
+        changed = true;
+        changes.push({ id, kind: 'column', state: 'modified', label, current: before, proposed: after });
+        columns.push({ ...after, diffState: 'new' });
+      } else if (before) {
+        columns.push(before);
+      }
+    }
+    nodes.push({ ...current, data: { ...current.data, columns, diffState: changed ? 'modified' : undefined } });
+  }
+
+  const currentRelations = new Map(currentEdges.flatMap(edge => {
+    const relation = relationKey(edge, currentNodes);
+    return relation ? [[relation, edge] as const] : [];
+  }));
+  const proposedRelations = new Map(proposedEdges.flatMap(edge => {
+    const relation = relationKey(edge, proposedNodes);
+    return relation ? [[relation, edge] as const] : [];
+  }));
+  const relationNames = new Set([...currentRelations.keys(), ...proposedRelations.keys()]);
+  for (const relation of relationNames) {
+    const current = currentRelations.get(relation);
+    const proposed = proposedRelations.get(relation);
+    const id = `relation:${relation}`;
+    if (!current && proposed) changes.push({ id, kind: 'relation', state: 'new', label: relation, proposed });
+    else if (current && !proposed) changes.push({ id, kind: 'relation', state: 'deleted', label: relation, current });
+    else if (current && proposed && (current.label || '') !== (proposed.label || '')) {
+      changes.push({ id, kind: 'relation', state: 'modified', label: relation, current, proposed });
+    }
+  }
+
   return {
-    nodes: diffNodes,
+    nodes,
     edges: proposedEdges,
-    newCount,
-    modifiedCount,
-    deletedCount,
+    changes,
+    newCount: changes.filter(change => change.state === 'new').length,
+    modifiedCount: changes.filter(change => change.state === 'modified').length,
+    deletedCount: changes.filter(change => change.state === 'deleted').length,
   };
 }

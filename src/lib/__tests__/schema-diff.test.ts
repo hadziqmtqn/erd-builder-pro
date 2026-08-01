@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeSchemaDiff } from '../schema-diff';
+import { mergeSchemaChanges } from '../schema-merge';
 import { Node, Edge } from '@xyflow/react';
 import type { Entity, Column } from '@/types';
 
@@ -73,7 +74,7 @@ describe('computeSchemaDiff', () => {
     const proposed = [makeNode('users', ['id', 'name'])];
 
     const result = computeSchemaDiff(current, [], proposed, []);
-    expect(result.modifiedCount).toBe(1);
+    expect(result.newCount).toBe(1);
     const modified = result.nodes.find(n => n.data.name === 'users')!;
     expect(modified.data.diffState).toBe('modified');
   });
@@ -83,7 +84,8 @@ describe('computeSchemaDiff', () => {
     const proposed = [makeNode('users', ['id', 'full_name'])];
 
     const result = computeSchemaDiff(current, [], proposed, []);
-    expect(result.modifiedCount).toBe(1);
+    expect(result.newCount).toBe(1);
+    expect(result.deletedCount).toBe(1);
     const userNode = result.nodes.find(n => n.data.name === 'users')!;
     const cols = userNode.data.columns;
     const nameCol = cols.find(c => c.name === 'name');
@@ -114,8 +116,65 @@ describe('computeSchemaDiff', () => {
     const proposed = [makeNode('users', ['id', 'name'])];
 
     const result = computeSchemaDiff(current, [], proposed, []);
-    expect(result.modifiedCount).toBe(1);
-    expect(result.newCount).toBe(0);
+    expect(result.newCount).toBe(1);
     expect(result.deletedCount).toBe(0);
+  });
+
+  it('detects enum and persisted column metadata changes', () => {
+    const current = [makeNode('users', ['role'])];
+    const proposed = [makeNode('users', ['role'])];
+    Object.assign(current[0].data.columns[0], { enum_name: 'users_role', enum_values: 'member,admin', comment: 'old', max_length: 20 });
+    Object.assign(proposed[0].data.columns[0], { enum_name: 'account_role', enum_values: 'member,admin,owner', comment: 'new', max_length: 40 });
+
+    const result = computeSchemaDiff(current, [], proposed, []);
+    expect(result.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'column:users.role', kind: 'column', state: 'modified' }),
+    ]));
+  });
+
+  it('matches legacy-ID relationships by table and column names', () => {
+    const current = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
+    const proposed = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
+    current[0].id = 'old-users'; current[1].id = 'old-posts';
+    current[0].data.columns[0].id = 'old-user-id'; current[1].data.columns[0].id = 'old-post-user-id';
+    proposed[0].id = 'new-users'; proposed[1].id = 'new-posts';
+    proposed[0].data.columns[0].id = 'new-user-id'; proposed[1].data.columns[0].id = 'new-post-user-id';
+    const oldEdge: Edge = { id: 'old', source: 'old-posts', target: 'old-users', sourceHandle: 'col-old-post-user-id-source', targetHandle: 'col-old-user-id-target', label: '1:N' };
+    const newEdge: Edge = { id: 'new', source: 'new-posts', target: 'new-users', sourceHandle: 'col-new-post-user-id-source', targetHandle: 'col-new-user-id-target', label: '1:N' };
+
+    expect(computeSchemaDiff(current, [oldEdge], proposed, [newEdge]).changes.filter(change => change.kind === 'relation')).toEqual([]);
+    newEdge.label = '1:1';
+    expect(computeSchemaDiff(current, [oldEdge], proposed, [newEdge]).changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'relation', state: 'modified', id: 'relation:posts.user_id>users.id' }),
+    ]));
+  });
+
+  it('merges only approved column and relationship changes', () => {
+    const current = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
+    const proposed = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
+    proposed[1].data.columns[0].is_nullable = false;
+    const currentEdge = makeEdge('posts', 'users');
+    currentEdge.label = '1:N';
+    const proposedEdge = makeEdge('posts', 'users');
+    proposedEdge.label = '1:1';
+    const diff = computeSchemaDiff(current, [currentEdge], proposed, [proposedEdge]);
+    const approved = diff.changes.filter(change => change.kind === 'column').map(change => change.id);
+    const unchanged = mergeSchemaChanges(current, [currentEdge], proposed, [proposedEdge], diff, approved);
+    expect(unchanged.nodes.find(node => node.data.name === 'posts')?.data.columns[0].is_nullable).toBe(false);
+    expect(unchanged.edges[0].label).toBe('1:N');
+
+    const merged = mergeSchemaChanges(current, [currentEdge], proposed, [proposedEdge], diff, diff.changes.map(change => change.id));
+    expect(merged.edges[0].label).toBe('1:1');
+  });
+
+  it('drops dependent relationships when an approved table deletion removes an endpoint', () => {
+    const current = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
+    const proposed = [makeNode('users', ['id'])];
+    const edge = makeEdge('posts', 'users');
+    const diff = computeSchemaDiff(current, [edge], proposed, []);
+    const merged = mergeSchemaChanges(current, [edge], proposed, [], diff, ['table:posts']);
+
+    expect(merged.nodes.map(node => node.data.name)).toEqual(['users']);
+    expect(merged.edges).toEqual([]);
   });
 });
