@@ -11,11 +11,12 @@ function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function Field({ className, ...props }: React.ComponentProps<"div">) {
+function Field({ className, orientation, ...props }: React.ComponentProps<"div"> & { orientation?: "horizontal" | "vertical" }) {
   return (
     <div
       data-slot="field"
-      className={cn("grid gap-2", className)}
+      data-orientation={orientation}
+      className={cn("grid gap-2 data-[orientation=horizontal]:flex data-[orientation=horizontal]:items-start", className)}
       {...props}
     />
   )
@@ -44,6 +45,18 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div data-slot="field-content" className={cn("grid gap-1", className)} {...props} />
+  )
+}
+
+function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div data-slot="field-title" className={cn("text-sm font-medium leading-none", className)} {...props} />
+  )
+}
+
 function FieldSeparator({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -67,4 +80,4 @@ function FieldSeparator({ className, children, ...props }: React.ComponentProps<
   )
 }
 
-export { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator }
+export { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator, FieldTitle }

@@ -21,6 +21,7 @@ import {
   RotateCcwKey
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -896,18 +897,15 @@ function AutoBackupSettings() {
           <RotateCcwKey className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">Auto Backup</span>
         </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            className="sr-only peer"
+        <label className="inline-flex items-center cursor-pointer">
+          <Checkbox
             checked={enabled}
-            onChange={(e) => {
-              setEnabled(e.target.checked);
-              save({ enabled: e.target.checked });
+            onCheckedChange={(checked) => {
+              setEnabled(checked);
+              save({ enabled: checked });
             }}
             disabled={saving}
           />
-          <div className="w-9 h-5 bg-muted rounded-full peer-checked:bg-primary/80 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-background after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4" />
         </label>
       </div>
 

@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -225,7 +226,7 @@ export function DataViewerSidebar({
                     handleTableClick(e as any, table.table_name);
                   }
                 }}
-                className={`w-full text-left px-2.5 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
+                className={`w-full cursor-pointer text-left px-2.5 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
                   selectedSet.has(table.table_name)
                     ? 'bg-primary/15 text-foreground ring-1 ring-primary/20'
                   : activeTable === table.table_name
@@ -259,6 +260,7 @@ export function DataViewerSidebar({
             label="Export All"
             mode="button"
             buttonClassName="h-8 min-w-0 flex-1 px-1.5 text-[11px]"
+            disabled={selectedTables.length <= 1}
             onDeleteTables={onDeleteTables}
             onMutateTables={onMutateTables}
           />
@@ -310,11 +312,10 @@ export function DataViewerSidebar({
           <AlertDialogBody className="space-y-3">
             {dbType === 'mysql' && (
               <label className="flex items-start gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-4 accent-primary"
+                <Checkbox
+                  className="mt-0.5"
                   checked={ignoreForeignKeys}
-                  onChange={e => { setIgnoreForeignKeys(e.target.checked); if (e.target.checked) setCascade(false); }}
+                  onCheckedChange={checked => { setIgnoreForeignKeys(checked); if (checked) setCascade(false); }}
                 />
                 <span>
                   <span className="block font-medium">Ignore foreign key checks</span>
@@ -323,12 +324,11 @@ export function DataViewerSidebar({
               </label>
             )}
             <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-primary"
+              <Checkbox
+                className="mt-0.5"
                 checked={cascade}
                 disabled={dbType === 'mysql' && ignoreForeignKeys}
-                onChange={e => setCascade(e.target.checked)}
+                onCheckedChange={checked => setCascade(checked)}
               />
               <span>
                 <span className="block font-medium">Cascade</span>

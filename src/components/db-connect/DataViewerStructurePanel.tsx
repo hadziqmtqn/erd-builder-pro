@@ -1,6 +1,7 @@
 import { Dispatch, SetStateAction, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -234,11 +235,9 @@ export function DataViewerStructurePanel({
                 </div>
               )}
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
+                <Checkbox
                   checked={draft.isNullable}
-                  onChange={e => patchDraft(setDraft, { isNullable: e.target.checked })}
+                  onCheckedChange={checked => patchDraft(setDraft, { isNullable: checked })}
                 />
                 Nullable
               </label>
@@ -266,11 +265,9 @@ export function DataViewerStructurePanel({
 
               {target.kind !== 'addTable' && <div className="space-y-3 rounded-md border p-3">
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
+                  <Checkbox
                     checked={draft.fkEnabled}
-                    onChange={e => patchDraft(setDraft, { fkEnabled: e.target.checked })}
+                    onCheckedChange={checked => patchDraft(setDraft, { fkEnabled: checked })}
                   />
                   Foreign key
                 </label>
@@ -312,11 +309,9 @@ export function DataViewerStructurePanel({
                 <Input id="structure-index-name" value={draft.indexName} onChange={e => patchDraft(setDraft, { indexName: e.target.value })} />
               </div>
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
+                <Checkbox
                   checked={draft.indexUnique}
-                  onChange={e => patchDraft(setDraft, { indexUnique: e.target.checked })}
+                  onCheckedChange={checked => patchDraft(setDraft, { indexUnique: checked })}
                 />
                 Unique
               </label>
@@ -336,12 +331,10 @@ export function DataViewerStructurePanel({
                 <div className="max-h-60 space-y-2 overflow-y-auto rounded-md border p-2">
                   {tableColumns.map((column: any) => (
                     <label key={column.name} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-primary"
+                      <Checkbox
                         checked={draft.indexColumns.includes(column.name)}
-                        onChange={e => patchDraft(setDraft, {
-                          indexColumns: e.target.checked
+                        onCheckedChange={checked => patchDraft(setDraft, {
+                          indexColumns: checked
                             ? [...draft.indexColumns, column.name]
                             : draft.indexColumns.filter(name => name !== column.name),
                         })}

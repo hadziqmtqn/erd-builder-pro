@@ -156,6 +156,11 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     await recordEditor.removeSelectedRecords();
     setConfirmAction(null);
   }, [recordEditor.removeSelectedRecords]);
+  const handleMutateTables = useCallback(async (patch: Record<string, any>) => {
+    const data = await mutateTables(patch);
+    if (activeTable && patch.truncateTables?.includes(activeTable)) recordEditor.resetRecordEditor();
+    return data;
+  }, [activeTable, mutateTables, recordEditor.resetRecordEditor]);
   useEffect(() => { fetchTables(); }, [fetchTables]);
   useEffect(() => { onDbTypeChange?.(dbType); }, [dbType, onDbTypeChange]);
   useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
@@ -256,7 +261,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
           setActiveView('structure');
           structureEditor.addTable();
         }}
-        onDeleteTables={deleteTables} onMutateTables={mutateTables} onRefreshTables={refreshAll} onSelectTable={handleSelectTable}
+        onDeleteTables={deleteTables} onMutateTables={handleMutateTables} onRefreshTables={refreshAll} onSelectTable={handleSelectTable}
         setTableSearch={setTableSearch}
       />
 
@@ -284,7 +289,6 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
                   selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
                   onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}
-                  onRefresh={() => warnUnsaved() && refreshAll()}
                 />
               ) : (
                 <DataViewerRecordsTable
@@ -301,6 +305,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   handleSelectRow={handleSelectRow}
                   openRelatedRecord={openRelatedRecord}
                   onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
+                  onDeleteSelectedRecords={() => warnUnsaved() && setConfirmAction('records')}
                   onTogglePageRows={recordEditor.toggleSelectedRows}
                   onToggleSelectedRow={recordEditor.toggleSelectedRow}
                   toggleSort={toggleSort}

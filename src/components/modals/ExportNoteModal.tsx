@@ -8,6 +8,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   FileText, 
   FileCode, 
@@ -134,15 +135,11 @@ export const ExportNoteModal = ({ isOpen, onClose, onExport }: ExportNoteModalPr
                 { id: 'preserveFormatting', label: 'Preserve Formatting', sub: 'Maintains colors, styles, and font weights precisely.' },
               ].map((opt) => (
                 <label key={opt.id} className="flex items-start gap-5 cursor-pointer group">
-                  <div className="relative flex items-center mt-1 shrink-0">
-                    <input 
-                      type="checkbox"
-                      checked={(options as Record<string, any>)[opt.id]}
-                      onChange={() => setOptions(prev => ({ ...prev, [opt.id]: !(prev as Record<string, any>)[opt.id] }))}
-                      className="peer h-5 w-5 appearance-none rounded border-2 border-zinc-700 bg-transparent transition-all checked:border-zinc-100 checked:bg-zinc-100 cursor-pointer"
-                    />
-                    <Check className="absolute top-0.5 left-0.5 w-4 h-4 text-zinc-950 opacity-0 peer-checked:opacity-100 transition-opacity" />
-                  </div>
+                  <Checkbox
+                    checked={(options as Record<string, any>)[opt.id]}
+                    onCheckedChange={checked => setOptions(prev => ({ ...prev, [opt.id]: checked }))}
+                    className="mt-1 size-5 border-2 border-zinc-700 bg-transparent text-zinc-950 data-checked:border-zinc-100 data-checked:bg-zinc-100"
+                  />
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">{opt.label}</span>
                     <span className="text-xs text-zinc-500 leading-relaxed">{opt.sub}</span>
