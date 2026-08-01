@@ -47,7 +47,6 @@ interface MainHeaderProps {
   onSave?: () => void;
   onExportAll?: () => void;
   onExportSQL?: (dialect: 'postgresql' | 'mysql') => void;
-  onExportPDF?: () => void;
   onExportImage?: () => void;
   onExportMarkdown?: () => void;
   onCopyMarkdown?: () => void;
@@ -81,7 +80,6 @@ export const MainHeader = React.memo(({
   onSave,
   onExportAll,
   onExportSQL,
-  onExportPDF,
   onExportImage,
   onExportMarkdown,
   onCopyMarkdown,
@@ -327,7 +325,6 @@ export const MainHeader = React.memo(({
               onDuplicate={onDuplicate}
               onExportAll={onExportAll}
               onExportSQL={onExportSQL}
-              onExportPDF={onExportPDF}
               onExportImage={onExportImage}
               onExportMarkdown={onExportMarkdown}
               onCopyMarkdown={onCopyMarkdown}

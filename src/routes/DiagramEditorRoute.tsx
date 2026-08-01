@@ -20,7 +20,7 @@ export function DiagramEditorRoute() {
     selectedNodeId, addEntity, undo, redo, canUndo, canRedo,
     takeSnapshot, onNodeDragStop, onMoveEnd,
     handleNodeClick, handleNodeDoubleClick, handleEdgeClick, handlePaneClick, handleMove,
-    handleWorkspaceExportSQL, handleWorkspaceExportPDF, handleWorkspaceExportImage,
+    handleWorkspaceExportSQL, handleWorkspaceExportImage,
     handleOpenImportModal,
     viewportRef, saveDiagram, triggerDebouncedSync,
     isERDItemLoading, handleDiagramSelect,
@@ -174,7 +174,6 @@ export function DiagramEditorRoute() {
           onImportSQL={handleOpenImportModal}
           onAutoLayout={handleAutoLayout}
           handleExportSQL={handleWorkspaceExportSQL}
-          handleExportPDF={handleWorkspaceExportPDF}
           handleExportImage={handleWorkspaceExportImage}
           isReadOnly={effectiveReadOnly}
           undo={undo}

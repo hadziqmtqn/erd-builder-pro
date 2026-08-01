@@ -165,7 +165,6 @@ export interface WorkspaceContextValue {
   handleHeaderRename: () => void;
   handleHeaderSettingsSaved: () => void;
   handleHeaderExportSQL: (dialect: 'postgresql' | 'mysql') => void;
-  handleHeaderExportPDF: () => void;
   handleHeaderExportImage: () => void;
   handleExportMarkdown: () => void;
   handleCopyMarkdown: () => void;
@@ -203,7 +202,6 @@ export interface WorkspaceContextValue {
   handleMove: any;
   handleOpenImportModal: () => void;
   handleWorkspaceExportSQL: any;
-  handleWorkspaceExportPDF: any;
   handleWorkspaceExportImage: any;
   takeSnapshot: any;
   onNodeDragStop: any;
