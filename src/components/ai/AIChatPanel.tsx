@@ -168,6 +168,13 @@ export const AIChatPanel = ({
     inputRef.current?.focus();
   }, [entityType, entityContextText, entityTitle, actionContextData, activeActionId]);
 
+  const handleClearAction = useCallback(() => {
+    setActiveActionId(null);
+    setActiveActionPrompt(null);
+    setLastActionId(null);
+    inputRef.current?.focus();
+  }, []);
+
   const contentCheckType = currentViewType === 'flowchart' ? 'flowchart' as const : currentViewType === 'erd' ? 'erd' as const : 'none' as const;
   // ─── Build mention file list from workspace file arrays ──
   const mentionFiles = useMemo<MentionFile[]>(() => {
@@ -197,7 +204,7 @@ export const AIChatPanel = ({
       }
     }
     for (const d of diagrams) {
-      if (String(d.project_id) === String(pid) && !d.is_deleted) {
+      if (String(d.project_id) === String(pid) && !d.is_deleted && (d.source_type ?? d.sourceType) !== 'production_db') {
         files.push({ name: d.name || 'Untitled', type: 'diagram', uid: d.uid ?? String(d.id) });
       }
     }
@@ -217,13 +224,13 @@ export const AIChatPanel = ({
 
   // ─── Resolve @mentions to file content for AI context ──
   const resolveMentions = useCallback(async (text: string): Promise<{ context: string; seenUids: Set<string> }> => {
-    const mentionRegex = /@([^\s\n]+)/g;
+    const mentionRegex = /\[@([^\]]+)\]|@([^\s\n]+)/g;
     const matches = text.matchAll(mentionRegex);
     const seenUids = new Set<string>();
     let context = '';
 
     for (const match of matches) {
-      const name = match[1];
+      const name = match[1] ?? match[2];
       const file = mentionFiles.find(f => f.name.toLowerCase() === name.toLowerCase());
       if (!file || seenUids.has(file.uid)) continue;
       seenUids.add(file.uid);
@@ -502,6 +509,7 @@ export const AIChatPanel = ({
               onSend={handleSend}
               onKeyDown={handleKeyDown}
               onSelectAction={handleSelectAction}
+              onClearAction={handleClearAction}
               onAbort={abortStream}
               hasProject={!!projectId}
               mentionFiles={mentionFiles}

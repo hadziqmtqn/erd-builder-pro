@@ -1,8 +1,7 @@
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File, ChevronDown, X } from 'lucide-react';
+import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File, AtSign, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { AIAction } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 interface MentionFile {
   name: string;
@@ -77,6 +76,7 @@ export interface ChatInputProps {
   onSend: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSelectAction: (action: AIAction) => void;
+  onClearAction: () => void;
   onAbort: () => void;
   hasProject?: boolean;
   mentionFiles?: MentionFile[];
@@ -92,6 +92,7 @@ export const ChatInput = memo(function ChatInput({
   onSend,
   onKeyDown,
   onSelectAction,
+  onClearAction,
   onAbort,
   hasProject = false,
   mentionFiles = [],
@@ -103,6 +104,7 @@ export const ChatInput = memo(function ChatInput({
   const [mentionStart, setMentionStart] = useState(-1);
   const [toolsOpen, setToolsOpen] = useState(false);
   const mentionRef = useRef<HTMLDivElement>(null);
+  const mentionTriggerRef = useRef<HTMLButtonElement>(null);
   const toolsRef = useRef<HTMLDetailsElement>(null);
   const [, forceUpdate] = useState(0);
 
@@ -146,7 +148,7 @@ export const ChatInput = memo(function ChatInput({
     const end = ta.selectionStart;
     const before = ta.value.slice(0, start);
     const after = ta.value.slice(end);
-    const mention = `@${file.name} `;
+    const mention = `[@${file.name}] `;
     ta.value = before + mention + after;
     const newPos = start + mention.length;
     ta.setSelectionRange(newPos, newPos);
@@ -154,6 +156,19 @@ export const ChatInput = memo(function ChatInput({
     setMentionOpen(false);
     forceUpdate(n => n + 1);
   }, [mentionStart, inputRef, forceUpdate]);
+
+  const openMentionPicker = useCallback(() => {
+    if (mentionOpen) {
+      setMentionOpen(false);
+      return;
+    }
+    const ta = inputRef.current;
+    if (!ta) return;
+    setMentionStart(ta.selectionStart);
+    setMentionQuery('');
+    setMentionOpen(true);
+    ta.focus();
+  }, [inputRef, mentionOpen]);
 
   const handleMentionKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionOpen) {
@@ -185,14 +200,14 @@ export const ChatInput = memo(function ChatInput({
 
   useEffect(() => {
     if (!mentionOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
-        if ((e.target as HTMLElement).tagName === 'TEXTAREA') return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!mentionRef.current?.contains(target) && !mentionTriggerRef.current?.contains(target)) {
         setMentionOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [mentionOpen]);
 
   useEffect(() => {
@@ -205,22 +220,27 @@ export const ChatInput = memo(function ChatInput({
   }, [toolsOpen]);
 
   const showActions = !isStreaming && actions.length > 0;
-  const erdPrimaryAction = entityType === 'diagram' ? actions.find(action => action.id === 'erd-generate-sql') : undefined;
-  const erdToolActions = entityType === 'diagram' ? actions.filter(action => action.id !== 'erd-generate-sql') : [];
+  const actionGroup = entityType === 'diagram'
+    ? { primaryId: 'erd-generate-sql', primaryLabel: 'Build DBML', toolsLabel: 'ERD tools', heading: 'Focused ERD actions' }
+    : entityType === 'flowchart'
+      ? { primaryId: 'flowchart-generate', primaryLabel: 'Build Flowchart', toolsLabel: 'Flowchart tools', heading: 'Focused Flowchart actions' }
+      : null;
+  const primaryAction = actionGroup ? actions.find(action => action.id === actionGroup.primaryId) : undefined;
+  const toolActions = actionGroup && primaryAction ? [primaryAction, ...actions.filter(action => action.id !== actionGroup.primaryId)] : actions;
   const activeAction = actions.find(action => action.id === activeActionId);
 
   if (!hasActiveSession) return null;
 
   return (
-    <div className="shrink-0 border-t bg-background p-4 space-y-2.5">
-      <div className="flex items-end gap-2 relative">
+    <div className="shrink-0 border-t bg-background p-3">
+      <div className="relative rounded-2xl border border-input bg-card p-2 shadow-sm transition-shadow focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         <textarea
           ref={inputRef}
           defaultValue=""
           onInput={handleInput}
           onKeyDown={handleMentionKeyDown}
           placeholder={isStreaming ? 'AI is responding...' : getPlaceholder(activeActionId, hasProject)}
-          className="flex-1 min-h-20 max-h-50 rounded-md border border-input bg-transparent px-3 py-2 text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 resize-none"
+          className="block w-full min-h-18 max-h-44 resize-none bg-transparent px-2 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
           rows={3}
           disabled={isStreaming}
         />
@@ -231,8 +251,8 @@ export const ChatInput = memo(function ChatInput({
             ref={mentionRef}
             className="absolute z-100 w-60 rounded-lg border border-border bg-popover shadow-xl overflow-hidden"
             style={{
-              bottom: 'calc(100% + 4px)',
-              left: '0px',
+              bottom: '48px',
+              left: '8px',
             }}
           >
             <div className="max-h-45 overflow-y-auto py-1">
@@ -258,108 +278,71 @@ export const ChatInput = memo(function ChatInput({
           </div>
         )}
 
-        <Button
-          variant={isStreaming ? "outline" : "default"}
-          size="icon"
-          className="shrink-0 size-9 rounded-md"
-          onClick={isStreaming ? onAbort : onSend}
-        >
-          {isStreaming ? <StopCircle className="size-4 text-destructive" /> : <Send className="size-4" />}
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between min-h-7">
-        {showActions ? (
-          <div className="flex items-center gap-1 flex-wrap">
-            {erdPrimaryAction ? (
-              <>
+        <div className="mt-1 flex items-center gap-1">
+          {mentionFiles.length > 0 && (
+            <Button ref={mentionTriggerRef} variant="outline" size="icon-xs" onClick={openMentionPicker} title="Reference a file">
+              <AtSign className="size-3.5" />
+            </Button>
+          )}
+          {showActions && (
+            <details
+              ref={toolsRef}
+              open={toolsOpen}
+              onToggle={(event) => setToolsOpen(event.currentTarget.open)}
+              className="group relative"
+            >
+              <summary className={`inline-flex list-none items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium cursor-pointer [&::-webkit-details-marker]:hidden ${
+                activeAction ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'
+              }`}>
+                <SlidersHorizontal className="size-3.5" />
+                <span className="max-w-28 truncate">{activeAction?.label || actionGroup?.toolsLabel || 'Tools'}</span>
+                <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="absolute bottom-8 left-0 z-50 w-64 rounded-xl border bg-popover p-1.5 shadow-lg">
+                <p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">{actionGroup?.heading || 'AI actions'}</p>
                 <button
-                  onClick={() => onSelectAction(erdPrimaryAction)}
-                  className={`inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border transition-all cursor-pointer ${
-                    activeActionId === erdPrimaryAction.id
-                      ? 'bg-primary/10 border-primary/30 text-primary'
-                      : 'bg-muted/40 border-border/40 text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted/70 hover:border-border/60'
-                  }`}
+                  onClick={() => {
+                    onClearAction();
+                    setToolsOpen(false);
+                  }}
+                  className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left cursor-pointer hover:bg-accent ${!activeAction ? 'bg-accent' : ''}`}
                 >
-                  <Database className="size-3" />
-                  Build DBML
+                  <SlidersHorizontal className="mt-0.5 size-3 text-muted-foreground" />
+                  <span>
+                    <span className="block text-xs font-medium">No tool</span>
+                    <span className="block text-[10px] leading-relaxed text-muted-foreground">Use general chat without an action mode.</span>
+                  </span>
                 </button>
-                <details
-                  ref={toolsRef}
-                  open={toolsOpen}
-                  onToggle={(event) => setToolsOpen(event.currentTarget.open)}
-                  className="group relative"
-                >
-                  <summary className="inline-flex list-none items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border border-border bg-background text-muted-foreground hover:bg-muted cursor-pointer [&::-webkit-details-marker]:hidden">
-                    ERD tools <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="absolute bottom-8 left-0 z-50 w-64 rounded-lg border bg-popover p-1.5 shadow-lg">
-                    <p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Focused ERD actions</p>
-                    {erdToolActions.map(action => (
-                      <button
-                        key={action.id}
-                        onClick={() => {
-                          onSelectAction(action);
-                          setToolsOpen(false);
-                        }}
-                        className={`flex w-full items-start gap-2 rounded-md px-2 py-2 text-left cursor-pointer hover:bg-accent ${activeActionId === action.id ? 'bg-accent' : ''}`}
-                      >
-                        <span className="mt-0.5 text-muted-foreground">{getActionIcon(action.id)}</span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-medium">{action.label}</span>
-                          <span className="block text-[10px] leading-relaxed text-muted-foreground">{action.description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </details>
-                {activeAction && activeActionId !== erdPrimaryAction.id && (
+                {toolActions.map(action => (
                   <button
-                    onClick={() => onSelectAction(activeAction)}
-                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border border-primary/30 bg-primary/10 text-primary cursor-pointer"
-                    title="Clear active ERD action"
+                    key={action.id}
+                    onClick={() => {
+                      onSelectAction(action);
+                      setToolsOpen(false);
+                    }}
+                    className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left cursor-pointer hover:bg-accent ${activeActionId === action.id ? 'bg-accent' : ''}`}
                   >
-                    {getActionIcon(activeAction.id)} {activeAction.label} <X className="size-3" />
+                    <span className="mt-0.5 text-muted-foreground">{getActionIcon(action.id)}</span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium">{action.label}</span>
+                      <span className="block text-[10px] leading-relaxed text-muted-foreground">{action.description}</span>
+                    </span>
                   </button>
-                )}
-              </>
-            ) : actions.map((action) => {
-              const isActive = activeActionId === action.id;
-              return (
-                <HoverCard key={action.id} openDelay={300} closeDelay={100}>
-                  <HoverCardTrigger asChild>
-                    <button
-                      onClick={() => onSelectAction(action)}
-                      className={`inline-flex items-center gap-1 h-7 px-2 rounded-md text-[10px] font-medium border transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-primary/10 border-primary/30 text-primary'
-                          : 'bg-muted/40 border-border/40 text-muted-foreground/70 hover:text-muted-foreground hover:bg-muted/70 hover:border-border/60'
-                      }`}
-                    >
-                      {getActionIcon(action.id)}
-                      <span className="truncate max-w-20">{action.label}</span>
-                    </button>
-                  </HoverCardTrigger>
-                  <HoverCardContent side="top" align="start" className="w-56 p-2.5">
-                    <div className="flex items-start gap-2">
-                      <div className="shrink-0 mt-0.5 size-6 rounded flex items-center justify-center bg-muted/30 text-muted-foreground">
-                        {getActionIcon(action.id)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium">{action.label}</p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-relaxed">{action.description}</p>
-                      </div>
-                    </div>
-                  </HoverCardContent>
-                </HoverCard>
-              );
-            })}
-          </div>
-        ) : (
-          <span className="text-[10px] text-muted-foreground/50 px-1 font-medium">
-            {isStreaming ? 'Generating...' : 'Press Enter to send'}
-          </span>
-        )}
+                ))}
+              </div>
+            </details>
+          )}
+          <span className="ml-1 text-[10px] text-muted-foreground/50">{isStreaming ? 'Generating...' : 'Enter to send'}</span>
+          <Button
+            variant={isStreaming ? 'outline' : 'default'}
+            size="icon"
+            className="ml-auto size-8 rounded-full"
+            onClick={isStreaming ? onAbort : onSend}
+            title={isStreaming ? 'Stop generating' : 'Send message'}
+          >
+            {isStreaming ? <StopCircle className="size-3.5 text-destructive" /> : <Send className="size-3.5" />}
+          </Button>
+        </div>
       </div>
     </div>
   );
