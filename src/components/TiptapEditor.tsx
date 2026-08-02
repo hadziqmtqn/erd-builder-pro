@@ -97,7 +97,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
-  const [selectionVersion, setSelectionVersion] = React.useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,7 +227,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     editable: !isReadOnly,
     editorProps: {
       attributes: {
-        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[350px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-indigo-300',
+        className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[350px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-primary',
       },
       handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain');
@@ -314,8 +313,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     if (!editor) return;
 
     const handleSelectionUpdate = () => {
-      setSelectionVersion(v => v + 1);
-
       const { from, to, empty } = editor.state.selection;
       if (!empty && !disableAISelection) {
         const text = editor.state.doc.textBetween(from, to, ' ');
@@ -331,22 +328,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       });
     };
 
-    const handleFocus = () => {
-      setSelectionVersion(v => v + 1);
-    };
-
-    const handleBlur = () => {
-      setSelectionVersion(v => v + 1);
-    };
-
     editor.on('selectionUpdate', handleSelectionUpdate);
-    editor.on('focus', handleFocus);
-    editor.on('blur', handleBlur);
 
     return () => {
       editor.off('selectionUpdate', handleSelectionUpdate);
-      editor.off('focus', handleFocus);
-      editor.off('blur', handleBlur);
     };
   }, [editor, setSelectionText, disableAISelection]);
 

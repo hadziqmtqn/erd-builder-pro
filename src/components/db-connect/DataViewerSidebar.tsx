@@ -26,6 +26,8 @@ import {
 import { toast } from 'sonner';
 import { DataViewerTableActions } from './DataViewerTableActions';
 
+const MAX_SQL_IMPORT_BYTES = 25 * 1024 * 1024;
+
 type DataViewerSidebarProps = {
   activeTable: string | null;
   connectionId: number;
@@ -79,6 +81,7 @@ export function DataViewerSidebar({
   const selectedTableObjects = tables.filter((table: any) => selectedSet.has(table.table_name));
   const setImportSqlFile = (file: File | null) => {
     if (file && !/\.sql$/i.test(file.name)) return toast.error('Choose a .sql file');
+    if (file && file.size > MAX_SQL_IMPORT_BYTES) return toast.error('SQL file is too large. Maximum size is 25 MB');
     setImportFile(file);
   };
   const handleTableClick = (e: React.MouseEvent, tableName: string) => {

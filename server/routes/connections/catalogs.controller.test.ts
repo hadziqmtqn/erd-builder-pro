@@ -5,7 +5,7 @@ import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhe
 import { fetchTableInfo } from "./record-helpers.js";
 import { limitSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
-import { validateImportSql } from "./structure.controller.js";
+import { extractMySqlCreatedTables, MAX_SQL_IMPORT_BYTES, normalizeMySqlCreateTableDefaults, splitSqlStatements, validateImportSql } from "./structure.controller.js";
 
 describe("custom query helpers", () => {
   it("allows one SELECT/WITH statement and wraps it with a row limit", () => {
@@ -24,6 +24,54 @@ describe("validateImportSql", () => {
     expect(() => validateImportSql("postgresql", "CREATE TABLE `users` (`id` int AUTO_INCREMENT);")).toThrow("not PostgreSQL");
     expect(() => validateImportSql("mysql", 'CREATE TABLE "users" ("id" serial);')).toThrow("not MySQL");
     expect(() => validateImportSql("sqlite", "CREATE TABLE users (id int) ENGINE=InnoDB;")).toThrow("incompatible with SQLite");
+  });
+
+  it("accepts common MySQL dump controls and ignores non-table dump metadata", () => {
+    const statements = validateImportSql("mysql", [
+      "# mysqldump",
+      "SET @OLD_SQL_MODE=@@SQL_MODE;",
+      "SET @@GLOBAL.GTID_PURGED='';",
+      "DROP TABLE IF EXISTS `users`;",
+      "CREATE TABLE `users` (`id` int);",
+      "LOCK TABLES `users` WRITE;",
+      "INSERT INTO `users` VALUES (1);",
+      "UNLOCK TABLES;",
+    ].join("\n"));
+
+    expect(statements).toEqual([
+      "DROP TABLE IF EXISTS `users`",
+      "CREATE TABLE `users` (`id` int)",
+      "INSERT INTO `users` VALUES (1)",
+    ]);
+  });
+
+  it("extracts created MySQL table names for failed-import cleanup", () => {
+    expect(extractMySqlCreatedTables([
+      "CREATE TABLE IF NOT EXISTS `app`.`Users` (`id` int)",
+      "CREATE TABLE `posts` (`id` int)",
+      "CREATE TABLE `posts` (`id` int)",
+    ])).toEqual(["Users", "posts"]);
+  });
+
+  it("allows SQL files larger than the old 2 MB limit", () => {
+    const sql = `-- ${"x".repeat(2_100_000)}\nCREATE TABLE \`large_dump\` (\`id\` int);`;
+    expect(Buffer.byteLength(sql)).toBeGreaterThan(2_000_000);
+    expect(Buffer.byteLength(sql)).toBeLessThan(MAX_SQL_IMPORT_BYTES);
+    expect(validateImportSql("mysql", sql)).toHaveLength(1);
+  });
+
+  it("keeps semicolons inside MySQL escaped string values", () => {
+    expect(splitSqlStatements("INSERT INTO `notes` VALUES ('It\\'s a value; still one row'); CREATE TABLE `next` (`id` int);"))
+      .toHaveLength(2);
+  });
+
+  it("removes unsupported MySQL defaults from large-value columns", () => {
+    expect(normalizeMySqlCreateTableDefaults("CREATE TABLE `sessions` (\n  `user_agent` text DEFAULT NULL,\n  `payload` longtext NOT NULL,\n  `meta` json DEFAULT NULL,\n  `name` varchar(255) DEFAULT NULL\n)"))
+      .toContain("`user_agent` text,");
+    expect(normalizeMySqlCreateTableDefaults("CREATE TABLE `sessions` (\n  `user_agent` text DEFAULT NULL,\n  `payload` longtext NOT NULL,\n  `meta` json DEFAULT NULL,\n  `name` varchar(255) DEFAULT NULL\n)"))
+      .toContain("`meta` json,");
+    expect(normalizeMySqlCreateTableDefaults("CREATE TABLE `sessions` (\n  `user_agent` text DEFAULT NULL,\n  `payload` longtext NOT NULL,\n  `meta` json DEFAULT NULL,\n  `name` varchar(255) DEFAULT NULL\n)"))
+      .toContain("`name` varchar(255) DEFAULT NULL");
   });
 });
 

@@ -105,10 +105,10 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
       <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden border-none shadow-2xl bg-popover text-foreground">
         <DialogHeader className="p-6 pb-0 flex flex-row items-center justify-between border-none bg-transparent">
           <div className="flex items-center gap-3">
-            <Upload className="w-5 h-5 text-zinc-400" />
+            <Upload className="w-5 h-5 text-muted-foreground" />
             <DialogTitle className="text-xl font-semibold flex items-center gap-2 pr-0">
               Import Into 
-              <Badge className="bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-medium px-2 py-0 text-[10px] uppercase tracking-wider">
+              <Badge className="bg-primary/10 text-primary border-primary/20 font-medium px-2 py-0 text-[10px] uppercase tracking-wider">
                 Experimental
               </Badge>
             </DialogTitle>
@@ -116,11 +116,11 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
         </DialogHeader>
 
         <DialogBody className="p-6 pt-4 space-y-6">
-          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 flex gap-3 text-zinc-300">
-            <Info className="w-5 h-5 text-zinc-500 shrink-0 mt-0.5" />
+          <div className="bg-muted/40 border border-border rounded-xl p-4 flex gap-3 text-muted-foreground">
+            <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
             <p className="text-sm leading-relaxed">
-              Select a single file <span className="text-zinc-200 font-semibold">(.md, .docx, .txt)</span>.<br />
-              <span className="text-zinc-500">Maximum file size is 3MB.</span>
+              Select a single file <span className="text-foreground font-semibold">(.md, .docx, .txt)</span>.<br />
+              <span className="text-muted-foreground">Maximum file size is 3MB.</span>
             </p>
           </div>
 
@@ -130,7 +130,7 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
             onDrop={handleDrop}
             className={cn(
               "relative border-2 border-dashed rounded-2xl p-16 transition-all duration-300 flex flex-col items-center justify-center gap-5 group cursor-pointer",
-              isDragging ? "border-indigo-500 bg-indigo-500/5 shadow-[0_0_20px_rgba(99,102,241,0.1)]" : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-800/30",
+              isDragging ? "border-primary bg-primary/5 shadow-lg" : "border-border bg-muted/40 hover:border-primary/50 hover:bg-muted/60",
               isUploading && "pointer-events-none opacity-50"
             )}
             onClick={() => !isUploading && fileInputRef.current?.click()}
@@ -144,12 +144,12 @@ export const ImportNoteModal = ({ isOpen, onClose, onImport }: ImportNoteModalPr
               </div>
             ) : (
               <>
-                <div className="w-20 h-20 rounded-2xl bg-zinc-800/80 border border-zinc-700/50 flex items-center justify-center group-hover:scale-110 group-hover:bg-zinc-700/80 transition-all duration-300 shadow-xl">
-                  <FileType className="w-9 h-9 text-zinc-400 group-hover:text-zinc-200" />
+                <div className="w-20 h-20 rounded-2xl bg-muted border border-border flex items-center justify-center group-hover:scale-110 group-hover:bg-accent transition-all duration-300 shadow-xl">
+                  <FileType className="w-9 h-9 text-muted-foreground group-hover:text-foreground" />
                 </div>
                 <div className="text-center">
-                  <p className="text-xl font-semibold text-zinc-200 tracking-tight">Drag & Drop</p>
-                  <p className="text-sm text-zinc-500 mt-2 font-medium">or click to browse your files</p>
+                  <p className="text-xl font-semibold text-foreground tracking-tight">Drag & Drop</p>
+                  <p className="text-sm text-muted-foreground mt-2 font-medium">or click to browse your files</p>
                 </div>
               </>
             )}
