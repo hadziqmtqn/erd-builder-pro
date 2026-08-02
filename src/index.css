@@ -657,8 +657,7 @@ code:not(pre code) {
   align-items: center !important;
   background-color: color-mix(in srgb, currentColor, transparent 88%) !important;
   border: 1px solid color-mix(in srgb, currentColor, transparent 70%) !important;
-  color: #a5b4fc;
-  /* Default color */
+  color: var(--primary);
   padding: 0.1rem 0.6rem !important;
   border-radius: 9999px !important;
   font-size: 0.85em !important;
@@ -707,6 +706,11 @@ code:not(pre code) {
   outline: none !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+.ProseMirror::selection {
+  background: color-mix(in srgb, var(--primary), transparent 70%);
+  color: var(--foreground);
 }
 
 .tiptap-editor img {
@@ -867,7 +871,7 @@ ul[data-type="taskList"] li[data-checked="true"]>div>p {
   right: 0 !important;
   top: 0 !important;
   bottom: 0 !important;
-  background: rgba(200, 200, 255, 0.4) !important;
+  background: color-mix(in srgb, var(--primary), transparent 80%) !important;
   pointer-events: none !important;
 }
 

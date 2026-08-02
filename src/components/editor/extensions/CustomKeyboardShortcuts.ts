@@ -5,6 +5,13 @@ export const CustomKeyboardShortcuts = Extension.create({
 
   addKeyboardShortcuts() {
     return {
+      'Mod-a': () => {
+        const { doc } = this.editor.state;
+        return this.editor.commands.setTextSelection({
+          from: 1,
+          to: Math.max(1, doc.content.size - 1),
+        });
+      },
       'Mod-Alt-b': () => this.editor.commands.toggleBadge(),
       'Mod-Alt-B': () => this.editor.commands.toggleBadge(),
       'Mod-Alt-i': () => {
