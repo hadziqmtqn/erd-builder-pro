@@ -31,6 +31,7 @@ export function useRecordEditor({
 
   const insertableColumns = useMemo(() => records?.columns?.filter((col: string) => columnHelpers.isInsertableColumn(col)) || [], [columnHelpers, records]);
   const rowKey = useCallback((row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column])), [primaryKeyColumns]);
+  const selectedRowKeys = useMemo(() => new Set(selectedRows.map(rowKey)), [rowKey, selectedRows]);
 
   const isRecordDirty = useMemo(() => {
     if (isCreatingRecord) return insertableColumns.some((col: string) => draftRow[col] !== '');
@@ -84,6 +85,8 @@ export function useRecordEditor({
       await updateRecord(activeTable, key, changedValues);
       toast.success('Record updated');
       setSelectedRow(null);
+      setDraftRow({});
+      setDetailsOpen(false);
     } catch (err: any) {
       toast.error(err.message || 'Failed to update record');
     } finally {
@@ -175,7 +178,7 @@ export function useRecordEditor({
     isRecordDirty,
     isSavingRecord,
     selectedRow,
-    selectedRowKeys: new Set(selectedRows.map(rowKey)),
+    selectedRowKeys,
     selectedRecordCount: selectedRows.length,
     addRecord,
     cancelCreateRecord,

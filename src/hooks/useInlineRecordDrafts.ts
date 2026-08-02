@@ -22,15 +22,6 @@ export function useInlineRecordDrafts({ activeTable, columnHelpers, primaryKeyCo
     setDrafts(prev => ({ ...prev, [`${rowKey}:${column}`]: { rowKey, column, key, value } }));
   }, [columnHelpers, primaryKeyColumns]);
 
-  const discardCell = useCallback((row: Record<string, any>, column: string) => {
-    const rowKey = JSON.stringify(primaryKeyColumns.map(col => row[col]));
-    setDrafts(prev => {
-      const next = { ...prev };
-      delete next[`${rowKey}:${column}`];
-      return next;
-    });
-  }, [primaryKeyColumns]);
-
   const save = useCallback(async () => {
     if (!activeTable || count === 0) return;
     const grouped = new Map<string, { key: Record<string, any>; values: Record<string, any> }>();
@@ -50,5 +41,5 @@ export function useInlineRecordDrafts({ activeTable, columnHelpers, primaryKeyCo
 
   const clear = useCallback(() => setDrafts({}), []);
 
-  return { clear, count, discardCell, draftCell, drafts, save };
+  return { clear, count, draftCell, drafts, save };
 }

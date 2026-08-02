@@ -35,6 +35,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   const [structureSql, setStructureSql] = useState('');
   const [isLoadingSql, setIsLoadingSql] = useState(false);
   const [discardRefreshOpen, setDiscardRefreshOpen] = useState(false);
+  const [discardInlineOpen, setDiscardInlineOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const viewByTableRef = useRef<Record<string, DataViewerView>>({});
   const lastRecordRowKeyRef = useRef<string | null>(null);
@@ -73,17 +74,25 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   const recordEditor = useRecordEditor({
     activeTable, columnHelpers, createRecord, deleteRecord, primaryKeyColumns, records, updateRecord,
   });
+  const selectedRowRef = useRef(recordEditor.selectedRow);
   const inlineDrafts = useInlineRecordDrafts({ activeTable, columnHelpers, primaryKeyColumns, updateRecords });
   const recordDraftCount = inlineDrafts.count;
+  const recordDraftCountRef = useRef(recordDraftCount);
+  const recordDirtyRef = useRef(recordEditor.isRecordDirty);
+  const structureDirtyRef = useRef(structureEditor.isDirty);
+  recordDraftCountRef.current = recordDraftCount;
+  recordDirtyRef.current = recordEditor.isRecordDirty;
+  selectedRowRef.current = recordEditor.selectedRow;
+  structureDirtyRef.current = structureEditor.isDirty;
   const warnUnsaved = useCallback(() => {
-    if (recordDraftCount > 0) {
+    if (recordDraftCountRef.current > 0) {
       toast.warning('Save or discard inline record changes first.');
       return false;
     }
-    if (!recordEditor.isRecordDirty && !structureEditor.isDirty) return true;
-    toast.warning(`Save the ${recordEditor.isRecordDirty ? 'record' : 'structure'} changes before switching.`);
+    if (!recordDirtyRef.current && !structureDirtyRef.current) return true;
+    toast.warning(`Save the ${recordDirtyRef.current ? 'record' : 'structure'} changes before switching.`);
     return false;
-  }, [recordDraftCount, recordEditor.isRecordDirty, structureEditor.isDirty]);
+  }, []);
   const openFilters = useCallback(() => {
     if (!activeTable) return;
     setShowFilters(true);
@@ -119,25 +128,31 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     return true;
   }, [recordEditor.selectRow, recordEditor.selectRows, records, rowKey]);
   const handleSelectRow = useCallback((row: Record<string, any>, event: React.MouseEvent) => {
-    if (recordEditor.selectedRow !== row && recordEditor.isRecordDirty && !warnUnsaved()) return;
+    if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
     if (event.shiftKey && selectRecordRange(row)) return;
     lastRecordRowKeyRef.current = rowKey(row);
     recordEditor.selectRows([row]);
     recordEditor.selectRow(row);
-  }, [recordEditor.isRecordDirty, recordEditor.selectedRow, recordEditor.selectRow, recordEditor.selectRows, rowKey, selectRecordRange, warnUnsaved]);
+  }, [recordEditor.selectRow, recordEditor.selectRows, rowKey, selectRecordRange, warnUnsaved]);
   const handleToggleSelectedRow = useCallback((row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => {
-    if (recordEditor.selectedRow !== row && recordEditor.isRecordDirty && !warnUnsaved()) return;
+    if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
     if (checked && event?.shiftKey && selectRecordRange(row)) return;
     lastRecordRowKeyRef.current = checked ? rowKey(row) : null;
     recordEditor.toggleSelectedRow(row, checked);
     recordEditor.selectRow(checked ? row : null);
-  }, [recordEditor.isRecordDirty, recordEditor.selectedRow, recordEditor.selectRow, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
+  }, [recordEditor.selectRow, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
   const handleTogglePageRows = useCallback((rows: Record<string, any>[], checked: boolean) => {
-    if (recordEditor.isRecordDirty && !warnUnsaved()) return;
+    if (recordDirtyRef.current && !warnUnsaved()) return;
     recordEditor.toggleSelectedRows(rows, checked);
     recordEditor.selectRow(checked ? rows[0] || null : null);
     lastRecordRowKeyRef.current = checked && rows[0] ? rowKey(rows[0]) : null;
-  }, [recordEditor.isRecordDirty, recordEditor.selectRow, recordEditor.toggleSelectedRows, rowKey, warnUnsaved]);
+  }, [recordEditor.selectRow, recordEditor.toggleSelectedRows, rowKey, warnUnsaved]);
+  const handleAddRecord = useCallback(() => {
+    if (warnUnsaved()) recordEditor.addRecord();
+  }, [recordEditor.addRecord, warnUnsaved]);
+  const handleDeleteSelectedRecords = useCallback(() => {
+    if (warnUnsaved()) setConfirmAction('records');
+  }, [warnUnsaved]);
   const handleViewChange = useCallback((view: DataViewerView) => {
     if (view === activeView) return;
     if (!warnUnsaved()) return;
@@ -237,7 +252,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     });
 
     return () => { cancelled = true; };
-  }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.selectedRow]);
+  }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.detailsOpen]);
   useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); if (!isNewTableTab) structureEditor.close(); }, [activeTable, isNewTableTab]);
   useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); lastRecordRowKeyRef.current = null; }, [page]);
   useEffect(() => {
@@ -258,6 +273,11 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && recordDraftCount > 0) {
+        e.preventDefault();
+        setDiscardInlineOpen(true);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       const key = e.key.toLowerCase();
       const target = e.target as HTMLElement | null;
@@ -344,7 +364,8 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
                   onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}
                 />
-              ) : (
+              ) : null}
+              {(!isNewTableTab || activeView !== 'structure') && (
                 <DataViewerRecordsTable
                   activeTable={activeTable}
                   columnHelpers={columnHelpers}
@@ -360,14 +381,14 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   recordDrafts={inlineDrafts.drafts}
                   handleSelectRow={handleSelectRow}
                   openRelatedRecord={openRelatedRecord}
-                  onAddRecord={() => warnUnsaved() && recordEditor.addRecord()}
+                  onAddRecord={handleAddRecord}
                   onDraftCell={inlineDrafts.draftCell}
-                  onDiscardDraftCell={inlineDrafts.discardCell}
-                  onDeleteSelectedRecords={() => warnUnsaved() && setConfirmAction('records')}
+                  onDeleteSelectedRecords={handleDeleteSelectedRecords}
                   onTogglePageRows={handleTogglePageRows}
                   onToggleSelectedRow={handleToggleSelectedRow}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
+                  isHidden={activeView !== 'data'}
                 >
                   {showFilters && filters.length > 0 && (
                     <DataViewerFilters
@@ -470,6 +491,19 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
           inlineDrafts.clear();
           setDiscardRefreshOpen(false);
           refreshAll();
+        }}
+      />
+      <ConfirmModal
+        isOpen={discardInlineOpen}
+        title="Discard inline changes?"
+        message="This will discard all unsaved inline record changes."
+        confirmText="Discard"
+        cancelText="Keep editing"
+        variant="warning"
+        onCancel={() => setDiscardInlineOpen(false)}
+        onConfirm={() => {
+          inlineDrafts.clear();
+          setDiscardInlineOpen(false);
         }}
       />
     </div>

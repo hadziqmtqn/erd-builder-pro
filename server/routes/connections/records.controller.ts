@@ -1,5 +1,5 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
-import { getConnector } from "../../lib/db-connectors/registry.js";
+import { fetchSchemaForClient, getConnector } from "../../lib/db-connectors/registry.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import {
@@ -28,7 +28,7 @@ async function recordContext(req: ExpressRequest, id: string, table: string) {
   if (info.type === "sqlite") throw new Error("Record editing is not supported for SQLite catalogs");
   const connector = getConnector(info.type);
   const { client, release } = await connector.connect(info);
-  const schema = await connector.fetchSchema(client, info);
+  const schema = await fetchSchemaForClient(client, info);
   const tableSchema = schema.find((item: any) => item.table_name === table);
   if (!tableSchema) {
     release();
@@ -65,7 +65,7 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
     try {
       const limit = Math.min(Math.max(1, pageSize), 200);
       const offset = (Math.max(1, page) - 1) * limit;
-      const schema = await connector.fetchSchema(client, info);
+      const schema = await fetchSchemaForClient(client, info);
       const tableSchema = schema.find((item: any) => item.table_name === table);
       if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
 
@@ -143,7 +143,7 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
     const connector = getConnector(info.type);
     const { client, release } = await connector.connect(info);
     try {
-      const schema = await connector.fetchSchema(client, info);
+      const schema = await fetchSchemaForClient(client, info);
       const tableSchema = schema.find((item: any) => item.table_name === table);
       if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
 

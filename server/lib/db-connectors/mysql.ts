@@ -1,17 +1,30 @@
 import mysql from "mysql2/promise";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
 
-export const mysqlConnector: DbConnector = {
-  async connect(info: ConnectionInfo): Promise<ConnectorClient> {
-    const conn = await mysql.createConnection({
+const pools = new Map<string, mysql.Pool>();
+
+function getPool(info: ConnectionInfo) {
+  const key = JSON.stringify(info);
+  let pool = pools.get(key);
+  if (!pool) {
+    pool = mysql.createPool({
       host: info.host || "localhost",
       port: info.port || 3306,
       user: info.user || "root",
       password: info.password || "",
       database: info.database,
       connectTimeout: 5000,
+      connectionLimit: 4,
     });
-    return { client: conn, release: () => conn.end() };
+    pools.set(key, pool);
+  }
+  return pool;
+}
+
+export const mysqlConnector: DbConnector = {
+  async connect(info: ConnectionInfo): Promise<ConnectorClient> {
+    const conn = await getPool(info).getConnection();
+    return { client: conn, release: () => conn.release() };
   },
 
   async test(info: ConnectionInfo): Promise<string> {
