@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   Database,
   PenTool,
@@ -11,6 +11,9 @@ import {
   Pencil,
   Trash2,
   FileText,
+  ArrowUpRight,
+  Loader2,
+  ChevronDown,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -27,7 +30,6 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -57,13 +59,24 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import { Project, AppView } from "../types"
 import { SponsorCarousel } from "@/components/SponsorCarousel"
 
+function getSearchShortcutLabel(): string {
+  if (typeof navigator === "undefined") return "Ctrl+K";
+  const platform = navigator.platform || navigator.userAgent;
+  return /Mac|iPhone|iPad/i.test(platform) ? "⌘K" : "Ctrl+K";
+}
+
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
   view: AppView;
+  activeFeatureView: AppView | null;
+  globalSearchResults: any[];
+  isGlobalSearchLoading: boolean;
+  onGlobalSearchResultSelect: (result: any) => void;
   onViewChange: (view: AppView, showTable?: boolean, workspaceUid?: string | null) => void;
   onNoteSelect: (uid: string) => void;
   onDrawingSelect: (uid: string) => void;
@@ -73,8 +86,8 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLogout: () => void;
   onWorkspaceFilter: (uid: string | null) => void;
   selectedWorkspaceUid: string | null;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
+  globalSearchQuery: string;
+  onGlobalSearchChange: (query: string) => void;
   isInstallable?: boolean;
   onInstall?: () => void;
   isProjectsLoading?: boolean;
@@ -86,6 +99,10 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 export const AppSidebar = React.memo(({
   projects,
   view,
+  activeFeatureView,
+  globalSearchResults,
+  isGlobalSearchLoading,
+  onGlobalSearchResultSelect,
   onViewChange,
   onNoteSelect,
   onDrawingSelect,
@@ -95,8 +112,8 @@ export const AppSidebar = React.memo(({
   onLogout,
   onWorkspaceFilter,
   selectedWorkspaceUid,
-  searchQuery,
-  onSearchChange,
+  globalSearchQuery: searchQuery,
+  onGlobalSearchChange: onSearchChange,
   isProjectsLoading,
   user,
   isOnline,
@@ -106,6 +123,46 @@ export const AppSidebar = React.memo(({
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [searchShortcutLabel] = useState(getSearchShortcutLabel);
+  const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('all');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  const searchFilterOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'workspace', label: 'Workspaces' },
+    { value: 'erd', label: 'ERD' },
+    { value: 'notes', label: 'Notes' },
+    { value: 'flowchart', label: 'Flowcharts' },
+    { value: 'drawings', label: 'Drawings' },
+  ];
+  const visibleSearchResults = searchFilter === 'all'
+    ? globalSearchResults
+    : globalSearchResults.filter((result: any) => result.type === searchFilter);
+  const activeSearchFilter = searchFilterOptions.find((option) => option.value === searchFilter) || searchFilterOptions[0];
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsSearchOpen(true);
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (isSearchOpen) {
+      window.setTimeout(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }, 0);
+    }
+  }, [isSearchOpen]);
 
   // Rename/delete project dialog state
   const [editingProject, setEditingProject] = useState<{ id: number | string; name: string } | null>(null);
@@ -121,7 +178,7 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: FileText,
       iconClassName: "text-yellow-400",
-      isActive: view === 'notes',
+      isActive: activeFeatureView === 'notes',
       onClick: () => onViewChange('notes', true),
     },
     {
@@ -129,7 +186,7 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: Database,
       iconClassName: "text-blue-400",
-      isActive: view === 'erd',
+      isActive: activeFeatureView === 'erd',
       onClick: () => onViewChange('erd', true),
     },
     {
@@ -137,7 +194,7 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: Network,
       iconClassName: "text-green-400",
-      isActive: view === 'flowchart',
+      isActive: activeFeatureView === 'flowchart',
       onClick: () => onViewChange('flowchart', true),
     },
     {
@@ -145,7 +202,7 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: PenTool,
       iconClassName: "text-purple-400",
-      isActive: view === 'drawings',
+      isActive: activeFeatureView === 'drawings',
       onClick: () => onViewChange('drawings', true),
     },
   ];
@@ -173,15 +230,20 @@ export const AppSidebar = React.memo(({
         />
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
-            <SidebarInput 
-              ref={searchInputRef}
-              placeholder="search workspace"
-              className="pl-8"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
+            <button
+              type="button"
+              onClick={() => setIsSearchOpen(true)}
               disabled={!isOnline}
-            />
-            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none text-muted-foreground transition-opacity group-disabled:opacity-50" />
+              className="flex h-9 w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-2.5 text-left text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Search className="size-4 shrink-0" />
+              <span className="flex-1">Search</span>
+              <span className="flex items-center gap-0.5">
+                {searchShortcutKeys.map((key) => (
+                  <kbd key={key} className="rounded border border-border/60 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{key}</kbd>
+                ))}
+              </span>
+            </button>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
@@ -294,6 +356,94 @@ export const AppSidebar = React.memo(({
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+      <Dialog open={isSearchOpen} onOpenChange={(open) => {
+        setIsSearchOpen(open);
+        if (!open) {
+          setIsFilterOpen(false);
+          setSearchFilter('all');
+          onSearchChange('');
+        }
+      }}>
+        <DialogContent size="2xl" showCloseButton={false} className="top-[27%] sm:max-w-2xl">
+          <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+            <Search className="size-5 shrink-0 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search"
+              aria-label="Global search"
+              className="h-9 min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-muted-foreground/70"
+            />
+            <kbd className="rounded-lg border border-border/60 bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">ESC</kbd>
+          </div>
+          <div className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5 text-sm">
+            <span className="text-muted-foreground">Filter:</span>
+            <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium hover:bg-accent"
+                  />
+                }
+              >
+                {activeSearchFilter.label}
+                <ChevronDown className={`size-3.5 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} />
+              </PopoverTrigger>
+              <PopoverContent align="start" side="bottom" className="w-44 p-1.5">
+                {searchFilterOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => { setSearchFilter(option.value); setIsFilterOpen(false); }}
+                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm ${searchFilter === option.value ? 'bg-accent font-medium' : 'hover:bg-accent/60'}`}
+                  >
+                    {option.label}
+                    {searchFilter === option.value && <span aria-hidden="true">✓</span>}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          </div>
+          {(isGlobalSearchLoading || searchQuery.trim().length >= 2) && (
+            <div className="max-h-[min(26rem,60vh)] overflow-y-auto p-2">
+              {isGlobalSearchLoading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Searching...
+                </div>
+              ) : visibleSearchResults.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No results found.</p>
+              ) : (
+                visibleSearchResults.map((result: any) => (
+                  <button
+                    key={`${result.type}-${result.uid ?? result.id}`}
+                    type="button"
+                    onClick={() => { onGlobalSearchResultSelect(result); setIsSearchOpen(false); }}
+                    className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent"
+                  >
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                      {result.type === 'workspace' ? <Folder className="size-4 text-primary" />
+                        : result.type === 'erd' ? <Database className="size-4 text-blue-400" />
+                          : result.type === 'notes' ? <FileText className="size-4 text-yellow-400" />
+                            : result.type === 'flowchart' ? <Network className="size-4 text-green-400" />
+                              : <PenTool className="size-4 text-purple-400" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{result.name || '(Untitled)'}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {result.type === 'workspace' ? 'Workspace' : result.type === 'erd' ? 'ERD' : result.type === 'flowchart' ? 'Flowchart' : result.type === 'notes' ? 'Note' : 'Drawing'}
+                        {result.workspace?.name && ` · ${result.workspace.name}`}
+                      </p>
+                    </div>
+                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground/40 group-hover:text-primary" />
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       {/* Rename Workspace Dialog */}
       <Dialog open={editingProject !== null} onOpenChange={(open) => { if (!open) setEditingProject(null); }}>
         <DialogContent className="sm:max-w-sm">

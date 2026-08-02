@@ -14,6 +14,7 @@ import { isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
 import projectsRouter from "./routes/projects/index.js";
+import searchRouter from "./routes/search/index.js";
 import notesRouter from "./routes/notes/index.js";
 import drawingsRouter from "./routes/drawings/index.js";
 import flowchartsRouter from "./routes/flowcharts/index.js";
@@ -313,6 +314,7 @@ app.get("/api/version/latest", async (_req, res) => {
 app.use("/api", authRouter);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/projects", projectsRouter);
+app.use("/api/search", searchRouter);
 app.use("/api/notes", notesRouter);
 app.use("/api/drawings", drawingsRouter);
 app.use("/api/flowcharts", flowchartsRouter);

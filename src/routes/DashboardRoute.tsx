@@ -9,6 +9,8 @@ import {
   Network,
   Database,
   Sparkles,
+  Search,
+  ArrowUpRight,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/WorkspaceProvider';
 import { apiFetch } from '../lib/api';
@@ -144,6 +146,17 @@ export function DashboardRoute() {
       .slice(0, 10);
   }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects]);
 
+  const [recentQuery, setRecentQuery] = useState('');
+  const [recentFilter, setRecentFilter] = useState('all');
+  const filteredRecentDocs = useMemo(() => {
+    const query = recentQuery.trim().toLowerCase();
+    return recentDocs.filter((doc: any) => {
+      const matchesType = recentFilter === 'all' || doc._type === recentFilter;
+      const name = doc.name || doc.title || '';
+      return matchesType && (!query || `${name} ${doc._workspace}`.toLowerCase().includes(query));
+    });
+  }, [recentDocs, recentFilter, recentQuery]);
+
   // All non-deleted docs count
   const totalDocs = useMemo(() => {
     return (ctx.diagrams || []).filter((d: any) => !d.is_deleted).length +
@@ -213,19 +226,36 @@ export function DashboardRoute() {
   // Show dashboard content as soon as we have projects or documents
   const showContent = !isEmpty && initialLoadDone;
 
+  const createDocument = (cfg: typeof typeConfig[number]) => {
+    const fn = (ctx as Record<string, any>)[cfg.createFn];
+    if (fn) fn(`New ${cfg.label.slice(0, -1)}`);
+  };
+
+  const lastDocument = recentDocs[0];
+
   return (
-    <div className="flex h-full w-full flex-col gap-6 overflow-y-auto p-6">
+    <div className="flex h-full w-full flex-col overflow-y-auto">
       {/* ── Greeting ── */}
-      {userName && (
-        <div>
-          <p className="text-sm text-muted-foreground font-medium">{getGreeting()},</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{userName}</h1>
+      {userName && <div className="border-b border-border/60 px-5 py-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">{getGreeting()},</p>
+            <h1 className="mt-0.5 text-xl font-semibold tracking-tight">{userName}</h1>
+            <p className="mt-0.5 text-xs text-muted-foreground">Pick up where you left off.</p>
+          </div>
+          <button
+            onClick={() => createDocument(typeConfig[1])}
+            className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"
+          >
+            <Plus className="size-3.5" />
+            New ERD Diagram
+          </button>
         </div>
-      )}
+      </div>}
 
       {/* ── Empty state ── */}
       {isEmpty && (
-        <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+          <div className="mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
           <div className="size-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-5">
             <Sparkles className="size-7 text-primary" />
           </div>
@@ -238,10 +268,7 @@ export function DashboardRoute() {
             {typeConfig.map((cfg) => (
               <button
                 key={cfg.key}
-                onClick={() => {
-                  const fn = (ctx as Record<string, any>)[cfg.createFn];
-                  if (fn) fn(`New ${cfg.label.slice(0, -1)}`);
-                }}
+                onClick={() => createDocument(cfg)}
                 className={`inline-flex items-center gap-2 rounded-lg border border-border/60 px-4 py-2.5 text-sm font-medium transition-all hover:shadow-sm ${cfg.bg} hover:scale-[1.02]`}
               >
                 <cfg.icon className={`h-4 w-4 ${cfg.color}`} />
@@ -253,168 +280,150 @@ export function DashboardRoute() {
       )}
 
       {showContent && (
-        <>
-          {/* ── Stat Cards ── */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            {typeConfig.map((cfg) => {
-              const count = (ctx as Record<string, any>)[cfg.totalKey] ?? 0;
-              return (
-                <button
-                  key={cfg.key}
-                  onClick={() => navigate(cfg.route)}
-                  className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3.5 text-left hover:bg-accent/40 hover:border-border transition-all"
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${cfg.bg}`}>
-                    <cfg.icon className={`h-5 w-5 ${cfg.color}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xl font-bold tabular-nums leading-tight">{count}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <p className="text-[11px] text-muted-foreground">{cfg.label}</p>
-                      <span className="text-[10px] text-muted-foreground/30 group-hover:text-muted-foreground/50 group-hover:translate-x-0.5 transition-all opacity-0 group-hover:opacity-100">→</span>
+        <main className="flex w-full flex-col gap-5 px-5 py-5">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(250px,0.65fr)]">
+            <section className="relative overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/10 via-card to-card p-4">
+              <div className="relative z-10 flex h-full min-h-32 flex-col justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-primary">Continue working</p>
+                  {lastDocument ? (
+                    <div className="mt-3 flex items-start gap-2.5">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/80 shadow-sm">
+                        {getDocIcon(lastDocument._type)}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="truncate text-lg font-semibold">{lastDocument.name || lastDocument.title || '(Untitled)'}</h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {getDocLabel(lastDocument._type)} · {lastDocument._workspace} · {formatTimeAgo(lastDocument.updated_at)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <h2 className="mt-4 text-xl font-semibold">Create your first document</h2>
+                  )}
+                </div>
+                <button
+                  onClick={() => lastDocument ? navigate(getDocRoute(lastDocument._type, lastDocument)) : createDocument(typeConfig[1])}
+                  className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  {lastDocument ? 'Open document' : 'Create ERD diagram'}
+                  <ArrowUpRight className="size-3.5" />
                 </button>
-              );
-            })}
+              </div>
+              <Sparkles className="absolute -bottom-8 -right-5 size-36 text-primary/10" />
+            </section>
+
+            <section className="rounded-xl border border-border/60 bg-card p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold">Create something new</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Start with the format you need.</p>
+                </div>
+                <Plus className="size-4 text-muted-foreground" />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {typeConfig.map((cfg) => (
+                  <button
+                    key={cfg.key}
+                    onClick={() => createDocument(cfg)}
+                    className="group flex min-h-14 flex-col items-start justify-between rounded-lg border border-border/60 bg-background px-2.5 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+                  >
+                    <cfg.icon className={`size-4 ${cfg.color}`} />
+                    <span className="text-xs font-medium">New {cfg.label.slice(0, -1)}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
 
-          {/* ── Two-column layout: Workspace + Quick Actions | Recently Edited ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left: Workspace + Quick Actions */}
-            <div className="space-y-6">
-              {/* ── Workspace ── */}
-              {projectsWithCounts.length > 0 && (
-                <section>
-                  <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <FolderKanban className="h-4 w-4 text-muted-foreground" />
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(250px,0.65fr)]">
+            <section className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2.5">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-semibold">
+                    <Clock className="size-4 text-muted-foreground" />
+                    Recent files
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Jump back into your latest work.</p>
+                </div>
+                <div className="relative w-full sm:w-52">
+                  <Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                  <input
+                    value={recentQuery}
+                    onChange={(event) => setRecentQuery(event.target.value)}
+                    placeholder="Search files"
+                    aria-label="Search recent files"
+                    className="h-8 w-full rounded-lg border border-border/60 bg-card pl-8 pr-3 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+                  />
+                </div>
+              </div>
+              <div className="mb-2 flex items-center gap-1 overflow-x-auto pb-0.5">
+                <button
+                  onClick={() => setRecentFilter('all')}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${recentFilter === 'all' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
+                >All</button>
+                {typeConfig.map((cfg) => (
+                  <button
+                    key={cfg.key}
+                    onClick={() => setRecentFilter(cfg.key)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${recentFilter === cfg.key ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
+                  >{cfg.label.replace(' Diagrams', '')}</button>
+                ))}
+              </div>
+              <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
+                {filteredRecentDocs.length === 0 ? (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">No matching files.</p>
+                ) : filteredRecentDocs.map((doc: any) => (
+                  <button
+                    key={`${doc._type}-${doc.id}`}
+                    onClick={() => navigate(getDocRoute(doc._type, doc))}
+                    className="group flex w-full items-center gap-2.5 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-accent/30"
+                  >
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background">
+                      {getDocIcon(doc._type)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{doc.name || doc.title || '(Untitled)'}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{getDocLabel(doc._type)} · {doc._workspace}</p>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">{formatTimeAgo(doc.updated_at)}</span>
+                    <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-primary" />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {projectsWithCounts.length > 0 && (
+              <section>
+                <div className="mb-2">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold">
+                    <FolderKanban className="size-4 text-muted-foreground" />
                     Workspaces
                   </h2>
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    {projectsWithCounts.map((p: any) => (
-                      <button
-                        key={p.id}
-                        onClick={() => (ctx as any).onViewChange?.('erd', true, p.uid ?? p.id)}
-                        className="rounded-xl border border-border/60 bg-card p-3.5 text-left hover:bg-accent/40 hover:border-border transition-all"
-                      >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="size-5 rounded-md bg-primary/10 flex items-center justify-center">
-                            <FolderKanban className="size-3 text-primary" />
-                          </div>
-                          <p className="text-xs font-medium truncate">{p.name}</p>
-                        </div>
-                        {p.totalDocs > 0 ? (
-                          <div className="flex flex-wrap items-center gap-1">
-                            {p.diagramsCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">
-                                <Database className="size-2.5" />{p.diagramsCount}
-                              </span>
-                            )}
-                            {p.notesCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                                <FileText className="size-2.5" />{p.notesCount}
-                              </span>
-                            )}
-                            {p.flowchartsCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                                <Network className="size-2.5" />{p.flowchartsCount}
-                              </span>
-                            )}
-                            {p.drawingsCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-violet-500 bg-violet-500/10 px-1.5 py-0.5 rounded">
-                                <PenTool className="size-2.5" />{p.drawingsCount}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-muted-foreground/50">No documents yet</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* ── Quick Actions ── */}
-              <section>
-                <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <Plus className="h-4 w-4 text-muted-foreground" />
-                  Quick Actions
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  {typeConfig.map((cfg) => (
+                  <p className="mt-0.5 text-xs text-muted-foreground">Your projects at a glance.</p>
+                </div>
+                <div className="space-y-2">
+                  {projectsWithCounts.map((p: any) => (
                     <button
-                      key={cfg.key}
-                      onClick={() => {
-                        const fn = (ctx as Record<string, any>)[cfg.createFn];
-                        if (fn) fn(`New ${cfg.label.slice(0, -1)}`);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3.5 py-2 text-sm font-medium text-foreground hover:bg-accent/40 hover:border-border transition-all"
+                      key={p.id}
+                      onClick={() => (ctx as any).onViewChange?.('erd', true, p.uid ?? p.id)}
+                    className="group flex w-full items-center gap-2.5 rounded-lg border border-border/60 bg-card p-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/30"
                     >
-                      <cfg.icon className={`h-4 w-4 ${cfg.color}`} />
-                      <span>New {cfg.label.slice(0, -1)}</span>
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                        <FolderKanban className="size-3.5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{p.name}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{p.totalDocs} {p.totalDocs === 1 ? 'file' : 'files'}</p>
+                      </div>
+                      <ArrowUpRight className="size-4 text-muted-foreground/30 transition-colors group-hover:text-primary" />
                     </button>
                   ))}
                 </div>
               </section>
-            </div>
-
-            {/* Right: Recently Edited */}
-            <section className="min-w-0">
-              <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                Recently Edited
-              </h2>
-              {recentDocs.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">
-                  No documents yet. Create your first one!
-                </p>
-              ) : (
-                <div className="rounded-xl border border-border/60 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/30">
-                        <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs w-8"></th>
-                        <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs">Name</th>
-                        <th className="text-left font-medium text-muted-foreground px-3 py-2 text-xs w-24">Workspace</th>
-                        <th className="text-right font-medium text-muted-foreground px-3 py-2 text-xs w-20">Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentDocs.map((doc: any) => (
-                        <tr
-                          key={`${doc._type}-${doc.id}`}
-                          onClick={() => navigate(getDocRoute(doc._type, doc))}
-                          className="border-b border-border/40 last:border-0 hover:bg-accent/30 cursor-pointer transition-colors"
-                        >
-                          <td className="px-3 py-2.5">
-                            {getDocIcon(doc._type)}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-medium truncate max-w-50">
-                                {doc.name || doc.title || '(Untitled)'}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground/50">
-                                {getDocLabel(doc._type)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="text-[11px] text-muted-foreground truncate max-w-24 block">{doc._workspace}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right text-muted-foreground text-[11px] whitespace-nowrap">
-                            {formatTimeAgo(doc.updated_at)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+            )}
           </div>
-        </>
+        </main>
       )}
     </div>
   );
