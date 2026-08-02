@@ -153,10 +153,6 @@ export function WorkspaceProvider({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('account');
 
-  // ── Window Debug ──
-  const [windowDimensions, setWindowDimensions] = useState<{ w: number; h: number } | null>(null);
-  const [showWindowDebug, setShowWindowDebug] = useState(false);
-
   // ── Theme State ──
   const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(() => {
     return (localStorage.getItem('erd-builder-theme') as 'light' | 'dark' | 'system') || 'system';
@@ -715,94 +711,6 @@ export function WorkspaceProvider({
     };
   }, []);
 
-  // ── Tauri: persist window size ──
-  useEffect(() => {
-    const isTauri = typeof window !== 'undefined' &&
-      !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
-    if (!isTauri) return;
-
-    let unlistenResize: (() => void) | undefined;
-    let unlistenMove: (() => void) | undefined;
-    let saveTimer: ReturnType<typeof setTimeout>;
-
-    const SANE_WIDTH = { min: 400, max: 4000 };
-    const SANE_HEIGHT = { min: 300, max: 3000 };
-
-    const saveWindowState = async (appWindow: any) => {
-      try {
-        // Don't save while full‑screen — keep the last non‑fullscreen state
-        if (await appWindow.isFullscreen()) return;
-
-        const size = await appWindow.outerSize();
-        const pos = await appWindow.outerPosition();
-        const state = {
-          width: Math.max(SANE_WIDTH.min, Math.min(SANE_WIDTH.max, size.width)),
-          height: Math.max(SANE_HEIGHT.min, Math.min(SANE_HEIGHT.max, size.height)),
-          x: pos.x,
-          y: pos.y,
-        };
-        localStorage.setItem('erd-builder-window-state', JSON.stringify(state));
-        setWindowDimensions({ w: state.width, h: state.height });
-      } catch { /* ignore */ }
-    };
-
-    (async () => {
-      try {
-        const { getCurrentWindow, PhysicalSize, LogicalPosition } = await import('@tauri-apps/api/window');
-        const appWindow = getCurrentWindow();
-
-        // Restore saved window size + position
-        const saved = localStorage.getItem('erd-builder-window-state');
-        if (saved) {
-          try {
-            const { width, height, x, y } = JSON.parse(saved);
-            if (
-              typeof width === 'number' && typeof height === 'number' &&
-              width >= SANE_WIDTH.min && width <= SANE_WIDTH.max &&
-              height >= SANE_HEIGHT.min && height <= SANE_HEIGHT.max
-            ) {
-              await appWindow.setSize(new PhysicalSize(width, height));
-              if (typeof x === 'number' && typeof y === 'number') {
-                await appWindow.setPosition(new LogicalPosition(x, y));
-              }
-            } else {
-              localStorage.removeItem('erd-builder-window-state');
-            }
-          } catch { /* ignore parse errors */ }
-        }
-
-        // Debounced save on resize + move
-        const debouncedSave = () => {
-          clearTimeout(saveTimer);
-          saveTimer = setTimeout(() => saveWindowState(appWindow), 500);
-        };
-
-        unlistenResize = await appWindow.onResized(debouncedSave);
-        unlistenMove = await appWindow.onMoved(debouncedSave);
-      } catch (err) {
-        console.warn('[Window] Tauri window API unavailable:', err);
-      }
-    })();
-
-    return () => {
-      clearTimeout(saveTimer);
-      if (unlistenResize) unlistenResize();
-      if (unlistenMove) unlistenMove();
-    };
-  }, []);
-
-  // ── Toggle window debug overlay with Ctrl+Shift+D ──
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault();
-        setShowWindowDebug(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
   // Initial data fetch
   useEffect(() => {
     if (initialFetchDoneRef.current) return;
@@ -1272,12 +1180,6 @@ export function WorkspaceProvider({
       <FlowchartPage />
       {children}
 
-      {/* ── Window size debug overlay: Ctrl+Shift+D ── */}
-      {showWindowDebug && windowDimensions && (
-        <div className="fixed bottom-3 right-3 z-9999 flex items-center gap-3 rounded-md bg-black/70 px-3 py-1.5 text-xs font-mono text-white/90 shadow-lg select-none">
-          <span className="tracking-wide">{windowDimensions.w}<span className="text-white/50 mx-0.5">×</span>{windowDimensions.h}</span>
-        </div>
-      )}
     </WorkspaceContext.Provider>
   );
 }

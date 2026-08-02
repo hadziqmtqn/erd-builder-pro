@@ -1,17 +1,29 @@
 import pg from "pg";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
 
-export const postgresqlConnector: DbConnector = {
-  async connect(info: ConnectionInfo): Promise<ConnectorClient> {
-    const pool = new pg.Pool({
+const pools = new Map<string, pg.Pool>();
+
+function getPool(info: ConnectionInfo) {
+  const key = JSON.stringify(info);
+  let pool = pools.get(key);
+  if (!pool) {
+    pool = new pg.Pool({
       host: info.host || "localhost",
       port: info.port || 5432,
       user: info.user || "postgres",
       password: info.password || "",
       database: info.database,
-      max: 2,
-      idleTimeoutMillis: 5000,
+      max: 4,
+      idleTimeoutMillis: 30_000,
     });
+    pools.set(key, pool);
+  }
+  return pool;
+}
+
+export const postgresqlConnector: DbConnector = {
+  async connect(info: ConnectionInfo): Promise<ConnectorClient> {
+    const pool = getPool(info);
     const client = await pool.connect();
     return { client, release: () => client.release() };
   },

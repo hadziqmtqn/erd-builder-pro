@@ -2,17 +2,55 @@ import fs from "node:fs";
 import initSqlJs from "sql.js";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
 
+type CachedDatabase = { db: any; signature: string; refs: number };
+// ponytail: one in-process SQLite handle per file; mtime/size changes trigger a reload.
+const databases = new Map<string, CachedDatabase>();
+let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
+
+function getSql() {
+  return sqlPromise || (sqlPromise = initSqlJs());
+}
+
+function fileSignature(path: string) {
+  const stat = fs.statSync(path);
+  return `${stat.mtimeMs}:${stat.size}`;
+}
+
 export const sqliteConnector: DbConnector = {
   async connect(info: ConnectionInfo): Promise<ConnectorClient> {
-    const SQL = await initSqlJs();
-    const buffer = fs.readFileSync(info.database);
-    const db = new SQL.Database(buffer);
-    return { client: db, release: () => db.close() };
+    const signature = fileSignature(info.database);
+    const current = databases.get(info.database);
+    if (current?.signature === signature) {
+      current.refs += 1;
+      let released = false;
+      return {
+        client: current.db,
+        release: () => {
+          if (!released) { released = true; current.refs -= 1; }
+        },
+      };
+    }
+
+    if (current?.refs === 0) current.db.close();
+    const SQL = await getSql();
+    const entry: CachedDatabase = { db: new SQL.Database(fs.readFileSync(info.database)), signature, refs: 1 };
+    databases.set(info.database, entry);
+    let released = false;
+    return {
+      client: entry.db,
+      release: () => {
+        if (!released) {
+          released = true;
+          entry.refs -= 1;
+          if (entry !== databases.get(info.database) && entry.refs === 0) entry.db.close();
+        }
+      },
+    };
   },
 
   async test(info: ConnectionInfo): Promise<string> {
     const start = Date.now();
-    const SQL = await initSqlJs();
+    const SQL = await getSql();
     const buffer = fs.readFileSync(info.database);
     const db = new SQL.Database(buffer);
     db.run("SELECT 1");

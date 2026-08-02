@@ -1,6 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import fs from "node:fs";
-import { getConnector } from "../../lib/db-connectors/registry.js";
+import { fetchSchemaForClient, getConnector, invalidateSchemaCache } from "../../lib/db-connectors/registry.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
@@ -110,7 +110,7 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
     const { client, release } = await connector.connect(info);
 
     try {
-      const schema = await connector.fetchSchema(client, info);
+      const schema = await fetchSchemaForClient(client, info);
       const tableSchema = createTable || tableAction ? {} : schema.find((item: any) => item.table_name === table);
       if (!createTable && !tableAction && !tableSchema) return res.status(400).json({ error: "Invalid table name" });
       if (createTable && schema.some((item: any) => item.table_name === createTable.name)) {
@@ -137,6 +137,7 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
         for (const sql of statements) await (client as any).execute(sql);
       }
 
+      invalidateSchemaCache(info);
       res.json({ success: true });
     } finally {
       release();
@@ -170,7 +171,7 @@ export async function getStructureSql(req: ExpressRequest, res: ExpressResponse)
     const { client, release } = await connector.connect(info);
 
     try {
-      const schema = await connector.fetchSchema(client, info);
+      const schema = await fetchSchemaForClient(client, info);
       const tableSchema = schema.find((item: any) => item.table_name === table);
       if (!tableSchema) return res.status(400).json({ error: "Invalid table name" });
 
@@ -227,6 +228,7 @@ export async function importStructureSql(req: ExpressRequest, res: ExpressRespon
         for (const sql of statements) (client as any).run(sql);
         fs.writeFileSync(info.database, Buffer.from((client as any).export()));
       }
+      invalidateSchemaCache(info);
       res.json({ success: true, statements: statements.length });
     } finally {
       release();
