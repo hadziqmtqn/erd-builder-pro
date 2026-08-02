@@ -20,7 +20,7 @@ function escapeXml(value: string) {
 }
 
 function safeColor(color: string | undefined) {
-  return /^#[0-9a-f]{3,8}$/i.test(color || '') ? color! : '#6366f1';
+  return /^#[0-9a-f]{3,8}$/i.test(color || '') ? color! : '#6b7280';
 }
 
 function columnType(column: Column) {

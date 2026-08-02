@@ -790,7 +790,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         id: tableId,
         name: table.name,
         columns,
-        color: '#6366f1',
+        color: '#6b7280',
         x: xPos,
         y: yPos,
       },
