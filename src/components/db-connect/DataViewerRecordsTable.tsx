@@ -2,7 +2,7 @@ import { memo, ReactNode, useRef } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createColumnHelpers } from './data-viewer-utils';
 import { DataViewerRecordRow } from './DataViewerRecordRow';
 
@@ -28,7 +28,6 @@ type DataViewerRecordsTableProps = {
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => void;
   toggleSort: (column: string) => void;
   warnUnsaved: () => boolean;
-  isHidden?: boolean;
   children?: ReactNode;
 };
 
@@ -58,7 +57,6 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   onToggleSelectedRow,
   toggleSort,
   warnUnsaved,
-  isHidden = false,
   children,
 }: DataViewerRecordsTableProps) {
   const canSelectRows = primaryKeyColumns.length > 0;
@@ -68,7 +66,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   const columns = records?.columns || [];
   const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   return (
-    <div className={`min-h-0 overflow-hidden flex flex-col ${isHidden ? 'hidden' : ''}`} data-db-client-records>
+    <div className="min-h-0 overflow-hidden flex flex-col" data-db-client-records>
       {children}
 
       {error ? (
@@ -97,7 +95,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
         </div>
       ) : (
         <>
-          <div className="px-4 py-2 border-b bg-muted/10 flex items-center justify-between shrink-0">
+          <div className="sticky top-0 z-20 px-4 py-2 border-b bg-background flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium">{activeTable}</h3>
               {records && (
@@ -127,11 +125,11 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
           >
             {records && (
               <div className="min-w-fit inline-block align-middle">
-              <Table>
-                <TableHeader>
-                  <TableRow className="sticky top-0 bg-background z-10">
+              <table className="w-full min-w-max caption-bottom text-sm">
+                <TableHeader className="sticky top-0 z-20 bg-background">
+                  <TableRow className="bg-background">
                     {canSelectRows && (
-                      <TableHead className="w-10 px-3">
+                      <TableHead className="sticky top-0 z-20 w-10 bg-background px-3">
                         <Checkbox
                           checked={allPageRowsSelected}
                           disabled={pageRows.length === 0}
@@ -143,7 +141,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                       <TableHead
                         key={column}
                         aria-sort={sort?.column === column ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-0 hover:bg-muted/60"
+                        className="sticky top-0 z-20 cursor-pointer select-none whitespace-nowrap bg-background px-4 py-0 hover:bg-muted/60"
                         onClick={() => warnUnsaved() && toggleSort(column)}
                         title={`Sort by ${column}`}
                       >
@@ -206,7 +204,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                     })
                   )}
                 </TableBody>
-              </Table>
+              </table>
               </div>
             )}
           </div>

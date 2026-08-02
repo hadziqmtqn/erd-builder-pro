@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Entity, Column, Diagram, DraftType, Relationship } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
+import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
  *  Works for any column ID format: "col-xxx", UUID, etc. */
@@ -384,15 +385,16 @@ export function useERDSession(
   const onConnect: OnConnect = useCallback((params) => {
     if (isPublicView) return;
 
-    const sourceNode = nodes.find(n => n.id === params.source);
-    const targetNode = nodes.find(n => n.id === params.target);
+    const erdIndexes = buildErdIndexes(nodes, edges);
+    const sourceNode = erdIndexes.nodesById.get(params.source);
+    const targetNode = erdIndexes.nodesById.get(params.target);
 
     if (sourceNode && targetNode && params.sourceHandle && params.targetHandle) {
       const sourceColId = params.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
       const targetColId = params.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
 
-      const sourceCol = sourceNode.data.columns.find((c: any) => c.id === sourceColId);
-      const targetCol = targetNode.data.columns.find((c: any) => c.id === targetColId);
+      const sourceCol = erdIndexes.columnsByNodeAndId.get(erdColumnKey(sourceNode.id, sourceColId));
+      const targetCol = erdIndexes.columnsByNodeAndId.get(erdColumnKey(targetNode.id, targetColId));
 
       if (sourceCol && targetCol && sourceCol.type !== targetCol.type) {
         toast.error(`Type Mismatch`, {
@@ -411,28 +413,14 @@ export function useERDSession(
       // column NAME to make the check robust against stale IDs.
       const cSrcId = extractColumnIdFromHandle(candidate.sourceHandle);
       const cTgtId = extractColumnIdFromHandle(candidate.targetHandle);
-      const cSrcName = sourceNode.data.columns.find((c: any) => c.id === cSrcId)?.name?.toLowerCase();
-      const cTgtName = targetNode.data.columns.find((c: any) => c.id === cTgtId)?.name?.toLowerCase();
+      const cSrcName = erdIndexes.columnsByNodeAndId.get(erdColumnKey(sourceNode.id, cSrcId || ''))?.name?.toLowerCase();
+      const cTgtName = erdIndexes.columnsByNodeAndId.get(erdColumnKey(targetNode.id, cTgtId || ''))?.name?.toLowerCase();
       const cSrcNameKey = cSrcName ? `${candidate.source}:${cSrcName}` : null;
       const cTgtNameKey = cTgtName ? `${candidate.target}:${cTgtName}` : null;
 
-      const duplicateById = edges.some(edge => getRelationKey(edge) === candidateKey);
+      const duplicateById = !!candidateKey && erdIndexes.edgesByRelationKey.has(candidateKey);
       const duplicateByName = cSrcNameKey && cTgtNameKey
-        ? edges.some(edge => {
-            const eNode = nodes.find(n => n.id === edge.source);
-            const eTgtNode = nodes.find(n => n.id === edge.target);
-            if (!eNode || !eTgtNode) return false;
-            const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
-            const eTgtId2 = extractColumnIdFromHandle(edge.targetHandle);
-            const eSrcName = eNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
-            const eTgtName = eTgtNode.data.columns.find((c: any) => c.id === eTgtId2)?.name?.toLowerCase();
-            if (!eSrcName || !eTgtName) return false;
-            const eSrcNameKey = `${edge.source}:${eSrcName}`;
-            const eTgtNameKey = `${edge.target}:${eTgtName}`;
-            // Symmetric: A→B same as B→A
-            return (eSrcNameKey === cSrcNameKey && eTgtNameKey === cTgtNameKey) ||
-                   (eSrcNameKey === cTgtNameKey && eTgtNameKey === cSrcNameKey);
-          })
+        ? erdIndexes.edgesByRelationName.has([cSrcNameKey, cTgtNameKey].sort().join('::'))
         : false;
 
       if (duplicateById || duplicateByName) {
@@ -444,18 +432,11 @@ export function useERDSession(
       // Block polymorphic associations (one FK relating to two PKs).
       // Use column NAME (more reliable than ID) to identify the column.
       if (cSrcName) {
-        const sourceNameKey = `${sourceNode.data.name.toLowerCase()}:${cSrcName}`;
-        const conflictingEdge = edges.find(edge => {
-          const eSrcNode = nodes.find(n => n.id === edge.source);
-          if (!eSrcNode) return false;
-          const eSrcId2 = extractColumnIdFromHandle(edge.sourceHandle);
-          if (!eSrcId2) return false;
-          const eSrcName = eSrcNode.data.columns.find((c: any) => c.id === eSrcId2)?.name?.toLowerCase();
-          if (!eSrcName) return false;
-          return `${eSrcNode.data.name.toLowerCase()}:${eSrcName}` === sourceNameKey;
-        });
+        const conflictingEdge = erdIndexes.edgesBySourceColumnName.get(
+          erdSourceColumnKey(sourceNode.data.name, cSrcName),
+        )?.[0];
         if (conflictingEdge) {
-          const targetTable = nodes.find(n => n.id === conflictingEdge.target);
+          const targetTable = erdIndexes.nodesById.get(conflictingEdge.target);
           toast.error('FK already related', {
             description: `This column is already related to ${targetTable?.data.name || 'another table'}. One FK column can only point to one PK.`,
             duration: 4000,
@@ -757,13 +738,14 @@ export function useERDSession(
 
   useEffect(() => {
     const edgeHash = JSON.stringify(edges.map(e => ({ s: e.source, sh: e.sourceHandle, t: e.target, th: e.targetHandle })));
+    const nodesById = new Map(nodes.map(node => [node.id, node]));
     
     // Only update if edges actually changed their geometry/connection
     setEdges(eds => {
       let isChanged = false;
       const newEds = eds.map(edge => {
-        const sourceNode = nodes.find(n => n.id === edge.source);
-        const targetNode = nodes.find(n => n.id === edge.target);
+        const sourceNode = nodesById.get(edge.source);
+        const targetNode = nodesById.get(edge.target);
         if (!sourceNode || !targetNode) return edge;
 
         const resolved = resolveEdgeHandles(edge, sourceNode, targetNode);
@@ -818,19 +800,20 @@ export function useERDSession(
         return anyNodeDataChanged ? nextNodes : nds;
       });
     }
-  }, [nodes, edges, resolveEdgeHandles, setNodes, setEdges, dedupeEdgesByRelation]);
+  }, [edges, resolveEdgeHandles, setNodes, setEdges, dedupeEdgesByRelation]);
 
   // Reconcile edge handles after a node finishes dragging.
   // Existing user-selected handles stay intact; only missing handles are filled in.
   const onNodeDragStop = useCallback(() => {
     const currentNodes = getNodes() as Node<Entity>[];
     const currentEdges = getEdges();
+    const currentNodesById = new Map(currentNodes.map(node => [node.id, node]));
     
     setEdges(eds => {
       let isChanged = false;
       const newEds = eds.map(edge => {
-        const sourceNode = currentNodes.find(n => n.id === edge.source);
-        const targetNode = currentNodes.find(n => n.id === edge.target);
+        const sourceNode = currentNodesById.get(edge.source);
+        const targetNode = currentNodesById.get(edge.target);
         if (!sourceNode || !targetNode) return edge;
 
         const resolved = resolveEdgeHandles(edge, sourceNode, targetNode);

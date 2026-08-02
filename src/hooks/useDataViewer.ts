@@ -17,6 +17,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [error, setError] = useState<string | null>(null);
   const newTableTab = '__new_table__';
   const abortRef = useRef<AbortController | null>(null);
+  const recordCacheRef = useRef(new Map<string, RecordsResult>());
   const appliedFiltersRef = useRef<RecordFilter[]>([]);
   const sortRef = useRef<RecordSort | null>(null);
   const filtersRef = useRef<RecordFilter[]>([]);
@@ -25,6 +26,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const hydratedKeyRef = useRef<string | null>(null);
   const skipNextSaveRef = useRef(false);
   const storageKey = stateKey ? `${DATA_VIEWER_STORAGE_PREFIX}${stateKey}` : null;
+
+  const recordCacheKey = (table: string, p: number, nextFilters: RecordFilter[], nextSort: RecordSort | null) =>
+    JSON.stringify([connectionId, table, p, nextFilters, nextSort]);
+
+  const clearRecordCache = useCallback(() => {
+    recordCacheRef.current.clear();
+  }, []);
 
   const fetchTables = useCallback(async () => {
     if (!connectionId) return;
@@ -45,12 +53,18 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   useEffect(() => { filtersRef.current = filters; }, [filters]);
 
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const fetchRecords = useCallback(async (table: string, p: number = 1, nextFilters = appliedFiltersRef.current, nextSort = sortRef.current) => {
     if (!connectionId) return;
+    const cacheKey = recordCacheKey(table, p, nextFilters, nextSort);
+    const cached = recordCacheRef.current.get(cacheKey);
     appliedFiltersRef.current = nextFilters;
     setAppliedFilters(nextFilters);
     sortRef.current = nextSort;
     setSort(nextSort);
+    setRecords(cached || null);
+    setPage(p);
     // Abort previous request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -67,14 +81,19 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch records');
+      if (abortRef.current !== controller) return;
       pageByTableRef.current[table] = p;
+      recordCacheRef.current.set(cacheKey, data);
+      if (recordCacheRef.current.size > 20) {
+        recordCacheRef.current.delete(recordCacheRef.current.keys().next().value!);
+      }
       setRecords(data);
       setPage(p);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       setError(err.message);
     } finally {
-      setIsLoadingRecords(false);
+      if (abortRef.current === controller) setIsLoadingRecords(false);
     }
   }, [connectionId]);
 
@@ -97,25 +116,48 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     if (!storageKey) return;
     let nextTabs: OpenTableTab[] = [];
     let nextActive: string | null = null;
+    let savedPages: Record<string, number> = {};
+    let savedStates: typeof tableStateRef.current = {};
     try {
       const saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
       nextTabs = Array.isArray(saved.openTabs) ? saved.openTabs.filter((tab: any) => tab?.name) : [];
       nextActive = typeof saved.activeTable === 'string' ? saved.activeTable : null;
+      if (saved.pageByTable && typeof saved.pageByTable === 'object') {
+        savedPages = Object.fromEntries(Object.entries(saved.pageByTable)
+          .filter(([, value]) => Number.isInteger(value) && Number(value) > 0)
+          .map(([table, value]) => [table, Number(value)]));
+      }
+      if (saved.tableState && typeof saved.tableState === 'object') {
+        savedStates = Object.fromEntries(Object.entries(saved.tableState)
+          .filter(([, value]: any) => Array.isArray(value?.filters) && Array.isArray(value?.appliedFilters))
+          .map(([table, value]: any) => [table, {
+            filters: value.filters,
+            appliedFilters: value.appliedFilters,
+            sort: value.sort || null,
+          }]));
+      }
     } catch {}
+    abortRef.current?.abort();
+    abortRef.current = null;
     skipNextSaveRef.current = true;
     hydratedKeyRef.current = storageKey;
     setOpenTabs(nextTabs);
     setActiveTable(nextActive);
-    setFilters([]);
-    setAppliedFilters([]);
-    appliedFiltersRef.current = [];
-    sortRef.current = null;
-    setSort(null);
+    pageByTableRef.current = savedPages;
+    tableStateRef.current = savedStates;
+    const activeState = nextActive ? savedStates[nextActive] : null;
+    setFilters(activeState?.filters || []);
+    setAppliedFilters(activeState?.appliedFilters || []);
+    appliedFiltersRef.current = activeState?.appliedFilters || [];
+    sortRef.current = activeState?.sort || null;
+    setSort(activeState?.sort || null);
     setRecords(null);
     setPage(1);
-    pageByTableRef.current = {};
-    tableStateRef.current = {};
-    if (nextActive) fetchRecords(nextActive, 1, []);
+    const nextPage = nextActive ? savedPages[nextActive] || 1 : 1;
+    if (nextActive && nextActive !== newTableTab) {
+      setPage(nextPage);
+      fetchRecords(nextActive, nextPage, activeState?.appliedFilters || [], activeState?.sort || null);
+    }
   }, [storageKey, fetchRecords]);
 
   useEffect(() => {
@@ -125,15 +167,22 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       return;
     }
     try {
-      sessionStorage.setItem(storageKey, JSON.stringify({ openTabs, activeTable }));
+      if (activeTable) {
+        tableStateRef.current[activeTable] = { filters, appliedFilters, sort };
+      }
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        openTabs,
+        activeTable,
+        pageByTable: pageByTableRef.current,
+        tableState: tableStateRef.current,
+      }));
     } catch {}
-  }, [storageKey, openTabs, activeTable]);
+  }, [storageKey, openTabs, activeTable, page, filters, appliedFilters, sort]);
 
   const openNewTableTab = useCallback(() => {
     saveTableState(activeTable);
     setOpenTabs(prev => prev.some(tab => tab.name === newTableTab) ? prev : [...prev, { name: newTableTab, pinned: true, label: 'New table' } as any]);
     setActiveTable(newTableTab);
-    setRecords(null);
   }, [activeTable, saveTableState]);
 
   const selectTable = useCallback((tableName: string) => {
@@ -152,7 +201,6 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     setActiveTable(tableName);
     const state = restoreTableState(tableName);
-    setRecords(null);
     setPage(nextPage);
     fetchRecords(tableName, nextPage, state.appliedFilters, state.sort);
   }, [activeTable, fetchRecords, openNewTableTab, openTabs, restoreTableState, saveTableState]);
@@ -178,7 +226,6 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       sortRef.current = null;
       setSort(null);
     }
-    setRecords(null);
     setPage(fallbackPage);
     if (fallback && fallback !== newTableTab) fetchRecords(fallback, fallbackPage, state.appliedFilters, state.sort);
   }, [activeTable, openTabs, fetchRecords, restoreTableState]);
@@ -251,7 +298,6 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setAppliedFilters(nextFilters);
     sortRef.current = null;
     setSort(null);
-    setRecords(null);
     setPage(1);
     fetchRecords(tableName, 1, nextFilters);
   }, [activeTable, fetchRecords, saveTableState]);
@@ -265,9 +311,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update record');
+    clearRecordCache();
     if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
     return data;
-  }, [activeTable, connectionId, fetchRecords, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, page]);
 
   const updateRecords = useCallback(async (table: string, updates: { key: Record<string, any>; values: Record<string, any> }[]) => {
     if (!connectionId || updates.length === 0) return;
@@ -280,8 +327,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update record');
     }
+    clearRecordCache();
     if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
-  }, [activeTable, connectionId, fetchRecords, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, page]);
 
   const createRecord = useCallback(async (table: string, values: Record<string, any>) => {
     if (!connectionId) return;
@@ -292,9 +340,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create record');
+    clearRecordCache();
     if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
     return data;
-  }, [activeTable, connectionId, fetchRecords, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, page]);
 
   const deleteRecord = useCallback(async (table: string, key: Record<string, any> | Record<string, any>[]) => {
     if (!connectionId) return;
@@ -305,9 +354,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete record');
+    clearRecordCache();
     if (activeTable === table) fetchRecords(table, pageByTableRef.current[table] ?? page);
     return data;
-  }, [activeTable, connectionId, fetchRecords, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, page]);
 
   const mutateTables = useCallback(async (patch: Record<string, any>) => {
     if (!connectionId) return;
@@ -318,14 +368,16 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update tables');
+    clearRecordCache();
     await fetchTables();
     if (activeTable && patch.truncateTables?.includes(activeTable)) fetchRecords(activeTable, 1);
     return data;
-  }, [activeTable, connectionId, fetchRecords, fetchTables]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, fetchTables]);
 
   const deleteTables = useCallback(async (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => {
     if (!connectionId || tableNames.length === 0) return;
     const data = await mutateTables({ deleteTables: tableNames, ...options });
+    clearRecordCache();
     const deleted = new Set(tableNames);
     setOpenTabs(prev => prev.filter(tab => !deleted.has(tab.name)));
     tableNames.forEach(name => { delete pageByTableRef.current[name]; delete tableStateRef.current[name]; });
@@ -337,7 +389,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       if (fallback) fetchRecords(fallback, pageByTableRef.current[fallback] ?? 1);
     }
     return data;
-  }, [activeTable, connectionId, fetchRecords, mutateTables, openTabs]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, mutateTables, openTabs]);
 
   const updateStructure = useCallback(async (patch: Record<string, any>) => {
     const targetTable = activeTable || (patch.createTable ? '__new__' : null);
@@ -349,6 +401,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update structure');
+    clearRecordCache();
     const nextTable = patch.createTable?.name || patch.tableName || activeTable;
     setActiveTable(nextTable);
     setOpenTabs(prev => prev.some(tab => tab.name === nextTable)
@@ -359,12 +412,13 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     await fetchTables();
     fetchRecords(nextTable, pageByTableRef.current[nextTable] ?? page);
     return data;
-  }, [activeTable, connectionId, fetchRecords, fetchTables, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, fetchTables, page]);
 
   const refreshAll = useCallback(async () => {
+    clearRecordCache();
     await fetchTables();
     if (activeTable && activeTable !== newTableTab) fetchRecords(activeTable, pageByTableRef.current[activeTable] ?? page);
-  }, [activeTable, fetchRecords, fetchTables, page]);
+  }, [activeTable, clearRecordCache, fetchRecords, fetchTables, page]);
 
   const clearFilters = useCallback(() => {
     filtersRef.current = [];

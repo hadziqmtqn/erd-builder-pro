@@ -118,6 +118,7 @@ export function DiagramEditorRoute() {
 
   const show = isPublicView ? publicData : activeDiagram;
   const effectiveReadOnly = isPublicView || isProductionDb;
+  const dataViewerStateKey = `${show?.uid || show?.id || ''}:${sourceConnectionId || ''}`;
 
   if (!show && !isPublicView && !isERDItemLoading) {
     return (
@@ -149,8 +150,9 @@ export function DiagramEditorRoute() {
       {/* Content */}
       {diagramTab === 'data' && isProductionDb && !isPublicView && sourceConnectionId ? (
         <DataViewer
+          key={dataViewerStateKey}
           connectionId={sourceConnectionId}
-          stateKey={`${show?.uid || show?.id}:${sourceConnectionId}`}
+          stateKey={dataViewerStateKey}
           onDbTypeChange={setDbType}
         />
       ) : diagramTab === 'query' && isProductionDb && !isPublicView && sourceConnectionId && show?.id ? (
