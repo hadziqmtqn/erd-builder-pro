@@ -365,7 +365,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}
                 />
               ) : null}
-              {(!isNewTableTab || activeView !== 'structure') && (
+              {activeView === 'data' && !isNewTableTab && (
                 <DataViewerRecordsTable
                   activeTable={activeTable}
                   columnHelpers={columnHelpers}
@@ -388,7 +388,6 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   onToggleSelectedRow={handleToggleSelectedRow}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
-                  isHidden={activeView !== 'data'}
                 >
                   {showFilters && filters.length > 0 && (
                     <DataViewerFilters

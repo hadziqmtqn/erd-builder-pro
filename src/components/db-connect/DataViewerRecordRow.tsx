@@ -155,41 +155,54 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="size-6 shrink-0 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()} />}>
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52" onClick={e => e.stopPropagation()}>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Set Value</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-36">
-                      <DropdownMenuItem disabled={!editable} onClick={() => onDraftCell(row, column, null)}>NULL</DropdownMenuItem>
-                      <DropdownMenuItem disabled={!editable} onClick={() => onDraftCell(row, column, '')}>EMPTY</DropdownMenuItem>
-                      <DropdownMenuItem disabled={!editable} onClick={() => onDraftCell(row, column, columnMeta(column)?.column_default ?? '')}>DEFAULT</DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => copyRowsAs([row], 'plain')}>Copy</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => copyText(formatRawCellValue(displayValue), 'Cell copied')}>Copy Cell Value</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => copyText(pageRows.map(item => formatRawCellValue(item[column])).join('\n'), 'Column copied')}>Copy All Column Values</DropdownMenuItem>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Copy Row As</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-44">
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'plain')}>Plain Text</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'json')}>JSON</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'html')}>HTML</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'markdown')}>Markdown Table</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'csv')}>CSV</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'csv-header')}>CSV with Header</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => copyRowsAs([row], 'insert')}>INSERT Statement</DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {column === columns[0] && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="size-6 shrink-0 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()} />}>
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56" onClick={e => e.stopPropagation()}>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Column actions</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-44">
+                        {columns.map(actionColumn => {
+                          const actionEditable = canSelectRows && !columnHelpers.isReadOnlyColumn(actionColumn);
+                          return (
+                            <DropdownMenuSub key={actionColumn}>
+                              <DropdownMenuSubTrigger>{actionColumn}</DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="w-44">
+                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, null)}>Set NULL</DropdownMenuItem>
+                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, '')}>Set EMPTY</DropdownMenuItem>
+                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, columnMeta(actionColumn)?.column_default ?? '')}>Set DEFAULT</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => copyText(formatRawCellValue(row[actionColumn]), 'Cell copied')}>Copy Cell Value</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => copyText(pageRows.map(item => formatRawCellValue(item[actionColumn])).join('\n'), 'Column copied')}>Copy Column</DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          );
+                        })}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => copyRowsAs([row], 'plain')}>Copy</DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Copy Row As</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-44">
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'plain')}>Plain Text</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'json')}>JSON</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'html')}>HTML</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'markdown')}>Markdown Table</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'csv')}>CSV</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'csv-header')}>CSV with Header</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => copyRowsAs([row], 'insert')}>INSERT Statement</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </TableCell>
         );
