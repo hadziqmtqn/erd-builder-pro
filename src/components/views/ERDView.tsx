@@ -15,7 +15,7 @@ import {
   reconnectEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,6 +94,7 @@ const ERDViewComponent = ({
   addEntity,
   onImportSQL,
   onAutoLayout,
+  handleExportImage,
   isReadOnly = false,
 
   undo,
@@ -337,7 +338,7 @@ const ERDViewComponent = ({
             name: t.table_name,
             x: (i % 4) * 280 + 50,
             y: Math.floor(i / 4) * 200 + 50,
-            color: '#4f46e5',
+            color: '#6b7280',
             columns: (t.columns || []).map((c: any) => ({
               id: crypto.randomUUID(),
               name: c.name,
@@ -572,6 +573,13 @@ const ERDViewComponent = ({
               </Button>
             )}
 
+            {isProductionDb && (
+              <Button onClick={handleExportImage} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer" title="Export SVG">
+                <Download className="w-3.5 h-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Export SVG</span>
+              </Button>
+            )}
+
             {!isReadOnly && (
               <div className="flex items-center gap-0.5 ml-auto">
                 <Button 
@@ -681,7 +689,8 @@ const ERDViewComponent = ({
           onMove={onMove}
           colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
-          nodesDraggable={!isReadOnly && !pendingDiff}
+          // Production DB ERD stays read-only for schema edits, but table positions are editable.
+          nodesDraggable={!pendingDiff && (!isReadOnly || isProductionDb)}
           nodesConnectable={!isReadOnly && !pendingDiff}
           elementsSelectable={!isReadOnly && !pendingDiff}
           onNodeDragStop={onNodeDragStop}

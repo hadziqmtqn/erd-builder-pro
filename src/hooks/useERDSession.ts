@@ -479,7 +479,7 @@ export function useERDSession(
       name: uniqueName,
       x: centerX - 100, // Center the table (approx 200px width)
       y: centerY - 50,
-      color: '#6366f1',
+      color: '#6b7280',
       columns: [
         { id: Math.random().toString(36).substring(2, 11), name: 'id', type: 'INT', is_pk: true, is_nullable: false, sort_order: 0 }
       ],

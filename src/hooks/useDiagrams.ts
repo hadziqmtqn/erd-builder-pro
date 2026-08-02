@@ -410,7 +410,10 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
     try {
       // Check if this is a production DB diagram
       const currentDiagram = diagramsRef.current.find(d => String(d.id) === String(activeDiagramId) || String(d.uid) === String(activeDiagramId));
-      const isProductionDb = currentDiagram?.source_connection_id;
+      const diagramRecord = currentDiagram as any;
+      const isProductionDb = diagramRecord?.source_connection_id
+        ?? diagramRecord?.sourceConnectionId
+        ?? ((diagramRecord?.source_type ?? diagramRecord?.sourceType) === 'production_db');
       const dbmlKeys = [activeDiagramId, currentDiagram?.uid, currentDiagram?.id]
         .filter((value): value is string | number => value !== null && value !== undefined)
         .map(String);

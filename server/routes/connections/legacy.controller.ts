@@ -111,7 +111,7 @@ export async function importLegacySchema(req: ExpressRequest, res: ExpressRespon
       name: t.table_name,
       x: (i % 4) * 280 + 50,
       y: Math.floor(i / 4) * 200 + 50,
-      color: "#4f46e5",
+      color: "#6b7280",
       columns: (t.columns || []).map((c: any) => ({
         id: crypto.randomUUID(),
         name: c.name,
