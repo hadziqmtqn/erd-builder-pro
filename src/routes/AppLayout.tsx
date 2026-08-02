@@ -164,6 +164,9 @@ function AppLayoutInner() {
     breadcrumbLabel,
   } = useWorkspace();
 
+  const activeDiagramIsProductionDb = isActiveDiagramContext
+    && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+
   // Use the URL UUID rather than activeDiagramId. The workspace can briefly
   // switch that ID from a numeric value to a UUID while loading; using it as
   // the key caused a later effect to read an empty key and erase DBML that had
@@ -564,7 +567,7 @@ function AppLayoutInner() {
           updatedAt={activeDocument?.updated_at}
           onDelete={handleHeaderDelete}
           onRename={handleHeaderRename}
-           onExportAll={() => setIsExportAllOpen(true)}
+          onExportAll={activeDiagramIsProductionDb ? undefined : () => setIsExportAllOpen(true)}
           onExportSQL={handleHeaderExportSQL}
           onExportImage={handleHeaderExportImage}
           onExportMarkdown={handleExportMarkdown}

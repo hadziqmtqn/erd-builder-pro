@@ -180,7 +180,7 @@ export const NavActionsMenu = ({
             </>
           )}
 
-          {documentType === 'erd' && !isPublicView && (
+          {documentType === 'erd' && !isPublicView && onExportAll && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuSub>

@@ -5,15 +5,16 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import { Play, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { Play, Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import ConfirmModal from '@/components/ConfirmModal';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { localPersistence } from '@/lib/localPersistence';
 import { buildSqlCompletions } from './query-autocomplete';
 import { DataQueryResultTable } from './DataQueryResultTable';
+import { DataQueryToolbar } from './DataQueryToolbar';
 
 type DataQueryViewProps = {
   connectionId: number;
@@ -91,6 +92,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [beautifying, setBeautifying] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const activeTabRef = useRef<QueryTab | null>(activeTab);
   const storageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beautifyFrameRef = useRef<number | null>(null);
@@ -234,7 +236,6 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
 
   const deleteActiveQuery = async () => {
     if (!activeTab?.id) return;
-    if (!window.confirm('SQL Query ini akan dihapus permanent. Lanjutkan?')) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/queries/${activeTab.id}?diagramId=${diagramId}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete SQL query');
@@ -333,36 +334,37 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
         </div>
         {activeTab ? (
           <>
-            <div className="flex min-w-0 items-center gap-2 overflow-x-auto border-b px-2 py-1">
-              <Input className="h-8 w-36 shrink-0" value={activeTab.groupName} onChange={e => patchActiveTab({ groupName: e.target.value })} placeholder="Group" />
-              <Input className="h-8 w-64 shrink-0" value={activeTab.name} onChange={e => patchActiveTab({ name: e.target.value })} placeholder="Query name" />
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                {activeTab.id && (
-                  <Button size="sm" variant="outline" onClick={() => deleteActiveQuery().catch((err: any) => toast.error(err.message))}>
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={() => save().catch((err: any) => toast.error(err.message))}>
-                  <Save className="mr-1.5 h-3.5 w-3.5" /> Save
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => beautifyActiveTab()} disabled={beautifying}>
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {beautifying ? 'Beautifying' : 'Beautify'}
-                </Button>
-                <Button size="sm" onClick={() => run()} disabled={running}>
-                  <Play className="mr-1.5 h-3.5 w-3.5" /> {running ? 'Running' : 'Run'}
-                </Button>
-              </div>
-            </div>
+            <DataQueryToolbar
+              groupName={activeTab.groupName}
+              name={activeTab.name}
+              result={activeTab.result}
+              onGroupChange={groupName => patchActiveTab({ groupName })}
+              onNameChange={name => patchActiveTab({ name })}
+              onDelete={activeTab.id ? () => setDeleteConfirmOpen(true) : undefined}
+              onSave={() => save().catch((err: any) => toast.error(err.message))}
+            />
             <div className="min-h-0 overflow-hidden">
-              <CodeMirror
-                value={activeTab.script}
-                height="100%"
-                theme={resolvedTheme === 'dark' ? oneDark : undefined}
-                basicSetup={{ autocompletion: true, lineNumbers: true }}
-                extensions={codeMirrorExtensions}
-                onChange={(script) => patchActiveTab({ script })}
-                className="h-full text-sm"
-              />
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="min-h-0 flex-1">
+                  <CodeMirror
+                    value={activeTab.script}
+                    height="100%"
+                    theme={resolvedTheme === 'dark' ? oneDark : undefined}
+                    basicSetup={{ autocompletion: true, lineNumbers: true }}
+                    extensions={codeMirrorExtensions}
+                    onChange={(script) => patchActiveTab({ script })}
+                    className="h-full text-sm"
+                  />
+                </div>
+                <div className="flex shrink-0 justify-end gap-2 border-t px-2 py-1">
+                  <Button size="sm" variant="outline" onClick={() => beautifyActiveTab()} disabled={beautifying}>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {beautifying ? 'Beautifying' : 'Beautify'}
+                  </Button>
+                  <Button size="sm" onClick={() => run()} disabled={running}>
+                    <Play className="mr-1.5 h-3.5 w-3.5" /> {running ? 'Running' : 'Run'}
+                  </Button>
+                </div>
+              </div>
             </div>
           </>
         ) : (
@@ -380,6 +382,18 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
           />
         </div>
       </main>
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="Delete SQL Query?"
+        message={`This will permanently delete "${activeTab?.name || 'SQL Query'}". This action cannot be undone.`}
+        confirmText="Delete Query"
+        variant="danger"
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          deleteActiveQuery().catch((err: any) => toast.error(err.message));
+        }}
+      />
     </div>
   );
 }

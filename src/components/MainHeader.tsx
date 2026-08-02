@@ -98,7 +98,7 @@ export const MainHeader = React.memo(({
   }, []);
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
+    <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 w-full overflow-hidden border-b bg-background/50 backdrop-blur-sm">
       <div className="flex items-center gap-2 px-4 min-w-0 flex-none">
         {!isPublicView && (
           <>
@@ -161,14 +161,14 @@ export const MainHeader = React.memo(({
                     {activeProjectName && (
                       <>
                         <BreadcrumbItem className="min-w-0 shrink">
-                          <BreadcrumbPage className="max-w-[80px] sm:max-w-[150px] md:max-w-[250px] truncate text-muted-foreground">{activeProjectName}</BreadcrumbPage>
+                          <BreadcrumbPage className="max-w-20 sm:max-w-37.5 md:max-w-62.5 truncate text-muted-foreground">{activeProjectName}</BreadcrumbPage>
                         </BreadcrumbItem>
                         {activeFileName && <BreadcrumbSeparator className="shrink-0" />}
                       </>
                     )}
                     {activeFileName && (
                       <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
-                        <BreadcrumbPage className="max-w-[120px] sm:max-w-[200px] md:max-w-[300px] truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
+                        <BreadcrumbPage className="max-w-30 sm:max-w-50 md:max-w-75 truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
 
                         {initialShareSettings?.is_public && !isPublicView && (
                           <TooltipProvider delay={0}>
@@ -261,7 +261,7 @@ export const MainHeader = React.memo(({
                           <span className="text-[10px] font-bold uppercase tracking-wider hidden xs:inline">Sync Failed</span>
                         </div>
                       } />
-                      <TooltipContent side="bottom" className="text-[10px] font-medium max-w-[200px] text-center">
+                      <TooltipContent side="bottom" className="text-[10px] font-medium max-w-50 text-center">
                         Changes saved locally, but cloud sync failed. We'll retry automatically.
                       </TooltipContent>
                     </Tooltip>

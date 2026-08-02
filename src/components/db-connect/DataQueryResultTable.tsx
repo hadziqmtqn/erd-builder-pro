@@ -1,10 +1,11 @@
 import { memo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const SQL_RESULT_PAGE_SIZE = 50;
 
-type QueryResult = {
+export type QueryResult = {
   columns: string[];
   rows: any[];
   durationMs?: number;
@@ -17,6 +18,28 @@ type DataQueryResultTableProps = {
   resultPage: number;
   onPageChange: (page: number) => void;
 };
+
+const safeFilename = (name: string) => name.replace(/[^A-Za-z0-9_.-]+/g, '_') || 'sql_query';
+
+const csvCell = (value: any) => {
+  const text = value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+export function downloadResult(result: QueryResult, filename: string, format: 'json' | 'csv') {
+  const rows = result.rows.map(row => Object.fromEntries(result.columns.map(column => [column, row[column]])));
+  const content = format === 'json'
+    ? JSON.stringify(rows, null, 2)
+    : [result.columns.map(csvCell).join(','), ...result.rows.map(row => result.columns.map(column => csvCell(row[column])).join(','))].join('\n');
+  const blob = new Blob([content], { type: format === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${safeFilename(filename)}.${format}`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast.success(`${format.toUpperCase()} export downloaded`);
+}
 
 export const DataQueryResultTable = memo(function DataQueryResultTable({
   error,
