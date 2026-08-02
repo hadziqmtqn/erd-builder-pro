@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from "@/lib/utils";
-import { apiFetch, setAuthToken } from "@/lib/api";
+import { apiFetch, getInstallMode, isInstalledApp, setAuthToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,16 +40,15 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       .catch(() => {});
   }, []);
 
-  // Desktop mode (Tauri) uses auto-login via /api/me — login form should never show.
-  // The AppInitialization spinner handles the /api/me call. If somehow the login page
-  // mounts in Tauri mode, silently poll /api/me for auto-login.
-  const isTauri = typeof window !== 'undefined' &&
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  // Installed local apps use auto-login via /api/me — login form should never show.
+  // If the login page mounts while the local server is still starting, silently poll.
+  const isLocalApp = isInstalledApp();
+  const isCli = getInstallMode() === 'cli';
   const pollRef = useRef(true);
   const pollAttempts = useRef(0);
 
   useEffect(() => {
-    if (!isTauri) return;
+    if (!isLocalApp) return;
 
     let cancelled = false;
     const poll = async () => {
@@ -78,7 +77,9 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
         pollAttempts.current++;
         // After ~20s of failure, show timeout error
         if (pollAttempts.current >= 20 && !cancelled) {
-          setDbError("Unable to connect to backend server. Check ~/Library/Logs/com.erdbuilderpro.app/");
+          setDbError(isCli
+            ? "Unable to connect to the CLI backend server. Check ~/.erdbpro/logs/ for server logs."
+            : "Unable to connect to the desktop backend server. Check the application logs.");
           return;
         }
         if (!cancelled) await new Promise(r => setTimeout(r, 1000));
@@ -86,11 +87,11 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
     };
     poll();
     return () => { cancelled = true; };
-  }, [isTauri, onLogin]);
+  }, [isCli, isLocalApp, onLogin]);
 
-  // In desktop mode, never show the form — wait for auto-login silently.
+  // In installed local-app mode, never show the form — wait for auto-login silently.
   // If DB error detected, show diagnostic card instead of spinner.
-  if (isTauri) {
+  if (isLocalApp) {
     if (dbError) {
       return (
         <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
@@ -101,8 +102,8 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
             </div>
             <p className="text-red-200/80 text-sm mb-4">{dbError}</p>
             <div className="text-xs text-red-300/60 space-y-1">
-              <p>Log file: <code className="text-red-200/80">~/Library/Logs/com.erdbuilderpro.app/server-startup.log</code></p>
-              <p>Try restarting the app. If the issue persists, ensure Node.js is installed.</p>
+              <p>Log file: <code className="text-red-200/80">{isCli ? '~/.erdbpro/logs/server-*.err.log' : '~/Library/Logs/com.erdbuilderpro.app/server-startup.log'}</code></p>
+              <p>{isCli ? 'Try restarting the CLI. If the issue persists, inspect the latest server error log.' : 'Try restarting the app. If the issue persists, ensure Node.js is installed.'}</p>
             </div>
           </div>
         </div>

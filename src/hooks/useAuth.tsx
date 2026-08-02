@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { apiFetch, setAuthToken, clearAuthToken } from '../lib/api';
+import { apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
 
 type AuthContextValue = {
   isAuthenticated: boolean | null;
@@ -59,9 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clearAuthToken();
           return;
         }
-        const isTauri = typeof window !== 'undefined' &&
-          !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
-        if (isTauri && retryRef.current < 30) {
+        if (isInstalledApp() && retryRef.current < 30) {
           retryRef.current++;
           const delay = Math.min(1500 * Math.pow(1.3, retryRef.current - 1), 5000);
           setTimeout(() => checkAuth(), delay);
@@ -80,15 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       retryRef.current = 0;
     } catch (err) {
-      const isTauri = typeof window !== 'undefined' &&
-        !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
-      // In Tauri mode the Node.js server starts asynchronously — retry
+      const isLocalApp = isInstalledApp();
+      // Installed local apps start the Node.js server asynchronously — retry
       // indefinitely with exponential backoff until it becomes reachable.
       // The server-side GET /api/me will auto-login once available.
-      const maxRetries = isTauri ? Infinity : 3;
+      const maxRetries = isLocalApp ? Infinity : 3;
       if (retryRef.current < maxRetries) {
         retryRef.current++;
-        const delay = isTauri
+        const delay = isLocalApp
           ? Math.min(1500 * Math.pow(1.5, retryRef.current - 1), 10000)
           : 1500 * retryRef.current;
         setTimeout(() => checkAuth(), delay);

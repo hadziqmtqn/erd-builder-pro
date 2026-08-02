@@ -3,6 +3,16 @@ function isTauri(): boolean {
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 }
 
+export function isInstalledApp(): boolean {
+  return isTauri() || (typeof window !== 'undefined' && (window as any).ERD_INSTALL_MODE === 'cli');
+}
+
+export function getInstallMode(): string {
+  if (typeof window === 'undefined') return 'web';
+  if ((window as any).ERD_INSTALL_MODE === 'cli') return 'cli';
+  return isTauri() ? 'desktop' : 'web';
+}
+
 export function getApiBaseUrl(): string {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (!isTauri()) return '';

@@ -59,4 +59,4 @@ node -e "
 
 echo "=== Build complete ==="
 echo "Package ready: cli/"
-echo "Test: cd cli && node bin/erdbpro.mjs start --port 3101"
+echo "Test: node cli/bin/erdbpro.js start --port 3101 --open"

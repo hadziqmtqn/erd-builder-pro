@@ -165,6 +165,39 @@ async function createSqlQueriesTableIfMissing(): Promise<void> {
   }
 }
 
+async function createDbConnectTablesIfMissing(): Promise<void> {
+  if (!prisma || !isDesktopMode()) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "db_accounts" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "user_id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "type" TEXT NOT NULL,
+        "host" TEXT,
+        "port" INTEGER,
+        "user" TEXT,
+        "password" TEXT,
+        "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "db_catalogs" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "account_id" INTEGER NOT NULL,
+        "database_name" TEXT NOT NULL,
+        "label" TEXT,
+        "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "db_catalogs_account_id_fkey" FOREIGN KEY ("account_id") REFERENCES "db_accounts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_db_accounts_user" ON "db_accounts"("user_id")`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_db_catalogs_account" ON "db_catalogs"("account_id")`);
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to create DB Connect tables (non-fatal)");
+  }
+}
+
 async function normalizeLegacyColumnIds(): Promise<void> {
   if (!prisma) return;
 
@@ -398,13 +431,19 @@ export async function applySchemaMigrations(): Promise<void> {
 
   // v3.1.4+ — persist DBML source alongside ERD canvas data
   await addColumnIfMissing("diagrams", "dbml_source", '"dbml_source" TEXT');
+  await addColumnIfMissing("diagrams", "source_type", '"source_type" TEXT DEFAULT \'blank\'');
+  await addColumnIfMissing("diagrams", "source_connection_id", '"source_connection_id" INTEGER');
+  await addColumnIfMissing("diagrams", "data", '"data" TEXT');
 
   // v3.2+ — ERD column comments and type modifier metadata.
   await addColumnIfMissing("columns", "comment", '"comment" TEXT');
   await addColumnIfMissing("columns", "max_length", '"max_length" INTEGER');
   await addColumnIfMissing("columns", "numeric_precision", '"numeric_precision" INTEGER');
   await addColumnIfMissing("columns", "numeric_scale", '"numeric_scale" INTEGER');
-  if (isDesktopMode()) await createSqlQueriesTableIfMissing();
+  if (isDesktopMode()) {
+    await createDbConnectTablesIfMissing();
+    await createSqlQueriesTableIfMissing();
+  }
 
   // v3.1.4+ — normalize old random column ids and keep relationships wired.
   if (isDesktopMode()) await normalizeLegacyColumnIds();
