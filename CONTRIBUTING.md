@@ -66,6 +66,36 @@ npm run dev:client # Frontend only (proxies /api to :3000)
 npm run clean      # Remove dist/
 ```
 
+## CLI Development and Releases
+
+The CLI packages the same frontend and server used by the desktop app. Do not edit `cli/dist/` or `cli/dist-server/` manually; those folders are generated and ignored. DB Client UI changes belong in `src/`, API/connector changes in `server/`, and the authoritative local system database schema is `prisma/schema.sqlite.prisma`.
+
+Build the complete local CLI package with:
+
+```bash
+npm run build:cli
+```
+
+This builds the server bundle and frontend, copies the current SQLite Prisma schema and generated `schema.sql` into `cli/`, and prepares the native SQLite dependency. Run it after DB Client changes before testing the CLI:
+
+```bash
+node cli/bin/erdbpro.js start --port 3101 --open
+```
+
+CLI uses local auto-login; it should open the dashboard directly. If a login page appears, rebuild the frontend with `npm run build:cli`, stop any previous process on the port, and retry with a clean test `HOME` directory. The first `/api/me` request may briefly wait while the SQLite migration runs.
+
+### System database changes
+
+For every new system table or column:
+
+1. Update `prisma/schema.sqlite.prisma`.
+2. Add a versioned SQL migration under `prisma/migrations-sqlite/` for development/fresh-schema history.
+3. Add an idempotent operation to `server/lib/startup-migration.ts` so existing Desktop/CLI databases self-heal on the next launch/update.
+4. Run `npm run build:cli`; it refreshes `cli/prisma/schema.sqlite.prisma`, `cli/prisma/schema.sql`, and the bundled server.
+5. Verify both a fresh database and an existing database from the previous release. Never rely on `CREATE TABLE` in the fresh schema alone for installed updates.
+
+The CLI stores its system database at `~/.erdbpro/data.db`. Updating the npm package and starting it again runs the startup migration before the API is marked ready. Keep migrations additive and idempotent; preserve user data and never rebuild a table in startup migration without an explicit data-preserving migration.
+
 ## Before You Code
 
 - **Read [`AGENTS.md`](./AGENTS.md)** — contains agent memory about architecture, patterns, bug fixes, and technical decisions. Must be read before making changes.

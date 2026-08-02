@@ -54,9 +54,25 @@ CREATE TABLE "diagrams" (
     "share_token" TEXT,
     "expiry_date" DATETIME,
     "published_at" DATETIME,
+    "source_type" TEXT DEFAULT 'blank',
+    "source_connection_id" INTEGER,
+    "data" TEXT,
     "dbml_source" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "sql_queries" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "uid" TEXT,
+    "diagram_id" INTEGER NOT NULL,
+    "group_name" TEXT NOT NULL DEFAULT 'Ungrouped',
+    "name" TEXT NOT NULL,
+    "script" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "sql_queries_diagram_id_fkey" FOREIGN KEY ("diagram_id") REFERENCES "diagrams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -192,7 +208,7 @@ CREATE TABLE "backups" (
     "file_path" TEXT,
     "file_size" INTEGER,
     "destinations" TEXT,
-    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "backups_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
@@ -225,11 +241,11 @@ CREATE TABLE "user_ai_configs" (
     "user_id" TEXT NOT NULL,
     "provider_id" INTEGER,
     "selected_model_id" INTEGER,
-    "api_key" TEXT NOT NULL,
+    "api_key" TEXT,
     "is_enabled" BOOLEAN DEFAULT true,
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "user_ai_configs_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES "ai_providers" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
-    CONSTRAINT "user_ai_configs_selected_model_id_fkey" FOREIGN KEY ("selected_model_id") REFERENCES "ai_models" ("id") ON DELETE RESTRICT ON UPDATE NO ACTION,
+    CONSTRAINT "user_ai_configs_selected_model_id_fkey" FOREIGN KEY ("selected_model_id") REFERENCES "ai_models" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "user_ai_configs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
@@ -299,6 +315,31 @@ CREATE TABLE "user_preferences" (
     CONSTRAINT "user_preferences_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
+-- CreateTable
+CREATE TABLE "db_accounts" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "user_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "host" TEXT,
+    "port" INTEGER,
+    "user" TEXT,
+    "password" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "db_catalogs" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "account_id" INTEGER NOT NULL,
+    "database_name" TEXT NOT NULL,
+    "label" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "db_catalogs_account_id_fkey" FOREIGN KEY ("account_id") REFERENCES "db_accounts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
@@ -328,6 +369,12 @@ CREATE INDEX "idx_diagrams_updated_at" ON "diagrams"("updated_at");
 
 -- CreateIndex
 CREATE INDEX "idx_diagrams_version" ON "diagrams"("_version");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "sql_queries_uid_key" ON "sql_queries"("uid");
+
+-- CreateIndex
+CREATE INDEX "idx_sql_queries_diagram" ON "sql_queries"("diagram_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "notes_uid_key" ON "notes"("uid");
@@ -394,3 +441,9 @@ CREATE UNIQUE INDEX "user_ai_rules_user_id_view_type_key" ON "user_ai_rules"("us
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_preferences_user_id_key" ON "user_preferences"("user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_db_accounts_user" ON "db_accounts"("user_id");
+
+-- CreateIndex
+CREATE INDEX "idx_db_catalogs_account" ON "db_catalogs"("account_id");

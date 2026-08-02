@@ -173,6 +173,11 @@ Detection: `isDesktopMode()`, `isLocalPostgres()`, `useLocalAuth()`. Supabase au
 - `datasource.url` removed from schema files
 - Cache stale after schema switch → `rm -rf node_modules/.prisma/client` before regenerate (in all dev scripts)
 
+### CLI/Installed SQLite Updates
+- CLI uses the same `src/` frontend and `server/` bundle as Desktop; `npm run build:cli` assembles generated `cli/dist`, `cli/dist-server`, and copies the authoritative `prisma/schema.sqlite.prisma` plus `schema.sql`.
+- `isDesktopMode()` includes CLI because its `DATABASE_URL` is `file:`. Any new system table/column must have an idempotent path in `server/lib/startup-migration.ts`; fresh `schema.sql` alone does not upgrade an existing `~/.erdbpro/data.db`.
+- Keep `cli/prisma/schema.sqlite.prisma`, `cli/prisma/schema.sql`, and `scripts/schema.sql` refreshed from the build after schema changes. Generated `cli/dist*` folders are excluded from TypeScript checks.
+
 ### Security (Phase 1-4)
 - CORS allowlist via `CORS_ORIGINS` env var
 - Rate limiting: global 200/min, auth 10/min, AI proxy 30/min, upload 20/min

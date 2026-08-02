@@ -57,8 +57,22 @@ CREATE TABLE "diagrams" (
     "source_type" TEXT DEFAULT 'blank',
     "source_connection_id" INTEGER,
     "data" TEXT,
+    "dbml_source" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "sql_queries" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "uid" TEXT,
+    "diagram_id" INTEGER NOT NULL,
+    "group_name" TEXT NOT NULL DEFAULT 'Ungrouped',
+    "name" TEXT NOT NULL,
+    "script" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "sql_queries_diagram_id_fkey" FOREIGN KEY ("diagram_id") REFERENCES "diagrams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -145,6 +159,10 @@ CREATE TABLE "columns" (
     "is_pk" BOOLEAN DEFAULT false,
     "is_nullable" BOOLEAN DEFAULT true,
     "enum_values" TEXT,
+    "comment" TEXT,
+    "max_length" INTEGER,
+    "numeric_precision" INTEGER,
+    "numeric_scale" INTEGER,
     "sort_order" INTEGER DEFAULT 0,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "columns_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
@@ -351,6 +369,12 @@ CREATE INDEX "idx_diagrams_updated_at" ON "diagrams"("updated_at");
 
 -- CreateIndex
 CREATE INDEX "idx_diagrams_version" ON "diagrams"("_version");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "sql_queries_uid_key" ON "sql_queries"("uid");
+
+-- CreateIndex
+CREATE INDEX "idx_sql_queries_diagram" ON "sql_queries"("diagram_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "notes_uid_key" ON "notes"("uid");

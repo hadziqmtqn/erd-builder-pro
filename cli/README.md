@@ -20,9 +20,7 @@ npm install -g erdbpro
 erdbpro
 ```
 
-Login with:
-- **Email:** `admin@local.dev`
-- **Password:** `admin123`
+The CLI uses local auto-login and does not show a login form. It creates/uses the local administrator automatically.
 
 Data stored in `~/.erdbpro/` (SQLite). Zero config, always ready.
 
@@ -122,12 +120,15 @@ erdbpro start --force       # Stop old + start new
 
 Amber dot badge appears on the nav-user avatar in the web app when a newer version is available.
 
+On the next start after an update, the CLI automatically applies additive system-database migrations to `~/.erdbpro/data.db` before the API becomes ready. Existing diagrams, notes, connections, and query drafts are preserved.
+
 ---
 
 ## Features
 
 All features identical to the desktop app:
 - **ERD Diagrams** — design database schemas with React Flow
+- **DB Client** — connect to PostgreSQL, MySQL, or SQLite, browse/edit records, inspect structure, and run SQL queries
 - **Flowcharts** — create flowcharts with multiple node shapes
 - **Notes** — rich text editing with Tiptap
 - **Drawings** — whiteboard with Excalidraw

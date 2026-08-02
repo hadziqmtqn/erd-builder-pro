@@ -31,6 +31,8 @@
     "node_modules",
     "dist",
     "dist-server",
+    "cli/dist",
+    "cli/dist-server",
     "backups",
     "logs",
     "src-tauri/target",

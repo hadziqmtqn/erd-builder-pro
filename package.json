@@ -10,6 +10,7 @@
     "dev:client": "vite",
     "build": "vite build",
     "build:server": "node scripts/build-server.js",
+    "build:cli": "bash scripts/build-cli.sh",
     "build:desktop": "cross-env DB_VARIANT=sqlite prisma generate && npm rebuild better-sqlite3 && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && rm -rf dist && vite build",
     "start": "cross-env NODE_ENV=production tsx server/run.ts",
     "preview": "vite preview",
