@@ -282,7 +282,7 @@ export function DashboardRoute() {
       {showContent && (
         <main className="flex w-full flex-col gap-5 px-5 py-5">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(250px,0.65fr)]">
-            <section className="relative overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/10 via-card to-card p-4">
+            <section className="relative overflow-hidden rounded-xl border border-primary/25 bg-linear-to-br from-primary/10 via-card to-card p-4">
               <div className="relative z-10 flex h-full min-h-32 flex-col justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-primary">Continue working</p>
