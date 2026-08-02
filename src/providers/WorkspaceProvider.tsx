@@ -785,17 +785,10 @@ export function WorkspaceProvider({
         e.preventDefault();
         if (hasPendingSyncs && !isSyncing && isOnline) syncDrafts();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        if (!hasActiveItem && !isPublicView && isAuthenticated) {
-          e.preventDefault();
-          fileSearchRef.current?.focus();
-          fileSearchRef.current?.select();
-        }
-      }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [hasPendingSyncs, isSyncing, isOnline, syncDrafts, hasActiveItem, isPublicView, isAuthenticated]);
+  }, [hasPendingSyncs, isSyncing, isOnline, syncDrafts]);
 
   // NotesPage custom events
   useEffect(() => {

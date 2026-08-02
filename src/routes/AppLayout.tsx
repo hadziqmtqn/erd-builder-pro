@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/sidebar';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { apiFetch } from '@/lib/api';
 
 /** Replace parser-generated column UUID inside handle string with canvas column UUID.
  *  parseSQLToERD's column IDs are "col-xxx", so handles are "col-col-xxx-source".
@@ -79,6 +80,7 @@ function isValidDBMLSource(content: string): boolean {
 
 function AppLayoutInner() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
@@ -111,7 +113,7 @@ function AppLayoutInner() {
   const {
     view, sidebarView,
     isPublicView, isOnline,
-    projects, searchQuery, setSearchQuery, user,
+    projects, user,
     isInstallable, installApp, isProjectsLoading,
     handleLogout,
     handleViewChange,
@@ -163,6 +165,74 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
+  const isFeatureRoute = /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
+
+  useEffect(() => {
+    const query = globalSearchQuery.trim();
+    if (query.length < 2) {
+      setGlobalSearchResults([]);
+      setIsGlobalSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setIsGlobalSearchLoading(true);
+      try {
+        if (isGuest) {
+          const term = query.toLowerCase();
+          const projectMap = new Map(projects.map((project: any) => [String(project.id), project]));
+          const localDocs = [
+            ...diagrams.map((item: any) => ({ ...item, type: 'erd', name: item.name })),
+            ...notes.map((item: any) => ({ ...item, type: 'notes', name: item.title })),
+            ...drawings.map((item: any) => ({ ...item, type: 'drawings', name: item.title })),
+            ...flowcharts.map((item: any) => ({ ...item, type: 'flowchart', name: item.title })),
+          ];
+          const results = [
+            ...projects.filter((item: any) => item.name?.toLowerCase().includes(term)).map((item: any) => ({ ...item, type: 'workspace' })),
+            ...localDocs
+              .filter((item: any) => item.name?.toLowerCase().includes(term))
+              .map((item: any) => ({ ...item, workspace: projectMap.get(String(item.project_id)) })),
+          ].slice(0, 20);
+          if (!cancelled) setGlobalSearchResults(results);
+          return;
+        }
+
+        const response = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const json = response.ok ? await response.json() : { data: [] };
+        if (!cancelled) setGlobalSearchResults(Array.isArray(json.data) ? json.data : []);
+      } catch {
+        if (!cancelled) setGlobalSearchResults([]);
+      } finally {
+        if (!cancelled) setIsGlobalSearchLoading(false);
+      }
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [globalSearchQuery, isGuest, projects, diagrams, notes, drawings, flowcharts]);
+
+  const openGlobalSearchResult = useCallback((result: any) => {
+    setGlobalSearchQuery('');
+    if (result.type === 'workspace') {
+      handleViewChange('erd', true, result.uid ?? result.id);
+      return;
+    }
+    const id = result.uid ?? result.id;
+    const routes: Record<string, string> = {
+      erd: `/diagrams/${id}`,
+      notes: `/notes/${id}`,
+      drawings: `/drawings/${id}`,
+      flowchart: `/flowcharts/${id}`,
+    };
+    const route = routes[result.type];
+    if (route) navigate(route);
+  }, [handleViewChange, navigate]);
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
@@ -521,6 +591,10 @@ function AppLayoutInner() {
       {!isPublicView && (
         <AppSidebar
           view={sidebarView}
+          activeFeatureView={isFeatureRoute ? sidebarView : null}
+          globalSearchResults={globalSearchResults}
+          isGlobalSearchLoading={isGlobalSearchLoading}
+          onGlobalSearchResultSelect={openGlobalSearchResult}
           projects={projects}
           onViewChange={handleViewChange}
           onNoteSelect={handleNoteSelect}
@@ -531,8 +605,8 @@ function AppLayoutInner() {
           onLogout={handleLogout}
           onWorkspaceFilter={handleWorkspaceFilter}
           selectedWorkspaceUid={selectedWorkspaceUid}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          globalSearchQuery={globalSearchQuery}
+          onGlobalSearchChange={setGlobalSearchQuery}
           user={user}
           isOnline={isOnline}
           isInstallable={isInstallable}
