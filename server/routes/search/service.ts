@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { isDesktopMode } from "../../lib/config.js";
 
 const projectSelect = { id: true, uid: true, name: true } as const;
 
@@ -6,7 +7,9 @@ export async function searchDocuments(userId: string, query: string) {
   const text = query.trim();
   if (!text || !prisma) return [];
 
-  const contains = { contains: text, mode: "insensitive" } as any;
+  const contains = isDesktopMode()
+    ? { contains: text }
+    : { contains: text, mode: "insensitive" } as any;
   const base = {
     userId,
     isDeleted: false,

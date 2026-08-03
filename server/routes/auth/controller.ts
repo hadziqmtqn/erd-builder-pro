@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma.js";
 import * as authService from "./service.js";
 
 export async function getAuthConfig(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  res.set("Cache-Control", "no-store");
   res.json(await authService.getAuthConfig());
 }
 

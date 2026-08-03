@@ -30,8 +30,8 @@ const typeConfig = [
     key: 'diagrams',
     label: 'ERD Diagrams',
     icon: Database,
-    color: 'text-blue-500',
-    bg: 'bg-blue-500/10',
+    color: 'text-cyan-400',
+    bg: 'bg-cyan-500/20',
     route: '/table/erd',
     createFn: 'handleSidebarDiagramCreate',
     totalKey: 'diagramsTotal' as const,
@@ -243,13 +243,15 @@ export function DashboardRoute() {
             <h1 className="mt-0.5 text-xl font-semibold tracking-tight">{userName}</h1>
             <p className="mt-0.5 text-xs text-muted-foreground">Pick up where you left off.</p>
           </div>
-          <button
-            onClick={() => createDocument(typeConfig[1])}
-            className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"
-          >
-            <Plus className="size-3.5" />
-            New ERD Diagram
-          </button>
+          {!isEmpty && (
+            <button
+              onClick={() => createDocument(typeConfig[1])}
+              className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"
+            >
+              <Plus className="size-3.5" />
+              New ERD Diagram
+            </button>
+          )}
         </div>
       </div>}
 
@@ -269,7 +271,7 @@ export function DashboardRoute() {
               <button
                 key={cfg.key}
                 onClick={() => createDocument(cfg)}
-                className={`inline-flex items-center gap-2 rounded-lg border border-border/60 px-4 py-2.5 text-sm font-medium transition-all hover:shadow-sm ${cfg.bg} hover:scale-[1.02]`}
+                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all hover:shadow-sm ${cfg.key === 'diagrams' ? 'border-cyan-400/50' : 'border-border/60'} ${cfg.bg} hover:scale-[1.02]`}
               >
                 <cfg.icon className={`h-4 w-4 ${cfg.color}`} />
                 New {cfg.label.slice(0, -1)}

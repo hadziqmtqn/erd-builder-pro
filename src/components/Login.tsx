@@ -38,7 +38,7 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
 
   // Fetch runtime config (guest mode, auth config)
   useEffect(() => {
-    apiFetch('/api/auth-config')
+    apiFetch('/api/auth-config', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         setGuestMode(d.guest_mode !== false);
