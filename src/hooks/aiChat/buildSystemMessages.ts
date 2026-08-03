@@ -16,6 +16,8 @@ Database & ERD:
 - If the answer is a PRD, note, plan, or documentation that includes a database schema section, that schema section must still use DBML in a \`\`\`dbml block unless the user explicitly asks for SQL.
 - Use SQL only when the user explicitly asks for SQL queries, migrations, DDL, or seed data.
 - For DBML: use Table blocks, [pk], [not null], [note: '...'] for column comments, sized types like VARCHAR(100) and DECIMAL(10,2) when modifiers matter, Enum blocks when needed, and Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
+- Character-length rule: always write VARCHAR with an explicit maximum length; if the user does not specify one, use VARCHAR(255). Apply the same rule to other bounded character types such as CHAR, using an explicit length instead of an unbounded type.
+- DBML ENUM rule: every enum-typed column must reference an Enum named exactly {table_name}_{column_name}. Example: jokes.humor_level must use type jokes_humor_level and a matching Enum jokes_humor_level { ... } block; never use a generic type such as humor_level.
 
 Flowcharts:
 - When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}
@@ -40,6 +42,8 @@ export function buildSchemaFormatOverride(): string {
 - If a PRD, note, plan, or documentation includes a database schema section, that schema section must use DBML unless the user explicitly asks for SQL.
 - Use SQL only when the user explicitly asks for SQL, migrations, DDL, queries, or seed data.
 - DBML must use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships.
+- Always write VARCHAR with an explicit maximum length; default to VARCHAR(255) when the user does not specify one. Use explicit lengths for other bounded character types such as CHAR as well.
+- Every enum-typed column must reference an Enum named exactly {table_name}_{column_name}, with a matching Enum block. For example, jokes.humor_level uses jokes_humor_level; never use a generic enum name such as humor_level.
 - Tell the user to click Append to preview/apply DBML to the ERD canvas when relevant.`;
 }
 
