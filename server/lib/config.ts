@@ -6,7 +6,7 @@ import fs from "fs";
 dotenv.config();
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || "";
 
 // R2 Config
@@ -46,8 +46,8 @@ function isInDocker(): boolean {
 export function isLocalPostgres(): boolean {
   const dbUrl = process.env.DATABASE_URL || "";
   if (isDesktopMode()) return false;
-  // PostgreSQL URL without SUPABASE_URL → local auth
-  return dbUrl.startsWith("postgresql://") && !process.env.SUPABASE_URL;
+  // PostgreSQL URL without Supabase configuration → local auth
+  return dbUrl.startsWith("postgresql://") && !SUPABASE_URL;
 }
 
 /** True when auth is handled locally (desktop/SQLite or local PostgreSQL). */

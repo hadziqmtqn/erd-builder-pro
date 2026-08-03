@@ -1,4 +1,5 @@
 import { Response as ExpressResponse } from "express";
+import { SUPABASE_URL } from "./config.js";
 
 /**
  * Standardize API error responses — never leak internal error details
@@ -38,7 +39,7 @@ export const getActiveFilter = () => {
 export function toProjectId(projectId: string): number | bigint {
  const url = process.env.DATABASE_URL || "";
  const isSqlite = url.startsWith("file:") || url.endsWith(".db");
- const isSupabasePg = url.startsWith("postgresql://") && !!process.env.SUPABASE_URL;
+ const isSupabasePg = url.startsWith("postgresql://") && !!SUPABASE_URL;
  if (isSqlite) return Number(projectId);
  if (isSupabasePg) return BigInt(projectId);
  return Number(projectId);
