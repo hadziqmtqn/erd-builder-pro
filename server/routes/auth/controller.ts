@@ -6,7 +6,30 @@ import { prisma } from "../../lib/prisma.js";
 import * as authService from "./service.js";
 
 export async function getAuthConfig(req: ExpressRequest, res: ExpressResponse): Promise<void> {
-  res.json(authService.getAuthConfig());
+  res.json(await authService.getAuthConfig());
+}
+
+export async function setup(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const result = await authService.setupLocalAdmin(req.body);
+    if ((result as any).alreadyConfigured) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const isProd = process.env.NODE_ENV === "production";
+    const isSecure = isProd && req.protocol === "https";
+    res.cookie("token", result.token, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.json({ success: true, token: result.token, user: result.user });
+  } catch (err: any) {
+    handleError(res, err, "Initial administrator setup failed");
+  }
 }
 
 export async function login(req: ExpressRequest, res: ExpressResponse): Promise<void> {

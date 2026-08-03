@@ -1,13 +1,15 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
-import { useLocalAuth } from "./config.js";
+import { isDesktopMode, isLocalPostgres } from "./config.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
-  // Local auth mode (desktop/SQLite or local PostgreSQL) is single-user — local user is always the admin.
-  if (useLocalAuth()) return true;
+  // Desktop/SQLite is a single-user install. Local PostgreSQL can have multiple users.
+  if (isDesktopMode()) return true;
 
   const user = (req as any).user;
   if (!user) return false;
+
+  if (isLocalPostgres()) return Boolean(user.isSuperAdmin || user.is_super_admin);
 
   return Boolean(
     user.isSuperAdmin ||

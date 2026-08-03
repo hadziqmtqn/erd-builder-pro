@@ -1,4 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
+import { safeAiBaseUrl } from "../../lib/ai-security.js";
+import { isProtectedAiApiKey, protectAiApiKey, revealAiApiKey } from "../../lib/ai-credentials.js";
 
 /**
  * Resolve AI provider config when no apiKey is provided inline.
@@ -20,6 +22,10 @@ export async function resolveAiConfig(params: {
 
   // When no apiKey is provided, look up config from DB
   if (!apiKey) {
+    if (!userId) {
+      throw new Error("Authenticated user required for stored AI configuration");
+    }
+
     if (!prisma) {
       throw new Error("Database not configured on server");
     }
@@ -28,9 +34,7 @@ export async function resolveAiConfig(params: {
       isEnabled: true,
       selectedModelId: { not: null },
     };
-    if (userId) {
-      where.userId = userId;
-    }
+    where.userId = userId;
 
     const config = await prisma.userAiConfig.findFirst({
       where,
@@ -42,8 +46,18 @@ export async function resolveAiConfig(params: {
       throw new Error("No AI provider configured. Configure AI in Settings.");
     }
 
-    apiKey = config.apiKey;
-    baseUrl = baseUrl || config.provider?.baseUrl || "https://api.openai.com/v1";
+    apiKey = revealAiApiKey(config.apiKey);
+    if (!isProtectedAiApiKey(config.apiKey)) {
+      await prisma.userAiConfig.update({
+        where: { id: config.id },
+        data: { apiKey: protectAiApiKey(apiKey) },
+      });
+    }
+    providerCode = providerCode || config.provider?.code;
+    // A request must not override the configured provider URL when using a stored key.
+    baseUrl = config.provider?.baseUrl || (providerCode === "gemini"
+      ? "https://generativelanguage.googleapis.com/v1beta"
+      : "https://api.openai.com/v1");
 
     if (!model && config.selectedModelId) {
       const modelData = await prisma.aiModel.findFirst({
@@ -53,12 +67,13 @@ export async function resolveAiConfig(params: {
       model = modelData?.modelIdentifier || "gpt-4o-mini";
     }
 
-    providerCode = providerCode || config.provider?.code;
   }
 
   return {
     apiKey: apiKey!,
-    baseUrl: baseUrl || "https://api.openai.com/v1",
+    baseUrl: await safeAiBaseUrl(baseUrl, providerCode === "gemini"
+      ? "https://generativelanguage.googleapis.com/v1beta"
+      : "https://api.openai.com/v1"),
     model: model || "gpt-4o-mini",
     providerCode,
   };

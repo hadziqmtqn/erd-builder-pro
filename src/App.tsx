@@ -111,7 +111,12 @@ function AppContent() {
 
   // Login
   if (!isAuthenticated && !shareInfo) {
-    return <Login onLogin={(userData?: any) => handleLogin(userData)} onGuestLogin={handleGuestLogin} />;
+    return (
+      <Login
+        onLogin={(userData?: any) => handleLogin(userData)}
+        onGuestLogin={handleGuestLogin}
+      />
+    );
   }
 
   // Main app

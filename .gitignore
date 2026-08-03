@@ -8,6 +8,7 @@ coverage/
 logs/*
 .env*
 !.env.example
+.erd-encryption-key
 *.db
 backups/
 !server/routes/backups

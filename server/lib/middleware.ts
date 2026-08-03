@@ -1,6 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "./config.js";
 import { getSession } from "./desktop-auth.js";
+import { prisma } from "./prisma.js";
 
 /** Extract token: Bearer header first (explicit auth), cookie (implicit), query param (fallback). */
 function extractToken(req: ExpressRequest): string | undefined {
@@ -33,7 +34,15 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
     if (useLocalAuth()) {
       const session = await getSession(token);
       if (session) {
-        (req as any).user = { id: session.userId, email: session.email };
+        const localUser = await prisma?.user.findUnique({
+          where: { id: session.userId },
+          select: { isSuperAdmin: true },
+        });
+        (req as any).user = {
+          id: session.userId,
+          email: session.email,
+          isSuperAdmin: Boolean(localUser?.isSuperAdmin),
+        };
         next();
         return;
       }

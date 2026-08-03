@@ -53,8 +53,9 @@ export const useAIProviders = () => {
 
     setIsSaving(true);
     try {
-      // Save provider base URL if changed (all provider types)
-      if (provider.base_url !== undefined) {
+      // Provider URLs are global settings; only an admin may persist them.
+      const isAdmin = Boolean((user as any).isSuperAdmin || (user as any).is_super_admin);
+      if (isAdmin && provider.base_url !== undefined) {
         const pRes = await apiFetch(`/api/ai/settings/providers/${provider.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

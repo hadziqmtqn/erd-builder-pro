@@ -25,19 +25,35 @@ interface LoginProps {
 }
 
 export function Login({ onLogin, onGuestLogin }: LoginProps) {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [guestMode, setGuestMode] = useState(false);
+  const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
 
   // Fetch runtime config (guest mode, auth config)
   useEffect(() => {
     apiFetch('/api/auth-config')
       .then(r => r.json())
-      .then(d => setGuestMode(d.guest_mode !== false))
-      .catch(() => {});
+      .then(d => {
+        setGuestMode(d.guest_mode !== false);
+        setSetupRequired(d.needs_setup === true || d.needsSetup === true);
+      })
+      .catch(() => setSetupRequired(false));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error) {
+      toast.error(error);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   // Installed local apps use auto-login via /api/me — login form should never show.
@@ -120,29 +136,34 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
     );
   }
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get('error');
-    if (error) {
-      toast.error(error);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
+  if (setupRequired === null) {
+    return (
+      <div className="flex min-h-svh w-full items-center justify-center p-6">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const setupMode = setupRequired;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (setupMode && password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await apiFetch('/api/login', {
+      const res = await apiFetch(setupMode ? '/api/setup' : '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(setupMode ? { name, email, password, confirmPassword } : { email, password }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.token) setAuthToken(data.token);
         onLogin(data.user);
-        toast.success("Welcome back!");
+        toast.success(setupMode ? "Administrator account created!" : "Welcome back!");
       } else {
         const data = await res.json();
         toast.error(data.error || "Login failed");
@@ -162,14 +183,29 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
         <div className={cn("flex flex-col gap-6")}>
           <Card>
             <CardHeader>
-              <CardTitle>Login to your account</CardTitle>
+              <CardTitle>{setupMode ? 'Create administrator account' : 'Login to your account'}</CardTitle>
               <CardDescription>
-                Enter your email below to login to your account
+                {setupMode
+                  ? 'Set the first administrator email and password for this Self-host installation.'
+                  : 'Enter your email below to login to your account'}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit}>
                 <FieldGroup>
+                  {setupMode && (
+                    <Field>
+                      <FieldLabel htmlFor="name">Name</FieldLabel>
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="Enter administrator name"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </Field>
+                  )}
                   <Field>
                     <FieldLabel htmlFor="email">Email</FieldLabel>
                     <Input
@@ -184,19 +220,12 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                   <Field>
                     <div className="flex items-center">
                       <FieldLabel htmlFor="password">Password</FieldLabel>
-                      <a
-                        href="https://docs.erdbuilderpro.com/troubleshooting/common-issues#9-lupa-password-di-mode-self-hosted-local-postgresql--docker"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                      >
-                        Forgot your password?
-                      </a>
                     </div>
                     <div className="relative">
                       <Input 
                         id="password" 
                         type={showPassword ? "text" : "password"} 
+                        placeholder={setupMode ? "Create a password" : "Enter your password"}
                         required 
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -216,9 +245,37 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                       </button>
                     </div>
                   </Field>
+                  {setupMode && (
+                    <Field>
+                      <FieldLabel htmlFor="confirm-password">Confirm Password</FieldLabel>
+                      <div className="relative">
+                        <Input
+                          id="confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder="Re-enter your password"
+                          required
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground focus:outline-none cursor-pointer"
+                          aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </Field>
+                  )}
                   <Field className="flex flex-col gap-3">
                     <Button type="submit" disabled={loading} className="w-full">
-                      {loading ? "Logging in..." : "Login"}
+                      {loading ? (setupMode ? "Creating account..." : "Logging in...") : (setupMode ? "Create administrator" : "Login")}
                     </Button>
                     {guestMode && (
                       <>
@@ -243,9 +300,11 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
                         </Button>
                       </>
                     )}
-                    <FieldDescription className="text-center">
-                      Don&apos;t have an account? <a href="#" className="underline underline-offset-4">Sign up</a>
-                    </FieldDescription>
+                    {setupMode && (
+                      <FieldDescription className="text-center">
+                        This setup is available only once for the empty database.
+                      </FieldDescription>
+                    )}
                   </Field>
 
                 </FieldGroup>

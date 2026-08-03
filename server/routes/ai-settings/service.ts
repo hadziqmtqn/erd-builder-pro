@@ -1,4 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
+import { safeAiBaseUrl } from "../../lib/ai-security.js";
+import { protectAiApiKey, revealAiApiKey } from "../../lib/ai-credentials.js";
 
 function providerDto(p: any) {
   return p && {
@@ -46,9 +48,10 @@ export async function listProviders() {
 }
 
 export async function updateProvider(providerId: number, baseUrl: string) {
+  const safeBaseUrl = await safeAiBaseUrl(baseUrl, "https://api.openai.com/v1");
   await prisma?.aiProvider.update({
     where: { id: providerId as any },
-    data: { baseUrl },
+    data: { baseUrl: safeBaseUrl },
   });
   return { success: true };
 }
@@ -68,7 +71,9 @@ export async function upsertConfig(
 ) {
   const providerId = Number(body.provider_id);
   const selectedModelId = body.selected_model_id != null ? Number(body.selected_model_id) || null : null;
-  const hasApiKey = !!(body.api_key && body.api_key !== "***");
+  const apiKey = body.api_key?.trim();
+  const hasApiKey = !!(apiKey && apiKey !== "***");
+  const encryptedApiKey = hasApiKey ? protectAiApiKey(apiKey) : undefined;
 
   // Check if config already exists — if creating, api_key is required (NOT NULL)
   const existing = await prisma?.userAiConfig.findUnique({
@@ -85,12 +90,12 @@ export async function upsertConfig(
     create: {
       userId,
       providerId,
-      ...(hasApiKey ? { apiKey: body.api_key! } : {}),
+      ...(encryptedApiKey ? { apiKey: encryptedApiKey } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
     } as any,
     update: {
-      ...(hasApiKey ? { apiKey: body.api_key! } : {}),
+      ...(encryptedApiKey ? { apiKey: encryptedApiKey } : {}),
       ...(selectedModelId != null ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
       updatedAt: new Date(),
@@ -188,11 +193,11 @@ export async function fetchProviderModels(body: {
       where: { userId_providerId: { userId: body.user_id, providerId: Number(body.provider_id) } },
       select: { apiKey: true },
     });
-    apiKey = config?.apiKey || "";
+    apiKey = config?.apiKey ? revealAiApiKey(config.apiKey) : "";
   }
   if (!apiKey) throw new Error("API key is required to fetch models");
 
-  const baseUrl = (body.base_url || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const baseUrl = await safeAiBaseUrl(body.base_url, "https://api.openai.com/v1");
   const response = await fetch(`${baseUrl}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(15000),
@@ -353,19 +358,20 @@ export async function testConnection(
     return { error: "No API key configured for this user" };
   }
 
+  const apiKey = revealAiApiKey(config.apiKey);
+
   const provider = config.provider;
   const modelId = modelIdentifier || (
     providerCode === "openai" ? "gpt-4o-mini" : "gemini-1.5-flash"
   );
 
   if (providerCode === "openai" || providerCode === "openai_compatible") {
-    let baseUrl = provider?.baseUrl || "https://api.openai.com/v1";
-    baseUrl = baseUrl.replace(/\/+$/, "");
+    const baseUrl = await safeAiBaseUrl(provider?.baseUrl, "https://api.openai.com/v1");
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -385,7 +391,7 @@ export async function testConnection(
 
   if (providerCode === "gemini") {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${config.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

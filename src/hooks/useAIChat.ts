@@ -364,8 +364,6 @@ export function useAIChat(
       // Resolve AI config — all modes now delegate config resolution to the proxy (avoids double Vercel cold start)
       const config: { baseUrl: string | undefined; apiKey: string | undefined; model: string | undefined; providerCode?: string } =
         { baseUrl: undefined, apiKey: undefined, model: undefined };
-      const userId = isGuest ? undefined : auth.user?.id;
-
       // Build system messages
       const apiMessages: { role: string; content: string }[] = [];
 
@@ -478,7 +476,6 @@ export function useAIChat(
             return prev;
           });
         },
-        userId,
         config.providerCode,
       );
 
