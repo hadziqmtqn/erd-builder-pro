@@ -19,6 +19,7 @@ export async function listProviders(_req: ExpressRequest, res: ExpressResponse):
 
 export async function updateProvider(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
+    if (!requireAdmin(req, res)) return;
     const { base_url } = req.body;
     const result = await aiService.updateProvider(Number(req.params.id), base_url);
     res.json(result);
@@ -89,6 +90,8 @@ export async function createModel(req: ExpressRequest, res: ExpressResponse): Pr
 
 export async function ensureModel(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
+    // Authenticated users may register a fetched provider model so their
+    // selected_model_id can reference the shared catalog. CRUD remains admin-only.
     const { provider_id, model_identifier, display_name } = req.body;
     if (!provider_id || !model_identifier) {
       res.status(400).json({ error: "provider_id and model_identifier are required" });

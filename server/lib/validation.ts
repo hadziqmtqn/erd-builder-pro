@@ -9,14 +9,30 @@ export const loginSchema = z.object({
   externalToken: z.string().max(2048).optional(),
 });
 
+export const setupAdminSchema = z.object({
+  email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).max(255),
+  password: z.string().min(8).max(128),
+  confirmPassword: z.string().min(8).max(128),
+  name: z.string().min(1).max(255),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
 export const aiProxySchema = z.object({
   messages: z.array(z.object({
-    role: z.string(),
-    content: z.string(),
+    role: z.enum(["system", "user", "assistant"]),
+    content: z.string().max(200_000),
   })).min(1).max(100),
   model: z.string().max(100).optional(),
   apiKey: z.string().max(2048).optional(),
   baseUrl: z.string().url().max(512).optional(),
+  providerCode: z.string().max(64).optional(),
+}).superRefine((value, ctx) => {
+  const total = value.messages.reduce((length, message) => length + message.content.length, 0);
+  if (total > 2_000_000) {
+    ctx.addIssue({ code: z.ZodIssueCode.too_big, maximum: 2_000_000, origin: "string", inclusive: true, message: "AI message payload is too large", path: ["messages"] });
+  }
 });
 
 const projectIdField = z.union([z.number(), z.string()]).nullable().optional();

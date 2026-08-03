@@ -24,6 +24,16 @@ export const logger = isDev
 
 export const httpLogger = PinoHttp({
   logger,
+  // Never serialize request headers: Authorization and cookies contain live credentials.
+  serializers: {
+    req: (req) => ({
+      id: req.id,
+      method: req.method,
+      url: req.url,
+      remoteAddress: req.socket?.remoteAddress,
+      remotePort: req.socket?.remotePort,
+    }),
+  },
   autoLogging: {
     ignore: (req) => !req.url?.startsWith('/api/'),
   },

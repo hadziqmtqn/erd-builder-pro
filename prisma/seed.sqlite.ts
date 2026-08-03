@@ -29,21 +29,25 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log(`Seeding ${dbType} database...`);
 
-  // ── Admin user ──
-  const adminEmail = 'admin@local.dev';
-  const adminPassword = 'admin123';
-  const hashedPassword = hashPassword(adminPassword);
-
-  const admin = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: {
-      email: adminEmail,
-      name: 'Admin',
-      password: hashedPassword,
-    },
-  });
-  console.log(`  ✓ Admin user: ${admin.email}`);
+  // SQLite Desktop uses its local bootstrap account. PostgreSQL Self-host
+  // creates the first admin through the one-time setup screen instead.
+  if (isSqliteUrl(rawUrl)) {
+    const adminEmail = 'admin@local.dev';
+    const adminPassword = 'admin123';
+    const admin = await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { isSuperAdmin: true },
+      create: {
+        email: adminEmail,
+        name: 'Admin',
+        password: hashPassword(adminPassword),
+        isSuperAdmin: true,
+      },
+    });
+    console.log(`  ✓ Desktop admin user: ${admin.email}`);
+  } else {
+    console.log('  - Self-host admin user skipped; use the one-time setup screen');
+  }
 
   // ── AI Providers ──
   const providerDefs = [

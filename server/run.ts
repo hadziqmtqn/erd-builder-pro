@@ -2,7 +2,6 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { randomBytes, scryptSync } from "node:crypto";
 import app from "./index.js";
 import { backfillUids } from "./lib/startup-migration.js";
 import { applySchemaMigrations } from "./lib/startup-migration.js";
@@ -279,26 +278,28 @@ async function startup(): Promise<void> {
 }
 
 /**
- * Seed the built-in admin@local.dev user for desktop/local auth modes.
- * Safe to call every startup — checks if user already exists.
+ * Ensure local PostgreSQL has an admin role from the existing database users.
+ * Desktop/CLI admin bootstrapping is handled by ensureDesktopUser().
  */
 async function seedAdminUser(): Promise<void> {
-  const adminEmail = "admin@local.dev";
-  const adminPassword = "admin123";
-  const existing = await prisma!.user.findFirst({
-    where: { email: adminEmail } as any,
+  if (isDesktopMode()) return;
+
+  const existingAdmin = await prisma!.user.findFirst({
+    where: { isSuperAdmin: true } as any,
+    select: { id: true },
   });
-  if (!existing) {
-    const salt = randomBytes(16).toString("hex");
-    const hash = scryptSync(adminPassword, salt, 64).toString("hex");
-    await prisma!.user.create({
-      data: {
-        email: adminEmail,
-        name: "Admin",
-        password: `${salt}:${hash}`,
-      } as any,
+  if (existingAdmin) return;
+
+  const firstUser = await prisma!.user.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (firstUser) {
+    await prisma!.user.update({
+      where: { id: firstUser.id },
+      data: { isSuperAdmin: true } as any,
     });
-    logger.info({ email: adminEmail }, "Admin user created during startup");
+    logger.info({ userId: firstUser.id }, "First local PostgreSQL user promoted to super-admin");
   }
 }
 

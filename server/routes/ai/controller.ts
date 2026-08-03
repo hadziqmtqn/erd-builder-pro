@@ -1,6 +1,28 @@
 import { Request, Response } from "express";
 import { logger } from "../../lib/logger.js";
+import { supabase, useLocalAuth } from "../../lib/config.js";
+import { getSession } from "../../lib/desktop-auth.js";
+import { safeAiBaseUrl } from "../../lib/ai-security.js";
 import { resolveAiConfig, getProxyFetchUrl } from "./service.js";
+
+async function resolveRequestUserId(req: Request): Promise<string | undefined> {
+  try {
+    const token = req.cookies?.token || (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : undefined);
+    if (!token) return undefined;
+
+    if (useLocalAuth()) return (await getSession(token))?.userId;
+
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser(token);
+      return user?.id;
+    }
+  } catch {
+    // Invalid auth must fail closed as guest, never fall through to another user's config.
+  }
+  return undefined;
+}
 
 export async function proxy(req: Request, res: Response): Promise<void> {
   let aborted = false;
@@ -22,7 +44,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
   }, 30_000);
 
   try {
-    let { messages, model, apiKey, baseUrl, userId } = req.body;
+    let { messages, model, apiKey, baseUrl, providerCode } = req.body;
 
     if (!messages) {
       clearTimeout(timeout);
@@ -30,33 +52,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Guest AI guard: if no userId in body, try session cookie
-    if (!userId) {
-      try {
-        const token = req.cookies?.token;
-        if (token) {
-          const { supabase } = await import("../../lib/config.js");
-          const { data: { user } } = await supabase.auth.getUser(token);
-          if (user) userId = user.id;
-        }
-      } catch {}
-
-      // Also try local auth (desktop / local postgres) — token is not a Supabase JWT
-      if (!userId) {
-        try {
-          const token = req.cookies?.token || (req.headers.authorization?.startsWith("Bearer ")
-            ? req.headers.authorization.slice(7)
-            : undefined);
-          if (token) {
-            const { getSession } = await import("../../lib/desktop-auth.js");
-            const session = await getSession(token);
-            if (session) {
-              userId = session.userId;
-            }
-          }
-        } catch {}
-      }
-    }
+    const userId = await resolveRequestUserId(req);
 
     // If still no userId, this is an unauthenticated (guest) request.
     // Block AI for guests unless explicitly enabled.
@@ -66,23 +62,27 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // A guest may only use an explicitly supplied key; never select a DB key without an owner.
+    if (!userId && !apiKey) {
+      clearTimeout(timeout);
+      res.status(403).json({ error: "An authenticated session or inline AI API key is required" });
+      return;
+    }
+
     // When no apiKey is provided, look up config from DB
     if (!apiKey) {
       try {
         const resolved = await resolveAiConfig({
           userId,
-          baseUrl,
           model,
-          providerCode: req.body.providerCode,
+          providerCode,
         });
         apiKey = resolved.apiKey;
         baseUrl = resolved.baseUrl;
         model = resolved.model;
 
         // Pass provider code from DB resolution to proxy routing
-        if (!req.body.providerCode) {
-          req.body.providerCode = resolved.providerCode;
-        }
+        providerCode = resolved.providerCode;
       } catch (dbErr: any) {
         clearTimeout(timeout);
         logger.error({ err: dbErr }, "AI proxy: Failed to fetch default config:");
@@ -91,7 +91,15 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       }
     }
 
-    const { providerCode } = req.body;
+    if (!apiKey) {
+      clearTimeout(timeout);
+      res.status(400).json({ error: "AI API key is required" });
+      return;
+    }
+
+    baseUrl = await safeAiBaseUrl(baseUrl, providerCode === "gemini"
+      ? "https://generativelanguage.googleapis.com/v1beta"
+      : "https://api.openai.com/v1");
     const isGemini =
       providerCode === "gemini" ||
       (baseUrl || "").includes("generativelanguage.googleapis.com");
@@ -125,8 +133,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      const errBody = await response.text().catch(() => "");
-      logger.error({ err: errBody, status: response.status }, "AI provider error");
+      logger.error({ status: response.status }, "AI provider error");
       // Use 502 Bad Gateway — upstream provider failure, not an auth error.
       // The global 401 interceptor in the frontend must NOT catch this.
       res.status(502).json({

@@ -15,7 +15,29 @@ const DESKTOP_DEFAULT_PASSWORD = "admin123";
 
 // ── Auth Config ──
 
-export function getAuthConfig() {
+function isBootstrapAdmin(user: any): boolean {
+  return Boolean(
+    user?.email?.toLowerCase() === DESKTOP_DEFAULT_EMAIL &&
+    user?.isSuperAdmin &&
+    user?.password &&
+    verifyPassword(DESKTOP_DEFAULT_PASSWORD, user.password)
+  );
+}
+
+export async function getAuthConfig() {
+  let needsSetup = false;
+  if (isLocalPostgres() && prisma) {
+    try {
+      const users = await prisma.user.findMany({
+        take: 2,
+        select: { email: true, password: true, isSuperAdmin: true },
+      });
+      needsSetup = users.length === 0 || (users.length === 1 && isBootstrapAdmin(users[0]));
+    } catch {
+      // The normal DB readiness response handles an unavailable database.
+    }
+  }
+
   return {
     supabaseAuth: !useLocalAuth(),
     isDesktop: isDesktopMode(),
@@ -24,6 +46,7 @@ export function getAuthConfig() {
     installMode: getInstallMode(),
     guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "false") === "true",
     guestAiEnabled: (process.env.GUEST_AI_ENABLED || "false") === "true",
+    needsSetup,
     ...(isDesktopMode()
       ? {
           desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,
@@ -33,12 +56,58 @@ export function getAuthConfig() {
   };
 }
 
+export async function setupLocalAdmin(data: {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  name?: string;
+}) {
+  if (!isLocalPostgres() || !prisma) {
+    throw new Error("Initial administrator setup is only available for Self-host PostgreSQL");
+  }
+
+  const users = await prisma.user.findMany({
+    take: 2,
+    select: { id: true, email: true, password: true, isSuperAdmin: true },
+  });
+  const bootstrapUser = users.length === 1 && isBootstrapAdmin(users[0]);
+  if (users.length > 0 && !bootstrapUser) return { alreadyConfigured: true };
+
+  const email = data.email.trim().toLowerCase();
+  const name = data.name?.trim() || email.split("@")[0] || "Admin";
+  const user = bootstrapUser
+    ? await prisma.user.update({
+        where: { id: users[0].id },
+        data: { email, name, password: hashPassword(data.password), isSuperAdmin: true },
+      })
+    : await prisma.user.create({
+        data: { email, name, password: hashPassword(data.password), isSuperAdmin: true },
+      });
+
+  const token = await createSession(user.id, user.email, user.name);
+  return {
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isSuperAdmin: true,
+      user_metadata: { name: user.name },
+    },
+  };
+}
+
 // ── Local Auth Login ──
 
 export async function localLogin(email: string, password: string) {
   if (!prisma) throw new Error("Database not available");
 
   const normalizedEmail = email.toLowerCase();
+  // The desktop bootstrap credential must never be accepted by a shared self-host instance.
+  if (!isDesktopMode() && normalizedEmail === DESKTOP_DEFAULT_EMAIL && password === DESKTOP_DEFAULT_PASSWORD) {
+    return null;
+  }
+
   const existingUser = await prisma.user.findFirst({
     where: { email: normalizedEmail } as any,
   });
@@ -46,7 +115,7 @@ export async function localLogin(email: string, password: string) {
   let user = existingUser;
   if (!user) {
     const userCount = await prisma.user.count();
-    if (userCount === 0 || isDesktopMode()) {
+    if (isDesktopMode()) {
       user = await prisma.user.create({
         data: {
           email: normalizedEmail,
@@ -76,6 +145,7 @@ export async function localLogin(email: string, password: string) {
       id: (user as any).id,
       email: (user as any).email,
       name: (user as any).name,
+      isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
       user_metadata: { name: (user as any).name },
     },
   };
@@ -133,6 +203,7 @@ export async function ensureDesktopUser(): Promise<{
         id: (user as any).id,
         email: (user as any).email,
         name: (user as any).name,
+        isSuperAdmin: true,
         user_metadata: { name: (user as any).name },
       },
       token,
@@ -170,7 +241,7 @@ export async function getLocalSession(token: string) {
 
   const user = await prisma.user.findFirst({
     where: { id: session.userId } as any,
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, isSuperAdmin: true },
   });
   if (!user) return null;
 
@@ -178,6 +249,7 @@ export async function getLocalSession(token: string) {
     id: (user as any).id,
     email: (user as any).email,
     name: (user as any).name,
+    isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
     user_metadata: { name: (user as any).name },
   };
 }
