@@ -64,11 +64,16 @@ export default async function handler(req: any, res: any) {
     resolvedBaseUrl = resolvedBaseUrl || config.ai_providers?.base_url || "https://api.openai.com/v1";
 
     if (!resolvedModel && config.selected_model_id) {
-      const { data: modelData } = await supabase
+      const { data: modelData, error: modelError } = await supabase
         .from("ai_models")
         .select("model_identifier")
         .eq("id", config.selected_model_id)
         .single();
+
+      if (modelError) {
+        return res.status(400).json({ error: "Failed to fetch the selected AI model" });
+      }
+
       resolvedModel = modelData?.model_identifier || "gpt-4o-mini";
     }
   }
