@@ -64,7 +64,7 @@ import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
-import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
+import { applyDBMLMetadata, dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
@@ -332,7 +332,9 @@ function AppLayoutInner() {
 
     const persist = async () => {
       if (!isValidDBMLSource(content)) return;
-      await saveDiagram(nodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
+      const metadataNodes = applyDBMLMetadata(nodes, content);
+      setNodes(metadataNodes);
+      await saveDiagram(metadataNodes, edges, viewportRef?.current || { x: 0, y: 0, zoom: 1 }, { dbmlSource: content });
       if (dbmlContentRef.current === content) dbmlDraftDirtyRef.current = false;
       if (!isGuest) triggerDebouncedSync();
     };
@@ -353,7 +355,11 @@ function AppLayoutInner() {
     if ((activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db') return;
     if (!isActiveDiagramContext) return;
     setRightPanelMode('dbml');
-    if (dbmlContent.trim() || nodes.length === 0) return;
+    if (dbmlContent.trim()) {
+      void handleDBMLContentChange(dbmlContent, true);
+      return;
+    }
+    if (nodes.length === 0) return;
     try {
       const dbml = erdToDBML(nodes, edges);
       if (dbml.trim()) handleDBMLContentChange(dbml, true);

@@ -1,6 +1,10 @@
 import { Relationship } from '../types';
 import { RELATIONSHIP_TYPES } from './utils';
 
+export function getForeignKeyConstraintName(tableName: string, columnName: string) {
+  return `fk_${tableName}_${columnName}`.toLowerCase();
+}
+
 export function edgeToRelationship(edge: any): Relationship {
   const data = edge.data || {};
   const columnId = (handle?: string | null) => handle

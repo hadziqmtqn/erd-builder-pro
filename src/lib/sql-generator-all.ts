@@ -13,6 +13,7 @@ import {
   ForeignKeyConstraint,
 } from './sql-generator';
 import { Entity } from '@/types';
+import { getForeignKeyConstraintName } from './diagram-payload';
 
 export type AllExportFormat =
   | 'mysql'
@@ -280,7 +281,7 @@ function generateAlterTableFKs(
     const relation = (edge.data || {}) as Record<string, unknown>;
     const constraintName = relation.constraint_name
       ? String(relation.constraint_name)
-      : `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
+      : getForeignKeyConstraintName(sourceEntity.name, sourceColumn.name);
     const quote = dialect === 'mysql' ? '`' : '"';
     const action = (value: unknown, keyword: string) => {
       const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';

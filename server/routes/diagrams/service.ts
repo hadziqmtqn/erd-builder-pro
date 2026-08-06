@@ -81,6 +81,15 @@ function dedupe<T extends { id: any }>(arr: T[], label: string): T[] {
 
 export { dedupe };
 
+function normalizePersistedColumnDefault(value: any, isNullable: boolean): string | null {
+  const normalized = value == null ? null : String(value).trim() || null;
+  return !isNullable && normalized?.toUpperCase() === 'NULL' ? null : normalized;
+}
+
+function columnIsNullable(value: any): boolean {
+  return value !== undefined ? Boolean(value) : true;
+}
+
 async function upsertEntities(rows: any[], diagramId: number) {
   if (rows.length === 0 || !prisma) return;
   await prisma.$transaction(
@@ -116,9 +125,9 @@ async function upsertColumns(rows: any[]) {
           id: col.id, entityId: col._entity_id,
           name: col.name, type: col.type,
           isPk: col.is_pk || false,
-          isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          isNullable: columnIsNullable(col.is_nullable),
           isUnique: Boolean(col.is_unique),
-          defaultValue: col.default_value ?? null,
+          defaultValue: normalizePersistedColumnDefault(col.default_value, columnIsNullable(col.is_nullable)),
           enumValues: col.enum_values || null,
           comment: col.comment || null,
           maxLength: col.max_length ?? null,
@@ -129,9 +138,9 @@ async function upsertColumns(rows: any[]) {
         update: {
           entityId: col._entity_id, name: col.name, type: col.type,
           isPk: col.is_pk || false,
-          isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          isNullable: columnIsNullable(col.is_nullable),
           isUnique: Boolean(col.is_unique),
-          defaultValue: col.default_value ?? null,
+          defaultValue: normalizePersistedColumnDefault(col.default_value, columnIsNullable(col.is_nullable)),
           enumValues: col.enum_values || null,
           comment: col.comment || null,
           maxLength: col.max_length ?? null,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dbmlToERD, erdToDBML } from '../dbml-converter';
+import { applyDBMLMetadata, dbmlToERD, erdToDBML, normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '../dbml-converter';
 import { dedupeDBMLEnumBlocks, normalizeDBMLTypeName, parseDBMLColumn, parseDBMLRef } from '../dbml-utils';
 
 describe('dbmlToERD', () => {
@@ -122,6 +122,110 @@ Table login_logs {
     expect(erdToDBML(result.nodes, result.edges)).toContain('amount DECIMAL(10,2) [not null]');
   });
 
+  it('removes NULL defaults from non-nullable DBML columns', () => {
+    const nodes = [{
+      id: 'addresses',
+      type: 'entity',
+      position: { x: 0, y: 0 },
+      data: {
+        id: 'addresses', name: 'addresses', x: 0, y: 0, color: '#000',
+        columns: [{ id: 'created-at', name: 'created_at', type: 'TIMESTAMP', is_pk: false, is_nullable: false, default_value: 'NULL' }],
+      },
+    }] as any;
+
+    expect(erdToDBML(nodes, [])).toContain('created_at TIMESTAMP [not null]');
+    expect(erdToDBML(nodes, [])).not.toContain('default: NULL');
+  });
+
+  it('accepts and removes empty Indexes blocks', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  Indexes {
+  }
+}
+
+Table addresses {
+  id BIGINT [pk, not null]
+  user_id BIGINT [not null, unique]
+  Indexes {
+  }
+}
+
+Ref "fk_1": addresses.user_id > users.id [delete: cascade]`;
+
+    const result = dbmlToERD(dbml);
+    expect(result.nodes).toHaveLength(2);
+    expect(removeEmptyDBMLIndexes(dbml)).not.toMatch(/Indexes\s*\{\s*\}/);
+    expect(erdToDBML(result.nodes, result.edges)).not.toMatch(/Indexes\s*\{\s*\}/);
+  });
+
+  it('parses single-column indexes with DBML parentheses', () => {
+    const result = dbmlToERD(`Table users {
+  id BIGINT [pk, not null]
+  email VARCHAR(255) [not null]
+  Indexes {
+    (email) [unique, name: "users_email_unique"]
+  }
+}`);
+
+    expect(result.nodes[0].data.indexes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'users_email_unique', is_unique: true }),
+    ]));
+    expect(erdToDBML(result.nodes, result.edges)).toContain('(email) [unique, name: "users_email_unique"]');
+  });
+
+  it('parses parenthesized indexes across related tables', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  name VARCHAR(255) [not null]
+  email VARCHAR(255) [not null, note: 'harus unik']
+  created_at TIMESTAMP [not null]
+  updated_at TIMESTAMP [not null]
+  deleted_at TIMESTAMP [default: NULL]
+  Indexes {
+    (email) [unique, name: "users_email_unique"]
+  }
+}
+
+Table addresses {
+  id BIGINT [pk, not null]
+  user_id BIGINT [not null]
+  created_at TIMESTAMP [not null]
+  updated_at TIMESTAMP [not null]
+  Indexes {
+    (user_id) [unique, name: "addresses_user_id_unique"]
+  }
+}
+
+Ref "fk_1": addresses.user_id > users.id [delete: cascade]`;
+
+    const result = dbmlToERD(dbml);
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+    expect(result.nodes.find(node => node.data.name === 'users')?.data.indexes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'users_email_unique', is_unique: true })]),
+    );
+    expect(result.nodes.find(node => node.data.name === 'addresses')?.data.indexes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'addresses_user_id_unique', is_unique: true })]),
+    );
+  });
+
+  it('normalizes legacy single-column index syntax', () => {
+    const legacy = `Table users {
+  id BIGINT [pk, not null]
+  email VARCHAR(255) [not null]
+  Indexes {
+    email [unique, name: "users_email_unique"]
+  }
+}`;
+    const result = dbmlToERD(legacy);
+
+    expect(normalizeDBMLIndexSyntax(legacy)).toContain('(email) [unique, name: "users_email_unique"]');
+    expect(result.nodes[0].data.indexes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'users_email_unique', is_unique: true }),
+    ]));
+  });
+
   it('round-trips table metadata, defaults, composite indexes, checks, and FK actions', () => {
     const dbml = `Table users {
   id BIGINT [pk, not null]
@@ -176,6 +280,34 @@ Ref "posts_user_id_fk": posts.user_id > users.id [delete: cascade, update: casca
 
     const dbml = erdToDBML(nodes, edges);
     expect(dbmlToERD(dbml).edges[0].data).toMatchObject({ on_delete: 'cascade', on_update: 'no action' });
+  });
+
+  it('applies DBML metadata to existing canvas IDs for persistence', () => {
+    const nodes = [{
+      id: 'users-id',
+      type: 'entity',
+      position: { x: 10, y: 20 },
+      data: {
+        id: 'users-id', name: 'users', x: 10, y: 20, color: '#000',
+        columns: [
+          { id: 'id-current', name: 'id', type: 'BIGINT', is_pk: true, is_nullable: false },
+          { id: 'email-current', name: 'email', type: 'VARCHAR', is_pk: false, is_nullable: false },
+        ],
+      },
+    }] as any;
+
+    const result = applyDBMLMetadata(nodes, `Table users {
+  id BIGINT [pk, not null]
+  email VARCHAR [not null, unique, default: 'pending']
+}`);
+
+    expect(result[0].data.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'primary_key', column_ids: ['id-current'] }),
+    ]));
+    expect(result[0].data.indexes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ is_unique: true, column_ids: ['email-current'] }),
+    ]));
+    expect(result[0].data.columns[1]).toMatchObject({ is_unique: true, default_value: "'pending'" });
   });
 
   it('rejects enum names that do not match table_column', () => {

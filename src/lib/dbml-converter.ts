@@ -2,7 +2,7 @@ import { Parser, ModelExporter } from '@dbml/core';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { COLUMN_TYPES } from '@/lib/utils';
-import { parseTypeModifiers, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
+import { normalizeColumnDefault, parseTypeModifiers, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 import { parseSQLToERD } from '@/lib/sqlParser';
 import {
   buildDBMLTableDefinitions,
@@ -93,7 +93,7 @@ function normalizeInlineRef(line: string, currentTable: string): string | null {
 }
 
 function normalizeDBMLForParser(text: string): string {
-  const lines = text.split(/\r?\n/);
+  const lines = normalizeDBMLIndexSyntax(removeEmptyDBMLIndexes(text)).split(/\r?\n/);
   const normalizedLines: string[] = [];
   const generatedEnums: { name: string; values: string[] }[] = [];
   const generatedRefs: string[] = [];
@@ -173,6 +173,52 @@ function normalizeDBMLForParser(text: string): string {
   }
 
   return normalizedLines.join('\n').trim();
+}
+
+export function removeEmptyDBMLIndexes(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const normalized: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (/^\s*Indexes\s*\{\s*$/.test(lines[index])) {
+      let closingIndex = index + 1;
+      while (closingIndex < lines.length && !lines[closingIndex].trim()) closingIndex += 1;
+      if (lines[closingIndex]?.trim() === '}') {
+        index = closingIndex;
+        continue;
+      }
+    }
+    normalized.push(lines[index]);
+  }
+  return normalized.join('\n');
+}
+
+export function normalizeDBMLIndexSyntax(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const normalized: string[] = [];
+  let inIndexes = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^Indexes\s*\{\s*$/i.test(trimmed)) {
+      inIndexes = true;
+      normalized.push(line);
+      continue;
+    }
+    if (inIndexes && trimmed === '}') {
+      inIndexes = false;
+      normalized.push(line);
+      continue;
+    }
+    if (inIndexes) {
+      const singleColumn = line.match(/^(\s*)(?:"([^"]+)"|([A-Za-z_]\w*))(?=\s+\[)/);
+      if (singleColumn) {
+        const columnName = singleColumn[2] ? `"${singleColumn[2]}"` : singleColumn[3];
+        normalized.push(`${singleColumn[1]}(${columnName})${line.slice(singleColumn[0].length)}`);
+        continue;
+      }
+    }
+    normalized.push(line);
+  }
+  return normalized.join('\n');
 }
 
 function readDBMLChecks(text: string) {
@@ -527,7 +573,7 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
       }
       const modelColumn = tableMetadata?.fields.get(column.name.toLowerCase());
       if (modelColumn) {
-        column.default_value = modelColumn.default_value;
+        column.default_value = normalizeColumnDefault(modelColumn.default_value, Boolean(column.is_nullable));
         column.is_unique = modelColumn.is_unique;
       }
       const enumColumn = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
@@ -550,6 +596,86 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   }
 
   return result;
+}
+
+/** Apply DBML-only metadata to existing canvas nodes without replacing IDs or positions. */
+export function applyDBMLMetadata(nodes: Node<Entity>[], dbmlText: string): Node<Entity>[] {
+  if (!dbmlText.trim()) return nodes;
+
+  try {
+    const parsed = dbmlToERD(dbmlText);
+    const parsedByTable = new Map(parsed.nodes.map(node => [node.data.name.toLowerCase(), node]));
+
+    return nodes.map(node => {
+      const parsedNode = parsedByTable.get(node.data.name.toLowerCase());
+      if (!parsedNode) return node;
+
+      const parsedColumns = new Map(parsedNode.data.columns.map(column => [column.name.toLowerCase(), column]));
+      const remapColumnIds = (ids: string[] = []) => ids
+        .map(id => parsedNode.data.columns.find(column => column.id === id)?.name.toLowerCase())
+        .map(name => node.data.columns.find(column => column.name.toLowerCase() === name)?.id)
+        .filter((id): id is string => Boolean(id));
+      const constraints = (parsedNode.data.constraints || []).map(constraint => ({
+        ...constraint,
+        entity_id: node.data.id,
+        column_ids: remapColumnIds(constraint.column_ids),
+      }));
+      const indexes = (parsedNode.data.indexes || []).map(index => ({
+        ...index,
+        entity_id: node.data.id,
+        column_ids: remapColumnIds(index.column_ids),
+      }));
+      const metadataColumnNames = (ids: string[]) => ids
+        .map(id => parsedNode.data.columns.find(column => column.id === id)?.name.toLowerCase())
+        .filter(Boolean)
+        .sort()
+        .join(',');
+      const primaryColumns = parsedNode.data.columns.filter(column => column.is_pk);
+      if (primaryColumns.length > 0 && !constraints.some(constraint => (
+        constraint.kind === 'primary_key' && metadataColumnNames(constraint.column_ids) === primaryColumns.map(column => column.name.toLowerCase()).sort().join(',')
+      ))) {
+        constraints.push({
+          id: metadataId('constraint', parsedNode.data.name, `primary_key:${primaryColumns.map(column => column.name).join(',')}`),
+          entity_id: node.data.id,
+          kind: 'primary_key',
+          name: null,
+          column_ids: remapColumnIds(primaryColumns.map(column => column.id)),
+        });
+      }
+      for (const column of parsedNode.data.columns.filter(item => item.is_unique)) {
+        const represented = indexes.some(index => index.is_unique && metadataColumnNames(index.column_ids) === column.name.toLowerCase())
+          || constraints.some(constraint => constraint.kind === 'unique' && metadataColumnNames(constraint.column_ids) === column.name.toLowerCase());
+        if (!represented) {
+          indexes.push({
+            id: metadataId('index', parsedNode.data.name, `unique:${column.name}`),
+            entity_id: node.data.id,
+            name: `unique:${column.name}`,
+            column_ids: remapColumnIds([column.id]),
+            is_unique: true,
+            algorithm: null,
+          });
+        }
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          comment: parsedNode.data.comment ?? node.data.comment,
+          constraints,
+          indexes,
+          columns: node.data.columns.map(column => {
+            const parsedColumn = parsedColumns.get(column.name.toLowerCase());
+            return parsedColumn
+              ? { ...column, default_value: normalizeColumnDefault(parsedColumn.default_value, Boolean(column.is_nullable)), is_unique: Boolean(parsedColumn.is_unique) }
+              : column;
+          }),
+        },
+      };
+    });
+  } catch {
+    return nodes;
+  }
 }
 
 /**
@@ -603,7 +729,8 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       if (col.is_pk) settings.push('pk');
       if (col.is_nullable === false) settings.push('not null');
       if (col.is_unique) settings.push('unique');
-      if (col.default_value) settings.push(`default: ${col.default_value}`);
+      const defaultValue = normalizeColumnDefault(col.default_value, Boolean(col.is_nullable));
+      if (defaultValue) settings.push(`default: ${defaultValue}`);
       if (col.comment) settings.push(`note: '${col.comment.replace(/'/g, "\\'")}'`);
       const suffix = settings.length ? ` [${settings.join(', ')}]` : '';
       const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
@@ -625,19 +752,29 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       }
       lines.push('  }');
     }
-    if (keyConstraints.length > 0 || indexes.length > 0) {
+    const renderableKeyConstraints = keyConstraints.filter((constraint: any) => {
+      const columns = (constraint.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
+      if (columns.length === 0) return false;
+      const column = columns.length === 1 ? node.data.columns.find(item => item.name === columns[0]) : null;
+      return !column || !((constraint.kind === 'primary_key' && column.is_pk) || (constraint.kind === 'unique' && column.is_unique));
+    });
+    const renderableIndexes = indexes.filter((index: any) => {
+      const columns = (index.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
+      if (columns.length === 0) return false;
+      const column = columns.length === 1 ? node.data.columns.find(item => item.name === columns[0]) : null;
+      return !(column && index.is_unique && column.is_unique && String(index.name).startsWith('unique:'));
+    });
+    if (renderableKeyConstraints.length > 0 || renderableIndexes.length > 0) {
       lines.push('  Indexes {');
-      for (const constraint of keyConstraints) {
+      for (const constraint of renderableKeyConstraints) {
         const columns = (constraint.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
-        if (columns.length === 0) continue;
-        const key = columns.length > 1 ? `(${columns.join(', ')})` : columns[0];
+        const key = `(${columns.join(', ')})`;
         const settings = [constraint.kind === 'primary_key' ? 'pk' : 'unique', constraint.name ? `name: \"${String(constraint.name).replace(/\"/g, '\\\"')}\"` : ''].filter(Boolean);
         lines.push(`    ${key} [${settings.join(', ')}]`);
       }
-      for (const index of indexes) {
+      for (const index of renderableIndexes) {
         const columns = (index.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
-        if (columns.length === 0) continue;
-        const key = columns.length > 1 ? `(${columns.join(', ')})` : columns[0];
+        const key = `(${columns.join(', ')})`;
         const settings = [index.is_unique ? 'unique' : '', index.algorithm ? `type: ${index.algorithm}` : '', `name: \"${String(index.name).replace(/\"/g, '\\\"')}\"`].filter(Boolean);
         lines.push(`    ${key} [${settings.join(', ')}]`);
       }

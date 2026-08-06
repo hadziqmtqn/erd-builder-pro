@@ -15,6 +15,7 @@ import { Entity, Column, Diagram, DraftType, Relationship } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
+import { getForeignKeyConstraintName } from '../lib/diagram-payload';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
  *  Works for any column ID format: "col-xxx", UUID, etc. */
@@ -416,7 +417,26 @@ export function useERDSession(
       }
     }
 
-    const candidate = { ...params, animated: false, type: 'smoothstep', label: '1:N' } as Edge;
+    const sourceColumnId = extractColumnIdFromHandle(params.sourceHandle);
+    const targetColumnId = extractColumnIdFromHandle(params.targetHandle);
+    const sourceColumn = sourceNode && sourceColumnId
+      ? erdIndexes.columnsByNodeAndId.get(erdColumnKey(sourceNode.id, sourceColumnId))
+      : undefined;
+    const targetColumn = targetNode && targetColumnId
+      ? erdIndexes.columnsByNodeAndId.get(erdColumnKey(targetNode.id, targetColumnId))
+      : undefined;
+    const foreignKeyNode = sourceColumn?.is_pk && !targetColumn?.is_pk ? targetNode : sourceNode;
+    const foreignKeyColumn = sourceColumn?.is_pk && !targetColumn?.is_pk ? targetColumn : sourceColumn;
+    const constraintName = foreignKeyNode && foreignKeyColumn
+      ? getForeignKeyConstraintName(foreignKeyNode.data.name, foreignKeyColumn.name)
+      : undefined;
+    const candidate = {
+      ...params,
+      animated: false,
+      type: 'smoothstep',
+      label: '1:N',
+      data: constraintName ? { constraint_name: constraintName } : undefined,
+    } as unknown as Edge;
     const candidateKey = getRelationKey(candidate);
     if (candidateKey && sourceNode && targetNode) {
       // === EXACT DUPLICATE (same source col + same target col) ===
