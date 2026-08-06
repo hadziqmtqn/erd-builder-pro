@@ -60,6 +60,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
+import { isInstalledApp } from "@/lib/api"
 
 import { Project, AppView } from "../types"
 import { SponsorCarousel } from "@/components/SponsorCarousel"
@@ -128,12 +129,13 @@ export const AppSidebar = React.memo(({
   const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState('all');
+  const showDbClient = isInstalledApp();
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'workspace', label: 'Workspaces' },
     { value: 'erd', label: 'ERD Builder' },
-    { value: 'db-client', label: 'DB Client' },
+    ...(showDbClient ? [{ value: 'db-client', label: 'DB Client' }] : []),
     { value: 'notes', label: 'Notes' },
     { value: 'flowchart', label: 'Flowcharts' },
     { value: 'drawings', label: 'Drawings' },
@@ -187,7 +189,7 @@ export const AppSidebar = React.memo(({
       isActive: activeFeatureView === 'erd',
       onClick: () => onViewChange('erd', true),
     },
-    {
+    ...(showDbClient ? [{
       title: "DB Client",
       url: "/table/db-client",
       icon: Cable,
@@ -197,7 +199,7 @@ export const AppSidebar = React.memo(({
         await onViewChange('erd', true);
         navigate('/table/db-client');
       },
-    },
+    }] : []),
     {
       title: "Flowchart",
       url: "#",
