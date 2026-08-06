@@ -1,7 +1,7 @@
 import { useCallback, useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Database, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
+import { dbmlToERD, erdToDBML, normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '@/lib/dbml-converter';
 import { Parser } from '@dbml/core';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
@@ -256,6 +256,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       const lines = text.split('\n');
       let currentTable = '';
       let inTable = false;
+      let metadataDepth = 0;
       const enumNames = readDBMLEnumNames(lines);
 
       // ── Type errors ──
@@ -268,6 +269,15 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
         if (tableName) {
           currentTable = tableName;
           inTable = true;
+          metadataDepth = 0;
+          continue;
+        }
+        if (inTable && /^(checks|indexes)\s*\{/i.test(trimmed)) {
+          metadataDepth = 1;
+          continue;
+        }
+        if (metadataDepth > 0) {
+          if (trimmed === '}') metadataDepth -= 1;
           continue;
         }
         if (trimmed === '}' || trimmed.startsWith('}')) {
@@ -376,7 +386,7 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({ value, onChange, 
       }
       if (depth === 0 && /\bTable\b/i.test(text)) {
         try {
-          Parser.parse(text, 'dbml');
+          Parser.parse(normalizeDBMLIndexSyntax(removeEmptyDBMLIndexes(text)), 'dbml');
         } catch (e: any) {
           const diags = e?.diags;
           if (diags) {

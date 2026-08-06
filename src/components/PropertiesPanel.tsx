@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ColumnTypeSelect } from './ColumnTypeSelect';
 import TableCodePanel from './diagram/TableCodePanel';
-import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
+import { normalizeColumnDefault, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 
 const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 const DEFAULT_VARCHAR_LENGTH = 255;
@@ -147,7 +147,7 @@ export default function PropertiesPanel({
       type: column.type,
       is_pk: false,
       is_nullable: column.is_nullable,
-      default_value: column.is_nullable ? 'NULL' : undefined,
+      default_value: normalizeColumnDefault(column.is_nullable ? 'NULL' : null, column.is_nullable),
       sort_order: nextSortOrder + index,
     }));
     const updated = { ...editingEntity, columns: [...editingEntity.columns, ...generatedColumns] };
@@ -221,9 +221,10 @@ export default function PropertiesPanel({
       columns: editingEntity.columns.map(c => {
         if (c.id !== colId) return c;
         const next = { ...c, ...updates };
-        return Boolean(next.is_nullable) && !String(next.default_value ?? '').trim()
+        const defaultValue = normalizeColumnDefault(next.default_value, Boolean(next.is_nullable));
+        return Boolean(next.is_nullable) && !defaultValue
           ? { ...next, default_value: 'NULL' }
-          : next;
+          : { ...next, default_value: defaultValue };
       }),
     };
     setEditingEntity(updated);

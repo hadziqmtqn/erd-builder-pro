@@ -6,7 +6,7 @@ import { localPersistence } from '../lib/localPersistence';
 import { edgeToRelationship } from '../lib/diagram-payload';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
-import { dbmlToERD, erdToDBML } from '../lib/dbml-converter';
+import { applyDBMLMetadata, dbmlToERD, erdToDBML } from '../lib/dbml-converter';
 
 function normalizeDiagramRecord(diagram: any): Diagram {
   if (!diagram) return diagram;
@@ -457,6 +457,16 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           : fallbackDbmlSource
       );
       dbmlKeys.forEach(key => { dbmlSourceRef.current[key] = nextDbmlSource; });
+
+      const shouldApplyDbmlMetadata = !isProductionDb && !!nextDbmlSource.trim() && (
+        dbmlSource !== undefined ||
+        shouldRefreshDbmlFromCanvas ||
+        nodes.some(node => !Array.isArray(node.data.constraints) || !Array.isArray(node.data.indexes))
+      );
+      const persistedNodes = shouldApplyDbmlMetadata
+        ? applyDBMLMetadata(nodes, nextDbmlSource)
+        : nodes;
+      const persistedSchemaFingerprint = schemaFingerprint(persistedNodes, edges);
       
       let data: string;
       if (isProductionDb) {
@@ -481,7 +491,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         });
       } else {
         // Scratch diagram: save full nodes + edges
-        data = JSON.stringify({ nodes, edges, viewport, dbml_source: nextDbmlSource, schema_fingerprint: nextSchemaFingerprint });
+        data = JSON.stringify({ nodes: persistedNodes, edges, viewport, dbml_source: nextDbmlSource, schema_fingerprint: persistedSchemaFingerprint });
       }
       
       const isSyncPending = !isGuestCheck();
@@ -493,7 +503,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           diagram = allDiagrams.find((d: any) => d.uid === activeDiagramId) || null;
         }
         if (diagram) {
-          const entities: Entity[] = nodes.map(n => ({
+          const entities: Entity[] = persistedNodes.map(n => ({
             ...n.data,
             x: n.position.x,
             y: n.position.y,
@@ -512,7 +522,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         } else {
           // Resource not found — create a new one from scratch (edge case: race condition
           // where the resource was created but not yet available in IndexedDB)
-          const entities: Entity[] = nodes.map(n => ({
+          const entities: Entity[] = persistedNodes.map(n => ({
             ...n.data,
             x: n.position.x,
             y: n.position.y,

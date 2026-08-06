@@ -1,5 +1,5 @@
 import { Entity } from '../types';
-import { supportsColumnLength } from './column-metadata';
+import { normalizeColumnDefault, supportsColumnLength } from './column-metadata';
 
 export type SQLType = 'mysql' | 'postgresql' | 'laravel';
 
@@ -231,11 +231,12 @@ export function generateMySQL(entity: Entity): string {
     const enumValues = col.type.toLowerCase() === 'enum' && col.enum_values 
       ? `ENUM(${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')})`
       : type;
-    const defaultValue = col.default_value ? ` DEFAULT ${col.default_value}` : '';
+    const defaultValue = normalizeColumnDefault(col.default_value, Boolean(col.is_nullable));
+    const defaultClause = defaultValue ? ` DEFAULT ${defaultValue}` : '';
     const unique = col.is_unique ? ' UNIQUE' : '';
     const comment = col.comment ? ` COMMENT '${col.comment.replace(/'/g, "''")}'` : '';
       
-    return `  \`${col.name}\` ${enumValues}${defaultValue} ${nullable}${unique}${pk}${comment}`;
+    return `  \`${col.name}\` ${enumValues}${defaultClause} ${nullable}${unique}${pk}${comment}`;
   }).join(',\n');
 
   const tableComment = entity.comment ? ` COMMENT='${entity.comment.replace(/'/g, "''")}'` : '';
@@ -256,18 +257,19 @@ export function generatePostgreSQL(entity: Entity): string {
     }
 
     const pk = col.is_pk ? ' PRIMARY KEY' : '';
-    const defaultValue = col.default_value ? ` DEFAULT ${col.default_value}` : '';
+    const defaultValue = normalizeColumnDefault(col.default_value, Boolean(col.is_nullable));
+    const defaultClause = defaultValue ? ` DEFAULT ${defaultValue}` : '';
     const unique = col.is_unique ? ' UNIQUE' : '';
     
     // Handle ENUM for PG (simplified to CHECK constraint for direct SQL export)
     if (col.type.toLowerCase() === 'enum' && col.enum_values) {
       const values = col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ');
       if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
-      return `  "${col.name}" VARCHAR(${col.max_length || 255})${defaultValue} ${nullable}${unique}${pk} CHECK ("${col.name}" IN (${values}))`;
+      return `  "${col.name}" VARCHAR(${col.max_length || 255})${defaultClause} ${nullable}${unique}${pk} CHECK ("${col.name}" IN (${values}))`;
     }
       
     if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
-    return `  "${col.name}" ${columnType}${defaultValue} ${nullable}${unique}${pk}`;
+    return `  "${col.name}" ${columnType}${defaultClause} ${nullable}${unique}${pk}`;
   }).join(',\n');
 
   const table = `CREATE TABLE "${tableName}" (\n${columns}\n);`;

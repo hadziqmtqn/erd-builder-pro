@@ -143,6 +143,20 @@ describe('generateMySQL', () => {
     expect(generateGoravelMigration(entity)).toContain('table.Unique("email", "tenant_id")');
     expect(generateGoravelMigration(entity)).toContain('table.Index("tenant_id")');
   });
+
+  it('does not export DEFAULT NULL for NOT NULL columns', () => {
+    const entity = makeEntity('addresses', [
+      { name: 'created_at', type: 'TIMESTAMP', is_nullable: false, default_value: 'NULL' },
+      { name: 'updated_at', type: 'TIMESTAMP', is_nullable: false, default_value: 'NULL' },
+      { name: 'deleted_at', type: 'TIMESTAMP', is_nullable: true, default_value: 'NULL' },
+    ]);
+
+    const sql = generateMySQL(entity);
+    expect(sql).toContain('`created_at` TIMESTAMP NOT NULL');
+    expect(sql).toContain('`updated_at` TIMESTAMP NOT NULL');
+    expect(sql).toContain('`deleted_at` TIMESTAMP DEFAULT NULL NULL');
+    expect(sql).not.toContain('DEFAULT NULL NOT NULL');
+  });
 });
 
 describe('generatePostgreSQL', () => {

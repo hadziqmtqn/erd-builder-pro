@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { edgeToRelationship } from '../diagram-payload';
+import { edgeToRelationship, getForeignKeyConstraintName } from '../diagram-payload';
 
 describe('edgeToRelationship', () => {
+  it('generates a stable foreign-key constraint name', () => {
+    expect(getForeignKeyConstraintName('addresses', 'user_id')).toBe('fk_addresses_user_id');
+  });
+
   it('keeps foreign-key metadata in the sync payload', () => {
     expect(edgeToRelationship({
       id: 'fk-1',
