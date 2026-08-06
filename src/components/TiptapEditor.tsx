@@ -37,6 +37,7 @@ import {
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
 import { TableBubbleMenu } from './editor/menus/TableBubbleMenu';
+import { TableContextMenu } from './editor/menus/TableContextMenu';
 import { DocumentOutline, HeadingInfo } from './editor/panels/DocumentOutline';
 import { LinkDialog } from './editor/dialogs/LinkDialog';
 import { FileMentionMenu, FileMentionOption } from './editor/FileMentionMenu';
@@ -101,6 +102,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const navigate = useNavigate();
   const { notes, diagrams, flowcharts, drawings, projects, isGuest } = useWorkspace();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
+  const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean | null>(null);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +121,14 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   });
 
   const [loadedMentionFiles, setLoadedMentionFiles] = React.useState<FileMentionOption[]>([]);
+
+  React.useEffect(() => {
+    const pointerQuery = window.matchMedia('(pointer: coarse)');
+    const updatePointerMode = () => setIsCoarsePointer(pointerQuery.matches);
+    updatePointerMode();
+    pointerQuery.addEventListener('change', updatePointerMode);
+    return () => pointerQuery.removeEventListener('change', updatePointerMode);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -709,12 +719,14 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
           {editor && !isReadOnly && (
             <>
               <TextBubbleMenu editor={editor} openLinkDialog={openLinkDialog} showSendToAIButton={disableAISelection} />
-              <TableBubbleMenu editor={editor} />
+              {isCoarsePointer && <TableBubbleMenu editor={editor} />}
             </>
           )}
 
           <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none tiptap-editor prose-code:before:content-none prose-code:after:content-none prose-blockquote:before:content-none prose-blockquote:after:content-none">
-            <EditorContent editor={editor} />
+            <TableContextMenu editor={editor} disabled={isCoarsePointer !== false}>
+              <EditorContent editor={editor} />
+            </TableContextMenu>
           </div>
         </div>
       </div>

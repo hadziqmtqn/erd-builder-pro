@@ -5,8 +5,8 @@ const START_X = 50;
 const START_Y = 50;
 const COL_TO_WIDTH_ESTIMATE = 6;
 const BASE_TABLE_WIDTH = 220;
-const MIN_HORIZONTAL_SPACING = 280;
-const HORIZONTAL_PADDING = 32;
+const HORIZONTAL_GAP = 24;
+const VERTICAL_GAP = 32;
 
 const HEADER_H = 44;
 const ROW_H = 36;
@@ -86,35 +86,43 @@ export function autoLayoutERD(
     data: { ...n.data },
   }));
 
-  // Compute dynamic spacing based on the largest table dimensions
-  const maxEstWidth = Math.max(...result.map(estimateNodeWidth), 0);
-  const maxEstHeight = Math.max(...result.map(estimateNodeHeight), 0);
-  const H_SPACING = Math.max(maxEstWidth + HORIZONTAL_PADDING, MIN_HORIZONTAL_SPACING);
-  const V_SPACING = maxEstHeight + 72; // vertical gap between layers
+  const nodesById = new Map(result.map(node => [node.id, node]));
+  const layerSizes = new Map<number, { width: number; height: number }>();
 
-  const maxLayerWidth = Math.max(...[...layers.values()].map(l => l.length));
-  const canvasWidth = START_X + maxLayerWidth * H_SPACING;
+  for (const [layer, ids] of layers) {
+    const width = ids.reduce((total, id) => total + estimateNodeWidth(nodesById.get(id)!), 0)
+      + Math.max(0, ids.length - 1) * HORIZONTAL_GAP;
+    const height = Math.max(...ids.map(id => estimateNodeHeight(nodesById.get(id)!)), 0);
+    layerSizes.set(layer, { width, height });
+  }
+
+  const canvasWidth = Math.max(...[...layerSizes.values()].map(size => size.width), 0);
+  let currentY = START_Y;
 
   for (const [layer, ids] of layers) {
     ids.sort((a, b) => {
-      const na = result.find(n => n.id === a)?.data.name || '';
-      const nb = result.find(n => n.id === b)?.data.name || '';
+      const na = nodesById.get(a)?.data.name || '';
+      const nb = nodesById.get(b)?.data.name || '';
       return na.localeCompare(nb);
     });
 
-    const totalWidth = ids.length * H_SPACING;
-    const startX = Math.max(START_X, (canvasWidth - totalWidth) / 2);
-    const y = START_Y + layer * V_SPACING;
+    const { width: layerWidth, height: layerHeight } = layerSizes.get(layer)!;
+    const startX = START_X + (canvasWidth - layerWidth) / 2;
+    const y = currentY;
+    let x = startX;
 
-    for (let i = 0; i < ids.length; i++) {
-      const node = result.find(n => n.id === ids[i]);
+    for (const id of ids) {
+      const node = nodesById.get(id);
       if (node) {
         node.position = {
-          x: startX + i * H_SPACING,
+          x,
           y,
         };
+        x += estimateNodeWidth(node) + HORIZONTAL_GAP;
       }
     }
+
+    currentY += layerHeight + VERTICAL_GAP;
   }
 
   return result;
