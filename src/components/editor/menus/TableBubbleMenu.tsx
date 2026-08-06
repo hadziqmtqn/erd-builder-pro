@@ -19,13 +19,16 @@ import {
   AlignRight 
 } from 'lucide-react';
 import { Editor } from '@tiptap/react';
-import { TableMap } from '@tiptap/pm/tables';
+import { CellSelection, selectedRect, TableMap } from '@tiptap/pm/tables';
 
 interface TableBubbleMenuProps {
   editor: Editor;
 }
 
 export function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
+  const isMultiRowSelection = editor.state.selection instanceof CellSelection
+    && selectedRect(editor.state).bottom - selectedRect(editor.state).top > 1;
+
   const moveColumn = (direction: 'left' | 'right') => {
     const { state, view } = editor;
     const { selection } = state;
@@ -91,7 +94,8 @@ export function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
       pluginKey="tableMenu"
       updateDelay={0}
       shouldShow={({ editor }) => {
-        return editor.isFocused && editor.isActive('table');
+        return editor.isFocused
+          && (editor.isActive('table') || editor.state.selection instanceof CellSelection);
       }}
       {...({ tippyOptions: { duration: 100, zIndex: 9999, placement: 'top', appendTo: () => document.body } } as any)}
       className="flex gap-0.5 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
@@ -162,6 +166,13 @@ export function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10001] min-w-[160px] flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100" sideOffset={8}>
                   <DropdownMenu.Item
+                    onSelect={() => editor.chain().focus().addRowBefore().run()}
+                    className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                    <span>Add Row Above</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
                     onSelect={() => editor.chain().focus().addRowAfter().run()}
                     className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none"
                   >
@@ -173,7 +184,7 @@ export function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
                     className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none text-destructive hover:text-destructive focus:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
-                    <span>Delete Row</span>
+                    <span>{isMultiRowSelection ? 'Delete Selected Rows' : 'Delete Row'}</span>
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator className="h-[1px] bg-border my-1" />
                   <DropdownMenu.Item
@@ -212,10 +223,17 @@ export function TableBubbleMenu({ editor }: TableBubbleMenuProps) {
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent className="bg-popover border border-border p-1.5 rounded-lg shadow-lg z-[10001] min-w-[160px] flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100" sideOffset={8}>
                   <DropdownMenu.Item
+                    onSelect={() => editor.chain().focus().addColumnBefore().run()}
+                    className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Add Column Before</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
                     onSelect={() => editor.chain().focus().addColumnAfter().run()}
                     className="flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer hover:bg-accent focus:bg-accent outline-none"
                   >
-                    <Columns className="w-4 h-4" />
+                    <ArrowRight className="w-4 h-4" />
                     <span>Add Column After</span>
                   </DropdownMenu.Item>
                   <DropdownMenu.Item

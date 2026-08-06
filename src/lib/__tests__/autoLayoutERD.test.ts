@@ -199,4 +199,22 @@ describe('autoLayoutERD', () => {
     const gap = Math.abs(result[1].position.x - result[0].position.x);
     expect(gap).toBeGreaterThanOrEqual(220); // at least BASE_TABLE_WIDTH
   });
+
+  it('does not use the widest table to space every sibling', () => {
+    const wide = Array.from({ length: 20 }, (_, i) => ({
+      name: `wide_col_${i}`,
+      type: 'VARCHAR(255)',
+    }));
+    const nodes = [
+      makeNode('t1', 'alpha'),
+      makeNode('t2', 'small'),
+      makeNode('t3', 'wide', wide),
+    ];
+
+    const result = autoLayoutERD(nodes, []);
+    const alpha = result.find(n => n.id === 't1')!;
+    const small = result.find(n => n.id === 't2')!;
+
+    expect(small.position.x - alpha.position.x).toBe(244);
+  });
 });

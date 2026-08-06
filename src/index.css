@@ -255,10 +255,10 @@
   }
 }
 
-/* Connected edges when node selected — non-white color + dash animation */
+/* Connected edges when node selected — animate briefly, then stay static */
 .edge-animated-active .react-flow__edge-path {
   stroke-dasharray: 5;
-  animation: edge_dash_draw 0.5s linear infinite !important;
+  animation: edge_dash_draw 0.8s linear 4 !important;
   stroke: var(--edge-selected) !important;
   stroke-width: 1.5 !important;
 }

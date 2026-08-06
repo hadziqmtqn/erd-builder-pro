@@ -6,6 +6,7 @@ import { useAIAction } from '@/contexts/AIActionContext';
 import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, Code, Link, Palette, Check } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Editor } from '@tiptap/react';
+import { CellSelection } from '@tiptap/pm/tables';
 
 interface TextBubbleMenuProps {
   editor: Editor;
@@ -29,7 +30,10 @@ export function TextBubbleMenu({ editor, openLinkDialog, showSendToAIButton = fa
       editor={editor}
       pluginKey="textMenu"
       shouldShow={({ editor, state }) => {
-        return editor.isFocused && editor.isEditable && !state.selection.empty;
+        return editor.isFocused
+          && editor.isEditable
+          && !state.selection.empty
+          && !(state.selection instanceof CellSelection);
       }}
       {...{ tippyOptions: { duration: 100, zIndex: 9999, placement: 'bottom-start', appendTo: () => document.body } } as any}
       className="flex gap-1 p-1 bg-popover border border-border shadow-lg rounded-md overflow-hidden"
