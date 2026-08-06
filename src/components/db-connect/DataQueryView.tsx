@@ -256,7 +256,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
       const res = await apiFetch(`/api/catalogs/${connectionId}/query/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: scriptOverride ?? tab.script, limit: 200 }),
+        body: JSON.stringify({ script: scriptOverride ?? tab.script }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to run SQL query');

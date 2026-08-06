@@ -22,6 +22,7 @@ import { DBConnectPanel } from '@/components/db-connect/DBConnectPanel';
 import { Input } from '@/components/ui/input';
 
 interface ErdTableViewProps {
+  mode?: 'erd' | 'db-client';
   diagrams: Diagram[];
   projects: Project[];
   selectedWorkspace: string | null;
@@ -29,7 +30,7 @@ interface ErdTableViewProps {
   totalDiagrams: number;
   isLoading: boolean;
   onSelectDiagram: (uid: string) => void;
-  onCreateDiagram: () => void;
+  onCreateDiagram?: () => void;
   onPageChange: (page: number) => void;
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
@@ -80,6 +81,7 @@ const formatSourceType = (st?: string): string => {
 };
 
 export const ErdTableView = React.memo(function ErdTableView({
+  mode = 'erd',
   diagrams,
   projects,
   selectedWorkspace,
@@ -96,6 +98,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   onSearchChange,
   searchRef,
 }: ErdTableViewProps) {
+  const isDbClient = mode === 'db-client';
   const totalPages = Math.max(1, Math.ceil(totalDiagrams / ITEMS_PER_PAGE));
   const [dbConnectOpen, setDbConnectOpen] = useState(false);
   const showDbConnect = typeof window !== 'undefined' && (
@@ -188,7 +191,7 @@ export const ErdTableView = React.memo(function ErdTableView({
       <div className="flex flex-col gap-3 shrink-0">
         <div className="flex items-center gap-2">
           <Columns3 className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-lg font-semibold">ERD Builder</h2>
+          <h2 className="text-lg font-semibold">{isDbClient ? 'DB Client' : 'ERD Builder'}</h2>
           {selectedWorkspace && (
             <>
               <span className="text-muted-foreground">/</span>
@@ -201,7 +204,7 @@ export const ErdTableView = React.memo(function ErdTableView({
             </>
           )}
           <span className="text-xs text-muted-foreground ml-2">
-            ({totalDiagrams} diagrams)
+            ({totalDiagrams} {isDbClient ? 'files' : 'diagrams'})
           </span>
         </div>
         <div className="flex items-center justify-between gap-2">
@@ -210,7 +213,7 @@ export const ErdTableView = React.memo(function ErdTableView({
             <Input
               ref={searchRef}
               type="text"
-              placeholder="Search diagrams..."
+              placeholder={isDbClient ? 'Search DB Client files...' : 'Search diagrams...'}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="h-8 pl-8 text-xs"
@@ -237,11 +240,11 @@ export const ErdTableView = React.memo(function ErdTableView({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button size="sm" onClick={onCreateDiagram}>
+            {!isDbClient && <Button size="sm" onClick={onCreateDiagram}>
               <Plus className="w-4 h-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Create Diagram</span>
-            </Button>
-            {showDbConnect && (
+            </Button>}
+            {showDbConnect && isDbClient && (
               <Button size="sm" variant="outline" onClick={() => setDbConnectOpen(true)}>
                 <Cable className="w-4 h-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">DB Connect</span>
@@ -268,8 +271,8 @@ export const ErdTableView = React.memo(function ErdTableView({
               <TableRow>
                 <TableCell colSpan={visibleCols.length} className="h-32 text-center text-muted-foreground">
                   {totalDiagrams === 0
-                    ? 'No diagrams yet. Create your first ERD diagram to get started.'
-                    : 'No diagrams on this page.'}
+                    ? (isDbClient ? 'No DB Client files yet. Connect a database to get started.' : 'No diagrams yet. Create your first ERD diagram to get started.')
+                    : (isDbClient ? 'No DB Client files on this page.' : 'No diagrams on this page.')}
                 </TableCell>
               </TableRow>
             ) : (

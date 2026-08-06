@@ -13,11 +13,15 @@ function whereClause(userId: string, query: {
   projectId?: string | null;
   q?: string;
   isPublic?: boolean | null;
+  sourceType?: string;
 }) {
   const where: any = { isDeleted: false, userId };
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
     where.isPublic = query.isPublic;
+  }
+  if (query.sourceType) {
+    where.sourceType = query.sourceType;
   }
   if (query.q?.trim()) {
     where.name = { contains: query.q.trim(), mode: "insensitive" };
@@ -177,7 +181,7 @@ export { upsertRelationships };
 
 export async function listDiagrams(
   userId: string,
-  params: { limit: number; offset: number; projectId?: string; q?: string; isPublic?: boolean | null }
+  params: { limit: number; offset: number; projectId?: string; q?: string; isPublic?: boolean | null; sourceType?: string }
 ) {
   const where = whereClause(userId, params);
   await addDeletedProjectFilter(where, userId);

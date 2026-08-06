@@ -16,9 +16,11 @@ export async function list(req: ExpressRequest, res: ExpressResponse): Promise<v
     const q = req.query.q as string;
     const rawPublic = req.query.is_public as string;
     const isPublic = rawPublic === "true" ? true : rawPublic === "false" ? false : null;
+    const rawSourceType = req.query.source_type as string;
+    const sourceType = rawSourceType === "blank" || rawSourceType === "production_db" ? rawSourceType : undefined;
     const userId = (req as any).user.id;
 
-    const result = await diagService.listDiagrams(userId, { limit, offset, projectId, q, isPublic });
+    const result = await diagService.listDiagrams(userId, { limit, offset, projectId, q, isPublic, sourceType });
     res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to fetch diagrams");

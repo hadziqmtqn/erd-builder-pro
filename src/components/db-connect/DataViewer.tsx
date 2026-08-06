@@ -129,11 +129,18 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   }, [recordEditor.selectRow, recordEditor.selectRows, records, rowKey]);
   const handleSelectRow = useCallback((row: Record<string, any>, event: React.MouseEvent) => {
     if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
+    if ((event.metaKey || event.ctrlKey) && primaryKeyColumns.length > 0) {
+      const selected = recordEditor.selectedRowKeys.has(rowKey(row));
+      recordEditor.toggleSelectedRow(row, !selected);
+      recordEditor.selectRow(row);
+      lastRecordRowKeyRef.current = rowKey(row);
+      return;
+    }
     if (event.shiftKey && selectRecordRange(row)) return;
     lastRecordRowKeyRef.current = rowKey(row);
     recordEditor.selectRows([row]);
     recordEditor.selectRow(row);
-  }, [recordEditor.selectRow, recordEditor.selectRows, rowKey, selectRecordRange, warnUnsaved]);
+  }, [primaryKeyColumns.length, recordEditor.selectRow, recordEditor.selectRows, recordEditor.selectedRowKeys, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
   const handleToggleSelectedRow = useCallback((row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => {
     if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
     if (checked && event?.shiftKey && selectRecordRange(row)) return;

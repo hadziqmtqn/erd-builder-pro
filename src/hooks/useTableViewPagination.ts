@@ -49,6 +49,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
   // Only fetch paginated data when on an actual table route — skip on dashboard
   // and editor routes where the initial fetch already provides the data.
   const isTableView = pathname.startsWith('/table/');
+  const isDbClientTable = pathname === '/table/db-client';
 
   // Resolve workspace filter identifier (uid or numeric id) to a project id
   // for the API call. Falls back to id when uid is null (e.g. SQLite).
@@ -94,13 +95,27 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
 
   // 🗂 Server-side pagination: fetch erd
   useEffect(() => {
-    const isTableMode = view === 'erd' && !hasActiveItem && isTableView;
+    const isTableMode = view === 'erd' && !hasActiveItem && isTableView && !isDbClientTable;
     if (!isTableMode || !isAuthenticated || isPublicView) return;
 
     const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    triggerFetch(fetchDiagrams, projId, pageNum, {});
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
+    const isUserAction = tableLoadingState === 'loading';
+    const options = isUserAction ? { page: pageNum, sourceType: 'blank' } : { silent: true, page: pageNum, sourceType: 'blank' };
+    const promise = (fetchDiagrams as (...args: any[]) => Promise<any>)(false, projId, fileSearchQuery, null, 10, pageNum, options);
+    if (isUserAction && promise?.then) promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
+  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, isDbClientTable, tableLoadingState]);
+
+  // DB Client keeps its own production-database history.
+  useEffect(() => {
+    if (!isDbClientTable || !isAuthenticated || isPublicView) return;
+    const projId = resolveProjectId(selectedWorkspaceUid);
+    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
+    const isUserAction = tableLoadingState === 'loading';
+    const options = isUserAction ? { page: pageNum, sourceType: 'production_db' } : { silent: true, page: pageNum, sourceType: 'production_db' };
+    const promise = (fetchDiagrams as (...args: any[]) => Promise<any>)(false, projId, fileSearchQuery, null, 10, pageNum, options);
+    if (isUserAction && promise?.then) promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
+  }, [isDbClientTable, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, tableLoadingState]);
 
   // 🗂 Server-side pagination: fetch flowcharts
   useEffect(() => {

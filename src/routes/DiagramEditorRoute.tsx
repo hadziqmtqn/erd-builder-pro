@@ -36,6 +36,7 @@ export function DiagramEditorRoute() {
   const [queryInitialTable, setQueryInitialTable] = useState<string | null>(null);
   const [queryOpenNonce, setQueryOpenNonce] = useState(0);
   const [dbType, setDbType] = useState<string | null>(null);
+  const isDbClientRoute = searchParams.get('feature') === 'db-client';
 
   // Read snake_case fields from API response (camelToSnake middleware converts all)
   const isProductionDb = useMemo(() => {
@@ -141,7 +142,7 @@ export function DiagramEditorRoute() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <ProjectFileTabs currentView="erd" />
+      <ProjectFileTabs currentView={isDbClientRoute ? 'db-client' : 'erd'} />
       {/* Tab bar — only for production DB diagrams */}
       {isProductionDb && !isPublicView && (
         <DataViewerModeToolbar activeMode={diagramTab} dbType={dbType} onModeChange={setDiagramTab} />

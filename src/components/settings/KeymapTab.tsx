@@ -29,6 +29,7 @@ const dbClientKeymaps = [
   ['Toggle filters', '⌘ F', 'Ctrl F'],
   ['Refresh records', '⌘ R', 'Ctrl R'],
   ['Select all records', '⌘ A', 'Ctrl A'],
+  ['Add or remove a record from selection', '⌘ Click', 'Ctrl Click'],
   ['Save record or structure', '⌘ S', 'Ctrl S'],
   ['Run SQL query', '⌘ Enter', 'Ctrl Enter'],
   ['Format SQL query', '⌘ I', 'Ctrl I'],

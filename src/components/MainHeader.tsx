@@ -126,6 +126,7 @@ export const MainHeader = React.memo(({
                 const tableLabels: Record<string, string> = {
                   notes: 'Notes',
                   erd: 'ERD Builder',
+                  'db-client': 'DB Client',
                   drawings: 'Drawings',
                   flowchart: 'Flowcharts',
                 };
@@ -141,13 +142,15 @@ export const MainHeader = React.memo(({
               // Document editors
               if (path.startsWith('/notes/') || path.startsWith('/diagrams/') || path.startsWith('/drawings/') || path.startsWith('/flowcharts/')) {
                 const editorInfo: Record<string, { label: string; href: string }> = {
-                  notes: { label: 'Notes', href: '/table/notes' },
-                  diagrams: { label: 'ERD Builder', href: '/table/erd' },
+                    notes: { label: 'Notes', href: '/table/notes' },
+                    diagrams: { label: 'ERD Builder', href: '/table/erd' },
                   drawings: { label: 'Drawings', href: '/table/drawings' },
                   flowcharts: { label: 'Flowcharts', href: '/table/flowchart' },
                 };
                 const segment = path.split('/')[1];
-                const info = editorInfo[segment];
+                const info = new URLSearchParams(location.search).get('feature') === 'db-client'
+                  ? { label: 'DB Client', href: '/table/db-client' }
+                  : editorInfo[segment];
                 return (
                   <>
                     {info && (
