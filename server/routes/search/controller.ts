@@ -19,3 +19,12 @@ export async function list(req: ExpressRequest, res: ExpressResponse): Promise<v
     handleError(res, err, "Failed to search workspace");
   }
 }
+
+export async function listFiles(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const data = await service.listMentionFiles((req as any).user.id);
+    res.json({ data });
+  } catch (err: any) {
+    handleError(res, err, "Failed to list workspace files");
+  }
+}

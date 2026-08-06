@@ -13,7 +13,6 @@ import {
   FileText,
   ArrowUpRight,
   Loader2,
-  ChevronDown,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -59,7 +58,6 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import { Project, AppView } from "../types"
 import { SponsorCarousel } from "@/components/SponsorCarousel"
@@ -127,7 +125,6 @@ export const AppSidebar = React.memo(({
   const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState('all');
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
@@ -140,7 +137,6 @@ export const AppSidebar = React.memo(({
   const visibleSearchResults = searchFilter === 'all'
     ? globalSearchResults
     : globalSearchResults.filter((result: any) => result.type === searchFilter);
-  const activeSearchFilter = searchFilterOptions.find((option) => option.value === searchFilter) || searchFilterOptions[0];
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -359,12 +355,16 @@ export const AppSidebar = React.memo(({
       <Dialog open={isSearchOpen} onOpenChange={(open) => {
         setIsSearchOpen(open);
         if (!open) {
-          setIsFilterOpen(false);
           setSearchFilter('all');
           onSearchChange('');
         }
       }}>
-        <DialogContent size="2xl" showCloseButton={false} className="top-[27%] sm:max-w-2xl">
+        <DialogContent
+          size="2xl"
+          showCloseButton={false}
+          className="!translate-y-0 max-h-[76vh] sm:max-w-2xl"
+          style={{ top: '12vh' }}
+        >
           <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
             <Search className="size-5 shrink-0 text-muted-foreground" />
             <input
@@ -377,34 +377,20 @@ export const AppSidebar = React.memo(({
             />
             <kbd className="rounded-lg border border-border/60 bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">ESC</kbd>
           </div>
-          <div className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5 text-sm">
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-border/60 px-4 py-2.5 text-sm">
             <span className="text-muted-foreground">Filter:</span>
-            <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-              <PopoverTrigger
-                render={
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium hover:bg-accent"
-                  />
-                }
-              >
-                {activeSearchFilter.label}
-                <ChevronDown className={`size-3.5 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} />
-              </PopoverTrigger>
-              <PopoverContent align="start" side="bottom" className="w-44 p-1.5">
-                {searchFilterOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => { setSearchFilter(option.value); setIsFilterOpen(false); }}
-                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm ${searchFilter === option.value ? 'bg-accent font-medium' : 'hover:bg-accent/60'}`}
-                  >
-                    {option.label}
-                    {searchFilter === option.value && <span aria-hidden="true">✓</span>}
-                  </button>
-                ))}
-              </PopoverContent>
-            </Popover>
+            <div className="flex min-w-max items-center gap-1">
+              {searchFilterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setSearchFilter(option.value)}
+                  className={`rounded-md px-2.5 py-1 font-medium transition-colors ${searchFilter === option.value ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
           {(isGlobalSearchLoading || searchQuery.trim().length >= 2) && (
             <div className="max-h-[min(26rem,60vh)] overflow-y-auto p-2">

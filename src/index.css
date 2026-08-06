@@ -727,20 +727,33 @@ code:not(pre code) {
   outline-offset: 2px;
 }
 
-ul[data-type="taskList"] {
+.tiptap-editor ul[data-type="taskList"] {
   list-style: none !important;
+  margin: 0 !important;
+  padding: 0 0 0 1rem !important;
+}
+
+.tiptap-editor ul[data-type="taskList"]>li {
+  display: flex !important;
+  align-items: flex-start !important;
+  list-style: none !important;
+  margin: 0 0 0.2rem !important;
   padding: 0 !important;
+}
+
+/* A task list nested under a bullet/numbered item should share that item's list column. */
+.tiptap-editor ul:not([data-type="taskList"]) li>ul[data-type="taskList"],
+.tiptap-editor ol:not([data-type="taskList"]) li>ul[data-type="taskList"] {
+  margin-left: -2rem !important;
+  padding-left: 0 !important;
+}
+
+.tiptap-editor ul[data-type="taskList"] li>ul[data-type="taskList"] {
+  margin-left: 0 !important;
   padding-left: 2rem !important;
 }
 
-ul[data-type="taskList"] li {
-  display: flex !important;
-  align-items: flex-start !important;
-  margin-bottom: 0.2rem !important;
-  margin-left: -0.5rem !important;
-}
-
-ul[data-type="taskList"] li>label {
+.tiptap-editor ul[data-type="taskList"] li>label {
   display: flex !important;
   align-items: flex-start !important;
   flex: 0 0 auto !important;
@@ -748,15 +761,15 @@ ul[data-type="taskList"] li>label {
   user-select: none !important;
 }
 
-ul[data-type="taskList"] li>div {
+.tiptap-editor ul[data-type="taskList"] li>div {
   flex: 1 1 auto !important;
 }
 
-ul[data-type="taskList"] li>div>p {
+.tiptap-editor ul[data-type="taskList"] li>div>p {
   margin: 0 !important;
 }
 
-ul[data-type="taskList"] input[type="checkbox"] {
+.tiptap-editor ul[data-type="taskList"] input[type="checkbox"] {
   cursor: pointer !important;
   width: 1.25rem !important;
   height: 1.25rem !important;
@@ -770,12 +783,12 @@ ul[data-type="taskList"] input[type="checkbox"] {
   transition: all 0.2s ease-in-out !important;
 }
 
-ul[data-type="taskList"] input[type="checkbox"]:checked {
+.tiptap-editor ul[data-type="taskList"] input[type="checkbox"]:checked {
   background-color: var(--primary) !important;
   border-color: var(--primary) !important;
 }
 
-ul[data-type="taskList"] input[type="checkbox"]:checked::after {
+.tiptap-editor ul[data-type="taskList"] input[type="checkbox"]:checked::after {
   content: "" !important;
   width: 0.375rem !important;
   height: 0.625rem !important;
@@ -785,7 +798,7 @@ ul[data-type="taskList"] input[type="checkbox"]:checked::after {
   margin-bottom: 0.125rem !important;
 }
 
-ul[data-type="taskList"] li[data-checked="true"]>div>p {
+.tiptap-editor ul[data-type="taskList"] li[data-checked="true"]>div>p {
   @apply text-muted-foreground/50;
   text-decoration: none !important;
 }
