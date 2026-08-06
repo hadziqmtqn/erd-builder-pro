@@ -4,6 +4,7 @@ import { DraftType } from '../types';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion, updateCachedDiagramVersion, clearCachedDiagramVersion, refreshDiagramVersion } from '../lib/diagramVersioning';
+import { edgeToRelationship } from '../lib/diagram-payload';
 
 export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean = false) {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -140,17 +141,7 @@ export function useSyncService(isAuthenticated: boolean | null, isGuest: boolean
                     x: n.position?.x || 0,
                     y: n.position?.y || 0,
                   }));
-                  const relationships = (parsedData.edges || []).map((e: any) => ({
-                    id: e.id,
-                    source_entity_id: e.source,
-                    target_entity_id: e.target,
-                    source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-                    target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-                    source_handle: e.sourceHandle || undefined,
-                    target_handle: e.targetHandle || undefined,
-                    type: 'one-to-many',
-                    label: e.label,
-                  }));
+                  const relationships = (parsedData.edges || []).map(edgeToRelationship);
                   
                   const cachedVersion = await getCachedDiagramVersion(draft.id);
                   body = {

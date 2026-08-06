@@ -39,6 +39,7 @@ function makeEdge(
   target: string,
   sourceHandle?: string,
   targetHandle?: string,
+  data?: Record<string, unknown>,
 ): Edge {
   return {
     id: `${source}->${target}`,
@@ -47,6 +48,7 @@ function makeEdge(
     sourceHandle: sourceHandle || 'col-0-source',
     targetHandle: targetHandle || 'col-0-target',
     type: 'smoothstep',
+    data,
   };
 }
 
@@ -104,6 +106,18 @@ describe('generateAllTablesCode', () => {
     expect(code).toContain('CREATE TABLE "users"');
     expect(code).toContain('CREATE TABLE "posts"');
     expect(code).toContain('ALTER TABLE');
+  });
+
+  it('exports FK actions and custom constraint names', () => {
+    const code = generateAllTablesCode('postgresql', nodes, [
+      makeEdge('posts', 'users', 'col-2-source', 'col-0-target', {
+        on_delete: 'CASCADE',
+        on_update: 'SET NULL',
+        constraint_name: 'posts_user_id_fk',
+      }),
+    ], 'my_erd');
+    expect(code).toContain('ADD CONSTRAINT "posts_user_id_fk"');
+    expect(code).toContain('ON DELETE CASCADE ON UPDATE SET NULL');
   });
 
   it('generates Prisma code with generator and datasource blocks', () => {

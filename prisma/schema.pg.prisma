@@ -198,8 +198,11 @@ model Entity {
   x         Float
   y         Float
   color     String?        @default("#6366f1")
+  comment   String?
   createdAt DateTime?      @default(now()) @map("created_at")
   columns   Column[]
+  constraints TableConstraint[]
+  indexes   TableIndex[]
   diagram   Diagram?       @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   relationshipsFrom Relationship[] @relation("source_entity")
   relationshipsTo   Relationship[] @relation("target_entity")
@@ -215,6 +218,8 @@ model Column {
   type       String
   isPk       Boolean?  @default(false) @map("is_pk")
   isNullable Boolean?  @default(true) @map("is_nullable")
+  isUnique   Boolean?  @default(false) @map("is_unique")
+  defaultValue String? @map("default_value")
   enumValues String?   @map("enum_values")
   comment    String?
   maxLength  Int?      @map("max_length")
@@ -239,12 +244,43 @@ model Relationship {
   sourceHandle    String?   @map("source_handle")
   targetHandle    String?   @map("target_handle")
   label           String?
+  onDelete        String?   @map("on_delete")
+  onUpdate        String?   @map("on_update")
+  constraintName  String?   @map("constraint_name")
   createdAt       DateTime? @default(now()) @map("created_at")
   diagram         Diagram?  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   sourceEntity    Entity?   @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   targetEntity    Entity?   @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("relationships")
+}
+
+model TableConstraint {
+  id          String    @id
+  entityId    String    @map("entity_id")
+  kind        String
+  name        String?
+  columnIds   String?   @map("column_ids")
+  expression  String?
+  createdAt   DateTime? @default(now()) @map("created_at")
+  entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([entityId], map: "idx_table_constraints_entity")
+  @@map("table_constraints")
+}
+
+model TableIndex {
+  id          String    @id
+  entityId    String    @map("entity_id")
+  name        String
+  columnIds   String    @map("column_ids")
+  isUnique    Boolean?  @default(false) @map("is_unique")
+  algorithm   String?
+  createdAt   DateTime? @default(now()) @map("created_at")
+  entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([entityId], map: "idx_table_indexes_entity")
+  @@map("table_indexes")
 }
 
 // ── Entity Change (audit log) ──

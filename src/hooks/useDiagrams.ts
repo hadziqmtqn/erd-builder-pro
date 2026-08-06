@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Node, Edge, Viewport } from '@xyflow/react';
-import { Diagram, Entity, Relationship, DraftType } from '../types';
+import { Diagram, Entity, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
-import { RELATIONSHIP_TYPES } from '../lib/utils';
+import { edgeToRelationship } from '../lib/diagram-payload';
 import { apiFetch } from '../lib/api';
 import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { dbmlToERD, erdToDBML } from '../lib/dbml-converter';
@@ -37,15 +37,34 @@ function schemaFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
         type: c.type,
         is_pk: c.is_pk,
         is_nullable: c.is_nullable,
+        default_value: c.default_value,
+        is_unique: c.is_unique,
+        comment: c.comment,
         enum_name: c.enum_name,
         enum_values: c.enum_values,
       })).sort((a, b) => a.name.localeCompare(b.name)),
+      comment: n.data.comment || '',
+      constraints: (n.data.constraints || []).map(constraint => ({
+        kind: constraint.kind,
+        name: constraint.name || '',
+        columns: (constraint.column_ids || []).map(id => n.data.columns.find(column => column.id === id)?.name || id).sort(),
+        expression: constraint.expression || '',
+      })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+      indexes: (n.data.indexes || []).map(index => ({
+        name: index.name,
+        is_unique: Boolean(index.is_unique),
+        algorithm: index.algorithm || '',
+        columns: (index.column_ids || []).map(id => n.data.columns.find(column => column.id === id)?.name || id).sort(),
+      })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     })).sort((a, b) => a.name.localeCompare(b.name)),
     edges: edges.map(e => ({
       source: tableById.get(e.source)?.data.name,
       target: tableById.get(e.target)?.data.name,
       sourceColumn: columnName(e.source, e.sourceHandle),
       targetColumn: columnName(e.target, e.targetHandle),
+      on_delete: (e.data as any)?.on_delete,
+      on_update: (e.data as any)?.on_update,
+      constraint_name: (e.data as any)?.constraint_name,
     })).sort((a, b) => `${a.source}.${a.sourceColumn}>${a.target}.${a.targetColumn}`.localeCompare(`${b.source}.${b.sourceColumn}>${b.target}.${b.targetColumn}`)),
   });
 }
@@ -480,17 +499,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
             y: n.position.y,
           })) as Entity[];
 
-          const relationships: Relationship[] = edges.map(e => ({
-            id: e.id,
-            source_entity_id: e.source,
-            target_entity_id: e.target,
-            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            source_handle: e.sourceHandle || undefined,
-            target_handle: e.targetHandle || undefined,
-            type: RELATIONSHIP_TYPES.find(t => t.label === e.label || t.shortLabel === e.label)?.value || 'one-to-many',
-            label: e.label as string,
-          }));
+          const relationships = edges.map(edgeToRelationship);
 
           diagram.entities = entities;
           diagram.relationships = relationships;
@@ -508,17 +517,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
             x: n.position.x,
             y: n.position.y,
           })) as Entity[];
-          const relationships: Relationship[] = edges.map(e => ({
-            id: e.id,
-            source_entity_id: e.source,
-            target_entity_id: e.target,
-            source_column_id: e.sourceHandle ? e.sourceHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            target_column_id: e.targetHandle ? e.targetHandle.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '') : undefined,
-            source_handle: e.sourceHandle || undefined,
-            target_handle: e.targetHandle || undefined,
-            type: RELATIONSHIP_TYPES.find(t => t.label === e.label || t.shortLabel === e.label)?.value || 'one-to-many',
-            label: e.label as string,
-          }));
+          const relationships = edges.map(edgeToRelationship);
           const fallbackResource: any = {
             id: activeDiagramId,
             uid: activeDiagramId,

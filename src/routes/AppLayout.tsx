@@ -79,6 +79,37 @@ function isValidDBMLSource(content: string): boolean {
   }
 }
 
+function entitySchemaKey(entity: Entity): string {
+  return JSON.stringify({
+    name: entity.name,
+    columns: entity.columns.map(column => ({
+      name: column.name,
+      type: column.type,
+      is_pk: column.is_pk,
+      is_nullable: column.is_nullable,
+      default_value: column.default_value || null,
+      is_unique: Boolean(column.is_unique),
+      comment: column.comment || '',
+      max_length: column.max_length ?? null,
+      numeric_precision: column.numeric_precision ?? null,
+      numeric_scale: column.numeric_scale ?? null,
+    })),
+    comment: entity.comment || '',
+    constraints: (entity.constraints || []).map(constraint => ({
+      kind: constraint.kind,
+      name: constraint.name || '',
+      columns: (constraint.column_ids || []).map(id => entity.columns.find(column => column.id === id)?.name || id).sort(),
+      expression: constraint.expression || '',
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    indexes: (entity.indexes || []).map(index => ({
+      name: index.name,
+      is_unique: Boolean(index.is_unique),
+      algorithm: index.algorithm || '',
+      columns: (index.column_ids || []).map(id => entity.columns.find(column => column.id === id)?.name || id).sort(),
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  });
+}
+
 function AppLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -491,6 +522,16 @@ function AppLayoutInner() {
           }
           return nc;
         });
+        n.data.constraints = (n.data.constraints || []).map(constraint => ({
+          ...constraint,
+          entity_id: existing.id,
+          column_ids: (constraint.column_ids || []).map(id => colMap.get(id) || id),
+        }));
+        n.data.indexes = (n.data.indexes || []).map(index => ({
+          ...index,
+          entity_id: existing.id,
+          column_ids: (index.column_ids || []).map(id => colMap.get(id) || id),
+        }));
         // Remap edge handles to use canvas column IDs
         for (const e of clonedEdges) {
           if (e.source === n.id) e.sourceHandle = remapCol(e.sourceHandle, colMap);
@@ -534,14 +575,7 @@ function AppLayoutInner() {
       mergedNodes.every((n, i) => {
         const cur = nodes[i];
         if (!cur || n.data.name !== cur.data.name) return false;
-        if (n.data.columns.length !== cur.data.columns.length) return false;
-        return n.data.columns.every((c, j) => {
-          const cc = cur.data.columns[j];
-          return c.name === cc?.name && c.type === cc?.type &&
-            c.is_pk === cc?.is_pk && c.is_nullable === cc?.is_nullable &&
-            c.comment === cc?.comment && c.max_length === cc?.max_length &&
-            c.numeric_precision === cc?.numeric_precision && c.numeric_scale === cc?.numeric_scale;
-        });
+        return entitySchemaKey(n.data) === entitySchemaKey(cur.data);
       });
     // Compare edges by sorted canonical keys (table names, not UUIDs)
     const edgeKey = (e: Edge, nodeList: Node<Entity>[]) => {

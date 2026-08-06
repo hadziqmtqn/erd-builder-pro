@@ -3,6 +3,148 @@ import { supportsColumnLength } from './column-metadata';
 
 export type SQLType = 'mysql' | 'postgresql' | 'laravel';
 
+export interface ForeignKeyConstraint {
+  column: string;
+  references: string;
+  on: string;
+  onDelete?: string | null;
+  onUpdate?: string | null;
+  constraintName?: string | null;
+}
+
+type SQLDialect = 'mysql' | 'postgresql';
+
+function quoteIdentifier(value: string, dialect: SQLDialect): string {
+  const quote = dialect === 'mysql' ? '`' : '"';
+  return `${quote}${value.replace(new RegExp(quote, 'g'), `${quote}${quote}`)}${quote}`;
+}
+
+function metadataColumns(entity: Entity, columnIds: string[]): string[] {
+  return columnIds
+    .map(id => entity.columns.find(column => column.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+}
+
+function metadataName(name: string | null | undefined, fallback: string): string {
+  return (name || fallback).replace(/\s+/g, '_');
+}
+
+function tableMetadataSQL(entity: Entity, dialect: SQLDialect): string {
+  const table = quoteIdentifier(entity.name.toLowerCase(), dialect);
+  const statements: string[] = [];
+  const columnUnique = new Set(entity.columns.filter(column => column.is_unique).map(column => column.name));
+  const columnPrimary = new Set(entity.columns.filter(column => column.is_pk).map(column => column.name));
+
+  for (const constraint of entity.constraints || []) {
+    const columns = metadataColumns(entity, constraint.column_ids || []);
+    if (columns.length === 0) continue;
+    const columnList = columns.map(column => quoteIdentifier(column, dialect)).join(', ');
+    const name = quoteIdentifier(metadataName(constraint.name, `${entity.name}_${constraint.kind}_${columns.join('_')}`), dialect);
+    if (constraint.kind === 'primary_key') {
+      if (columns.length === 1 && columnPrimary.has(columns[0])) continue;
+      statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${name} PRIMARY KEY (${columnList});`);
+    } else if (constraint.kind === 'unique') {
+      if (columns.length === 1 && columnUnique.has(columns[0])) continue;
+      statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${name} UNIQUE (${columnList});`);
+    } else if (constraint.kind === 'check' && constraint.expression) {
+      statements.push(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${constraint.expression});`);
+    }
+  }
+
+  for (const index of entity.indexes || []) {
+    const columns = metadataColumns(entity, index.column_ids || []);
+    if (columns.length === 0) continue;
+    if (columns.length === 1 && index.is_unique && columnUnique.has(columns[0])) continue;
+    const name = quoteIdentifier(metadataName(index.name, `${entity.name}_${index.is_unique ? 'unique' : 'idx'}_${columns.join('_')}`), dialect);
+    const unique = index.is_unique ? 'UNIQUE ' : '';
+    const algorithm = index.algorithm ? String(index.algorithm).toUpperCase() : '';
+    const using = algorithm && dialect === 'mysql' ? ` USING ${algorithm}` : '';
+    const postgresUsing = algorithm && dialect === 'postgresql' ? ` USING ${algorithm.toLowerCase()}` : '';
+    statements.push(`CREATE ${unique}INDEX ${name}${using} ON ${table}${postgresUsing} (${columns.map(column => quoteIdentifier(column, dialect)).join(', ')});`);
+  }
+
+  return statements.join('\n');
+}
+
+function tableMetadataLaravel(entity: Entity): string {
+  const lines: string[] = [];
+  const columnUnique = new Set(entity.columns.filter(column => column.is_unique).map(column => column.name));
+  const columnPrimary = new Set(entity.columns.filter(column => column.is_pk).map(column => column.name));
+  const columns = (ids: string[]) => metadataColumns(entity, ids).map(name => `'${name.replace(/'/g, "\\'")}'`).join(', ');
+  const named = (name: string | null | undefined) => name ? `, '${name.replace(/'/g, "\\'")}'` : '';
+
+  for (const constraint of entity.constraints || []) {
+    const names = metadataColumns(entity, constraint.column_ids || []);
+    if (names.length === 0) continue;
+    if (constraint.kind === 'primary_key' && !(names.length === 1 && columnPrimary.has(names[0]))) {
+      lines.push(`    $table->primary([${columns(constraint.column_ids || [])}]${named(constraint.name)});`);
+    } else if (constraint.kind === 'unique' && !(names.length === 1 && columnUnique.has(names[0]))) {
+      lines.push(`    $table->unique([${columns(constraint.column_ids || [])}]${named(constraint.name)});`);
+    }
+  }
+
+  for (const index of entity.indexes || []) {
+    const names = metadataColumns(entity, index.column_ids || []);
+    if (names.length === 0 || (names.length === 1 && index.is_unique && columnUnique.has(names[0]))) continue;
+    const method = index.is_unique ? 'unique' : 'index';
+    lines.push(`    $table->${method}([${columns(index.column_ids || [])}]${named(index.name)});`);
+  }
+
+  return lines.join('\n');
+}
+
+function tableMetadataPrisma(entity: Entity): string[] {
+  const lines: string[] = [];
+  const columnUnique = new Set(entity.columns.filter(column => column.is_unique).map(column => column.name));
+  const columnPrimary = new Set(entity.columns.filter(column => column.is_pk).map(column => column.name));
+  const columns = (ids: string[]) => metadataColumns(entity, ids).join(', ');
+  const mapped = (name: string | null | undefined) => name ? `, map: "${name.replace(/"/g, '\\"')}"` : '';
+
+  for (const constraint of entity.constraints || []) {
+    const names = metadataColumns(entity, constraint.column_ids || []);
+    if (names.length === 0) continue;
+    if (constraint.kind === 'primary_key' && !(names.length === 1 && columnPrimary.has(names[0]))) {
+      lines.push(`  @@id([${columns(constraint.column_ids || [])}]${mapped(constraint.name)})`);
+    } else if (constraint.kind === 'unique' && !(names.length === 1 && columnUnique.has(names[0]))) {
+      lines.push(`  @@unique([${columns(constraint.column_ids || [])}]${mapped(constraint.name)})`);
+    }
+  }
+
+  for (const index of entity.indexes || []) {
+    const names = metadataColumns(entity, index.column_ids || []);
+    if (names.length === 0 || (names.length === 1 && index.is_unique && columnUnique.has(names[0]))) continue;
+    lines.push(`  @@${index.is_unique ? 'unique' : 'index'}([${columns(index.column_ids || [])}]${mapped(index.name)})`);
+  }
+
+  return lines;
+}
+
+function tableMetadataGoravel(entity: Entity): string[] {
+  const lines: string[] = [];
+  const columnUnique = new Set(entity.columns.filter(column => column.is_unique).map(column => column.name));
+  const columnPrimary = new Set(entity.columns.filter(column => column.is_pk).map(column => column.name));
+  const args = (names: string[]) => names.map(name => `"${name.replace(/"/g, '\\"')}"`).join(', ');
+
+  for (const column of entity.columns) {
+    if (column.is_unique && !column.is_pk) lines.push(`      table.Unique("${column.name.replace(/"/g, '\\"')}")`);
+  }
+  for (const constraint of entity.constraints || []) {
+    const names = metadataColumns(entity, constraint.column_ids || []);
+    if (names.length === 0) continue;
+    if (constraint.kind === 'primary_key' && !(names.length === 1 && names[0] === 'id' && columnPrimary.has(names[0]))) {
+      lines.push(`      table.Primary(${args(names)})`);
+    } else if (constraint.kind === 'unique' && !(names.length === 1 && columnUnique.has(names[0]))) {
+      lines.push(`      table.Unique(${args(names)})`);
+    }
+  }
+  for (const index of entity.indexes || []) {
+    const names = metadataColumns(entity, index.column_ids || []);
+    if (names.length === 0 || (names.length === 1 && index.is_unique && columnUnique.has(names[0]))) continue;
+    lines.push(`      table.${index.is_unique ? 'Unique' : 'Index'}(${args(names)})`);
+  }
+  return lines;
+}
+
 function mapType(type: string, target: SQLType, maxLength?: number | null, precision?: number | null, scale?: number | null): string {
   const t = type.toLowerCase();
   const decimal = precision ? `DECIMAL(${precision}${scale !== null && scale !== undefined ? `,${scale}` : ''})` : 'DECIMAL(10,2)';
@@ -89,12 +231,16 @@ export function generateMySQL(entity: Entity): string {
     const enumValues = col.type.toLowerCase() === 'enum' && col.enum_values 
       ? `ENUM(${col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ')})`
       : type;
+    const defaultValue = col.default_value ? ` DEFAULT ${col.default_value}` : '';
+    const unique = col.is_unique ? ' UNIQUE' : '';
     const comment = col.comment ? ` COMMENT '${col.comment.replace(/'/g, "''")}'` : '';
       
-    return `  \`${col.name}\` ${enumValues} ${nullable}${pk}${comment}`;
+    return `  \`${col.name}\` ${enumValues}${defaultValue} ${nullable}${unique}${pk}${comment}`;
   }).join(',\n');
 
-  return `CREATE TABLE \`${tableName}\` (\n${columns}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`;
+  const tableComment = entity.comment ? ` COMMENT='${entity.comment.replace(/'/g, "''")}'` : '';
+  const table = `CREATE TABLE \`${tableName}\` (\n${columns}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci${tableComment};`;
+  return [table, tableMetadataSQL(entity, 'mysql')].filter(Boolean).join('\n');
 }
 
 export function generatePostgreSQL(entity: Entity): string {
@@ -110,22 +256,27 @@ export function generatePostgreSQL(entity: Entity): string {
     }
 
     const pk = col.is_pk ? ' PRIMARY KEY' : '';
+    const defaultValue = col.default_value ? ` DEFAULT ${col.default_value}` : '';
+    const unique = col.is_unique ? ' UNIQUE' : '';
     
     // Handle ENUM for PG (simplified to CHECK constraint for direct SQL export)
     if (col.type.toLowerCase() === 'enum' && col.enum_values) {
       const values = col.enum_values.split(',').map(v => `'${v.trim()}'`).join(', ');
       if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
-      return `  "${col.name}" VARCHAR(${col.max_length || 255}) ${nullable}${pk} CHECK ("${col.name}" IN (${values}))`;
+      return `  "${col.name}" VARCHAR(${col.max_length || 255})${defaultValue} ${nullable}${unique}${pk} CHECK ("${col.name}" IN (${values}))`;
     }
       
     if (col.comment) comments.push(`COMMENT ON COLUMN "${tableName}"."${col.name}" IS '${col.comment.replace(/'/g, "''")}';`);
-    return `  "${col.name}" ${columnType} ${nullable}${pk}`;
+    return `  "${col.name}" ${columnType}${defaultValue} ${nullable}${unique}${pk}`;
   }).join(',\n');
 
-  return `CREATE TABLE "${tableName}" (\n${columns}\n);${comments.length ? `\n\n${comments.join('\n')}` : ''}`;
+  const table = `CREATE TABLE "${tableName}" (\n${columns}\n);`;
+  if (entity.comment) comments.push(`COMMENT ON TABLE "${tableName}" IS '${entity.comment.replace(/'/g, "''")}';`);
+  const metadata = tableMetadataSQL(entity, 'postgresql');
+  return [table, comments.join('\n'), metadata].filter(Boolean).join('\n\n');
 }
 
-export function generateLaravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
+export function generateLaravelMigration(entity: Entity, fkConstraints?: ForeignKeyConstraint[]): string {
   const tableName = entity.name.toLowerCase();
   
   const shouldAddTimestamps = !entity.columns.some(c => c.name === 'created_at');
@@ -173,6 +324,7 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
 
       let chain = `$table->${method}(${args})`;
       if (col.is_nullable && !col.is_pk) chain += '->nullable()';
+      if (col.is_unique) chain += '->unique()';
       if (col.comment) chain += `->comment('${col.comment.replace(/'/g, "\\'")}')`;
       
       return `    ${chain};`;
@@ -183,7 +335,10 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
     const fkLines = fkConstraints
       .filter(fk => entity.columns.some(c => c.name === fk.column))
       .map(fk => {
-        return `    $table->foreign('${fk.column}')->references('${fk.references}')->on('${fk.on}')->onDelete('cascade');`;
+        const name = fk.constraintName ? `, '${fk.constraintName.replace(/'/g, "\\'")}'` : '';
+        const onDelete = fk.onDelete && fk.onDelete.toUpperCase() !== 'NO ACTION' ? `->onDelete('${fk.onDelete.toLowerCase()}')` : '';
+        const onUpdate = fk.onUpdate && fk.onUpdate.toUpperCase() !== 'NO ACTION' ? `->onUpdate('${fk.onUpdate.toLowerCase()}')` : '';
+        return `    $table->foreign('${fk.column}'${name})->references('${fk.references}')->on('${fk.on}')${onDelete}${onUpdate};`;
       })
       .join('\n');
     if (fkLines) {
@@ -191,8 +346,9 @@ export function generateLaravelMigration(entity: Entity, fkConstraints?: { colum
     }
   }
 
+  const metadata = tableMetadataLaravel(entity);
   return `Schema::create('${tableName}', function (Blueprint $table) {
-${columns}${fkBlock}
+${columns}${metadata ? `\n${metadata}` : ''}${fkBlock}
 ${hasSoftDeletes ? '    $table->softDeletes();' : ''}${shouldAddTimestamps ? '\n    $table->timestamps();' : ''}
 });`;
 }
@@ -266,6 +422,7 @@ export function generatePrisma(entity: Entity): string {
     let attributes = '';
     if (col.is_pk) attributes += ' @id';
     if (col.is_pk && (t === 'int' || t === 'integer')) attributes += ' @default(autoincrement())';
+    if (col.is_unique && !col.is_pk) attributes += ' @unique';
     if (col.is_nullable) prismaType += '?';
     
     return `  ${name} ${prismaType}${attributes}`;
@@ -275,8 +432,9 @@ export function generatePrisma(entity: Entity): string {
   if (!hasCreatedAt) timestampFields.push('  created_at DateTime @default(now())');
   if (!hasUpdatedAt) timestampFields.push('  updated_at DateTime @updatedAt');
   const timestamps = timestampFields.length > 0 ? `\n${timestampFields.join('\n')}` : '';
+  const metadata = tableMetadataPrisma(entity);
 
-  return `model ${modelName} {\n${fields}${timestamps}\n}${enums}`;
+  return `model ${modelName} {\n${fields}${timestamps}${metadata.length ? `\n${metadata.join('\n')}` : ''}\n}${enums}`;
 }
 
 export function generateLaravelModel(entity: Entity): string {
@@ -409,7 +567,7 @@ export function generateGoravelModel(entity: Entity): string {
   return `package models\n\nimport "time"\n\ntype ${structName} struct {\n${fields}\n\n    CreatedAt time.Time\n    UpdatedAt time.Time\n}`;
 }
 
-export function generateGoravelMigration(entity: Entity, fkConstraints?: { column: string; references: string; on: string }[]): string {
+export function generateGoravelMigration(entity: Entity, fkConstraints?: ForeignKeyConstraint[]): string {
   const tableName = entity.name.toLowerCase();
   const pascalName = toPascalCase(entity.name, true);
   const className = `MCreate${pascalName}Table`;
@@ -463,7 +621,9 @@ export function generateGoravelMigration(entity: Entity, fkConstraints?: { colum
     const fkLines = fkConstraints
       .filter(fk => entity.columns.some(c => c.name === fk.column))
       .map(fk => {
-        return `      table.Foreign("${fk.column}").References("${fk.references}").On("${fk.on}").OnDelete("cascade")`;
+        const onDelete = fk.onDelete && fk.onDelete.toUpperCase() !== 'NO ACTION' ? `.OnDelete("${fk.onDelete.toLowerCase()}")` : '';
+        const onUpdate = fk.onUpdate && fk.onUpdate.toUpperCase() !== 'NO ACTION' ? `.OnUpdate("${fk.onUpdate.toLowerCase()}")` : '';
+        return `      table.Foreign("${fk.column}").References("${fk.references}").On("${fk.on}")${onDelete}${onUpdate}`;
       })
       .join('\n');
     if (fkLines) {
@@ -474,6 +634,7 @@ export function generateGoravelMigration(entity: Entity, fkConstraints?: { colum
   const upBody = [
     `return facades.Schema().Create("${tableName}", func(table schema.Blueprint) {`,
     columns,
+    tableMetadataGoravel(entity).join('\n'),
     hasSoftDeletes ? `      table.SoftDeletes()` : '',
     shouldAddTimestamps ? `      table.Timestamps()` : '',
     fkBlock,

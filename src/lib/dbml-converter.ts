@@ -99,6 +99,7 @@ function normalizeDBMLForParser(text: string): string {
   const generatedRefs: string[] = [];
   let currentTable = '';
   let inTable = false;
+  let checksDepth = 0;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -106,7 +107,17 @@ function normalizeDBMLForParser(text: string): string {
     if (tableName) {
       currentTable = tableName;
       inTable = true;
+      checksDepth = 0;
       normalizedLines.push(line);
+      continue;
+    }
+
+    if (inTable && /^Checks\s*\{/i.test(trimmed)) {
+      checksDepth = 1;
+      continue;
+    }
+    if (checksDepth > 0) {
+      if (trimmed === '}') checksDepth -= 1;
       continue;
     }
 
@@ -164,6 +175,45 @@ function normalizeDBMLForParser(text: string): string {
   return normalizedLines.join('\n').trim();
 }
 
+function readDBMLChecks(text: string) {
+  const checks = new Map<string, { name: string | null; expression: string }[]>();
+  let currentTable = '';
+  let inChecks = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const tableName = parseDBMLTableName(line);
+    if (tableName) {
+      currentTable = tableName;
+      inChecks = false;
+      continue;
+    }
+    if (currentTable && /^Checks\s*\{/i.test(trimmed)) {
+      inChecks = true;
+      continue;
+    }
+    if (inChecks) {
+      if (trimmed === '}') {
+        inChecks = false;
+        continue;
+      }
+      const match = trimmed.match(/^`((?:\\`|[^`])+)`\s*(?:\[(.*)\])?$/);
+      if (!match) continue;
+      const nameMatch = match[2]?.match(/name\s*:\s*(?:'((?:\\'|[^'])*)'|"((?:\\"|[^"])*)")/i);
+      checks.set(currentTable.toLowerCase(), [
+        ...(checks.get(currentTable.toLowerCase()) || []),
+        {
+          expression: match[1].replace(/\\`/g, '`'),
+          name: nameMatch ? (nameMatch[1] || nameMatch[2] || '').replace(/\\['"]/g, match[2]?.includes('"') ? '"' : "'") : null,
+        },
+      ]);
+      continue;
+    }
+    if (trimmed === '}' || trimmed.startsWith('}')) currentTable = '';
+  }
+  return checks;
+}
+
 function readDBMLColumnMetadata(text: string): Map<string, { comment?: string; max_length?: number | null; numeric_precision?: number | null; numeric_scale?: number | null }> {
   const columns = new Map<string, { comment?: string; max_length?: number | null; numeric_precision?: number | null; numeric_scale?: number | null }>();
   const tableBlock = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{([\s\S]*?)^\s*\}/gim;
@@ -184,6 +234,104 @@ function readDBMLColumnMetadata(text: string): Map<string, { comment?: string; m
   return columns;
 }
 
+function dbmlValue(value: any): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object') {
+    const raw = Object.prototype.hasOwnProperty.call(value, 'value')
+      ? value.value
+      : value.name ?? value.type ?? JSON.stringify(value);
+    if (raw === null) return 'NULL';
+    return value.type === 'string' ? `'${String(raw).replace(/'/g, "\\'")}'` : String(raw);
+  }
+  return String(value);
+}
+
+function metadataId(kind: string, table: string, key: string) {
+  return `${kind}:${table}:${key}`.replace(/[^A-Za-z0-9:_-]/g, '_');
+}
+
+function readDBMLModelMetadata(model: any, sourceText = '') {
+  const tables = new Map<string, any>();
+  const fields = model?.fields || {};
+  const indexes = model?.indexes || {};
+  const indexColumns = model?.indexColumns || {};
+  const checks = model?.checks || {};
+  const rawChecks = readDBMLChecks(sourceText);
+
+  for (const table of Object.values(model?.tables || {}) as any[]) {
+    const tableFields = (table.fieldIds || []).map((id: number) => fields[id]).filter(Boolean);
+    const columnByFieldId = new Map(tableFields.map((field: any) => [field.id, field.name]));
+    const tableIndexes: any[] = [];
+    const tableConstraints: any[] = [];
+    for (const indexId of table.indexIds || []) {
+      const index = indexes[indexId];
+      if (!index) continue;
+      const columnNames = (index.columnIds || []).map((id: number) => indexColumns[id]?.value).filter(Boolean);
+      const key = index.name || `${index.pk ? 'primary_key' : index.unique ? 'unique' : 'index'}:${columnNames.join(',')}`;
+      if (index.pk) {
+        tableConstraints.push({
+          id: metadataId('constraint', table.name, key),
+          kind: 'primary_key',
+          name: index.name || null,
+          column_names: columnNames,
+        });
+      } else {
+        tableIndexes.push({
+          id: metadataId('index', table.name, key),
+          name: index.name || key,
+          column_names: columnNames,
+          is_unique: Boolean(index.unique),
+          algorithm: index.type || null,
+        });
+      }
+    }
+    for (const checkId of table.checkIds || []) {
+      const check = checks[checkId];
+      if (!check) continue;
+      const columnName = check.columnId ? columnByFieldId.get(check.columnId) : undefined;
+      tableConstraints.push({
+        id: metadataId('constraint', table.name, check.name || check.expression),
+        kind: 'check',
+        name: check.name || null,
+        column_names: columnName ? [columnName] : [],
+        expression: check.expression,
+      });
+    }
+    for (const check of rawChecks.get(String(table.name).toLowerCase()) || []) {
+      tableConstraints.push({
+        id: metadataId('constraint', table.name, check.name || check.expression),
+        kind: 'check',
+        name: check.name,
+        column_names: [],
+        expression: check.expression,
+      });
+    }
+    tables.set(String(table.name).toLowerCase(), {
+      comment: table.note || null,
+      fields: new Map(tableFields.map((field: any) => [String(field.name).toLowerCase(), {
+        default_value: dbmlValue(field.dbdefault),
+        is_unique: Boolean(field.unique),
+      }])),
+      constraints: tableConstraints,
+      indexes: tableIndexes,
+    });
+  }
+
+  return tables;
+}
+
+function readDBMLRefMetadata(model: any) {
+  const fields = model?.fields || {};
+  const tables = model?.tables || {};
+  return Object.values(model?.refs || {}).map((ref: any) => {
+    const endpoints = (ref.endpointIds || []).map((id: number) => model.endpoints?.[id]).filter(Boolean).map((endpoint: any) => ({
+      table: tables[fields[endpoint.fieldIds?.[0]]?.tableId]?.name,
+      columns: (endpoint.fieldIds || []).map((id: number) => fields[id]?.name).filter(Boolean),
+    }));
+    return { name: ref.name || null, onDelete: ref.onDelete || null, onUpdate: ref.onUpdate || null, endpoints };
+  });
+}
+
 /**
  * Pre-scan DBML text for invalid column types.
  * Regex-based — catches type issues before the parser does.
@@ -194,6 +342,7 @@ function findTypeErrors(text: string): string[] {
   const enumNames = readDBMLEnumNames(lines);
   let currentTable = '';
   let inTable = false;
+  let metadataDepth = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -204,6 +353,16 @@ function findTypeErrors(text: string): string[] {
     if (tableName) {
       currentTable = tableName;
       inTable = true;
+      metadataDepth = 0;
+      continue;
+    }
+
+    if (inTable && /^(checks|indexes)\s*\{/i.test(trimmed)) {
+      metadataDepth = 1;
+      continue;
+    }
+    if (metadataDepth > 0) {
+      if (trimmed === '}') metadataDepth -= 1;
       continue;
     }
 
@@ -314,8 +473,10 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   // ── DBML → SQL via @dbml/core ──
   let parseError: string | null = null;
   let sql: string;
+  let normalizedModel: any = null;
   try {
     const db = Parser.parse(normalizedDBML, 'dbml');
+    normalizedModel = db.normalize();
     sql = ModelExporter.export(db, 'postgres');
   } catch (e: any) {
     const diags = e?.diags;
@@ -340,7 +501,22 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   const enums = readDBMLEnums(normalizedDBML);
   const enumColumns = readDBMLEnumColumns(normalizedDBML, enums);
   const columnMetadata = readDBMLColumnMetadata(dbmlText);
+  const modelMetadata = readDBMLModelMetadata(normalizedModel, dbmlText);
   for (const node of result.nodes) {
+    const tableMetadata = modelMetadata.get(node.data.name.toLowerCase());
+    if (tableMetadata) {
+      node.data.comment = tableMetadata.comment;
+      node.data.constraints = tableMetadata.constraints.map((constraint: any) => ({
+        ...constraint,
+        entity_id: node.id,
+        column_ids: constraint.column_names.map((name: string) => node.data.columns.find(column => column.name.toLowerCase() === name.toLowerCase())?.id).filter(Boolean),
+      }));
+      node.data.indexes = tableMetadata.indexes.map((index: any) => ({
+        ...index,
+        entity_id: node.id,
+        column_ids: index.column_names.map((name: string) => node.data.columns.find(column => column.name.toLowerCase() === name.toLowerCase())?.id).filter(Boolean),
+      }));
+    }
     for (const column of node.data.columns) {
       const metadata = columnMetadata.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
       if (metadata) {
@@ -349,6 +525,11 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
         column.numeric_precision = metadata.numeric_precision;
         column.numeric_scale = metadata.numeric_scale;
       }
+      const modelColumn = tableMetadata?.fields.get(column.name.toLowerCase());
+      if (modelColumn) {
+        column.default_value = modelColumn.default_value;
+        column.is_unique = modelColumn.is_unique;
+      }
       const enumColumn = enumColumns.get(`${node.data.name.toLowerCase()}\u0000${column.name.toLowerCase()}`);
       if (enumColumn) {
         column.type = 'ENUM';
@@ -356,6 +537,16 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
         column.enum_values = enumColumn.values;
       }
     }
+  }
+
+  const refMetadata = readDBMLRefMetadata(normalizedModel);
+  for (const edge of result.edges) {
+    const source = result.nodes.find(node => node.id === edge.source);
+    const target = result.nodes.find(node => node.id === edge.target);
+    const sourceColumn = source?.data.columns.find(column => edge.sourceHandle?.includes(column.id));
+    const targetColumn = target?.data.columns.find(column => edge.targetHandle?.includes(column.id));
+    const ref = refMetadata.find(item => item.endpoints.length === 2 && item.endpoints.some((endpoint: any) => endpoint.table?.toLowerCase() === source?.data.name.toLowerCase() && endpoint.columns.some((column: string) => column.toLowerCase() === sourceColumn?.name.toLowerCase())) && item.endpoints.some((endpoint: any) => endpoint.table?.toLowerCase() === target?.data.name.toLowerCase() && endpoint.columns.some((column: string) => column.toLowerCase() === targetColumn?.name.toLowerCase())));
+    if (ref) edge.data = { ...(edge.data || {}), on_delete: ref.onDelete, on_update: ref.onUpdate, constraint_name: ref.name };
   }
 
   return result;
@@ -411,6 +602,8 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       const settings: string[] = [];
       if (col.is_pk) settings.push('pk');
       if (col.is_nullable === false) settings.push('not null');
+      if (col.is_unique) settings.push('unique');
+      if (col.default_value) settings.push(`default: ${col.default_value}`);
       if (col.comment) settings.push(`note: '${col.comment.replace(/'/g, "\\'")}'`);
       const suffix = settings.length ? ` [${settings.join(', ')}]` : '';
       const colName = needsQuote(col.name) ? `"${col.name}"` : col.name;
@@ -419,6 +612,38 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
       const colType = enumName ? formatIdentifier(enumName) : formatTypeWithModifiers(col.type, col.max_length, col.numeric_precision, col.numeric_scale);
       lines.push(`  ${colName} ${colType}${suffix}`);
     }
+    const constraints = node.data.constraints || [];
+    const indexes = node.data.indexes || [];
+    const checkConstraints = constraints.filter((constraint: any) => constraint.kind === 'check');
+    const keyConstraints = constraints.filter((constraint: any) => constraint.kind === 'primary_key' || constraint.kind === 'unique');
+    if (checkConstraints.length > 0) {
+      lines.push('  Checks {');
+      for (const constraint of checkConstraints) {
+        const expression = String(constraint.expression || '').replace(/`/g, '\\`');
+        const name = constraint.name ? ` [name: '${String(constraint.name).replace(/'/g, "\\'")}']` : '';
+        lines.push(`    \`${expression}\`${name}`);
+      }
+      lines.push('  }');
+    }
+    if (keyConstraints.length > 0 || indexes.length > 0) {
+      lines.push('  Indexes {');
+      for (const constraint of keyConstraints) {
+        const columns = (constraint.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
+        if (columns.length === 0) continue;
+        const key = columns.length > 1 ? `(${columns.join(', ')})` : columns[0];
+        const settings = [constraint.kind === 'primary_key' ? 'pk' : 'unique', constraint.name ? `name: \"${String(constraint.name).replace(/\"/g, '\\\"')}\"` : ''].filter(Boolean);
+        lines.push(`    ${key} [${settings.join(', ')}]`);
+      }
+      for (const index of indexes) {
+        const columns = (index.column_ids || []).map((id: string) => node.data.columns.find(column => column.id === id)?.name).filter(Boolean);
+        if (columns.length === 0) continue;
+        const key = columns.length > 1 ? `(${columns.join(', ')})` : columns[0];
+        const settings = [index.is_unique ? 'unique' : '', index.algorithm ? `type: ${index.algorithm}` : '', `name: \"${String(index.name).replace(/\"/g, '\\\"')}\"`].filter(Boolean);
+        lines.push(`    ${key} [${settings.join(', ')}]`);
+      }
+      lines.push('  }');
+    }
+    if (node.data.comment) lines.push(`  Note: '${String(node.data.comment).replace(/'/g, "\\'")}'`);
     lines.push('}');
     lines.push('');
   }
@@ -450,9 +675,13 @@ export function erdToDBML(nodes: Node<Entity>[], edges: Edge[]): string {
     );
     if (!srcCol || !tgtCol) continue;
 
-    lines.push(
-      `Ref: ${tableNear(srcNode.data.name, srcCol.name)} > ${tableNear(tgtNode.data.name, tgtCol.name)}`,
-    );
+    const relation = edge.data as any;
+    const refName = relation?.constraint_name ? ` "${String(relation.constraint_name).replace(/"/g, '\\"')}"` : '';
+    const actions = [
+      relation?.on_update ? `update: ${String(relation.on_update).toLowerCase()}` : '',
+      relation?.on_delete ? `delete: ${String(relation.on_delete).toLowerCase()}` : '',
+    ].filter(Boolean);
+    lines.push(`Ref${refName}: ${tableNear(srcNode.data.name, srcCol.name)} > ${tableNear(tgtNode.data.name, tgtCol.name)}${actions.length ? ` [${actions.join(', ')}]` : ''}`);
   }
 
   return lines.join('\n');

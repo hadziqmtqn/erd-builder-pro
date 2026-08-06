@@ -5,9 +5,11 @@ type DataViewerStructureProps = {
   isLoading?: boolean;
   selectedColumnName?: string | null;
   selectedIndexName?: string | null;
+  selectedCheckName?: string | null;
   onEditTable: () => void;
   onSelectColumn: (columnName: string) => void;
   onSelectIndex: (indexName: string) => void;
+  onSelectCheck: (checkName: string) => void;
 };
 
 const empty = (value: any) => value === null ? 'NULL' : value === undefined || value === '' ? 'EMPTY' : String(value);
@@ -22,13 +24,14 @@ function RefreshProgress({ active }: { active: boolean }) {
   return <div className="h-0.5 overflow-hidden bg-transparent">{active && <div className="h-full w-full animate-pulse bg-primary" />}</div>;
 }
 
-export function DataViewerStructure({ table, isLoading = false, selectedColumnName, selectedIndexName, onEditTable, onSelectColumn, onSelectIndex }: DataViewerStructureProps) {
+export function DataViewerStructure({ table, isLoading = false, selectedColumnName, selectedIndexName, selectedCheckName, onEditTable, onSelectColumn, onSelectIndex, onSelectCheck }: DataViewerStructureProps) {
   const columns = (table?.columns || [])
     .map((column: any, index: number) => ({ column, index }))
     .sort((a: any, b: any) => (Number(a.column.sort_order) || a.index + 1) - (Number(b.column.sort_order) || b.index + 1))
     .map((item: any) => item.column);
   const foreignKeys = table?.foreign_keys || [];
   const indexes = table?.indexes || [];
+  const checks = table?.checks || [];
 
   return (
     <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
@@ -48,6 +51,7 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
             {columns.filter((col: any) => col.is_pk).map((col: any) => col.name).join(', ') || 'EMPTY'}
           </div>
         </div>
+        {table.comment && <div className="max-w-[28vw] truncate text-xs text-muted-foreground" title={table.comment}>{table.comment}</div>}
       </div>
       <RefreshProgress active={isLoading} />
 
@@ -86,24 +90,26 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
         </Table>
       </div>
 
-      <div className="grid min-h-56 flex-2 grid-cols-2 border-t">
+      <div className="grid min-h-56 flex-2 grid-cols-3 border-t">
         <div className="min-w-0 overflow-auto custom-scrollbar border-r">
           <Table>
             <TableHeader>
               <TableRow className="sticky top-0 z-10 bg-background">
-                {['relation_name', 'column_name', 'reference'].map(header => (
+                {['relation_name', 'column_name', 'reference', 'on_delete', 'on_update'].map(header => (
                   <TableHead key={header} className="font-mono text-xs">{header}</TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
               {foreignKeys.length === 0 ? (
-                <TableRow><TableCell colSpan={3} className="h-20 text-center text-muted-foreground">No relations</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No relations</TableCell></TableRow>
               ) : foreignKeys.map((fk: any) => (
                 <TableRow key={`${fk.constraint_name || fk.column}-${fk.ref_table}`}>
                   <ValueCell value={fk.constraint_name} />
                   <ValueCell value={fk.column} />
                   <ValueCell value={`${fk.ref_table}(${fk.ref_column})`} />
+                  <ValueCell value={fk.on_delete} />
+                  <ValueCell value={fk.on_update} />
                 </TableRow>
               ))}
             </TableBody>
@@ -131,6 +137,31 @@ export function DataViewerStructure({ table, isLoading = false, selectedColumnNa
                   <ValueCell value={index.algorithm} />
                   <TableCell className="font-mono">{String(Boolean(index.is_unique)).toUpperCase()}</TableCell>
                   <ValueCell value={index.column_name} />
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="min-w-0 overflow-auto custom-scrollbar border-l">
+          <Table>
+            <TableHeader>
+              <TableRow className="sticky top-0 z-10 bg-background">
+                {['check_name', 'expression'].map(header => (
+                  <TableHead key={header} className="font-mono text-xs">{header}</TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {checks.length === 0 ? (
+                <TableRow><TableCell colSpan={2} className="h-20 text-center text-muted-foreground">No checks</TableCell></TableRow>
+              ) : checks.map((check: any) => (
+                <TableRow
+                  key={check.name || check.expression}
+                  className={`cursor-pointer ${selectedCheckName === check.name ? 'bg-muted/70' : ''}`}
+                  onClick={() => check.name && onSelectCheck(check.name)}
+                >
+                  <ValueCell value={check.name} />
+                  <ValueCell value={check.expression} />
                 </TableRow>
               ))}
             </TableBody>

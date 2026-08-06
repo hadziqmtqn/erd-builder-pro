@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS entities (
   x DOUBLE PRECISION DEFAULT 0,
   y DOUBLE PRECISION DEFAULT 0,
   color TEXT DEFAULT '#6366f1',
+  comment TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -68,6 +69,8 @@ CREATE TABLE IF NOT EXISTS columns (
   type TEXT NOT NULL,
   is_pk BOOLEAN DEFAULT FALSE,
   is_nullable BOOLEAN DEFAULT TRUE,
+  is_unique BOOLEAN DEFAULT FALSE,
+  default_value TEXT,
   enum_values TEXT, -- comma separated
   comment TEXT,
   max_length INTEGER,
@@ -89,8 +92,32 @@ CREATE TABLE IF NOT EXISTS relationships (
   target_handle TEXT,
   type TEXT DEFAULT 'one-to-many',
   label TEXT,
+  on_delete TEXT,
+  on_update TEXT,
+  constraint_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Table Constraints and Indexes Metadata
+CREATE TABLE IF NOT EXISTS table_constraints (
+  id TEXT PRIMARY KEY,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  name TEXT,
+  column_ids TEXT,
+  expression TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS table_indexes (
+  id TEXT PRIMARY KEY,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  column_ids TEXT NOT NULL,
+  is_unique BOOLEAN DEFAULT FALSE,
+  algorithm TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Notes Table
@@ -295,6 +322,8 @@ CREATE INDEX IF NOT EXISTS idx_drawings_version ON drawings(_version);
 CREATE INDEX IF NOT EXISTS idx_drawings_updated_at ON drawings(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_flowcharts_version ON flowcharts(_version);
 CREATE INDEX IF NOT EXISTS idx_flowcharts_updated_at ON flowcharts(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_table_constraints_entity ON table_constraints(entity_id);
+CREATE INDEX IF NOT EXISTS idx_table_indexes_entity ON table_indexes(entity_id);
 
 -- ========================
 -- 4. ROW LEVEL SECURITY
@@ -305,6 +334,8 @@ ALTER TABLE diagrams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE columns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE relationships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE table_constraints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE table_indexes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE drawings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flowcharts ENABLE ROW LEVEL SECURITY;
@@ -381,6 +412,14 @@ CREATE POLICY "Users can manage columns in their own diagrams" ON columns FOR AL
 -- Relationships Policies
 CREATE POLICY "Anyone can view relationships of public diagrams" ON relationships FOR SELECT USING (EXISTS (SELECT 1 FROM diagrams WHERE diagrams.id = relationships.diagram_id AND diagrams.is_public = true AND (diagrams.expiry_date IS NULL OR diagrams.expiry_date > NOW())));
 CREATE POLICY "Users can manage relationships in their own diagrams" ON relationships FOR ALL USING (EXISTS (SELECT 1 FROM diagrams WHERE diagrams.id = relationships.diagram_id AND diagrams.user_id = auth.uid()));
+
+-- Table Constraints Policies
+CREATE POLICY "Anyone can view constraints of public diagrams" ON table_constraints FOR SELECT USING (EXISTS (SELECT 1 FROM entities JOIN diagrams ON diagrams.id = entities.diagram_id WHERE entities.id = table_constraints.entity_id AND diagrams.is_public = true AND (diagrams.expiry_date IS NULL OR diagrams.expiry_date > NOW())));
+CREATE POLICY "Users can manage constraints in their own diagrams" ON table_constraints FOR ALL USING (EXISTS (SELECT 1 FROM entities JOIN diagrams ON diagrams.id = entities.diagram_id WHERE entities.id = table_constraints.entity_id AND diagrams.user_id = auth.uid()));
+
+-- Table Index Policies
+CREATE POLICY "Anyone can view indexes of public diagrams" ON table_indexes FOR SELECT USING (EXISTS (SELECT 1 FROM entities JOIN diagrams ON diagrams.id = entities.diagram_id WHERE entities.id = table_indexes.entity_id AND diagrams.is_public = true AND (diagrams.expiry_date IS NULL OR diagrams.expiry_date > NOW())));
+CREATE POLICY "Users can manage indexes in their own diagrams" ON table_indexes FOR ALL USING (EXISTS (SELECT 1 FROM entities JOIN diagrams ON diagrams.id = entities.diagram_id WHERE entities.id = table_indexes.entity_id AND diagrams.user_id = auth.uid()));
 
 -- AI Providers Policies (Publicly readable)
 CREATE POLICY "Users can view active providers"

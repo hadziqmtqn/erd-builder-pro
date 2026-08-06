@@ -12,6 +12,7 @@ type DataViewerFooterProps = {
   warnUnsaved: () => boolean;
   onAddColumn: () => void;
   onAddIndex: () => void;
+  onAddCheck: () => void;
   onInfo: () => void;
   onNextPage: () => void;
   onPrevPage: () => void;
@@ -27,6 +28,7 @@ export function DataViewerFooter({
   warnUnsaved,
   onAddColumn,
   onAddIndex,
+  onAddCheck,
   onInfo,
   onNextPage,
   onPrevPage,
@@ -55,6 +57,10 @@ export function DataViewerFooter({
             <Button variant="outline" size="sm" className="h-7 px-2" onClick={onAddIndex}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Index
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 px-2" onClick={onAddCheck}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Check
             </Button>
             <Button variant="ghost" size="icon-xs" onClick={onInfo} title="Show table SQL">
               <Info className="h-4 w-4" />

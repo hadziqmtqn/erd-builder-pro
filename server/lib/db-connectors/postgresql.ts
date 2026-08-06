@@ -52,6 +52,7 @@ export const postgresqlConnector: DbConnector = {
         SELECT
           t.table_name,
           t.table_schema,
+          obj_description(format('%I.%I', t.table_schema, t.table_name)::regclass, 'pg_class') AS table_comment,
           (
             SELECT json_agg(
               json_build_object(
@@ -108,7 +109,9 @@ export const postgresqlConnector: DbConnector = {
           ccu.table_schema AS target_schema,
           ccu.table_name AS target_table,
           ccu.column_name AS target_column,
-          tc.constraint_name
+          tc.constraint_name,
+          rc.delete_rule,
+          rc.update_rule
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
@@ -116,12 +119,27 @@ export const postgresqlConnector: DbConnector = {
         JOIN information_schema.constraint_column_usage ccu
           ON tc.constraint_name = ccu.constraint_name
           AND tc.table_schema = ccu.table_schema
+        JOIN information_schema.referential_constraints rc
+          ON rc.constraint_schema = tc.constraint_schema
+          AND rc.constraint_name = tc.constraint_name
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+      ),
+      check_data AS (
+        SELECT tc.table_schema, tc.table_name,
+          json_agg(json_build_object('name', tc.constraint_name, 'expression', cc.check_clause)) AS checks
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.check_constraints cc
+          ON cc.constraint_schema = tc.constraint_schema
+          AND cc.constraint_name = tc.constraint_name
+        WHERE tc.constraint_type = 'CHECK'
+          AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+        GROUP BY tc.table_schema, tc.table_name
       )
       SELECT
         td.table_name,
         td.table_schema,
+        td.table_comment,
         td.columns,
         COALESCE(
           (SELECT json_agg(
@@ -129,7 +147,9 @@ export const postgresqlConnector: DbConnector = {
               'column', fd.source_column,
               'ref_table', fd.target_table,
               'ref_column', fd.target_column,
-              'constraint_name', fd.constraint_name
+              'constraint_name', fd.constraint_name,
+              'on_delete', fd.delete_rule,
+              'on_update', fd.update_rule
             )
           )
           FROM fk_data fd
@@ -164,16 +184,22 @@ export const postgresqlConnector: DbConnector = {
             GROUP BY ci.relname, am.amname, ix.indisunique, ix.indisprimary
           ) idx),
           '[]'::json
-        ) AS indexes
+        ) AS indexes,
+        COALESCE(cd.checks, '[]'::json) AS checks
       FROM table_data td
+      LEFT JOIN check_data cd
+        ON cd.table_schema = td.table_schema
+        AND cd.table_name = td.table_name
       ORDER BY td.table_name
     `);
     return result.rows.map((row: any) => ({
       table_name: row.table_name,
       table_schema: row.table_schema,
+      comment: row.table_comment || null,
       columns: row.columns || [],
       foreign_keys: row.foreign_keys || [],
       indexes: row.indexes || [],
+      checks: row.checks || [],
     }));
   },
 };

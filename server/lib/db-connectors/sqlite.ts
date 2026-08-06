@@ -83,6 +83,8 @@ export const sqliteConnector: DbConnector = {
         ref_table: fk[2],    // "table" — target table
         ref_column: fk[4],   // "to" — target column
         constraint_name: `fk_${tableName}_${fk[3]}`,
+        on_update: fk[5],
+        on_delete: fk[6],
       })) || [];
 
       const indexInfo = db.exec(`PRAGMA index_list("${tableName}")`);

@@ -14,6 +14,8 @@ export interface ForeignKeySchema {
   ref_table: string;
   ref_column: string;
   constraint_name?: string;
+  on_delete?: string;
+  on_update?: string;
 }
 
 export interface ColumnSchema {
@@ -41,6 +43,7 @@ export interface ColumnSchema {
 export interface TableSchema {
   table_name: string;
   table_schema?: string;
+  comment?: string | null;
   columns: ColumnSchema[];
   foreign_keys?: ForeignKeySchema[];
   indexes?: {
@@ -50,6 +53,7 @@ export interface TableSchema {
     column_name: string;
     is_primary?: boolean;
   }[];
+  checks?: { name?: string | null; expression: string }[];
 }
 
 export interface ConnectorClient {

@@ -7,6 +7,7 @@ import {
   generatePrisma,
   generateLaravelModel,
   generateZod,
+  generateGoravelMigration,
   toPascalCase,
 } from '../sql-generator';
 import { Entity, Column } from '@/types';
@@ -112,6 +113,35 @@ describe('generateMySQL', () => {
 
     const sql = generateMySQL(entity);
     expect(sql).toContain('`amount` DECIMAL(12,4) NOT NULL');
+  });
+
+  it('exports defaults, unique fields, constraints, and indexes', () => {
+    const entity = makeEntity('users', [
+      { id: 'id', name: 'id', type: 'BIGINT', is_pk: true, is_nullable: false },
+      { id: 'email', name: 'email', type: 'VARCHAR', is_unique: true, is_nullable: false, default_value: "'pending'" },
+      { id: 'tenant', name: 'tenant_id', type: 'BIGINT', is_nullable: false },
+    ]);
+    entity.constraints = [{ id: 'c1', entity_id: entity.id, kind: 'unique', name: 'users_email_tenant_unique', column_ids: ['email', 'tenant'] }];
+    entity.indexes = [{ id: 'i1', entity_id: entity.id, name: 'users_tenant_idx', column_ids: ['tenant'] }];
+
+    const mysql = generateMySQL(entity);
+    expect(mysql).toContain("DEFAULT 'pending' NOT NULL UNIQUE");
+    expect(mysql).toContain('ADD CONSTRAINT `users_email_tenant_unique` UNIQUE (`email`, `tenant_id`)');
+    expect(mysql).toContain('CREATE INDEX `users_tenant_idx` ON `users` (`tenant_id`)');
+
+    const postgres = generatePostgreSQL(entity);
+    expect(postgres).toContain("DEFAULT 'pending' NOT NULL UNIQUE");
+    expect(postgres).toContain('ADD CONSTRAINT "users_email_tenant_unique" UNIQUE ("email", "tenant_id")');
+    expect(postgres).toContain('CREATE INDEX "users_tenant_idx" ON "users" ("tenant_id")');
+
+    expect(generatePrisma(entity)).toContain('email String @unique');
+    expect(generatePrisma(entity)).toContain('@@unique([email, tenant_id], map: "users_email_tenant_unique")');
+    expect(generatePrisma(entity)).toContain('@@index([tenant_id], map: "users_tenant_idx")');
+    expect(generateLaravelMigration(entity)).toContain("$table->unique(['email', 'tenant_id'], 'users_email_tenant_unique');");
+    expect(generateLaravelMigration(entity)).toContain("$table->index(['tenant_id'], 'users_tenant_idx');");
+    expect(generateGoravelMigration(entity)).toContain('table.Unique("email")');
+    expect(generateGoravelMigration(entity)).toContain('table.Unique("email", "tenant_id")');
+    expect(generateGoravelMigration(entity)).toContain('table.Index("tenant_id")');
   });
 });
 

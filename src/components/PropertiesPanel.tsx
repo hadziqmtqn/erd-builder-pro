@@ -119,6 +119,7 @@ export default function PropertiesPanel({
       max_length: DEFAULT_VARCHAR_LENGTH,
       is_pk: false,
       is_nullable: true,
+      default_value: 'NULL',
       sort_order: maxSortOrder + 1,
     };
     const updated = {
@@ -146,6 +147,7 @@ export default function PropertiesPanel({
       type: column.type,
       is_pk: false,
       is_nullable: column.is_nullable,
+      default_value: column.is_nullable ? 'NULL' : undefined,
       sort_order: nextSortOrder + index,
     }));
     const updated = { ...editingEntity, columns: [...editingEntity.columns, ...generatedColumns] };
@@ -216,7 +218,13 @@ export default function PropertiesPanel({
     }
     const updated = {
       ...editingEntity,
-      columns: editingEntity.columns.map(c => c.id === colId ? { ...c, ...updates } : c),
+      columns: editingEntity.columns.map(c => {
+        if (c.id !== colId) return c;
+        const next = { ...c, ...updates };
+        return Boolean(next.is_nullable) && !String(next.default_value ?? '').trim()
+          ? { ...next, default_value: 'NULL' }
+          : next;
+      }),
     };
     setEditingEntity(updated);
     syncWithParent(updated, immediate);
@@ -559,7 +567,7 @@ export default function PropertiesPanel({
                 <Button
                   variant={!col.is_nullable ? "default" : "outline"}
                   size="icon"
-                  onClick={() => updateColumnSync(col.id, { is_nullable: !col.is_nullable }, true)}
+                  onClick={() => updateColumnSync(col.id, { is_nullable: !Boolean(col.is_nullable) }, true)}
                   className={cn(
                     "h-8 w-8 transition-all",
                     !col.is_nullable ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "text-muted-foreground hover:text-foreground bg-background/50"
@@ -602,6 +610,24 @@ export default function PropertiesPanel({
                   />
                   <PopoverContent align="end" side="left" className="w-72 space-y-2">
                     <Label className="text-xs font-semibold">Field Attributes</Label>
+                    <label className="flex items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={Boolean(col.is_unique)}
+                        onCheckedChange={(checked) => updateColumnSync(col.id, { is_unique: checked === true }, true)}
+                      />
+                      Unique
+                    </label>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`default-${col.id}`} className="text-xs text-muted-foreground">Default value</Label>
+                      <Input
+                        id={`default-${col.id}`}
+                        value={col.default_value ?? (Boolean(col.is_nullable) ? 'NULL' : '')}
+                        onChange={(e) => updateColumnLocal(col.id, { default_value: e.target.value })}
+                        onBlur={(e) => updateColumnSync(col.id, { default_value: e.target.value.trim() || null })}
+                        placeholder="NULL, 0, CURRENT_TIMESTAMP, 'pending'"
+                        className="h-8 text-sm"
+                      />
+                    </div>
                     <div className="space-y-1.5">
                       <Label htmlFor={`comment-${col.id}`} className="text-xs text-muted-foreground">Comment</Label>
                       <Textarea

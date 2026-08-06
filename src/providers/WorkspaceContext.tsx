@@ -194,7 +194,7 @@ export interface WorkspaceContextValue {
   duplicateEntity: (id: string) => void;
   deleteEntity: (id: string) => void;
   deleteEdge: (id: string) => void;
-  handleEdgeUpdate: (edgeId: string, label: string) => void;
+  handleEdgeUpdate: (edgeId: string, update: string | { label?: string; data?: Record<string, any> }) => void;
   handleEdgeFlip: (edgeId: string) => void;
   handleNodeClick: any;
   handleNodeDoubleClick: any;

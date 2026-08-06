@@ -4,7 +4,7 @@ import { fetchSchemaForClient, getConnector, invalidateSchemaCache } from "../..
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
-import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
+import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 
 export const MAX_SQL_IMPORT_BYTES = 25 * 1024 * 1024;
 const MYSQL_LARGE_VALUE_COLUMN = /((?:`(?:``|[^`])+`|[a-z0-9_$]+)\s+)((?:tiny|medium|long)?(?:text|blob)|json|geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)\b([^,)]*)/gim;
@@ -159,6 +159,7 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
       const statements = [
         ...buildStructureStatements(info.type, tableSchema, req.body, schema),
         ...(createTable || tableAction ? [] : buildIndexStatements(info.type, tableSchema, req.body)),
+        ...(createTable || tableAction ? [] : buildConstraintStatements(info.type, tableSchema, req.body)),
       ];
       if (statements.length === 0) return res.json({ success: true });
 

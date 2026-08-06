@@ -47,6 +47,7 @@ export const mysqlConnector: DbConnector = {
       SELECT
         t.TABLE_NAME AS table_name,
         t.TABLE_SCHEMA AS table_schema,
+        t.TABLE_COMMENT AS table_comment,
         (
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -81,10 +82,15 @@ export const mysqlConnector: DbConnector = {
               'column', kcu.COLUMN_NAME,
               'ref_table', kcu.REFERENCED_TABLE_NAME,
               'ref_column', kcu.REFERENCED_COLUMN_NAME,
-              'constraint_name', kcu.CONSTRAINT_NAME
+              'constraint_name', kcu.CONSTRAINT_NAME,
+              'on_delete', rc.DELETE_RULE,
+              'on_update', rc.UPDATE_RULE
             )
           )
           FROM information_schema.KEY_COLUMN_USAGE kcu
+          LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+            ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+            AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
           WHERE kcu.TABLE_SCHEMA = t.TABLE_SCHEMA
             AND kcu.TABLE_NAME = t.TABLE_NAME
             AND kcu.REFERENCED_TABLE_NAME IS NOT NULL),
@@ -108,7 +114,17 @@ export const mysqlConnector: DbConnector = {
             GROUP BY INDEX_NAME, INDEX_TYPE, NON_UNIQUE
           ) s),
           JSON_ARRAY()
-        ) AS indexes
+        ) AS indexes,
+        COALESCE((
+          SELECT JSON_ARRAYAGG(JSON_OBJECT('name', tc.CONSTRAINT_NAME, 'expression', cc.CHECK_CLAUSE))
+          FROM information_schema.TABLE_CONSTRAINTS tc
+          JOIN information_schema.CHECK_CONSTRAINTS cc
+            ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+            AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+          WHERE tc.TABLE_SCHEMA = t.TABLE_SCHEMA
+            AND tc.TABLE_NAME = t.TABLE_NAME
+            AND tc.CONSTRAINT_TYPE = 'CHECK'
+        ), JSON_ARRAY()) AS checks
       FROM information_schema.TABLES t
       WHERE t.TABLE_SCHEMA = ?
         AND t.TABLE_TYPE = 'BASE TABLE'
@@ -117,9 +133,11 @@ export const mysqlConnector: DbConnector = {
     return (tables as any[]).map((row: any) => ({
       table_name: row.table_name,
       table_schema: row.table_schema,
+      comment: row.table_comment || null,
       columns: row.columns || [],
       foreign_keys: row.foreign_keys || [],
       indexes: row.indexes || [],
+      checks: row.checks || [],
     }));
   },
 };
