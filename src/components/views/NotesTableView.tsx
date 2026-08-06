@@ -118,17 +118,6 @@ export const NotesTableView = React.memo(function NotesTableView({
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <span className="text-xs text-muted-foreground/60 animate-pulse">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
       {/* Header */}
@@ -201,7 +190,16 @@ export const NotesTableView = React.memo(function NotesTableView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {notes.length === 0 ? (
+            {isLoading && notes.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={cols.length} className="h-32 text-center text-muted-foreground">
+                  <span className="inline-flex items-center gap-2 text-xs">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                    Loading...
+                  </span>
+                </TableCell>
+              </TableRow>
+            ) : notes.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={cols.length} className="h-32 text-center text-muted-foreground">
                   {totalNotes === 0

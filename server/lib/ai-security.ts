@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import { isDesktopMode } from "./config.js";
 
 function isPrivateIpv4(address: string): boolean {
   const parts = address.split(".").map(Number);
@@ -41,7 +42,7 @@ export async function safeAiBaseUrl(value: string | undefined, fallback: string)
     throw new Error("Invalid AI provider URL");
   }
 
-  if (process.env.AI_ALLOW_PRIVATE_BASE_URL !== "true") {
+  if (process.env.AI_ALLOW_PRIVATE_BASE_URL !== "true" && !isDesktopMode()) {
     const hostname = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
     if (hostname === "localhost" || hostname.endsWith(".localhost") || isPrivateIp(hostname)) {
       throw new Error("Private AI provider URLs are disabled");
