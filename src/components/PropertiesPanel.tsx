@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
-import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2, MoreHorizontal } from 'lucide-react';
+import { useState, useEffect, useRef, type DragEvent } from 'react';
+import { Plus, Trash2, Key, Check, X, Type, GripVertical, Wand2, MoreHorizontal, Clock3 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
@@ -9,12 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ColumnTypeSelect } from './ColumnTypeSelect';
 import TableCodePanel from './diagram/TableCodePanel';
 import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 
 const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 const DEFAULT_VARCHAR_LENGTH = 255;
+const AUDIT_COLUMN_OPTIONS = [
+  { name: 'created_at', type: 'TIMESTAMP', is_nullable: false },
+  { name: 'updated_at', type: 'TIMESTAMP', is_nullable: false },
+  { name: 'deleted_at', type: 'TIMESTAMP', is_nullable: true },
+] as const;
 
 const optionalInt = (value: string) => {
   const trimmed = value.trim();
@@ -37,6 +44,12 @@ export default function PropertiesPanel({
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
   const [activeEditorTab, setActiveEditorTab] = useState<'properties' | 'schema' | 'dbml'>('properties');
   const [openAttributeColumnId, setOpenAttributeColumnId] = useState<string | null>(null);
+  const [auditColumnSelection, setAuditColumnSelection] = useState<Record<string, boolean>>(
+    Object.fromEntries(AUDIT_COLUMN_OPTIONS.map(column => [column.name, true])),
+  );
+  const [auditColumnMenuOpen, setAuditColumnMenuOpen] = useState(false);
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
   const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const suppressColumnBlurRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -118,32 +131,29 @@ export default function PropertiesPanel({
     syncWithParent(updated, true); // Immediate save for new column
   };
 
-  const moveColumn = (colId: string, direction: 'up' | 'down') => {
-    // 1. Get all columns sorted by current sort_order to establish a baseline
-    const sortedCols = [...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const index = sortedCols.findIndex(c => c.id === colId);
-    
-    if (index === -1) return;
-    if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === sortedCols.length - 1) return;
+  const generateAuditColumns = () => {
+    const existingNames = new Set(editingEntity.columns.map(column => column.name.toLowerCase()));
+    const columnsToAdd = AUDIT_COLUMN_OPTIONS.filter(column => auditColumnSelection[column.name] && !existingNames.has(column.name));
+    if (columnsToAdd.length === 0) {
+      toast.info('Selected audit columns already exist or none were selected');
+      return;
+    }
 
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    
-    // 2. Perform the swap
-    const newArray = [...sortedCols];
-    const temp = newArray[index];
-    newArray[index] = newArray[targetIndex];
-    newArray[targetIndex] = temp;
-
-    // 3. Re-assign sort_orders based on the new array index to ensure they are unique and correct
-    const updatedColumns = newArray.map((col, i) => ({
-      ...col,
-      sort_order: i
+    const nextSortOrder = editingEntity.columns.reduce((max, column) => Math.max(max, column.sort_order || 0), -1) + 1;
+    const generatedColumns: Column[] = columnsToAdd.map((column, index) => ({
+      id: crypto.randomUUID(),
+      name: column.name,
+      type: column.type,
+      is_pk: false,
+      is_nullable: column.is_nullable,
+      sort_order: nextSortOrder + index,
     }));
-
-    const updated = { ...editingEntity, columns: updatedColumns };
+    const updated = { ...editingEntity, columns: [...editingEntity.columns, ...generatedColumns] };
+    lastAddedIdRef.current = generatedColumns[generatedColumns.length - 1].id;
     setEditingEntity(updated);
-    syncWithParent(updated, true); // Immediate save for re-ordering
+    syncWithParent(updated, true);
+    setAuditColumnMenuOpen(false);
+    toast.success(`${generatedColumns.length} audit column${generatedColumns.length === 1 ? '' : 's'} added`);
   };
 
   const normalizeColumns = () => {
@@ -222,6 +232,45 @@ export default function PropertiesPanel({
     const updated = { ...editingEntity, columns: updatedColumns };
     setEditingEntity(updated);
     syncWithParent(updated, true); // Immediate sync on drop
+  };
+
+  const handleColumnDragStart = (event: DragEvent<HTMLButtonElement>, columnId: string) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', columnId);
+    setDraggedColumnId(columnId);
+  };
+
+  const handleColumnDragOver = (event: DragEvent<HTMLDivElement>, columnId: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const position = event.clientY < event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2
+      ? 'before'
+      : 'after';
+    setDropTarget(current => current?.id === columnId && current.position === position ? current : { id: columnId, position });
+  };
+
+  const handleColumnDrop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault();
+    const sourceId = event.dataTransfer.getData('text/plain') || draggedColumnId;
+    const position = dropTarget?.id === targetId ? dropTarget.position : 'before';
+    if (!sourceId || sourceId === targetId) {
+      setDraggedColumnId(null);
+      setDropTarget(null);
+      return;
+    }
+
+    const sortedColumns = [...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const source = sortedColumns.find(column => column.id === sourceId);
+    if (!source) return;
+
+    const reordered = sortedColumns.filter(column => column.id !== sourceId);
+    const targetIndex = reordered.findIndex(column => column.id === targetId);
+    if (targetIndex === -1) return;
+    reordered.splice(targetIndex + (position === 'after' ? 1 : 0), 0, source);
+
+    handleReorder(reordered);
+    setDraggedColumnId(null);
+    setDropTarget(null);
   };
 
   const deleteColumn = (colId: string) => {
@@ -338,6 +387,40 @@ export default function PropertiesPanel({
             >
               <Wand2 className="w-3.5 h-3.5" />
             </Button>
+            <Popover open={auditColumnMenuOpen} onOpenChange={setAuditColumnMenuOpen}>
+              <PopoverTrigger
+                render={
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" title="Generate audit columns" aria-label="Generate audit columns">
+                    <Clock3 className="w-3.5 h-3.5" />
+                  </Button>
+                }
+              />
+              <PopoverContent align="start" className="w-56 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold">Generate audit columns</p>
+                  <p className="text-xs text-muted-foreground">Add common timestamp fields.</p>
+                </div>
+                <div className="space-y-2">
+                  {AUDIT_COLUMN_OPTIONS.map(column => {
+                    const exists = editingEntity.columns.some(current => current.name.toLowerCase() === column.name);
+                    return (
+                      <label key={column.name} className="flex items-center gap-2 text-xs">
+                        <Checkbox
+                          checked={auditColumnSelection[column.name]}
+                          disabled={exists}
+                          onCheckedChange={checked => setAuditColumnSelection(current => ({ ...current, [column.name]: checked === true }))}
+                        />
+                        <span className={cn(exists && 'text-muted-foreground line-through')}>{column.name}</span>
+                        {exists && <span className="ml-auto text-[10px] text-muted-foreground">Exists</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+                <Button type="button" size="sm" className="w-full" onClick={generateAuditColumns}>
+                  Generate selected
+                </Button>
+              </PopoverContent>
+            </Popover>
           </div>
           <Button 
             onClick={addColumn}
@@ -350,31 +433,33 @@ export default function PropertiesPanel({
 
       <section className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2 min-h-0">
         <div className="space-y-2">
-          {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col, index, arr) => (
-            <Card key={col.id} className="gap-1 p-2 bg-muted/10 border border-border/30 shadow-none hover:border-primary/30 transition-all">
+          {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col) => (
+            <Card
+              key={col.id}
+              onDragOver={(event) => handleColumnDragOver(event, col.id)}
+              onDrop={(event) => handleColumnDrop(event, col.id)}
+              className={cn(
+                'gap-1 p-2 bg-muted/10 border border-border/30 shadow-none hover:border-primary/30 transition-all',
+                draggedColumnId === col.id && 'opacity-50',
+                dropTarget?.id === col.id && dropTarget.position === 'before' && 'border-t-2 border-t-primary',
+                dropTarget?.id === col.id && dropTarget.position === 'after' && 'border-b-2 border-b-primary',
+              )}
+            >
               <div className="flex items-center gap-1.5">
-                <div className="flex shrink-0">
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    disabled={index === 0}
-                    onClick={() => moveColumn(col.id, 'up')}
-                    className="h-7 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
-                    title="Move up"
-                  >
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    disabled={index === arr.length - 1}
-                    onClick={() => moveColumn(col.id, 'down')}
-                    className="h-7 w-6 p-0 hover:bg-primary/10 hover:text-primary disabled:opacity-30"
-                    title="Move down"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
+                <button
+                  type="button"
+                  draggable
+                  aria-label={`Drag ${col.name} to reorder`}
+                  title="Drag to reorder"
+                  onDragStart={(event) => handleColumnDragStart(event, col.id)}
+                  onDragEnd={() => {
+                    setDraggedColumnId(null);
+                    setDropTarget(null);
+                  }}
+                  className="h-7 w-6 shrink-0 cursor-grab rounded text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
+                >
+                  <GripVertical className="mx-auto h-4 w-4" />
+                </button>
 
                 <Input
                   ref={(el) => {
@@ -484,48 +569,53 @@ export default function PropertiesPanel({
                   {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                 </Button>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-expanded={openAttributeColumnId === col.id}
-                  onMouseDown={() => {
-                    suppressColumnBlurRef.current = true;
-                    window.setTimeout(() => {
-                      suppressColumnBlurRef.current = false;
-                    }, 0);
-                  }}
-                  onClick={() => setOpenAttributeColumnId((current) => current === col.id ? null : col.id)}
-                  className={cn(
-                    "h-8 w-8 transition-colors",
-                    openAttributeColumnId === col.id
-                      ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "text-muted-foreground hover:text-foreground bg-background/50",
-                    col.comment && openAttributeColumnId !== col.id && "border-primary/60",
-                  )}
-                  title="Field attributes"
-                  aria-label="Field attributes"
+                <Popover
+                  open={openAttributeColumnId === col.id}
+                  onOpenChange={(open) => setOpenAttributeColumnId(open ? col.id : null)}
                 >
-                  <MoreHorizontal className="w-3.5 h-3.5" />
-                </Button>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-expanded={openAttributeColumnId === col.id}
+                        onMouseDown={() => {
+                          suppressColumnBlurRef.current = true;
+                          window.setTimeout(() => {
+                            suppressColumnBlurRef.current = false;
+                          }, 0);
+                        }}
+                        className={cn(
+                          "h-8 w-8 transition-colors",
+                          openAttributeColumnId === col.id
+                            ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "text-muted-foreground hover:text-foreground bg-background/50",
+                          col.comment && openAttributeColumnId !== col.id && "border-primary/60",
+                        )}
+                        title="Field attributes"
+                        aria-label="Field attributes"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </Button>
+                    }
+                  />
+                  <PopoverContent align="end" side="left" className="w-72 space-y-2">
+                    <Label className="text-xs font-semibold">Field Attributes</Label>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`comment-${col.id}`} className="text-xs text-muted-foreground">Comment</Label>
+                      <Textarea
+                        id={`comment-${col.id}`}
+                        value={col.comment || ''}
+                        onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
+                        onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
+                        placeholder="Add a comment"
+                        className="min-h-20 resize-y text-sm"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
-
-              {openAttributeColumnId === col.id && (
-                <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-3">
-                  <Label className="text-xs font-semibold">Field Attributes</Label>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`comment-${col.id}`} className="text-xs text-muted-foreground">Comment</Label>
-                    <Textarea
-                      id={`comment-${col.id}`}
-                      value={col.comment || ''}
-                      onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
-                      onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
-                      placeholder="Add a comment"
-                      className="min-h-20 resize-y text-sm"
-                    />
-                  </div>
-                </div>
-              )}
 
               {col.type === 'ENUM' && (
                 <Input
