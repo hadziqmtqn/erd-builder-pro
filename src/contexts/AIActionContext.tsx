@@ -5,7 +5,7 @@ export interface PendingActionResult {
   onResult: (response: string) => void;
 }
 
-export type RightPanelMode = 'closed' | 'chat' | 'dbml';
+export type RightPanelMode = 'closed' | 'chat' | 'dbml' | 'properties';
 
 interface AIActionContextValue {
   /** Send an AI action prompt — opens chat panel and injects prompt */

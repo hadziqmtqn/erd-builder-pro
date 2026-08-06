@@ -856,13 +856,21 @@ export function useERDSession(
   // Extracted from App.tsx global keydown handler — only active in erd view
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      const target = e.target as HTMLElement | null;
+      const isEditingText = target?.matches('input, textarea, [contenteditable="true"]')
+        || !!target?.closest('.cm-editor');
+      if (isEditingText) return;
+
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z') {
+        e.preventDefault();
         if (e.shiftKey) {
           if (canRedo) handleRedo();
         } else {
           if (canUndo) handleUndo();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
+        e.preventDefault();
         if (canRedo) handleRedo();
       }
     };

@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { ColumnTypeSelect } from './ColumnTypeSelect';
+import TableCodePanel from './diagram/TableCodePanel';
 import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 
 const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
@@ -35,8 +35,10 @@ export default function PropertiesPanel({
   onDeleteEntity
 }: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
+  const [activeEditorTab, setActiveEditorTab] = useState<'properties' | 'schema' | 'dbml'>('properties');
   const [openAttributeColumnId, setOpenAttributeColumnId] = useState<string | null>(null);
   const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const suppressColumnBlurRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevColumnsCount = useRef(editingEntity?.columns?.length || 0);
   const lastAddedIdRef = useRef<string | null>(null);
@@ -167,6 +169,11 @@ export default function PropertiesPanel({
   };
 
   const updateColumnSync = (colId: string, updates: Partial<Column>, immediate: boolean = false) => {
+    if (suppressColumnBlurRef.current) {
+      suppressColumnBlurRef.current = false;
+      return;
+    }
+
     // Validate duplicate column name before syncing
     if ('name' in updates && typeof updates.name === 'string') {
       const newName = updates.name.trim();
@@ -228,6 +235,42 @@ export default function PropertiesPanel({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 border-b border-border bg-background px-4 py-3">
+        <div className="flex w-full gap-1 rounded-lg border border-border bg-muted p-1" aria-label="Table editor sections">
+          {[
+            ['properties', 'Properties'],
+            ['schema', 'Schema'],
+            ['dbml', 'DBML'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={activeEditorTab === value}
+              onClick={() => setActiveEditorTab(value as 'properties' | 'schema' | 'dbml')}
+              className={cn(
+                'flex flex-1 items-center justify-center rounded-md px-3 py-2 text-xs font-semibold transition-colors',
+                activeEditorTab === value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeEditorTab !== 'properties' ? (
+        <TableCodePanel
+          entity={editingEntity}
+          mode={activeEditorTab}
+          onUpdateEntity={(updated) => {
+            setEditingEntity(updated);
+            onUpdateEntity(updated);
+          }}
+        />
+      ) : (
+      <>
       <div className="shrink-0 bg-background pt-6 px-6 pb-4 border-b border-border/50 shadow-sm z-10">
         {/* Entity Settings */}
         <section className="space-y-4">
@@ -308,7 +351,7 @@ export default function PropertiesPanel({
       <section className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2 min-h-0">
         <div className="space-y-2">
           {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col, index, arr) => (
-            <Card key={col.id} className="p-2.5 bg-muted/10 space-y-2 border border-border/30 shadow-none hover:border-primary/30 transition-all">
+            <Card key={col.id} className="gap-1 p-2 bg-muted/10 border border-border/30 shadow-none hover:border-primary/30 transition-all">
               <div className="flex items-center gap-1.5">
                 <div className="flex shrink-0">
                   <Button 
@@ -367,7 +410,7 @@ export default function PropertiesPanel({
               </div>
 
               <div className={cn(
-                "grid gap-1.5",
+                "grid gap-1",
                 supportsNumericPrecision(col.type)
                   ? "grid-cols-[minmax(0,1fr)_3.75rem_3.75rem_2rem_2rem_2rem]"
                   : supportsColumnLength(col.type)
@@ -441,42 +484,48 @@ export default function PropertiesPanel({
                   {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                 </Button>
 
-                <Popover
-                  open={openAttributeColumnId === col.id}
-                  onOpenChange={(open) => setOpenAttributeColumnId(open ? col.id : null)}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-expanded={openAttributeColumnId === col.id}
+                  onMouseDown={() => {
+                    suppressColumnBlurRef.current = true;
+                    window.setTimeout(() => {
+                      suppressColumnBlurRef.current = false;
+                    }, 0);
+                  }}
+                  onClick={() => setOpenAttributeColumnId((current) => current === col.id ? null : col.id)}
+                  className={cn(
+                    "h-8 w-8 transition-colors",
+                    openAttributeColumnId === col.id
+                      ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "text-muted-foreground hover:text-foreground bg-background/50",
+                    col.comment && openAttributeColumnId !== col.id && "border-primary/60",
+                  )}
+                  title="Field attributes"
+                  aria-label="Field attributes"
                 >
-                  <PopoverTrigger
-                    onMouseDown={(event) => event.preventDefault()}
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className={cn(
-                          "h-8 w-8 text-muted-foreground hover:text-foreground bg-background/50",
-                          col.comment && "border-primary text-primary",
-                        )}
-                        title="Field attributes"
-                        aria-label="Field attributes"
-                      />
-                    }
-                  >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-72 space-y-3 p-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-semibold">Comment</Label>
-                      <Textarea
-                        value={col.comment || ''}
-                        onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
-                        onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
-                        placeholder="Add a comment"
-                        className="min-h-24 text-sm"
-                      />
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                </Button>
               </div>
+
+              {openAttributeColumnId === col.id && (
+                <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-3">
+                  <Label className="text-xs font-semibold">Field Attributes</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`comment-${col.id}`} className="text-xs text-muted-foreground">Comment</Label>
+                    <Textarea
+                      id={`comment-${col.id}`}
+                      value={col.comment || ''}
+                      onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
+                      onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
+                      placeholder="Add a comment"
+                      className="min-h-20 resize-y text-sm"
+                    />
+                  </div>
+                </div>
+              )}
 
               {col.type === 'ENUM' && (
                 <Input
@@ -494,6 +543,8 @@ export default function PropertiesPanel({
           <div ref={scrollRef} />
         </div>
       </section>
+      </>
+      )}
 
       <ConfirmModal
         isOpen={confirmModal.isOpen}

@@ -228,12 +228,14 @@
 }
 
 .react-flow__edge-path {
-  @apply stroke-primary! stroke-2! transition-all duration-300;
+  stroke: var(--edge-color) !important;
+  stroke-width: 2 !important;
+  transition: all 300ms;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--edge-selected) !important;
-  stroke-width: 3 !important;
+  stroke-width: 1.75 !important;
   filter: drop-shadow(0 0 4px var(--edge-selected));
 }
 
@@ -258,7 +260,7 @@
   stroke-dasharray: 5;
   animation: edge_dash_draw 0.5s linear infinite !important;
   stroke: var(--edge-selected) !important;
-  stroke-width: 2.5 !important;
+  stroke-width: 1.5 !important;
 }
 
 /* Dim non-selected edges when another table is selected */
@@ -384,6 +386,7 @@ code:not(pre code) {
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --edge-selected: oklch(0.65 0.18 45);
+  --edge-color: oklch(0.52 0.04 250);
 }
 
 .dark {
@@ -419,6 +422,7 @@ code:not(pre code) {
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --edge-selected: oklch(0.78 0.16 45);
+  --edge-color: oklch(0.68 0.05 250);
 }
 
 /* Tiptap Editor Styles */
