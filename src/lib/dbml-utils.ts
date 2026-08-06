@@ -13,7 +13,7 @@ interface TableParseResult {
 const TABLE_HEADER_RE = /^\s*Table\s+(?:"([^"]+)"|(\w+))\s*\{/i;
 const ENUM_HEADER_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{/i;
 const COLUMN_DEF_RE = /^\s*(?:"([^"]+)"|(\w+))\s+(\[[^\]]+\]|"[^"]+"|[A-Za-z_][\w]*(?:\s*\([^)]*\))?|[^\s\[]+)/;
-const STANDALONE_REF_RE = /^\s*Ref:\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".]+)"?/i;
+const STANDALONE_REF_RE = /^\s*Ref(?:\s+(?:"[^"]+"|\w+))?\s*:\s*(?:"([^"]+)"|(\w+))\.(?:"([^"]+)"|([^\s\].]+))\s*[><-]\s*(?:"([^"]+)"|(\w+))\.(?:"([^"]+)"|([^\s\].]+))/i;
 const INLINE_REF_RE = /\[\s*ref\s*:\s*[><-]\s*(?:"([^"]+)"|(\w+))\."?([^".\]]+)"?\s*\]/i;
 const ENUM_BLOCK_RE = /^\s*Enum\s+(?:"([^"]+)"|(\w+))\s*\{[\s\S]*?^\s*\}/gim;
 
@@ -153,9 +153,9 @@ export function parseDBMLRef(line: string, currentTable: string): DBMLRef | null
   if (standalone) {
     return {
       fkTable: cleanDBMLRefPart(standalone[1] || standalone[2]),
-      fkCol: cleanDBMLRefPart(standalone[3]),
-      pkTable: cleanDBMLRefPart(standalone[4] || standalone[5]),
-      pkCol: cleanDBMLRefPart(standalone[6]),
+      fkCol: cleanDBMLRefPart(standalone[3] || standalone[4]),
+      pkTable: cleanDBMLRefPart(standalone[5] || standalone[6]),
+      pkCol: cleanDBMLRefPart(standalone[7] || standalone[8]),
     };
   }
 

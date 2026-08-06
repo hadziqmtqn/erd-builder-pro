@@ -30,7 +30,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   const [showFilters, setShowFilters] = useState(false);
   const [activeView, setActiveView] = useState<DataViewerView>('data');
   const [fkOptionsByColumn, setFkOptionsByColumn] = useState<Record<string, Record<string, any>[]>>({});
-  const [confirmAction, setConfirmAction] = useState<null | 'records' | 'column' | 'index'>(null);
+  const [confirmAction, setConfirmAction] = useState<null | 'records' | 'column' | 'index' | 'check'>(null);
   const [sqlDialogOpen, setSqlDialogOpen] = useState(false);
   const [structureSql, setStructureSql] = useState('');
   const [isLoadingSql, setIsLoadingSql] = useState(false);
@@ -199,12 +199,14 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   }, [activeTable, connectionId]);
   const handleDeleteStructure = useCallback(async () => {
     const target = structureEditor.target;
-    if (!target || (target.kind !== 'column' && target.kind !== 'index')) return;
+    if (!target || (target.kind !== 'column' && target.kind !== 'index' && target.kind !== 'check')) return;
     try {
       await updateStructure(target.kind === 'column'
         ? { deleteColumnName: target.columnName }
-        : { deleteIndexName: target.indexName });
-      toast.success(target.kind === 'column' ? 'Column deleted' : 'Index deleted');
+        : target.kind === 'index'
+          ? { deleteIndexName: target.indexName }
+          : { deleteCheckName: target.checkName });
+      toast.success(target.kind === 'column' ? 'Column deleted' : target.kind === 'index' ? 'Index deleted' : 'Check deleted');
       structureEditor.close();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete structure item');
@@ -369,7 +371,8 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   table={activeTableSchema} isLoading={isLoadingTables}
                   selectedColumnName={structureEditor.target?.kind === 'column' ? structureEditor.target.columnName : null}
                   selectedIndexName={structureEditor.target?.kind === 'index' ? structureEditor.target.indexName : null}
-                  onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex}
+                  selectedCheckName={structureEditor.target?.kind === 'check' ? structureEditor.target.checkName : null}
+                  onEditTable={structureEditor.editTable} onSelectColumn={structureEditor.editColumn} onSelectIndex={structureEditor.editIndex} onSelectCheck={structureEditor.editCheck}
                 />
               ) : null}
               {activeView === 'data' && !isNewTableTab && (
@@ -424,6 +427,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                 warnUnsaved={warnUnsaved}
                 onAddColumn={structureEditor.addColumn}
                 onAddIndex={structureEditor.addIndex}
+                onAddCheck={structureEditor.addCheck}
                 onInfo={openStructureSql}
                 onNextPage={nextPage}
                 onPrevPage={prevPage}
@@ -470,6 +474,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
           onClose={() => { structureEditor.close(); if (isNewTableTab) handleCloseTable('__new_table__'); }}
           onDeleteColumn={() => setConfirmAction('column')}
           onDeleteIndex={() => setConfirmAction('index')}
+          onDeleteCheck={() => setConfirmAction('check')}
           onSave={handleSubmitStructure}
         />
       )}

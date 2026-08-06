@@ -10,6 +10,7 @@ import {
   generateGoravelModel,
   generateGoravelMigration,
   toPascalCase,
+  ForeignKeyConstraint,
 } from './sql-generator';
 import { Entity } from '@/types';
 
@@ -64,9 +65,10 @@ export function generateAllTablesCode(
     }
     case 'laravel_migration': {
       headers.push(`<?php`, ``, `// ERD Export: ${fileName}`, `// Generate all migrations for each table`, ``);
+      const entityFkMap = buildEntityFkMap(entities, edges);
       entities.forEach((entity, i) => {
         if (i > 0) body.push('');
-        body.push(generateLaravelMigration(entity));
+        body.push(generateLaravelMigration(entity, entityFkMap.get(entity.id)));
       });
       break;
     }
@@ -124,9 +126,9 @@ export function generateAllTablesCode(
   return [...headers, ...body].join('\n');
 }
 
-function buildEntityFkMap(entities: Entity[], edges: Edge[]): Map<string, { column: string; references: string; on: string }[]> {
+function buildEntityFkMap(entities: Entity[], edges: Edge[]): Map<string, ForeignKeyConstraint[]> {
   const entityMap = new Map(entities.map(e => [e.id, e]));
-  const fkMap = new Map<string, { column: string; references: string; on: string }[]>();
+  const fkMap = new Map<string, ForeignKeyConstraint[]>();
   const seen = new Set<string>();
 
   edges.forEach(edge => {
@@ -145,7 +147,15 @@ function buildEntityFkMap(entities: Entity[], edges: Edge[]): Map<string, { colu
     seen.add(key);
 
     const existing = fkMap.get(sourceEntity.id) || [];
-    existing.push({ column: sourceColumn.name, references: targetColumn.name, on: targetEntity.name.toLowerCase() });
+    const relation = (edge.data || {}) as Record<string, unknown>;
+    existing.push({
+      column: sourceColumn.name,
+      references: targetColumn.name,
+      on: targetEntity.name.toLowerCase(),
+      onDelete: typeof relation.on_delete === 'string' ? relation.on_delete : null,
+      onUpdate: typeof relation.on_update === 'string' ? relation.on_update : null,
+      constraintName: typeof relation.constraint_name === 'string' ? relation.constraint_name : null,
+    });
     fkMap.set(sourceEntity.id, existing);
   });
 
@@ -267,10 +277,17 @@ function generateAlterTableFKs(
     if (seen.has(key)) return;
     seen.add(key);
 
-    const constraintName = `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
+    const relation = (edge.data || {}) as Record<string, unknown>;
+    const constraintName = relation.constraint_name
+      ? String(relation.constraint_name)
+      : `fk_${sourceEntity.name}_${sourceColumn.name}`.toLowerCase();
     const quote = dialect === 'mysql' ? '`' : '"';
+    const action = (value: unknown, keyword: string) => {
+      const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+      return normalized && normalized !== 'NO ACTION' ? ` ON ${keyword} ${normalized}` : '';
+    };
     fkLines.push(
-      `ALTER TABLE ${quote}${sourceEntity.name}${quote} ADD CONSTRAINT ${constraintName} FOREIGN KEY (${quote}${sourceColumn.name}${quote}) REFERENCES ${quote}${targetEntity.name}${quote}(${quote}${targetColumn.name}${quote});`
+      `ALTER TABLE ${quote}${sourceEntity.name}${quote} ADD CONSTRAINT ${quote}${constraintName}${quote} FOREIGN KEY (${quote}${sourceColumn.name}${quote}) REFERENCES ${quote}${targetEntity.name}${quote}(${quote}${targetColumn.name}${quote})${action(relation.on_delete, 'DELETE')}${action(relation.on_update, 'UPDATE')};`
     );
   });
 

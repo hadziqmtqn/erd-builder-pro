@@ -11,6 +11,8 @@ export interface Column {
   type: string;
   is_pk: boolean;
   is_nullable: boolean;
+  default_value?: string | null;
+  is_unique?: boolean;
   _is_fk?: boolean;
   enum_values?: string;
   enum_name?: string;
@@ -29,6 +31,27 @@ export interface Entity {
   y: number;
   color: string;
   columns: Column[];
+  comment?: string | null;
+  constraints?: TableConstraint[];
+  indexes?: TableIndex[];
+}
+
+export interface TableConstraint {
+  id: string;
+  entity_id: string;
+  kind: 'primary_key' | 'unique' | 'check';
+  name?: string | null;
+  column_ids?: string[];
+  expression?: string | null;
+}
+
+export interface TableIndex {
+  id: string;
+  entity_id: string;
+  name: string;
+  column_ids: string[];
+  is_unique?: boolean;
+  algorithm?: string | null;
 }
 
 export interface Relationship {
@@ -41,6 +64,10 @@ export interface Relationship {
   target_handle?: string;
   type: string;
   label?: string;
+  on_delete?: string | null;
+  on_update?: string | null;
+  constraint_name?: string | null;
+  data?: Record<string, any>;
 }
 
 export interface Project {

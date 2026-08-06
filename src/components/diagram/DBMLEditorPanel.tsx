@@ -647,9 +647,30 @@ function canvasFingerprint(nodes: Node<Entity>[], edges: Edge[]): string {
   const edgeIds = edges.map(e => e.id).sort().join(',');
   const positions = nodes.map(n => `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}`).sort().join(';');
   const columns = nodes.map(n =>
-    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.enum_name || ''}:${c.enum_values || ''}:${c.comment || ''}:${c.max_length || ''}:${c.numeric_precision || ''}:${c.numeric_scale || ''}:${c.is_pk}:${c.is_nullable}`).join(',')}`
+    `${n.id}:${n.data.columns.map(c => `${c.name}:${c.type}:${c.enum_name || ''}:${c.enum_values || ''}:${c.comment || ''}:${c.max_length || ''}:${c.numeric_precision || ''}:${c.numeric_scale || ''}:${c.is_pk}:${c.is_nullable}:${c.default_value || ''}:${c.is_unique || false}`).join(',')}`
   ).sort().join('|');
-  return `${nodeIds}|${edgeIds}|${positions}|${columns}`;
+  const metadata = nodes.map(n => JSON.stringify({
+    table: n.data.name,
+    constraints: (n.data.constraints || []).map(c => ({
+      kind: c.kind,
+      name: c.name || '',
+      columns: (c.column_ids || []).map(id => n.data.columns.find(column => column.id === id)?.name || id).sort(),
+      expression: c.expression || '',
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    indexes: (n.data.indexes || []).map(index => ({
+      name: index.name,
+      unique: Boolean(index.is_unique),
+      algorithm: index.algorithm || '',
+      columns: (index.column_ids || []).map(id => n.data.columns.find(column => column.id === id)?.name || id).sort(),
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  })).sort().join('|');
+  const relationMetadata = edges.map(edge => JSON.stringify({
+    id: edge.id,
+    on_delete: (edge.data as any)?.on_delete || '',
+    on_update: (edge.data as any)?.on_update || '',
+    constraint_name: (edge.data as any)?.constraint_name || '',
+  })).sort().join('|');
+  return `${nodeIds}|${edgeIds}|${positions}|${columns}|${metadata}|${relationMetadata}`;
 }
 
 /** Quick structural check: braces balanced, at least one table-like block. */

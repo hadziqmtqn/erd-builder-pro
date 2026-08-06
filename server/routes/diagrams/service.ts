@@ -91,10 +91,12 @@ async function upsertEntities(rows: any[], diagramId: number) {
           id: e.id, diagramId,
           name: e.name, x: e.x, y: e.y,
           color: e.color || "#6366f1",
+          comment: e.comment || null,
         },
         update: {
           name: e.name, x: e.x, y: e.y,
           color: e.color || "#6366f1",
+          comment: e.comment || null,
         },
       })
     ),
@@ -115,6 +117,8 @@ async function upsertColumns(rows: any[]) {
           name: col.name, type: col.type,
           isPk: col.is_pk || false,
           isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          isUnique: Boolean(col.is_unique),
+          defaultValue: col.default_value ?? null,
           enumValues: col.enum_values || null,
           comment: col.comment || null,
           maxLength: col.max_length ?? null,
@@ -126,6 +130,8 @@ async function upsertColumns(rows: any[]) {
           entityId: col._entity_id, name: col.name, type: col.type,
           isPk: col.is_pk || false,
           isNullable: col.is_nullable !== undefined ? col.is_nullable : true,
+          isUnique: Boolean(col.is_unique),
+          defaultValue: col.default_value ?? null,
           enumValues: col.enum_values || null,
           comment: col.comment || null,
           maxLength: col.max_length ?? null,
@@ -157,6 +163,9 @@ async function upsertRelationships(rows: any[], diagramId: number) {
           targetHandle: r.target_handle || null,
           type: r.type || "one-to-many",
           label: r.label || null,
+          onDelete: r.on_delete || null,
+          onUpdate: r.on_update || null,
+          constraintName: r.constraint_name || null,
         },
         update: {
           diagramId,
@@ -168,6 +177,9 @@ async function upsertRelationships(rows: any[], diagramId: number) {
           targetHandle: r.target_handle || null,
           type: r.type || "one-to-many",
           label: r.label || null,
+          onDelete: r.on_delete || null,
+          onUpdate: r.on_update || null,
+          constraintName: r.constraint_name || null,
         },
       })
     ),
@@ -176,6 +188,52 @@ async function upsertRelationships(rows: any[], diagramId: number) {
 }
 
 export { upsertRelationships };
+
+async function upsertTableConstraints(rows: any[]) {
+  if (rows.length === 0 || !prisma) return;
+  await prisma.$transaction(rows.map(constraint => prisma!.tableConstraint.upsert({
+    where: { id: constraint.id },
+    create: {
+      id: constraint.id,
+      entityId: constraint._entity_id,
+      kind: constraint.kind,
+      name: constraint.name || null,
+      columnIds: Array.isArray(constraint.column_ids) ? JSON.stringify(constraint.column_ids) : constraint.column_ids || null,
+      expression: constraint.expression || null,
+    },
+    update: {
+      entityId: constraint._entity_id,
+      kind: constraint.kind,
+      name: constraint.name || null,
+      columnIds: Array.isArray(constraint.column_ids) ? JSON.stringify(constraint.column_ids) : constraint.column_ids || null,
+      expression: constraint.expression || null,
+    },
+  })), { timeout: 30000 });
+}
+
+async function upsertTableIndexes(rows: any[]) {
+  if (rows.length === 0 || !prisma) return;
+  await prisma.$transaction(rows.map(index => prisma!.tableIndex.upsert({
+    where: { id: index.id },
+    create: {
+      id: index.id,
+      entityId: index._entity_id,
+      name: index.name,
+      columnIds: Array.isArray(index.column_ids) ? JSON.stringify(index.column_ids) : String(index.column_ids || "[]"),
+      isUnique: Boolean(index.is_unique),
+      algorithm: index.algorithm || null,
+    },
+    update: {
+      entityId: index._entity_id,
+      name: index.name,
+      columnIds: Array.isArray(index.column_ids) ? JSON.stringify(index.column_ids) : String(index.column_ids || "[]"),
+      isUnique: Boolean(index.is_unique),
+      algorithm: index.algorithm || null,
+    },
+  })), { timeout: 30000 });
+}
+
+export { upsertTableConstraints, upsertTableIndexes };
 
 // ── CRUD ──
 

@@ -146,6 +146,7 @@ CREATE TABLE "entities" (
     "x" REAL NOT NULL,
     "y" REAL NOT NULL,
     "color" TEXT DEFAULT '#6366f1',
+    "comment" TEXT,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "entities_diagram_id_fkey" FOREIGN KEY ("diagram_id") REFERENCES "diagrams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
@@ -158,6 +159,8 @@ CREATE TABLE "columns" (
     "type" TEXT NOT NULL,
     "is_pk" BOOLEAN DEFAULT false,
     "is_nullable" BOOLEAN DEFAULT true,
+    "is_unique" BOOLEAN DEFAULT false,
+    "default_value" TEXT,
     "enum_values" TEXT,
     "comment" TEXT,
     "max_length" INTEGER,
@@ -180,10 +183,37 @@ CREATE TABLE "relationships" (
     "source_handle" TEXT,
     "target_handle" TEXT,
     "label" TEXT,
+    "on_delete" TEXT,
+    "on_update" TEXT,
+    "constraint_name" TEXT,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "relationships_diagram_id_fkey" FOREIGN KEY ("diagram_id") REFERENCES "diagrams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
     CONSTRAINT "relationships_source_entity_id_fkey" FOREIGN KEY ("source_entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
     CONSTRAINT "relationships_target_entity_id_fkey" FOREIGN KEY ("target_entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "table_constraints" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "entity_id" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "name" TEXT,
+    "column_ids" TEXT,
+    "expression" TEXT,
+    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "table_constraints_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "table_indexes" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "entity_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "column_ids" TEXT NOT NULL,
+    "is_unique" BOOLEAN DEFAULT false,
+    "algorithm" TEXT,
+    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "table_indexes_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -411,6 +441,12 @@ CREATE INDEX "idx_flowcharts_updated_at" ON "flowcharts"("updated_at");
 
 -- CreateIndex
 CREATE INDEX "idx_flowcharts_version" ON "flowcharts"("_version");
+
+-- CreateIndex
+CREATE INDEX "idx_table_constraints_entity" ON "table_constraints"("entity_id");
+
+-- CreateIndex
+CREATE INDEX "idx_table_indexes_entity" ON "table_indexes"("entity_id");
 
 -- CreateIndex
 CREATE INDEX "idx_entity_changes_lookup" ON "entity_changes"("entity_type", "entity_id", "version");

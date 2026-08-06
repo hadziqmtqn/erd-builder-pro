@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { COLUMN_TYPES } from '@/lib/utils';
 import { StructureDraft, StructureTarget } from '@/hooks/useStructureEditor';
+import { DataViewerStructureIndexFields } from './DataViewerStructureIndexFields';
 
 type DataViewerStructurePanelProps = {
   target: StructureTarget;
@@ -22,6 +23,7 @@ type DataViewerStructurePanelProps = {
   onClose: () => void;
   onDeleteColumn: () => void;
   onDeleteIndex: () => void;
+  onDeleteCheck: () => void;
   onSave: () => void;
 };
 
@@ -41,6 +43,7 @@ const PG_TYPES = [
 ];
 const KNOWN_TYPE_OPTIONS = new Set([...COLUMN_TYPES, ...PG_TYPES]);
 const MYSQL_EXTRA_OPTIONS = ['', 'AUTO_INCREMENT', 'ON UPDATE CURRENT_TIMESTAMP'];
+const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT'];
 
 const typeOption = (dbType: string | null, type: string) => {
   const value = type.trim();
@@ -70,7 +73,6 @@ const lengthType = (type: string) => /^(var)?char|^character varying|^(var)?bina
 const defaultLength = (type: string) => /^(var)?char|^(var)?binary$/i.test(type.replace(/\(\d+\)/, '').trim()) ? '255' : '';
 const precisionType = (type: string) => /^(decimal|numeric)$/i.test(type.replace(/\([^)]*\)/, '').trim());
 const isColumnTarget = (target: StructureTarget) => target.kind === 'column' || target.kind === 'addColumn' || target.kind === 'addTable';
-const isIndexTarget = (target: StructureTarget) => target.kind === 'index' || target.kind === 'addIndex';
 const isEnumEditorType = (dbType: string | null, type: string, values: string[]) => {
   const current = typeOption(dbType, type);
   return /^(ENUM|SET)$/.test(current) || (values.length > 0 && !KNOWN_TYPE_OPTIONS.has(current));
@@ -89,6 +91,10 @@ const title = (target: StructureTarget) => target.kind === 'table'
         ? 'Add Index'
         : target.kind === 'index'
           ? 'Edit Index'
+          : target.kind === 'addCheck'
+            ? 'Add Check Constraint'
+            : target.kind === 'check'
+              ? 'Edit Check Constraint'
           : 'Edit Column';
 
 export function DataViewerStructurePanel({
@@ -103,6 +109,7 @@ export function DataViewerStructurePanel({
   onClose,
   onDeleteColumn,
   onDeleteIndex,
+  onDeleteCheck,
   onSave,
 }: DataViewerStructurePanelProps) {
   const [enumValue, setEnumValue] = useState('');
@@ -127,10 +134,16 @@ export function DataViewerStructurePanel({
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
           {(target.kind === 'table' || target.kind === 'addTable') && (
-            <div className="space-y-1.5">
-              <Label htmlFor="structure-table-name">Table name</Label>
-              <Input id="structure-table-name" value={draft.tableName} onChange={e => patchDraft(setDraft, { tableName: e.target.value })} />
-            </div>
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="structure-table-name">Table name</Label>
+                <Input id="structure-table-name" value={draft.tableName} onChange={e => patchDraft(setDraft, { tableName: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="structure-table-comment">Table comment</Label>
+                <Textarea id="structure-table-comment" value={draft.tableComment} onChange={e => patchDraft(setDraft, { tableComment: e.target.value })} />
+              </div>
+            </>
           )}
 
           {isColumnTarget(target) && (
@@ -298,53 +311,27 @@ export function DataViewerStructurePanel({
                     <p className="text-xs text-muted-foreground">No compatible columns for this type.</p>
                   )}
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Constraint name</Label>
+                  <Input value={draft.fkConstraintName} placeholder="Auto-generated" onChange={e => patchDraft(setDraft, { fkConstraintName: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['fkOnDelete', 'fkOnUpdate'] as const).map((field) => (
+                    <div key={field} className="space-y-1.5">
+                      <Label>{field === 'fkOnDelete' ? 'On delete' : 'On update'}</Label>
+                      <Select value={draft[field]} onValueChange={value => patchDraft(setDraft, { [field]: value ?? 'NO ACTION' })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{FK_ACTIONS.map(action => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
               </div>}
             </>
           )}
 
-          {isIndexTarget(target) && (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="structure-index-name">Index name</Label>
-                <Input id="structure-index-name" value={draft.indexName} onChange={e => patchDraft(setDraft, { indexName: e.target.value })} />
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.indexUnique}
-                  onCheckedChange={checked => patchDraft(setDraft, { indexUnique: checked })}
-                />
-                Unique
-              </label>
-              <div className="space-y-1.5">
-                <Label>Algorithm</Label>
-                <Select value={draft.indexAlgorithm || 'default'} onValueChange={value => patchDraft(setDraft, { indexAlgorithm: value === 'default' ? '' : value ?? '' })}>
-                  <SelectTrigger><SelectValue>{draft.indexAlgorithm ? draft.indexAlgorithm.toUpperCase() : 'Default'}</SelectValue></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    <SelectItem value="btree">BTREE</SelectItem>
-                    <SelectItem value="hash">HASH</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Columns</Label>
-                <div className="max-h-60 space-y-2 overflow-y-auto rounded-md border p-2">
-                  {tableColumns.map((column: any) => (
-                    <label key={column.name} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={draft.indexColumns.includes(column.name)}
-                        onCheckedChange={checked => patchDraft(setDraft, {
-                          indexColumns: checked
-                            ? [...draft.indexColumns, column.name]
-                            : draft.indexColumns.filter(name => name !== column.name),
-                        })}
-                      />
-                      <span className="font-mono">{column.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
+          {(target.kind === 'index' || target.kind === 'addIndex' || target.kind === 'check' || target.kind === 'addCheck') && (
+            <DataViewerStructureIndexFields target={target} draft={draft} tableColumns={tableColumns} setDraft={setDraft} />
           )}
         </div>
 
@@ -359,6 +346,12 @@ export function DataViewerStructurePanel({
             <Button variant="destructive" className="col-span-2" onClick={onDeleteIndex} disabled={isSaving}>
               <Trash2 className="mr-2 h-4 w-4" />
               Delete Index
+            </Button>
+          )}
+          {target.kind === 'check' && (
+            <Button variant="destructive" className="col-span-2" onClick={onDeleteCheck} disabled={isSaving}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Check
             </Button>
           )}
           <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancel</Button>

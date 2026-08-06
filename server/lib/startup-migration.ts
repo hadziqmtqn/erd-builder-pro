@@ -198,6 +198,40 @@ async function createDbConnectTablesIfMissing(): Promise<void> {
   }
 }
 
+async function createErdMetadataTablesIfMissing(): Promise<void> {
+  if (!prisma) return;
+  try {
+    const textType = isLocalPostgres() ? "TEXT" : "TEXT";
+    const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "table_constraints" (
+        "id" ${textType} NOT NULL PRIMARY KEY,
+        "entity_id" ${textType} NOT NULL,
+        "kind" ${textType} NOT NULL,
+        "name" ${textType},
+        "column_ids" ${textType},
+        "expression" ${textType},
+        "created_at" ${dateType} DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "table_constraints_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_table_constraints_entity" ON "table_constraints"("entity_id")`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "table_indexes" (
+        "id" ${textType} NOT NULL PRIMARY KEY,
+        "entity_id" ${textType} NOT NULL,
+        "name" ${textType} NOT NULL,
+        "column_ids" ${textType} NOT NULL,
+        "is_unique" BOOLEAN DEFAULT false,
+        "algorithm" ${textType},
+        "created_at" ${dateType} DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "table_indexes_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "entities" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_table_indexes_entity" ON "table_indexes"("entity_id")`);
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to create ERD metadata tables (non-fatal)");
+  }
+}
+
 async function normalizeLegacyColumnIds(): Promise<void> {
   if (!prisma) return;
 
@@ -440,6 +474,13 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("columns", "max_length", '"max_length" INTEGER');
   await addColumnIfMissing("columns", "numeric_precision", '"numeric_precision" INTEGER');
   await addColumnIfMissing("columns", "numeric_scale", '"numeric_scale" INTEGER');
+  await addColumnIfMissing("columns", "default_value", '"default_value" TEXT');
+  await addColumnIfMissing("columns", "is_unique", '"is_unique" BOOLEAN DEFAULT false');
+  await addColumnIfMissing("entities", "comment", '"comment" TEXT');
+  await addColumnIfMissing("relationships", "on_delete", '"on_delete" TEXT');
+  await addColumnIfMissing("relationships", "on_update", '"on_update" TEXT');
+  await addColumnIfMissing("relationships", "constraint_name", '"constraint_name" TEXT');
+  await createErdMetadataTablesIfMissing();
   if (isDesktopMode()) {
     await createDbConnectTablesIfMissing();
     await createSqlQueriesTableIfMissing();

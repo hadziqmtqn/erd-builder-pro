@@ -6,10 +6,13 @@ export type StructureTarget =
   | { kind: 'column'; columnName: string }
   | { kind: 'addColumn' }
   | { kind: 'index'; indexName: string }
-  | { kind: 'addIndex' };
+  | { kind: 'addIndex' }
+  | { kind: 'check'; checkName: string }
+  | { kind: 'addCheck' };
 
 export type StructureDraft = {
   tableName: string;
+  tableComment: string;
   columnName: string;
   columnType: string;
   characterLength: string;
@@ -23,10 +26,15 @@ export type StructureDraft = {
   fkEnabled: boolean;
   refTable: string;
   refColumn: string;
+  fkConstraintName: string;
+  fkOnDelete: string;
+  fkOnUpdate: string;
   indexName: string;
   indexColumns: string[];
   indexUnique: boolean;
   indexAlgorithm: string;
+  checkName: string;
+  checkExpression: string;
 };
 
 const columnType = (column: any) => String(column?.full_type === 'USER-DEFINED' ? column?.type : column?.full_type || column?.type || '');
@@ -89,10 +97,16 @@ export function useStructureEditor(
     return activeTableSchema?.indexes?.find((index: any) => index.name === target.indexName) || null;
   }, [activeTableSchema, target]);
 
+  const selectedCheck = useMemo(() => {
+    if (target?.kind !== 'check') return null;
+    return activeTableSchema?.checks?.find((check: any) => check.name === target.checkName) || null;
+  }, [activeTableSchema, target]);
+
   useEffect(() => {
     if (target?.kind === 'addTable') {
       setDraft({
         tableName: '',
+        tableComment: '',
         columnName: 'id',
         columnType: 'BIGINT',
         characterLength: '',
@@ -106,10 +120,15 @@ export function useStructureEditor(
         fkEnabled: false,
         refTable: '',
         refColumn: '',
+        fkConstraintName: '',
+        fkOnDelete: 'NO ACTION',
+        fkOnUpdate: 'NO ACTION',
         indexName: '',
         indexColumns: [],
         indexUnique: false,
         indexAlgorithm: '',
+        checkName: '',
+        checkExpression: '',
       });
       return;
     }
@@ -124,9 +143,13 @@ export function useStructureEditor(
     const index = target.kind === 'index'
       ? activeTableSchema.indexes?.find((item: any) => item.name === target.indexName)
       : null;
+    const check = target.kind === 'check'
+      ? activeTableSchema.checks?.find((item: any) => item.name === target.checkName)
+      : null;
     const precision = parsePrecision(columnType(column));
     setDraft({
       tableName: activeTableSchema.table_name || '',
+      tableComment: activeTableSchema.comment ?? '',
       columnName: column?.name || '',
       columnType: columnType(column),
       characterLength: String(column?.max_length || parseLength(columnType(column)) || ''),
@@ -140,10 +163,15 @@ export function useStructureEditor(
       fkEnabled: Boolean(fk),
       refTable: fk?.ref_table || '',
       refColumn: fk?.ref_column || '',
+      fkConstraintName: fk?.constraint_name || '',
+      fkOnDelete: fk?.on_delete || 'NO ACTION',
+      fkOnUpdate: fk?.on_update || 'NO ACTION',
       indexName: index?.name || '',
       indexColumns: String(index?.column_name || '').split(',').map(item => item.trim()).filter(Boolean),
       indexUnique: Boolean(index?.is_unique),
       indexAlgorithm: String(index?.algorithm || '').toLowerCase(),
+      checkName: check?.name || '',
+      checkExpression: check?.expression || '',
     });
   }, [activeTableSchema, target]);
 
@@ -152,13 +180,18 @@ export function useStructureEditor(
     if (target.kind === 'addTable') return Boolean(draft.tableName.trim() && draft.columnName.trim() && draft.columnType.trim());
     if (!activeTableSchema) return false;
     if (draft.tableName !== activeTableSchema.table_name) return true;
+    if (draft.tableComment !== (activeTableSchema.comment ?? '')) return true;
     if (target.kind === 'addColumn') return Boolean(draft.columnName.trim() && draft.columnType.trim());
     if (target.kind === 'addIndex') return Boolean(draft.indexName.trim() && draft.indexColumns.length > 0);
+    if (target.kind === 'addCheck') return Boolean(draft.checkExpression.trim());
     if (target.kind === 'index' && selectedIndex) {
       return draft.indexName !== selectedIndex.name ||
         draft.indexUnique !== Boolean(selectedIndex.is_unique) ||
         draft.indexAlgorithm !== String(selectedIndex.algorithm || '').toLowerCase() ||
         draft.indexColumns.join(',') !== String(selectedIndex.column_name || '');
+    }
+    if (target.kind === 'check' && selectedCheck) {
+      return draft.checkName !== selectedCheck.name || draft.checkExpression !== selectedCheck.expression;
     }
     if (target.kind !== 'column' || !selectedColumn) return false;
     return draft.columnName !== selectedColumn.name ||
@@ -170,8 +203,11 @@ export function useStructureEditor(
       draft.enumValues.join('\u0000') !== parseEnumValues(selectedColumn.enum_values).join('\u0000') ||
       draft.fkEnabled !== Boolean(currentFk) ||
       draft.refTable !== (currentFk?.ref_table || '') ||
-      draft.refColumn !== (currentFk?.ref_column || '');
-  }, [activeTableSchema, currentFk, draft, selectedColumn, selectedIndex, target]);
+      draft.refColumn !== (currentFk?.ref_column || '') ||
+      draft.fkConstraintName !== (currentFk?.constraint_name || '') ||
+      draft.fkOnDelete !== (currentFk?.on_delete || 'NO ACTION') ||
+      draft.fkOnUpdate !== (currentFk?.on_update || 'NO ACTION');
+  }, [activeTableSchema, currentFk, draft, selectedCheck, selectedColumn, selectedIndex, target]);
 
   const referenceColumns = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === draft?.refTable);
@@ -185,6 +221,7 @@ export function useStructureEditor(
       await updateStructure({
         createTable: target.kind === 'addTable' ? {
           name: draft.tableName,
+          comment: draft.tableComment,
           column: {
             name: draft.columnName,
             type: typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
@@ -196,6 +233,7 @@ export function useStructureEditor(
           },
         } : undefined,
         tableName: draft.tableName,
+        tableComment: draft.tableComment,
         columnName: target.kind === 'column' ? target.columnName : target.kind === 'addColumn' ? '__new__' : undefined,
         column: target.kind === 'column' || target.kind === 'addColumn' ? {
           name: draft.columnName,
@@ -210,6 +248,9 @@ export function useStructureEditor(
           enabled: draft.fkEnabled,
           ref_table: draft.refTable,
           ref_column: draft.refColumn,
+          constraint_name: draft.fkConstraintName,
+          on_delete: draft.fkOnDelete,
+          on_update: draft.fkOnUpdate,
         } : undefined,
         indexName: target.kind === 'index' ? target.indexName : target.kind === 'addIndex' ? '__new__' : undefined,
         index: target.kind === 'index' || target.kind === 'addIndex' ? {
@@ -218,10 +259,16 @@ export function useStructureEditor(
           is_unique: draft.indexUnique,
           algorithm: draft.indexAlgorithm,
         } : undefined,
+        checkName: target.kind === 'check' ? target.checkName : target.kind === 'addCheck' ? '__new__' : undefined,
+        check: target.kind === 'check' || target.kind === 'addCheck' ? {
+          name: draft.checkName,
+          expression: draft.checkExpression,
+        } : undefined,
       });
       if (target.kind === 'addTable') setTarget(null);
       if (target.kind === 'addColumn' || target.kind === 'column') setTarget({ kind: 'column', columnName: draft.columnName });
       if (target.kind === 'addIndex' || target.kind === 'index') setTarget({ kind: 'index', indexName: draft.indexName });
+      if (target.kind === 'addCheck' || target.kind === 'check') setTarget({ kind: 'check', checkName: draft.checkName });
     } finally {
       setIsSaving(false);
     }
@@ -234,6 +281,7 @@ export function useStructureEditor(
     isSaving,
     selectedColumn,
     selectedIndex,
+    selectedCheck,
     referenceColumns,
     setDraft,
     editTable: () => setTarget({ kind: 'table' }),
@@ -242,6 +290,8 @@ export function useStructureEditor(
     addTable: () => setTarget({ kind: 'addTable' }),
     editIndex: (indexName: string) => setTarget({ kind: 'index', indexName }),
     addIndex: () => setTarget({ kind: 'addIndex' }),
+    editCheck: (checkName: string) => setTarget({ kind: 'check', checkName }),
+    addCheck: () => setTarget({ kind: 'addCheck' }),
     close: () => setTarget(null),
     save,
   };

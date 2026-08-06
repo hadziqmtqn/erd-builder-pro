@@ -4,7 +4,7 @@ import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
 import { normalizeSelectQuery } from "./query-helpers.js";
-import { buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
+import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 import { extractMySqlCreatedTables, MAX_SQL_IMPORT_BYTES, normalizeMySqlCreateTableDefaults, splitSqlStatements, validateImportSql } from "./structure.controller.js";
 
 describe("custom query helpers", () => {
@@ -218,7 +218,7 @@ describe("buildStructureStatements", () => {
       'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" DROP NOT NULL',
       'ALTER TABLE "public"."articles" ALTER COLUMN "author_id" SET DEFAULT NULL',
       'ALTER TABLE "public"."articles" DROP CONSTRAINT IF EXISTS "posts_user_id_fkey"',
-      'ALTER TABLE "public"."articles" ADD CONSTRAINT "fk_articles_author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")',
+      'ALTER TABLE "public"."articles" ADD CONSTRAINT "fk_articles_author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id") ON DELETE NO ACTION ON UPDATE NO ACTION',
     ]);
   });
 
@@ -261,6 +261,13 @@ describe("buildStructureStatements", () => {
     expect(buildStructureStatements("mysql", {}, {
       createTable: { name: "customers", column: { name: "name", type: "varchar", is_nullable: false } },
     })).toEqual(['CREATE TABLE `customers` (`name` varchar(255) NOT NULL)']);
+    expect(buildCreateTableSql("postgresql", {
+      table_name: "customers",
+      table_schema: "public",
+      comment: "Customer table",
+      columns: [{ name: "id", type: "integer", is_nullable: false, is_pk: true }],
+      checks: [{ name: "customers_id_positive", expression: "id > 0" }],
+    })).toContain('COMMENT ON TABLE "public"."customers" IS \'Customer table\'');
   });
 
   it("builds safe table delete statements", () => {
@@ -384,6 +391,23 @@ describe("buildStructureStatements", () => {
       ...table,
       indexes: [{ name: "posts_user_id_idx", is_unique: false, is_primary: false, column_name: "user_id", algorithm: "btree" }],
     })).toContain('CREATE INDEX "posts_user_id_idx" ON "public"."posts" USING btree ("user_id");');
+  });
+
+  it("builds safe check constraint statements", () => {
+    const checkedTable = { ...table, checks: [{ name: "posts_user_id_positive", expression: "user_id > 0" }] };
+    expect(buildConstraintStatements("postgresql", checkedTable, {
+      checkName: "posts_user_id_positive",
+      check: { name: "posts_user_id_valid", expression: "user_id > 0" },
+    })).toEqual([
+      'ALTER TABLE "public"."posts" DROP CONSTRAINT IF EXISTS "posts_user_id_positive"',
+      'ALTER TABLE "public"."posts" ADD CONSTRAINT "posts_user_id_valid" CHECK (user_id > 0)',
+    ]);
+    expect(buildConstraintStatements("mysql", { ...checkedTable, table_schema: undefined }, {
+      deleteCheckName: "posts_user_id_positive",
+    })).toEqual(['ALTER TABLE `posts` DROP CHECK `posts_user_id_positive`']);
+    expect(() => buildConstraintStatements("postgresql", checkedTable, {
+      check: { name: "unsafe", expression: "user_id > 0; DROP TABLE posts" },
+    })).toThrow("Invalid check expression");
   });
 });
 

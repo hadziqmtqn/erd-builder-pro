@@ -8,6 +8,8 @@ import {
   upsertEntities,
   upsertColumns,
   upsertRelationships,
+  upsertTableConstraints,
+  upsertTableIndexes,
 } from "./service.js";
 
 // ── Save (entities/relationships/columns CRUD + versioning + audit) ──
@@ -113,6 +115,15 @@ export async function saveDiagram(
         await upsertColumns(allColumns);
       }
 
+      const allConstraints = dedupedEntities.flatMap(entity =>
+        (entity.constraints || []).map((constraint: any) => ({ ...constraint, _entity_id: entity.id }))
+      );
+      const allIndexes = dedupedEntities.flatMap(entity =>
+        (entity.indexes || []).map((index: any) => ({ ...index, _entity_id: entity.id }))
+      );
+      if (allConstraints.length > 0) await upsertTableConstraints(allConstraints);
+      if (allIndexes.length > 0) await upsertTableIndexes(allIndexes);
+
       const keptEntityIds = Array.from(existingEntityIds).filter(id => newEntityIds.has(id));
       if (keptEntityIds.length > 0) {
         const existingColumns = await prisma.column.findMany({
@@ -122,6 +133,15 @@ export async function saveDiagram(
         const existingColIds = new Set(existingColumns.map((c: any) => c.id));
         colsToDelete = Array.from(existingColIds).filter(id => !newColIds.has(id)) as string[];
       }
+
+      const existingConstraints = await prisma.tableConstraint.findMany({ where: { entityId: { in: Array.from(existingEntityIds) } }, select: { id: true } });
+      const existingIndexes = await prisma.tableIndex.findMany({ where: { entityId: { in: Array.from(existingEntityIds) } }, select: { id: true } });
+      const newConstraintIds = new Set(allConstraints.map((constraint: any) => constraint.id));
+      const newIndexIds = new Set(allIndexes.map((index: any) => index.id));
+      const constraintsToDelete = existingConstraints.map(item => item.id).filter(id => !newConstraintIds.has(id));
+      const indexesToDelete = existingIndexes.map(item => item.id).filter(id => !newIndexIds.has(id));
+      if (constraintsToDelete.length > 0) await prisma.tableConstraint.deleteMany({ where: { id: { in: constraintsToDelete } } });
+      if (indexesToDelete.length > 0) await prisma.tableIndex.deleteMany({ where: { id: { in: indexesToDelete } } });
     }
 
     if (dedupedRelationships.length > 0) {
@@ -142,6 +162,8 @@ export async function saveDiagram(
     }
 
     if (entitiesToDelete.length > 0) {
+      await prisma.tableConstraint.deleteMany({ where: { entityId: { in: entitiesToDelete } } });
+      await prisma.tableIndex.deleteMany({ where: { entityId: { in: entitiesToDelete } } });
       await prisma.column.deleteMany({
         where: { entityId: { in: entitiesToDelete } },
       });
@@ -248,6 +270,12 @@ export async function getDiagramWithData(uid: string, userId: string) {
   const relationships = await prisma!.relationship.findMany({
     where: { diagramId },
   });
+  const constraints = await prisma!.tableConstraint.findMany({
+    where: { entityId: { in: (await prisma!.entity.findMany({ where: { diagramId }, select: { id: true } })).map(entity => entity.id) } },
+  });
+  const indexes = await prisma!.tableIndex.findMany({
+    where: { entityId: { in: (await prisma!.entity.findMany({ where: { diagramId }, select: { id: true } })).map(entity => entity.id) } },
+  });
 
   const entitiesWithColumns = await Promise.all(
     entities.map(async (entity: any) => {
@@ -260,9 +288,21 @@ export async function getDiagramWithData(uid: string, userId: string) {
       // disappeared after a browser reload, so DBML could no longer emit it.
       return {
         ...entity,
+        constraints: constraints.filter(item => item.entityId === entity.id).map(item => ({
+          ...item,
+          entity_id: item.entityId,
+          column_ids: item.columnIds ? JSON.parse(item.columnIds) : [],
+        })),
+        indexes: indexes.filter(item => item.entityId === entity.id).map(item => ({
+          ...item,
+          entity_id: item.entityId,
+          column_ids: JSON.parse(item.columnIds || "[]"),
+        })),
         columns: columns.map((column: any) => ({
           ...column,
           enum_values: column.enumValues ?? column.enum_values ?? '',
+          is_unique: column.isUnique ?? column.is_unique ?? false,
+          default_value: column.defaultValue ?? column.default_value ?? null,
           max_length: column.maxLength ?? column.max_length ?? null,
           numeric_precision: column.numericPrecision ?? column.numeric_precision ?? null,
           numeric_scale: column.numericScale ?? column.numeric_scale ?? null,

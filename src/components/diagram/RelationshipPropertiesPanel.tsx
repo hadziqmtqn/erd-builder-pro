@@ -4,6 +4,7 @@ import { Edge, Node } from '@xyflow/react';
 import { RELATIONSHIP_TYPES } from '../../lib/utils';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Entity } from '../../types';
 import {
   Select,
@@ -13,10 +14,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT'];
+const FK_ACTION_LABELS: Record<string, string> = {
+  'NO ACTION': 'No Action',
+  CASCADE: 'Cascade',
+  'SET NULL': 'Set Null',
+  'SET DEFAULT': 'Set Default',
+  RESTRICT: 'Restrict',
+};
+
+const normalizeFkAction = (value: unknown) => {
+  const action = String(value || '').trim().toUpperCase();
+  return FK_ACTIONS.includes(action) ? action : 'NO ACTION';
+};
+
 interface RelationshipPropertiesPanelProps {
   selectedEdge: Edge | null;
   nodes: Node<Entity>[];
-  onUpdateEdge: (edgeId: string, label: string) => void;
+  onUpdateEdge: (edgeId: string, update: string | { label?: string; data?: Record<string, any> }) => void;
   onFlipEdge: (edgeId: string) => void;
   onDeleteEdge: (id: string) => void;
 }
@@ -29,6 +44,7 @@ export default function RelationshipPropertiesPanel({
   onDeleteEdge 
 }: RelationshipPropertiesPanelProps) {
   if (!selectedEdge) return null;
+  const relationData = (selectedEdge.data || {}) as Record<string, any>;
 
   const getDisplayName = (nodeId: string, handleId: string | undefined | null) => {
     const node = nodes.find(n => n.id === nodeId);
@@ -70,6 +86,32 @@ export default function RelationshipPropertiesPanel({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-4">
+        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Foreign Key Actions</Label>
+        <Input
+          value={relationData.constraint_name || ''}
+          placeholder="Constraint name"
+          onChange={event => onUpdateEdge(selectedEdge.id, { data: { constraint_name: event.target.value } })}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          {(['on_delete', 'on_update'] as const).map(field => {
+            const selectedAction = normalizeFkAction(relationData[field]);
+            return (
+              <div key={field} className="space-y-1">
+                <Label className="text-[10px]">{field === 'on_delete' ? 'On delete' : 'On update'}</Label>
+                <Select
+                  value={selectedAction}
+                  onValueChange={value => onUpdateEdge(selectedEdge.id, { data: { [field]: normalizeFkAction(value) } })}
+                >
+                  <SelectTrigger className="h-9"><SelectValue>{FK_ACTION_LABELS[selectedAction]}</SelectValue></SelectTrigger>
+                  <SelectContent>{FK_ACTIONS.map(action => <SelectItem key={action} value={action}>{FK_ACTION_LABELS[action]}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            );
+          })}
         </div>
       </div>
       

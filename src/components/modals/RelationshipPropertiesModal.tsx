@@ -14,7 +14,7 @@ interface RelationshipPropertiesModalProps {
   onOpenChange: (open: boolean) => void;
   selectedEdge: any;
   nodes: any[];
-  handleEdgeUpdate: (edgeId: string, updatedData: any) => void;
+  handleEdgeUpdate: (edgeId: string, updatedData: string | { label?: string; data?: Record<string, any> }) => void;
   handleEdgeFlip: (edgeId: string) => void;
   deleteEdge: (edgeId: string) => void;
 }
@@ -34,7 +34,7 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
         <DialogHeader>
           <DialogTitle>Relationship Properties</DialogTitle>
           <DialogDescription>
-            Set the cardinality between these two tables.
+            Set the cardinality and foreign key actions between these two tables.
           </DialogDescription>
         </DialogHeader>
         <DialogBody>

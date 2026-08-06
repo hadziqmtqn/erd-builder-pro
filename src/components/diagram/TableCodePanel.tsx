@@ -127,13 +127,28 @@ export default function TableCodePanel({ entity, mode, onUpdateEntity }: TableCo
     const parsedEntity = dbmlValidation.entity;
     if (!parsedEntity) return;
     const currentColumns = new Map(entity.columns.map(column => [column.name.toLowerCase(), column]));
+    const remapColumnIds = (columnIds: string[] = []) => columnIds.map(id => {
+      const parsedColumn = parsedEntity.columns.find(column => column.id === id);
+      return parsedColumn ? currentColumns.get(parsedColumn.name.toLowerCase())?.id ?? id : id;
+    });
     const updatedEntity: Entity = {
       ...entity,
+      comment: parsedEntity.comment,
       columns: parsedEntity.columns.map((column, index) => ({
         ...column,
         id: currentColumns.get(column.name.toLowerCase())?.id ?? crypto.randomUUID(),
         _is_fk: currentColumns.get(column.name.toLowerCase())?._is_fk,
         sort_order: index,
+      })),
+      constraints: (parsedEntity.constraints || []).map(constraint => ({
+        ...constraint,
+        entity_id: entity.id,
+        column_ids: remapColumnIds(constraint.column_ids),
+      })),
+      indexes: (parsedEntity.indexes || []).map(index => ({
+        ...index,
+        entity_id: entity.id,
+        column_ids: remapColumnIds(index.column_ids),
       })),
     };
     onUpdateEntity(updatedEntity);

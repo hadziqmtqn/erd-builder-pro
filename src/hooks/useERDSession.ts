@@ -200,6 +200,7 @@ export function useERDSession(
                   type: c.type,
                   is_pk: c.is_pk,
                   is_nullable: c.is_nullable,
+                  default_value: c.column_default ?? null,
                   _is_fk: (t.foreign_keys || []).some((fk: any) => fk.column === c.name),
                   sort_order: c.sort_order,
                 })),
@@ -223,6 +224,11 @@ export function useERDSession(
                   target_handle: `col-${fk.ref_table}.${fk.ref_column}-target`,
                   label: '',
                   type: 'one-to-many',
+                  data: {
+                    on_delete: fk.on_delete,
+                    on_update: fk.on_update,
+                    constraint_name: fk.constraint_name,
+                  },
                 });
               });
             });
@@ -283,6 +289,11 @@ export function useERDSession(
           sourceHandle: sHandle || (fallbackSrc ? `col-${fallbackSrc}-source` : undefined),
           targetHandle: tHandle || (fallbackTgt ? `col-${fallbackTgt}-target` : undefined),
           label: r.label,
+          data: {
+            on_delete: r.on_delete ?? (r as any).onDelete,
+            on_update: r.on_update ?? (r as any).onUpdate,
+            constraint_name: r.constraint_name ?? (r as any).constraintName,
+          },
           type: 'smoothstep',
           animated: false,
         };
@@ -622,9 +633,12 @@ export function useERDSession(
     });
   }, [nodes, takeSnapshot, setNodes, setSelectedNodeId, options?.broadcastNodeUpdate]);
 
-  const handleEdgeUpdate = (edgeId: string, label: string) => {
+  const handleEdgeUpdate = (edgeId: string, update: string | { label?: string; data?: Record<string, any> }) => {
     takeSnapshot(nodes, edges);
-    const nextEdges = edges.map((edge) => edge.id === edgeId ? { ...edge, label } : edge);
+    const patch = typeof update === 'string' ? { label: update } : update;
+    const nextEdges = edges.map((edge) => edge.id === edgeId
+      ? { ...edge, ...patch, data: { ...(edge.data || {}), ...(patch.data || {}) } }
+      : edge);
     setEdges(nextEdges);
     options?.broadcastEdgesUpdate?.(nextEdges);
   };

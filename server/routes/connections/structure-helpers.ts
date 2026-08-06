@@ -10,19 +10,26 @@ type StructureColumnPatch = {
   enum_values?: string[];
 };
 
+type StructureForeignKeyPatch = {
+  enabled?: boolean;
+  ref_table?: string;
+  ref_column?: string;
+  constraint_name?: string | null;
+  on_delete?: string | null;
+  on_update?: string | null;
+};
+
 type StructurePatch = {
   createTable?: {
     name?: string;
+    comment?: string | null;
     column?: StructureColumnPatch;
   };
   tableName?: string;
+  tableComment?: string | null;
   columnName?: string;
   column?: StructureColumnPatch;
-  foreignKey?: {
-    enabled?: boolean;
-    ref_table?: string;
-    ref_column?: string;
-  };
+  foreignKey?: StructureForeignKeyPatch;
   indexName?: string;
   index?: {
     name?: string;
@@ -30,8 +37,11 @@ type StructurePatch = {
     is_unique?: boolean;
     algorithm?: string | null;
   };
+  checkName?: string;
+  check?: { name?: string; expression?: string };
   deleteColumnName?: string;
   deleteIndexName?: string;
+  deleteCheckName?: string;
   deleteTables?: string[];
   truncateTables?: string[];
   cloneTable?: { source?: string; target?: string; withData?: boolean };
@@ -44,6 +54,7 @@ const TYPE_RE = /^[A-Za-z][A-Za-z0-9_\s(),.[\]]{0,120}$/;
 const EXTRA_RE = /^[A-Za-z0-9_\s(),]*$/;
 const INDEX_ALGORITHMS = new Set(["", "btree", "hash"]);
 const DEFAULT_FUNCTIONS = new Set(["CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME", "NULL"]);
+const FK_ACTIONS = new Set(["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]);
 const COMMON_TYPES = new Set(["int", "integer", "bigint", "smallint", "varchar", "char", "text", "float", "decimal", "numeric", "real", "boolean", "bool", "date", "time", "timestamp", "json"]);
 const MYSQL_TYPES = new Set(["tinyint", "mediumint", "tinytext", "mediumtext", "longtext", "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "double", "year", "datetime", "bit", "enum"]);
 const POSTGRES_TYPES = new Set(["int2", "int4", "int8", "serial", "bigserial", "smallserial", "money", "bytea", "uuid", "ulid", "jsonb", "interval", "timestamptz", "timetz", "cidr", "inet", "macaddr", "macaddr8", "tsvector", "tsquery", "character", "character varying", "double precision"]);
@@ -135,8 +146,9 @@ function defaultSql(value: any) {
 }
 
 function commentSql(type: string, value: any) {
+  if (type !== "mysql" || value === undefined) return "";
   const text = String(value ?? "").replace(/'/g, "''");
-  return type === "mysql" && text ? ` COMMENT '${text}'` : "";
+  return ` COMMENT '${text}'`;
 }
 
 function assertColumnExtra(type: string, value: any) {
@@ -149,6 +161,18 @@ function assertColumnExtra(type: string, value: any) {
 
 function constraintName(table: string, column: string) {
   return `fk_${table}_${column}`.replace(/[^A-Za-z0-9_$]/g, "_").slice(0, 60);
+}
+
+function fkAction(value: any) {
+  const action = String(value || "NO ACTION").trim().toUpperCase();
+  if (!FK_ACTIONS.has(action)) throw new Error("Invalid foreign key action");
+  return action;
+}
+
+function assertCheckExpression(value: any) {
+  const expression = String(value || '').trim();
+  if (!expression || expression.length > 2000 || /[\0;]|--|\/\*/.test(expression)) throw new Error('Invalid check expression');
+  return expression;
 }
 
 function tableSql(type: string, schema: string | undefined, table: string) {
@@ -304,6 +328,12 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
       ? `, PRIMARY KEY (${quoteIdentifier(type, columnName)})`
       : "";
     const statements = [`CREATE TABLE ${quoteIdentifier(type, tableName)} (${columnSql}${primaryKeySql})`];
+    if (patch.createTable.comment !== undefined) {
+      const tableComment = patch.createTable.comment ? `'${String(patch.createTable.comment).replace(/'/g, "''")}'` : type === "postgresql" ? "NULL" : "''";
+      statements.push(type === "postgresql"
+        ? `COMMENT ON TABLE ${quoteIdentifier(type, tableName)} IS ${tableComment}`
+        : `ALTER TABLE ${quoteIdentifier(type, tableName)} COMMENT = ${tableComment}`);
+    }
     if (type === "postgresql" && column.comment !== undefined) {
       const comment = column.comment ? `'${String(column.comment).replace(/'/g, "''")}'` : "NULL";
       statements.push(`COMMENT ON COLUMN ${quoteIdentifier(type, tableName)}.${quoteIdentifier(type, columnName)} IS ${comment}`);
@@ -318,6 +348,7 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
 
   const statements: string[] = [];
   const oldTableSql = tableSql(type, tableSchema.table_schema, currentTable);
+  const workingTableSql = tableSql(type, tableSchema.table_schema, nextTable);
   if (patch.deleteColumnName) {
     const columnName = String(patch.deleteColumnName);
     assertIdentifier(columnName, "column name");
@@ -329,6 +360,12 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
     statements.push(type === "postgresql"
       ? `ALTER TABLE ${oldTableSql} RENAME TO ${quoteIdentifier(type, nextTable)}`
       : `RENAME TABLE ${quoteIdentifier(type, currentTable)} TO ${quoteIdentifier(type, nextTable)}`);
+  }
+
+  if (patch.tableComment !== undefined) {
+    const comment = patch.tableComment ? `'${String(patch.tableComment).replace(/'/g, "''")}'` : type === "postgresql" ? "NULL" : "''";
+    if (type === "postgresql") statements.push(`COMMENT ON TABLE ${workingTableSql} IS ${comment}`);
+    else statements.push(`ALTER TABLE ${workingTableSql} COMMENT = ${comment}`);
   }
 
   if (!patch.columnName || !patch.column) return statements;
@@ -346,7 +383,6 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
     assertColumnType(type, nextType);
   }
 
-  const workingTableSql = tableSql(type, tableSchema.table_schema, nextTable);
   const currentColumnSql = quoteIdentifier(type, currentColumn);
   const nextColumnSql = quoteIdentifier(type, nextColumn);
   const extraClause = assertColumnExtra(type, patch.column.extra);
@@ -389,7 +425,11 @@ export function buildStructureStatements(type: string, tableSchema: any, patch: 
     const refColumnSchema = refTableSchema?.columns?.find((column: any) => column.name === refColumn);
     if (schema.length > 0 && !refColumnSchema) throw new Error("Invalid referenced column");
     if (refColumnSchema) assertCompatibleType(nextType, refColumnSchema);
-    statements.push(`ALTER TABLE ${workingTableSql} ADD CONSTRAINT ${quoteIdentifier(type, constraintName(nextTable, nextColumn))} FOREIGN KEY (${nextColumnSql}) REFERENCES ${quoteIdentifier(type, refTable)} (${quoteIdentifier(type, refColumn)})`);
+    const name = String(patch.foreignKey.constraint_name || constraintName(nextTable, nextColumn));
+    assertIdentifier(name, "foreign key constraint name");
+    const onDelete = fkAction(patch.foreignKey.on_delete);
+    const onUpdate = fkAction(patch.foreignKey.on_update);
+    statements.push(`ALTER TABLE ${workingTableSql} ADD CONSTRAINT ${quoteIdentifier(type, name)} FOREIGN KEY (${nextColumnSql}) REFERENCES ${quoteIdentifier(type, refTable)} (${quoteIdentifier(type, refColumn)}) ON DELETE ${onDelete} ON UPDATE ${onUpdate}`);
   }
 
   return statements;
@@ -423,6 +463,38 @@ export function buildIndexStatements(type: string, tableSchema: any, patch: Stru
   return statements;
 }
 
+export function buildConstraintStatements(type: string, tableSchema: any, patch: StructurePatch) {
+  if (type !== "postgresql" && type !== "mysql") throw new Error("Check constraint editing is only supported for PostgreSQL and MySQL catalogs");
+  const tableName = String(tableSchema.table_name || "");
+  assertIdentifier(tableName, "table name");
+  const tableNameSql = tableSql(type, tableSchema.table_schema, tableName);
+  if (patch.deleteCheckName) {
+    const name = String(patch.deleteCheckName);
+    assertIdentifier(name, "check constraint name");
+    if (!(tableSchema.checks || []).some((check: any) => check.name === name)) throw new Error("Invalid check constraint name");
+    return [type === "postgresql"
+      ? `ALTER TABLE ${tableNameSql} DROP CONSTRAINT IF EXISTS ${quoteIdentifier(type, name)}`
+      : `ALTER TABLE ${tableNameSql} DROP CHECK ${quoteIdentifier(type, name)}`];
+  }
+  if (!patch.check) return [];
+  const name = String(patch.check.name || "");
+  assertIdentifier(name, "check constraint name");
+  const expression = assertCheckExpression(patch.check.expression);
+  const currentName = patch.checkName && patch.checkName !== "__new__" ? String(patch.checkName) : "";
+  if (currentName) {
+    assertIdentifier(currentName, "check constraint name");
+    if (!(tableSchema.checks || []).some((check: any) => check.name === currentName)) throw new Error("Invalid check constraint name");
+  }
+  if ((tableSchema.checks || []).some((check: any) => check.name === name && check.name !== currentName)) throw new Error("Duplicate check constraint name");
+  const statements = currentName
+    ? [type === "postgresql"
+      ? `ALTER TABLE ${tableNameSql} DROP CONSTRAINT IF EXISTS ${quoteIdentifier(type, currentName)}`
+      : `ALTER TABLE ${tableNameSql} DROP CHECK ${quoteIdentifier(type, currentName)}`]
+    : [];
+  statements.push(`ALTER TABLE ${tableNameSql} ADD CONSTRAINT ${quoteIdentifier(type, name)} CHECK (${expression})`);
+  return statements;
+}
+
 export function buildCreateTableSql(type: string, tableSchema: any) {
   const tableName = String(tableSchema.table_name || "");
   assertIdentifier(tableName, "table name");
@@ -435,6 +507,12 @@ export function buildCreateTableSql(type: string, tableSchema: any) {
   });
   const pkColumns = (tableSchema.columns || []).filter((column: any) => column.is_pk).map((column: any) => quoteIdentifier(type, column.name));
   if (pkColumns.length) lines.push(`  PRIMARY KEY (${pkColumns.join(", ")})`);
+  for (const check of tableSchema.checks || []) {
+    const expression = assertCheckExpression(check.expression);
+    const name = check.name ? `CONSTRAINT ${quoteIdentifier(type, check.name)} ` : "";
+    if (check.name) assertIdentifier(check.name, "check constraint name");
+    lines.push(`  ${name}CHECK (${expression})`);
+  }
   if (type === "mysql") {
     for (const index of tableSchema.indexes || []) {
       if (index.is_primary) continue;
@@ -442,7 +520,10 @@ export function buildCreateTableSql(type: string, tableSchema: any) {
       if (columns) lines.push(`  ${index.is_unique ? "UNIQUE " : ""}KEY ${quoteIdentifier(type, index.name)} (${columns})`);
     }
   }
-  const createTable = `CREATE TABLE ${tableSql(type, tableSchema.table_schema, tableName)} (\n${lines.join(",\n")}\n);`;
+  const tableComment = tableSchema.comment && type === "mysql"
+    ? ` COMMENT = '${String(tableSchema.comment).replace(/'/g, "''")}'`
+    : "";
+  const createTable = `CREATE TABLE ${tableSql(type, tableSchema.table_schema, tableName)} (\n${lines.join(",\n")}\n)${tableComment};`;
   const indexes = type === "postgresql"
     ? (tableSchema.indexes || [])
       .filter((index: any) => !index.is_primary)
@@ -453,5 +534,8 @@ export function buildCreateTableSql(type: string, tableSchema: any) {
         algorithm: index.algorithm,
       }, tableSchema)};`)
     : [];
-  return [createTable, ...indexes].join("\n\n");
+  const comment = tableSchema.comment && type === "postgresql"
+    ? `COMMENT ON TABLE ${tableSql(type, tableSchema.table_schema, tableName)} IS '${String(tableSchema.comment).replace(/'/g, "''")}'`
+    : "";
+  return [createTable, ...indexes, comment].filter(Boolean).join("\n\n");
 }

@@ -117,6 +117,8 @@ CREATE TABLE "public"."columns" (
     "type" text NOT NULL,
     "is_pk" bool DEFAULT false,
     "is_nullable" bool DEFAULT true,
+    "is_unique" bool DEFAULT false,
+    "default_value" text,
     "enum_values" text,
     "sort_order" int4 DEFAULT 0,
     "created_at" timestamp(3) DEFAULT CURRENT_TIMESTAMP,
@@ -190,6 +192,7 @@ CREATE TABLE "public"."entities" (
     "x" float8 NOT NULL,
     "y" float8 NOT NULL,
     "color" text DEFAULT '#6366f1'::text,
+    "comment" text,
     "created_at" timestamp(3) DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("id")
 );
@@ -296,6 +299,33 @@ CREATE TABLE "public"."relationships" (
     "source_handle" text,
     "target_handle" text,
     "label" text,
+    "on_delete" text,
+    "on_update" text,
+    "constraint_name" text,
+    "created_at" timestamp(3) DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("id")
+);
+
+-- Table Definition
+CREATE TABLE "public"."table_constraints" (
+    "id" text NOT NULL,
+    "entity_id" text NOT NULL,
+    "kind" text NOT NULL,
+    "name" text,
+    "column_ids" text,
+    "expression" text,
+    "created_at" timestamp(3) DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("id")
+);
+
+-- Table Definition
+CREATE TABLE "public"."table_indexes" (
+    "id" text NOT NULL,
+    "entity_id" text NOT NULL,
+    "name" text NOT NULL,
+    "column_ids" text NOT NULL,
+    "is_unique" bool DEFAULT false,
+    "algorithm" text,
     "created_at" timestamp(3) DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("id")
 );
@@ -409,6 +439,8 @@ CREATE INDEX idx_drawings_project_deleted ON public.drawings USING btree (projec
 CREATE INDEX idx_drawings_updated_at ON public.drawings USING btree (updated_at);
 CREATE INDEX idx_drawings_version ON public.drawings USING btree (_version);
 ALTER TABLE "public"."entities" ADD FOREIGN KEY ("diagram_id") REFERENCES "public"."diagrams"("id") ON DELETE CASCADE;
+ALTER TABLE "public"."table_constraints" ADD FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+ALTER TABLE "public"."table_indexes" ADD FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
 ALTER TABLE "public"."entity_changes" ADD FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 
 
@@ -416,6 +448,8 @@ ALTER TABLE "public"."entity_changes" ADD FOREIGN KEY ("user_id") REFERENCES "pu
 CREATE INDEX idx_entity_changes_lookup ON public.entity_changes USING btree (entity_type, entity_id, version);
 CREATE INDEX idx_entity_changes_retention ON public.entity_changes USING btree (created_at);
 CREATE INDEX idx_entity_changes_user ON public.entity_changes USING btree (user_id, created_at);
+CREATE INDEX idx_table_constraints_entity ON public.table_constraints USING btree (entity_id);
+CREATE INDEX idx_table_indexes_entity ON public.table_indexes USING btree (entity_id);
 ALTER TABLE "public"."flowcharts" ADD FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE SET NULL;
 ALTER TABLE "public"."flowcharts" ADD FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE SET NULL;
 

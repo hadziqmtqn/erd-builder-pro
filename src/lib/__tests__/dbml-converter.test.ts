@@ -122,6 +122,62 @@ Table login_logs {
     expect(erdToDBML(result.nodes, result.edges)).toContain('amount DECIMAL(10,2) [not null]');
   });
 
+  it('round-trips table metadata, defaults, composite indexes, checks, and FK actions', () => {
+    const dbml = `Table users {
+  id BIGINT [pk, not null]
+  email VARCHAR [not null, default: 'pending']
+  Note: 'Account table'
+  Checks {
+    \`id > 0\` [name: 'users_id_positive']
+  }
+  Indexes {
+    (id, email) [unique, name: "users_id_email_unique"]
+  }
+}
+
+Table posts {
+  id BIGINT [pk]
+  user_id BIGINT
+}
+
+Ref "posts_user_id_fk": posts.user_id > users.id [delete: cascade, update: cascade]`;
+
+    const result = dbmlToERD(dbml);
+    const users = result.nodes.find(node => node.data.name === 'users')!;
+    const email = users.data.columns.find(column => column.name === 'email');
+    expect(users.data.comment).toBe('Account table');
+    expect(email?.default_value).toBe("'pending'");
+    expect(users.data.constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'check', name: 'users_id_positive', expression: 'id > 0' }),
+    ]));
+    expect(users.data.indexes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'users_id_email_unique', is_unique: true, column_ids: expect.arrayContaining([expect.any(String)]) }),
+    ]));
+    expect(result.edges[0].data).toMatchObject({ on_delete: 'cascade', on_update: 'cascade', constraint_name: 'posts_user_id_fk' });
+
+    const roundTrip = erdToDBML(result.nodes, result.edges);
+    expect(roundTrip).toContain("Note: 'Account table'");
+    expect(roundTrip).toContain('users_id_email_unique');
+    expect(roundTrip).toContain('delete: cascade');
+    const reparsed = dbmlToERD(roundTrip);
+    expect(reparsed.edges[0].data).toMatchObject({ constraint_name: 'posts_user_id_fk', on_delete: 'cascade', on_update: 'cascade' });
+  });
+
+  it('round-trips a canvas relation after changing only on delete', () => {
+    const nodes = [
+      { id: 'posts', data: { name: 'posts', columns: [{ id: 'posts.user_id', name: 'user_id', type: 'BIGINT', is_pk: false, is_nullable: false }] } },
+      { id: 'users', data: { name: 'users', columns: [{ id: 'users.id', name: 'id', type: 'BIGINT', is_pk: true, is_nullable: false }] } },
+    ] as any;
+    const edges = [{
+      id: 'posts-users', source: 'posts', target: 'users',
+      sourceHandle: 'col-posts.user_id-source', targetHandle: 'col-users.id-target',
+      label: '1:N', data: { on_delete: 'CASCADE', on_update: 'NO ACTION' },
+    }] as any;
+
+    const dbml = erdToDBML(nodes, edges);
+    expect(dbmlToERD(dbml).edges[0].data).toMatchObject({ on_delete: 'cascade', on_update: 'no action' });
+  });
+
   it('rejects enum names that do not match table_column', () => {
     const dbml = `Table users {
   id BIGINT [pk, not null]
@@ -137,7 +193,7 @@ Enum role_type {
   });
 
   it('trims standalone ref columns before validation', () => {
-    const ref = parseDBMLRef('Ref: addresses.user_id > users.id', '');
+    const ref = parseDBMLRef('Ref "addresses_users_fk": addresses.user_id > users.id [delete: cascade]', '');
 
     expect(ref).toMatchObject({
       fkTable: 'addresses',
