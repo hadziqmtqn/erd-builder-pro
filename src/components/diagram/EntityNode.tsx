@@ -11,8 +11,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { TableDialog } from '../modals/TableDialog';
 import { useWorkspace } from '../../providers/WorkspaceProvider';
+import { useAIAction } from '@/contexts/AIActionContext';
 
 import {
   AlertDialog,
@@ -133,13 +133,12 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 });
 
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
-  const { isPublicView, duplicateEntity, activeDocument } = useWorkspace();
+  const { isPublicView, duplicateEntity, activeDocument, setSelectedNodeId } = useWorkspace();
+  const { setRightPanelMode } = useAIAction();
   const isProductionDb = activeDocument?.source_type === 'production_db';
   const isReadOnly = isPublicView || !!data.isDiffMode || isProductionDb;
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogTab, setDialogTab] = useState<'properties' | 'schema'>('properties');
   const updateNodeInternals = useUpdateNodeInternals();
 
   const columnOrderHash = useMemo(() => 
@@ -155,8 +154,8 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.preventDefault();
     e.stopPropagation();
     if (isReadOnly) return;
-    setDialogTab('properties');
-    setDialogOpen(true);
+    setSelectedNodeId(data.id);
+    setRightPanelMode('properties');
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -176,13 +175,6 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const confirmDelete = () => {
     window.dispatchEvent(new CustomEvent('deleteEntity', { detail: data.id }));
     setShowDeleteConfirm(false);
-  };
-
-  const handleGenerate = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDialogTab('schema');
-    setDialogOpen(true);
   };
 
   const diffState = data.diffState as 'new' | 'deleted' | 'modified' | undefined;
@@ -342,12 +334,6 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <TableDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        entity={data}
-        defaultTab={dialogTab}
-      />
     </>
   );
 };

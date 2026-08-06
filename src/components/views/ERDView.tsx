@@ -209,19 +209,27 @@ const ERDViewComponent = ({
     const hasSelection = allSelectedIds.length > 0;
 
     return edges.map(edge => {
-      const baseEdge = {
-        ...edge,
-        type: 'smoothstep',
-        markerEnd: {
-          type: MarkerType.Arrow,
-          width: 15,
-          height: 15,
-        },
-      };
-
       const isConnectedToSelected = hasSelection && allSelectedIds.some(
         id => edge.source === id || edge.target === id
       );
+      const edgeColor = isConnectedToSelected || edge.selected
+        ? 'var(--edge-selected)'
+        : 'var(--edge-color)';
+      const baseEdge = {
+        ...edge,
+        type: 'smoothstep',
+        style: {
+          ...edge.style,
+          stroke: edgeColor,
+          strokeWidth: 2,
+        },
+        markerEnd: {
+          type: MarkerType.Arrow,
+          color: edgeColor,
+          width: 10,
+          height: 10,
+        },
+      };
 
       // Build class list from existing + computed classes
       const classes: string[] = [];
@@ -424,10 +432,15 @@ const ERDViewComponent = ({
     type: 'smoothstep' as const,
     animated: false,
     reconnectable: true,
+    style: {
+      stroke: 'var(--edge-color)',
+      strokeWidth: 2,
+    },
     markerEnd: {
       type: MarkerType.Arrow,
-      width: 15,
-      height: 15,
+      color: 'var(--edge-color)',
+      width: 10,
+      height: 10,
     },
   }), []);
 

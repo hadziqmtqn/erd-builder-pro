@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-
 import { cn } from '@/lib/utils';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
-import { Sparkles, Database, PanelRightClose } from 'lucide-react';
+import { Sparkles, Database, PanelRightClose, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Components
@@ -63,6 +63,7 @@ import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
+import PropertiesPanel from '@/components/PropertiesPanel';
 import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
@@ -575,6 +576,19 @@ function AppLayoutInner() {
     }
   }, [showAIChat, setRightPanelMode]);
 
+  // Table properties belong to the currently opened ERD file only.
+  const previousEntityContextKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const contextKey = entityContext ? `${entityContext.entityType}:${entityContext.entityUid}` : null;
+    const contextChanged = previousEntityContextKeyRef.current !== null
+      && previousEntityContextKeyRef.current !== contextKey;
+    previousEntityContextKeyRef.current = contextKey;
+
+    if (rightPanelMode === 'properties' && (!isActiveDiagramContext || contextChanged)) {
+      setRightPanelMode('closed');
+    }
+  }, [entityContext, isActiveDiagramContext, rightPanelMode, setRightPanelMode]);
+
   // DBML is part of ERD Builder only. If the user navigates from an ERD to
   // Notes/Flowchart while the DBML tab is active, keep the panel usable by
   // falling back to chat instead of showing a DBML tab for the wrong feature.
@@ -819,6 +833,19 @@ function AppLayoutInner() {
               {/* ── Tab bar ── */}
               <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
                 <div className="flex-1 flex">
+                  {isActiveDiagramContext && !isPublicView && (
+                    <button
+                      onClick={() => setRightPanelMode('properties')}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                        rightPanelMode === 'properties'
+                          ? 'border-primary text-primary bg-background/50'
+                          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                      }`}
+                    >
+                      <Pencil className="size-3.5" />
+                      Properties
+                    </button>
+                  )}
                   <button
                     onClick={() => setRightPanelMode('chat')}
                     className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
@@ -851,7 +878,7 @@ function AppLayoutInner() {
 
               {/* ── Tab content ── */}
               <div className="flex-1 min-h-0">
-                <div className={cn('h-full', rightPanelMode === 'dbml' && 'hidden')}>
+                <div className={cn('h-full', rightPanelMode !== 'chat' && 'hidden')}>
                   <AIChatPanel
                     onClose={() => setRightPanelMode('closed')}
                     entityType={entityContext!.entityType}
@@ -884,6 +911,24 @@ function AppLayoutInner() {
                       if (node) setSelectedNodeId(node.id);
                     }}
                   />
+                )}
+                {rightPanelMode === 'properties' && (
+                  selectedEntity ? (
+                    <PropertiesPanel
+                      key={selectedEntity.id}
+                      selectedEntity={selectedEntity}
+                      onUpdateEntity={handleEntityUpdate}
+                      onDeleteEntity={(id) => {
+                        deleteEntity(id);
+                        setSelectedNodeId(null);
+                        setRightPanelMode('closed');
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                      No ERD table is currently selected for editing.
+                    </div>
+                  )
                 )}
               </div>
             </div>
