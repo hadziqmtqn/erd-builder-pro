@@ -1,16 +1,18 @@
 import { useEffect, useRef } from 'react';
 import { localPersistence } from '../lib/localPersistence';
+import { getCachedDiagramVersion } from '../lib/diagramVersioning';
 import { DraftType } from '../types';
 
-// ──────────────────────────────────────────
-// Props
-// ──────────────────────────────────────────
+const RESUME_CHECK_DELAY = 60_000;
+const RESUME_CHECK_THROTTLE = 120_000;
+
 export interface UseFocusSyncParams {
   isOnline: boolean;
   isAuthenticated: boolean | null;
   isPublicView: boolean;
   isRefreshing: boolean;
   isSyncing: boolean;
+  isLocalSaving: boolean;
   view: string;
   activeDiagramId: number | string | null;
   activeNoteUid: string | null;
@@ -31,17 +33,44 @@ export interface UseFocusSyncParams {
   lastSaveCallRef: React.MutableRefObject<number>;
 }
 
-// ──────────────────────────────────────────
-// Hook
-// ──────────────────────────────────────────
+type ItemSnapshot = {
+  version: number | null;
+  updatedAt: number;
+};
+
+function readVersion(item: any): number | null {
+  const value = Number(item?._version ?? item?.version);
+  return Number.isFinite(value) ? value : null;
+}
+
+function readUpdatedAt(item: any): number {
+  const value = item?.updated_at ?? item?.updatedAt;
+  if (typeof value === 'number') return value;
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function snapshot(item: any): ItemSnapshot {
+  return { version: readVersion(item), updatedAt: readUpdatedAt(item) };
+}
+
+function isRemoteNewer(remote: ItemSnapshot, baseline: ItemSnapshot): boolean {
+  if (remote.version !== null && baseline.version !== null) {
+    return remote.version > baseline.version;
+  }
+  return remote.updatedAt > baseline.updatedAt;
+}
+
+function isEditingControlFocused(): boolean {
+  const active = document.activeElement;
+  return !!active?.closest('input, textarea, [contenteditable="true"], .cm-editor');
+}
+
 /**
- * Intelligent Fetch on Focus: Refresh data when returning to tab.
+ * Refreshes only after a meaningful absence from the app.
  *
- * - Only refreshes when online, authenticated, and not in public view
- * - Throttled: at most once per 120 seconds
- * - Checks stale drafts: if cloud is newer than local draft, reloads from server
- *
- * Extracted from App.tsx to keep focus sync logic contained.
+ * ERD uses a read-only version probe first. Other document types retain their
+ * existing draft-staleness check, but never reload while a local save is active.
  */
 export function useFocusSync(params: UseFocusSyncParams) {
   const {
@@ -50,6 +79,7 @@ export function useFocusSync(params: UseFocusSyncParams) {
     isPublicView,
     isRefreshing,
     isSyncing,
+    isLocalSaving,
     view,
     activeDiagramId,
     activeNoteUid,
@@ -69,99 +99,105 @@ export function useFocusSync(params: UseFocusSyncParams) {
     lastSaveCallRef,
   } = params;
 
-  const lastFocusFetchRef = useRef<number>(0);
+  const lastFocusFetchRef = useRef(0);
+  const lastInactiveAtRef = useRef(Date.now());
+  const focusSyncRunningRef = useRef(false);
+  const lastSeenDiagramRef = useRef<Record<string, ItemSnapshot>>({});
 
   useEffect(() => {
-    const handleFocus = async () => {
-      // Only refresh if online, authenticated, not in public view, and not currently saving/syncing
-      if (!isOnline || !isAuthenticated || isPublicView || isRefreshing || isSyncing) return;
+    const markInactive = () => {
+      lastInactiveAtRef.current = Date.now();
+    };
 
-      // Throttle: don't refresh more than once every 120 seconds (2 minutes)
+    const handleResume = async () => {
       const now = Date.now();
-      if (now - lastFocusFetchRef.current < 120000) return;
-
-      // SAFETY: Don't refresh if we have a very recent local save (within 10 seconds)
-      if (now - lastSaveCallRef.current < 10000) return;
+      if (document.visibilityState === 'hidden') return;
+      if (now - lastInactiveAtRef.current < RESUME_CHECK_DELAY) return;
+      if (!isOnline || !isAuthenticated || isPublicView || isRefreshing || isSyncing || isLocalSaving) return;
+      if (focusSyncRunningRef.current || now - lastFocusFetchRef.current < RESUME_CHECK_THROTTLE) return;
+      if (now - lastSaveCallRef.current < 10_000 || isEditingControlFocused()) return;
 
       lastFocusFetchRef.current = now;
+      lastInactiveAtRef.current = now;
+      focusSyncRunningRef.current = true;
+      let didRefresh = false;
+      const beginRefresh = () => {
+        didRefresh = true;
+        setIsRefreshing(true);
+      };
 
       try {
-        // Only check stale drafts for active document — no full project refetch
-        if (view === 'erd') {
-          if (activeDiagramId) {
-            const draft = await localPersistence.getDraft(DraftType.ERD, activeDiagramId);
-            const cloudItem = diagrams.find(d => String(d.id) === String(activeDiagramId));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
+        if (view === 'erd' && activeDiagramId) {
+          if (await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId)) return;
 
-            if (isStale) {
-              setIsRefreshing(true);
-              await localPersistence.deleteDraft(DraftType.ERD, activeDiagramId);
-              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
-              setIsRefreshing(false);
-            } else if (!(await localPersistence.hasPendingSync(DraftType.ERD, activeDiagramId))) {
-              await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
-            }
+          const remote = await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true, probe: true });
+          if (!remote) return;
+
+          const key = String(activeDiagramId);
+          const current = diagrams.find(d => String(d.id) === key || String(d.uid) === key);
+          const cachedVersion = await getCachedDiagramVersion(activeDiagramId);
+          const baseline = lastSeenDiagramRef.current[key] || {
+            version: cachedVersion ?? readVersion(current),
+            updatedAt: readUpdatedAt(current),
+          };
+          const remoteSnapshot = snapshot(remote);
+
+          if (isRemoteNewer(remoteSnapshot, baseline)) {
+            beginRefresh();
+            const refreshed = await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true });
+            if (refreshed) lastSeenDiagramRef.current[key] = remoteSnapshot;
+          } else {
+            lastSeenDiagramRef.current[key] = remoteSnapshot;
           }
-        } else if (view === 'notes') {
-          if (activeNoteUid) {
-            const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteUid);
-            const cloudItem = notes.find(n => String(n.uid) === String(activeNoteUid));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-
-            if (isStale) {
-              setIsRefreshing(true);
-              await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
-              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
-              setIsRefreshing(false);
-            } else if (!(await localPersistence.hasPendingSync(DraftType.NOTES, activeNoteUid))) {
-              await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
-            }
+        } else if (view === 'notes' && activeNoteUid) {
+          const draft = await localPersistence.getDraft(DraftType.NOTES, activeNoteUid);
+          const cloudItem = notes.find(n => String(n.uid) === String(activeNoteUid));
+          const isStale = cloudItem && draft && !draft.sync_pending && readUpdatedAt(cloudItem) > draft.updated_at;
+          if (isStale) {
+            beginRefresh();
+            await localPersistence.deleteDraft(DraftType.NOTES, activeNoteUid);
+            await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
           }
-        } else if (view === 'drawings') {
-          if (activeDrawingId) {
-            const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
-            const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId) || (d.uid && String(d.uid) === String(activeDrawingId)));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-
-            if (isStale) {
-              await localPersistence.deleteDraft(DraftType.DRAWINGS, activeDrawingId);
-              await selectDrawing(activeDrawingId, { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.DRAWINGS, activeDrawingId))) {
-              await selectDrawing(activeDrawingId, { silent: true });
-            }
+        } else if (view === 'drawings' && activeDrawingId) {
+          const draft = await localPersistence.getDraft(DraftType.DRAWINGS, activeDrawingId);
+          const cloudItem = drawings.find(d => String(d.id) === String(activeDrawingId) || (d.uid && String(d.uid) === String(activeDrawingId)));
+          const isStale = cloudItem && draft && !draft.sync_pending && readUpdatedAt(cloudItem) > draft.updated_at;
+          if (isStale) {
+            beginRefresh();
+            await localPersistence.deleteDraft(DraftType.DRAWINGS, activeDrawingId);
+            await selectDrawing(activeDrawingId, { silent: true });
           }
-        } else if (view === 'flowchart') {
-          if (activeFlowchartId) {
-            const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
-            const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId) || (f.uid && String(f.uid) === String(activeFlowchartId)));
-            const isStale = cloudItem && draft && !draft.sync_pending && (new Date(cloudItem.updated_at).getTime() > draft.updated_at);
-
-            if (isStale) {
-              await localPersistence.deleteDraft(DraftType.FLOWCHART, activeFlowchartId);
-              await selectFlowchart(String(activeFlowchartId), { silent: true });
-            } else if (!(await localPersistence.hasPendingSync(DraftType.FLOWCHART, activeFlowchartId))) {
-              await selectFlowchart(String(activeFlowchartId), { silent: true });
-            }
+        } else if (view === 'flowchart' && activeFlowchartId) {
+          const draft = await localPersistence.getDraft(DraftType.FLOWCHART, activeFlowchartId);
+          const cloudItem = flowcharts.find(f => String(f.id) === String(activeFlowchartId) || (f.uid && String(f.uid) === String(activeFlowchartId)));
+          const isStale = cloudItem && draft && !draft.sync_pending && readUpdatedAt(cloudItem) > draft.updated_at;
+          if (isStale) {
+            beginRefresh();
+            await localPersistence.deleteDraft(DraftType.FLOWCHART, activeFlowchartId);
+            await selectFlowchart(String(activeFlowchartId), { silent: true });
           }
         }
       } catch (err) {
-        console.warn("Background refresh on focus failed:", err);
+        console.warn('Background refresh on focus failed:', err);
       } finally {
-        setIsRefreshing(false);
+        if (didRefresh) setIsRefreshing(false);
+        focusSyncRunningRef.current = false;
       }
     };
 
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('blur', markInactive);
+    window.addEventListener('focus', handleResume);
+    document.addEventListener('visibilitychange', handleResume);
+    return () => {
+      window.removeEventListener('blur', markInactive);
+      window.removeEventListener('focus', handleResume);
+      document.removeEventListener('visibilitychange', handleResume);
+    };
   }, [
-    isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing,
-    view,
-    activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
+    isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing, isLocalSaving,
+    view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     selectDiagram, selectNote, selectDrawing, selectFlowchart,
-    setActiveDiagramId,
-    diagrams, notes, drawings, flowcharts,
-    setIsRefreshing,
-    getContentVersion,
-    lastSaveCallRef,
+    setActiveDiagramId, diagrams, notes, drawings, flowcharts,
+    setIsRefreshing, getContentVersion, lastSaveCallRef,
   ]);
 }

@@ -756,7 +756,7 @@ export function WorkspaceProvider({
 
   // Focus sync
   useFocusSync({
-    isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing, view,
+    isOnline, isAuthenticated, isPublicView, isRefreshing, isSyncing, isLocalSaving, view,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId,
     diagrams, notes, drawings, flowcharts, setIsRefreshing, getContentVersion, lastSaveCallRef,

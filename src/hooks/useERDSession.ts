@@ -105,7 +105,7 @@ export function useERDSession(
 
   const loadingIdRef = useRef<string | number | null>(null);
 
-  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean }): Promise<any> => {
+  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean; probe?: boolean }): Promise<any> => {
     // Prevent duplicate concurrent loads for the same ID
     if (loadingIdRef.current === id) return null;
     loadingIdRef.current = id;
@@ -154,6 +154,10 @@ export function useERDSession(
         setIsItemLoading(false);
         return null;
       }
+
+      // Focus sync uses a read-only probe to avoid changing the canvas when
+      // the diagram version is unchanged.
+      if (options?.probe) return data;
 
       // Ensure entities and relationships are at least empty arrays
       if (!data.entities) data.entities = [];
