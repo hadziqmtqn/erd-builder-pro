@@ -590,19 +590,23 @@ export function useERDSession(
       _is_fk: false,
     }));
 
-    // Position the new entity offset from the source so it's visible (not overlapping)
+    // React Flow position is authoritative; data.x/y can lag behind after dragging.
+    const duplicatePosition = {
+      x: sourceNode.position.x + 36,
+      y: sourceNode.position.y + 36,
+    };
     const newEntity: Entity = {
       id: newId,
       name: uniqueName,
-      x: sourceNode.data.x + 36,
-      y: sourceNode.data.y + 36,
+      x: duplicatePosition.x,
+      y: duplicatePosition.y,
       color: sourceNode.data.color,
       columns: clonedColumns,
     };
     const newNode: Node<Entity> = {
       id: newId,
       type: 'entity',
-      position: { x: newEntity.x, y: newEntity.y },
+      position: duplicatePosition,
       data: newEntity,
     };
 
