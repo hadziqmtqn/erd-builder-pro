@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
@@ -39,6 +39,10 @@ import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
 import { TableBubbleMenu } from './editor/menus/TableBubbleMenu';
 import { DocumentOutline, HeadingInfo } from './editor/panels/DocumentOutline';
 import { LinkDialog } from './editor/dialogs/LinkDialog';
+import { FileMentionMenu, FileMentionOption } from './editor/FileMentionMenu';
+import { useWorkspace } from '@/providers/WorkspaceContext';
+import { useNavigate } from 'react-router-dom';
+import { localPersistence } from '@/lib/localPersistence';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -94,10 +98,110 @@ interface TiptapEditorProps {
 
 export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
+  const navigate = useNavigate();
+  const { notes, diagrams, flowcharts, drawings, projects, isGuest } = useWorkspace();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mentionMenu, setMentionMenu] = React.useState<{
+    isOpen: boolean;
+    query: string;
+    range: { from: number; to: number };
+    coords: { top: number; left: number; bottom: number };
+    selectedIndex: number;
+  }>({
+    isOpen: false,
+    query: '',
+    range: { from: 0, to: 0 },
+    coords: { top: 0, left: 0, bottom: 0 },
+    selectedIndex: 0,
+  });
+
+  const [loadedMentionFiles, setLoadedMentionFiles] = React.useState<FileMentionOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMentionFiles = async () => {
+      try {
+        if (isGuest) {
+          const [localDiagrams, localNotes, localDrawings, localFlowcharts, localProjects] = await Promise.all([
+            localPersistence.getAllResources('erd'),
+            localPersistence.getAllResources('notes'),
+            localPersistence.getAllResources('drawings'),
+            localPersistence.getAllResources('flowchart'),
+            localPersistence.getAllResources('project'),
+          ]);
+          const projectNames = new Map(localProjects.map((project: any) => [String(project.id), project.name]));
+          const mapLocal = (items: any[], type: FileMentionOption['type'], nameField: string) => items
+            .filter(item => !(item.is_deleted ?? item.isDeleted))
+            .map(item => {
+              const uid = String(item.uid ?? item.id);
+              return {
+                name: item[nameField] || 'Untitled',
+                type,
+                uid,
+                href: `/${type === 'note' ? 'notes' : type === 'diagram' ? 'diagrams' : `${type}s`}/${uid}`,
+                workspaceName: projectNames.get(String(item.project_id ?? item.projectId)) || null,
+              };
+            });
+          if (!cancelled) setLoadedMentionFiles([
+            ...mapLocal(localNotes, 'note', 'title'),
+            ...mapLocal(localDiagrams, 'diagram', 'name'),
+            ...mapLocal(localFlowcharts, 'flowchart', 'title'),
+            ...mapLocal(localDrawings, 'drawing', 'title'),
+          ]);
+          return;
+        }
+
+        const response = await apiFetch('/api/search/files');
+        const json = response.ok ? await response.json() : { data: [] };
+        if (!cancelled) {
+          setLoadedMentionFiles(Array.isArray(json.data) ? json.data.map((file: any) => ({
+            name: file.name || 'Untitled',
+            type: file.type,
+            uid: String(file.uid ?? file.id),
+            href: `/${file.type === 'note' ? 'notes' : file.type === 'diagram' ? 'diagrams' : `${file.type}s`}/${file.uid ?? file.id}`,
+            workspaceName: file.workspaceName,
+          })) : []);
+        }
+      } catch {
+        if (!cancelled) setLoadedMentionFiles([]);
+      }
+    };
+
+    loadMentionFiles();
+    return () => { cancelled = true; };
+  }, [isGuest]);
+
+  const mentionFiles = useMemo<FileMentionOption[]>(() => {
+    const files = [...loadedMentionFiles];
+    const addContextFiles = (items: any[], type: FileMentionOption['type'], nameField: string) => {
+      for (const item of items) {
+        if (item.is_deleted) continue;
+        const uid = String(item.uid ?? item.id);
+        if (files.some(file => file.type === type && file.uid === uid)) continue;
+        files.push({
+          name: item[nameField] || 'Untitled',
+          type,
+          uid,
+          href: `/${type === 'note' ? 'notes' : type === 'diagram' ? 'diagrams' : `${type}s`}/${uid}`,
+          workspaceName: projects.find(project => String(project.id) === String(item.project_id))?.name,
+        });
+      }
+    };
+    addContextFiles(notes, 'note', 'title');
+    addContextFiles(diagrams, 'diagram', 'name');
+    addContextFiles(flowcharts, 'flowchart', 'title');
+    addContextFiles(drawings, 'drawing', 'title');
+    return files.sort((a, b) => a.name.localeCompare(b.name));
+  }, [loadedMentionFiles, notes, diagrams, flowcharts, drawings, projects]);
+
+  const filteredMentionFiles = useMemo(() => {
+    const query = mentionMenu.query.trim().toLowerCase();
+    return mentionFiles.filter(file => file.name.toLowerCase().includes(query));
+  }, [mentionFiles, mentionMenu.query]);
   
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -294,7 +398,16 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         if (html) return false;
 
         return false;
-      }
+      },
+      handleClick: (_view, _pos, event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLAnchorElement)) return false;
+        const href = target.getAttribute('href');
+        if (!href?.startsWith('/')) return false;
+        event.preventDefault();
+        navigate(href);
+        return true;
+      },
     },
   });
 
@@ -431,6 +544,28 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       const { $from } = selection;
       
       const textFromStartContent = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+      const atIndex = textFromStartContent.lastIndexOf('@');
+      if (atIndex !== -1) {
+        const query = textFromStartContent.slice(atIndex + 1);
+        const charBeforeAt = textFromStartContent[atIndex - 1];
+        const isValidBoundary = !charBeforeAt || /\s/.test(charBeforeAt) || charBeforeAt === '\ufffc';
+        const from = $from.pos - (textFromStartContent.length - atIndex);
+        const coords = editor.view.coordsAtPos(from);
+        const matches = mentionFiles.filter(file => file.name.toLowerCase().includes(query.trim().toLowerCase()));
+        if (isValidBoundary && !query.includes('\n')) {
+          setSlashMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
+          setMentionMenu(prev => ({
+            ...prev,
+            isOpen: true,
+            query,
+            range: { from, to: $from.pos },
+            coords,
+            selectedIndex: matches.length ? Math.min(prev.selectedIndex, matches.length - 1) : 0,
+          }));
+          return;
+        }
+      }
+
       const slashIndex = textFromStartContent.lastIndexOf('/');
 
       if (slashIndex !== -1) {
@@ -444,6 +579,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
             const to = $from.pos;
             const coords = editor.view.coordsAtPos(from);
             
+            setMentionMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
             setSlashMenu({ isOpen: true, query, range: { from, to }, coords });
             return;
           }
@@ -454,6 +590,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         if (prev.isOpen) return { ...prev, isOpen: false };
         return prev;
       });
+      setMentionMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
     };
 
     editor.on('update', handleUpdate);
@@ -464,7 +601,57 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         clearTimeout(onChangeTimeoutRef.current);
       }
     };
-  }, [editor, onChange, rememberLocalContent]);
+  }, [editor, onChange, rememberLocalContent, mentionFiles]);
+
+  const selectMention = useCallback((file: FileMentionOption) => {
+    if (!editor) return;
+    const { from } = mentionMenu.range;
+    const text = `@${file.name}`;
+    editor.chain()
+      .focus()
+      .deleteRange(mentionMenu.range)
+      .insertContent(text)
+      .setTextSelection({ from, to: from + text.length })
+      .setLink({
+        href: file.href,
+        class: 'text-primary underline cursor-pointer font-medium bg-primary/10 rounded px-0.5',
+      })
+      .setTextSelection(from + text.length)
+      .insertContent(' ')
+      .run();
+    setMentionMenu(prev => ({ ...prev, isOpen: false }));
+  }, [editor, mentionMenu.range]);
+
+  useEffect(() => {
+    if (!mentionMenu.isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setMentionMenu(prev => ({ ...prev, selectedIndex: Math.min(prev.selectedIndex + 1, filteredMentionFiles.length - 1) }));
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setMentionMenu(prev => ({ ...prev, selectedIndex: Math.max(prev.selectedIndex - 1, 0) }));
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const file = filteredMentionFiles[mentionMenu.selectedIndex];
+        if (file) selectMention(file);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setMentionMenu(prev => ({ ...prev, isOpen: false }));
+      }
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target as HTMLElement).closest('[data-file-mention-menu]')) {
+        setMentionMenu(prev => ({ ...prev, isOpen: false }));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, [mentionMenu.isOpen, mentionMenu.selectedIndex, filteredMentionFiles, selectMention]);
 
   const openLinkDialog = () => {
     if (editor) {
@@ -541,6 +728,15 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       />
 
       <AnimatePresence>
+        {mentionMenu.isOpen && (
+          <FileMentionMenu
+            options={filteredMentionFiles}
+            selectedIndex={mentionMenu.selectedIndex}
+            coords={mentionMenu.coords}
+            onSelect={selectMention}
+            onHover={(selectedIndex) => setMentionMenu(prev => ({ ...prev, selectedIndex }))}
+          />
+        )}
         {slashMenu.isOpen && (
           <SlashMenu 
             editor={editor}
