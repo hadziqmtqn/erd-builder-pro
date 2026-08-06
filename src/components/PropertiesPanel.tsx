@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2 } from 'lucide-react';
+import { Plus, Trash2, Key, Check, X, Type, ChevronUp, ChevronDown, Wand2, MoreHorizontal } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Textarea } from '@/components/ui/textarea';
 import { ColumnTypeSelect } from './ColumnTypeSelect';
 import { supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
 
@@ -33,6 +35,7 @@ export default function PropertiesPanel({
   onDeleteEntity
 }: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
+  const [openAttributeColumnId, setOpenAttributeColumnId] = useState<string | null>(null);
   const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevColumnsCount = useRef(editingEntity?.columns?.length || 0);
@@ -366,10 +369,10 @@ export default function PropertiesPanel({
               <div className={cn(
                 "grid gap-1.5",
                 supportsNumericPrecision(col.type)
-                  ? "grid-cols-[minmax(0,1fr)_3.75rem_3.75rem_2rem_2rem]"
+                  ? "grid-cols-[minmax(0,1fr)_3.75rem_3.75rem_2rem_2rem_2rem]"
                   : supportsColumnLength(col.type)
-                    ? "grid-cols-[minmax(0,1fr)_3.75rem_2rem_2rem]"
-                    : "grid-cols-[minmax(0,1fr)_2rem_2rem]"
+                    ? "grid-cols-[minmax(0,1fr)_3.75rem_2rem_2rem_2rem]"
+                    : "grid-cols-[minmax(0,1fr)_2rem_2rem_2rem]"
               )}>
                 <ColumnTypeSelect
                   value={col.type}
@@ -437,6 +440,42 @@ export default function PropertiesPanel({
                 >
                   {col.is_nullable ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                 </Button>
+
+                <Popover
+                  open={openAttributeColumnId === col.id}
+                  onOpenChange={(open) => setOpenAttributeColumnId(open ? col.id : null)}
+                >
+                  <PopoverTrigger
+                    onMouseDown={(event) => event.preventDefault()}
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8 text-muted-foreground hover:text-foreground bg-background/50",
+                          col.comment && "border-primary text-primary",
+                        )}
+                        title="Field attributes"
+                        aria-label="Field attributes"
+                      />
+                    }
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 space-y-3 p-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-semibold">Comment</Label>
+                      <Textarea
+                        value={col.comment || ''}
+                        onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
+                        onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
+                        placeholder="Add a comment"
+                        className="min-h-24 text-sm"
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {col.type === 'ENUM' && (
@@ -450,14 +489,6 @@ export default function PropertiesPanel({
                 />
               )}
 
-              <Input
-                type="text"
-                value={col.comment || ''}
-                onChange={(e) => updateColumnLocal(col.id, { comment: e.target.value })}
-                onBlur={(e) => updateColumnSync(col.id, { comment: e.target.value.trim() })}
-                placeholder="Comment"
-                className="h-8 text-[10px] bg-background/50 border-border/50"
-              />
             </Card>
           ))}
           <div ref={scrollRef} />

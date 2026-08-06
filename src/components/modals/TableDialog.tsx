@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Node } from '@xyflow/react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { php } from '@codemirror/lang-php';
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Download, Trash2, Table, FileCode, Database, FileText } from 'lucide-react';
 import { Entity } from '@/types';
+import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import {
   generateMySQL,
   generatePostgreSQL,
@@ -29,15 +31,15 @@ import {
   generateGoravelModel,
   generateGoravelMigration,
 } from '@/lib/sql-generator';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import PropertiesPanel from '../PropertiesPanel';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
+import { cn } from '@/lib/utils';
 
 interface TableDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   entity: Entity | null;
-  defaultTab?: 'properties' | 'schema';
+  defaultTab?: 'properties' | 'schema' | 'dbml';
 }
 
 const CATEGORIES = [
@@ -129,6 +131,7 @@ export const TableDialog = ({
   const [activeCategory, setActiveCategory] = React.useState(CATEGORIES[0].id);
   const [activeTab, setActiveTab] = React.useState(CATEGORIES[0].formats[0].id);
   const [copied, setCopied] = React.useState(false);
+  const [dbmlValue, setDbmlValue] = React.useState('');
 
   const {
     handleEntityUpdate,
@@ -142,18 +145,50 @@ export const TableDialog = ({
     if (open) setActiveMainTab(defaultTab);
   }, [open, defaultTab]);
 
+  const entityNode = React.useMemo<Node<Entity> | null>(() => entity ? ({
+    id: entity.id,
+    type: 'entity',
+    position: { x: entity.x, y: entity.y },
+    data: entity,
+  }) : null, [entity]);
+  const generatedDbml = React.useMemo(
+    () => entityNode ? erdToDBML([entityNode], []) : '',
+    [entityNode],
+  );
+
+  React.useEffect(() => {
+    if (open && activeMainTab !== 'dbml') setDbmlValue(generatedDbml);
+  }, [open, activeMainTab, generatedDbml]);
+
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) setActiveMainTab(defaultTab);
     onOpenChange(nextOpen);
   };
 
-  if (!entity) return null;
-
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
   const visibleFormats = currentCategory?.formats ?? [];
   const generateFn = FORMAT_GENERATORS[activeTab];
-  const currentCode = generateFn ? generateFn(entity) : '';
+  const currentCode = entity ? generateFn(entity) : '';
   const currentLanguage = FORMAT_LANGUAGES[activeTab] || 'sql';
+
+  const dbmlValidation = React.useMemo(() => {
+    if (!entity) return { entity: null, error: 'No table selected.' };
+    if (!dbmlValue.trim()) return { entity: null, error: 'DBML cannot be empty.' };
+    try {
+      const parsed = dbmlToERD(dbmlValue);
+      if (parsed.nodes.length !== 1) {
+        return { entity: null, error: 'DBML must contain exactly one Table block.' };
+      }
+      const parsedEntity = parsed.nodes[0].data;
+      if (parsedEntity.name !== entity.name) {
+        return { entity: null, error: `The Table name must be exactly "${entity.name}".` };
+      }
+      return { entity: parsedEntity, error: '' };
+    } catch (error) {
+      return { entity: null, error: error instanceof Error ? error.message : 'Invalid DBML.' };
+    }
+  }, [dbmlValue, entity]);
+  const hasDbmlChanges = dbmlValue !== generatedDbml;
 
   const codeMirrorExtensions = React.useMemo(() => {
     const lang = FORMAT_LANGUAGES[activeTab] || '';
@@ -166,6 +201,8 @@ export const TableDialog = ({
       default: return [];
     }
   }, [activeTab, resolvedTheme]);
+
+  if (!entity) return null;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(currentCode);
@@ -194,6 +231,29 @@ export const TableDialog = ({
     }
   };
 
+  const applyDbml = () => {
+    const parsedEntity = dbmlValidation.entity;
+    if (!parsedEntity) return;
+
+    const currentColumns = new Map(entity.columns.map(column => [column.name.toLowerCase(), column]));
+    const updatedEntity: Entity = {
+      ...entity,
+      columns: parsedEntity.columns.map((column, index) => ({
+        ...column,
+        id: currentColumns.get(column.name.toLowerCase())?.id ?? crypto.randomUUID(),
+        _is_fk: currentColumns.get(column.name.toLowerCase())?._is_fk,
+        sort_order: index,
+      })),
+    };
+    setDbmlValue(erdToDBML([{
+      id: updatedEntity.id,
+      type: 'entity',
+      position: { x: updatedEntity.x, y: updatedEntity.y },
+      data: updatedEntity,
+    }], []));
+    handleEntityUpdate(updatedEntity);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
@@ -202,17 +262,17 @@ export const TableDialog = ({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v)} className="flex flex-col h-full overflow-hidden min-h-0">
+        <div className="flex flex-col h-full overflow-hidden min-h-0">
           <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
             <div className="flex items-center justify-between pr-8">
               <div className="space-y-1 text-left">
                 <DialogTitle>
-                  {activeMainTab === 'properties' ? 'Table Properties' : 'Generate Code Schema'}
+                  {activeMainTab === 'properties' ? 'Table Properties' : activeMainTab === 'dbml' ? 'Edit Table DBML' : 'Generate Code Schema'}
                 </DialogTitle>
                 <DialogDescription>
                   {activeMainTab === 'properties'
                     ? 'Customize your table name, theme, and column definitions.'
-                    : `Table: ${entity.name}`
+                    : activeMainTab === 'dbml' ? `Only the DBML for table "${entity.name}" can be edited.` : `Table: ${entity.name}`
                   }
                 </DialogDescription>
               </div>
@@ -229,19 +289,47 @@ export const TableDialog = ({
               )}
             </div>
 
-            <TabsList className="w-full mt-4 bg-muted/30">
-              <TabsTrigger value="properties" className="flex-1 gap-2">
+            <div className="flex w-full gap-1 mt-4 mb-4 rounded-lg bg-muted border border-border p-1" aria-label="Table editor sections">
+              <button
+                type="button"
+                aria-pressed={activeMainTab === 'properties'}
+                onClick={() => setActiveMainTab('properties')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors',
+                  activeMainTab === 'properties' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+                )}
+              >
                 <Table className="w-4 h-4" />
                 Properties
-              </TabsTrigger>
-              <TabsTrigger value="schema" className="flex-1 gap-2">
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeMainTab === 'schema'}
+                onClick={() => setActiveMainTab('schema')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors',
+                  activeMainTab === 'schema' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+                )}
+              >
                 <FileCode className="w-4 h-4" />
                 Schema
-              </TabsTrigger>
-            </TabsList>
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeMainTab === 'dbml'}
+                onClick={() => setActiveMainTab('dbml')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors',
+                  activeMainTab === 'dbml' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground',
+                )}
+              >
+                <FileCode className="w-4 h-4" />
+                DBML
+              </button>
+            </div>
           </DialogHeader>
 
-          <TabsContent value="properties" className="m-0 h-full flex flex-col overflow-hidden">
+          {activeMainTab === 'properties' && <div className="m-0 h-full flex flex-col overflow-hidden">
             <DialogBody className="p-0 overflow-hidden flex flex-col h-full">
               <PropertiesPanel
                 selectedEntity={entity}
@@ -253,9 +341,9 @@ export const TableDialog = ({
                 }}
               />
             </DialogBody>
-          </TabsContent>
+          </div>}
 
-          <TabsContent value="schema" className="m-0 flex flex-1 min-h-0 flex-col">
+          {activeMainTab === 'schema' && <div className="m-0 flex flex-1 min-h-0 flex-col">
             <div className="px-6 pt-4 space-y-2 mb-3 overflow-x-auto scrollbar-hide w-full">
               {/* Category pills */}
               <div className="flex gap-1 bg-muted/40 border border-border rounded-lg p-0.5 w-fit">
@@ -319,18 +407,18 @@ export const TableDialog = ({
               <div className="flex items-center gap-2 mr-auto">
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="default"
                   onClick={downloadFile}
-                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
+                  className="border-border hover:bg-muted bg-muted/50"
                 >
                   <Download className="w-3.5 h-3.5 mr-2" />
                   Download
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="default"
                   onClick={copyToClipboard}
-                  className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold min-w-22.5"
+                  className="border-border hover:bg-muted bg-muted/50 min-w-22.5"
                 >
                   {copied ? (
                     <>
@@ -346,14 +434,51 @@ export const TableDialog = ({
                 </Button>
               </div>
               <Button
+                size="default"
                 onClick={() => handleOpenChange(false)}
-                className="h-9 px-6 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 font-bold"
               >
                 Close
               </Button>
             </DialogFooter>
-          </TabsContent>
-        </Tabs>
+          </div>}
+
+          {activeMainTab === 'dbml' && <div className="m-0 flex flex-1 min-h-0 flex-col">
+            <div className="flex-1 min-h-0 overflow-hidden bg-muted">
+              <CodeMirror
+                value={dbmlValue}
+                onChange={setDbmlValue}
+                extensions={[sqlLang()]}
+                theme={resolvedTheme === 'dark' ? oneDark : undefined}
+                height="100%"
+                basicSetup={{ lineNumbers: true, foldGutter: false }}
+                className="text-[13px] text-foreground/90 h-full"
+                style={{ minHeight: '300px' }}
+              />
+            </div>
+            <div className="px-6 py-2 text-xs text-destructive whitespace-pre-wrap min-h-8">
+              {dbmlValidation.error}
+            </div>
+            <DialogFooter className="sticky bottom-0 z-10 border-t border-border p-4 bg-muted/20 gap-3">
+              <Button
+                size="default"
+                onClick={applyDbml}
+                disabled={!!dbmlValidation.error || !hasDbmlChanges}
+                className="font-bold"
+              >
+                Apply DBML
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => handleOpenChange(false)}
+                className="border-border"
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </div>}
+        </div>
       </DialogContent>
     </Dialog>
   );

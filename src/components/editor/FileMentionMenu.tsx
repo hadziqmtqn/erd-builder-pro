@@ -37,7 +37,7 @@ export function FileMentionMenu({ options, selectedIndex, coords, onSelect, onHo
   return createPortal(
     <div
       data-file-mention-menu
-      className="fixed z-[9999] w-72 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover/95 p-1 shadow-2xl backdrop-blur-xl"
+      className="fixed z-9999 w-72 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover/95 p-1 shadow-2xl backdrop-blur-xl"
       style={{
         top: isFlipped ? coords.top - 8 : coords.bottom + 8,
         left: coords.left,
