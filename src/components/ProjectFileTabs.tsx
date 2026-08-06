@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, Database, FileText, GitBranch, PenTool, Plus } from 'lucide-react'
+import { Check, Cable, Database, FileText, GitBranch, PenTool, Plus } from 'lucide-react'
 import { useWorkspace } from '@/providers/WorkspaceProvider'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-type FeatureTab = 'notes' | 'erd' | 'flowchart' | 'drawings'
+type FeatureTab = 'notes' | 'erd' | 'db-client' | 'flowchart' | 'drawings'
 
 const FEATURES: { id: FeatureTab; label: string; icon: React.ElementType; route: string }[] = [
   { id: 'notes', label: 'Notes', icon: FileText, route: '/notes' },
   { id: 'erd', label: 'ERD Builder', icon: Database, route: '/diagrams' },
+  { id: 'db-client', label: 'DB Client', icon: Cable, route: '/diagrams' },
   { id: 'flowchart', label: 'Flowchart', icon: GitBranch, route: '/flowcharts' },
   { id: 'drawings', label: 'Drawings', icon: PenTool, route: '/drawings' },
 ]
@@ -61,7 +62,7 @@ export function ProjectFileTabs({ currentView }: Props) {
     if (activeProjectId && activeProjectId !== 'all') return activeProjectId
     const activeFile = currentView === 'notes'
       ? activeNote
-      : currentView === 'erd'
+      : currentView === 'erd' || currentView === 'db-client'
         ? activeDiagram
         : currentView === 'flowchart'
           ? activeFlowchart
@@ -74,7 +75,10 @@ export function ProjectFileTabs({ currentView }: Props) {
     const byProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId)
     return [
       ...notes.filter(byProject).map(file => ({ file, type: 'notes' as const })),
-      ...diagrams.filter(byProject).map(file => ({ file, type: 'erd' as const })),
+      ...diagrams
+        .filter(byProject)
+        .filter(file => ((file.source_type ?? file.sourceType ?? 'blank') === (currentView === 'db-client' ? 'production_db' : 'blank')))
+        .map(file => ({ file, type: currentView === 'db-client' ? 'db-client' as const : 'erd' as const })),
       ...flowcharts.filter(byProject).map(file => ({ file, type: 'flowchart' as const })),
       ...drawings.filter(byProject).map(file => ({ file, type: 'drawings' as const })),
     ].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
@@ -82,7 +86,7 @@ export function ProjectFileTabs({ currentView }: Props) {
 
   const activeUid = currentView === 'notes'
     ? activeNoteUid
-    : currentView === 'erd'
+    : currentView === 'erd' || currentView === 'db-client'
       ? activeDiagram?.uid || activeDiagramId
       : currentView === 'flowchart'
         ? activeFlowchart?.uid || activeFlowchartId
@@ -91,7 +95,9 @@ export function ProjectFileTabs({ currentView }: Props) {
   const navigateTo = (type: FeatureTab, file: any) => {
     const feature = FEATURES.find(item => item.id === type)
     if (!feature) return
-    navigate(`${feature.route}/${getFileUid(file)}?pid=${projectId}`)
+    const params = new URLSearchParams({ pid: String(projectId) })
+    if (type === 'db-client') params.set('feature', 'db-client')
+    navigate(`${feature.route}/${getFileUid(file)}?${params}`)
   }
 
   const handleCreate = async () => {
@@ -155,7 +161,7 @@ export function ProjectFileTabs({ currentView }: Props) {
         {createOpen && (
           <div className="absolute right-2 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md">
             <div className="max-h-56 overflow-y-auto p-1">
-              {FEATURES.map(feature => {
+              {FEATURES.filter(feature => feature.id !== 'db-client').map(feature => {
                 const Icon = feature.icon
                 return (
                   <button

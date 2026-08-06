@@ -90,7 +90,7 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
   diagramsRef.current = diagrams;
   activeDiagramIdRef.current = activeDiagramId;
 
-  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean }) => {
+  const fetchDiagrams = useCallback(async (isLoadMore = false, projectId: number | null | string = 'all', searchQuery = '', isPublic: boolean | null = null, limit = 10, page?: number, options?: { silent?: boolean; sourceType?: 'blank' | 'production_db' }) => {
     if (isGuestCheck()) {
       const [localResources, localProjects] = await Promise.all([
         localPersistence.getAllResources('erd'),
@@ -102,6 +102,9 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
           .map((p: any) => [String(p.id), { uid: p.uid || String(p.id), name: p.name }])
       );
       let filtered = localResources.filter((f: any) => !f.is_deleted);
+      if (options?.sourceType) {
+        filtered = filtered.filter((f: any) => (f.source_type ?? f.sourceType ?? 'blank') === options.sourceType);
+      }
       if (projectId !== 'all') {
         filtered = filtered.filter((f: any) => String(f.project_id) === String(projectId));
       }
@@ -139,7 +142,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
       const projIdParam = (projectId === null || projectId === 'null' || projectId === 'none') ? 'null' : projectId;
       const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : '';
       const publicParam = isPublic !== null ? `&is_public=${isPublic}` : '';
-      const res = await apiFetch(`/api/diagrams?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}`);
+      const sourceParam = options?.sourceType ? `&source_type=${options.sourceType}` : '';
+      const res = await apiFetch(`/api/diagrams?limit=${limit}&offset=${offset}&project_id=${projIdParam}${qParam}${publicParam}${sourceParam}`);
       if (res.ok) {
         let json;
         try {

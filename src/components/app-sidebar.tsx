@@ -2,6 +2,7 @@ import * as React from "react"
 import { useState, useRef, useEffect } from "react"
 import {
   Database,
+  Cable,
   PenTool,
   Search,
   Network,
@@ -14,6 +15,7 @@ import {
   ArrowUpRight,
   Loader2,
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -71,7 +73,7 @@ function getSearchShortcutLabel(): string {
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   projects: Project[];
   view: AppView;
-  activeFeatureView: AppView | null;
+  activeFeatureView: AppView | 'db-client' | null;
   globalSearchResults: any[];
   isGlobalSearchLoading: boolean;
   onGlobalSearchResultSelect: (result: any) => void;
@@ -119,6 +121,7 @@ export const AppSidebar = React.memo(({
   ...props
 }: AppSidebarProps) => {
   const { state } = useSidebar();
+  const navigate = useNavigate();
   const isCollapsed = state === "collapsed";
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchShortcutLabel] = useState(getSearchShortcutLabel);
@@ -129,7 +132,8 @@ export const AppSidebar = React.memo(({
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'workspace', label: 'Workspaces' },
-    { value: 'erd', label: 'ERD' },
+    { value: 'erd', label: 'ERD Builder' },
+    { value: 'db-client', label: 'DB Client' },
     { value: 'notes', label: 'Notes' },
     { value: 'flowchart', label: 'Flowcharts' },
     { value: 'drawings', label: 'Drawings' },
@@ -173,7 +177,6 @@ export const AppSidebar = React.memo(({
       title: "Notes",
       url: "#",
       icon: FileText,
-      iconClassName: "text-yellow-400",
       isActive: activeFeatureView === 'notes',
       onClick: () => onViewChange('notes', true),
     },
@@ -181,15 +184,24 @@ export const AppSidebar = React.memo(({
       title: "ERD Builder",
       url: "#",
       icon: Database,
-      iconClassName: "text-blue-400",
       isActive: activeFeatureView === 'erd',
       onClick: () => onViewChange('erd', true),
+    },
+    {
+      title: "DB Client",
+      url: "/table/db-client",
+      icon: Cable,
+      isActive: activeFeatureView === 'db-client',
+      onClick: async () => {
+        if (!isOnline) return;
+        await onViewChange('erd', true);
+        navigate('/table/db-client');
+      },
     },
     {
       title: "Flowchart",
       url: "#",
       icon: Network,
-      iconClassName: "text-green-400",
       isActive: activeFeatureView === 'flowchart',
       onClick: () => onViewChange('flowchart', true),
     },
@@ -197,7 +209,6 @@ export const AppSidebar = React.memo(({
       title: "Drawings",
       url: "#",
       icon: PenTool,
-      iconClassName: "text-purple-400",
       isActive: activeFeatureView === 'drawings',
       onClick: () => onViewChange('drawings', true),
     },
@@ -362,7 +373,7 @@ export const AppSidebar = React.memo(({
         <DialogContent
           size="2xl"
           showCloseButton={false}
-          className="!translate-y-0 max-h-[76vh] sm:max-w-2xl"
+          className="translate-y-0! max-h-[76vh] sm:max-w-2xl"
           style={{ top: '12vh' }}
         >
           <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
@@ -409,16 +420,17 @@ export const AppSidebar = React.memo(({
                     className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent"
                   >
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                      {result.type === 'workspace' ? <Folder className="size-4 text-primary" />
-                        : result.type === 'erd' ? <Database className="size-4 text-blue-400" />
-                          : result.type === 'notes' ? <FileText className="size-4 text-yellow-400" />
-                            : result.type === 'flowchart' ? <Network className="size-4 text-green-400" />
-                              : <PenTool className="size-4 text-purple-400" />}
+                      {result.type === 'workspace' ? <Folder className="size-4 text-muted-foreground" />
+                        : result.type === 'erd' ? <Database className="size-4 text-muted-foreground" />
+                          : result.type === 'db-client' ? <Cable className="size-4 text-muted-foreground" />
+                        : result.type === 'notes' ? <FileText className="size-4 text-muted-foreground" />
+                            : result.type === 'flowchart' ? <Network className="size-4 text-muted-foreground" />
+                              : <PenTool className="size-4 text-muted-foreground" />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{result.name || '(Untitled)'}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {result.type === 'workspace' ? 'Workspace' : result.type === 'erd' ? 'ERD' : result.type === 'flowchart' ? 'Flowchart' : result.type === 'notes' ? 'Note' : 'Drawing'}
+                        {result.type === 'workspace' ? 'Workspace' : result.type === 'erd' ? 'ERD Builder' : result.type === 'db-client' ? 'DB Client' : result.type === 'flowchart' ? 'Flowchart' : result.type === 'notes' ? 'Note' : 'Drawing'}
                         {result.workspace?.name && ` · ${result.workspace.name}`}
                       </p>
                     </div>

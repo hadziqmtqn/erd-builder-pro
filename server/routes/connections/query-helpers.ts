@@ -8,8 +8,3 @@ export function normalizeSelectQuery(script: string): string {
   }
   return sql;
 }
-
-export function limitSelectQuery(sql: string, limit: number): string {
-  const rowLimit = Math.min(Math.max(Number(limit) || 200, 1), 1000);
-  return `SELECT * FROM (${sql}) AS erd_custom_query LIMIT ${rowLimit}`;
-}

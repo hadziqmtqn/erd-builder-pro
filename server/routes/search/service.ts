@@ -27,7 +27,7 @@ export async function searchDocuments(userId: string, query: string) {
       where: { ...base, name: contains },
       orderBy: { updatedAt: "desc" },
       take: 5,
-      select: { id: true, uid: true, name: true, project: { select: projectSelect }, updatedAt: true },
+      select: { id: true, uid: true, name: true, sourceType: true, project: { select: projectSelect }, updatedAt: true },
     }),
     prisma.note.findMany({
       where: { ...base, title: contains },
@@ -51,7 +51,12 @@ export async function searchDocuments(userId: string, query: string) {
 
   return [
     ...(projects || []).map((item: any) => ({ ...item, type: "workspace", name: item.name })),
-    ...(diagrams || []).map((item: any) => ({ ...item, type: "erd", name: item.name, workspace: item.project })),
+    ...(diagrams || []).map((item: any) => ({
+      ...item,
+      type: item.sourceType === "production_db" ? "db-client" : "erd",
+      name: item.name,
+      workspace: item.project,
+    })),
     ...(notes || []).map((item: any) => ({ ...item, type: "notes", name: item.title, workspace: item.project })),
     ...(drawings || []).map((item: any) => ({ ...item, type: "drawings", name: item.title, workspace: item.project })),
     ...(flowcharts || []).map((item: any) => ({ ...item, type: "flowchart", name: item.title, workspace: item.project })),

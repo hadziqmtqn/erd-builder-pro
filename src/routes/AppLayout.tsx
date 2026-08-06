@@ -166,7 +166,9 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
-  const isFeatureRoute = /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
+  const isDbClientRoute = location.pathname === '/table/db-client'
+    || (location.pathname.startsWith('/diagrams/') && searchParams.get('feature') === 'db-client');
+  const isFeatureRoute = isDbClientRoute || /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
   const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
@@ -187,7 +189,11 @@ function AppLayoutInner() {
           const term = query.toLowerCase();
           const projectMap = new Map(projects.map((project: any) => [String(project.id), project]));
           const localDocs = [
-            ...diagrams.map((item: any) => ({ ...item, type: 'erd', name: item.name })),
+            ...diagrams.map((item: any) => ({
+              ...item,
+              type: (item.source_type ?? item.sourceType) === 'production_db' ? 'db-client' : 'erd',
+              name: item.name,
+            })),
             ...notes.map((item: any) => ({ ...item, type: 'notes', name: item.title })),
             ...drawings.map((item: any) => ({ ...item, type: 'drawings', name: item.title })),
             ...flowcharts.map((item: any) => ({ ...item, type: 'flowchart', name: item.title })),
@@ -227,6 +233,7 @@ function AppLayoutInner() {
     const id = result.uid ?? result.id;
     const routes: Record<string, string> = {
       erd: `/diagrams/${id}`,
+      'db-client': `/diagrams/${id}?feature=db-client`,
       notes: `/notes/${id}`,
       drawings: `/drawings/${id}`,
       flowchart: `/flowcharts/${id}`,
@@ -413,13 +420,14 @@ function AppLayoutInner() {
       const path = location.pathname;
       if (path === '/') return `Dashboard | ERD Builder Pro`;
       if (path === '/trash') return `Trash | ERD Builder Pro`;
+      if (path === '/table/db-client') return `DB Client | ERD Builder Pro`;
       if (path.startsWith('/table/')) {
         const label = breadcrumbLabel || featureLabel || 'Tables';
         return `${label} | ERD Builder Pro`;
       }
       // Editor routes without a loaded file yet — show type label
       if (path.startsWith('/notes/')) return `Notes | ERD Builder Pro`;
-      if (path.startsWith('/diagrams/')) return `Diagram | ERD Builder Pro`;
+      if (path.startsWith('/diagrams/')) return `${searchParams.get('feature') === 'db-client' ? 'DB Client' : 'Diagram'} | ERD Builder Pro`;
       if (path.startsWith('/flowcharts/')) return `Flowchart | ERD Builder Pro`;
       if (path.startsWith('/drawings/')) return `Drawing | ERD Builder Pro`;
 
@@ -427,7 +435,7 @@ function AppLayoutInner() {
       return `ERD Builder Pro`;
     })();
     document.title = pageTitle;
-  }, [activeFileName, featureLabel, breadcrumbLabel, location.pathname]);
+  }, [activeFileName, featureLabel, breadcrumbLabel, location.pathname, searchParams]);
 
   // ── Desktop-only keyboard shortcut: CMD+, (macOS) / CTRL+, (Win/Linux) → open Settings
   useEffect(() => {
@@ -605,7 +613,7 @@ function AppLayoutInner() {
       {!isPublicView && (
         <AppSidebar
           view={sidebarView}
-          activeFeatureView={isFeatureRoute ? sidebarView : null}
+          activeFeatureView={isDbClientRoute ? 'db-client' : isFeatureRoute ? sidebarView : null}
           globalSearchResults={globalSearchResults}
           isGlobalSearchLoading={isGlobalSearchLoading}
           onGlobalSearchResultSelect={openGlobalSearchResult}

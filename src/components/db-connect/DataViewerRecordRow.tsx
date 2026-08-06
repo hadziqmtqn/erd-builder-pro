@@ -89,8 +89,8 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   return (
     <TableRow
       key={rowKeyValue}
-      className={`cursor-pointer hover:bg-muted/50 ${isActive ? 'bg-muted/70' : ''}`}
-      onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
+      className={`cursor-pointer hover:bg-muted/50 ${isActive ? 'bg-muted/70' : isSelected ? 'bg-primary/10' : ''}`}
+      onMouseDown={e => { if (e.shiftKey || e.metaKey || e.ctrlKey) e.preventDefault(); }}
       onClick={e => handleSelectRow(row, e)}
     >
       {canSelectRows && (

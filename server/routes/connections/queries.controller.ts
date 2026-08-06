@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { getConnector } from "../../lib/db-connectors/registry.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
-import { limitSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
+import { normalizeSelectQuery } from "./query-helpers.js";
 
 function querySelect() {
   return {
@@ -78,7 +78,7 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const { id } = req.params;
   try {
-    const sql = limitSelectQuery(normalizeSelectQuery(req.body.script), req.body.limit);
+    const sql = normalizeSelectQuery(req.body.script);
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 

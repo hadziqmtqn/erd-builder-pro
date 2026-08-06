@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 
@@ -11,6 +11,7 @@ import { WelcomeView } from '@/components/views/WelcomeView';
 
 export function TableRoute() {
   const { feature } = useParams<{ feature: string }>();
+  const navigate = useNavigate();
 
   const {
     notes, notesTotal, diagrams, diagramsTotal, drawings, drawingsTotal,
@@ -24,6 +25,11 @@ export function TableRoute() {
     setTableLoadingState,
     fileSearchQuery, setFileSearchQuery, fileSearchRef,
   } = useWorkspace();
+
+  const openDiagram = (uid: string, dbClient = false) => {
+    const selected = handleDiagramSelect(uid);
+    if (dbClient) Promise.resolve(selected).then(() => navigate(`/diagrams/${uid}?feature=db-client`));
+  };
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
 
@@ -84,8 +90,28 @@ export function TableRoute() {
           page={tablePage}
           totalDiagrams={diagramsTotal}
           isLoading={isDiagramsLoading}
-          onSelectDiagram={handleDiagramSelect}
+          onSelectDiagram={(uid) => openDiagram(uid)}
           onCreateDiagram={() => handleOpenCreateDocument('erd')}
+          onPageChange={handlePageChange}
+          onWorkspaceClick={handleWorkspaceClick}
+          onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
+          onDeleteDiagram={makeDeleteHandler(diagrams)}
+          searchQuery={fileSearchQuery}
+          onSearchChange={setFileSearchQuery}
+          searchRef={fileSearchRef}
+        />
+      );
+    case 'db-client':
+      return (
+        <ErdTableView
+          mode="db-client"
+          diagrams={diagrams}
+          projects={projects}
+          selectedWorkspace={selectedWorkspaceUid}
+          page={tablePage}
+          totalDiagrams={diagramsTotal}
+          isLoading={isDiagramsLoading}
+          onSelectDiagram={(uid) => openDiagram(uid, true)}
           onPageChange={handlePageChange}
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
