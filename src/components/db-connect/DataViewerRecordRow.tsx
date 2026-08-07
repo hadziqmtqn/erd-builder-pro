@@ -63,6 +63,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   warnUnsaved,
 }: DataViewerRecordRowProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
+  const [menuColumn, setMenuColumn] = useState<string | null>(null);
   const columnMeta = (column: string) => (tableSchema?.columns || []).find((item: any) => item.name === column);
   const copyText = async (text: string, label = 'Copied') => {
     await navigator.clipboard.writeText(text);
@@ -108,7 +109,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
         return (
           <TableCell
             key={column}
-            className={`group max-w-75 text-sm font-mono ${draft ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''}`}
+            className={`group max-w-75 text-sm font-mono ${isEditing ? 'p-0.5' : ''} ${draft ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''}`}
             onDoubleClick={e => {
               e.stopPropagation();
               if (!editable) return;
@@ -116,7 +117,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
               setEditingColumn(column);
             }}
           >
-            <div className="flex min-w-0 items-center gap-2">
+            <div className={`flex min-w-0 items-center ${isEditing ? '' : 'gap-2'}`}>
               {isEditing ? (
                 <input
                   autoFocus
@@ -128,7 +129,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                     if (e.key === 'Escape') setEditingColumn(null);
                     if (e.key === 'Enter') setEditingColumn(null);
                   }}
-                  className="h-7 min-w-40 flex-1 rounded border border-primary/50 bg-background px-2 font-mono text-sm outline-none"
+                  className="h-7 min-w-40 flex-1 rounded border border-primary/50 bg-background px-1.5 font-mono text-sm outline-none"
                 />
               ) : (
                 <span className="min-w-0 flex-1 truncate">
@@ -141,7 +142,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                   )}
                 </span>
               )}
-              {fk && val !== null && val !== undefined && (
+              {!isEditing && fk && val !== null && val !== undefined && (
                 <Button
                   variant="ghost"
                   size="icon-xs"
@@ -155,33 +156,23 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               )}
-              {column === columns[0] && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="size-6 shrink-0 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()} />}>
+              {!isEditing && (menuColumn === column ? (
+                <DropdownMenu open onOpenChange={open => { if (!open) setMenuColumn(null); }}>
+                  <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="size-6 shrink-0" aria-label={`Actions for ${column}`} onClick={e => e.stopPropagation()} />}>
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56" onClick={e => e.stopPropagation()}>
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>Column actions</DropdownMenuSubTrigger>
+                      <DropdownMenuSubTrigger disabled={!editable}>Set Value</DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-44">
-                        {columns.map(actionColumn => {
-                          const actionEditable = canSelectRows && !columnHelpers.isReadOnlyColumn(actionColumn);
-                          return (
-                            <DropdownMenuSub key={actionColumn}>
-                              <DropdownMenuSubTrigger>{actionColumn}</DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="w-44">
-                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, null)}>Set NULL</DropdownMenuItem>
-                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, '')}>Set EMPTY</DropdownMenuItem>
-                                <DropdownMenuItem disabled={!actionEditable} onClick={() => onDraftCell(row, actionColumn, columnMeta(actionColumn)?.column_default ?? '')}>Set DEFAULT</DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => copyText(formatRawCellValue(row[actionColumn]), 'Cell copied')}>Copy Cell Value</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => copyText(pageRows.map(item => formatRawCellValue(item[actionColumn])).join('\n'), 'Column copied')}>Copy Column</DropdownMenuItem>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                          );
-                        })}
+                        <DropdownMenuItem onClick={() => onDraftCell(row, column, '')}>EMPTY</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDraftCell(row, column, null)}>NULL</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDraftCell(row, column, columnMeta(column)?.column_default ?? '')}>DEFAULT</DropdownMenuItem>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => copyText(formatRawCellValue(row[column]), 'Cell copied')}>Copy Cell Value</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => copyText(pageRows.map(item => formatRawCellValue(item[column])).join('\n'), 'Column copied')}>Copy Column</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => copyRowsAs([row], 'plain')}>Copy</DropdownMenuItem>
                     <DropdownMenuSub>
@@ -202,7 +193,18 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                     </DropdownMenuSub>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              )}
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-6 shrink-0 opacity-0 group-hover:opacity-100"
+                  aria-label={`Actions for ${column}`}
+                  onClick={e => { e.stopPropagation(); setMenuColumn(column); }}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              ))}
             </div>
           </TableCell>
         );

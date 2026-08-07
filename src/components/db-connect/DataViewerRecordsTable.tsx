@@ -1,4 +1,4 @@
-import { memo, ReactNode, useRef } from 'react';
+import { memo, ReactNode } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Database, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -62,11 +62,10 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   const canSelectRows = primaryKeyColumns.length > 0;
   const rowKey = (row: Record<string, any>) => JSON.stringify(primaryKeyColumns.map(column => row[column]));
   const pageRows = records?.rows || [];
-  const scrollRef = useRef<HTMLDivElement>(null);
   const columns = records?.columns || [];
   const allPageRowsSelected = canSelectRows && pageRows.length > 0 && pageRows.every((row: any) => selectedRowKeys.has(rowKey(row)));
   return (
-    <div className="min-h-0 overflow-hidden flex flex-col" data-db-client-records>
+    <div className="min-h-0 flex-1 overflow-hidden flex flex-col" data-db-client-records>
       {children}
 
       {error ? (
@@ -117,11 +116,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
           </div>
           <RefreshProgress active={isLoadingRecords} />
           <div
-            ref={scrollRef}
             className="flex-1 overflow-auto custom-scrollbar min-h-0"
-            onWheel={(e) => {
-              if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) scrollRef.current!.scrollLeft += e.deltaX;
-            }}
           >
             {records && (
               <div className="min-w-fit inline-block align-middle">
