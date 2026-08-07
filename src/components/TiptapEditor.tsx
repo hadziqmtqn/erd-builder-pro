@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import React, { useRef, useEffect, useMemo } from 'react';
+import { useEditor, EditorContent, ReactRenderer } from '@tiptap/react';
+import { mergeAttributes } from '@tiptap/core';
 import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import { useAIAction } from '@/contexts/AIActionContext';
@@ -18,6 +19,7 @@ import TiptapLink from '@tiptap/extension-link';
 import TiptapImage from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import DragHandle from '@tiptap/extension-drag-handle';
+import Mention from '@tiptap/extension-mention';
 
 import { compressImage } from '../lib/image-compression';
 import { SlashMenu } from './SlashMenu';
@@ -41,10 +43,11 @@ import { TableBubbleMenu } from './editor/menus/TableBubbleMenu';
 import { TableContextMenu } from './editor/menus/TableContextMenu';
 import { DocumentOutline, HeadingInfo } from './editor/panels/DocumentOutline';
 import { LinkDialog } from './editor/dialogs/LinkDialog';
-import { FileMentionMenu, FileMentionOption } from './editor/FileMentionMenu';
+import { FileMentionMenu, FileMentionMenuRef, FileMentionOption } from './editor/FileMentionMenu';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { useNavigate } from 'react-router-dom';
 import { localPersistence } from '@/lib/localPersistence';
+import { NestedTaskList } from '../lib/tiptap/nested-task-list';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -90,6 +93,15 @@ function insertHtmlIntoView(view: EditorView, html: string): void {
   view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
 }
 
+const FileMention = Mention.extend({
+  parseHTML() {
+    return [
+      { tag: 'span[data-type="mention"]', priority: 1000 },
+      { tag: 'a[data-type="mention"]', priority: 1000 },
+    ];
+  },
+});
+
 interface TiptapEditorProps {
   content: string;
   onChange?: (content: string) => void;
@@ -107,19 +119,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [mentionMenu, setMentionMenu] = React.useState<{
-    isOpen: boolean;
-    query: string;
-    range: { from: number; to: number };
-    coords: { top: number; left: number; bottom: number };
-    selectedIndex: number;
-  }>({
-    isOpen: false,
-    query: '',
-    range: { from: 0, to: 0 },
-    coords: { top: 0, left: 0, bottom: 0 },
-    selectedIndex: 0,
-  });
 
   const [loadedMentionFiles, setLoadedMentionFiles] = React.useState<FileMentionOption[]>([]);
 
@@ -209,10 +208,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     return files.sort((a, b) => a.name.localeCompare(b.name));
   }, [loadedMentionFiles, notes, diagrams, flowcharts, drawings, projects]);
 
-  const filteredMentionFiles = useMemo(() => {
-    const query = mentionMenu.query.trim().toLowerCase();
-    return mentionFiles.filter(file => file.name.toLowerCase().includes(query));
-  }, [mentionFiles, mentionMenu.query]);
+  const mentionFilesRef = useRef<FileMentionOption[]>([]);
+  mentionFilesRef.current = mentionFiles;
   
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -296,6 +293,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     TaskItem.configure({
       nested: true,
     }),
+    NestedTaskList,
     SmartTableRow,
     SmartTableHeader,
     SmartTableCell,
@@ -329,6 +327,65 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       openOnClick: false,
       HTMLAttributes: {
         class: 'text-primary underline cursor-pointer',
+      },
+    }),
+    FileMention.configure({
+      HTMLAttributes: {
+        class: 'text-primary no-underline cursor-pointer font-medium bg-primary/10 rounded px-0.5',
+      },
+      renderHTML: ({ options, node, suggestion }) => [
+        'a',
+        mergeAttributes(options.HTMLAttributes, { href: String(node.attrs.id ?? '') }),
+        `${suggestion?.char ?? '@'}${node.attrs.label ?? node.attrs.id ?? ''}`,
+      ],
+      suggestion: {
+        char: '@',
+        allowSpaces: true,
+        items: ({ query }) => {
+          const normalizedQuery = query.trim().toLowerCase();
+          return mentionFilesRef.current.filter(file => file.name.toLowerCase().includes(normalizedQuery));
+        },
+        command: ({ editor, range, props }) => {
+          const file = props as unknown as FileMentionOption;
+          const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+          const to = nodeAfter?.text?.startsWith(' ') ? range.to + 1 : range.to;
+          editor.chain()
+            .focus()
+            .insertContentAt({ from: range.from, to }, [
+              {
+                type: 'mention',
+                attrs: {
+                  id: file.href,
+                  label: file.name,
+                  mentionSuggestionChar: '@',
+                },
+              },
+              { type: 'text', text: ' ' },
+            ])
+            .run();
+        },
+        render: () => {
+          let renderer: ReactRenderer<FileMentionMenuRef> | null = null;
+          let unmount: (() => void) | null = null;
+
+          return {
+            onStart: (props: any) => {
+              renderer = new ReactRenderer(FileMentionMenu, {
+                editor: props.editor,
+                props,
+              });
+              unmount = props.mount(renderer.element);
+            },
+            onUpdate: (props: any) => renderer?.updateProps(props),
+            onKeyDown: ({ event }: { event: KeyboardEvent }) => renderer?.ref?.onKeyDown(event) ?? false,
+            onExit: () => {
+              unmount?.();
+              renderer?.destroy();
+              renderer = null;
+              unmount = null;
+            },
+          };
+        },
       },
     }),
     Underline,
@@ -564,32 +621,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       extractHeadings();
 
       // Slash Menu Logic
-      const { selection } = editor.state;
-      const { $from } = selection;
-      
+      const { $from } = editor.state.selection;
       const textFromStartContent = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
-      const atIndex = textFromStartContent.lastIndexOf('@');
-      if (atIndex !== -1) {
-        const query = textFromStartContent.slice(atIndex + 1);
-        const charBeforeAt = textFromStartContent[atIndex - 1];
-        const isValidBoundary = !charBeforeAt || /\s/.test(charBeforeAt) || charBeforeAt === '\ufffc';
-        const from = $from.pos - (textFromStartContent.length - atIndex);
-        const coords = editor.view.coordsAtPos(from);
-        const matches = mentionFiles.filter(file => file.name.toLowerCase().includes(query.trim().toLowerCase()));
-        if (isValidBoundary && !query.includes('\n')) {
-          setSlashMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
-          setMentionMenu(prev => ({
-            ...prev,
-            isOpen: true,
-            query,
-            range: { from, to: $from.pos },
-            coords,
-            selectedIndex: matches.length ? Math.min(prev.selectedIndex, matches.length - 1) : 0,
-          }));
-          return;
-        }
-      }
-
       const slashIndex = textFromStartContent.lastIndexOf('/');
 
       if (slashIndex !== -1) {
@@ -603,7 +636,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
             const to = $from.pos;
             const coords = editor.view.coordsAtPos(from);
             
-            setMentionMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
             setSlashMenu({ isOpen: true, query, range: { from, to }, coords });
             return;
           }
@@ -614,7 +646,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         if (prev.isOpen) return { ...prev, isOpen: false };
         return prev;
       });
-      setMentionMenu(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
     };
 
     editor.on('update', handleUpdate);
@@ -625,57 +656,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         clearTimeout(onChangeTimeoutRef.current);
       }
     };
-  }, [editor, onChange, rememberLocalContent, mentionFiles]);
-
-  const selectMention = useCallback((file: FileMentionOption) => {
-    if (!editor) return;
-    const { from } = mentionMenu.range;
-    const text = `@${file.name}`;
-    editor.chain()
-      .focus()
-      .deleteRange(mentionMenu.range)
-      .insertContent(text)
-      .setTextSelection({ from, to: from + text.length })
-      .setLink({
-        href: file.href,
-        class: 'text-primary underline cursor-pointer font-medium bg-primary/10 rounded px-0.5',
-      })
-      .setTextSelection(from + text.length)
-      .insertContent(' ')
-      .run();
-    setMentionMenu(prev => ({ ...prev, isOpen: false }));
-  }, [editor, mentionMenu.range]);
-
-  useEffect(() => {
-    if (!mentionMenu.isOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setMentionMenu(prev => ({ ...prev, selectedIndex: Math.min(prev.selectedIndex + 1, filteredMentionFiles.length - 1) }));
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setMentionMenu(prev => ({ ...prev, selectedIndex: Math.max(prev.selectedIndex - 1, 0) }));
-      } else if (event.key === 'Enter') {
-        event.preventDefault();
-        const file = filteredMentionFiles[mentionMenu.selectedIndex];
-        if (file) selectMention(file);
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        setMentionMenu(prev => ({ ...prev, isOpen: false }));
-      }
-    };
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target as HTMLElement).closest('[data-file-mention-menu]')) {
-        setMentionMenu(prev => ({ ...prev, isOpen: false }));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-    };
-  }, [mentionMenu.isOpen, mentionMenu.selectedIndex, filteredMentionFiles, selectMention]);
+  }, [editor, onChange, rememberLocalContent]);
 
   const openLinkDialog = () => {
     if (editor) {
@@ -754,15 +735,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       />
 
       <AnimatePresence>
-        {mentionMenu.isOpen && (
-          <FileMentionMenu
-            options={filteredMentionFiles}
-            selectedIndex={mentionMenu.selectedIndex}
-            coords={mentionMenu.coords}
-            onSelect={selectMention}
-            onHover={(selectedIndex) => setMentionMenu(prev => ({ ...prev, selectedIndex }))}
-          />
-        )}
         {slashMenu.isOpen && (
           <SlashMenu 
             editor={editor}
