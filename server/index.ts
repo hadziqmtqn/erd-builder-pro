@@ -136,6 +136,16 @@ const globalLimiter = rateLimit({
 });
 app.use("/api", globalLimiter);
 
+// Feedback is public, so keep Telegram relay abuse below the global API limit.
+const feedbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many feedback submissions, please try again later" },
+});
+app.use("/api/feedback", feedbackLimiter);
+
 // Strict rate limiter for auth endpoints — 10 req/min per IP
 const authLimiter = rateLimit({
   windowMs: 60 * 1000,

@@ -5,7 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api";
+
+const DEFAULT_FEEDBACK_ENDPOINT = "https://api.erdbuilderpro.com/api/feedback";
+
+function getFeedbackEndpoint(): string {
+  const configuredEndpoint = import.meta.env.VITE_FEEDBACK_API_URL?.trim();
+  if (configuredEndpoint) return configuredEndpoint.replace(/\/+$/, "");
+  return DEFAULT_FEEDBACK_ENDPOINT;
+}
 
 export function FeedbackDialog({
   open,
@@ -25,9 +32,10 @@ export function FeedbackDialog({
 
     setLoading(true);
     try {
-      const response = await apiFetch("/api/feedback", {
+      const response = await fetch(getFeedbackEndpoint(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "omit",
         body: JSON.stringify({
           content,
           category,
@@ -53,7 +61,7 @@ export function FeedbackDialog({
 
   return (
     <Dialog open={open} onOpenChange={(val) => { onOpenChange(val); if (!val) { setContent(""); } }}>
-      <DialogContent className="sm:max-w-[425px] border-border bg-popover/95 backdrop-blur-xl shadow-2xl">
+      <DialogContent className="sm:max-w-106.25 border-border bg-popover/95 backdrop-blur-xl shadow-2xl">
           <form onSubmit={handleSubmit} className="flex flex-col max-h-[inherit]">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold">Kirim Masukan</DialogTitle>
@@ -84,10 +92,11 @@ export function FeedbackDialog({
                 <textarea
                   id="content"
                   autoComplete="off"
-                  className="flex min-h-[140px] w-full rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all resize-none"
+                  className="flex min-h-35 w-full rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-all resize-none"
                   placeholder="Tuliskan masukan Anda di sini..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
+                  maxLength={3000}
                   required
                 />
               </div>
