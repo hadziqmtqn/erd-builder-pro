@@ -17,6 +17,7 @@ import { SmartTableRow, SmartTableCell, SmartTableHeader, SmartTableEngine } fro
 import TiptapLink from '@tiptap/extension-link';
 import TiptapImage from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
+import DragHandle from '@tiptap/extension-drag-handle';
 
 import { compressImage } from '../lib/image-compression';
 import { SlashMenu } from './SlashMenu';
@@ -32,7 +33,7 @@ import {
   Badge,
   CalendarNode,
   CustomKeyboardShortcuts,
-  TrailingNode
+  TrailingNode,
 } from './editor/extensions';
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
@@ -333,6 +334,19 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     Underline,
     CalendarNode,
     CustomKeyboardShortcuts,
+    DragHandle.configure({
+      render: () => {
+        const element = document.createElement('button');
+        element.type = 'button';
+        element.className = 'tiptap-block-drag-handle';
+        element.setAttribute('aria-label', 'Drag block');
+        element.textContent = '⋮⋮';
+        return element;
+      },
+      nested: {
+        edgeDetection: 'none',
+      },
+    }),
   ], []);
 
   const editor = useEditor({

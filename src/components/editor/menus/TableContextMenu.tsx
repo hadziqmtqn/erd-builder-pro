@@ -2,6 +2,7 @@ import React, { type ReactNode, useRef } from 'react';
 import { Editor } from '@tiptap/react';
 import { CellSelection, selectedRect } from '@tiptap/pm/tables';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Columns, Heading, Layout, Sigma, Trash2 } from 'lucide-react';
+import { moveSelectedTableColumns, moveSelectedTableRows } from '@/lib/tiptap/table-drag';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -24,6 +25,18 @@ export function TableContextMenu({ editor, children, disabled = false }: TableCo
   const selection = editor.state.selection;
   const isMultiRowSelection = selection instanceof CellSelection
     && selectedRect(editor.state).bottom - selectedRect(editor.state).top > 1;
+  const isMultiColumnSelection = selection instanceof CellSelection
+    && selectedRect(editor.state).right - selectedRect(editor.state).left > 1;
+
+  const moveRows = (direction: 'up' | 'down') => {
+    editor.view.focus();
+    moveSelectedTableRows(editor.view, direction);
+  };
+
+  const moveColumns = (direction: 'left' | 'right') => {
+    editor.view.focus();
+    moveSelectedTableColumns(editor.view, direction);
+  };
 
   React.useEffect(() => {
     if (!editor.isEditable || disabled) return;
@@ -64,6 +77,15 @@ export function TableContextMenu({ editor, children, disabled = false }: TableCo
               <ArrowDown className="size-4" />
               <span>Add Row Below</span>
             </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={() => moveRows('up')}>
+              <ArrowUp className="size-4" />
+              <span>{isMultiRowSelection ? 'Move Selected Rows Up' : 'Move Row Up'}</span>
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => moveRows('down')}>
+              <ArrowDown className="size-4" />
+              <span>{isMultiRowSelection ? 'Move Selected Rows Down' : 'Move Row Down'}</span>
+            </ContextMenuItem>
             <ContextMenuItem
               variant="destructive"
               onClick={() => editor.chain().focus().deleteRow().run()}
@@ -96,6 +118,15 @@ export function TableContextMenu({ editor, children, disabled = false }: TableCo
             <ContextMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
               <ArrowRight className="size-4" />
               <span>Add Column After</span>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={() => moveColumns('left')}>
+              <ArrowLeft className="size-4" />
+              <span>{isMultiColumnSelection ? 'Move Selected Columns Left' : 'Move Column Left'}</span>
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => moveColumns('right')}>
+              <ArrowRight className="size-4" />
+              <span>{isMultiColumnSelection ? 'Move Selected Columns Right' : 'Move Column Right'}</span>
             </ContextMenuItem>
             <ContextMenuItem
               variant="destructive"
