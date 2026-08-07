@@ -283,12 +283,20 @@ export async function getProjectSiblings(projectId: number, userId: string) {
 
 // ── Summary (per-project doc counts) ──
 
-export async function getProjectSummary(projectId: number, userId: string) {
+export async function getProjectSummary(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
+  const diagramWhere = includeDbClient
+    ? { projectId, userId, isDeleted: false }
+    : {
+        projectId,
+        userId,
+        isDeleted: false,
+        OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }],
+      };
   const [notes, diagrams, flowcharts, drawings] = await Promise.all([
     prisma.note.count({ where: { projectId, userId, isDeleted: false } }),
-    prisma.diagram.count({ where: { projectId, userId, isDeleted: false } }),
+    prisma.diagram.count({ where: diagramWhere }),
     prisma.flowchart.count({ where: { projectId, userId, isDeleted: false } }),
     prisma.drawing.count({ where: { projectId, userId, isDeleted: false } }),
   ]);

@@ -26,13 +26,13 @@ function makeNode(name: string, cols: string[]): Node<Entity> {
   };
 }
 
-function makeEdge(source: string, target: string): Edge {
+function makeEdge(source: string, target: string, sourceColumn = 0, targetColumn = 0): Edge {
   return {
-    id: `${source}->${target}`,
+    id: `${source}:${sourceColumn}->${target}:${targetColumn}`,
     source: source.toLowerCase(),
     target: target.toLowerCase(),
-    sourceHandle: 'col-0-source',
-    targetHandle: 'col-0-target',
+    sourceHandle: `col-${sourceColumn}-source`,
+    targetHandle: `col-${targetColumn}-target`,
     type: 'smoothstep' as const,
   };
 }
@@ -101,6 +101,16 @@ describe('computeSchemaDiff', () => {
 
     const result = computeSchemaDiff(current, [], proposed, proposedEdges);
     expect(result.edges).toHaveLength(1);
+  });
+
+  it('keeps separate FK relations from one table to the same target table', () => {
+    const current = [makeNode('m_agama', ['id']), makeNode('biodata', ['agama_ayah', 'agama_ibu'])];
+    const proposed = [makeNode('m_agama', ['id']), makeNode('biodata', ['agama_ayah', 'agama_ibu'])];
+    const edges = [makeEdge('biodata', 'm_agama', 0, 0), makeEdge('biodata', 'm_agama', 1, 0)];
+
+    const result = computeSchemaDiff(current, edges, proposed, edges);
+    expect(result.edges).toHaveLength(2);
+    expect(result.changes.filter(change => change.kind === 'relation')).toHaveLength(0);
   });
 
   it('handles empty current and proposed', () => {

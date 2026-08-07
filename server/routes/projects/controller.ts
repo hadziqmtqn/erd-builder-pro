@@ -82,7 +82,8 @@ export async function summary(req: ExpressRequest, res: ExpressResponse): Promis
   try {
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
-    res.json(await svc.getProjectSummary(projectId, userId));
+    const includeDbClient = req.query.include_db_client !== "false";
+    res.json(await svc.getProjectSummary(projectId, userId, includeDbClient));
   } catch (err: any) {
     handleError(res, err, "Failed to fetch project summary");
   }

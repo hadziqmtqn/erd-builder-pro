@@ -16,6 +16,7 @@ import { localPersistence } from '../lib/localPersistence';
 import { useUndoRedo } from './useUndoRedo';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 import { getForeignKeyConstraintName } from '../lib/diagram-payload';
+import { databaseColumnToERD } from '../lib/column-metadata';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
  *  Works for any column ID format: "col-xxx", UUID, etc. */
@@ -200,14 +201,8 @@ export function useERDSession(
                 y: saved.y ?? 0,
                 color: saved.color ?? '#6b7280',
                 columns: (t.columns || []).map((c: any) => ({
-                  id: `${t.table_name}.${c.name}`,
-                  name: c.name,
-                  type: c.type,
-                  is_pk: c.is_pk,
-                  is_nullable: c.is_nullable,
-                  default_value: c.column_default ?? null,
+                  ...databaseColumnToERD(c, `${t.table_name}.${c.name}`),
                   _is_fk: (t.foreign_keys || []).some((fk: any) => fk.column === c.name),
-                  sort_order: c.sort_order,
                 })),
                 collapsed: saved.collapsed ?? false,
                 hidden_columns: saved.hidden_columns ?? [],

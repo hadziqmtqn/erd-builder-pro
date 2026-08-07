@@ -1,6 +1,6 @@
 import { Edge, getSmoothStepPath, Node, Position } from '@xyflow/react';
 import type { Column, Entity } from '@/types';
-import { supportsColumnLength } from './column-metadata';
+import { formatColumnType } from './column-metadata';
 
 const PADDING = 48;
 const FALLBACK_WIDTH = 220;
@@ -24,9 +24,7 @@ function safeColor(color: string | undefined) {
 }
 
 function columnType(column: Column) {
-  const length = column.max_length && supportsColumnLength(column.type) ? `(${column.max_length})` : '';
-  const precision = column.numeric_precision ? `(${column.numeric_precision}${column.numeric_scale == null ? '' : `,${column.numeric_scale}`})` : '';
-  return `${column.type.toLowerCase()}${length || precision}`;
+  return formatColumnType(column.type, column.max_length, column.numeric_precision, column.numeric_scale).toLowerCase();
 }
 
 function columnId(handle?: string | null) {

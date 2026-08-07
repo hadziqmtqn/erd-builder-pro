@@ -31,6 +31,7 @@ import { useWorkspace } from '@/providers/WorkspaceContext';
 import { apiFetch } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
+import { databaseColumnToERD } from '@/lib/column-metadata';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -347,20 +348,7 @@ const ERDViewComponent = ({
             x: (i % 4) * 280 + 50,
             y: Math.floor(i / 4) * 200 + 50,
             color: '#6b7280',
-            columns: (t.columns || []).map((c: any) => ({
-              id: crypto.randomUUID(),
-              name: c.name,
-              type: c.type,
-              is_pk: !!c.is_pk,
-              is_nullable: !!c.is_nullable,
-              enum_values: c.enum_values ?? null,
-              comment: c.comment || '',
-              max_length: c.max_length ?? null,
-              numeric_precision: c.numeric_precision ?? null,
-              numeric_scale: c.numeric_scale ?? null,
-              sort_order: c.sort_order || 0,
-              _is_fk: false,
-            })),
+            columns: (t.columns || []).map((c: any) => databaseColumnToERD(c, crypto.randomUUID())),
           },
         };
       });
@@ -382,7 +370,12 @@ const ERDViewComponent = ({
           const srcColId = columnIdMap.get(`${t.table_name}.${fk.column}`);
           const tgtColId = columnIdMap.get(`${fk.ref_table}.${fk.ref_column}`);
           if (!srcColId || !tgtColId) return;
-          if (newEdges.some(e => e.source === sourceId && e.target === targetId)) return;
+          if (newEdges.some(e =>
+            e.source === sourceId &&
+            e.target === targetId &&
+            e.sourceHandle === `col-${srcColId}-source` &&
+            e.targetHandle === `col-${tgtColId}-target`
+          )) return;
           newEdges.push({
             id: crypto.randomUUID(),
             source: sourceId,

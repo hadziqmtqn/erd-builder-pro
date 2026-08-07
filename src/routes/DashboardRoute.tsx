@@ -13,12 +13,13 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/WorkspaceProvider';
-import { apiFetch } from '../lib/api';
+import { apiFetch, isInstalledApp } from '../lib/api';
 
 const typeConfig = [
   {
     key: 'notes',
     label: 'Notes',
+    createLabel: 'Note',
     icon: FileText,
     color: 'text-amber-500',
     bg: 'bg-amber-500/10',
@@ -28,7 +29,8 @@ const typeConfig = [
   },
   {
     key: 'diagrams',
-    label: 'ERD Diagrams',
+    label: 'ERD Builder',
+    createLabel: 'ERD Builder',
     icon: Database,
     color: 'text-cyan-400',
     bg: 'bg-cyan-500/20',
@@ -39,6 +41,7 @@ const typeConfig = [
   {
     key: 'drawings',
     label: 'Drawings',
+    createLabel: 'Drawing',
     icon: PenTool,
     color: 'text-violet-500',
     bg: 'bg-violet-500/10',
@@ -49,6 +52,7 @@ const typeConfig = [
   {
     key: 'flowcharts',
     label: 'Flowcharts',
+    createLabel: 'Flowchart',
     icon: Network,
     color: 'text-emerald-500',
     bg: 'bg-emerald-500/10',
@@ -92,9 +96,13 @@ function getDocIcon(type: string) {
   }
 }
 
-function getDocLabel(type: string): string {
-  switch (type) {
-    case 'diagrams': return 'ERD';
+function isDbClientDiagram(doc: any): boolean {
+  return (doc.source_type ?? doc.sourceType) === 'production_db';
+}
+
+function getDocLabel(doc: any): string {
+  switch (doc._type) {
+    case 'diagrams': return isDbClientDiagram(doc) ? 'DB Client' : 'ERD Builder';
     case 'notes': return 'Note';
     case 'drawings': return 'Drawing';
     case 'flowcharts': return 'Flowchart';
@@ -121,6 +129,7 @@ function getDocRoute(type: string, item: any) {
 export function DashboardRoute() {
   const navigate = useNavigate();
   const ctx = useWorkspace();
+  const showDbClient = isInstalledApp();
 
   const user = ctx.user;
   const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
@@ -132,26 +141,31 @@ export function DashboardRoute() {
     )
     const getWorkspace = (doc: any) => {
       const pid = doc.project_id ?? doc.projectId
-      return pid ? (projectMap.get(String(pid)) || '—') : '—'
+      return doc.projects?.name || doc.project?.name || (pid ? projectMap.get(String(pid)) : null) || '—'
     }
     const all = [
-      ...(ctx.diagrams || []).map((d: any) => ({ ...d, _type: 'diagrams' as const, _workspace: getWorkspace(d) })),
-      ...(ctx.notes || []).map((n: any) => ({ ...n, _type: 'notes' as const, _workspace: getWorkspace(n) })),
-      ...(ctx.drawings || []).map((d: any) => ({ ...d, _type: 'drawings' as const, _workspace: getWorkspace(d) })),
-      ...(ctx.flowcharts || []).map((f: any) => ({ ...f, _type: 'flowcharts' as const, _workspace: getWorkspace(f) })),
+      ...(ctx.diagrams || []).filter((d: any) => showDbClient || !isDbClientDiagram(d)).map((d: any) => ({
+        ...d,
+        _type: 'diagrams' as const,
+        _group: isDbClientDiagram(d) ? 'db-client' : 'diagrams',
+        _workspace: getWorkspace(d),
+      })),
+      ...(ctx.notes || []).map((n: any) => ({ ...n, _type: 'notes' as const, _group: 'notes', _workspace: getWorkspace(n) })),
+      ...(ctx.drawings || []).map((d: any) => ({ ...d, _type: 'drawings' as const, _group: 'drawings', _workspace: getWorkspace(d) })),
+      ...(ctx.flowcharts || []).map((f: any) => ({ ...f, _type: 'flowcharts' as const, _group: 'flowcharts', _workspace: getWorkspace(f) })),
     ]
     return all
       .filter((d) => !d.is_deleted)
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects, showDbClient]);
 
   const [recentQuery, setRecentQuery] = useState('');
   const [recentFilter, setRecentFilter] = useState('all');
   const filteredRecentDocs = useMemo(() => {
     const query = recentQuery.trim().toLowerCase();
     return recentDocs.filter((doc: any) => {
-      const matchesType = recentFilter === 'all' || doc._type === recentFilter;
+      const matchesType = recentFilter === 'all' || doc._group === recentFilter;
       const name = doc.name || doc.title || '';
       return matchesType && (!query || `${name} ${doc._workspace}`.toLowerCase().includes(query));
     });
@@ -159,11 +173,11 @@ export function DashboardRoute() {
 
   // All non-deleted docs count
   const totalDocs = useMemo(() => {
-    return (ctx.diagrams || []).filter((d: any) => !d.is_deleted).length +
+    return (ctx.diagrams || []).filter((d: any) => !d.is_deleted && (showDbClient || !isDbClientDiagram(d))).length +
       (ctx.notes || []).filter((n: any) => !n.is_deleted).length +
       (ctx.drawings || []).filter((d: any) => !d.is_deleted).length +
       (ctx.flowcharts || []).filter((f: any) => !f.is_deleted).length;
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, showDbClient]);
 
   // Workspace document counts — fetched from backend (accurate, not paginated)
   const [projectSummaries, setProjectSummaries] = useState<Record<string, any>>({});
@@ -196,7 +210,7 @@ export function DashboardRoute() {
       const results: Record<string, any> = {};
       for (const p of activeProjects) {
         try {
-          const res = await apiFetch(`/api/projects/${p.id}/summary`);
+          const res = await apiFetch(`/api/projects/${p.id}/summary?include_db_client=${showDbClient}`);
           if (res.ok && !cancelled) {
             results[String(p.id)] = await res.json();
           }
@@ -208,7 +222,7 @@ export function DashboardRoute() {
     };
     fetchAll();
     return () => { cancelled = true; };
-  }, [ctx.projects]);
+  }, [ctx.projects, showDbClient]);
 
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const isLoading = ctx.isLoading || ctx.isProjectsLoading;
@@ -228,7 +242,7 @@ export function DashboardRoute() {
 
   const createDocument = (cfg: typeof typeConfig[number]) => {
     const fn = (ctx as Record<string, any>)[cfg.createFn];
-    if (fn) fn(`New ${cfg.label.slice(0, -1)}`);
+    if (fn) fn(`New ${cfg.createLabel}`);
   };
 
   const lastDocument = recentDocs[0];
@@ -249,7 +263,7 @@ export function DashboardRoute() {
               className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"
             >
               <Plus className="size-3.5" />
-              New ERD Diagram
+              New ERD Builder
             </button>
           )}
         </div>
@@ -263,7 +277,7 @@ export function DashboardRoute() {
           </div>
           <h2 className="text-lg font-semibold text-foreground">Let's get started</h2>
           <p className="text-sm text-muted-foreground mt-1.5 max-w-md">
-            Create your first document — notes, ERD diagrams, flowcharts, or drawings —
+            Create your first document — notes, ERD Builder, flowcharts, or drawings —
             and start building your workspace.
           </p>
           <div className="flex flex-wrap justify-center gap-2 mt-5">
@@ -274,7 +288,7 @@ export function DashboardRoute() {
                 className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all hover:shadow-sm ${cfg.key === 'diagrams' ? 'border-cyan-400/50' : 'border-border/60'} ${cfg.bg} hover:scale-[1.02]`}
               >
                 <cfg.icon className={`h-4 w-4 ${cfg.color}`} />
-                New {cfg.label.slice(0, -1)}
+                New {cfg.createLabel}
               </button>
             ))}
           </div>
@@ -296,7 +310,7 @@ export function DashboardRoute() {
                       <div className="min-w-0">
                         <h2 className="truncate text-lg font-semibold">{lastDocument.name || lastDocument.title || '(Untitled)'}</h2>
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {getDocLabel(lastDocument._type)} · {lastDocument._workspace} · {formatTimeAgo(lastDocument.updated_at)}
+                          {getDocLabel(lastDocument)} · {lastDocument._workspace} · {formatTimeAgo(lastDocument.updated_at)}
                         </p>
                       </div>
                     </div>
@@ -308,7 +322,7 @@ export function DashboardRoute() {
                   onClick={() => lastDocument ? navigate(getDocRoute(lastDocument._type, lastDocument)) : createDocument(typeConfig[1])}
                   className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  {lastDocument ? 'Open document' : 'Create ERD diagram'}
+                  {lastDocument ? 'Open document' : 'Create ERD Builder'}
                   <ArrowUpRight className="size-3.5" />
                 </button>
               </div>
@@ -331,7 +345,7 @@ export function DashboardRoute() {
                     className="group flex min-h-14 flex-col items-start justify-between rounded-lg border border-border/60 bg-background px-2.5 py-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
                   >
                     <cfg.icon className={`size-4 ${cfg.color}`} />
-                    <span className="text-xs font-medium">New {cfg.label.slice(0, -1)}</span>
+                    <span className="text-xs font-medium">New {cfg.createLabel}</span>
                   </button>
                 ))}
               </div>
@@ -369,29 +383,48 @@ export function DashboardRoute() {
                     key={cfg.key}
                     onClick={() => setRecentFilter(cfg.key)}
                     className={`rounded-md px-2.5 py-1 text-xs font-medium ${recentFilter === cfg.key ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
-                  >{cfg.label.replace(' Diagrams', '')}</button>
+                  >{cfg.label}</button>
                 ))}
+                {showDbClient && (
+                  <button
+                    onClick={() => setRecentFilter('db-client')}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${recentFilter === 'db-client' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}
+                  >DB Client</button>
+                )}
               </div>
               <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
                 {filteredRecentDocs.length === 0 ? (
                   <p className="px-4 py-10 text-center text-sm text-muted-foreground">No matching files.</p>
-                ) : filteredRecentDocs.map((doc: any) => (
-                  <button
-                    key={`${doc._type}-${doc.id}`}
-                    onClick={() => navigate(getDocRoute(doc._type, doc))}
-                    className="group flex w-full items-center gap-2.5 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-accent/30"
-                  >
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background">
-                      {getDocIcon(doc._type)}
+                ) : (
+                  <>
+                    <div className="hidden grid-cols-[minmax(0,1fr)_minmax(7rem,0.7fr)_auto_auto] gap-2.5 border-b border-border/50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
+                      <span>File</span>
+                      <span>Workspace</span>
+                      <span>Updated</span>
+                      <span aria-hidden="true" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{doc.name || doc.title || '(Untitled)'}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{getDocLabel(doc._type)} · {doc._workspace}</p>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">{formatTimeAgo(doc.updated_at)}</span>
-                    <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-primary" />
-                  </button>
-                ))}
+                    {filteredRecentDocs.map((doc: any) => (
+                      <button
+                        key={`${doc._type}-${doc.id}`}
+                        onClick={() => navigate(getDocRoute(doc._type, doc))}
+                        className="group grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2.5 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-accent/30 sm:grid-cols-[minmax(0,1fr)_minmax(7rem,0.7fr)_auto_auto]"
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background">
+                            {getDocIcon(doc._type)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{doc.name || doc.title || '(Untitled)'}</p>
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{getDocLabel(doc)}</p>
+                          </div>
+                        </div>
+                        <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">{doc._workspace}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{formatTimeAgo(doc.updated_at)}</span>
+                        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-primary" />
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             </section>
 

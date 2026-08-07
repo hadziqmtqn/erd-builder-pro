@@ -3,7 +3,7 @@ import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from '@xyfl
 import { MoreHorizontal, Pencil, Trash2, Database, AlertTriangle, Copy, MessageSquare } from 'lucide-react';
 import { Entity } from '../../types';
 import { cn } from '../../lib/utils';
-import { supportsColumnLength } from '../../lib/column-metadata';
+import { formatColumnType } from '../../lib/column-metadata';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,9 +110,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
       <div className="flex flex-col items-end gap-0.5 max-w-35">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-mono font-semibold" style={{ color: diffState === 'new' ? '#10b981' : diffState === 'deleted' ? '#ef4444' : typeColor }}>
-            {col.type.toLowerCase()}
-            {col.max_length && supportsColumnLength(col.type) ? `(${col.max_length})` : ''}
-            {col.numeric_precision ? `(${col.numeric_precision}${col.numeric_scale !== null && col.numeric_scale !== undefined ? `,${col.numeric_scale}` : ''})` : ''}
+            {formatColumnType(col.type, col.max_length, col.numeric_precision, col.numeric_scale).toLowerCase()}
           </span>
           {col.comment && <MessageSquare className="w-3 h-3 text-muted-foreground" />}
           {(col.is_pk || isFk) && (

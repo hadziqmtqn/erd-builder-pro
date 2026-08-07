@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { fetchSchema, testConnection } from "../../lib/db-connectors/registry.js";
+import { erdColumnType } from "../../lib/db-connectors/types.js";
 import type { ConnectionInfo } from "../../lib/db-connectors/types.js";
 import { encrypt } from "../../lib/crypto.js";
 import {
@@ -357,7 +358,7 @@ export async function createDiagramFromDB(data: {
     color: "#6b7280",
     columns: (t.columns || []).map((c: any) => ({
       name: c.name,
-      type: c.type,
+      type: erdColumnType(c),
       is_pk: !!c.is_pk,
       is_nullable: !!c.is_nullable,
       comment: c.comment || "",
