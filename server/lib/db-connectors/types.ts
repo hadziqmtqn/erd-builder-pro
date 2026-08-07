@@ -40,6 +40,23 @@ export interface ColumnSchema {
   ref_column?: string;
 }
 
+export function erdColumnType(column: ColumnSchema): string {
+  const fullType = String(column.full_type || '').trim();
+  const hasEnumValues = Array.isArray(column.enum_values) ? column.enum_values.length > 0 : Boolean(column.enum_values);
+  const rawType = hasEnumValues && /^user-defined$/i.test(fullType)
+    ? 'ENUM'
+    : !fullType || /^user-defined$/i.test(fullType) ? String(column.type || 'VARCHAR') : fullType;
+  return rawType
+    .replace(/\([^)]*\)/g, '')
+    .replace(/^character varying\b/i, 'VARCHAR')
+    .replace(/^character\b/i, 'CHAR')
+    .replace(/^integer\b/i, 'INT')
+    .replace(/^double precision\b/i, 'DOUBLE')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 export interface TableSchema {
   table_name: string;
   table_schema?: string;

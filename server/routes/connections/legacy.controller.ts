@@ -1,5 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { testConnection, fetchSchema, getConnector } from "../../lib/db-connectors/registry.js";
+import { erdColumnType } from "../../lib/db-connectors/types.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
@@ -115,7 +116,7 @@ export async function importLegacySchema(req: ExpressRequest, res: ExpressRespon
       columns: (t.columns || []).map((c: any) => ({
         id: crypto.randomUUID(),
         name: c.name,
-        type: c.type,
+        type: erdColumnType(c),
         is_pk: !!c.is_pk,
         is_nullable: !!c.is_nullable,
         enum_values: c.enum_values ?? null,
