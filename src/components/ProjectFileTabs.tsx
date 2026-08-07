@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, Cable, Database, FileText, GitBranch, PenTool, Plus } from 'lucide-react'
 import { useWorkspace } from '@/providers/WorkspaceProvider'
 import { Input } from '@/components/ui/input'
+import { apiFetch } from '@/lib/api'
+import { localPersistence } from '@/lib/localPersistence'
 import { cn } from '@/lib/utils'
 
 type FeatureTab = 'notes' | 'erd' | 'db-client' | 'flowchart' | 'drawings'
@@ -28,12 +30,14 @@ export function ProjectFileTabs({ currentView }: Props) {
   const [createType, setCreateType] = useState<FeatureTab>('notes')
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [workspaceDiagrams, setWorkspaceDiagrams] = useState<any[]>([])
   const popoverRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const {
+    isGuest,
     activeProjectId,
     activeDiagram, activeNote, activeDrawing, activeFlowchart,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
@@ -59,7 +63,6 @@ export function ProjectFileTabs({ currentView }: Props) {
   }, [createOpen, createType])
 
   const projectId = useMemo((): string | number | null => {
-    if (activeProjectId && activeProjectId !== 'all') return activeProjectId
     const activeFile = currentView === 'notes'
       ? activeNote
       : currentView === 'erd' || currentView === 'db-client'
@@ -67,22 +70,59 @@ export function ProjectFileTabs({ currentView }: Props) {
         : currentView === 'flowchart'
           ? activeFlowchart
           : activeDrawing
-    return activeFile?.project_id ?? activeFile?.projectId ?? searchParams.get('pid')
+    return activeFile?.project_id ?? activeFile?.projectId
+      ?? (activeProjectId && activeProjectId !== 'all' ? activeProjectId : searchParams.get('pid'))
   }, [activeProjectId, activeNote, activeDiagram, activeFlowchart, activeDrawing, currentView, searchParams])
+
+  useEffect(() => {
+    if (!projectId) {
+      setWorkspaceDiagrams([])
+      return
+    }
+
+    let cancelled = false
+    const loadDiagrams = async () => {
+      try {
+        let data: any[]
+        if (isGuest) {
+          data = (await localPersistence.getAllResources('erd'))
+            .filter(file => !file.is_deleted && String(file.project_id ?? file.projectId) === String(projectId))
+        } else {
+          // ponytail: cap workspace tabs at 1000; add cursor loading if a workspace reaches this size.
+          const response = await apiFetch(`/api/diagrams?limit=1000&offset=0&project_id=${encodeURIComponent(String(projectId))}`)
+          if (!response.ok) return
+          const json = await response.json()
+          data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []
+          data = data.filter(file => String(file.project_id ?? file.projectId) === String(projectId))
+        }
+        if (!cancelled) setWorkspaceDiagrams(data)
+      } catch {
+        if (!cancelled) setWorkspaceDiagrams([])
+      }
+    }
+
+    setWorkspaceDiagrams([])
+    loadDiagrams()
+    return () => { cancelled = true }
+  }, [projectId, isGuest])
 
   const projectFiles = useMemo(() => {
     if (!projectId) return []
     const byProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId)
+    const projectDiagrams = [...new Map(
+      [...workspaceDiagrams, ...diagrams.filter(byProject)]
+        .map(file => [String(getFileUid(file)), file]),
+    ).values()]
     return [
       ...notes.filter(byProject).map(file => ({ file, type: 'notes' as const })),
-      ...diagrams
-        .filter(byProject)
-        .filter(file => ((file.source_type ?? file.sourceType ?? 'blank') === (currentView === 'db-client' ? 'production_db' : 'blank')))
-        .map(file => ({ file, type: currentView === 'db-client' ? 'db-client' as const : 'erd' as const })),
+      ...projectDiagrams.map(file => ({
+        file,
+        type: (file.source_type ?? file.sourceType) === 'production_db' ? 'db-client' as const : 'erd' as const,
+      })),
       ...flowcharts.filter(byProject).map(file => ({ file, type: 'flowchart' as const })),
       ...drawings.filter(byProject).map(file => ({ file, type: 'drawings' as const })),
     ].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
-  }, [projectId, notes, diagrams, flowcharts, drawings])
+  }, [projectId, notes, diagrams, workspaceDiagrams, flowcharts, drawings])
 
   const activeUid = currentView === 'notes'
     ? activeNoteUid
