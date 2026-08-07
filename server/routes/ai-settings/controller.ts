@@ -46,6 +46,11 @@ export async function saveConfig(req: ExpressRequest, res: ExpressResponse): Pro
     const result = await aiService.upsertConfig(userId, { provider_id: Number(provider_id), api_key, selected_model_id, is_enabled });
     res.json(result);
   } catch (err: any) {
+    const errorMessage = err instanceof Error ? err.message : "";
+    if (/^(Invalid selected model|Selected AI model is unavailable)/.test(errorMessage)) {
+      res.status(400).json({ error: errorMessage });
+      return;
+    }
     handleError(res, err, "Failed to save config");
   }
 }

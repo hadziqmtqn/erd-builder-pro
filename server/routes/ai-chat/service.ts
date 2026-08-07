@@ -165,7 +165,14 @@ export async function getAiConfig(userId: string) {
     orderBy: { updatedAt: "desc" },
   });
 
-  if (!config) return null;
+  if (
+    !config ||
+    !config.provider ||
+    !config.selectedModel ||
+    config.provider.isActive !== true ||
+    config.selectedModel.isActive !== true ||
+    String(config.selectedModel.providerId) !== String(config.providerId)
+  ) return null;
 
   return {
     baseUrl: config.provider?.baseUrl || "https://api.openai.com/v1",

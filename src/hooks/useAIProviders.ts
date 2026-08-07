@@ -70,7 +70,7 @@ export const useAIProviders = () => {
       // Build payload — skip api_key if it's '***' (masked placeholder, already saved)
       const payload: Record<string, any> = {
         provider_id: provider.id,
-        selected_model_id: config.selected_model_id,
+        selected_model_id: config.selected_model_id ?? null,
         is_enabled: config.is_enabled ?? true,
       };
       if (config.api_key && config.api_key !== '***') {
