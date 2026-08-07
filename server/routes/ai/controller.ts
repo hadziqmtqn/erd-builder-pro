@@ -86,7 +86,11 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       } catch (dbErr: any) {
         clearTimeout(timeout);
         logger.error({ err: dbErr }, "AI proxy: Failed to fetch default config:");
-        res.status(500).json({ error: "Failed to fetch AI configuration" });
+        const errorMessage = dbErr instanceof Error ? dbErr.message : "";
+        const isConfigError = /^(No AI provider configured|Selected AI (model|provider) is unavailable)/.test(errorMessage);
+        res.status(isConfigError ? 400 : 500).json({
+          error: isConfigError ? errorMessage : "Failed to fetch AI configuration",
+        });
         return;
       }
     }

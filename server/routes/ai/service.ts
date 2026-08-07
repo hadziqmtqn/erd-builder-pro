@@ -38,7 +38,7 @@ export async function resolveAiConfig(params: {
 
     const config = await prisma.userAiConfig.findFirst({
       where,
-      include: { provider: true },
+      include: { provider: true, selectedModel: true },
       orderBy: { updatedAt: "desc" },
     });
 
@@ -46,25 +46,37 @@ export async function resolveAiConfig(params: {
       throw new Error("No AI provider configured. Configure AI in Settings.");
     }
 
-    apiKey = revealAiApiKey(config.apiKey);
-    if (!isProtectedAiApiKey(config.apiKey)) {
+    if (!config.provider || config.provider.isActive !== true) {
+      throw new Error("Selected AI provider is unavailable");
+    }
+    if (
+      !config.selectedModel ||
+      config.selectedModel.isActive !== true ||
+      String(config.selectedModel.providerId) !== String(config.providerId)
+    ) {
+      throw new Error("Selected AI model is unavailable for this provider");
+    }
+
+    const storedApiKey = config.apiKey;
+    if (!storedApiKey) {
+      throw new Error("AI API key is required");
+    }
+
+    apiKey = revealAiApiKey(storedApiKey);
+    if (!isProtectedAiApiKey(storedApiKey)) {
       await prisma.userAiConfig.update({
         where: { id: config.id },
         data: { apiKey: protectAiApiKey(apiKey) },
       });
     }
-    providerCode = providerCode || config.provider?.code;
+    providerCode = config.provider.code;
     // A request must not override the configured provider URL when using a stored key.
     baseUrl = config.provider?.baseUrl || (providerCode === "gemini"
       ? "https://generativelanguage.googleapis.com/v1beta"
       : "https://api.openai.com/v1");
 
     if (!model && config.selectedModelId) {
-      const modelData = await prisma.aiModel.findFirst({
-        where: { id: config.selectedModelId },
-        select: { modelIdentifier: true },
-      });
-      model = modelData?.modelIdentifier || "gpt-4o-mini";
+      model = config.selectedModel.modelIdentifier;
     }
 
   }

@@ -67,13 +67,26 @@ export async function listConfigs(userId: string) {
 
 export async function upsertConfig(
   userId: string,
-  body: { provider_id: number; api_key?: string; selected_model_id?: number; is_enabled?: boolean }
+  body: { provider_id: number; api_key?: string; selected_model_id?: number | null; is_enabled?: boolean }
 ) {
   const providerId = Number(body.provider_id);
-  const selectedModelId = body.selected_model_id != null ? Number(body.selected_model_id) || null : null;
+  const hasSelectedModel = body.selected_model_id !== undefined;
+  const selectedModelId = body.selected_model_id == null ? null : Number(body.selected_model_id);
   const apiKey = body.api_key?.trim();
   const hasApiKey = !!(apiKey && apiKey !== "***");
   const encryptedApiKey = hasApiKey ? protectAiApiKey(apiKey) : undefined;
+
+  if (hasSelectedModel && selectedModelId !== null) {
+    if (!Number.isInteger(selectedModelId) || selectedModelId < 1) {
+      throw new Error("Invalid selected model");
+    }
+
+    const model = await prisma?.aiModel.findFirst({
+      where: { id: selectedModelId, providerId, isActive: true },
+      select: { id: true },
+    });
+    if (!model) throw new Error("Selected AI model is unavailable for this provider");
+  }
 
   // Check if config already exists — if creating, api_key is required (NOT NULL)
   const existing = await prisma?.userAiConfig.findUnique({
@@ -96,7 +109,7 @@ export async function upsertConfig(
     } as any,
     update: {
       ...(encryptedApiKey ? { apiKey: encryptedApiKey } : {}),
-      ...(selectedModelId != null ? { selectedModelId } : {}),
+      ...(hasSelectedModel ? { selectedModelId } : {}),
       ...(body.is_enabled != null ? { isEnabled: body.is_enabled } : {}),
       updatedAt: new Date(),
     } as any,
@@ -361,12 +374,26 @@ export async function testConnection(
   const apiKey = revealAiApiKey(config.apiKey);
 
   const provider = config.provider;
-  const modelId = modelIdentifier || (
-    providerCode === "openai" ? "gpt-4o-mini" : "gemini-1.5-flash"
+  const selectedModel = config.selectedModelId != null
+    ? await prisma?.aiModel.findFirst({
+      where: { id: config.selectedModelId as any },
+      select: { providerId: true, modelIdentifier: true, isActive: true },
+    })
+    : null;
+  if (!modelIdentifier && config.selectedModelId != null && (
+    !selectedModel ||
+    selectedModel.isActive !== true ||
+    String(selectedModel.providerId) !== String(config.providerId)
+  )) {
+    return { error: "Selected AI model is unavailable for this provider" };
+  }
+
+  const modelId = modelIdentifier || selectedModel?.modelIdentifier || (
+    providerCode === "gemini" ? "gemini-1.5-flash" : "gpt-4o-mini"
   );
 
   if (providerCode === "openai" || providerCode === "openai_compatible") {
-    const baseUrl = await safeAiBaseUrl(provider?.baseUrl, "https://api.openai.com/v1");
+    const baseUrl = await safeAiBaseUrl(provider?.baseUrl ?? undefined, "https://api.openai.com/v1");
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
