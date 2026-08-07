@@ -83,6 +83,28 @@ export function SettingsModal() {
   );
   const [aiSettingsTab, setAiSettingsTab] = React.useState('configuration');
 
+  React.useEffect(() => {
+    if (!isDesktopApp) return;
+
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      if (cancelled) return;
+
+      unlisten = await listen('menu-settings', () => {
+        setSettingsTab('account');
+        setIsSettingsOpen(true);
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [isDesktopApp, setIsSettingsOpen, setSettingsTab]);
+
   const {
     providers,
     configs,

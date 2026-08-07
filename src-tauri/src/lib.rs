@@ -175,6 +175,9 @@ pub fn run() {
                 "check_update" => {
                     let _ = app_handle.emit("menu-check-update", ());
                 }
+                "settings" => {
+                    let _ = app_handle.emit("menu-settings", ());
+                }
                 _ => {}
             }
         })
