@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",

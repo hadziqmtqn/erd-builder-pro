@@ -64,7 +64,7 @@ import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
-import { applyDBMLMetadata, dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
+import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 
 // ── Inner component that uses AIAction context ──
@@ -113,6 +113,7 @@ function entitySchemaKey(entity: Entity): string {
 function AppLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [propertiesEntityId, setPropertiesEntityId] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
@@ -275,6 +276,10 @@ function AppLayoutInner() {
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const propertiesEntity = useMemo(() => {
+    const node = nodes.find(node => node.id === propertiesEntityId);
+    return node ? node.data : null;
+  }, [nodes, propertiesEntityId]);
 
   // Use the URL UUID rather than activeDiagramId. The workspace can briefly
   // switch that ID from a numeric value to a UUID while loading; using it as
@@ -552,20 +557,25 @@ function AppLayoutInner() {
       return n;
     });
 
-    // Remap edge node IDs + compute position-based handles
+    // Remap edge node IDs. Existing canvas relations keep their user-chosen
+    // handle sides; DBML only supplies the schema, not edge placement.
     const mergedEdges = clonedEdges.map(e => {
       const srcId = nodeIdMap.get(e.source) || e.source;
       const tgtId = nodeIdMap.get(e.target) || e.target;
+      const srcColId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
+      const tgtColId = e.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
+      const existingEdge = findMatchingCanvasEdge(edges, srcId, tgtId, e.sourceHandle, e.targetHandle);
+      if (existingEdge) {
+        return { ...e, id: existingEdge.id, source: srcId, target: tgtId,
+          sourceHandle: existingEdge.sourceHandle, targetHandle: existingEdge.targetHandle };
+      }
+
       const srcNode = mergedNodes.find(n => n.id === srcId);
       const tgtNode = mergedNodes.find(n => n.id === tgtId);
       const sx = srcNode?.position.x ?? 0;
       const tx = tgtNode?.position.x ?? 0;
       const srcSuffix = sx < tx ? 'source' : 'source-l';
       const tgtSuffix = sx < tx ? 'target' : 'target-r';
-
-      // Rebuild handles with correct position-based suffix
-      const srcColId = e.sourceHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
-      const tgtColId = e.targetHandle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
 
       return {
         ...e,
@@ -632,10 +642,15 @@ function AppLayoutInner() {
       && previousEntityContextKeyRef.current !== contextKey;
     previousEntityContextKeyRef.current = contextKey;
 
+    if (contextChanged) setPropertiesEntityId(null);
     if (rightPanelMode === 'properties' && (!isActiveDiagramContext || contextChanged || activeDiagramIsProductionDb)) {
       setRightPanelMode('closed');
     }
   }, [entityContext, isActiveDiagramContext, rightPanelMode, activeDiagramIsProductionDb, setRightPanelMode]);
+
+  useEffect(() => {
+    if (rightPanelMode === 'properties' && selectedNodeId) setPropertiesEntityId(selectedNodeId);
+  }, [rightPanelMode, selectedNodeId]);
 
   // DBML is part of ERD Builder only. If the user navigates from an ERD to
   // Notes/Flowchart while the DBML tab is active, keep the panel usable by
@@ -962,10 +977,10 @@ function AppLayoutInner() {
                   />
                 )}
                 {rightPanelMode === 'properties' && !activeDiagramIsProductionDb && (
-                  selectedEntity ? (
+                  propertiesEntity ? (
                     <PropertiesPanel
-                      key={selectedEntity.id}
-                      selectedEntity={selectedEntity}
+                      key={propertiesEntity.id}
+                      selectedEntity={propertiesEntity}
                       onUpdateEntity={handleEntityUpdate}
                       onDeleteEntity={(id) => {
                         deleteEntity(id);
