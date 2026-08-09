@@ -12,6 +12,7 @@ import { DataViewerFilters } from './DataViewerFilters';
 import { DataViewerFooter } from './DataViewerFooter';
 import { DataViewerRecordsTable } from './DataViewerRecordsTable';
 import { DataViewerSidebar } from './DataViewerSidebar';
+import { DataViewerTableActions } from './DataViewerTableActions';
 import { DataViewerStructure } from './DataViewerStructure';
 import { DataViewerStructurePanel } from './DataViewerStructurePanel';
 import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
@@ -124,36 +125,31 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     if (from === -1 || to === -1) return false;
     const [start, end] = from < to ? [from, to] : [to, from];
     recordEditor.selectRows(rows.slice(start, end + 1));
+    return true;
+  }, [recordEditor.selectRows, records, rowKey]);
+  const selectRecordForDetails = useCallback((row: Record<string, any>) => {
+    if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
     recordEditor.selectRow(row);
     return true;
-  }, [recordEditor.selectRow, recordEditor.selectRows, records, rowKey]);
-  const handleSelectRow = useCallback((row: Record<string, any>, event: React.MouseEvent) => {
-    if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
-    if ((event.metaKey || event.ctrlKey) && primaryKeyColumns.length > 0) {
-      const selected = recordEditor.selectedRowKeys.has(rowKey(row));
-      recordEditor.toggleSelectedRow(row, !selected);
-      recordEditor.selectRow(row);
-      lastRecordRowKeyRef.current = rowKey(row);
-      return;
-    }
-    if (event.shiftKey && selectRecordRange(row)) return;
-    lastRecordRowKeyRef.current = rowKey(row);
-    recordEditor.selectRows([row]);
-    recordEditor.selectRow(row);
-  }, [primaryKeyColumns.length, recordEditor.selectRow, recordEditor.selectRows, recordEditor.selectedRowKeys, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
+  }, [recordEditor.selectRow, warnUnsaved]);
+  const openRecordDetails = useCallback((row: Record<string, any>) => {
+    if (!selectRecordForDetails(row)) return;
+    recordEditor.setDetailsOpen(true);
+  }, [recordEditor.setDetailsOpen, selectRecordForDetails]);
+  const handleSelectRow = useCallback((row: Record<string, any>) => {
+    selectRecordForDetails(row);
+  }, [selectRecordForDetails]);
   const handleToggleSelectedRow = useCallback((row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => {
     if (selectedRowRef.current !== row && recordDirtyRef.current && !warnUnsaved()) return;
     if (checked && event?.shiftKey && selectRecordRange(row)) return;
     lastRecordRowKeyRef.current = checked ? rowKey(row) : null;
     recordEditor.toggleSelectedRow(row, checked);
-    recordEditor.selectRow(checked ? row : null);
-  }, [recordEditor.selectRow, recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
+  }, [recordEditor.toggleSelectedRow, rowKey, selectRecordRange, warnUnsaved]);
   const handleTogglePageRows = useCallback((rows: Record<string, any>[], checked: boolean) => {
     if (recordDirtyRef.current && !warnUnsaved()) return;
     recordEditor.toggleSelectedRows(rows, checked);
-    recordEditor.selectRow(checked ? rows[0] || null : null);
     lastRecordRowKeyRef.current = checked && rows[0] ? rowKey(rows[0]) : null;
-  }, [recordEditor.selectRow, recordEditor.toggleSelectedRows, rowKey, warnUnsaved]);
+  }, [recordEditor.toggleSelectedRows, rowKey, warnUnsaved]);
   const handleAddRecord = useCallback(() => {
     if (warnUnsaved()) recordEditor.addRecord();
   }, [recordEditor.addRecord, warnUnsaved]);
@@ -378,6 +374,8 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
               {activeView === 'data' && !isNewTableTab && (
                 <DataViewerRecordsTable
                   activeTable={activeTable}
+                  connectionId={connectionId}
+                  dbType={dbType}
                   columnHelpers={columnHelpers}
                   error={error}
                   foreignKeyByColumn={foreignKeyByColumn}
@@ -390,6 +388,9 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   sort={sort}
                   recordDrafts={inlineDrafts.drafts}
                   handleSelectRow={handleSelectRow}
+                  onEditRecord={openRecordDetails}
+                  onDeleteTables={deleteTables}
+                  onMutateTables={handleMutateTables}
                   openRelatedRecord={openRelatedRecord}
                   onAddRecord={handleAddRecord}
                   onDraftCell={inlineDrafts.draftCell}
@@ -398,6 +399,19 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
                   onToggleSelectedRow={handleToggleSelectedRow}
                   toggleSort={toggleSort}
                   warnUnsaved={warnUnsaved}
+                  headerAction={
+                    <DataViewerTableActions
+                      connectionId={connectionId}
+                      dbType={dbType}
+                      table={activeTableSchema || { table_name: activeTable, columns: [] }}
+                      tables={tables}
+                      exportSelectedRows={recordEditor.selectedRows}
+                      label="Export"
+                      mode="dropdown"
+                      onDeleteTables={deleteTables}
+                      onMutateTables={handleMutateTables}
+                    />
+                  }
                 >
                   {showFilters && filters.length > 0 && (
                     <DataViewerFilters

@@ -8,6 +8,8 @@ import { DataViewerRecordRow } from './DataViewerRecordRow';
 
 type DataViewerRecordsTableProps = {
   activeTable: string;
+  connectionId: number;
+  dbType: string | null;
   columnHelpers: ReturnType<typeof createColumnHelpers>;
   error: string | null;
   foreignKeyByColumn: Map<string, any>;
@@ -20,6 +22,9 @@ type DataViewerRecordsTableProps = {
   sort: any;
   recordDrafts: Record<string, { rowKey: string; column: string; key: Record<string, any>; value: any }>;
   handleSelectRow: (row: Record<string, any>, event: React.MouseEvent) => void;
+  onEditRecord: (row: Record<string, any>) => void;
+  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
+  onMutateTables: (patch: Record<string, any>) => Promise<any>;
   openRelatedRecord: (table: string, column: string, value: any) => void;
   onAddRecord: () => void;
   onDraftCell: (row: Record<string, any>, column: string, value: any) => void;
@@ -28,6 +33,7 @@ type DataViewerRecordsTableProps = {
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => void;
   toggleSort: (column: string) => void;
   warnUnsaved: () => boolean;
+  headerAction?: ReactNode;
   children?: ReactNode;
 };
 
@@ -37,6 +43,8 @@ function RefreshProgress({ active }: { active: boolean }) {
 
 export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   activeTable,
+  connectionId,
+  dbType,
   columnHelpers,
   error,
   foreignKeyByColumn,
@@ -49,6 +57,9 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   sort,
   recordDrafts,
   handleSelectRow,
+  onEditRecord,
+  onDeleteTables,
+  onMutateTables,
   openRelatedRecord,
   onAddRecord,
   onDraftCell,
@@ -57,6 +68,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
   onToggleSelectedRow,
   toggleSort,
   warnUnsaved,
+  headerAction,
   children,
 }: DataViewerRecordsTableProps) {
   const canSelectRows = primaryKeyColumns.length > 0;
@@ -104,6 +116,7 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
               )}
             </div>
             <div className="flex items-center gap-1">
+              {headerAction}
               <Button variant="outline" size="sm" className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={selectedRowKeys.size === 0} onClick={onDeleteSelectedRecords}>
                 <Trash2 className="mr-1 h-3.5 w-3.5" />
                 Delete All
@@ -178,6 +191,8 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                         <DataViewerRecordRow
                           key={rowKeyValue}
                           activeTable={activeTable}
+                          connectionId={connectionId}
+                          dbType={dbType}
                           columns={columns}
                           columnHelpers={columnHelpers}
                           foreignKeyByColumn={foreignKeyByColumn}
@@ -190,6 +205,9 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
                           isSelected={selectedRowKeys.has(rowKeyValue)}
                           recordDrafts={recordDrafts}
                           handleSelectRow={handleSelectRow}
+                          onEditRecord={onEditRecord}
+                          onDeleteTables={onDeleteTables}
+                          onMutateTables={onMutateTables}
                           openRelatedRecord={openRelatedRecord}
                           onDraftCell={onDraftCell}
                           onToggleSelectedRow={onToggleSelectedRow}

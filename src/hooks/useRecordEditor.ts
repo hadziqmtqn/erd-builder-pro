@@ -179,6 +179,7 @@ export function useRecordEditor({
     isSavingRecord,
     selectedRow,
     selectedRowKeys,
+    selectedRows,
     selectedRecordCount: selectedRows.length,
     addRecord,
     cancelCreateRecord,

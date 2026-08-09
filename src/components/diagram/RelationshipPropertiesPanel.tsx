@@ -34,6 +34,7 @@ interface RelationshipPropertiesPanelProps {
   onUpdateEdge: (edgeId: string, update: string | { label?: string; data?: Record<string, any> }) => void;
   onFlipEdge: (edgeId: string) => void;
   onDeleteEdge: (id: string) => void;
+  moveOnly?: boolean;
 }
 
 export default function RelationshipPropertiesPanel({ 
@@ -41,9 +42,23 @@ export default function RelationshipPropertiesPanel({
   nodes,
   onUpdateEdge, 
   onFlipEdge,
-  onDeleteEdge 
+  onDeleteEdge,
+  moveOnly = false,
 }: RelationshipPropertiesPanelProps) {
   if (!selectedEdge) return null;
+  if (moveOnly) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full h-9 text-xs font-bold gap-2 bg-background border-border"
+        onClick={() => onFlipEdge(selectedEdge.id)}
+      >
+        <ArrowLeftRight className="w-3.5 h-3.5" />
+        Move Edge Side
+      </Button>
+    );
+  }
   const relationData = (selectedEdge.data || {}) as Record<string, any>;
 
   const getDisplayName = (nodeId: string, handleId: string | undefined | null) => {

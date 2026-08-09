@@ -1,4 +1,4 @@
-import { RefObject, useRef, useState } from 'react';
+import { RefObject, useState } from 'react';
 import { AlertCircle, ChevronDown, Database, FileUp, Plus, Search, TableIcon, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -74,8 +74,8 @@ export function DataViewerSidebar({
   const [isImporting, setIsImporting] = useState(false);
   const [ignoreForeignKeys, setIgnoreForeignKeys] = useState(false);
   const [cascade, setCascade] = useState(false);
-  const lastSelectedTableRef = useRef<string | null>(null);
   const selectedSet = new Set(selectedTables);
+  const isSelectionMode = selectedTables.length > 0;
   const supportsTableMutation = dbType === 'mysql' || dbType === 'postgresql';
   const visibleNames = filteredTables.map((table: any) => table.table_name);
   const selectedTableObjects = tables.filter((table: any) => selectedSet.has(table.table_name));
@@ -84,19 +84,13 @@ export function DataViewerSidebar({
     if (file && file.size > MAX_SQL_IMPORT_BYTES) return toast.error('SQL file is too large. Maximum size is 25 MB');
     setImportFile(file);
   };
-  const handleTableClick = (e: React.MouseEvent, tableName: string) => {
-    if (e.shiftKey && lastSelectedTableRef.current) {
-      const from = visibleNames.indexOf(lastSelectedTableRef.current);
-      const to = visibleNames.indexOf(tableName);
-      if (from !== -1 && to !== -1) {
-        const [start, end] = from < to ? [from, to] : [to, from];
-        setSelectedTables(prev => [...new Set([...prev, ...visibleNames.slice(start, end + 1)])]);
-        return;
-      }
-    }
-    lastSelectedTableRef.current = tableName;
-    if (selectedTables.length > 0) setSelectedTables([]);
+  const handleTableClick = (tableName: string) => {
     onSelectTable(tableName);
+  };
+  const toggleTable = (tableName: string, checked: boolean) => {
+    setSelectedTables(prev => checked
+      ? [...new Set([...prev, tableName])]
+      : prev.filter(name => name !== tableName));
   };
   const validateImportText = (sql: string) => {
     if (!dbType) return "Database driver is unknown";
@@ -154,7 +148,6 @@ export function DataViewerSidebar({
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
           e.preventDefault();
           setSelectedTables(visibleNames);
-          lastSelectedTableRef.current = visibleNames[0] || null;
         }
       }}
     >
@@ -196,6 +189,15 @@ export function DataViewerSidebar({
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background/95 p-2">
           <span className="min-w-0 flex-1 text-xs text-muted-foreground">{selectedTables.length} selected</span>
+          {selectedTables.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox
+                checked={visibleNames.length > 0 && visibleNames.every(name => selectedSet.has(name))}
+                onCheckedChange={checked => setSelectedTables(checked ? [...new Set([...selectedTables, ...visibleNames])] : selectedTables.filter(name => !visibleNames.includes(name)))}
+              />
+              Select all
+            </label>
+          )}
           {selectedTables.length > 0 && <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={() => setSelectedTables([])}>Clear</Button>}
         </div>
         <div className="p-1.5 space-y-0.5">
@@ -222,22 +224,32 @@ export function DataViewerSidebar({
                 key={table.table_name}
                 role="button"
                 tabIndex={0}
-                onClick={e => handleTableClick(e, table.table_name)}
+                onClick={() => handleTableClick(table.table_name)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    handleTableClick(e as any, table.table_name);
+                    handleTableClick(table.table_name);
                   }
                 }}
-                className={`w-full cursor-pointer text-left px-2.5 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
-                  selectedSet.has(table.table_name)
-                    ? 'bg-primary/15 text-foreground ring-1 ring-primary/20'
-                  : activeTable === table.table_name
+                className={`group w-full cursor-pointer text-left px-2.5 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
+                  activeTable === table.table_name
                     ? 'bg-accent text-accent-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                 }`}
               >
-                <TableIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                <div
+                  className="relative h-3.5 w-3.5 shrink-0"
+                  onClick={event => event.stopPropagation()}
+                  onKeyDown={event => event.stopPropagation()}
+                >
+                  <TableIcon className={`absolute inset-0 h-3.5 w-3.5 opacity-60 transition-opacity ${isSelectionMode ? 'opacity-0' : 'group-hover:opacity-0'}`} />
+                  <Checkbox
+                    aria-label={`Select ${table.table_name}`}
+                    checked={selectedSet.has(table.table_name)}
+                    className={`absolute inset-0 size-3.5 transition-opacity ${isSelectionMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    onCheckedChange={checked => toggleTable(table.table_name, checked)}
+                  />
+                </div>
                 <span className="min-w-0 flex-1 truncate">{table.table_name}</span>
                 <DataViewerTableActions
                   connectionId={connectionId}

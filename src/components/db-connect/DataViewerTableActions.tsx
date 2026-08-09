@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ContextMenuItem } from '@/components/ui/context-menu';
 
 type Props = {
   connectionId: number;
@@ -32,8 +33,10 @@ type Props = {
   table: any;
   tables: any[];
   exportTables?: any[];
+  exportRows?: RowData[];
+  exportSelectedRows?: RowData[];
   label?: string;
-  mode?: 'menu' | 'button';
+  mode?: 'menu' | 'button' | 'dropdown' | 'context-item';
   buttonClassName?: string;
   disabled?: boolean;
   onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
@@ -84,7 +87,7 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function DataViewerTableActions({ connectionId, dbType, table, tables, exportTables, label = 'Export', mode = 'menu', buttonClassName = 'h-8 px-2', disabled = false, onDeleteTables, onMutateTables }: Props) {
+export function DataViewerTableActions({ connectionId, dbType, table, tables, exportTables, exportRows, exportSelectedRows, label = 'Export', mode = 'menu', buttonClassName = 'h-8 px-2', disabled = false, onDeleteTables, onMutateTables }: Props) {
   const tableName = table.table_name;
   const columns = useMemo<string[]>(() => (table.columns || []).map((col: any) => String(col.name || '')).filter(Boolean), [table]);
   const [dialog, setDialog] = useState<null | 'export' | 'clone' | 'truncate' | 'delete'>(null);
@@ -100,6 +103,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   const [ignoreFk, setIgnoreFk] = useState(false);
   const [cascade, setCascade] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rowsOverride, setRowsOverride] = useState<RowData[] | null>(null);
   const targetTables = exportTables?.length ? exportTables : [table];
   const singleExport = targetTables.length === 1;
   const supportsTableMutation = isMysql(dbType) || isPg(dbType);
@@ -126,7 +130,9 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   const exportTable = async (item: any) => {
     const name = item.table_name;
     const picked: string[] = singleExport ? selectedColumns : (item.columns || []).map((col: any) => String(col.name || '')).filter(Boolean);
-    const data = includeContents || format !== 'sql' ? await fetchRows(name) : { rows: [], columns: picked };
+    const data = rowsOverride
+      ? { rows: rowsOverride, columns: (item.columns || []).map((col: any) => String(col.name || '')).filter(Boolean) }
+      : includeContents || format !== 'sql' ? await fetchRows(name) : { rows: [], columns: picked };
     const cols = picked.length ? picked : data.columns;
     if (format === 'json') return JSON.stringify(data.rows.map(row => Object.fromEntries(cols.map(col => [col, row[col]]))), null, 2);
     const csvDelimiter = delimiter === 'tab' ? '\t' : delimiter;
@@ -148,6 +154,12 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
       }
     }
     return parts.join('\n');
+  };
+
+  const openExport = (rows?: RowData[]) => {
+    setRowsOverride(rows ?? exportRows ?? null);
+    setSelectedColumns(columns);
+    setDialog('export');
   };
 
   const handleExport = async () => {
@@ -232,10 +244,23 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   };
 
   const trigger = mode === 'button' ? (
-        <Button type="button" variant="outline" size="sm" className={buttonClassName} disabled={disabled || targetTables.length === 0} onClick={e => { e.stopPropagation(); setSelectedColumns(columns); setDialog('export'); }}>
+        <Button type="button" variant="outline" size="sm" className={buttonClassName} disabled={disabled || targetTables.length === 0} onClick={e => { e.stopPropagation(); openExport(); }}>
           <Download className="mr-1 h-3.5 w-3.5" />
           {label}
         </Button>
+      ) : mode === 'dropdown' ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" className={buttonClassName} disabled={disabled || targetTables.length === 0} />}>
+            <Download className="mr-1 h-3.5 w-3.5" />
+            {label}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={() => openExport()}>Export All</DropdownMenuItem>
+            <DropdownMenuItem disabled={!exportSelectedRows?.length} onClick={() => openExport(exportSelectedRows)}>Export Selected</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : mode === 'context-item' ? (
+        <ContextMenuItem onClick={() => openExport()}><Download className="h-3.5 w-3.5" />Export</ContextMenuItem>
       ) : (
     <span onClick={e => e.stopPropagation()}>
         <DropdownMenu>
@@ -243,7 +268,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
             <MoreHorizontal className="h-3.5 w-3.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onClick={() => { setSelectedColumns(columns); setDialog('export'); }}><Download className="h-3.5 w-3.5" />Export</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openExport()}><Download className="h-3.5 w-3.5" />Export</DropdownMenuItem>
             <DropdownMenuItem disabled={!supportsTableMutation} onClick={() => { setCloneName(`${tableName}_copy`); setDialog('clone'); }}><Copy className="h-3.5 w-3.5" />Clone</DropdownMenuItem>
             <DropdownMenuItem disabled={!supportsTableMutation} onClick={() => setDialog('truncate')}><Scissors className="h-3.5 w-3.5" />Truncate</DropdownMenuItem>
             <DropdownMenuSeparator />

@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ArrowRight, MoreHorizontal } from 'lucide-react';
+import { ArrowRight, MoreHorizontal, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,7 +14,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TableCell, TableRow } from '@/components/ui/table';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { createColumnHelpers, displayCellValue, draftValue, formatRawCellValue } from './data-viewer-utils';
+import { DataViewerTableActions } from './DataViewerTableActions';
 
 const csvCell = (value: any) => {
   const text = formatRawCellValue(value);
@@ -25,6 +33,8 @@ const rowValues = (row: Record<string, any>, columns: string[]) => columns.map(c
 
 type DataViewerRecordRowProps = {
   activeTable: string;
+  connectionId: number;
+  dbType: string | null;
   columns: string[];
   columnHelpers: ReturnType<typeof createColumnHelpers>;
   foreignKeyByColumn: Map<string, any>;
@@ -37,6 +47,9 @@ type DataViewerRecordRowProps = {
   isSelected: boolean;
   recordDrafts: Record<string, { rowKey: string; column: string; key: Record<string, any>; value: any }>;
   handleSelectRow: (row: Record<string, any>, event: React.MouseEvent) => void;
+  onEditRecord: (row: Record<string, any>) => void;
+  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
+  onMutateTables: (patch: Record<string, any>) => Promise<any>;
   openRelatedRecord: (table: string, column: string, value: any) => void;
   onDraftCell: (row: Record<string, any>, column: string, value: any) => void;
   onToggleSelectedRow: (row: Record<string, any>, checked: boolean, event?: React.MouseEvent) => void;
@@ -45,6 +58,8 @@ type DataViewerRecordRowProps = {
 
 export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   activeTable,
+  connectionId,
+  dbType,
   columns,
   columnHelpers,
   foreignKeyByColumn,
@@ -57,6 +72,9 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   isSelected,
   recordDrafts,
   handleSelectRow,
+  onEditRecord,
+  onDeleteTables,
+  onMutateTables,
   openRelatedRecord,
   onDraftCell,
   onToggleSelectedRow,
@@ -88,6 +106,8 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
   };
 
   return (
+    <ContextMenu>
+      <ContextMenuTrigger className="contents">
     <TableRow
       key={rowKeyValue}
       className={`cursor-pointer hover:bg-muted/50 ${isActive ? 'bg-muted/70' : isSelected ? 'bg-primary/10' : ''}`}
@@ -210,10 +230,28 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
         );
       })}
     </TableRow>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-36">
+        <ContextMenuItem onClick={() => onEditRecord(row)}><Pencil className="h-3.5 w-3.5" />Edit</ContextMenuItem>
+        <ContextMenuSeparator />
+        <DataViewerTableActions
+          connectionId={connectionId}
+          dbType={dbType}
+          table={tableSchema || { table_name: activeTable, columns: columns.map(name => ({ name })) }}
+          tables={[tableSchema].filter(Boolean)}
+          exportRows={[row]}
+          mode="context-item"
+          onDeleteTables={onDeleteTables}
+          onMutateTables={onMutateTables}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }, (prev, next) => {
   if (
     prev.activeTable !== next.activeTable ||
+    prev.connectionId !== next.connectionId ||
+    prev.dbType !== next.dbType ||
     prev.columns !== next.columns ||
     prev.columnHelpers !== next.columnHelpers ||
     prev.foreignKeyByColumn !== next.foreignKeyByColumn ||
@@ -225,6 +263,9 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
     prev.isActive !== next.isActive ||
     prev.isSelected !== next.isSelected ||
     prev.handleSelectRow !== next.handleSelectRow ||
+    prev.onEditRecord !== next.onEditRecord ||
+    prev.onDeleteTables !== next.onDeleteTables ||
+    prev.onMutateTables !== next.onMutateTables ||
     prev.openRelatedRecord !== next.openRelatedRecord ||
     prev.onDraftCell !== next.onDraftCell ||
     prev.onToggleSelectedRow !== next.onToggleSelectedRow ||

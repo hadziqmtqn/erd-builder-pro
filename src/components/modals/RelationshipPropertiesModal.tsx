@@ -17,6 +17,7 @@ interface RelationshipPropertiesModalProps {
   handleEdgeUpdate: (edgeId: string, updatedData: string | { label?: string; data?: Record<string, any> }) => void;
   handleEdgeFlip: (edgeId: string) => void;
   deleteEdge: (edgeId: string) => void;
+  moveOnly?: boolean;
 }
 
 export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalProps> = ({
@@ -27,15 +28,18 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
   handleEdgeUpdate,
   handleEdgeFlip,
   deleteEdge,
+  moveOnly = false,
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Relationship Properties</DialogTitle>
-          <DialogDescription>
-            Set the cardinality and foreign key actions between these two tables.
-          </DialogDescription>
+          {!moveOnly && (
+            <DialogDescription>
+              Set the cardinality and foreign key actions between these two tables.
+            </DialogDescription>
+          )}
         </DialogHeader>
         <DialogBody>
           <RelationshipPropertiesPanel 
@@ -44,6 +48,7 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
             onUpdateEdge={handleEdgeUpdate} 
             onFlipEdge={handleEdgeFlip}
             onDeleteEdge={deleteEdge}
+            moveOnly={moveOnly}
           />
         </DialogBody>
       </DialogContent>
