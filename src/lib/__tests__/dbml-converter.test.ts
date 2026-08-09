@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDBMLMetadata, dbmlToERD, erdToDBML, normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '../dbml-converter';
+import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge, normalizeDBMLIndexSyntax, removeEmptyDBMLIndexes } from '../dbml-converter';
 import { dedupeDBMLEnumBlocks, normalizeDBMLTypeName, parseDBMLColumn, parseDBMLRef } from '../dbml-utils';
 
 describe('dbmlToERD', () => {
@@ -280,6 +280,15 @@ Ref "posts_user_id_fk": posts.user_id > users.id [delete: cascade, update: casca
 
     const dbml = erdToDBML(nodes, edges);
     expect(dbmlToERD(dbml).edges[0].data).toMatchObject({ on_delete: 'cascade', on_update: 'no action' });
+  });
+
+  it('matches a DBML relation without replacing its canvas edge side', () => {
+    const existing = {
+      id: 'orders-users', source: 'orders', target: 'users',
+      sourceHandle: 'col-orders.user_id-source-l', targetHandle: 'col-users.id-target-r',
+    } as any;
+
+    expect(findMatchingCanvasEdge([existing], 'orders', 'users', 'col-orders.user_id-source', 'col-users.id-target')).toBe(existing);
   });
 
   it('applies DBML metadata to existing canvas IDs for persistence', () => {

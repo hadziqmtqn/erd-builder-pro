@@ -598,6 +598,17 @@ export function dbmlToERD(dbmlText: string): { nodes: Node<Entity>[]; edges: Edg
   return result;
 }
 
+const edgeColumnId = (handle?: string | null) => handle?.replace(/^col-/, '').replace(/-(source|target)(-[lr])?$/, '') || '';
+
+/** Find the existing canvas relation for a DBML relation after node/column ID remapping. */
+export function findMatchingCanvasEdge(edges: Edge[], source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null): Edge | undefined {
+  const sourceColumnId = edgeColumnId(sourceHandle);
+  const targetColumnId = edgeColumnId(targetHandle);
+  return edges.find(edge => edge.source === source && edge.target === target
+    && edgeColumnId(edge.sourceHandle) === sourceColumnId
+    && edgeColumnId(edge.targetHandle) === targetColumnId);
+}
+
 /** Apply DBML-only metadata to existing canvas nodes without replacing IDs or positions. */
 export function applyDBMLMetadata(nodes: Node<Entity>[], dbmlText: string): Node<Entity>[] {
   if (!dbmlText.trim()) return nodes;
