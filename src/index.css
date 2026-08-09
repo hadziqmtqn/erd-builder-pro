@@ -265,7 +265,7 @@
 
 /* Dim non-selected edges when another table is selected */
 .edge-dimmed .react-flow__edge-path {
-  opacity: 0.15 !important;
+  opacity: 0.55 !important;
 }
 
 .react-flow__controls {

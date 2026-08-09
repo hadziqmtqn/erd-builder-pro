@@ -21,6 +21,18 @@ type SponsorSlide = {
 
 const SPONSOR_INTERVAL = 6000
 
+export function withSponsorUtm(website: string): string {
+  try {
+    const url = new URL(website)
+    url.searchParams.set('utm_source', 'erdbuilderpro.com')
+    url.searchParams.set('utm_medium', 'referral')
+    url.searchParams.set('utm_campaign', 'sponsor')
+    return url.toString()
+  } catch {
+    return website
+  }
+}
+
 const SPONSOR_SLIDES: SponsorSlide[] = [
   {
     logoSrc: 'https://s3.erdbuilderpro.com/sponsors/Sumopod-Light.png',
@@ -89,7 +101,7 @@ export function SponsorCarousel({ isCollapsed }: { isCollapsed: boolean }) {
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = slide.buttonColor || '#2071FB'
             }}
-            onClick={() => openExternalUrl(slide.buttonAction)}
+            onClick={() => openExternalUrl(withSponsorUtm(slide.buttonAction))}
           >
             {slide.buttonText}
           </button>

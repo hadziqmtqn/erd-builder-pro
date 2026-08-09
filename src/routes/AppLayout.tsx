@@ -632,10 +632,10 @@ function AppLayoutInner() {
       && previousEntityContextKeyRef.current !== contextKey;
     previousEntityContextKeyRef.current = contextKey;
 
-    if (rightPanelMode === 'properties' && (!isActiveDiagramContext || contextChanged)) {
+    if (rightPanelMode === 'properties' && (!isActiveDiagramContext || contextChanged || activeDiagramIsProductionDb)) {
       setRightPanelMode('closed');
     }
-  }, [entityContext, isActiveDiagramContext, rightPanelMode, setRightPanelMode]);
+  }, [entityContext, isActiveDiagramContext, rightPanelMode, activeDiagramIsProductionDb, setRightPanelMode]);
 
   // DBML is part of ERD Builder only. If the user navigates from an ERD to
   // Notes/Flowchart while the DBML tab is active, keep the panel usable by
@@ -825,6 +825,7 @@ function AppLayoutInner() {
             handleEdgeUpdate={handleEdgeUpdate2}
             handleEdgeFlip={handleEdgeFlip2}
             deleteEdge={deleteEdge}
+            moveOnly={activeDiagramIsProductionDb}
           />
         )}
 
@@ -881,7 +882,7 @@ function AppLayoutInner() {
               {/* ── Tab bar ── */}
               <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
                 <div className="flex-1 flex">
-                  {isActiveDiagramContext && !isPublicView && (
+                  {isActiveDiagramContext && !isPublicView && !activeDiagramIsProductionDb && (
                     <button
                       onClick={() => setRightPanelMode('properties')}
                       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
@@ -960,7 +961,7 @@ function AppLayoutInner() {
                     }}
                   />
                 )}
-                {rightPanelMode === 'properties' && (
+                {rightPanelMode === 'properties' && !activeDiagramIsProductionDb && (
                   selectedEntity ? (
                     <PropertiesPanel
                       key={selectedEntity.id}
