@@ -2,7 +2,7 @@ import { Request as ExpressRequest, Response as ExpressResponse } from "express"
 import { fetchSchema } from "../../lib/db-connectors/registry.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveOwnedProjectId } from "../../lib/security.js";
-import { buildConnectionInfo } from "./middleware.js";
+import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
 export { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./record-helpers.js";
@@ -89,19 +89,19 @@ export async function fetchCatalogSchema(req: ExpressRequest, res: ExpressRespon
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const schema = await fetchSchema(buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    }));
+    const info = buildCatalogConnectionInfo(catalog);
+    const schema = await fetchSchema(info);
 
     res.json({
       schema,
       connectionName: (catalog as any).label || (catalog as any).databaseName,
       dbType: (catalog as any).account.type,
+      connectionSecurity: {
+        environment: info.environment,
+        safeMode: info.safeMode,
+        sslMode: info.sslMode,
+        queryTimeoutMs: info.queryTimeoutMs,
+      },
     });
   } catch (err: any) {
     console.error("Error fetching schema:", err);
@@ -124,14 +124,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
     const projectId = await resolveOwnedProjectId(prisma as any, userId, project_id);
 
     // 1. Fetch schema from the database
-    const tables = await fetchSchema(buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    }));
+    const tables = await fetchSchema(buildCatalogConnectionInfo(catalog));
 
     // 2. Build positions (auto-layout) + data JSON
     const positions: Record<string, any> = {};

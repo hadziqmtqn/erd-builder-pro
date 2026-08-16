@@ -152,7 +152,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.preventDefault();
     e.stopPropagation();
     if (isReadOnly) return;
-    setSelectedNodeId(data.id);
+    setSelectedNodeId(id);
     setRightPanelMode('properties');
   };
 
@@ -167,11 +167,11 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.preventDefault();
     e.stopPropagation();
     if (isReadOnly) return;
-    duplicateEntity(data.id);
+    duplicateEntity(id);
   };
 
   const confirmDelete = () => {
-    window.dispatchEvent(new CustomEvent('deleteEntity', { detail: data.id }));
+    window.dispatchEvent(new CustomEvent('deleteEntity', { detail: id }));
     setShowDeleteConfirm(false);
   };
 

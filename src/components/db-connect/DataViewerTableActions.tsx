@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ContextMenuItem } from '@/components/ui/context-menu';
+import { DestructiveConfirmationField } from './DestructiveConfirmationField';
 
 type Props = {
   connectionId: number;
@@ -39,7 +40,7 @@ type Props = {
   mode?: 'menu' | 'button' | 'dropdown' | 'context-item';
   buttonClassName?: string;
   disabled?: boolean;
-  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
+  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean; confirmation?: string }) => Promise<any>;
   onMutateTables: (patch: Record<string, any>) => Promise<any>;
 };
 
@@ -103,6 +104,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   const [ignoreFk, setIgnoreFk] = useState(false);
   const [cascade, setCascade] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
   const [rowsOverride, setRowsOverride] = useState<RowData[] | null>(null);
   const targetTables = exportTables?.length ? exportTables : [table];
   const singleExport = targetTables.length === 1;
@@ -230,10 +232,10 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
   const handleTableAction = async (action: 'truncate' | 'delete') => {
     try {
       setBusy(true);
-      const options = { ignoreForeignKeys: isMysql(dbType) ? ignoreFk : false, cascade: isPg(dbType) ? cascade : false };
+      const options = { ignoreForeignKeys: isMysql(dbType) ? ignoreFk : false, cascade: isPg(dbType) ? cascade : false, confirmation };
       action === 'delete'
         ? await onDeleteTables([tableName], options)
-        : await onMutateTables({ truncateTables: [tableName], ...options });
+            : await onMutateTables({ truncateTables: [tableName], ...options });
       toast.success(action === 'delete' ? 'Table deleted' : 'Table truncated');
       setDialog(null);
     } catch (err: any) {
@@ -342,7 +344,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
 
       {(['truncate', 'delete'] as const).map(action => (
         <AlertDialog key={action} open={dialog === action} onOpenChange={open => !open && setDialog(null)}>
-          <AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{action === 'delete' ? 'Delete table' : 'Truncate table'}</AlertDialogTitle></AlertDialogHeader><AlertDialogBody>{actionOptions(action)}</AlertDialogBody><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={busy} onClick={() => handleTableAction(action)}>{action === 'delete' ? 'Delete' : 'Truncate'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+          <AlertDialogContent size="sm"><AlertDialogHeader><AlertDialogTitle>{action === 'delete' ? 'Delete table' : 'Truncate table'}</AlertDialogTitle></AlertDialogHeader><AlertDialogBody className="space-y-3">{actionOptions(action)}<DestructiveConfirmationField expected={tableName} value={confirmation} onChange={setConfirmation} /></AlertDialogBody><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={busy || confirmation !== tableName} onClick={() => handleTableAction(action)}>{action === 'delete' ? 'Delete' : 'Truncate'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
         </AlertDialog>
       ))}
     </>

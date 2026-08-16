@@ -262,32 +262,35 @@ export function DBConnectPanel({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="sm:max-w-md w-full p-0 flex flex-col gap-0">
-          <SheetHeader className="p-4 pb-2">
-            <div className="flex items-center gap-2">
-              <SheetTitle>Database Accounts</SheetTitle>
+        <SheetContent
+          side="right"
+          className="w-full p-0 flex flex-col gap-0 sm:w-[min(42rem,calc(100vw-2rem))] sm:max-w-none"
+        >
+          <SheetHeader className="p-5 pb-3 sm:p-6 sm:pb-3">
+            <div className="flex flex-wrap items-center gap-2 pr-10">
+              <SheetTitle className="text-lg">Database Accounts</SheetTitle>
               <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-amber-600 border-amber-400 dark:text-amber-400 dark:border-amber-500">
                 Experimental
               </Badge>
             </div>
-            <SheetDescription>
+            <SheetDescription className="max-w-xl leading-relaxed">
               Create DB clients from external databases and local SQLite files
             </SheetDescription>
           </SheetHeader>
 
           {/* Search + Add */}
-          <div className="flex items-center gap-2 px-4 py-2">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:px-6">
+            <div className="relative min-w-0 flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                className="h-9 pl-8 text-sm"
+                className="h-10 pl-8 text-sm"
                 placeholder="Search accounts..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" className="h-9 shrink-0" onClick={handleAdd}>
+              <Button size="sm" className="h-10 w-full shrink-0 sm:w-auto" onClick={handleAdd}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
                 New DB Client
               </Button>
@@ -295,7 +298,7 @@ export function DBConnectPanel({
           </div>
 
           {/* Account list */}
-          <ScrollArea className="flex-1 px-4 pb-4">
+          <ScrollArea className="min-h-0 flex-1 px-5 pb-5 sm:px-6 sm:pb-6">
             {isLoading ? (
               <div className="space-y-2 pt-2">
                 {[1, 2, 3].map(i => (

@@ -6,6 +6,7 @@ export { actionIcons } from './types';
 export { erdActions } from './erdActionConfigs';
 export { notesActions } from './notesActionConfigs';
 export { flowchartActions } from './flowchartActionConfigs';
+export { dbClientActions } from './dbClientActionConfigs';
 
 // ─── AI Content Apply Handlers ──────────────
 export { applyToNoteContent } from './notesActions';

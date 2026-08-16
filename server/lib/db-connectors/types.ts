@@ -7,6 +7,13 @@ export interface ConnectionInfo {
   user?: string;
   password?: string;
   database: string;
+  environment?: "local" | "development" | "staging" | "production";
+  safeMode?: "normal" | "protected" | "read-only";
+  sslMode?: "disable" | "require" | "verify-ca" | "verify-full";
+  sslCa?: string;
+  sslCert?: string;
+  sslKey?: string;
+  queryTimeoutMs?: number;
 }
 
 export interface ForeignKeySchema {
@@ -76,6 +83,7 @@ export interface TableSchema {
 export interface ConnectorClient {
   client: any;
   release: () => void;
+  cancel?: () => Promise<void>;
 }
 
 export interface DbConnector {

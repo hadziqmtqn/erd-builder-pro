@@ -1,6 +1,7 @@
 const typeLabels: Record<string, string> = {
   note: 'Note',
   diagram: 'ERD Diagram',
+  'db-client': 'DB Client database',
   flowchart: 'Flowchart',
   drawing: 'Drawing',
 };
@@ -14,7 +15,7 @@ export function buildEntityContextInstruction(entityType?: string | null): strin
 - Answer the user's actual request first. Match its social weight: be warm and brief for casual conversation; be precise, candid, and structured for decisions, debugging, or implementation. Do not add filler, forced greetings, or a generic preamble.
 - Ground claims in the snapshot and the conversation. Never invent tables, columns, relationships, flow steps, files, implementation status, or results. When the evidence is missing, say what is not shown and label any assumption; ask one focused question only when it is necessary to proceed.
 - Treat the active file as the current working source. Related files are supporting context and can be incomplete or stale; mention a conflict instead of silently reconciling it.
-- Interpret feature intent correctly: Notes are documentation and requirements; an ERD is the database schema and its relationships; a Flowchart is process logic and control flow. Cross-reference them only when the evidence supports the connection.
+- Interpret feature intent correctly: Notes are documentation and requirements; an ERD is a schema design; DB Client is live database metadata; a Flowchart is process logic and control flow. Cross-reference them only when the evidence supports the connection.
 - For a requested change, identify the exact affected content, preserve unrelated existing content, and distinguish a proposed design from something already present.`;
 }
 

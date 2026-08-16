@@ -178,6 +178,13 @@ async function createDbConnectTablesIfMissing(): Promise<void> {
         "port" INTEGER,
         "user" TEXT,
         "password" TEXT,
+        "environment" TEXT NOT NULL DEFAULT 'development',
+        "safe_mode" TEXT NOT NULL DEFAULT 'protected',
+        "ssl_mode" TEXT NOT NULL DEFAULT 'disable',
+        "ssl_ca" TEXT,
+        "ssl_cert" TEXT,
+        "ssl_key" TEXT,
+        "query_timeout_ms" INTEGER NOT NULL DEFAULT 30000,
         "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`);
@@ -484,6 +491,13 @@ export async function applySchemaMigrations(): Promise<void> {
   if (isDesktopMode()) {
     await createDbConnectTablesIfMissing();
     await createSqlQueriesTableIfMissing();
+    await addColumnIfMissing("db_accounts", "environment", '"environment" TEXT NOT NULL DEFAULT \'development\'');
+    await addColumnIfMissing("db_accounts", "safe_mode", '"safe_mode" TEXT NOT NULL DEFAULT \'protected\'');
+    await addColumnIfMissing("db_accounts", "ssl_mode", '"ssl_mode" TEXT NOT NULL DEFAULT \'disable\'');
+    await addColumnIfMissing("db_accounts", "ssl_ca", '"ssl_ca" TEXT');
+    await addColumnIfMissing("db_accounts", "ssl_cert", '"ssl_cert" TEXT');
+    await addColumnIfMissing("db_accounts", "ssl_key", '"ssl_key" TEXT');
+    await addColumnIfMissing("db_accounts", "query_timeout_ms", '"query_timeout_ms" INTEGER NOT NULL DEFAULT 30000');
   }
 
   // v3.1.4+ — normalize old random column ids and keep relationships wired.

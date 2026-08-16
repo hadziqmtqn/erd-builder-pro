@@ -20,7 +20,8 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { FileUp, Loader2, CheckCircle2, XCircle } from 'lucide-react';
-import type { DbAccountFormData, DbType, TestResult, DbAccount } from '@/hooks/useConnections';
+import type { DbAccountFormData, DbEnvironment, DbSafeMode, DbSslMode, DbType, TestResult, DbAccount } from '@/hooks/useConnections';
+import { ConnectionSecurityFields } from './ConnectionSecurityFields';
 
 const DB_OPTIONS: { value: DbType; label: string; defaultPort: number }[] = [
   { value: 'postgresql', label: 'PostgreSQL', defaultPort: 5432 },
@@ -53,6 +54,13 @@ export function ConnectionForm({
   const [port, setPort] = useState(String(editing?.port ?? getDefaultPort(type)));
   const [user, setUser] = useState(editing?.user || '');
   const [password, setPassword] = useState('');
+  const [environment, setEnvironment] = useState<DbEnvironment>(editing?.environment || 'development');
+  const [safeMode, setSafeMode] = useState<DbSafeMode>(editing?.safeMode || 'protected');
+  const [sslMode, setSslMode] = useState<DbSslMode>(editing?.sslMode || 'disable');
+  const [sslCa, setSslCa] = useState(editing?.sslCa || '');
+  const [sslCert, setSslCert] = useState(editing?.sslCert || '');
+  const [sslKey, setSslKey] = useState(editing?.sslKey || '');
+  const [queryTimeoutMs, setQueryTimeoutMs] = useState(String(editing?.queryTimeoutMs || 30000));
   const [erdName, setErdName] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('none');
   const [isTesting, setIsTesting] = useState(false);
@@ -70,6 +78,13 @@ export function ConnectionForm({
         setPort(String(editing.port ?? getDefaultPort(editing.type)));
         setUser(editing.user || '');
         setPassword('');
+        setEnvironment(editing.environment || 'development');
+        setSafeMode(editing.safeMode || 'protected');
+        setSslMode(editing.sslMode || 'disable');
+        setSslCa(editing.sslCa || '');
+        setSslCert(editing.sslCert || '');
+        setSslKey(editing.sslKey || '');
+        setQueryTimeoutMs(String(editing.queryTimeoutMs || 30000));
         setErdName('');
         setSelectedProjectId('none');
       } else {
@@ -79,6 +94,10 @@ export function ConnectionForm({
         setPort('5432');
         setUser('postgres');
         setPassword('');
+        setEnvironment('development');
+        setSafeMode('protected');
+        setSslMode('disable');
+        setSslCa(''); setSslCert(''); setSslKey(''); setQueryTimeoutMs('30000');
         setErdName('');
         setSelectedProjectId('none');
       }
@@ -112,6 +131,13 @@ export function ConnectionForm({
     database: type === 'sqlite' ? host : undefined,
     erdName: type === 'sqlite' ? erdName : undefined,
     projectId: type === 'sqlite' ? selectedProjectId : undefined,
+    environment,
+    safeMode,
+    sslMode,
+    sslCa: sslCa || undefined,
+    sslCert: sslCert || undefined,
+    sslKey: sslKey || undefined,
+    queryTimeoutMs: Number(queryTimeoutMs) || 30000,
   });
 
   const pickSqliteFile = async () => {
@@ -266,6 +292,8 @@ export function ConnectionForm({
               </Field>
             </div>
           )}
+
+          {!isSqlite && <ConnectionSecurityFields environment={environment} safeMode={safeMode} sslMode={sslMode} sslCa={sslCa} sslCert={sslCert} sslKey={sslKey} queryTimeoutMs={queryTimeoutMs} onEnvironmentChange={setEnvironment} onSafeModeChange={setSafeMode} onSslModeChange={setSslMode} onSslCaChange={setSslCa} onSslCertChange={setSslCert} onSslKeyChange={setSslKey} onQueryTimeoutChange={setQueryTimeoutMs} />}
 
           {isSqlite && !isEditing && (
             <>

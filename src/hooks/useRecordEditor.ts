@@ -6,7 +6,7 @@ type UseRecordEditorArgs = {
   activeTable: string | null;
   columnHelpers: ReturnType<typeof createColumnHelpers>;
   createRecord: (table: string, values: Record<string, any>) => Promise<any>;
-  deleteRecord: (table: string, key: Record<string, any> | Record<string, any>[]) => Promise<any>;
+  deleteRecord: (table: string, key: Record<string, any> | Record<string, any>[], confirmation?: string) => Promise<any>;
   primaryKeyColumns: string[];
   records: any;
   updateRecord: (table: string, key: Record<string, any>, values: Record<string, any>) => Promise<any>;
@@ -111,12 +111,12 @@ export function useRecordEditor({
     }
   }, [activeTable, cancelCreateRecord, columnHelpers, createRecord, draftRow, insertableColumns, records]);
 
-  const removeRecord = useCallback(async () => {
+  const removeRecord = useCallback(async (confirmation?: string) => {
     if (!activeTable || !selectedRow) return;
     const key = Object.fromEntries(primaryKeyColumns.map((col: string) => [col, selectedRow[col]]));
     setIsSavingRecord(true);
     try {
-      await deleteRecord(activeTable, key);
+      await deleteRecord(activeTable, key, confirmation);
       toast.success('Record deleted');
       setSelectedRow(null);
       setDetailsOpen(false);
@@ -142,12 +142,12 @@ export function useRecordEditor({
     });
   }, [rowKey]);
 
-  const removeSelectedRecords = useCallback(async () => {
+  const removeSelectedRecords = useCallback(async (confirmation?: string) => {
     if (!activeTable || selectedRows.length === 0) return;
     const keys = selectedRows.map(row => Object.fromEntries(primaryKeyColumns.map((col: string) => [col, row[col]])));
     setIsSavingRecord(true);
     try {
-      await deleteRecord(activeTable, keys);
+      await deleteRecord(activeTable, keys, confirmation);
       toast.success(`${selectedRows.length} record${selectedRows.length === 1 ? '' : 's'} deleted`);
       setSelectedRows([]);
       setSelectedRow(null);

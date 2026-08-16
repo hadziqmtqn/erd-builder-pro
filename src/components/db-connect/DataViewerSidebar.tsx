@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { DataViewerTableActions } from './DataViewerTableActions';
+import { DestructiveConfirmationField } from './DestructiveConfirmationField';
 
 const MAX_SQL_IMPORT_BYTES = 25 * 1024 * 1024;
 
@@ -40,7 +41,7 @@ type DataViewerSidebarProps = {
   tableSearch: string;
   tables: any[];
   onAddTable: () => void;
-  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => Promise<any>;
+  onDeleteTables: (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean; confirmation?: string }) => Promise<any>;
   onMutateTables: (patch: Record<string, any>) => Promise<any>;
   onRefreshTables: () => Promise<any> | any;
   onSelectTable: (tableName: string) => void;
@@ -74,6 +75,8 @@ export function DataViewerSidebar({
   const [isImporting, setIsImporting] = useState(false);
   const [ignoreForeignKeys, setIgnoreForeignKeys] = useState(false);
   const [cascade, setCascade] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+  const [importConfirmation, setImportConfirmation] = useState('');
   const selectedSet = new Set(selectedTables);
   const isSelectionMode = selectedTables.length > 0;
   const supportsTableMutation = dbType === 'mysql' || dbType === 'postgresql';
@@ -102,7 +105,7 @@ export function DataViewerSidebar({
   };
   const handleDelete = async () => {
     try {
-      await onDeleteTables(selectedTables, { ignoreForeignKeys: dbType === 'mysql' ? ignoreForeignKeys : false, cascade });
+      await onDeleteTables(selectedTables, { ignoreForeignKeys: dbType === 'mysql' ? ignoreForeignKeys : false, cascade, confirmation });
       toast.success(`${selectedTables.length} table${selectedTables.length === 1 ? '' : 's'} deleted`);
       setSelectedTables([]);
       setConfirmOpen(false);
@@ -122,7 +125,7 @@ export function DataViewerSidebar({
       const res = await apiFetch(`/api/catalogs/${connectionId}/structure/import-sql`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
+        body: JSON.stringify({ sql, confirmation: importConfirmation }),
       });
       setImportProgress(80);
       const data = await res.json();
@@ -312,10 +315,11 @@ export function DataViewerSidebar({
                 <div className="h-full bg-primary transition-all" style={{ width: `${importProgress}%` }} />
               </div>
             )}
+            <DestructiveConfirmationField expected="IMPORT" value={importConfirmation} onChange={setImportConfirmation} />
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={isImporting}>Cancel</Button>
-            <Button onClick={handleImportSql} disabled={!importFile || isImporting}>{isImporting ? 'Importing...' : 'Import SQL'}</Button>
+            <Button onClick={handleImportSql} disabled={!importFile || isImporting || importConfirmation !== 'IMPORT'}>{isImporting ? 'Importing...' : 'Import SQL'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -350,10 +354,11 @@ export function DataViewerSidebar({
                 <span className="text-xs text-muted-foreground">Drop dependent foreign keys where the database supports it.</span>
               </span>
             </label>
+            <DestructiveConfirmationField expected={selectedTables.join(', ')} value={confirmation} onChange={setConfirmation} />
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={confirmation !== selectedTables.join(', ')} onClick={handleDelete}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -7,9 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { SearchableSelect } from '@/components/SearchableSelect';
-import { COLUMN_TYPES } from '@/lib/utils';
+import { columnDefaultOptions, CUSTOM_COLUMN_DEFAULT, isTextColumnType, NO_COLUMN_DEFAULT } from '@/lib/db-client-default-options';
 import { StructureDraft, StructureTarget } from '@/hooks/useStructureEditor';
 import { DataViewerStructureIndexFields } from './DataViewerStructureIndexFields';
+import {
+  columnTypeOption,
+  MYSQL_COLUMN_TYPES,
+  POSTGRES_COLUMN_TYPES,
+  supportsColumnLength,
+  supportsNumericModifiers,
+  supportsTemporalPrecision,
+} from '../../../shared/db-column-types';
 
 type DataViewerStructurePanelProps = {
   target: StructureTarget;
@@ -32,49 +40,23 @@ const patchDraft = (setDraft: DataViewerStructurePanelProps['setDraft'], patch: 
 };
 
 const SQLITE_TYPES = ['INTEGER', 'TEXT', 'REAL', 'BLOB', 'NUMERIC'];
-const PG_ONLY = new Set(['SERIAL', 'BIGSERIAL', 'SMALLSERIAL', 'MONEY', 'BYTEA', 'UUID', 'ULID', 'JSONB', 'INTERVAL', 'TIMESTAMPTZ', 'TIMETZ', 'CIDR', 'INET', 'MACADDR', 'MACADDR8', 'TSVECTOR', 'TSQUERY']);
-const PG_TYPES = [
-  'INT2', 'INT4', 'INT8', 'SMALLINT', 'INTEGER', 'BIGINT',
-  'DECIMAL', 'NUMERIC', 'REAL', 'DOUBLE PRECISION', 'MONEY',
-  'BOOLEAN', 'DATE', 'TIME', 'TIMESTAMP', 'TIMESTAMPTZ', 'TIMETZ', 'INTERVAL',
-  'VARCHAR', 'CHAR', 'TEXT',
-  'UUID', 'JSON', 'JSONB', 'BYTEA',
-  'CIDR', 'INET', 'MACADDR', 'MACADDR8', 'TSVECTOR', 'TSQUERY',
-];
-const KNOWN_TYPE_OPTIONS = new Set([...COLUMN_TYPES, ...PG_TYPES]);
+const KNOWN_TYPE_OPTIONS = new Set<string>([...MYSQL_COLUMN_TYPES, ...POSTGRES_COLUMN_TYPES]);
 const MYSQL_EXTRA_OPTIONS = ['', 'AUTO_INCREMENT', 'ON UPDATE CURRENT_TIMESTAMP'];
 const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT'];
-
-const typeOption = (dbType: string | null, type: string) => {
-  const value = type.trim();
-  if (dbType === 'mysql' && /^enum(?:\(|$)/i.test(value)) return 'ENUM';
-  if (dbType === 'mysql' && /^set(?:\(|$)/i.test(value)) return 'SET';
-  const normalized = value.toLowerCase().replace(/\(\d+\)/, '').replace(/\s+/g, ' ');
-  if (dbType === 'postgresql' && normalized === 'character varying') return 'VARCHAR';
-  if (dbType === 'postgresql' && normalized === 'character') return 'CHAR';
-  if (dbType === 'postgresql' && normalized === 'int') return 'INTEGER';
-  if (dbType === 'postgresql' && normalized === 'int4') return 'INT4';
-  if (dbType === 'postgresql' && normalized === 'int8') return 'INT8';
-  if (dbType === 'postgresql' && normalized === 'int2') return 'INT2';
-  return value.toUpperCase();
-};
 
 function typeOptions(dbType: string | null, currentType: string) {
   const base = dbType === 'sqlite'
     ? SQLITE_TYPES
     : dbType === 'postgresql'
-      ? PG_TYPES
-      : COLUMN_TYPES.filter(type => !PG_ONLY.has(type));
-  const current = typeOption(dbType, currentType);
-  return [...new Set(current ? [current, ...base.map(type => typeOption(dbType, type))] : base.map(type => typeOption(dbType, type)))]
+      ? POSTGRES_COLUMN_TYPES
+      : MYSQL_COLUMN_TYPES;
+  const current = columnTypeOption(dbType, currentType);
+  return [...new Set(current ? [current, ...base.map(type => columnTypeOption(dbType, type))] : base.map(type => columnTypeOption(dbType, type)))]
     .sort((a, b) => a.localeCompare(b));
 }
-const lengthType = (type: string) => /^(var)?char|^character varying|^(var)?binary$/i.test(type.replace(/\(\d+\)/, '').trim());
-const defaultLength = (type: string) => /^(var)?char|^(var)?binary$/i.test(type.replace(/\(\d+\)/, '').trim()) ? '255' : '';
-const precisionType = (type: string) => /^(decimal|numeric)$/i.test(type.replace(/\([^)]*\)/, '').trim());
 const isColumnTarget = (target: StructureTarget) => target.kind === 'column' || target.kind === 'addColumn' || target.kind === 'addTable';
 const isEnumEditorType = (dbType: string | null, type: string, values: string[]) => {
-  const current = typeOption(dbType, type);
+  const current = columnTypeOption(dbType, type);
   return /^(ENUM|SET)$/.test(current) || (values.length > 0 && !KNOWN_TYPE_OPTIONS.has(current));
 };
 const sortedColumns = (table: any) => (table?.columns || [])
@@ -113,11 +95,18 @@ export function DataViewerStructurePanel({
   onSave,
 }: DataViewerStructurePanelProps) {
   const [enumValue, setEnumValue] = useState('');
+  const [customDefaultTarget, setCustomDefaultTarget] = useState('');
   const tableColumns = sortedColumns(tables.find(table => table.table_name === draft.tableName));
   const tableNames = tables.map(table => table.table_name).filter(Boolean);
   const extraOptions = dbType === 'mysql'
     ? [...new Set(draft.columnExtra ? [draft.columnExtra, ...MYSQL_EXTRA_OPTIONS] : MYSQL_EXTRA_OPTIONS)]
     : [];
+  const defaultOptions = columnDefaultOptions(draft.columnType, draft.isNullable, draft.columnDefault);
+  const targetKey = `${target.kind}:${'columnName' in target ? target.columnName : draft.tableName}`;
+  const selectedDefault = defaultOptions.find(option => option.value.toUpperCase() === draft.columnDefault.toUpperCase());
+  const customDefault = isTextColumnType(draft.columnType)
+    && (customDefaultTarget === targetKey || Boolean(draft.columnDefault && !selectedDefault));
+  const defaultValue = customDefault ? CUSTOM_COLUMN_DEFAULT : selectedDefault?.value ?? NO_COLUMN_DEFAULT;
 
   return (
     <aside className="w-80 shrink-0 border-l bg-background">
@@ -155,14 +144,18 @@ export function DataViewerStructurePanel({
               <div className="space-y-1.5">
                 <Label htmlFor="structure-column-type">Data type</Label>
                 <SearchableSelect
-                  value={typeOption(dbType, draft.columnType)}
-                  onChange={value => patchDraft(setDraft, {
-                    columnType: value,
-                    characterLength: lengthType(value) ? draft.characterLength || defaultLength(value) : '',
-                    numericPrecision: precisionType(value) ? draft.numericPrecision : '',
-                    numericScale: precisionType(value) ? draft.numericScale : '',
-                    refColumn: '',
-                  })}
+                  value={columnTypeOption(dbType, draft.columnType)}
+                  onChange={value => {
+                    const validDefaults = columnDefaultOptions(value, draft.isNullable);
+                    patchDraft(setDraft, {
+                      columnType: value,
+                      characterLength: supportsColumnLength(value) ? draft.characterLength || '255' : '',
+                      numericPrecision: supportsNumericModifiers(value) || supportsTemporalPrecision(dbType, value) ? draft.numericPrecision : '',
+                      numericScale: supportsNumericModifiers(value) ? draft.numericScale : '',
+                      columnDefault: validDefaults.some(option => option.value.toUpperCase() === defaultValue.toUpperCase()) ? draft.columnDefault : '',
+                      refColumn: '',
+                    });
+                  }}
                   items={typeOptions(dbType, draft.columnType)}
                   placeholder="Type"
                   searchPlaceholder="Search type..."
@@ -173,7 +166,7 @@ export function DataViewerStructurePanel({
                   filterItem={(type, query) => type.toLowerCase().includes(query.toLowerCase())}
                 />
               </div>
-              {lengthType(typeOption(dbType, draft.columnType)) && (
+              {supportsColumnLength(columnTypeOption(dbType, draft.columnType)) && (
                 <div className="space-y-1.5">
                   <Label htmlFor="structure-column-length">Length</Label>
                   <Input
@@ -186,7 +179,7 @@ export function DataViewerStructurePanel({
                   />
                 </div>
               )}
-              {precisionType(typeOption(dbType, draft.columnType)) && (
+              {supportsNumericModifiers(columnTypeOption(dbType, draft.columnType)) && (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="structure-column-precision">Precision</Label>
@@ -210,6 +203,23 @@ export function DataViewerStructurePanel({
                       onChange={e => patchDraft(setDraft, { numericScale: e.target.value.replace(/\D/g, '') })}
                     />
                   </div>
+                </div>
+              )}
+              {supportsTemporalPrecision(dbType, draft.columnType) && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="structure-column-time-precision">Fractional precision</Label>
+                  <Input
+                    id="structure-column-time-precision"
+                    type="number"
+                    min={0}
+                    max={6}
+                    value={draft.numericPrecision}
+                    placeholder={dbType === 'postgresql' ? '6' : '0'}
+                    onChange={e => {
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 1);
+                      patchDraft(setDraft, { numericPrecision: value && Number(value) > 6 ? '6' : value, numericScale: '' });
+                    }}
+                  />
                 </div>
               )}
               {isEnumEditorType(dbType, draft.columnType, draft.enumValues) && (
@@ -250,13 +260,34 @@ export function DataViewerStructurePanel({
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={draft.isNullable}
-                  onCheckedChange={checked => patchDraft(setDraft, { isNullable: checked })}
+                  onCheckedChange={checked => patchDraft(setDraft, {
+                    isNullable: checked,
+                    columnDefault: !checked && draft.columnDefault.toUpperCase() === 'NULL' ? '' : draft.columnDefault,
+                  })}
                 />
                 Nullable
               </label>
               <div className="space-y-1.5">
                 <Label htmlFor="structure-column-default">Default</Label>
-                <Input id="structure-column-default" value={draft.columnDefault} placeholder="EMPTY, NULL, 0, text, CURRENT_TIMESTAMP" onChange={e => patchDraft(setDraft, { columnDefault: e.target.value })} />
+                <Select value={defaultValue} onValueChange={value => {
+                  setCustomDefaultTarget(value === CUSTOM_COLUMN_DEFAULT ? targetKey : '');
+                  patchDraft(setDraft, { columnDefault: value === NO_COLUMN_DEFAULT || value === CUSTOM_COLUMN_DEFAULT ? '' : value ?? '' });
+                }}>
+                  <SelectTrigger id="structure-column-default">
+                    <SelectValue>{defaultOptions.find(option => option.value === defaultValue)?.label}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {defaultOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {customDefault && (
+                  <Input
+                    value={draft.columnDefault}
+                    placeholder="Enter text default"
+                    aria-label="Custom default value"
+                    onChange={event => patchDraft(setDraft, { columnDefault: event.target.value })}
+                  />
+                )}
               </div>
               {extraOptions.length > 0 && (
                 <div className="space-y-1.5">

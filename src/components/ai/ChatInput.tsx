@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Sparkles, Send, StopCircle, SquareTerminal, CircleHelp, Database, Lightbulb, StickyNote, LayoutPanelLeft, Wand2, FileText, Code, GitBranch, FileDown, File, AtSign, ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { AIAction } from '@/components/ai/AIActions';
+import { AIAction, ViewType } from '@/components/ai/AIActions';
 import { Button } from '@/components/ui/button';
 
 interface MentionFile {
@@ -70,6 +70,7 @@ export interface ChatInputProps {
   hasActiveSession: boolean;
   isStreaming: boolean;
   entityType?: string | null;
+  viewType?: ViewType | null;
   actions: AIAction[];
   activeActionId?: string | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -86,6 +87,7 @@ export const ChatInput = memo(function ChatInput({
   hasActiveSession,
   isStreaming,
   entityType,
+  viewType,
   actions,
   activeActionId,
   inputRef,
@@ -220,7 +222,9 @@ export const ChatInput = memo(function ChatInput({
   }, [toolsOpen]);
 
   const showActions = !isStreaming && actions.length > 0;
-  const actionGroup = entityType === 'diagram'
+  const actionGroup = viewType === 'db-client'
+    ? { primaryId: 'db-client-explain-table', primaryLabel: 'Explain Table', toolsLabel: 'DB Client tools', heading: 'Focused DB Client actions' }
+    : entityType === 'diagram'
     ? { primaryId: 'erd-generate-sql', primaryLabel: 'Build DBML', toolsLabel: 'ERD tools', heading: 'Focused ERD actions' }
     : entityType === 'flowchart'
       ? { primaryId: 'flowchart-generate', primaryLabel: 'Build Flowchart', toolsLabel: 'Flowchart tools', heading: 'Focused Flowchart actions' }

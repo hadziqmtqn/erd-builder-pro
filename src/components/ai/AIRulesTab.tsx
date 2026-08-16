@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookText, Database, Share2, Save, Loader2, AlertCircle } from 'lucide-react';
+import { BookText, Cable, Database, Share2, Save, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAIRules, ViewType } from '@/hooks/useAIRules';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ const VIEW_TABS: { id: ViewType; label: string; icon: React.ReactNode }[] = [
   { id: 'erd', label: 'ERD', icon: <Database className="w-4 h-4" /> },
   { id: 'notes', label: 'Notes', icon: <BookText className="w-4 h-4" /> },
   { id: 'flowchart', label: 'Flowchart', icon: <Share2 className="w-4 h-4" /> },
+  { id: 'db-client', label: 'DB Client', icon: <Cable className="w-4 h-4" /> },
 ];
 
 export function AIRulesTab() {

@@ -25,7 +25,30 @@ permissions:
   id-token: write   # provenance + OIDC trusted publishing
 
 jobs:
+  build-menubar:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal macOS Menu Bar helper
+        run: |
+          swiftc -O -target arm64-apple-macosx11.0 cli/menubar/ERDBProTray.swift -o /tmp/erdbpro-tray-arm64
+          swiftc -O -target x86_64-apple-macosx11.0 cli/menubar/ERDBProTray.swift -o /tmp/erdbpro-tray-x86_64
+          lipo -create /tmp/erdbpro-tray-arm64 /tmp/erdbpro-tray-x86_64 -output cli/menubar/erdbpro-tray
+          cp public/favicon.svg cli/menubar/icon.svg
+          lipo -verify_arch arm64 x86_64 cli/menubar/erdbpro-tray
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-menubar
+          path: |
+            cli/menubar/erdbpro-tray
+            cli/menubar/icon.svg
+          if-no-files-found: error
+
   build-and-publish:
+    needs: build-menubar
     runs-on: ubuntu-latest
     env:
       DB_VARIANT: sqlite
@@ -37,6 +60,14 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Download macOS Menu Bar helper
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-menubar
+          path: cli/menubar
+
+      - run: chmod +x cli/menubar/erdbpro-tray
 
       # Node 22 ships with npm 10.x — OIDC + trusted publishing work out of the box.
       # DO NOT upgrade to npm@latest — v11+ has sigstore bundling issues.

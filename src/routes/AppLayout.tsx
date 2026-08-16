@@ -276,10 +276,14 @@ function AppLayoutInner() {
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const documentToDelete = tableDeleteDoc ?? activeDocument;
+  const deletingDbClient = (documentToDelete?.source_type ?? documentToDelete?.sourceType) === 'production_db';
   const propertiesEntity = useMemo(() => {
-    const node = nodes.find(node => node.id === propertiesEntityId);
-    return node ? node.data : null;
-  }, [nodes, propertiesEntityId]);
+    const node = nodes.find(node => node.id === selectedNodeId)
+      ?? nodes.find(node => node.id === propertiesEntityId);
+    if (!node) return null;
+    return node.data.id === node.id ? node.data : { ...node.data, id: node.id };
+  }, [nodes, propertiesEntityId, selectedNodeId]);
 
   // Use the URL UUID rather than activeDiagramId. The workspace can briefly
   // switch that ID from a numeric value to a UUID while loading; using it as
@@ -400,11 +404,13 @@ function AppLayoutInner() {
 
       case 'diagram':
         if (!activeDiagram) return null;
-        return buildEntityContextText('diagram', {
+        const diagramContext = buildEntityContextText('diagram', {
           title: activeDiagram.name,
           nodes: nodes as any[],
           edges: edges as any[],
         });
+        if ((activeDiagram.source_type ?? activeDiagram.sourceType) !== 'production_db') return diagramContext;
+        return `[Current feature: DB Client]\nSource: live production database metadata\nCurrent tab: ${searchParams.get('tab') || 'data'}\n\n${diagramContext || ''}`;
 
       case 'flowchart':
         if (!activeFlowchart) return null;
@@ -433,15 +439,16 @@ function AppLayoutInner() {
       default:
         return null;
     }
-  }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges]);
+  }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges, searchParams]);
 
+  const isActiveDbClient = isActiveDiagramContext
+    && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
   const showAIChat = useMemo(() => {
     if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
-    // Apply same default logic as DiagramEditorRoute: Data tab → hide AI Chat
-    const isProductionDb = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
-    const resolvedTab = searchParams.get('tab') || (isProductionDb ? 'data' : 'erd');
+    if (isActiveDbClient) return true;
+    const resolvedTab = searchParams.get('tab') || 'erd';
     return resolvedTab === 'erd';
-  }, [entityContext, isPublicView, activeDiagram, searchParams]);
+  }, [entityContext, isPublicView, isActiveDbClient, searchParams]);
   const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
@@ -821,14 +828,20 @@ function AppLayoutInner() {
         <MoveToTrashAlert
           isOpen={isMoveToTrashAlertOpen}
           onOpenChange={(open) => { setIsMoveToTrashAlertOpen(open); if (!open) setTableDeleteDoc(null); }}
-          activeDocument={tableDeleteDoc ?? activeDocument}
+          activeDocument={documentToDelete}
           view={view}
           deleteDiagram={deleteDiagram}
           deleteNote={deleteNote}
           deleteDrawing={deleteDrawing}
           deleteFlowchart={deleteFlowchart}
           fetchTrash={fetchTrash}
-          onAfterDelete={async () => { setTableDeleteDoc(null); handleViewChange(view, true); setTableLoadingState('loading'); triggerTableRefresh(); }}
+          onAfterDelete={() => {
+            setTableDeleteDoc(null);
+            if (deletingDbClient) navigate('/table/db-client', { replace: true });
+            else void handleViewChange(view, true);
+            setTableLoadingState('loading');
+            triggerTableRefresh();
+          }}
         />
 
         {!isPublicView && (
@@ -951,6 +964,7 @@ function AppLayoutInner() {
                                  entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
                                  entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
                     entityContextText={entityContextText}
+                    viewType={isActiveDbClient ? 'db-client' : undefined}
                     projectId={activeProjectId}
                     pendingPrompt={pendingPrompt}
                     onPromptUsed={clearPrompt}

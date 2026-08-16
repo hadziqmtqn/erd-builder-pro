@@ -473,6 +473,13 @@ model DbAccount {
   port      Int?
   user      String?
   password  String?
+  environment    String @default("development")
+  safeMode       String @default("protected") @map("safe_mode")
+  sslMode        String @default("disable") @map("ssl_mode")
+  sslCa          String? @map("ssl_ca")
+  sslCert        String? @map("ssl_cert")
+  sslKey         String? @map("ssl_key")
+  queryTimeoutMs Int    @default(30000) @map("query_timeout_ms")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 

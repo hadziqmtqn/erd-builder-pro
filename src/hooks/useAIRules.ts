@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
-export type ViewType = 'erd' | 'notes' | 'flowchart';
+export type ViewType = 'erd' | 'notes' | 'flowchart' | 'db-client';
 
 interface AIRulesData {
   id?: string;

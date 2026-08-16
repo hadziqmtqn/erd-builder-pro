@@ -1,7 +1,8 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import fs from "node:fs";
 import { fetchSchemaForClient, getConnector, invalidateSchemaCache } from "../../lib/db-connectors/registry.js";
-import { buildConnectionInfo } from "./middleware.js";
+import { buildCatalogConnectionInfo } from "./middleware.js";
+import { assertDestructiveAllowed, assertWritable } from "../../lib/db-connectors/security.js";
 import * as catalogsService from "./catalogs.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
 import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
@@ -136,14 +137,10 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
+    assertWritable(info);
+    const destructiveTables = Array.isArray(deleteTables) ? deleteTables : Array.isArray(truncateTables) ? truncateTables : [];
+    if (destructiveTables.length) assertDestructiveAllowed(info, destructiveTables.join(", "), req.body.confirmation);
     const connector = getConnector(info.type);
     const { client, release } = await connector.connect(info);
 
@@ -183,7 +180,8 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
     }
   } catch (err: any) {
     console.error("Error updating structure:", err);
-    res.status(500).json({ error: `Failed to update structure: ${err.message}` });
+    const status = /Safe Mode|Type ".*" to confirm/.test(err.message) ? 403 : 500;
+    res.status(status).json({ error: `Failed to update structure: ${err.message}` });
   }
 }
 
@@ -198,14 +196,7 @@ export async function getStructureSql(req: ExpressRequest, res: ExpressResponse)
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
     const connector = getConnector(info.type);
     const { client, release } = await connector.connect(info);
 
@@ -240,14 +231,8 @@ export async function importStructureSql(req: ExpressRequest, res: ExpressRespon
   try {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
+    assertDestructiveAllowed(info, "IMPORT", req.body.confirmation);
     const statements = validateImportSql(info.type, String(req.body.sql || ""));
     const connector = getConnector(info.type);
     const { client, release } = await connector.connect(info);
@@ -292,6 +277,7 @@ export async function importStructureSql(req: ExpressRequest, res: ExpressRespon
     }
   } catch (err: any) {
     console.error("Error importing SQL:", err);
-    res.status(400).json({ error: err.message || "Failed to import SQL" });
+    const status = /Safe Mode|Type ".*" to confirm/.test(err.message) ? 403 : 400;
+    res.status(status).json({ error: err.message || "Failed to import SQL" });
   }
 }

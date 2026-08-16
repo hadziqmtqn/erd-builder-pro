@@ -7,6 +7,7 @@ import { prisma } from "../../lib/prisma.js";
 import { isDesktopMode, getInstallMode } from "../../lib/config.js";
 import { encrypt, decrypt } from "../../lib/crypto.js";
 import type { ConnectionInfo, DbType } from "../../lib/db-connectors/types.js";
+import { normalizeConnectionSecurity } from "../../lib/db-connectors/security.js";
 
 // ── Desktop-only guard ──
 export function desktopOnly(
@@ -27,17 +28,39 @@ export function buildConnectionInfo(conn: {
   host?: string | null;
   port?: number | null;
   user?: string | null;
-  password?: string | null;
-  database: string;
-}): ConnectionInfo {
-  return {
+    password?: string | null;
+    database: string;
+    environment?: string | null;
+    safeMode?: string | null;
+    sslMode?: string | null;
+    sslCa?: string | null;
+    sslCert?: string | null;
+    sslKey?: string | null;
+    queryTimeoutMs?: number | null;
+  }): ConnectionInfo {
+  return normalizeConnectionSecurity({
     type: conn.type as DbType,
     host: conn.host ?? undefined,
     port: conn.port ?? undefined,
     user: conn.user ?? undefined,
     password: conn.password ? decrypt(conn.password) : undefined,
     database: conn.database,
-  };
+    environment: conn.environment as ConnectionInfo["environment"],
+    safeMode: conn.safeMode as ConnectionInfo["safeMode"],
+    sslMode: conn.sslMode as ConnectionInfo["sslMode"],
+    sslCa: conn.sslCa ?? undefined,
+    sslCert: conn.sslCert ?? undefined,
+    sslKey: conn.sslKey ?? undefined,
+    queryTimeoutMs: conn.queryTimeoutMs ?? undefined,
+  });
+}
+
+export function buildAccountConnectionInfo(account: any, database: string): ConnectionInfo {
+  return buildConnectionInfo({ ...account, database });
+}
+
+export function buildCatalogConnectionInfo(catalog: any): ConnectionInfo {
+  return buildAccountConnectionInfo(catalog.account, catalog.databaseName);
 }
 
 export function maskPassword(

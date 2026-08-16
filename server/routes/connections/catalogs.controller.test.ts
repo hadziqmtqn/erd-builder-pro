@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 import initSqlJs from "sql.js";
 import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
+import { postgresqlConnector } from "../../lib/db-connectors/postgresql.js";
 import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
 import { normalizeSelectQuery } from "./query-helpers.js";
 import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 import { extractMySqlCreatedTables, MAX_SQL_IMPORT_BYTES, normalizeMySqlCreateTableDefaults, splitSqlStatements, validateImportSql } from "./structure.controller.js";
+import { assertDestructiveAllowed, assertWritable, normalizeConnectionSecurity } from "../../lib/db-connectors/security.js";
+
+describe("connection security", () => {
+  it("normalizes limits and enforces read-only/destructive guards", () => {
+    const info = normalizeConnectionSecurity({ type: "postgresql", database: "app", queryTimeoutMs: 999999 } as any);
+    expect(info).toMatchObject({ environment: "development", safeMode: "protected", sslMode: "disable", queryTimeoutMs: 600000 });
+    expect(() => assertDestructiveAllowed(info, "users", "wrong")).toThrow('Type "users"');
+    expect(() => assertDestructiveAllowed(info, "users", "users")).not.toThrow();
+    expect(() => assertWritable({ ...info, safeMode: "read-only" })).toThrow("read-only Safe Mode");
+  });
+});
 
 describe("custom query helpers", () => {
   it("allows one read-only SELECT/WITH statement", () => {
@@ -13,6 +25,17 @@ describe("custom query helpers", () => {
     expect(() => normalizeSelectQuery("UPDATE users SET name = 'x'")).toThrow("Only SELECT queries are allowed");
     expect(() => normalizeSelectQuery("SELECT 1; SELECT 2")).toThrow("Only one SQL statement is allowed");
     expect(() => normalizeSelectQuery("WITH changed AS (DELETE FROM users RETURNING id) SELECT * FROM changed")).toThrow("Only read-only SQL queries are allowed");
+  });
+});
+
+describe("catalog type metadata", () => {
+  it("loads PostgreSQL declared types with precision", async () => {
+    let query = "";
+    await postgresqlConnector.fetchSchema({ query: async (sql: string) => {
+      query = sql;
+      return { rows: [] };
+    } }, {} as any);
+    expect(query).toContain("pg_catalog.format_type(a.atttypid, a.atttypmod)");
   });
 });
 
@@ -245,6 +268,25 @@ describe("buildStructureStatements", () => {
     })).toThrow("Invalid column type");
   });
 
+  it("accepts driver-valid temporal precision and type names", () => {
+    expect(buildStructureStatements("postgresql", {
+      ...table,
+      columns: [{ name: "updated_at", type: "timestamp without time zone", full_type: "timestamp(3) without time zone", is_nullable: false }],
+      foreign_keys: [],
+    }, {
+      columnName: "updated_at",
+      column: { name: "updated_at", type: "TIMESTAMP(3)", is_nullable: false, column_default: "CURRENT_TIMESTAMP" },
+    })).toContain('ALTER TABLE "public"."posts" ALTER COLUMN "updated_at" TYPE TIMESTAMP(3) USING "updated_at"::TIMESTAMP(3)');
+    expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "__new__",
+      column: { name: "updated_at", type: "TIMESTAMP(6)", is_nullable: false, column_default: "CURRENT_TIMESTAMP" },
+    })).toContain("ALTER TABLE `posts` ADD COLUMN `updated_at` TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)");
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "TIMESTAMP(7)", is_nullable: true },
+    })).toThrow("Invalid temporal precision");
+  });
+
   it("builds create table statements", () => {
     expect(buildStructureStatements("postgresql", {}, {
       createTable: { name: "customers", column: { name: "id", type: "int8", is_nullable: false } },
@@ -314,6 +356,18 @@ describe("buildStructureStatements", () => {
       columnName: "user_id",
       column: { name: "user_id", type: "uuid", is_nullable: true },
     })).toThrow("Invalid mysql column type");
+    expect(() => buildStructureStatements("postgresql", table, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "ulid", is_nullable: true },
+    })).toThrow("Invalid postgresql column type");
+    expect(() => buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "varchar(20) unsigned", is_nullable: true },
+    })).toThrow("Invalid mysql column type modifier");
+    expect(() => buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "user_id",
+      column: { name: "user_id", type: "set", is_nullable: true },
+    })).toThrow("Enum values are required");
   });
 
   it("rejects foreign keys with incompatible column types", () => {
@@ -343,6 +397,16 @@ describe("buildStructureStatements", () => {
     })).toEqual([
       "ALTER TABLE `posts` ADD COLUMN `name` varchar(255) NOT NULL COMMENT 'person name'",
     ]);
+    expect(buildStructureStatements("postgresql", table, {
+      columnName: "__new__",
+      column: { name: "role", type: "text", is_nullable: false, column_default: "'CURRENT_TIMESTAMP'" },
+    })).toEqual([
+      "ALTER TABLE \"public\".\"posts\" ADD COLUMN \"role\" text NOT NULL DEFAULT 'CURRENT_TIMESTAMP'",
+    ]);
+    expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
+      columnName: "__new__",
+      column: { name: "role", type: "text", is_nullable: false, column_default: "'member'" },
+    })).toContain("ALTER TABLE `posts` ADD COLUMN `role` text NOT NULL DEFAULT ('member')");
   });
 
   it("builds enum value edits for MySQL and PostgreSQL", () => {

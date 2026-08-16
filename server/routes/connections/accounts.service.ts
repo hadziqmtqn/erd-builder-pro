@@ -23,6 +23,13 @@ export async function createAccount(data: {
   port?: number | null;
   user?: string;
   password?: string | null;
+  environment?: string;
+  safeMode?: string;
+  sslMode?: string;
+  sslCa?: string | null;
+  sslCert?: string | null;
+  sslKey?: string | null;
+  queryTimeoutMs?: number;
 }) {
   return (prisma as any)?.dbAccount.create({ data });
 }
