@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "3.3.3",
+  "version": "3.3.4",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development tsx watch server/dev.ts",
@@ -19,6 +19,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:db-client:integration": "cross-env DB_CLIENT_INTEGRATION=1 vitest run server/lib/db-connectors/integration.test.ts",
     "test:watch": "vitest",
     "db:generate:pg": "cross-env DB_VARIANT=supabase prisma generate",
     "db:generate:pg:local": "cross-env DB_VARIANT=pg prisma generate",

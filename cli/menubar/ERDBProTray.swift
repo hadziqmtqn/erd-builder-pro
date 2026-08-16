@@ -5,6 +5,10 @@ let port = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "3101"
 let home = FileManager.default.homeDirectoryForCurrentUser
 let pidFile = home.appendingPathComponent(".erdbpro/server.pid").path
 let updateFile = home.appendingPathComponent(".erdbpro/update.json").path
+let executableDirectory = URL(
+    fileURLWithPath: CommandLine.arguments[0],
+    relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+).standardizedFileURL.deletingLastPathComponent()
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
@@ -16,19 +20,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let button = statusItem.button {
             let iconCandidates = [
-                Bundle.main.bundlePath + "/../icon.svg",
-                "\(home.path)/Projects/erd-builder-pro/cli/menubar/icon.svg"
+                executableDirectory.appendingPathComponent("icon.svg").path,
+                Bundle.main.resourceURL?.appendingPathComponent("icon.svg").path
             ]
-            var iconLoaded = false
-            for iconPath in iconCandidates {
+            for iconPath in iconCandidates.compactMap({ $0 }) {
                 if let img = NSImage(contentsOfFile: iconPath) {
                     img.size = NSSize(width: 18, height: 18)
                     button.image = img
-                    iconLoaded = true
                     break
                 }
             }
-            if !iconLoaded { button.title = "ERD" }
+            if button.image == nil { button.title = "ERD" }
             button.toolTip = "ERD Builder Pro"
         }
 

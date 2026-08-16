@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: dbclient_test
+      POSTGRES_USER: erdbpro_test
+      POSTGRES_PASSWORD: erdbpro_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erdbpro_test -d dbclient_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: dbclient_test
+      MYSQL_USER: erdbpro_test
+      MYSQL_PASSWORD: erdbpro_test
+      MYSQL_ROOT_PASSWORD: erdbpro_root_test
+    ports:
+      - "127.0.0.1:53306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-perdbpro_root_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 45

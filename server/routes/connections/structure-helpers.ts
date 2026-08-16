@@ -163,7 +163,15 @@ function defaultSql(type: string, value: any, columnTypeValue = "") {
   }
   if (/^-?\d+(\.\d+)?$/.test(text)) return ` DEFAULT ${text}`;
   if (/^(true|false)$/i.test(text)) return ` DEFAULT ${text.toUpperCase()}`;
-  if (DEFAULT_FUNCTIONS.has(text.toUpperCase())) return ` DEFAULT ${text.toUpperCase()}`;
+  const upper = text.toUpperCase();
+  const temporalFunction = upper.match(/^(CURRENT_TIMESTAMP|CURRENT_TIME)(?:\(([0-6])\))?$/);
+  if (temporalFunction) {
+    const precision = type === "mysql"
+      ? columnTypeValue.match(/^(?:timestamp|datetime|time)\(([0-6])\)/i)?.[1]
+      : temporalFunction[2];
+    return ` DEFAULT ${temporalFunction[1]}${precision === undefined ? "" : `(${precision})`}`;
+  }
+  if (DEFAULT_FUNCTIONS.has(upper)) return ` DEFAULT ${upper}`;
   return ` DEFAULT '${text.replace(/'/g, "''")}'`;
 }
 

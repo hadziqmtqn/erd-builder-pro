@@ -280,7 +280,7 @@ describe("buildStructureStatements", () => {
     expect(buildStructureStatements("mysql", { ...table, table_schema: undefined }, {
       columnName: "__new__",
       column: { name: "updated_at", type: "TIMESTAMP(6)", is_nullable: false, column_default: "CURRENT_TIMESTAMP" },
-    })).toContain("ALTER TABLE `posts` ADD COLUMN `updated_at` TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    })).toContain("ALTER TABLE `posts` ADD COLUMN `updated_at` TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)");
     expect(() => buildStructureStatements("postgresql", table, {
       columnName: "user_id",
       column: { name: "user_id", type: "TIMESTAMP(7)", is_nullable: true },

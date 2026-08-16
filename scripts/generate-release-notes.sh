@@ -21,17 +21,15 @@ fi
 
 if [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
   RANGE=""
+  LOG_REF="$CURRENT_TAG"
 else
   RANGE="${PREV_TAG}..${CURRENT_TAG}"
+  LOG_REF="$RANGE"
 fi
 
 # ── Collect commits ──────────────────────────────────────────────
 RAW=$(
-  if [ -n "$RANGE" ]; then
-    git log --format="---%nSUBJ:%s%n" "$RANGE" 2>/dev/null
-  else
-    git log --format="---%nSUBJ:%s%n" 2>/dev/null | head -100
-  fi
+  git log --no-merges --format="---%nHASH:%h%nSUBJ:%s%n" "$LOG_REF" 2>/dev/null
 )
 
 if [ -z "$RAW" ]; then
@@ -80,6 +78,15 @@ get_desc() {
 }
 
 current_subj=""
+current_hash=""
+
+commit_link() {
+  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    echo "([\`${current_hash}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${current_hash}))"
+  else
+    echo "(\`${current_hash}\`)"
+  fi
+}
 
 while IFS= read -r line; do
   case "$line" in
@@ -88,7 +95,7 @@ while IFS= read -r line; do
         t="$(get_type "$current_subj")"
         desc="$(get_desc "$current_subj")"
         [ -z "$desc" ] && desc="$current_subj"
-        entry="- ${desc}"
+        entry="- ${desc} $(commit_link)"
 
         case "$t" in
           feat|feature)              echo "$entry" >> "$CAT_FEAT" ;;
@@ -103,6 +110,10 @@ while IFS= read -r line; do
         esac
       fi
       current_subj=""
+      current_hash=""
+      ;;
+    HASH:*)
+      current_hash="${line#HASH:}"
       ;;
     SUBJ:*)
       current_subj="${line#SUBJ:}"
@@ -115,7 +126,7 @@ if [ -n "$current_subj" ]; then
   t="$(get_type "$current_subj")"
   desc="$(get_desc "$current_subj")"
   [ -z "$desc" ] && desc="$current_subj"
-  entry="- ${desc}"
+  entry="- ${desc} $(commit_link)"
   case "$t" in
     feat|feature)              echo "$entry" >> "$CAT_FEAT" ;;
     fix|bugfix)                echo "$entry" >> "$CAT_FIX" ;;
@@ -131,11 +142,15 @@ fi
 
 # ── Count total commits ──────────────────────────────────────────
 total=$(echo "$RAW" | grep -c "^SUBJ:" 2>/dev/null || echo "0")
+contributors=$(git shortlog --group=author --group=trailer:co-authored-by -sn "$LOG_REF" 2>/dev/null || true)
+contributor_total=$(printf '%s\n' "$contributors" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+change_word="changes"; [ "$total" = "1" ] && change_word="change"
+contributor_word="contributors"; [ "$contributor_total" = "1" ] && contributor_word="contributor"
 
 # ── Print release notes ──────────────────────────────────────────
-echo "# Release v${VERSION}"
+echo "# ERD Builder Pro v${VERSION}"
 echo ""
-echo "_${total} commits_"
+echo "_${total} ${change_word} by ${contributor_total} ${contributor_word}_"
 echo ""
 
 HAS_CONTENT=false
@@ -171,3 +186,17 @@ fi
 
 echo ""
 
+if [ -n "$contributors" ]; then
+  echo "### 👥 Contributors"
+  echo ""
+  echo "$contributors" | awk '{$1=$1; commits=$1; $1=""; sub(/^ /, ""); suffix="s"; if (commits == 1) suffix=""; printf "- %s (%d commit%s)\n", $0, commits, suffix}'
+  echo ""
+fi
+
+if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+  if [ -n "$RANGE" ]; then
+    echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${CURRENT_TAG}"
+  else
+    echo "**Release history**: https://github.com/${GITHUB_REPOSITORY}/commits/${CURRENT_TAG}"
+  fi
+fi

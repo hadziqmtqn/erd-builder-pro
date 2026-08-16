@@ -305,11 +305,14 @@ jobs:
           path: artifacts
 
       - name: Generate release notes
-        id: release_notes
         shell: bash
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
           CURRENT_TAG="${GITHUB_REF_NAME}"
+          if [[ "$CURRENT_TAG" == *-* ]]; then
+            PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)
+          else
+            PREV_TAG=$(git describe --tags --abbrev=0 --exclude='*-*' "${CURRENT_TAG}^" 2>/dev/null || true)
+          fi
 
           if [ -n "$PREV_TAG" ]; then
             bash scripts/generate-release-notes.sh "$PREV_TAG" "$CURRENT_TAG" > release-notes.md
