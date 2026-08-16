@@ -31,6 +31,7 @@ catalogsRouter.get("/:id/queries", authenticate, desktopOnly, queriesController.
 catalogsRouter.post("/:id/queries", authenticate, desktopOnly, queriesController.saveQuery);
 catalogsRouter.delete("/:id/queries/:queryId", authenticate, desktopOnly, queriesController.deleteQuery);
 catalogsRouter.post("/:id/query/run", authenticate, desktopOnly, queriesController.runQuery);
+catalogsRouter.post("/:id/query/cancel/:runId", authenticate, desktopOnly, queriesController.cancelQuery);
 catalogsRouter.post("/:id/records/create", authenticate, desktopOnly, catalogsController.createRecord);
 catalogsRouter.patch("/:id/records", authenticate, desktopOnly, catalogsController.updateRecord);
 catalogsRouter.delete("/:id/records", authenticate, desktopOnly, catalogsController.deleteRecord);

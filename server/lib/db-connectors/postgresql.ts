@@ -1,20 +1,28 @@
 import pg from "pg";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
+import { tlsOptions } from "./security.js";
 
 const pools = new Map<string, pg.Pool>();
+
+const connectionConfig = (info: ConnectionInfo) => ({
+  host: info.host || "localhost",
+  port: info.port || 5432,
+  user: info.user || "postgres",
+  password: info.password || "",
+  database: info.database,
+  ssl: tlsOptions(info),
+});
 
 function getPool(info: ConnectionInfo) {
   const key = JSON.stringify(info);
   let pool = pools.get(key);
   if (!pool) {
     pool = new pg.Pool({
-      host: info.host || "localhost",
-      port: info.port || 5432,
-      user: info.user || "postgres",
-      password: info.password || "",
-      database: info.database,
+      ...connectionConfig(info),
       max: 4,
       idleTimeoutMillis: 30_000,
+      statement_timeout: info.queryTimeoutMs || 30_000,
+      query_timeout: info.queryTimeoutMs || 30_000,
     });
     pools.set(key, pool);
   }
@@ -25,17 +33,28 @@ export const postgresqlConnector: DbConnector = {
   async connect(info: ConnectionInfo): Promise<ConnectorClient> {
     const pool = getPool(info);
     const client = await pool.connect();
-    return { client, release: () => client.release() };
+    try {
+      await client.query(`SET SESSION CHARACTERISTICS AS TRANSACTION ${info.safeMode === "read-only" ? "READ ONLY" : "READ WRITE"}`);
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+    return {
+      client,
+      release: () => client.release(),
+      cancel: async () => {
+        const cancelClient = new pg.Client(connectionConfig(info));
+        await cancelClient.connect();
+        try { await cancelClient.query("SELECT pg_cancel_backend($1)", [(client as any).processID]); }
+        finally { await cancelClient.end(); }
+      },
+    };
   },
 
   async test(info: ConnectionInfo): Promise<string> {
     const start = Date.now();
     const pool = new pg.Pool({
-      host: info.host || "localhost",
-      port: info.port || 5432,
-      user: info.user || "postgres",
-      password: info.password || "",
-      database: info.database,
+      ...connectionConfig(info),
       max: 2,
       idleTimeoutMillis: 5000,
     });

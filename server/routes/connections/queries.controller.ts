@@ -2,7 +2,7 @@ import { Request as ExpressRequest, Response as ExpressResponse } from "express"
 import { randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
 import { getConnector } from "../../lib/db-connectors/registry.js";
-import { buildConnectionInfo } from "./middleware.js";
+import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import { normalizeSelectQuery } from "./query-helpers.js";
 
@@ -82,18 +82,14 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
     if (info.type === "sqlite") return res.status(400).json({ error: "Custom query is supported for MySQL and PostgreSQL only" });
 
     const connector = getConnector(info.type);
-    const { client, release } = await connector.connect(info);
+    const connected = await connector.connect(info);
+    const { client, release } = connected;
+    const runId = String(req.body.runId || "");
+    if (runId) activeQueries.set(`${userId}:${runId}`, connected.cancel);
     const started = Date.now();
     try {
       if (info.type === "postgresql") {
@@ -103,9 +99,24 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
       const [rows, fields] = await (client as any).execute(sql);
       res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows, durationMs: Date.now() - started });
     } finally {
+      if (runId) activeQueries.delete(`${userId}:${runId}`);
       release();
     }
   } catch (err: any) {
     res.status(400).json({ error: err.message || "Failed to run SQL query" });
+  }
+}
+
+const activeQueries = new Map<string, (() => Promise<void>) | undefined>();
+
+export async function cancelQuery(req: ExpressRequest, res: ExpressResponse) {
+  const key = `${(req as any).user.id}:${String(req.params.runId || "")}`;
+  const cancel = activeQueries.get(key);
+  if (!cancel) return res.status(404).json({ error: "Running query not found" });
+  try {
+    await cancel();
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Failed to cancel query" });
   }
 }

@@ -5,7 +5,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import { Play, Plus, Sparkles, X } from 'lucide-react';
+import { Play, Plus, Sparkles, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { DataQueryResultTable } from './DataQueryResultTable';
 import { DataQueryToolbar } from './DataQueryToolbar';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
+import { DataQuerySidebar, type QueryExecution } from './DataQuerySidebar';
+import { beautifySql, emptyQueryState, newQueryTab, readQueryState, sanitizeQueryState, type QueryTab } from './data-query-state';
 
 type DataQueryViewProps = {
   connectionId: number;
@@ -25,56 +27,7 @@ type DataQueryViewProps = {
   openNonce?: number;
 };
 
-type QueryTab = {
-  key: string;
-  id: number | null;
-  groupName: string;
-  name: string;
-  script: string;
-  result: { columns: string[]; rows: any[]; durationMs?: number } | null;
-  resultPage: number;
-  error: string | null;
-};
-
 const SQL_QUERY_DRAFT_TYPE = 'sql_query_tabs';
-
-const newQueryTab = (table?: string | null): QueryTab => ({
-  key: crypto.randomUUID(),
-  id: null,
-  groupName: 'Ungrouped',
-  name: 'New SQL Query',
-  script: `SELECT *\nFROM ${table || ''}`,
-  result: null,
-  resultPage: 1,
-  error: null,
-});
-
-const SQL_CLAUSE_RE = /\s+(SELECT|FROM|WHERE|LEFT JOIN|RIGHT JOIN|INNER JOIN|JOIN|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|VALUES|SET)\b/gi;
-const SQL_KEYWORD_RE = /\b(SELECT|FROM|WHERE|LEFT JOIN|RIGHT JOIN|INNER JOIN|JOIN|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|VALUES|SET|AND|OR|ON|AS)\b/gi;
-
-const beautifySql = (sql: string) => sql
-  .replace(/\s+/g, ' ')
-  .replace(/\s*,\s*/g, ',\n  ')
-  .replace(SQL_CLAUSE_RE, '\n$1')
-  .replace(SQL_KEYWORD_RE, (word) => word.toUpperCase())
-  .trim();
-
-const emptyQueryState = { tabs: [], activeKey: '' };
-
-const readQueryState = (storageKey: string): { tabs: QueryTab[]; activeKey: string } => {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
-    const tabs = Array.isArray(saved.tabs) ? saved.tabs.filter((tab: any) => tab?.key).map((tab: QueryTab) => ({ ...tab, result: null, resultPage: 1, error: null })) : [];
-    if (tabs.length) return { tabs, activeKey: tabs.some((tab: QueryTab) => tab.key === saved.activeKey) ? saved.activeKey : tabs[0].key };
-  } catch {}
-  return emptyQueryState;
-};
-
-const sanitizeQueryState = (value: any): { tabs: QueryTab[]; activeKey: string } | null => {
-  const tabs = Array.isArray(value?.tabs) ? value.tabs.filter((tab: any) => tab?.key).map((tab: QueryTab) => ({ ...tab, result: null, resultPage: tab.resultPage || 1, error: null })) : [];
-  if (!tabs.length) return null;
-  return { tabs, activeKey: tabs.some((tab: QueryTab) => tab.key === value.activeKey) ? value.activeKey : tabs[0].key };
-};
 
 const isQueryDirty = (tab: QueryTab, query?: any) => !query
   || tab.groupName !== (query.groupName || 'Ungrouped')
@@ -94,7 +47,12 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
   const activeTab = tabs.find(tab => tab.key === activeKey) || tabs[0] || null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dbType, setDbType] = useState<string | null>(null);
+  const [connectionSecurity, setConnectionSecurity] = useState<any>(null);
   const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<QueryExecution[]>(() => {
+    try { return JSON.parse(localStorage.getItem(`erd-db-query-history:${connectionId}`) || '[]'); } catch { return []; }
+  });
+  const runningIdRef = useRef<string | null>(null);
   const [beautifying, setBeautifying] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const activeTabRef = useRef<QueryTab | null>(activeTab);
@@ -124,6 +82,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     if (!queryRes.ok) throw new Error(queryData.error || 'Failed to load SQL queries');
     setTables(schemaData.schema || []);
     setDbType(schemaData.dbType || null);
+    setConnectionSecurity(schemaData.connectionSecurity || null);
     setQueries(queryData.queries || []);
     setQueriesLoaded(true);
   }, [connectionId, diagramId]);
@@ -263,22 +222,41 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     const tab = activeTabRef.current;
     if (!tab) return;
     setRunning(true);
+    const runId = crypto.randomUUID();
+    runningIdRef.current = runId;
+    const started = Date.now();
+    let status: QueryExecution['status'] = 'success';
     patchTab(tab.key, { error: null });
     try {
       const res = await apiFetch(`/api/catalogs/${connectionId}/query/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: scriptOverride ?? tab.script }),
+        body: JSON.stringify({ script: scriptOverride ?? tab.script, runId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to run SQL query');
       patchTab(tab.key, { result: data, resultPage: 1 });
     } catch (err: any) {
+      status = runningIdRef.current ? 'error' : 'cancelled';
       patchTab(tab.key, { error: err.message });
     } finally {
+      const entry: QueryExecution = { id: runId, script: scriptOverride ?? tab.script, status, durationMs: Date.now() - started, executedAt: new Date().toISOString() };
+      setHistory(previous => {
+        const next = [entry, ...previous].slice(0, 100);
+        try { localStorage.setItem(`erd-db-query-history:${connectionId}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+      runningIdRef.current = null;
       setRunning(false);
     }
   }, [connectionId, patchTab]);
+
+  const cancelRun = useCallback(async () => {
+    const runId = runningIdRef.current;
+    if (!runId) return;
+    runningIdRef.current = null;
+    await apiFetch(`/api/catalogs/${connectionId}/query/cancel/${runId}`, { method: 'POST' });
+  }, [connectionId]);
 
   const beautifyActiveTab = useCallback((scriptOverride?: string) => {
     const tab = activeTabRef.current;
@@ -308,27 +286,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="w-56 shrink-0 border-r bg-muted/10 p-2">
-        <div className="mb-3 text-xs font-semibold text-muted-foreground">SQL Query History</div>
-        <div className="space-y-3">
-          {groups.map(([group, items]) => (
-            <div key={group}>
-              <div className="mb-1 truncate text-xs font-medium text-foreground">{group}</div>
-              {items.map(query => (
-                <button
-                  key={query.id}
-                  onClick={() => openQuery(query)}
-                  className={`flex w-full items-center rounded px-2 py-1.5 text-left text-xs ${activeTab?.id === query.id ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'}`}
-                >
-                  <span className="truncate">{query.name}</span>
-                  {dirtyQueryIds.has(query.id) && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" title="Not synced to database" />}
-                </button>
-              ))}
-            </div>
-          ))}
-          {queries.length === 0 && <div className="text-xs text-muted-foreground">No saved queries</div>}
-        </div>
-      </aside>
+      <DataQuerySidebar groups={groups} history={history} activeQueryId={activeTab?.id || null} dirtyQueryIds={dirtyQueryIds} onOpenQuery={openQuery} onOpenHistory={entry => patchActiveTab({ script: entry.script })} />
       <main className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_auto_minmax(120px,30%)_minmax(0,1fr)] overflow-hidden">
         <div className="flex items-center gap-1 overflow-x-auto border-b bg-muted/10 px-2 py-1">
           {tabs.map(tab => (
@@ -354,6 +312,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
               onNameChange={name => patchActiveTab({ name })}
               onDelete={activeTab.id ? () => setDeleteConfirmOpen(true) : undefined}
               onSave={() => save().catch((err: any) => toast.error(err.message))}
+              security={connectionSecurity}
             />
             <div className="min-h-0 overflow-hidden">
               <div className="flex h-full min-h-0 flex-col">
@@ -372,8 +331,8 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
                   <Button size="sm" variant="outline" onClick={() => beautifyActiveTab()} disabled={beautifying}>
                     <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {beautifying ? 'Beautifying' : 'Beautify'}
                   </Button>
-                  <Button size="sm" onClick={() => run()} disabled={running}>
-                    <Play className="mr-1.5 h-3.5 w-3.5" /> {running ? 'Running' : 'Run'}
+                  <Button size="sm" variant={running ? 'destructive' : 'default'} onClick={() => running ? cancelRun() : run()}>
+                    {running ? <Square className="mr-1.5 h-3.5 w-3.5" /> : <Play className="mr-1.5 h-3.5 w-3.5" />} {running ? 'Stop' : 'Run'}
                   </Button>
                 </div>
               </div>

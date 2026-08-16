@@ -7,6 +7,17 @@ import { fetchTableInfo } from "./record-helpers.js";
 import { normalizeSelectQuery } from "./query-helpers.js";
 import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 import { extractMySqlCreatedTables, MAX_SQL_IMPORT_BYTES, normalizeMySqlCreateTableDefaults, splitSqlStatements, validateImportSql } from "./structure.controller.js";
+import { assertDestructiveAllowed, assertWritable, normalizeConnectionSecurity } from "../../lib/db-connectors/security.js";
+
+describe("connection security", () => {
+  it("normalizes limits and enforces read-only/destructive guards", () => {
+    const info = normalizeConnectionSecurity({ type: "postgresql", database: "app", queryTimeoutMs: 999999 } as any);
+    expect(info).toMatchObject({ environment: "development", safeMode: "protected", sslMode: "disable", queryTimeoutMs: 600000 });
+    expect(() => assertDestructiveAllowed(info, "users", "wrong")).toThrow('Type "users"');
+    expect(() => assertDestructiveAllowed(info, "users", "users")).not.toThrow();
+    expect(() => assertWritable({ ...info, safeMode: "read-only" })).toThrow("read-only Safe Mode");
+  });
+});
 
 describe("custom query helpers", () => {
   it("allows one read-only SELECT/WITH statement", () => {

@@ -1,19 +1,25 @@
 import mysql from "mysql2/promise";
 import type { ConnectionInfo, ConnectorClient, TableSchema, DbConnector } from "./types.js";
+import { tlsOptions } from "./security.js";
 
 const pools = new Map<string, mysql.Pool>();
+
+const connectionConfig = (info: ConnectionInfo) => ({
+  host: info.host || "localhost",
+  port: info.port || 3306,
+  user: info.user || "root",
+  password: info.password || "",
+  database: info.database,
+  connectTimeout: 5000,
+  ssl: tlsOptions(info),
+});
 
 function getPool(info: ConnectionInfo) {
   const key = JSON.stringify(info);
   let pool = pools.get(key);
   if (!pool) {
     pool = mysql.createPool({
-      host: info.host || "localhost",
-      port: info.port || 3306,
-      user: info.user || "root",
-      password: info.password || "",
-      database: info.database,
-      connectTimeout: 5000,
+      ...connectionConfig(info),
       connectionLimit: 4,
     });
     pools.set(key, pool);
@@ -24,18 +30,37 @@ function getPool(info: ConnectionInfo) {
 export const mysqlConnector: DbConnector = {
   async connect(info: ConnectionInfo): Promise<ConnectorClient> {
     const conn = await getPool(info).getConnection();
-    return { client: conn, release: () => conn.release() };
+    const readOnly = info.safeMode === "read-only" ? 1 : 0;
+    try {
+      try {
+        await conn.execute(`SET SESSION transaction_read_only = ${readOnly}`);
+      } catch {
+        await conn.execute(`SET SESSION tx_read_only = ${readOnly}`);
+      }
+      try {
+        await conn.execute(`SET SESSION MAX_EXECUTION_TIME = ${Math.min(Math.max(Number(info.queryTimeoutMs) || 30_000, 1_000), 600_000)}`);
+      } catch {
+        // MariaDB and older MySQL variants may not expose MAX_EXECUTION_TIME.
+      }
+    } catch (error) {
+      conn.release();
+      throw error;
+    }
+    return {
+      client: conn,
+      release: () => conn.release(),
+      cancel: async () => {
+        const cancelConnection = await mysql.createConnection(connectionConfig(info));
+        try { await cancelConnection.query(`KILL QUERY ${Number(conn.threadId)}`); }
+        finally { await cancelConnection.end(); }
+      },
+    };
   },
 
   async test(info: ConnectionInfo): Promise<string> {
     const start = Date.now();
     const conn = await mysql.createConnection({
-      host: info.host || "localhost",
-      port: info.port || 3306,
-      user: info.user || "root",
-      password: info.password || "",
-      database: info.database,
-      connectTimeout: 5000,
+      ...connectionConfig(info),
     });
     await conn.end();
     return `OK (${Date.now() - start}ms)`;

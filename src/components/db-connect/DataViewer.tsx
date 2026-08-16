@@ -26,7 +26,7 @@ interface DataViewerProps { connectionId: number; stateKey?: string; onDbTypeCha
 export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
   const { setActionContextData } = useAIAction();
   const {
-    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
+    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, connectionSecurity, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
     fetchTables, refreshAll, selectTable, openNewTableTab, pinTable, closeTable, addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord, deleteTables, mutateTables, updateRecord, updateRecords, updateStructure, clearFilters, toggleSort, nextPage, prevPage,
   } = useDataViewer(connectionId, stateKey);
@@ -213,8 +213,8 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
       setConfirmAction(null);
     }
   }, [structureEditor, updateStructure]);
-  const handleConfirmDeleteRecord = useCallback(async () => {
-    await recordEditor.removeSelectedRecords();
+  const handleConfirmDeleteRecord = useCallback(async (confirmation?: string) => {
+    await recordEditor.removeSelectedRecords(confirmation);
     setConfirmAction(null);
   }, [recordEditor.removeSelectedRecords]);
   const handleRefresh = useCallback(() => {
@@ -353,7 +353,13 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
         setTableSearch={setTableSearch}
       />
 
-      <div className="flex-1 grid grid-rows-[1fr_auto] overflow-hidden">
+      <div className="flex-1 grid grid-rows-[auto_1fr_auto] overflow-hidden">
+        <div className="flex h-7 items-center gap-2 border-b bg-muted/20 px-3 text-[10px] font-semibold uppercase">
+          <span className={connectionSecurity.environment === 'production' ? 'text-red-600' : 'text-muted-foreground'}>{connectionSecurity.environment}</span>
+          <span className={connectionSecurity.safeMode === 'read-only' ? 'text-emerald-600' : 'text-muted-foreground'}>{connectionSecurity.safeMode}</span>
+          <span className="text-muted-foreground">{connectionSecurity.sslMode === 'disable' ? 'TLS OFF' : `TLS ${connectionSecurity.sslMode}`}</span>
+          <span className="ml-auto text-muted-foreground">Timeout {connectionSecurity.queryTimeoutMs}ms</span>
+        </div>
         {!activeTable ? (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
             <div className="flex flex-col items-center gap-2">
@@ -513,6 +519,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
         onCancel={() => setConfirmAction(null)}
         onDeleteRecords={handleConfirmDeleteRecord}
         onDeleteStructure={handleDeleteStructure}
+        confirmationTarget={connectionSecurity.environment === 'production' || connectionSecurity.safeMode === 'protected' ? activeTable : null}
       />
       <ConfirmModal
         isOpen={discardRefreshOpen}

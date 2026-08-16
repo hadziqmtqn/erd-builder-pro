@@ -1,6 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { fetchSchemaForClient, getConnector } from "../../lib/db-connectors/registry.js";
-import { buildConnectionInfo } from "./middleware.js";
+import { buildCatalogConnectionInfo } from "./middleware.js";
+import { assertDestructiveAllowed, assertWritable } from "../../lib/db-connectors/security.js";
 import * as catalogsService from "./catalogs.service.js";
 import {
   buildRecordOrder,
@@ -13,18 +14,13 @@ import {
   validateRecordValues,
 } from "./record-helpers.js";
 
+const mutationErrorStatus = (message: string) => /Safe Mode|Type ".*" to confirm/.test(message) ? 403 : 500;
+
 async function recordContext(req: ExpressRequest, id: string, table: string) {
   const userId = (req as any).user.id;
   const catalog = await catalogsService.findCatalogById(id, userId);
   if (!catalog) throw new Error("Catalog not found");
-  const info = buildConnectionInfo({
-    type: (catalog as any).account.type,
-    host: (catalog as any).account.host,
-    port: (catalog as any).account.port,
-    user: (catalog as any).account.user,
-    password: (catalog as any).account.password,
-    database: (catalog as any).databaseName,
-  });
+  const info = buildCatalogConnectionInfo(catalog);
   if (info.type === "sqlite") throw new Error("Record editing is not supported for SQLite catalogs");
   const connector = getConnector(info.type);
   const { client, release } = await connector.connect(info);
@@ -50,14 +46,7 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
 
     const connector = getConnector(info.type);
     const { client, release } = await connector.connect(info);
@@ -130,14 +119,8 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildConnectionInfo({
-      type: (catalog as any).account.type,
-      host: (catalog as any).account.host,
-      port: (catalog as any).account.port,
-      user: (catalog as any).account.user,
-      password: (catalog as any).account.password,
-      database: (catalog as any).databaseName,
-    });
+    const info = buildCatalogConnectionInfo(catalog);
+    assertWritable(info);
     if (info.type === "sqlite") return res.status(400).json({ error: "Record editing is not supported for SQLite catalogs" });
 
     const connector = getConnector(info.type);
@@ -182,7 +165,7 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
     }
   } catch (err: any) {
     console.error("Error updating record:", err);
-    res.status(500).json({ error: `Failed to update record: ${err.message}` });
+    res.status(mutationErrorStatus(err.message)).json({ error: `Failed to update record: ${err.message}` });
   }
 }
 
@@ -195,6 +178,7 @@ export async function createRecord(req: ExpressRequest, res: ExpressResponse) {
   try {
     const { info, client, release, tableSchema } = await recordContext(req, id, table);
     try {
+      assertWritable(info);
       const columnByName = new Map<string, any>((tableSchema.columns || []).map((column: any) => [column.name, column]));
       const allowedColumns = new Set(columnByName.keys());
       const normalizedValues = validateRecordValues(info.type, values, columnByName, true);
@@ -207,7 +191,7 @@ export async function createRecord(req: ExpressRequest, res: ExpressResponse) {
       release();
     }
   } catch (err: any) {
-    const status = /Catalog not found/.test(err.message) ? 404 : 400;
+    const status = /Catalog not found/.test(err.message) ? 404 : /Safe Mode/.test(err.message) ? 403 : 400;
     res.status(status).json({ error: `Failed to create record: ${err.message}` });
   }
 }
@@ -222,6 +206,7 @@ export async function deleteRecord(req: ExpressRequest, res: ExpressResponse) {
   try {
     const { info, client, release, tableSchema } = await recordContext(req, id, table);
     try {
+      assertDestructiveAllowed(info, table, req.body.confirmation);
       const allowedColumns = new Set((tableSchema.columns || []).map((column: any) => column.name));
       const pkColumns = (tableSchema.columns || []).filter((column: any) => column.is_pk).map((column: any) => column.name);
       if (pkColumns.length === 0) return res.status(400).json({ error: "Table has no primary key" });
@@ -241,7 +226,7 @@ export async function deleteRecord(req: ExpressRequest, res: ExpressResponse) {
       release();
     }
   } catch (err: any) {
-    const status = /Catalog not found/.test(err.message) ? 404 : 400;
+    const status = /Catalog not found/.test(err.message) ? 404 : /Safe Mode|Type ".*" to confirm/.test(err.message) ? 403 : 400;
     res.status(status).json({ error: `Failed to delete record: ${err.message}` });
   }
 }

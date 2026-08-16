@@ -2,11 +2,33 @@ import { Request as ExpressRequest, Response as ExpressResponse } from "express"
 import { testConnection, getConnector } from "../../lib/db-connectors/registry.js";
 import { encrypt } from "../../lib/crypto.js";
 import { prisma } from "../../lib/prisma.js";
-import { buildConnectionInfo, maskPassword } from "./middleware.js";
+import { buildAccountConnectionInfo, buildConnectionInfo, maskPassword } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
+import { assertWritable } from "../../lib/db-connectors/security.js";
 
 const DATABASE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_$-]{0,62}$/;
+const ENVIRONMENTS = new Set(["local", "development", "staging", "production"]);
+const SAFE_MODES = new Set(["normal", "protected", "read-only"]);
+const SSL_MODES = new Set(["disable", "require", "verify-ca", "verify-full"]);
+
+function securityFields(body: any) {
+  const environment = String(body.environment || "development");
+  const safeMode = String(body.safeMode || "protected");
+  const sslMode = String(body.sslMode || "disable");
+  if (!ENVIRONMENTS.has(environment) || !SAFE_MODES.has(safeMode) || !SSL_MODES.has(sslMode)) {
+    throw new Error("Invalid connection security settings");
+  }
+  return {
+    environment,
+    safeMode,
+    sslMode,
+    sslCa: String(body.sslCa || "").trim() || null,
+    sslCert: String(body.sslCert || "").trim() || null,
+    sslKey: String(body.sslKey || "").trim() || null,
+    queryTimeoutMs: Math.min(Math.max(Number(body.queryTimeoutMs) || 30_000, 1_000), 600_000),
+  };
+}
 
 export async function listAccounts(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
@@ -37,8 +59,9 @@ export async function createAccount(req: ExpressRequest, res: ExpressResponse) {
       port: port ? Number(port) : null,
       user,
       password: encryptedPw,
+      ...securityFields(req.body),
     });
-    res.status(201).json(account);
+    res.status(201).json(maskPassword(account as any));
   } catch (err) {
     console.error("Error creating account:", err);
     res.status(500).json({ error: "Failed to create account" });
@@ -63,9 +86,10 @@ export async function updateAccount(req: ExpressRequest, res: ExpressResponse) {
     if (password !== undefined) {
       data.password = password ? encrypt(password) : null;
     }
+    Object.assign(data, securityFields({ ...existing, ...req.body }));
 
     const updated = await accountsService.updateAccount(id, data);
-    res.json(updated);
+    res.json(maskPassword(updated as any));
   } catch (err) {
     console.error("Error updating account:", err);
     res.status(500).json({ error: "Failed to update account" });
@@ -108,14 +132,7 @@ export async function testAccountConnection(req: ExpressRequest, res: ExpressRes
       ? firstCatalog?.databaseName || (account as any).host
       : firstCatalog?.databaseName || "postgres";
 
-    const result = await testConnection(buildConnectionInfo({
-      type: (account as any).type,
-      host: (account as any).host,
-      port: (account as any).port,
-      user: (account as any).user,
-      password: (account as any).password,
-      database: probeDb,
-    }));
+    const result = await testConnection(buildAccountConnectionInfo(account, probeDb));
 
     if (result === "OK" || result.startsWith("OK")) {
       res.json({ success: true, message: "Connection successful" });
@@ -133,7 +150,7 @@ export async function testRawCredentials(req: ExpressRequest, res: ExpressRespon
 
   try {
     const probeDb = type === "postgresql" ? "postgres" : type === "mysql" ? "mysql" : host;
-    const result = await testConnection({ type, host, port, user, password, database: probeDb } as any);
+    const result = await testConnection(buildConnectionInfo({ type, host, port, user, password, database: probeDb, ...securityFields(req.body) }));
     if (result === "OK" || result.startsWith("OK")) {
       res.json({ success: true, message: "Connection successful" });
     } else {
@@ -155,14 +172,7 @@ export async function testAccountProbe(req: ExpressRequest, res: ExpressResponse
     const account = await accountsService.findAccountById(id, userId);
     if (!account) return res.status(404).json({ error: "Account not found" });
 
-    const result = await testConnection(buildConnectionInfo({
-      type: (account as any).type,
-      host: (account as any).host,
-      port: (account as any).port,
-      user: (account as any).user,
-      password: (account as any).password,
-      database,
-    }));
+    const result = await testConnection(buildAccountConnectionInfo(account, database));
 
     if (result === "OK" || result.startsWith("OK")) {
       res.json({ success: true, message: `Connected to database "${database}"` });
@@ -187,11 +197,7 @@ export async function listDatabases(req: ExpressRequest, res: ExpressResponse) {
 
     if (type === "postgresql") {
       const pgConn = getConnector("postgresql");
-      const { client, release } = await pgConn.connect(buildConnectionInfo({
-        type, host: (account as any).host, port: (account as any).port,
-        user: (account as any).user, password: (account as any).password,
-        database: "postgres",
-      }));
+      const { client, release } = await pgConn.connect(buildAccountConnectionInfo(account, "postgres"));
 
       try {
         const pgClient = client as any;
@@ -204,11 +210,7 @@ export async function listDatabases(req: ExpressRequest, res: ExpressResponse) {
       }
     } else if (type === "mysql") {
       const mysqlConn = getConnector("mysql");
-      const { client, release } = await mysqlConn.connect(buildConnectionInfo({
-        type, host: (account as any).host, port: (account as any).port,
-        user: (account as any).user, password: (account as any).password,
-        database: "information_schema",
-      }));
+      const { client, release } = await mysqlConn.connect(buildAccountConnectionInfo(account, "information_schema"));
 
       try {
         const mysqlClient = client as any;
@@ -254,16 +256,10 @@ export async function createDatabase(req: ExpressRequest, res: ExpressResponse) 
     if (type !== "postgresql" && type !== "mysql") {
       return res.status(400).json({ error: "Creating databases is not supported for this type" });
     }
+    assertWritable(buildAccountConnectionInfo(account, type === "postgresql" ? "postgres" : "information_schema"));
 
     const connector = getConnector(type);
-    const { client, release } = await connector.connect(buildConnectionInfo({
-      type,
-      host: (account as any).host,
-      port: (account as any).port,
-      user: (account as any).user,
-      password: (account as any).password,
-      database: type === "postgresql" ? "postgres" : "information_schema",
-    }));
+    const { client, release } = await connector.connect(buildAccountConnectionInfo(account, type === "postgresql" ? "postgres" : "information_schema"));
 
     try {
       if (type === "postgresql") {
@@ -281,6 +277,6 @@ export async function createDatabase(req: ExpressRequest, res: ExpressResponse) 
     }
   } catch (err: any) {
     console.error("Error creating database:", err);
-    res.status(500).json({ error: `Failed to create database: ${err.message}` });
+    res.status(/Safe Mode/.test(err.message) ? 403 : 500).json({ error: `Failed to create database: ${err.message}` });
   }
 }

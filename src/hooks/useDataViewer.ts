@@ -11,6 +11,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [sort, setSort] = useState<RecordSort | null>(null);
   const [records, setRecords] = useState<RecordsResult | null>(null);
   const [dbType, setDbType] = useState<string | null>(null);
+  const [connectionSecurity, setConnectionSecurity] = useState({ environment: 'development', safeMode: 'protected', sslMode: 'disable', queryTimeoutMs: 30000 });
   const [page, setPage] = useState(1);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
@@ -44,6 +45,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       if (!res.ok) throw new Error(data.error || 'Failed to fetch tables');
       setTables(data.schema || []);
       setDbType(data.dbType || null);
+      setConnectionSecurity(data.connectionSecurity || { environment: 'development', safeMode: 'protected', sslMode: 'disable', queryTimeoutMs: 30000 });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -345,12 +347,12 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, clearRecordCache, connectionId, fetchRecords, page]);
 
-  const deleteRecord = useCallback(async (table: string, key: Record<string, any> | Record<string, any>[]) => {
+  const deleteRecord = useCallback(async (table: string, key: Record<string, any> | Record<string, any>[], confirmation?: string) => {
     if (!connectionId) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/records`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Array.isArray(key) ? { table, keys: key } : { table, key }),
+      body: JSON.stringify(Array.isArray(key) ? { table, keys: key, confirmation } : { table, key, confirmation }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete record');
@@ -374,7 +376,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     return data;
   }, [activeTable, clearRecordCache, connectionId, fetchRecords, fetchTables]);
 
-  const deleteTables = useCallback(async (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean }) => {
+  const deleteTables = useCallback(async (tableNames: string[], options: { ignoreForeignKeys?: boolean; cascade?: boolean; confirmation?: string }) => {
     if (!connectionId || tableNames.length === 0) return;
     const data = await mutateTables({ deleteTables: tableNames, ...options });
     clearRecordCache();
@@ -440,7 +442,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   }, [activeTable, fetchRecords]);
 
   return {
-    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
+    tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, connectionSecurity, page, totalPages,
     isLoadingTables, isLoadingRecords, error, fetchTables, selectTable, openNewTableTab, pinTable, closeTable,
     addFilter, removeFilter, updateFilter, applyFilter, applyFilters, openRelatedRecord, createRecord, deleteRecord,
     deleteTables, mutateTables, updateRecord, updateRecords, updateStructure, refreshAll, clearFilters, toggleSort, nextPage, prevPage,

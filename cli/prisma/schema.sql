@@ -355,6 +355,13 @@ CREATE TABLE "db_accounts" (
     "port" INTEGER,
     "user" TEXT,
     "password" TEXT,
+    "environment" TEXT NOT NULL DEFAULT 'development',
+    "safe_mode" TEXT NOT NULL DEFAULT 'protected',
+    "ssl_mode" TEXT NOT NULL DEFAULT 'disable',
+    "ssl_ca" TEXT,
+    "ssl_cert" TEXT,
+    "ssl_key" TEXT,
+    "query_timeout_ms" INTEGER NOT NULL DEFAULT 30000,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

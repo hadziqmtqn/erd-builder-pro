@@ -4,6 +4,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 export type DbType = 'postgresql' | 'mysql' | 'sqlite';
+export type DbEnvironment = 'local' | 'development' | 'staging' | 'production';
+export type DbSafeMode = 'normal' | 'protected' | 'read-only';
+export type DbSslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 
 // ── Old-style Connection (flat: account + db in one) ──
 export interface Connection {
@@ -43,6 +46,13 @@ export interface DbAccount {
   port?: number;
   user?: string;
   password?: string;
+  environment: DbEnvironment;
+  safeMode: DbSafeMode;
+  sslMode: DbSslMode;
+  sslCa?: string;
+  sslCert?: string;
+  sslKey?: string;
+  queryTimeoutMs: number;
   _count?: { catalogs: number };
   createdAt: string;
   updatedAt: string;
@@ -58,6 +68,13 @@ export interface DbAccountFormData {
   database?: string;
   erdName?: string;
   projectId?: string;
+  environment: DbEnvironment;
+  safeMode: DbSafeMode;
+  sslMode: DbSslMode;
+  sslCa?: string;
+  sslCert?: string;
+  sslKey?: string;
+  queryTimeoutMs: number;
 }
 
 // ── New: DbCatalog (a specific database on a server) ──

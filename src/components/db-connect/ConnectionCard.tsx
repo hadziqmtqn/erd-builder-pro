@@ -90,30 +90,35 @@ export function ConnectionCard({
     <>
       <div className="rounded-lg border transition-colors hover:bg-accent/50">
         {/* Account header */}
-        <div className="flex items-start gap-3 p-3 cursor-pointer" onClick={toggleExpanded}>
+        <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={toggleExpanded}>
           {/* DB type indicator */}
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-muted/50">
             <HardDrive className="h-4 w-4 text-muted-foreground" />
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-sm truncate">{name}</span>
-              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${DB_TYPE_COLORS[type]}`}>
-                {DB_TYPE_LABELS[type]}
-              </Badge>
-              {catalogs.length > 0 && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                  {type === 'sqlite' ? '1 DB' : `${catalogs.length} DB`}
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className="truncate pr-2 text-sm font-medium" title={name}>{name}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${DB_TYPE_COLORS[type]}`}>
+                  {DB_TYPE_LABELS[type]}
                 </Badge>
-              )}
+                <Badge variant="outline" className={account.environment === 'production' ? 'h-4 border-red-500/30 bg-red-500/10 px-1.5 py-0 text-[10px] uppercase text-red-600' : 'h-4 px-1.5 py-0 text-[10px] uppercase'}>{account.environment || 'development'}</Badge>
+                {account.safeMode === 'read-only' && <Badge variant="outline" className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[10px] text-emerald-600">READ ONLY</Badge>}
+                {account.sslMode && account.sslMode !== 'disable' && <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">TLS</Badge>}
+                {catalogs.length > 0 && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                    {type === 'sqlite' ? '1 DB' : `${catalogs.length} DB`}
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div className="mt-0.5 text-xs text-muted-foreground truncate">
+            <div className="mt-2 truncate text-xs text-muted-foreground" title={hostDisplay}>
               {hostDisplay}
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
