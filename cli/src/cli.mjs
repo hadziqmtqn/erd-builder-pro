@@ -8,6 +8,7 @@ import http from 'node:http';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isNewerVersion, updateInstallCommand } from './update.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Dev: cli/src/cli.mjs → pkg at ../..   Prod: src/cli.mjs → pkg at ..
@@ -28,12 +29,9 @@ const DEFAULT_PORT = 3101;
 // Read version from package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = pkgJson.version;
-const UPDATE_URL = (() => {
-  if (VERSION.includes('-beta')) {
-    return 'https://registry.npmjs.org/erdbpro/beta';
-  }
-  return 'https://registry.npmjs.org/erdbpro/latest';
-})();
+const UPDATE_TAG = VERSION.includes('-beta') ? 'beta' : 'latest';
+const UPDATE_URL = `https://registry.npmjs.org/erdbpro/${UPDATE_TAG}`;
+const UPDATE_CACHE_MS = 6 * 60 * 60 * 1000;
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -201,31 +199,56 @@ function launchMenubar(port) {
   child.unref();
 }
 
-async function checkForUpdates() {
+async function checkForUpdates({ force = false, announce = false } = {}) {
+  ensureDataDir();
+  const updateFile = path.join(DATA_DIR, 'update.json');
+  let cached = null;
   try {
-    const res = await fetch(UPDATE_URL, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return;
+    cached = JSON.parse(fs.readFileSync(updateFile, 'utf8'));
+  } catch {}
+
+  if (!force && cached?.current === VERSION && Date.now() - Date.parse(cached.checkedAt) < UPDATE_CACHE_MS) {
+    const info = { ...cached, hasUpdate: isNewerVersion(cached.latest, VERSION) };
+    if (announce) printUpdateStatus(info);
+    return info;
+  }
+
+  try {
+    const res = await fetch(UPDATE_URL, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error(`registry returned ${res.status}`);
     const json = await res.json();
     const latest = json.version;
-    if (!latest) return;
-    
-    // Write update info for menubar to read
-    const updateFile = path.join(DATA_DIR, 'update.json');
-    const hasUpdate = latest !== VERSION;
-    fs.writeFileSync(updateFile, JSON.stringify({
+    if (!latest) throw new Error('registry response has no version');
+    const info = {
       current: VERSION,
       latest,
-      hasUpdate,
+      hasUpdate: isNewerVersion(latest, VERSION),
+      tag: UPDATE_TAG,
       checkedAt: new Date().toISOString(),
-    }, null, 2));
-
-    if (hasUpdate) {
-      console.log(`\n📦 Update available: ${VERSION} → ${latest}`);
-      console.log(`   Run: npm update -g erdbpro\n`);
-    }
+    };
+    fs.writeFileSync(updateFile, JSON.stringify(info, null, 2));
+    if (announce) printUpdateStatus(info);
+    return info;
   } catch {
-    // Silently ignore
+    const fallback = cached?.current === VERSION
+      ? { ...cached, hasUpdate: isNewerVersion(cached.latest, VERSION) }
+      : null;
+    if (announce) {
+      console.log(fallback ? '⚠️  Update check failed; showing the last cached result.' : '⚠️  Unable to check for updates. Try again later.');
+      if (fallback) printUpdateStatus(fallback);
+    }
+    return fallback;
   }
+}
+
+function printUpdateStatus(info) {
+  if (!info?.hasUpdate) {
+    console.log(`✅ erdbpro v${VERSION} is up to date.`);
+    return;
+  }
+  console.log(`\n⬆  Update v${VERSION} → v${info.latest}`);
+  console.log('\nRun this after exit:');
+  console.log(`\n  ${updateInstallCommand(info.tag || UPDATE_TAG)}\n`);
 }
 
 // ── Commander ──
@@ -262,8 +285,9 @@ async function waitForServer(port, timeout = 10000) {
  * Arrow-key navigable menu — no number typing, just ↑↓ Enter.
  * Uses \x1b[H\x1b[J (home + erase to end) for reliable redraw.
  */
-async function showMenu(port) {
+async function showMenu(port, updateInfo) {
   const choices = [
+    ...(updateInfo?.hasUpdate ? [{ label: `Update to v${updateInfo.latest} (current: v${VERSION})`, action: 'update' }] : []),
     { label: 'Web UI (Open in Browser)', action: 'open' },
     { label: 'Hide to Background',       action: 'hide' },
     { label: 'Exit',                     action: 'exit' },
@@ -332,6 +356,11 @@ async function showMenu(port) {
       continue;
     }
 
+    if (picked === 'update') {
+      cleanup();
+      return 'update';
+    }
+
     // ── Execute action ──
     process.stdout.write('\x1b[H\x1b[J'); // clear for action output
 
@@ -374,7 +403,7 @@ program
   .option('-f, --force', 'Force start even if server appears to be running')
   .action(async (options) => {
     checkNodeVersion();
-    await checkForUpdates();
+    const updateInfo = await checkForUpdates();
     const port = parseInt(options.port, 10);
     const background = !!options.background;
 
@@ -420,7 +449,13 @@ program
 
     // Menu handles all actions internally (open, terminal, hide, exit)
     // Only returns when user selects Exit (or q/Ctrl+C)
-    await showMenu(port);
+    const menuResult = await showMenu(port, updateInfo);
+
+    if (menuResult === 'update') {
+      printUpdateStatus(updateInfo);
+      stopServer(true);
+      process.exit(0);
+    }
 
     console.log('\n  👋 Goodbye!\n');
     stopServer(true);
@@ -441,7 +476,7 @@ program
   .command('update')
   .description('Check for updates and show install instructions')
   .action(async () => {
-    await checkForUpdates();
+    await checkForUpdates({ force: true, announce: true });
   });
 
 // Default: "erdbpro" without subcommand = "erdbpro start"

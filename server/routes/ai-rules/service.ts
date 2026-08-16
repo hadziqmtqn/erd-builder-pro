@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 
-const VALID_VIEW_TYPES = ["erd", "notes", "flowchart"];
+const VALID_VIEW_TYPES = ["erd", "notes", "flowchart", "db-client"];
 
 const DEFAULT_RULES: Record<string, string> = {
   erd:
@@ -12,7 +12,7 @@ const DEFAULT_RULES: Record<string, string> = {
     "- Gunakan Enum DBML hanya jika value benar-benar terbatas dan reusable.\n" +
     "- Tambahkan kolom deleted_at untuk soft delete pada tabel master.",
   notes:
-    "- Gunakan bahasa Indonesia untuk isi catatan.\n" +
+    "- Ikuti bahasa yang digunakan pengguna untuk isi catatan.\n" +
     "- Struktur: gunakan heading, bullet points, dan code block.\n" +
     "- Setiap catatan harus memiliki summary di awal.\n" +
     "- Gunakan bahasa formal dan hindari slang.",
@@ -20,6 +20,10 @@ const DEFAULT_RULES: Record<string, string> = {
     "- Gunakan label singkat dan jelas (maks 3 kata per simbol).\n" +
     "- Setiap diagram harus memiliki minimal satu Start dan satu End node.\n" +
     "- Beri nama yang deskriptif pada setiap cabang (decision label).",
+  "db-client":
+    "- Gunakan hanya tabel dan kolom yang tersedia dalam metadata DB Client.\n" +
+    "- Sesuaikan SQL dengan dialect MySQL atau PostgreSQL yang aktif.\n" +
+    "- Perlakukan SQL sebagai proposal dan jangan mengklaim query sudah dijalankan.",
 };
 
 export function isValidViewType(viewType: string): boolean {

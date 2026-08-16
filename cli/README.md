@@ -113,8 +113,10 @@ PID file stored at `~/.erdbpro/server.pid`. Auto-cleaned on stop or stale detect
 
 ## Update
 
+When a newer npm version is available, `erdbpro` shows **Update** as the first interactive-menu option. Selecting it stops the local server and prints the install command; it never updates automatically.
+
 ```bash
-npm update -g erdbpro
+npm install -g erdbpro@latest --prefer-online
 erdbpro start --force       # Stop old + start new
 ```
 

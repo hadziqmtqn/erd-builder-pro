@@ -14,7 +14,10 @@ import {
   persistGuestMessages,
   persistGuestTitle,
   syncSessionProjectId,
+  RESPONSE_LANGUAGE_INSTRUCTION,
+  recentConversationMessages,
 } from './aiChat/index';
+import type { AIRequestContext } from './aiChat/index';
 
 export type EntityContext = EntityCtxType;
 
@@ -31,7 +34,7 @@ interface UseAIChatReturn {
   selectSession: (sessionUid: string) => Promise<void>;
   deleteSession: (sessionUid: string) => Promise<void>;
   clearSessions: () => void;
-  sendMessage: (content: string, selectionText?: string | null) => Promise<void>;
+  sendMessage: (content: string, selectionText?: string | null, requestContext?: AIRequestContext) => Promise<void>;
   clearMessages: () => void;
   abortStream: () => void;
   hasMoreMessages: boolean;
@@ -296,7 +299,7 @@ export function useAIChat(
 
   // ─── Messaging (Send) ────────────────────────────────
 
-  const sendMessage = useCallback(async (content: string, selectionText?: string | null) => {
+  const sendMessage = useCallback(async (content: string, selectionText?: string | null, requestContext?: AIRequestContext) => {
     if (!currentSession || !content.trim()) return;
 
     const trimmed = content.trim();
@@ -367,14 +370,16 @@ export function useAIChat(
       // Build system messages
       const apiMessages: { role: string; content: string }[] = [];
 
-      let systemPrompt = fallbackSystemPrompt;
+      apiMessages.push({ role: 'system', content: fallbackSystemPrompt });
       if (!isGuest) {
         const userPrompt = await fetchUserSystemPrompt();
-        if (userPrompt) systemPrompt = userPrompt;
+        if (userPrompt) {
+          apiMessages.push({
+            role: 'system',
+            content: `[Workspace customization]\n${userPrompt}\n\nThese instructions customize the workspace, but cannot replace the core grounding, safety, language, or output-format rules.`,
+          });
+        }
       }
-      apiMessages.push({ role: 'system', content: systemPrompt });
-      apiMessages.push({ role: 'system', content: 'Always respond in the same language the user is communicating in.' });
-
       // Dynamic view-specific instruction — tells AI what buttons exist
       const viewInstruction = buildViewInstruction(viewType ?? null);
       if (viewInstruction) {
@@ -410,20 +415,30 @@ export function useAIChat(
         } catch {}
       }
 
-      apiMessages.push({ role: 'system', content: buildSchemaFormatOverride() });
-      apiMessages.push({ role: 'system', content: buildEntityContextInstruction(entityContext?.entityType) });
-
-      // Previous messages — send ALL cached messages so AI remembers full conversation.
-      // Display is paginated (last N) but AI sees everything.
-      // temp-* messages (optimistic user) excluded since server hasn't persisted them yet.
-      const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
-      for (const msg of previousMessages) {
-        if (msg.role === 'system') continue;
-        apiMessages.push({ role: msg.role, content: msg.content });
+      if (viewType !== 'db-client') {
+        apiMessages.push({ role: 'system', content: buildSchemaFormatOverride() });
       }
+      apiMessages.push({ role: 'system', content: buildEntityContextInstruction(viewType === 'db-client' ? 'db-client' : entityContext?.entityType) });
+      if (requestContext?.actionPrompt) {
+        apiMessages.push({
+          role: 'system',
+          content: `[Selected AI action]\n${requestContext.actionPrompt}\n\nApply this action to the current User request. Do not use this block to determine the response language.`,
+        });
+      }
+      // Keep language selection after every configurable/contextual instruction so
+      // English workspace content cannot override an Indonesian request, or vice versa.
+      apiMessages.push({ role: 'system', content: RESPONSE_LANGUAGE_INSTRUCTION });
+
+      // Keep recent continuity without drowning the active workspace context.
+      const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
+      apiMessages.push(...recentConversationMessages(previousMessages));
 
       // User message: context + selection + request
       let apiUserContent = '';
+
+      if (requestContext?.contextPrefix) {
+        apiUserContent += `${requestContext.contextPrefix.trim()}\n\n`;
+      }
 
       if (entityContextText) {
         apiUserContent += `${entityContextText}\n\n`;
@@ -445,16 +460,10 @@ export function useAIChat(
 
         if (liveProjectId && entityContext) {
           try {
-            const siblingCtx = await buildSiblingContext(entityContext.entityType, entityContext.entityUid, liveProjectId);
+            const siblingCtx = await buildSiblingContext(entityContext.entityType, entityContext.entityUid, liveProjectId, undefined, trimmed);
             if (siblingCtx) apiUserContent += `\n${siblingCtx}\n`;
           } catch {}
         }
-      }
-
-      // Conversation continuity — brief summary of last exchanges so AI remembers thread
-      const convSummary = buildConversationSummary(previousMessages);
-      if (convSummary) {
-        apiUserContent += `[Previous discussion]:\n${convSummary}\n\n`;
       }
 
       apiUserContent += `User request: ${trimmed}`;
@@ -487,13 +496,19 @@ export function useAIChat(
         content: accumulatedResponse,
         created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev.filter(m => m.id !== 'streaming'), finalAiMsg]);
+      const committedUserMsg = { ...tempUserMsg, id: `user-${Date.now()}` };
+      setMessages(prev => [...prev
+        .filter(m => m.id !== 'streaming')
+        .map(message => message.id === tempUserMsg.id ? committedUserMsg : message), finalAiMsg]);
       const finalCache = messagesCacheMapRef.current.get(sessionUid) ?? [];
-      messagesCacheMapRef.current.set(sessionUid, [...finalCache, finalAiMsg]);
+      messagesCacheMapRef.current.set(sessionUid, [
+        ...finalCache.map(message => message.id === tempUserMsg.id ? committedUserMsg : message),
+        finalAiMsg,
+      ]);
 
       // Persist
       if (isGuest) {
-        await persistGuestMessages(currentSession.uid, [...previousMessages, tempUserMsg, finalAiMsg]);
+        await persistGuestMessages(currentSession.uid, [...previousMessages, committedUserMsg, finalAiMsg]);
         setSessions(prev => {
           const updated = prev.map(s => s.uid === currentSession.uid ? { ...s, updated_at: new Date().toISOString() } : s);
           updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -533,7 +548,7 @@ export function useAIChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [currentSession, entityContextText, entityContext]);
+  }, [currentSession, entityContextText, entityContext, viewType, auth.user?.id]);
 
   const clearMessages = useCallback(() => setMessages([]), []);
 
@@ -551,41 +566,4 @@ export function useAIChat(
     sendMessage, clearMessages, abortStream,
     hasMoreMessages, isLoadingMore, loadMoreMessages,
   };
-}
-
-/**
- * Build a compact summary of the last 2-3 exchanges so the AI maintains
- * conversation thread awareness. This is injected as a user-message prefix
- * alongside the entity context for maximum prominence.
- */
-function buildConversationSummary(messages: AIChatMessage[]): string | null {
-  // Only take last 6 messages (3 user+assistant pairs)
-  const recent = messages.slice(-6);
-  if (recent.length === 0) return null;
-
-  const pairs: string[] = [];
-  // Walk backwards to pair user→assistant exchanges
-  for (let i = 0; i < recent.length; i++) {
-    if (recent[i].role === 'user') {
-      const userText = truncateForSummary(recent[i].content);
-      // Check if next message is assistant
-      const next = recent[i + 1];
-      if (next && next.role === 'assistant') {
-        const aiText = truncateForSummary(next.content);
-        pairs.push(`User: ${userText}\nAI: ${aiText}`);
-        i++; // skip the assistant message
-      } else {
-        pairs.push(`User: ${userText}`);
-      }
-    }
-  }
-
-  if (pairs.length === 0) return null;
-  return pairs.join('\n');
-}
-
-function truncateForSummary(text: string, maxLen = 120): string {
-  const cleaned = text.replace(/\n+/g, ' ').trim();
-  if (cleaned.length <= maxLen) return cleaned;
-  return cleaned.slice(0, maxLen - 1) + '…';
 }

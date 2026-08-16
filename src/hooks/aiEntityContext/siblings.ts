@@ -34,11 +34,6 @@ export async function fetchSiblings(
       if (f.uid === currentUid && currentType === 'flowchart') continue;
       results.push({ type: 'flowchart', title: f.title || '(untitled)', uid: f.uid });
     }
-    for (const d of data.drawings || []) {
-      if (d.uid === currentUid && currentType === 'drawing') continue;
-      results.push({ type: 'drawing', title: d.title || '(untitled)', uid: d.uid });
-    }
-
     return results;
   } catch {
     return [];
@@ -47,7 +42,7 @@ export async function fetchSiblings(
 
 /**
  * Build rich context from all sibling files in the project.
- * Budget priority (by value density): ERD diagrams > Notes > Flowcharts > Drawings.
+ * Query relevance first, then value density: ERD diagrams > Notes > Flowcharts.
  * Current entity (currentType + currentUid) is excluded — already in entityContextText.
  */
 const MAX_BUDGET = 6000;
@@ -57,6 +52,7 @@ export async function buildSiblingContext(
   currentUid: string,
   projectId: number | string,
   budget: number = MAX_BUDGET,
+  query: string = '',
 ): Promise<string | null> {
   if (!projectId) return null;
 
@@ -69,7 +65,10 @@ export async function buildSiblingContext(
     return null;
   }
 
-  const items: { priority: number; text: string; charLen: number }[] = [];
+  const items: { priority: number; text: string; charLen: number; relevance: number }[] = [];
+  const addItem = (priority: number, text: string, charLen: number) => {
+    items.push({ priority, text, charLen, relevance: siblingRelevanceScore(text, query) });
+  };
 
   // 1. ERD diagrams (highest priority)
   for (const d of apiData.diagrams || []) {
@@ -87,10 +86,12 @@ export async function buildSiblingContext(
           .join(', ');
         return `    ${e.name} — ${colStr}`;
       }).join('\n');
-      const content = `  ${d.name} (ERD)\n${entityLines}`;
-      items.push({ priority: 1, text: content, charLen: content.length });
+      const feature = (d.source_type ?? d.sourceType) === 'production_db' ? 'DB Client' : 'ERD';
+      const content = `  ${d.name} (${feature})\n${entityLines}`;
+      addItem(1, content, content.length);
     } else {
-      items.push({ priority: 1, text: `  ${d.name} (ERD)`, charLen: 0 });
+      const feature = (d.source_type ?? d.sourceType) === 'production_db' ? 'DB Client' : 'ERD';
+      addItem(1, `  ${d.name} (${feature})`, 0);
     }
   }
 
@@ -102,7 +103,7 @@ export async function buildSiblingContext(
     const content = preview
       ? `  ${n.title} (note)\n    ${preview}`
       : `  ${n.title} (note)`;
-    items.push({ priority: 2, text: content, charLen: preview.length });
+    addItem(2, content, preview.length);
   }
 
   // 3. Flowcharts (medium priority)
@@ -123,18 +124,12 @@ export async function buildSiblingContext(
     const content = nodeLabels
       ? `  ${f.title} (flowchart) — ${nodeLabels}`
       : `  ${f.title} (flowchart)`;
-    items.push({ priority: 3, text: content, charLen: nodeLabels.length });
-  }
-
-  // 4. Drawings (lowest priority)
-  for (const d of apiData.drawings || []) {
-    if (d.uid === currentUid && currentType === 'drawing') continue;
-    items.push({ priority: 4, text: `  ${d.title} (drawing)`, charLen: 0 });
+    addItem(3, content, nodeLabels.length);
   }
 
   if (items.length === 0) return null;
 
-  items.sort((a, b) => a.priority - b.priority);
+  items.sort((a, b) => b.relevance - a.relevance || a.priority - b.priority);
 
   const parts: string[] = [];
   let used = 0;
@@ -154,4 +149,17 @@ export async function buildSiblingContext(
   }
 
   return `[Related files in this workspace (${parts.length})] — these share the same project. Cross-reference when relevant: ERDs may be the database backing a flowchart, notes may document a schema.\n${parts.join('\n')}`;
+}
+
+const IGNORED_QUERY_WORDS = new Set(['yang', 'dan', 'atau', 'untuk', 'dari', 'dengan', 'the', 'and', 'for', 'from', 'with', 'this', 'that']);
+
+export function siblingRelevanceScore(text: string, query: string): number {
+  const haystack = text.toLowerCase();
+  const tokens = new Set(query.toLowerCase().split(/[^\p{L}\p{N}_]+/u)
+    .filter(token => token.length > 2 && !IGNORED_QUERY_WORDS.has(token)));
+  let score = 0;
+  for (const token of tokens) {
+    if (haystack.includes(token)) score += token.includes('_') ? 3 : 1;
+  }
+  return score;
 }

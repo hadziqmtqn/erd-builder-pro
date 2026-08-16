@@ -19,9 +19,12 @@ import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers } from './data-viewer-utils';
 import ConfirmModal from '@/components/ConfirmModal';
+import { useAIAction } from '@/contexts/AIActionContext';
+import { buildDbClientTableContext } from '@/lib/db-client-ai-context';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; onDbTypeChange?: (dbType: string | null) => void; } type DataViewerView = 'data' | 'structure';
 export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
+  const { setActionContextData } = useAIAction();
   const {
     tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
@@ -228,6 +231,12 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   }, [activeTable, mutateTables, recordEditor.resetRecordEditor]);
   useEffect(() => { fetchTables(); }, [fetchTables]);
   useEffect(() => { onDbTypeChange?.(dbType); }, [dbType, onDbTypeChange]);
+  useEffect(() => {
+    setActionContextData({
+      aiContextText: buildDbClientTableContext({ dbType, activeView, table: activeTableSchema, tableCount: tables.length }),
+    });
+    return () => setActionContextData(null);
+  }, [activeTableSchema, activeView, dbType, setActionContextData, tables.length]);
   useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
   useEffect(() => {
     if (!activeTable || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {

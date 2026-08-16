@@ -15,6 +15,8 @@ import { localPersistence } from '@/lib/localPersistence';
 import { buildSqlCompletions } from './query-autocomplete';
 import { DataQueryResultTable } from './DataQueryResultTable';
 import { DataQueryToolbar } from './DataQueryToolbar';
+import { useAIAction } from '@/contexts/AIActionContext';
+import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
 
 type DataQueryViewProps = {
   connectionId: number;
@@ -81,6 +83,7 @@ const isQueryDirty = (tab: QueryTab, query?: any) => !query
 
 export function DataQueryView({ connectionId, diagramId, initialTable, openNonce = 0 }: DataQueryViewProps) {
   const { resolvedTheme } = useWorkspace();
+  const { setActionContextData } = useAIAction();
   const storageKey = `erd-production-db-query-tabs:${diagramId}:${connectionId}`;
   const [tables, setTables] = useState<any[]>([]);
   const [queries, setQueries] = useState<any[]>([]);
@@ -90,6 +93,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
   const { tabs, activeKey } = queryState;
   const activeTab = tabs.find(tab => tab.key === activeKey) || tabs[0] || null;
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dbType, setDbType] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [beautifying, setBeautifying] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -119,12 +123,20 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     if (!schemaRes.ok) throw new Error(schemaData.error || 'Failed to load schema');
     if (!queryRes.ok) throw new Error(queryData.error || 'Failed to load SQL queries');
     setTables(schemaData.schema || []);
+    setDbType(schemaData.dbType || null);
     setQueries(queryData.queries || []);
     setQueriesLoaded(true);
   }, [connectionId, diagramId]);
 
   useEffect(() => { load().catch((err: any) => setLoadError(err.message)); }, [load]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setActionContextData({ aiContextText: buildDbClientQueryContext(dbType, activeTab, tables) });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeTab, dbType, setActionContextData, tables]);
+  useEffect(() => () => setActionContextData(null), [setActionContextData]);
   useEffect(() => {
     let cancelled = false;
     setDraftLoaded(false);

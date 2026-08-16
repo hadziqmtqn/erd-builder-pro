@@ -25,6 +25,7 @@ interface AIChatPanelProps {
   entityUid?: string | null;
   entityTitle?: string | null;
   entityContextText?: string | null;
+  viewType?: ViewType | null;
   projectId?: number | string | null;
   pendingPrompt?: string | null;
   onPromptUsed?: () => void;
@@ -42,6 +43,7 @@ export const AIChatPanel = ({
   entityUid,
   entityTitle,
   entityContextText,
+  viewType,
   projectId,
   pendingPrompt,
   onPromptUsed,
@@ -80,7 +82,11 @@ export const AIChatPanel = ({
     diagram: 'erd',
     flowchart: 'flowchart',
   };
-  const currentViewType = entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null;
+  const currentViewType = viewType ?? (entityType && entityToViewMap[entityType] ? entityToViewMap[entityType] : null);
+  const effectiveEntityContextText = useMemo(() => [
+    entityContextText,
+    typeof actionContextData?.aiContextText === 'string' ? actionContextData.aiContextText : null,
+  ].filter(Boolean).join('\n\n') || null, [entityContextText, actionContextData?.aiContextText]);
 
   const {
     sessions,
@@ -97,7 +103,7 @@ export const AIChatPanel = ({
     hasMoreMessages,
     isLoadingMore,
     loadMoreMessages,
-  } = useAIChat(entityContext, entityContextText, onStreamComplete, projectId, currentViewType);
+  } = useAIChat(entityContext, effectiveEntityContextText, onStreamComplete, projectId, currentViewType);
 
   const [lastActionId, setLastActionId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -145,10 +151,10 @@ export const AIChatPanel = ({
   }, [pendingPrompt, onPromptUsed]);
 
   const handleSelectAction = useCallback((action: AIAction) => {
-    if (!entityType || !entityContextText || !entityTitle) return;
+    if (!entityType || !effectiveEntityContextText || !entityTitle) return;
 
     const context = {
-      content: entityContextText,
+      content: effectiveEntityContextText,
       title: entityTitle,
       ...(actionContextData || {}),
     };
@@ -166,7 +172,7 @@ export const AIChatPanel = ({
     setActiveActionPrompt(newPrompt);
     setLastActionId(action.id);
     inputRef.current?.focus();
-  }, [entityType, entityContextText, entityTitle, actionContextData, activeActionId]);
+  }, [entityType, effectiveEntityContextText, entityTitle, actionContextData, activeActionId]);
 
   const handleClearAction = useCallback(() => {
     setActiveActionId(null);
@@ -204,7 +210,7 @@ export const AIChatPanel = ({
       }
     }
     for (const d of diagrams) {
-      if (String(d.project_id) === String(pid) && !d.is_deleted && (d.source_type ?? d.sourceType) !== 'production_db') {
+      if (String(d.project_id) === String(pid) && !d.is_deleted) {
         files.push({ name: d.name || 'Untitled', type: 'diagram', uid: d.uid ?? String(d.id) });
       }
     }
@@ -213,14 +219,9 @@ export const AIChatPanel = ({
         files.push({ name: f.title || 'Untitled', type: 'flowchart', uid: f.uid ?? String(f.id) });
       }
     }
-    for (const d of drawings) {
-      if (String(d.project_id) === String(pid) && !d.is_deleted) {
-        files.push({ name: d.title || 'Untitled', type: 'drawing', uid: d.uid ?? String(d.id) });
-      }
-    }
     files.sort((a, b) => a.name.localeCompare(b.name));
     return files;
-  }, [projectId, notes, diagrams, flowcharts, drawings, entityType, entityUid]);
+  }, [projectId, notes, diagrams, flowcharts, entityType, entityUid]);
 
   // ─── Resolve @mentions to file content for AI context ──
   const resolveMentions = useCallback(async (text: string): Promise<{ context: string; seenUids: Set<string> }> => {
@@ -322,13 +323,10 @@ export const AIChatPanel = ({
 
     const { context: mentionContext } = await resolveMentions(text);
 
-    const finalMessage = activeActionPrompt
-      ? `${mentionContext}${text}\n\n---SYSTEM_PROMPT---\n${activeActionPrompt}`
-      : mentionContext
-        ? `${mentionContext}${text}`
-        : text;
-
-    sendMessage(finalMessage, selectionText);
+    sendMessage(text, selectionText, {
+      contextPrefix: mentionContext || undefined,
+      actionPrompt: activeActionPrompt || undefined,
+    });
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
     setActiveActionId(null);
@@ -503,6 +501,7 @@ export const AIChatPanel = ({
               hasActiveSession={hasActiveSession}
               isStreaming={isStreaming}
               entityType={entityType}
+              viewType={currentViewType}
               actions={actions}
               activeActionId={activeActionId}
               inputRef={inputRef}

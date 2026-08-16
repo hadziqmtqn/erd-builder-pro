@@ -105,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Show update instructions
         let alert = NSAlert()
         alert.messageText = "Update ERD Builder Pro"
-        alert.informativeText = "Run this command in your terminal:\n\nnpm update -g erdbpro\n\nThen restart with: erdbpro start --force"
+        alert.informativeText = "Run this command in your terminal:\n\nnpm install -g erdbpro@latest --prefer-online\n\nThen restart with: erdbpro start --force"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         DispatchQueue.main.async { alert.runModal() }

@@ -234,22 +234,18 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
 export async function getProjectSiblings(projectId: number, userId: string) {
   if (!prisma) throw new Error("Database connection not available");
 
-  const [notes, diagrams, flowcharts, drawings] = await Promise.all([
+  const [notes, diagrams, flowcharts] = await Promise.all([
     prisma.note.findMany({
       where: { projectId, userId, isDeleted: false },
       select: { uid: true, title: true, content: true, updatedAt: true },
     }),
     prisma.diagram.findMany({
       where: { projectId, userId, isDeleted: false },
-      select: { id: true, uid: true, name: true, updatedAt: true },
+      select: { id: true, uid: true, name: true, sourceType: true, updatedAt: true },
     }),
     prisma.flowchart.findMany({
       where: { projectId, userId, isDeleted: false },
       select: { uid: true, title: true, data: true, updatedAt: true },
-    }),
-    prisma.drawing.findMany({
-      where: { projectId, userId, isDeleted: false },
-      select: { uid: true, title: true, updatedAt: true },
     }),
   ]);
 
@@ -278,7 +274,7 @@ export async function getProjectSiblings(projectId: number, userId: string) {
       })),
   }));
 
-  return { notes, diagrams: diagramsWithEntities, flowcharts, drawings };
+  return { notes, diagrams: diagramsWithEntities, flowcharts };
 }
 
 // ── Summary (per-project doc counts) ──
