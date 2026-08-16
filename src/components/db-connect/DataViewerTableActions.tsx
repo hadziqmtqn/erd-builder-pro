@@ -135,7 +135,7 @@ export function DataViewerTableActions({ connectionId, dbType, table, tables, ex
     const data = rowsOverride
       ? { rows: rowsOverride, columns: (item.columns || []).map((col: any) => String(col.name || '')).filter(Boolean) }
       : includeContents || format !== 'sql' ? await fetchRows(name) : { rows: [], columns: picked };
-    const cols = picked.length ? picked : data.columns;
+    const cols: string[] = picked.length ? picked : data.columns;
     if (format === 'json') return JSON.stringify(data.rows.map(row => Object.fromEntries(cols.map(col => [col, row[col]]))), null, 2);
     const csvDelimiter = delimiter === 'tab' ? '\t' : delimiter;
     if (format === 'csv') return [cols.join(csvDelimiter), ...data.rows.map(row => cols.map(col => csvCell(row[col], csvDelimiter, decimal)).join(csvDelimiter))].join('\n');
