@@ -63,7 +63,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     return tables.find((item: any) => item.table_name === activeTable);
   }, [activeTable, tables]);
   const isNewTableTab = activeTable === '__new_table__';
-  const structureEditor = useStructureEditor(activeTableSchema, tables, updateStructure);
+  const structureEditor = useStructureEditor(activeTableSchema, tables, updateStructure, dbType);
   const columnHelpers = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === activeTable);
     return createColumnHelpers(new Map<string, any>((table?.columns || []).map((col: any) => [col.name, col])));

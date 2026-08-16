@@ -276,6 +276,8 @@ function AppLayoutInner() {
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const documentToDelete = tableDeleteDoc ?? activeDocument;
+  const deletingDbClient = (documentToDelete?.source_type ?? documentToDelete?.sourceType) === 'production_db';
   const propertiesEntity = useMemo(() => {
     const node = nodes.find(node => node.id === propertiesEntityId);
     return node ? node.data : null;
@@ -821,14 +823,20 @@ function AppLayoutInner() {
         <MoveToTrashAlert
           isOpen={isMoveToTrashAlertOpen}
           onOpenChange={(open) => { setIsMoveToTrashAlertOpen(open); if (!open) setTableDeleteDoc(null); }}
-          activeDocument={tableDeleteDoc ?? activeDocument}
+          activeDocument={documentToDelete}
           view={view}
           deleteDiagram={deleteDiagram}
           deleteNote={deleteNote}
           deleteDrawing={deleteDrawing}
           deleteFlowchart={deleteFlowchart}
           fetchTrash={fetchTrash}
-          onAfterDelete={async () => { setTableDeleteDoc(null); handleViewChange(view, true); setTableLoadingState('loading'); triggerTableRefresh(); }}
+          onAfterDelete={() => {
+            setTableDeleteDoc(null);
+            if (deletingDbClient) navigate('/table/db-client', { replace: true });
+            else void handleViewChange(view, true);
+            setTableLoadingState('loading');
+            triggerTableRefresh();
+          }}
         />
 
         {!isPublicView && (

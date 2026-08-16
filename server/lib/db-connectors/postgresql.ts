@@ -58,7 +58,7 @@ export const postgresqlConnector: DbConnector = {
               json_build_object(
                 'name', c.column_name,
                 'type', CASE WHEN c.data_type = 'USER-DEFINED' THEN c.udt_name ELSE c.data_type END,
-                'full_type', c.data_type,
+                'full_type', pg_catalog.format_type(a.atttypid, a.atttypmod),
                 'collation', c.collation_name,
                 'column_default', c.column_default,
                 'extra', CASE
@@ -84,6 +84,9 @@ export const postgresqlConnector: DbConnector = {
               ) ORDER BY c.ordinal_position
             )
             FROM information_schema.columns c
+            JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+            JOIN pg_catalog.pg_class cl ON cl.relnamespace = n.oid AND cl.relname = c.table_name
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name AND a.attnum > 0 AND NOT a.attisdropped
             LEFT JOIN (
               SELECT ku.column_name
               FROM information_schema.table_constraints tc

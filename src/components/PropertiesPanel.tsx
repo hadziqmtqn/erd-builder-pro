@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { useState, useEffect, useRef, type DragEvent } from 'react';
+import { useState, useEffect, useRef, type PointerEvent } from 'react';
 import { Plus, Trash2, Key, Check, X, Type, GripVertical, Wand2, MoreHorizontal, Clock3 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { cn } from '../lib/utils';
@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ColumnTypeSelect } from './ColumnTypeSelect';
 import TableCodePanel from './diagram/TableCodePanel';
 import { normalizeColumnDefault, supportsColumnLength, supportsNumericPrecision } from '@/lib/column-metadata';
+import { reorderColumns } from '@/lib/reorder-columns';
 
 const THEME_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 const DEFAULT_VARCHAR_LENGTH = 255;
@@ -50,6 +51,8 @@ export default function PropertiesPanel({
   const [auditColumnMenuOpen, setAuditColumnMenuOpen] = useState(false);
   const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
+  const draggedColumnIdRef = useRef<string | null>(null);
+  const dropTargetRef = useRef<typeof dropTarget>(null);
   const syncDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const suppressColumnBlurRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -232,54 +235,47 @@ export default function PropertiesPanel({
   };
 
   const handleReorder = (reorderedColumns: Column[]) => {
-    // Assign new sort_order based on new array index
-    const updatedColumns = reorderedColumns.map((col, index) => ({
-      ...col,
-      sort_order: index
-    }));
-
-    const updated = { ...editingEntity, columns: updatedColumns };
+    const updated = { ...editingEntity, columns: reorderedColumns };
     setEditingEntity(updated);
     syncWithParent(updated, true); // Immediate sync on drop
   };
 
-  const handleColumnDragStart = (event: DragEvent<HTMLButtonElement>, columnId: string) => {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', columnId);
+  const clearColumnDrag = () => {
+    draggedColumnIdRef.current = null;
+    dropTargetRef.current = null;
+    setDropTarget(null);
+    setDraggedColumnId(null);
+  };
+
+  const handleColumnPointerDown = (event: PointerEvent<HTMLButtonElement>, columnId: string) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggedColumnIdRef.current = columnId;
     setDraggedColumnId(columnId);
   };
 
-  const handleColumnDragOver = (event: DragEvent<HTMLDivElement>, columnId: string) => {
+  const handleColumnPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!draggedColumnIdRef.current) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    const position = event.clientY < event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-column-id]');
+    const id = target?.dataset.columnId;
+    if (!target || !id) return;
+    const rect = target.getBoundingClientRect();
+    const position = event.clientY < rect.top + rect.height / 2
       ? 'before'
       : 'after';
-    setDropTarget(current => current?.id === columnId && current.position === position ? current : { id: columnId, position });
+    const next = { id, position } as const;
+    dropTargetRef.current = next;
+    setDropTarget(current => current?.id === id && current.position === position ? current : next);
   };
 
-  const handleColumnDrop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
+  const handleColumnPointerUp = (event: PointerEvent<HTMLButtonElement>, sourceId: string) => {
     event.preventDefault();
-    const sourceId = event.dataTransfer.getData('text/plain') || draggedColumnId;
-    const position = dropTarget?.id === targetId ? dropTarget.position : 'before';
-    if (!sourceId || sourceId === targetId) {
-      setDraggedColumnId(null);
-      setDropTarget(null);
-      return;
-    }
-
-    const sortedColumns = [...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const source = sortedColumns.find(column => column.id === sourceId);
-    if (!source) return;
-
-    const reordered = sortedColumns.filter(column => column.id !== sourceId);
-    const targetIndex = reordered.findIndex(column => column.id === targetId);
-    if (targetIndex === -1) return;
-    reordered.splice(targetIndex + (position === 'after' ? 1 : 0), 0, source);
-
-    handleReorder(reordered);
-    setDraggedColumnId(null);
-    setDropTarget(null);
+    const target = dropTargetRef.current;
+    const reordered = target && reorderColumns(editingEntity.columns, sourceId, target.id, target.position);
+    if (reordered) handleReorder(reordered);
+    clearColumnDrag();
   };
 
   const deleteColumn = (colId: string) => {
@@ -445,8 +441,7 @@ export default function PropertiesPanel({
           {[...editingEntity.columns].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((col) => (
             <Card
               key={col.id}
-              onDragOver={(event) => handleColumnDragOver(event, col.id)}
-              onDrop={(event) => handleColumnDrop(event, col.id)}
+              data-column-id={col.id}
               className={cn(
                 'gap-1 p-2 bg-muted/10 border border-border/30 shadow-none hover:border-primary/30 transition-all',
                 draggedColumnId === col.id && 'opacity-50',
@@ -457,15 +452,13 @@ export default function PropertiesPanel({
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  draggable
                   aria-label={`Drag ${col.name} to reorder`}
                   title="Drag to reorder"
-                  onDragStart={(event) => handleColumnDragStart(event, col.id)}
-                  onDragEnd={() => {
-                    setDraggedColumnId(null);
-                    setDropTarget(null);
-                  }}
-                  className="h-7 w-6 shrink-0 cursor-grab rounded text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
+                  onPointerDown={(event) => handleColumnPointerDown(event, col.id)}
+                  onPointerMove={handleColumnPointerMove}
+                  onPointerUp={(event) => handleColumnPointerUp(event, col.id)}
+                  onPointerCancel={clearColumnDrag}
+                  className="h-7 w-6 shrink-0 touch-none select-none cursor-grab rounded text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
                 >
                   <GripVertical className="mx-auto h-4 w-4" />
                 </button>

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { editableTextColumnDefault, serializeColumnDefault } from '@/lib/db-client-default-options';
+import { columnTypeOption, columnTypeWithModifiers } from '../../shared/db-column-types';
 
 export type StructureTarget =
   | { kind: 'table' }
@@ -49,17 +51,9 @@ const parsePrecision = (type: string) => {
   const [, precision = '', scale = ''] = type.match(/\((\d+)(?:\s*,\s*(\d+))?\)/) || [];
   return { precision, scale };
 };
-const supportsLength = (type: string) => /^(var)?char|^character varying|^(var)?binary$/i.test(type.trim());
-const defaultLength = (type: string) => /^(var)?char|^(var)?binary$/i.test(type.trim()) ? '255' : '';
-const supportsPrecision = (type: string) => /^(decimal|numeric)$/i.test(type.replace(/\(.*/, '').trim());
-const typeWithModifiers = (type: string, length: string, precision: string, scale: string) => {
-  const cleanType = type.replace(/\([^)]*\)/, '').trim();
-  if (supportsLength(cleanType)) return `${cleanType}(${length || defaultLength(cleanType)})`;
-  if (supportsPrecision(cleanType) && precision) return `${cleanType}(${scale ? `${precision},${scale}` : precision})`;
-  return cleanType;
-};
-const normalizeType = (value: string) => value
+const normalizeType = (dbType: string | null, value: string) => columnTypeOption(dbType, value)
   .toLowerCase()
+  .replace(/\([^)]*\)/g, '')
   .replace(/[`"]/g, '')
   .replace(/\s+/g, ' ')
   .replace(/^int4$/, 'integer')
@@ -71,12 +65,13 @@ const normalizeType = (value: string) => value
   .replace(/^character varying/, 'varchar')
   .trim();
 
-const compatibleType = (left: string, right: string) => normalizeType(left) === normalizeType(right);
+const compatibleType = (dbType: string | null, left: string, right: string) => normalizeType(dbType, left) === normalizeType(dbType, right);
 
 export function useStructureEditor(
   activeTableSchema: any,
   tables: any[],
   updateStructure: (patch: Record<string, any>) => Promise<any>,
+  dbType: string | null,
 ) {
   const [target, setTarget] = useState<StructureTarget | null>(null);
   const [draft, setDraft] = useState<StructureDraft | null>(null);
@@ -156,7 +151,7 @@ export function useStructureEditor(
       numericPrecision: String(column?.numeric_precision || precision.precision || ''),
       numericScale: String(column?.numeric_scale || precision.scale || ''),
       isNullable: Boolean(column?.is_nullable),
-      columnDefault: column?.column_default ?? '',
+      columnDefault: editableTextColumnDefault(column?.column_default ?? ''),
       columnExtra: column?.extra ?? '',
       columnComment: column?.comment ?? '',
       enumValues: parseEnumValues(column?.enum_values),
@@ -195,9 +190,9 @@ export function useStructureEditor(
     }
     if (target.kind !== 'column' || !selectedColumn) return false;
     return draft.columnName !== selectedColumn.name ||
-      typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale) !== typeWithModifiers(columnType(selectedColumn), String(selectedColumn.max_length || parseLength(columnType(selectedColumn)) || ''), String(selectedColumn.numeric_precision || parsePrecision(columnType(selectedColumn)).precision || ''), String(selectedColumn.numeric_scale || parsePrecision(columnType(selectedColumn)).scale || '')) ||
+      columnTypeWithModifiers(dbType, draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale) !== columnTypeWithModifiers(dbType, columnType(selectedColumn), String(selectedColumn.max_length || parseLength(columnType(selectedColumn)) || ''), String(selectedColumn.numeric_precision || parsePrecision(columnType(selectedColumn)).precision || ''), String(selectedColumn.numeric_scale || parsePrecision(columnType(selectedColumn)).scale || '')) ||
       draft.isNullable !== Boolean(selectedColumn.is_nullable) ||
-      draft.columnDefault !== (selectedColumn.column_default ?? '') ||
+      draft.columnDefault !== editableTextColumnDefault(selectedColumn.column_default ?? '') ||
       draft.columnExtra !== (selectedColumn.extra ?? '') ||
       draft.columnComment !== (selectedColumn.comment ?? '') ||
       draft.enumValues.join('\u0000') !== parseEnumValues(selectedColumn.enum_values).join('\u0000') ||
@@ -207,12 +202,12 @@ export function useStructureEditor(
       draft.fkConstraintName !== (currentFk?.constraint_name || '') ||
       draft.fkOnDelete !== (currentFk?.on_delete || 'NO ACTION') ||
       draft.fkOnUpdate !== (currentFk?.on_update || 'NO ACTION');
-  }, [activeTableSchema, currentFk, draft, selectedCheck, selectedColumn, selectedIndex, target]);
+  }, [activeTableSchema, currentFk, dbType, draft, selectedCheck, selectedColumn, selectedIndex, target]);
 
   const referenceColumns = useMemo(() => {
     const table = tables.find((item: any) => item.table_name === draft?.refTable);
-    return (table?.columns || []).filter((column: any) => compatibleType(draft?.columnType || '', columnType(column)));
-  }, [draft?.columnType, draft?.refTable, tables]);
+    return (table?.columns || []).filter((column: any) => compatibleType(dbType, draft?.columnType || '', columnType(column)));
+  }, [dbType, draft?.columnType, draft?.refTable, tables]);
 
   const save = useCallback(async () => {
     if (!target || !draft || !isDirty) return;
@@ -224,9 +219,9 @@ export function useStructureEditor(
           comment: draft.tableComment,
           column: {
             name: draft.columnName,
-            type: typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
+            type: columnTypeWithModifiers(dbType, draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
             is_nullable: draft.isNullable,
-            column_default: draft.columnDefault,
+            column_default: serializeColumnDefault(draft.columnType, draft.columnDefault),
             extra: draft.columnExtra,
             comment: draft.columnComment,
             enum_values: draft.enumValues,
@@ -237,9 +232,9 @@ export function useStructureEditor(
         columnName: target.kind === 'column' ? target.columnName : target.kind === 'addColumn' ? '__new__' : undefined,
         column: target.kind === 'column' || target.kind === 'addColumn' ? {
           name: draft.columnName,
-          type: typeWithModifiers(draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
+          type: columnTypeWithModifiers(dbType, draft.columnType, draft.characterLength, draft.numericPrecision, draft.numericScale),
           is_nullable: draft.isNullable,
-          column_default: draft.columnDefault,
+          column_default: serializeColumnDefault(draft.columnType, draft.columnDefault),
           extra: draft.columnExtra,
           comment: draft.columnComment,
           enum_values: draft.enumValues,
@@ -272,7 +267,7 @@ export function useStructureEditor(
     } finally {
       setIsSaving(false);
     }
-  }, [draft, isDirty, target, updateStructure]);
+  }, [dbType, draft, isDirty, target, updateStructure]);
 
   return {
     target,
