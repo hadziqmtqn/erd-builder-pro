@@ -279,9 +279,11 @@ function AppLayoutInner() {
   const documentToDelete = tableDeleteDoc ?? activeDocument;
   const deletingDbClient = (documentToDelete?.source_type ?? documentToDelete?.sourceType) === 'production_db';
   const propertiesEntity = useMemo(() => {
-    const node = nodes.find(node => node.id === propertiesEntityId);
-    return node ? node.data : null;
-  }, [nodes, propertiesEntityId]);
+    const node = nodes.find(node => node.id === selectedNodeId)
+      ?? nodes.find(node => node.id === propertiesEntityId);
+    if (!node) return null;
+    return node.data.id === node.id ? node.data : { ...node.data, id: node.id };
+  }, [nodes, propertiesEntityId, selectedNodeId]);
 
   // Use the URL UUID rather than activeDiagramId. The workspace can briefly
   // switch that ID from a numeric value to a UUID while loading; using it as

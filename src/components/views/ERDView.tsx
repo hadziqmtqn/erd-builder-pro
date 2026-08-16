@@ -10,6 +10,7 @@ import {
   Node,
   Edge,
   MarkerType,
+  ConnectionLineType,
   useReactFlow,
   addEdge,
   reconnectEdge,
@@ -123,6 +124,7 @@ const ERDViewComponent = ({
   const sourceConnectionId = activeDocument?.source_connection_id as number | undefined;
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
 
   // ─── Multi-table selection ───────────────────────────
@@ -625,6 +627,8 @@ const ERDViewComponent = ({
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onReconnectStart={() => setIsReconnecting(true)}
+          onReconnectEnd={() => setIsReconnecting(false)}
           onReconnect={(oldEdge, connection) => {
             if (!connection.sourceHandle || !connection.targetHandle) return;
             const erdIndexes = buildErdIndexes(nodes, edges);
@@ -697,13 +701,15 @@ const ERDViewComponent = ({
           onlyRenderVisibleElements={true}
           // Production DB ERD stays read-only for schema edits, but table positions are editable.
           nodesDraggable={!pendingDiff && (!isReadOnly || isProductionDb)}
-          nodesConnectable={!isReadOnly && !pendingDiff}
+          nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
           elementsSelectable={!isReadOnly && !pendingDiff}
           onNodeDragStop={onNodeDragStop}
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={defaultEdgeOptions}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineStyle={defaultEdgeOptions.style}
           deleteKeyCode={null}
         >
 
