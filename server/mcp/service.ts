@@ -7,7 +7,7 @@ import { normalizeSelectQuery } from "../routes/connections/query-helpers.js";
 import { getNote, updateNote } from "../routes/notes/service.js";
 import { getFlowchart } from "../routes/flowcharts/service.js";
 import { getDiagramWithData } from "../routes/diagrams/save-service.js";
-import { listHistory, readHistoryRevision } from "../routes/entity-changes/service.js";
+import { listHistory, readHistoryRevision, restoreHistoryRevision } from "../routes/entity-changes/service.js";
 
 export const MCP_DOCUMENT_TYPES = ["notes", "flowcharts", "diagrams"] as const;
 export type McpDocumentType = (typeof MCP_DOCUMENT_TYPES)[number];
@@ -22,7 +22,18 @@ type NoteProposal = {
   expiresAt: number;
 };
 
+type HistoryRestoreProposal = {
+  id: string;
+  userId: string;
+  entityType: McpDocumentType;
+  uid: string;
+  revisionId: string;
+  expectedUpdatedAt: string | null;
+  expiresAt: number;
+};
+
 const proposals = new Map<string, NoteProposal>();
+const historyRestoreProposals = new Map<string, HistoryRestoreProposal>();
 const PROPOSAL_TTL_MS = 10 * 60 * 1000;
 
 export function assertMcpInstallMode(mode = getInstallMode()) {
@@ -83,7 +94,7 @@ export async function listWorkspaceFiles(userId: string, projectUid?: string) {
   if (projectUid && !project) throw new Error("Project not found");
   const where = { userId, isDeleted: false, ...(project ? { projectId: project.id } : {}) };
   const [projects, notes, flowcharts, diagrams] = await Promise.all([
-    prisma.project.findMany({ where: { userId, isDeleted: false }, select: { id: true, uid: true, name: true, updatedAt: true } }),
+    prisma.project.findMany({ where: { userId, isDeleted: false }, select: { id: true, uid: true, name: true, createdAt: true } }),
     prisma.note.findMany({ where, select: { id: true, uid: true, title: true, projectId: true, updatedAt: true } }),
     prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, projectId: true, updatedAt: true } }),
     prisma.diagram.findMany({ where, select: { id: true, uid: true, name: true, projectId: true, sourceType: true, updatedAt: true } }),
@@ -157,6 +168,75 @@ export async function historyRead(userId: string, type: McpDocumentType, uid: st
   const revision = await readHistoryRevision(type, uid, userId, revisionId);
   if (!revision) throw new Error("History revision not found");
   return serialize(revision);
+}
+
+function historyPreview(type: McpDocumentType, snapshot: any) {
+  if (type === "notes") {
+    const content = String(snapshot?.content ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return { title: String(snapshot?.title ?? "Untitled"), content_preview: content.slice(0, 500) };
+  }
+  if (type === "flowcharts") {
+    const data = typeof snapshot?.data === "string" ? snapshot.data : JSON.stringify(snapshot?.data ?? "");
+    return { title: String(snapshot?.title ?? "Untitled"), data_preview: data.slice(0, 500) };
+  }
+  return {
+    name: String(snapshot?.name ?? "Untitled"),
+    entity_count: Array.isArray(snapshot?.entities) ? snapshot.entities.length : undefined,
+    relationship_count: Array.isArray(snapshot?.relationships) ? snapshot.relationships.length : undefined,
+    dbml_preview: String(snapshot?.dbml_source ?? "").slice(0, 500),
+  };
+}
+
+export async function proposeHistoryRestore(userId: string, type: McpDocumentType, uid: string, revisionId: string) {
+  const [history, revision] = await Promise.all([
+    listHistory(type, uid, userId, 100),
+    readHistoryRevision(type, uid, userId, revisionId),
+  ]);
+  if (!history || !revision) throw new Error("Document or history revision not found");
+  const proposal: HistoryRestoreProposal = {
+    id: randomUUID(), userId, entityType: type, uid, revisionId,
+    expectedUpdatedAt: history.current_updated_at,
+    expiresAt: Date.now() + PROPOSAL_TTL_MS,
+  };
+  historyRestoreProposals.set(proposal.id, proposal);
+  return {
+    proposal_id: proposal.id,
+    confirmation: proposal.id,
+    operation: "restore_history",
+    type,
+    uid,
+    revision_id: revision.id,
+    revision_created_at: revision.created_at,
+    current_updated_at: proposal.expectedUpdatedAt,
+    expires_at: new Date(proposal.expiresAt).toISOString(),
+    preview: historyPreview(type, revision.snapshot),
+  };
+}
+
+export async function applyHistoryRestore(userId: string, proposalId: string, confirmation: string) {
+  const proposal = historyRestoreProposals.get(proposalId);
+  if (!proposal || proposal.userId !== userId || proposal.expiresAt < Date.now()) {
+    historyRestoreProposals.delete(proposalId);
+    throw new Error("History restore proposal is missing or expired; create a new proposal");
+  }
+  if (confirmation !== proposal.id) throw new Error("Confirmation must exactly match proposal_id");
+  const result = await restoreHistoryRevision({
+    entityType: proposal.entityType,
+    uid: proposal.uid,
+    userId,
+    revisionId: proposal.revisionId,
+    expectedUpdatedAt: proposal.expectedUpdatedAt,
+  });
+  if (result.status === "conflict") throw new Error("Conflict: document changed after this restore proposal was created");
+  if (result.status !== "ok") throw new Error("Document or history revision not found");
+  historyRestoreProposals.delete(proposalId);
+  return serialize({
+    status: result.status,
+    type: proposal.entityType,
+    uid: proposal.uid,
+    revision_id: result.revisionId ? String(result.revisionId) : null,
+    updated_at: result.updatedAt,
+  });
 }
 
 export async function proposeNoteAppend(userId: string, noteUid: string, text: string) {

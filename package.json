@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "3.3.4",
+  "version": "3.3.5",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development tsx watch server/dev.ts",
@@ -48,7 +48,10 @@
     "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.9.1",

@@ -45,11 +45,11 @@ async function diagramSnapshot(diagram: any) {
     };
   }
 
-  const entities = await prisma!.entity.findMany({ where: { diagramId: Number(diagram.id) } });
+  const entities = await prisma!.entity.findMany({ where: { diagramId: diagram.id } });
   const entityIds = entities.map(entity => entity.id);
   const [columns, relationships, constraints, indexes] = await Promise.all([
     prisma!.column.findMany({ where: { entityId: { in: entityIds } }, orderBy: { sortOrder: "asc" } }),
-    prisma!.relationship.findMany({ where: { diagramId: Number(diagram.id) } }),
+    prisma!.relationship.findMany({ where: { diagramId: diagram.id } }),
     prisma!.tableConstraint.findMany({ where: { entityId: { in: entityIds } } }),
     prisma!.tableIndex.findMany({ where: { entityId: { in: entityIds } } }),
   ]);

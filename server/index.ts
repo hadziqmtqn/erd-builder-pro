@@ -30,6 +30,8 @@ import desktopImportRouter from "./routes/desktop-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
 import storageRouter from "./routes/storage/index.js";
 import entityChangesRouter from "./routes/entity-changes/index.js";
+import oauthConsentRouter from "./routes/oauth-consent.js";
+import { createPublicMcpRouter } from "./mcp/public-router.js";
 
 const app = express();
 
@@ -126,6 +128,9 @@ app.use(cors({
   },
   credentials: true
 }));
+
+const publicMcpRouter = createPublicMcpRouter();
+if (publicMcpRouter) app.use(publicMcpRouter);
 
 // Global rate limiter — 200 req/min per IP
 const globalLimiter = rateLimit({
@@ -323,6 +328,7 @@ app.get("/api/version/latest", async (_req, res) => {
 });
 
 app.use("/api", authRouter);
+app.use("/api", oauthConsentRouter);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/search", searchRouter);

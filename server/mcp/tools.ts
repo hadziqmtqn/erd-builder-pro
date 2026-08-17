@@ -5,9 +5,11 @@ import {
   applyNoteAppend,
   historyList,
   historyRead,
+  applyHistoryRestore,
   listDbCatalogs,
   listWorkspaceFiles,
   proposeNoteAppend,
+  proposeHistoryRestore,
   readDbSchema,
   readDocument,
   resolveMcpUserId,
@@ -16,6 +18,7 @@ import {
 
 const documentType = z.enum(MCP_DOCUMENT_TYPES);
 const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
+const externalReadOnly = { readOnlyHint: true, openWorldHint: true } as const;
 const jsonResult = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });
 
 export function registerTools(server: McpServer) {
@@ -39,6 +42,17 @@ export function registerTools(server: McpServer) {
     inputSchema: { type: documentType, uid: z.string().min(1), revision_id: z.string().min(1) }, annotations: readOnly,
   }, async ({ type, uid, revision_id }) => jsonResult(await historyRead(await resolveMcpUserId(), type, uid, revision_id)));
 
+  server.registerTool("history_restore_propose", {
+    description: "Prepare a history restore for a Note, Flowchart, or ERD. This does not modify data; review the preview before applying.",
+    inputSchema: { type: documentType, uid: z.string().min(1), revision_id: z.string().min(1) }, annotations: readOnly,
+  }, async ({ type, uid, revision_id }) => jsonResult(await proposeHistoryRestore(await resolveMcpUserId(), type, uid, revision_id)));
+
+  server.registerTool("history_restore_apply", {
+    description: "Apply a previously proposed history restore. Requires the exact proposal ID as confirmation, rejects stale documents, and creates a pre-restore safety revision.",
+    inputSchema: { proposal_id: z.string().uuid(), confirmation: z.string().uuid() },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  }, async ({ proposal_id, confirmation }) => jsonResult(await applyHistoryRestore(await resolveMcpUserId(), proposal_id, confirmation)));
+
   server.registerTool("db_list_catalogs", {
     description: "List configured DB Client catalogs and non-secret connection metadata. Passwords and TLS keys are never returned.",
     annotations: readOnly,
@@ -46,12 +60,12 @@ export function registerTools(server: McpServer) {
 
   server.registerTool("db_read_schema", {
     description: "Read tables, columns, indexes, checks, and foreign keys from one DB Client catalog.",
-    inputSchema: { catalog_id: z.number().int().positive() }, annotations: readOnly,
+    inputSchema: { catalog_id: z.number().int().positive() }, annotations: externalReadOnly,
   }, async ({ catalog_id }) => jsonResult(await readDbSchema(await resolveMcpUserId(), catalog_id)));
 
   server.registerTool("db_query_read_only", {
     description: "Run one SELECT/CTE against a PostgreSQL or MySQL DB Client catalog in a forced read-only session.",
-    inputSchema: { catalog_id: z.number().int().positive(), sql: z.string().min(1).max(100_000), max_rows: z.number().int().min(1).max(500).default(100) }, annotations: readOnly,
+    inputSchema: { catalog_id: z.number().int().positive(), sql: z.string().min(1).max(100_000), max_rows: z.number().int().min(1).max(500).default(100) }, annotations: externalReadOnly,
   }, async ({ catalog_id, sql, max_rows }) => jsonResult(await runReadOnlyQuery(await resolveMcpUserId(), catalog_id, sql, max_rows)));
 
   server.registerTool("note_append_propose", {

@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
   "mainBinaryName": "ERD Builder Pro",
-  "version": "3.3.4",
+  "version": "3.3.5",
   "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",

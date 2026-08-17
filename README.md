@@ -55,14 +55,14 @@ Opens at `http://localhost:3101`. Data stored locally in `~/.erdbpro/`. Login wi
 
 A desktop app is also available on the [releases page](https://github.com/hadziqmtqn/erd-builder-pro/releases) (macOS `.dmg`, Windows `.msi`, Linux `.deb`). Note: the desktop app is not yet code-signed — macOS and Windows may show a security warning on first launch.
 
-### MCP (Desktop and CLI) — Experimental
+### MCP (Desktop, CLI, and Web) — Experimental
 
 > [!WARNING]
 > MCP support is **Experimental**. Tool names, inputs, and capability limits may change. Review write-tool calls before approving them.
 
-Use `erdbpro mcp` for CLI data or `erdbpro mcp --desktop` for Desktop data. The Desktop launcher detects the installed application automatically; when run from this repository it uses the active Desktop dev database. Both launch a local stdio server, while Docker and web deployments expose no MCP endpoint.
+Use `erdbpro mcp` for CLI data or `erdbpro mcp --desktop` for Desktop data. Supabase Web App deployments can additionally expose an OAuth-protected Streamable HTTP endpoint by setting `MCP_PUBLIC_URL` and enabling the Supabase OAuth 2.1 server.
 
-The initial tool set reads workspace files, history, DB Client catalogs/schemas, and read-only PostgreSQL/MySQL queries. Notes writes use a separate propose/apply pair, reject stale content, escape appended text, and create an `entity_changes` safety snapshot before applying.
+The local tool set can read DB Client data and apply confirmed Note/history operations. The public Web MCP surface is separate and read-only: it exposes Web workspace documents and history, while DB Client, `production_db`, credentials, SQL execution, filesystem access, and writes are not registered.
 
 ### 🐳 Docker
 
