@@ -1,4 +1,4 @@
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { useRef, useEffect, useState } from 'react';
 
 // Components
@@ -28,10 +28,12 @@ import { FlowchartEditorRoute } from './routes/FlowchartEditorRoute';
 import { AdminRoute } from './routes/AdminRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
+import { OAuthConsent } from './components/OAuthConsent';
 
 function AppContent() {
   const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [aboutOpen, setAboutOpen] = useState(false);
 
   // Listen for native macOS menu events (emitted from Rust via Tauri)
@@ -73,9 +75,9 @@ function AppContent() {
       wasUnauthenticatedRef.current = true;
     } else if (isAuthenticated === true && wasUnauthenticatedRef.current) {
       wasUnauthenticatedRef.current = false;
-      navigate('/');
+      if (location.pathname !== '/oauth/consent') navigate('/');
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, location.pathname, navigate]);
 
   const { isPublicView, setIsPublicView, publicData, isPublicLoading, forbiddenDoc, fetchPublicDocument } = usePublicDocument(() => {});
   const shareInfo = getSharePathInfo();
@@ -117,6 +119,10 @@ function AppContent() {
         onGuestLogin={handleGuestLogin}
       />
     );
+  }
+
+  if (location.pathname === '/oauth/consent') {
+    return <OAuthConsent />;
   }
 
   // Main app

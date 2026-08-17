@@ -6,6 +6,11 @@ import pkg from './package.json';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const allowedHosts = new Set<string>();
+  for (const value of [env.MCP_PUBLIC_URL, ...(env.CORS_ORIGINS || '').split(',')]) {
+    if (!value) continue;
+    try { allowedHosts.add(new URL(value).hostname); } catch { /* ignore invalid optional URLs */ }
+  }
   return {
     plugins: [react(), tailwindcss()],
     base: '/',
@@ -29,6 +34,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       port: 5173,
+      allowedHosts: [...allowedHosts],
       proxy: {
         '/api': {
           target: process.env.VITE_API_URL || 'http://localhost:3000',

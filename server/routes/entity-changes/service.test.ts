@@ -17,6 +17,7 @@ database.close();
 const { prisma } = await import("../../lib/prisma.js");
 const notes = await import("../notes/service.js");
 const history = await import("./service.js");
+const mcp = await import("../../mcp/service.js");
 
 describe("entity history restore", () => {
   beforeAll(async () => {
@@ -68,5 +69,23 @@ describe("entity history restore", () => {
     expect(restored).toMatchObject({ title: "Initial", content: "<p>Initial content</p>", version: 3 });
     const revisions = await history.listHistory("notes", "history-note", "history-user", 100);
     expect(revisions?.revisions.map(item => item.change_type)).toEqual(["restore", "pre_restore", "update"]);
+  });
+
+  it("restores a proposed history revision only with exact confirmation", async () => {
+    await notes.createNote({
+      uid: "mcp-history-note",
+      userId: "history-user",
+      title: "MCP current",
+      content: "<p>Current</p>",
+    });
+    await notes.updateNote("mcp-history-note", "history-user", { content: "<p>Newer</p>" });
+
+    const opened = await history.listHistory("notes", "mcp-history-note", "history-user", 100);
+    const proposal = await mcp.proposeHistoryRestore("history-user", "notes", "mcp-history-note", opened!.revisions[0].id);
+    expect(proposal.preview).toMatchObject({ title: "MCP current", content_preview: "Current" });
+    await expect(mcp.applyHistoryRestore("history-user", proposal.proposal_id, "00000000-0000-0000-0000-000000000000"))
+      .rejects.toThrow(/exactly match/);
+    await expect(mcp.applyHistoryRestore("history-user", proposal.proposal_id, proposal.confirmation))
+      .resolves.toMatchObject({ status: "ok", type: "notes", uid: "mcp-history-note" });
   });
 });
