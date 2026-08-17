@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
+  "mainBinaryName": "ERD Builder Pro",
   "version": "3.3.4",
   "identifier": "com.erdbuilderpro.app",
   "build": {
@@ -47,6 +48,7 @@
     },
     "resources": {
       "../dist-server/index.js": "dist-server/index.js",
+      "../dist-server/mcp.js": "dist-server/mcp.js",
       "../dist-server/migrate-db.mjs": "dist-server/migrate-db.mjs",
       "../dist-server/schema.sql": "dist-server/schema.sql",
       "../dist-server/node_modules": "dist-server/node_modules",

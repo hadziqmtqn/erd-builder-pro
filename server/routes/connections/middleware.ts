@@ -133,5 +133,5 @@ export async function runStartupMigration() {
   }
 }
 
-// Run on import
-runStartupMigration();
+// MCP owns stdout for JSON-RPC framing and must not run this legacy migration on import.
+if (process.env.ERDBPRO_MCP_STDIO !== "1") runStartupMigration();

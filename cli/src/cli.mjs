@@ -9,6 +9,7 @@ import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isNewerVersion, updateInstallCommand } from './update.mjs';
+import { startDesktopMcp } from './desktop-mcp.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Dev: cli/src/cli.mjs → pkg at ../..   Prod: src/cli.mjs → pkg at ..
@@ -159,6 +160,33 @@ function startServer(port, background) {
   };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
+}
+
+function startMcpServer() {
+  const mcpScript = path.join(PKG_ROOT, 'dist-server', 'mcp.js');
+  if (!fs.existsSync(mcpScript)) {
+    console.error(`❌ MCP bundle not found: ${mcpScript}`);
+    process.exit(1);
+  }
+  ensureDataDir();
+  const child = spawn(process.execPath, [mcpScript], {
+    cwd: PKG_ROOT,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      DATABASE_URL: `file:${DB_PATH}`,
+      DB_VARIANT: 'sqlite',
+      NODE_ENV: 'production',
+      ERD_INSTALL_MODE: 'cli',
+      ERDBPRO_MCP_STDIO: '1',
+      APP_VERSION: VERSION,
+    },
+  });
+  child.on('error', (error) => {
+    console.error(`❌ Failed to start MCP server: ${error.message}`);
+    process.exit(1);
+  });
+  child.on('exit', code => process.exit(code ?? 0));
 }
 
 function stopServer(silent = false) {
@@ -477,6 +505,19 @@ program
   .description('Check for updates and show install instructions')
   .action(async () => {
     await checkForUpdates({ force: true, announce: true });
+  });
+
+program
+  .command('mcp')
+  .description('Run the local MCP server over stdio (Desktop/CLI only)')
+  .option('--desktop', 'Use the Desktop app data (installed app or dev workspace)')
+  .action((options) => {
+    checkNodeVersion();
+    if (options.desktop) {
+      startDesktopMcp();
+      return;
+    }
+    startMcpServer();
   });
 
 // Default: "erdbpro" without subcommand = "erdbpro start"
