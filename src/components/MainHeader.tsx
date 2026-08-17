@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
+import { VersionHistoryPanel, type HistoryEntityType } from './history/VersionHistoryPanel';
 
 import { AppView } from '@/types';
 
@@ -91,7 +92,25 @@ export const MainHeader = React.memo(({
 }: MainHeaderProps) => {
   const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+  const [historyTargetMinutes, setHistoryTargetMinutes] = React.useState<number>();
   const [isMac, setIsMac] = React.useState(false);
+  const historyEntityType: HistoryEntityType | null = view === 'erd'
+    ? 'diagrams'
+    : view === 'flowchart'
+      ? 'flowcharts'
+      : view === 'notes' || view === 'drawings'
+        ? view
+        : null;
+  const historyEnabled = Boolean(
+    historyEntityType && activeFileUid && !isGuest && !isPublicView && isOnline
+    && !isLocalSaving && !isSyncing && !hasPendingSyncs,
+  );
+
+  const openHistory = React.useCallback((minutes?: number) => {
+    setHistoryTargetMinutes(minutes);
+    setIsHistoryOpen(true);
+  }, []);
 
   React.useEffect(() => {
     setIsMac(window.navigator.userAgent.toLowerCase().includes('mac'));
@@ -338,6 +357,8 @@ export const MainHeader = React.memo(({
               activeFileUid={activeFileUid}
               documentType={view}
               noteContent={noteContent}
+              historyEnabled={historyEnabled}
+              onOpenHistory={isGuest || isPublicView ? undefined : openHistory}
             />
 
             {activeFileUid && activeFileId && isOnline && (
@@ -351,6 +372,18 @@ export const MainHeader = React.memo(({
                 isPublicView={isPublicView}
                 initialSettings={initialShareSettings}
                 onSettingsSaved={onSettingsSaved}
+              />
+            )}
+
+            {activeFileUid && historyEntityType && (
+              <VersionHistoryPanel
+                open={isHistoryOpen}
+                onOpenChange={setIsHistoryOpen}
+                entityType={historyEntityType}
+                entityUid={activeFileUid}
+                documentTitle={activeFileName || 'Untitled'}
+                targetMinutes={historyTargetMinutes}
+                onRestored={() => window.location.reload()}
               />
             )}
           </div>

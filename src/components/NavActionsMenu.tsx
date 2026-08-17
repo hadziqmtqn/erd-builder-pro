@@ -8,7 +8,8 @@ import {
   Copy,
   Download,
   Upload,
-  BarChart3
+  BarChart3,
+  History
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -40,6 +41,8 @@ interface NavActionsMenuProps {
   activeFileUid?: string;
   documentType: 'erd' | 'notes' | 'drawings' | 'flowchart' | string;
   noteContent?: string;
+  historyEnabled?: boolean;
+  onOpenHistory?: (minutes?: number) => void;
 }
 
 
@@ -58,7 +61,9 @@ export const NavActionsMenu = ({
   isPublic = false,
   activeFileUid,
   documentType,
-  noteContent
+  noteContent,
+  historyEnabled = false,
+  onOpenHistory,
 }: NavActionsMenuProps) => {
 
   const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&[^;]+;/g, ' ').trim();
@@ -152,6 +157,24 @@ export const NavActionsMenu = ({
                 )}
                 <span>{documentType === 'erd' ? 'Settings' : 'Edit Document'}</span>
               </DropdownMenuItem>
+
+              {onOpenHistory && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={!historyEnabled} className="gap-2 cursor-pointer">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <span>Version History</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-52">
+                    <DropdownMenuItem onClick={() => onOpenHistory()} className="cursor-pointer">Browse all versions</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {[5, 10, 30].map(minutes => (
+                      <DropdownMenuItem key={minutes} onClick={() => onOpenHistory(minutes)} className="cursor-pointer">
+                        Preview {minutes} minutes ago
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
 
               <DropdownMenuSeparator />
 

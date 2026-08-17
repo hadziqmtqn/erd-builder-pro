@@ -180,12 +180,12 @@ CREATE TABLE IF NOT EXISTS flowcharts (
 -- Entity Changes Table (Audit Trail)
 CREATE TABLE IF NOT EXISTS entity_changes (
   id BIGSERIAL PRIMARY KEY,
-  entity_type TEXT NOT NULL, -- 'diagram', 'note', 'drawing', 'flowchart'
+  entity_type TEXT NOT NULL, -- 'diagrams', 'notes', 'drawings', 'flowcharts'
   entity_id TEXT NOT NULL,
   version INTEGER NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  changes JSONB NOT NULL, -- {field: old_value, field: new_value, ...}
-  change_type TEXT DEFAULT 'update', -- 'create', 'update', 'delete'
+  changes JSONB NOT NULL, -- normalized document snapshot
+  change_type TEXT DEFAULT 'update', -- 'create', 'update', 'delete', 'pre_restore', 'restore'
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -516,7 +516,7 @@ BEGIN
     END;
   END IF;
 
-  v_changes := to_jsonb(NEW);
+  v_changes := to_jsonb(NEW) - ARRAY['share_token', 'user_id'];
   v_version := COALESCE((to_jsonb(NEW)->>'_version')::INTEGER, 0);
 
   -- Throttle: skip if last snapshot < 5 min ago

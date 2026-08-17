@@ -29,6 +29,7 @@ import guestImportRouter from "./routes/guest-import/index.js";
 import desktopImportRouter from "./routes/desktop-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
 import storageRouter from "./routes/storage/index.js";
+import entityChangesRouter from "./routes/entity-changes/index.js";
 
 const app = express();
 
@@ -339,6 +340,7 @@ app.use("/api/guest", guestImportRouter);
 app.use("/api/desktop", desktopImportRouter);
 app.use("/api", connectionsRouter);
 app.use("/api/storage", storageRouter);
+app.use("/api/entity-changes", entityChangesRouter);
 
 // ── Auto-backup scheduler (desktop mode) ──
 initAutoBackupScheduler().catch((err) => {

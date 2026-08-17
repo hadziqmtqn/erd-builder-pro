@@ -3,6 +3,8 @@ import { fetchSchema, testConnection } from "../../lib/db-connectors/registry.js
 import { erdColumnType } from "../../lib/db-connectors/types.js";
 import type { ConnectionInfo } from "../../lib/db-connectors/types.js";
 import { encrypt } from "../../lib/crypto.js";
+import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
+import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import {
   uidWhereClause,
   dedupe,
@@ -202,37 +204,40 @@ export async function saveDiagram(
       viewportZoom: body.viewport?.zoom || 1.0,
       ...(mergedData !== undefined && { data: typeof mergedData === "string" ? mergedData : JSON.stringify(mergedData) }),
       ...(normalizedDbmlSource !== undefined && { dbmlSource: normalizedDbmlSource }),
+      ...((isDesktopMode() || isLocalPostgres()) && { version: (currentDiagram.version ?? 0) + 1 }),
     },
     select: { version: true },
   });
 
-  // ── Audit log (throttled: max once per 5 min) ──
-  const lastAudit = await prisma.entityChange.findFirst({
-    where: { entityType: "diagrams", entityId: String(diagramId) },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const shouldAudit = !lastAudit || (lastAudit.createdAt && new Date(lastAudit.createdAt) < fiveMinutesAgo);
-
-  if (shouldAudit) {
-    await prisma.entityChange.create({
-      data: {
-        entityType: "diagrams",
-        entityId: String(diagramId),
-        version: updatedDiagram?.version ?? (currentDiagram.version ?? 0) + 1,
-        userId,
-        changes: JSON.stringify({
-          entities: body.entities,
-          relationships: body.relationships,
-          viewport: body.viewport,
+  const parsedHistoryData = isProductionDbSave
+    ? (typeof mergedData === "string" ? JSON.parse(mergedData) : mergedData ?? {})
+    : null;
+  await captureEntityRevisionSafely({
+    entityType: "diagrams",
+    entityId: diagramId,
+    userId,
+    snapshot: isProductionDbSave
+      ? {
           name: currentDiagram.name,
-          dbml_source: normalizedDbmlSource ?? currentDiagram.dbmlSource ?? null,
-        }),
-        changeType: "update",
-      },
-    });
-  }
+          source_type: "production_db",
+          data: {
+            nodes: parsedHistoryData.nodes ?? {},
+            viewport: parsedHistoryData.viewport ?? body.viewport ?? { x: 0, y: 0, zoom: 1 },
+            _type: "production_db_positions",
+            dbml_source: normalizedDbmlSource ?? currentDiagram.dbmlSource ?? "",
+            schema_fingerprint: parsedHistoryData.schema_fingerprint ?? null,
+          },
+          dbml_source: normalizedDbmlSource ?? currentDiagram.dbmlSource ?? "",
+        }
+      : {
+          name: currentDiagram.name,
+          source_type: "blank",
+          entities: dedupedEntities,
+          relationships: dedupedRelationships,
+          viewport: body.viewport ?? { x: 0, y: 0, zoom: 1 },
+          dbml_source: normalizedDbmlSource ?? currentDiagram.dbmlSource ?? "",
+        },
+  });
 
   return {
     success: true,
