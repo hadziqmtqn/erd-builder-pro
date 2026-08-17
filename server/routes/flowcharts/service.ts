@@ -1,4 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
+import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
+import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
@@ -115,13 +117,21 @@ export async function updateFlowchart(
   });
   if (!existing) return null;
 
+  await captureEntityRevisionSafely({
+    entityType: "flowcharts",
+    entityId: existing.id,
+    userId,
+    snapshot: { title: existing.title, data: existing.data ?? "", project_id: existing.projectId ?? null },
+  });
+
   const updatePayload: any = { updatedAt: new Date() };
+  if (isDesktopMode() || isLocalPostgres()) updatePayload.version = (existing.version ?? 0) + 1;
   if (data.title !== undefined) updatePayload.title = data.title;
   if (data.fcData !== undefined) updatePayload.data = data.fcData;
   if (data.projectId !== undefined) updatePayload.projectId = data.projectId;
 
-  await prisma.flowchart.update({ where: { id: existing.id }, data: updatePayload });
-  return { success: true };
+  const updated = await prisma.flowchart.update({ where: { id: existing.id }, data: updatePayload, select: { version: true, updatedAt: true } });
+  return { success: true, version: updated.version, updatedAt: updated.updatedAt };
 }
 
 export async function softDeleteFlowchart(uid: string, userId: string) {

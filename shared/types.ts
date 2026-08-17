@@ -170,12 +170,12 @@ export interface Flowchart {
 
 export interface EntityChange {
   id: number;
-  entity_type: 'diagram' | 'note' | 'drawing' | 'flowchart';
-  entity_id: number;
+  entity_type: 'diagrams' | 'notes' | 'drawings' | 'flowcharts';
+  entity_id: string;
   version: number;
   user_id?: string;
   changes: Record<string, any>;
-  change_type: 'create' | 'update' | 'delete';
+  change_type: 'create' | 'update' | 'delete' | 'restore' | 'pre_restore';
   created_at: string;
 }
 
