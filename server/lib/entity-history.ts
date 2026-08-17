@@ -8,7 +8,7 @@ export type HistoryChangeType = "create" | "update" | "delete" | "restore" | "pr
 
 export type HistoryEnvelope = {
   schema_version: 1;
-  source: "autosave" | "manual" | "restore";
+  source: "autosave" | "manual" | "restore" | "mcp";
   snapshot: Record<string, any>;
   restored_from_id?: string;
 };
@@ -77,7 +77,7 @@ export function parseRevisionChanges(entityType: HistoryEntityType, value: unkno
   if (decoded.schema_version === 1 && decoded.snapshot && typeof decoded.snapshot === "object") {
     return {
       schema_version: 1,
-      source: decoded.source === "restore" || decoded.source === "manual" ? decoded.source : "autosave",
+      source: decoded.source === "restore" || decoded.source === "manual" || decoded.source === "mcp" ? decoded.source : "autosave",
       snapshot: legacySnapshot(entityType, decoded.snapshot),
       ...(decoded.restored_from_id !== undefined ? { restored_from_id: String(decoded.restored_from_id) } : {}),
     };

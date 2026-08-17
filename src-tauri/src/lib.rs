@@ -1,4 +1,4 @@
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
@@ -50,6 +50,39 @@ fn stop_backend_server(app_handle: &tauri::AppHandle) {
     }
 }
 
+fn run_mcp_stdio(app: &tauri::App) -> Result<i32, Box<dyn std::error::Error>> {
+    let resource_dir = app.path().resource_dir()?;
+    let app_data_dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&app_data_dir)?;
+
+    #[cfg(target_os = "windows")]
+    let bundled_node = resource_dir.join("dist-server/node-bin/node.exe");
+    #[cfg(not(target_os = "windows"))]
+    let bundled_node = resource_dir.join("dist-server/node-bin/node");
+    let node_bin = if bundled_node.exists() {
+        win_path(&bundled_node)
+    } else {
+        find_node_executable().ok_or("Node.js not found")?
+    };
+    let mcp_script = resource_dir.join("dist-server/mcp.js");
+    if !mcp_script.exists() {
+        return Err(format!("MCP script not found at {}", mcp_script.display()).into());
+    }
+
+    let status = Command::new(node_bin)
+        .arg(win_path(&mcp_script))
+        .env("NODE_ENV", "production")
+        .env("DATABASE_URL", format!("file:{}", win_path(&app_data_dir.join("data.db"))))
+        .env("ERD_INSTALL_MODE", "desktop")
+        .env("ERDBPRO_MCP_STDIO", "1")
+        .current_dir(app_data_dir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()?;
+    Ok(status.code().unwrap_or(1))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -68,6 +101,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            if std::env::args().any(|arg| arg == "--mcp") {
+                let code = match run_mcp_stdio(app) {
+                    Ok(code) => code,
+                    Err(error) => {
+                        eprintln!("Failed to start ERD Builder Pro MCP: {}", error);
+                        1
+                    }
+                };
+                app.handle().exit(code);
+                return Ok(());
+            }
+
             // ── macOS menu bar ────────────────────────────────────────
             #[cfg(target_os = "macos")]
             {

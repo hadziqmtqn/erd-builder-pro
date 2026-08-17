@@ -3,8 +3,7 @@
 /**
  * ERD Builder Pro — Server Build Script
  *
- * Compiles the Express server (server/run.ts) into a single self-contained
- * ESM file at dist-server/index.js using esbuild.
+ * Compiles the Express server and local stdio MCP entrypoints into dist-server.
  *
  * Native modules (better-sqlite3, Prisma engine, etc.) are externalized
  * and must be available in node_modules at runtime. The build copies only
@@ -87,8 +86,11 @@ async function main() {
   // and redirect it to the rebuilt native addon in the cache directory.
   console.log("📦 Bundling server with esbuild...");
   await build({
-    entryPoints: [resolve(ROOT, "server/run.ts")],
-    outfile: resolve(OUT_DIR, "index.js"),
+    entryPoints: {
+      index: resolve(ROOT, "server/run.ts"),
+      mcp: resolve(ROOT, "server/mcp.ts"),
+    },
+    outdir: OUT_DIR,
     bundle: true,
     platform: "node",
     target: "node18",
@@ -103,6 +105,7 @@ async function main() {
     },
   });
   console.log("   → dist-server/index.js");
+  console.log("   → dist-server/mcp.js");
 
   // 2. Copy essential node_modules for external native modules.
   //

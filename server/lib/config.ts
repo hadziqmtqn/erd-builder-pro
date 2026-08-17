@@ -3,7 +3,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import fs from "fs";
 
-dotenv.config();
+dotenv.config({ quiet: process.env.ERDBPRO_MCP_STDIO === "1" });
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
 export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";

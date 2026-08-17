@@ -76,7 +76,11 @@ erdbpro start --port 4000        # Custom port
 erdbpro start --force            # Restart if already running
 erdbpro stop                     # Stop background server
 erdbpro status                   # Check if server is running
+erdbpro mcp                      # MCP using CLI data
+erdbpro mcp --desktop            # MCP using Desktop app data
 ```
+
+`erdbpro mcp` reads `~/.erdbpro/data.db`. The `--desktop` flag detects the installed Desktop application and reads its database instead. In development, run it from the repository root to use the Desktop dev database.
 
 ---
 

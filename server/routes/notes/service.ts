@@ -105,7 +105,7 @@ export async function getNote(uid: string, userId: string) {
 
 export async function updateNote(
   uid: string, userId: string,
-  data: { title?: string; content?: string; projectId?: number | null }
+  data: { title?: string; content?: string; projectId?: number | null; historySource?: "autosave" | "manual" | "mcp" }
 ) {
   if (!prisma) throw new Error("Database connection not available");
   const existing = await prisma.note.findFirst({
@@ -118,6 +118,8 @@ export async function updateNote(
     entityId: existing.id,
     userId,
     snapshot: { title: existing.title, content: existing.content ?? "", project_id: existing.projectId ?? null },
+    source: data.historySource,
+    force: data.historySource === "mcp",
   });
 
   const updatePayload: any = { updatedAt: new Date() };

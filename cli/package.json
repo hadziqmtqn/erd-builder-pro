@@ -31,7 +31,8 @@
     "diagram",
     "flowchart",
     "notes",
-    "sqlite"
+    "sqlite",
+    "mcp"
   ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": "hadziqmtqn/erd-builder-pro",
