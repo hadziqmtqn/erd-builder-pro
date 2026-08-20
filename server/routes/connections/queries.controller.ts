@@ -8,27 +8,27 @@ import { normalizeSelectQuery } from "./query-helpers.js";
 
 function querySelect() {
   return {
-    id: true, uid: true, diagramId: true, groupName: true, name: true, script: true,
+    id: true, uid: true, dbClientId: true, groupName: true, name: true, script: true,
     createdAt: true, updatedAt: true,
   };
 }
 
-async function assertDiagram(req: ExpressRequest, diagramId: unknown) {
-  const id = Number(diagramId);
-  if (!id) throw new Error("diagramId is required");
-  const diagram = await (prisma as any)?.diagram.findFirst({
+async function assertDbClient(req: ExpressRequest, value: unknown) {
+  const id = Number(value);
+  if (!id) throw new Error("dbClientId is required");
+  const client = await (prisma as any)?.dbClient.findFirst({
     where: { id, userId: String((req as any).user.id), isDeleted: false },
     select: { id: true },
   });
-  if (!diagram) throw new Error("Diagram not found");
+  if (!client) throw new Error("DB Client not found");
   return id;
 }
 
 export async function listQueries(req: ExpressRequest, res: ExpressResponse) {
   try {
-    const diagramId = await assertDiagram(req, req.query.diagramId);
-    const queries = await (prisma as any)?.sqlQuery.findMany({
-      where: { diagramId },
+    const dbClientId = await assertDbClient(req, req.query.dbClientId);
+    const queries = await (prisma as any)?.dbClientQuery.findMany({
+      where: { dbClientId },
       select: querySelect(),
       orderBy: [{ groupName: "asc" }, { updatedAt: "desc" }],
     });
@@ -40,19 +40,19 @@ export async function listQueries(req: ExpressRequest, res: ExpressResponse) {
 
 export async function saveQuery(req: ExpressRequest, res: ExpressResponse) {
   try {
-    const diagramId = await assertDiagram(req, req.body.diagramId);
+    const dbClientId = await assertDbClient(req, req.body.dbClientId);
     const name = String(req.body.name || "").trim();
     const script = String(req.body.script || "");
     if (!name) return res.status(400).json({ error: "Query name is required" });
     normalizeSelectQuery(script);
-    const data = { diagramId, groupName: String(req.body.groupName || "Ungrouped").trim() || "Ungrouped", name, script };
+    const data = { dbClientId, groupName: String(req.body.groupName || "Ungrouped").trim() || "Ungrouped", name, script };
     let query;
     if (req.body.id) {
-      const current = await (prisma as any).sqlQuery.findFirst({ where: { id: Number(req.body.id), diagramId }, select: { id: true } });
+      const current = await (prisma as any).dbClientQuery.findFirst({ where: { id: Number(req.body.id), dbClientId }, select: { id: true } });
       if (!current) return res.status(404).json({ error: "SQL query not found" });
-      query = await (prisma as any).sqlQuery.update({ where: { id: current.id }, data, select: querySelect() });
+      query = await (prisma as any).dbClientQuery.update({ where: { id: current.id }, data, select: querySelect() });
     } else {
-      query = await (prisma as any).sqlQuery.create({ data: { ...data, uid: randomUUID() }, select: querySelect() });
+      query = await (prisma as any).dbClientQuery.create({ data: { ...data, uid: randomUUID() }, select: querySelect() });
     }
     res.json({ query });
   } catch (err: any) {
@@ -62,12 +62,12 @@ export async function saveQuery(req: ExpressRequest, res: ExpressResponse) {
 
 export async function deleteQuery(req: ExpressRequest, res: ExpressResponse) {
   try {
-    const diagramId = await assertDiagram(req, req.query.diagramId);
+    const dbClientId = await assertDbClient(req, req.query.dbClientId);
     const id = Number(req.params.queryId);
     if (!id) return res.status(400).json({ error: "queryId is required" });
-    const current = await (prisma as any).sqlQuery.findFirst({ where: { id, diagramId }, select: { id: true } });
+    const current = await (prisma as any).dbClientQuery.findFirst({ where: { id, dbClientId }, select: { id: true } });
     if (!current) return res.status(404).json({ error: "SQL query not found" });
-    await (prisma as any).sqlQuery.delete({ where: { id: current.id } });
+    await (prisma as any).dbClientQuery.delete({ where: { id: current.id } });
     res.json({ ok: true });
   } catch (err: any) {
     res.status(/not found/i.test(err.message) ? 404 : 400).json({ error: err.message || "Failed to delete SQL query" });

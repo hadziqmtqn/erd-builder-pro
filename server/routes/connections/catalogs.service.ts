@@ -80,3 +80,15 @@ export async function findAffectedDiagrams(catalogId: number | string) {
     select: { id: true, name: true },
   });
 }
+
+export async function findAffectedDbClients(catalogId: number | string) {
+  return (prisma as any)?.dbClient.findMany({
+    where: { catalogId: Number(catalogId) },
+    select: { id: true, name: true },
+  });
+}
+
+export async function deleteDbClientsForCatalog(catalogId: number | string) {
+  const result = await (prisma as any)?.dbClient.deleteMany({ where: { catalogId: Number(catalogId) } });
+  return result?.count || 0;
+}

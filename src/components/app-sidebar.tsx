@@ -2,6 +2,7 @@ import * as React from "react"
 import { useState, useRef, useEffect } from "react"
 import {
   Database,
+  DatabaseZap,
   Cable,
   PenTool,
   Search,
@@ -192,7 +193,7 @@ export const AppSidebar = React.memo(({
     ...(showDbClient ? [{
       title: "DB Client",
       url: "/table/db-client",
-      icon: Cable,
+      icon: DatabaseZap,
       isActive: activeFeatureView === 'db-client',
       onClick: async () => {
         if (!isOnline) return;

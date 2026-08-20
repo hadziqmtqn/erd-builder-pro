@@ -18,13 +18,13 @@ datasource db {
 
 // ── Local user model (desktop auth, not Supabase auth) ──
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  password      String
-  isSuperAdmin  Boolean? @map("is_super_admin")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @map("updated_at")
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  password     String
+  isSuperAdmin Boolean? @map("is_super_admin")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @map("updated_at")
 
   diagrams        Diagram[]
   notes           Note[]
@@ -59,21 +59,22 @@ model Session {
 
 // ── Project ──
 model Project {
-  id        Int       @id @default(autoincrement())
-  uid       String?   @unique
-  name      String
-  userId    String?   @map("user_id")
-  color     String?   @default("#6366f1")
-  isDeleted Boolean?  @default(false) @map("is_deleted")
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime? @default(now()) @map("created_at")
-  updatedAt DateTime? @default(now()) @map("updated_at")
-  version   Int?      @default(0) @map("_version")
-  user      User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  diagrams  Diagram[]
-  notes     Note[]
-  drawings  Drawing[]
-  flowcharts Flowchart[]
+  id             Int             @id @default(autoincrement())
+  uid            String?         @unique
+  name           String
+  userId         String?         @map("user_id")
+  color          String?         @default("#6366f1")
+  isDeleted      Boolean?        @default(false) @map("is_deleted")
+  deletedAt      DateTime?       @map("deleted_at")
+  createdAt      DateTime?       @default(now()) @map("created_at")
+  updatedAt      DateTime?       @default(now()) @map("updated_at")
+  version        Int?            @default(0) @map("_version")
+  user           User?           @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  diagrams       Diagram[]
+  dbClients      DbClient[]
+  notes          Note[]
+  drawings       Drawing[]
+  flowcharts     Flowchart[]
   aiChatSessions AiChatSession[]
 
   @@index([userId, isDeleted], map: "idx_projects_user_deleted")
@@ -83,32 +84,32 @@ model Project {
 
 // ── Diagram (ERD) ──
 model Diagram {
-  id           Int      @id @default(autoincrement())
-  uid          String?  @unique
-  name         String
-  userId       String?  @map("user_id")
-  projectId    Int?     @map("project_id")
-  isDeleted    Boolean? @default(false) @map("is_deleted")
-  deletedAt    DateTime? @map("deleted_at")
-  createdAt    DateTime? @default(now()) @map("created_at")
-  updatedAt    DateTime? @default(now()) @map("updated_at")
-  viewportX    Float?   @default(0) @map("viewport_x")
-  viewportY    Float?   @default(0) @map("viewport_y")
-  viewportZoom Float?   @default(1.0) @map("viewport_zoom")
-  version      Int?     @default(0) @map("_version")
-  isPublic     Boolean? @default(false) @map("is_public")
-  shareToken   String?  @map("share_token")
-  expiryDate   DateTime? @map("expiry_date")
-  publishedAt  DateTime? @map("published_at")
-  sourceType        String? @default("blank") @map("source_type")
-  sourceConnectionId Int?   @map("source_connection_id")
-  data             String?  @map("data")  // JSON positions untuk production DB (desktop only)
-  dbmlSource       String?  @map("dbml_source")
-  user         User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  project      Project? @relation(fields: [projectId], references: [id], onUpdate: NoAction)
-  entities     Entity[]
-  relationships Relationship[]
-  sqlQueries    SqlQuery[]
+  id                 Int            @id @default(autoincrement())
+  uid                String?        @unique
+  name               String
+  userId             String?        @map("user_id")
+  projectId          Int?           @map("project_id")
+  isDeleted          Boolean?       @default(false) @map("is_deleted")
+  deletedAt          DateTime?      @map("deleted_at")
+  createdAt          DateTime?      @default(now()) @map("created_at")
+  updatedAt          DateTime?      @default(now()) @map("updated_at")
+  viewportX          Float?         @default(0) @map("viewport_x")
+  viewportY          Float?         @default(0) @map("viewport_y")
+  viewportZoom       Float?         @default(1.0) @map("viewport_zoom")
+  version            Int?           @default(0) @map("_version")
+  isPublic           Boolean?       @default(false) @map("is_public")
+  shareToken         String?        @map("share_token")
+  expiryDate         DateTime?      @map("expiry_date")
+  publishedAt        DateTime?      @map("published_at")
+  sourceType         String?        @default("blank") @map("source_type")
+  sourceConnectionId Int?           @map("source_connection_id")
+  data               String?        @map("data") // JSON positions untuk production DB (desktop only)
+  dbmlSource         String?        @map("dbml_source")
+  user               User?          @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project            Project?       @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  entities           Entity[]
+  relationships      Relationship[]
+  sqlQueries         SqlQuery[]
 
   @@index([projectId, isDeleted], map: "idx_diagrams_project_deleted")
   @@index([updatedAt], map: "idx_diagrams_updated_at")
@@ -131,25 +132,77 @@ model SqlQuery {
   @@map("sql_queries")
 }
 
+// ── DB Client (desktop/CLI only, independent from ERD diagrams) ──
+model DbClient {
+  id              Int             @id @default(autoincrement())
+  uid             String          @unique @default(uuid())
+  name            String
+  userId          String          @map("user_id")
+  projectId       Int?            @map("project_id")
+  catalogId       Int?            @map("catalog_id")
+  legacyDiagramId Int?            @unique @map("legacy_diagram_id")
+  isDeleted       Boolean         @default(false) @map("is_deleted")
+  deletedAt       DateTime?       @map("deleted_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  version         Int             @default(0) @map("_version")
+  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  catalog         DbCatalog?      @relation(fields: [catalogId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  layout          DbClientLayout?
+  queries         DbClientQuery[]
+
+  @@index([userId, isDeleted], map: "idx_db_clients_user_deleted")
+  @@index([projectId, isDeleted], map: "idx_db_clients_project_deleted")
+  @@index([catalogId], map: "idx_db_clients_catalog")
+  @@map("db_clients")
+}
+
+model DbClientLayout {
+  id         Int      @id @default(autoincrement())
+  dbClientId Int      @unique @map("db_client_id")
+  data       String   @default("{\"nodes\":{},\"viewport\":{\"x\":0,\"y\":0,\"zoom\":1}}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  dbClient   DbClient @relation(fields: [dbClientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("db_client_layouts")
+}
+
+model DbClientQuery {
+  id            Int      @id @default(autoincrement())
+  uid           String   @unique @default(uuid())
+  dbClientId    Int      @map("db_client_id")
+  legacyQueryId Int?     @unique @map("legacy_query_id")
+  groupName     String   @default("Ungrouped") @map("group_name")
+  name          String
+  script        String
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  dbClient      DbClient @relation(fields: [dbClientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dbClientId], map: "idx_db_client_queries_client")
+  @@map("db_client_queries")
+}
+
 // ── Note ──
 model Note {
-  id         Int       @id @default(autoincrement())
-  uid        String?   @unique
-  title      String
-  content    String?   @default("")
-  userId     String?   @map("user_id")
-  projectId  Int?      @map("project_id")
-  isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
-  version    Int?      @default(0) @map("_version")
-  isPublic   Boolean?  @default(false) @map("is_public")
-  shareToken String?   @map("share_token")
-  expiryDate DateTime? @map("expiry_date")
+  id          Int       @id @default(autoincrement())
+  uid         String?   @unique
+  title       String
+  content     String?   @default("")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean?  @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime? @default(now()) @map("created_at")
+  updatedAt   DateTime? @default(now()) @map("updated_at")
+  version     Int?      @default(0) @map("_version")
+  isPublic    Boolean?  @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
   publishedAt DateTime? @map("published_at")
-  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
   @@index([projectId, isDeleted], map: "idx_notes_project_deleted")
   @@index([updatedAt], map: "idx_notes_updated_at")
@@ -159,23 +212,23 @@ model Note {
 
 // ── Drawing ──
 model Drawing {
-  id         Int       @id @default(autoincrement())
-  uid        String?   @unique
-  title      String
-  data       String?   @default("[]")
-  userId     String?   @map("user_id")
-  projectId  Int?      @map("project_id")
-  isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
-  version    Int?      @default(0) @map("_version")
-  isPublic   Boolean?  @default(false) @map("is_public")
-  shareToken String?   @map("share_token")
-  expiryDate DateTime? @map("expiry_date")
+  id          Int       @id @default(autoincrement())
+  uid         String?   @unique
+  title       String
+  data        String?   @default("[]")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean?  @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime? @default(now()) @map("created_at")
+  updatedAt   DateTime? @default(now()) @map("updated_at")
+  version     Int?      @default(0) @map("_version")
+  isPublic    Boolean?  @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
   publishedAt DateTime? @map("published_at")
-  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
   @@index([projectId, isDeleted], map: "idx_drawings_project_deleted")
   @@index([updatedAt], map: "idx_drawings_updated_at")
@@ -185,23 +238,23 @@ model Drawing {
 
 // ── Flowchart ──
 model Flowchart {
-  id         Int       @id @default(autoincrement())
-  uid        String?   @unique
-  title      String
-  data       String?   @default("{\"nodes\":[], \"edges\":[]}")
-  userId     String?   @map("user_id")
-  projectId  Int?      @map("project_id")
-  isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
-  version    Int?      @default(0) @map("_version")
-  isPublic   Boolean?  @default(false) @map("is_public")
-  shareToken String?   @map("share_token")
-  expiryDate DateTime? @map("expiry_date")
+  id          Int       @id @default(autoincrement())
+  uid         String?   @unique
+  title       String
+  data        String?   @default("{\"nodes\":[], \"edges\":[]}")
+  userId      String?   @map("user_id")
+  projectId   Int?      @map("project_id")
+  isDeleted   Boolean?  @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime? @default(now()) @map("created_at")
+  updatedAt   DateTime? @default(now()) @map("updated_at")
+  version     Int?      @default(0) @map("_version")
+  isPublic    Boolean?  @default(false) @map("is_public")
+  shareToken  String?   @map("share_token")
+  expiryDate  DateTime? @map("expiry_date")
   publishedAt DateTime? @map("published_at")
-  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
+  user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
   @@index([projectId, isDeleted], map: "idx_flowcharts_project_deleted")
   @@index([updatedAt], map: "idx_flowcharts_updated_at")
@@ -211,92 +264,92 @@ model Flowchart {
 
 // ── Entity (ERD table) ──
 model Entity {
-  id        String         @id
-  diagramId Int?           @map("diagram_id")
-  name      String
-  x         Float
-  y         Float
-  color     String?        @default("#6366f1")
-  comment   String?
-  createdAt DateTime?      @default(now()) @map("created_at")
-  columns   Column[]
-  constraints TableConstraint[]
-  indexes   TableIndex[]
-  diagram   Diagram?       @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  relationshipsFrom Relationship[] @relation("source_entity")
-  relationshipsTo   Relationship[] @relation("target_entity")
+  id                String            @id
+  diagramId         Int?              @map("diagram_id")
+  name              String
+  x                 Float
+  y                 Float
+  color             String?           @default("#6366f1")
+  comment           String?
+  createdAt         DateTime?         @default(now()) @map("created_at")
+  columns           Column[]
+  constraints       TableConstraint[]
+  indexes           TableIndex[]
+  diagram           Diagram?          @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  relationshipsFrom Relationship[]    @relation("source_entity")
+  relationshipsTo   Relationship[]    @relation("target_entity")
 
   @@map("entities")
 }
 
 // ── Column (ERD table column) ──
 model Column {
-  id         String    @id
-  entityId   String?   @map("entity_id")
-  name       String
-  type       String
-  isPk       Boolean?  @default(false) @map("is_pk")
-  isNullable Boolean?  @default(true) @map("is_nullable")
-  isUnique   Boolean?  @default(false) @map("is_unique")
-  defaultValue String? @map("default_value")
-  enumValues String?   @map("enum_values")
-  comment    String?
-  maxLength  Int?      @map("max_length")
-  numericPrecision Int? @map("numeric_precision")
-  numericScale Int? @map("numeric_scale")
-  sortOrder  Int?      @default(0) @map("sort_order")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  entity     Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String    @id
+  entityId         String?   @map("entity_id")
+  name             String
+  type             String
+  isPk             Boolean?  @default(false) @map("is_pk")
+  isNullable       Boolean?  @default(true) @map("is_nullable")
+  isUnique         Boolean?  @default(false) @map("is_unique")
+  defaultValue     String?   @map("default_value")
+  enumValues       String?   @map("enum_values")
+  comment          String?
+  maxLength        Int?      @map("max_length")
+  numericPrecision Int?      @map("numeric_precision")
+  numericScale     Int?      @map("numeric_scale")
+  sortOrder        Int?      @default(0) @map("sort_order")
+  createdAt        DateTime? @default(now()) @map("created_at")
+  entity           Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("columns")
 }
 
 // ── Relationship (ERD edge) ──
 model Relationship {
-  id              String    @id
-  diagramId       Int?      @map("diagram_id")
-  sourceEntityId  String?   @map("source_entity_id")
-  targetEntityId  String?   @map("target_entity_id")
-  sourceColumnId  String?   @map("source_column_id")
-  targetColumnId  String?   @map("target_column_id")
-  type            String?   @default("one-to-many")
-  sourceHandle    String?   @map("source_handle")
-  targetHandle    String?   @map("target_handle")
-  label           String?
-  onDelete        String?   @map("on_delete")
-  onUpdate        String?   @map("on_update")
-  constraintName  String?   @map("constraint_name")
-  createdAt       DateTime? @default(now()) @map("created_at")
-  diagram         Diagram?  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sourceEntity    Entity?   @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  targetEntity    Entity?   @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id             String    @id
+  diagramId      Int?      @map("diagram_id")
+  sourceEntityId String?   @map("source_entity_id")
+  targetEntityId String?   @map("target_entity_id")
+  sourceColumnId String?   @map("source_column_id")
+  targetColumnId String?   @map("target_column_id")
+  type           String?   @default("one-to-many")
+  sourceHandle   String?   @map("source_handle")
+  targetHandle   String?   @map("target_handle")
+  label          String?
+  onDelete       String?   @map("on_delete")
+  onUpdate       String?   @map("on_update")
+  constraintName String?   @map("constraint_name")
+  createdAt      DateTime? @default(now()) @map("created_at")
+  diagram        Diagram?  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sourceEntity   Entity?   @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  targetEntity   Entity?   @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("relationships")
 }
 
 model TableConstraint {
-  id          String    @id
-  entityId    String    @map("entity_id")
-  kind        String
-  name        String?
-  columnIds   String?   @map("column_ids")
-  expression  String?
-  createdAt   DateTime? @default(now()) @map("created_at")
-  entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id         String    @id
+  entityId   String    @map("entity_id")
+  kind       String
+  name       String?
+  columnIds  String?   @map("column_ids")
+  expression String?
+  createdAt  DateTime? @default(now()) @map("created_at")
+  entity     Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([entityId], map: "idx_table_constraints_entity")
   @@map("table_constraints")
 }
 
 model TableIndex {
-  id          String    @id
-  entityId    String    @map("entity_id")
-  name        String
-  columnIds   String    @map("column_ids")
-  isUnique    Boolean?  @default(false) @map("is_unique")
-  algorithm   String?
-  createdAt   DateTime? @default(now()) @map("created_at")
-  entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id        String    @id
+  entityId  String    @map("entity_id")
+  name      String
+  columnIds String    @map("column_ids")
+  isUnique  Boolean?  @default(false) @map("is_unique")
+  algorithm String?
+  createdAt DateTime? @default(now()) @map("created_at")
+  entity    Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([entityId], map: "idx_table_indexes_entity")
   @@map("table_indexes")
@@ -304,15 +357,15 @@ model TableIndex {
 
 // ── Entity Change (audit log) ──
 model EntityChange {
-  id         Int      @id @default(autoincrement())
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id")
+  id         Int       @id @default(autoincrement())
+  entityType String    @map("entity_type")
+  entityId   String    @map("entity_id")
   version    Int
-  userId     String?  @map("user_id")
-  changes    String?  @default("{}")
-  changeType String?  @default("update") @map("change_type")
+  userId     String?   @map("user_id")
+  changes    String?   @default("{}")
+  changeType String?   @default("update") @map("change_type")
   createdAt  DateTime? @default(now()) @map("created_at")
-  user       User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
 
   @@index([entityType, entityId, version], map: "idx_entity_changes_lookup")
   @@index([createdAt], map: "idx_entity_changes_retention")
@@ -322,29 +375,29 @@ model EntityChange {
 
 // ── Backup ──
 model Backup {
-  id        String    @id @default(uuid())
-  userId    String?   @map("user_id")
-  name      String
-  status    String    @default("pending")
-  filePath  String?   @map("file_path")
-  fileSize  Int?      @map("file_size")
-  destinations String? @map("destinations")
-  createdAt DateTime? @default(now()) @map("created_at")
-  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id           String    @id @default(uuid())
+  userId       String?   @map("user_id")
+  name         String
+  status       String    @default("pending")
+  filePath     String?   @map("file_path")
+  fileSize     Int?      @map("file_size")
+  destinations String?   @map("destinations")
+  createdAt    DateTime? @default(now()) @map("created_at")
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("backups")
 }
 
 // ── AI Provider ──
 model AiProvider {
-  id        Int          @id @default(autoincrement())
-  name      String
-  code      String       @unique
-  baseUrl   String?      @map("base_url")
-  isActive  Boolean?     @default(true) @map("is_active")
-  createdAt DateTime?    @default(now()) @map("created_at")
-  updatedAt DateTime?    @default(now()) @map("updated_at")
-  models    AiModel[]
+  id          Int            @id @default(autoincrement())
+  name        String
+  code        String         @unique
+  baseUrl     String?        @map("base_url")
+  isActive    Boolean?       @default(true) @map("is_active")
+  createdAt   DateTime?      @default(now()) @map("created_at")
+  updatedAt   DateTime?      @default(now()) @map("updated_at")
+  models      AiModel[]
   userConfigs UserAiConfig[]
 
   @@map("ai_providers")
@@ -352,14 +405,14 @@ model AiProvider {
 
 // ── AI Model ──
 model AiModel {
-  id              Int          @id @default(autoincrement())
-  providerId      Int?         @map("provider_id")
-  modelIdentifier String       @map("model_identifier")
-  displayName     String       @map("display_name")
-  contextWindow   Int?         @map("context_window")
-  isActive        Boolean?     @default(true) @map("is_active")
-  createdAt       DateTime?    @default(now()) @map("created_at")
-  provider        AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  id              Int            @id @default(autoincrement())
+  providerId      Int?           @map("provider_id")
+  modelIdentifier String         @map("model_identifier")
+  displayName     String         @map("display_name")
+  contextWindow   Int?           @map("context_window")
+  isActive        Boolean?       @default(true) @map("is_active")
+  createdAt       DateTime?      @default(now()) @map("created_at")
+  provider        AiProvider?    @relation(fields: [providerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   userConfigs     UserAiConfig[]
 
   @@map("ai_models")
@@ -426,7 +479,7 @@ model AiSystemPrompt {
   userId    String?   @map("user_id")
   createdAt DateTime? @default(now()) @map("created_at")
   updatedAt DateTime? @default(now()) @map("updated_at")
-  user      User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  user      User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
 
   @@map("ai_system_prompts")
 }
@@ -465,25 +518,25 @@ model UserPreference {
 // ── Local Database Connection (desktop-only) ──
 // ── DB Account (server-level credentials) ──
 model DbAccount {
-  id        Int      @id @default(autoincrement())
-  userId    String   @map("user_id")
-  name      String
-  type      String
-  host      String?
-  port      Int?
-  user      String?
-  password  String?
-  environment    String @default("development")
-  safeMode       String @default("protected") @map("safe_mode")
-  sslMode        String @default("disable") @map("ssl_mode")
-  sslCa          String? @map("ssl_ca")
-  sslCert        String? @map("ssl_cert")
-  sslKey         String? @map("ssl_key")
-  queryTimeoutMs Int    @default(30000) @map("query_timeout_ms")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
+  id             Int      @id @default(autoincrement())
+  userId         String   @map("user_id")
+  name           String
+  type           String
+  host           String?
+  port           Int?
+  user           String?
+  password       String?
+  environment    String   @default("development")
+  safeMode       String   @default("protected") @map("safe_mode")
+  sslMode        String   @default("disable") @map("ssl_mode")
+  sslCa          String?  @map("ssl_ca")
+  sslCert        String?  @map("ssl_cert")
+  sslKey         String?  @map("ssl_key")
+  queryTimeoutMs Int      @default(30000) @map("query_timeout_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
 
-  catalogs  DbCatalog[]
+  catalogs DbCatalog[]
 
   @@index([userId], map: "idx_db_accounts_user")
   @@map("db_accounts")
@@ -498,7 +551,8 @@ model DbCatalog {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @map("updated_at")
 
-  account      DbAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  account   DbAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dbClients DbClient[]
 
   @@index([accountId], map: "idx_db_catalogs_account")
   @@map("db_catalogs")

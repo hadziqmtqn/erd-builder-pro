@@ -64,16 +64,15 @@ export async function deleteCatalog(req: ExpressRequest, res: ExpressResponse) {
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const affectedDiagrams = await catalogsService.findAffectedDiagrams(id);
-
-    const deletedDiagrams = await catalogsService.deleteDiagramsForCatalog(id);
+    const affectedClients = await catalogsService.findAffectedDbClients(id);
+    const deletedClients = await catalogsService.deleteDbClientsForCatalog(id);
+    await catalogsService.deleteDiagramsForCatalog(id);
     await catalogsService.deleteCatalog(id);
 
     res.json({
       success: true,
-      detachedDiagrams: deletedDiagrams,
-      deletedDiagrams,
-      diagramNames: affectedDiagrams?.map((d: any) => d.name) ?? [],
+      deletedClients,
+      clientNames: affectedClients?.map((client: any) => client.name) ?? [],
     });
   } catch (err) {
     console.error("Error deleting catalog:", err);
@@ -139,37 +138,29 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
       };
     });
 
-    const diagramData = {
+    const layoutData = {
       nodes: positions,
       viewport: { x: 0, y: 0, zoom: 1 },
       _type: "production_db_positions",
-      source: {
-        type: (catalog as any).account.type,
-        host: (catalog as any).account.host || undefined,
-        port: (catalog as any).account.port || undefined,
-        user: (catalog as any).account.user || undefined,
-        database: (catalog as any).databaseName,
-        password_encrypted: (catalog as any).account.password || undefined,
-      },
     };
 
-    // 3. Create diagram
-    const diagram = await prisma?.diagram.create({
+    // 3. Create an independent DB Client and its local-only canvas layout.
+    const dbClient = await (prisma as any)?.dbClient.create({
       data: {
         name: name.trim(),
         uid: crypto.randomUUID(),
         userId,
         projectId,
-        sourceType: "production_db",
-        sourceConnectionId: Number(id),
-        data: JSON.stringify(diagramData),
+        catalogId: Number(id),
+        layout: { create: { data: JSON.stringify(layoutData) } },
       },
+      include: { layout: true },
     });
 
-    if (!diagram) return res.status(500).json({ error: "Failed to create diagram" });
+    if (!dbClient) return res.status(500).json({ error: "Failed to create DB Client" });
 
     res.status(201).json({
-      diagram,
+      dbClient: { ...dbClient, data: layoutData, layout: undefined },
       tableCount: tables.length,
     });
   } catch (err: any) {

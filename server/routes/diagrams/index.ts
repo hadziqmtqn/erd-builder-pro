@@ -18,6 +18,5 @@ router.delete("/:uid/permanent", authenticate, ctrl.permanentDelete);
 router.post("/save/:uid", authenticate, ctrl.save);
 router.post("/fetch-schema", authenticate, ctrl.fetchSchema);
 router.post("/test-db-connection", authenticate, ctrl.testDbConnection);
-router.post("/create-from-db", authenticate, ctrl.createFromDb);
 
 export default router;

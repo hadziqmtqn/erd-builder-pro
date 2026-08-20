@@ -23,6 +23,7 @@ import { AppLayout } from './routes/AppLayout';
 import { TableRoute } from './routes/TableRoute';
 import { NoteEditorRoute } from './routes/NoteEditorRoute';
 import { DiagramEditorRoute } from './routes/DiagramEditorRoute';
+import { DbClientEditorRoute } from './routes/DbClientEditorRoute';
 import { DrawingEditorRoute } from './routes/DrawingEditorRoute';
 import { FlowchartEditorRoute } from './routes/FlowchartEditorRoute';
 import { AdminRoute } from './routes/AdminRoute';
@@ -144,6 +145,7 @@ function AppContent() {
           {/* Document editors */}
           <Route path="notes/:id" element={<NoteEditorRoute />} />
           <Route path="diagrams/:id" element={<DiagramEditorRoute />} />
+          <Route path="db-client/:id" element={<DbClientEditorRoute />} />
           <Route path="drawings/:id" element={<DrawingEditorRoute />} />
           <Route path="flowcharts/:id" element={<FlowchartEditorRoute />} />
 

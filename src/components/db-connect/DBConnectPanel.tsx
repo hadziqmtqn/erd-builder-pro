@@ -69,7 +69,7 @@ export function DBConnectPanel({
     fetchCatalogs,
     createCatalog,
     deleteCatalog,
-    importAsDiagram,
+    importAsDbClient,
   } = useDbCatalogs();
 
   const [search, setSearch] = useState('');
@@ -127,10 +127,10 @@ export function DBConnectPanel({
           fetchCatalogs();
           fetchAccounts();
           const targetProjectId = data.projectId === 'none' ? null : data.projectId;
-          const result = await importAsDiagram(catalog.id, data.erdName?.trim() || account.name, targetProjectId);
-          if (result?.diagram?.uid) {
+          const result = await importAsDbClient(catalog.id, data.erdName?.trim() || account.name, targetProjectId);
+          if (result?.dbClient?.uid) {
             onOpenChange(false);
-            onImportComplete?.(result.diagram.uid);
+            onImportComplete?.(result.dbClient.uid);
           }
         }
       } else {
@@ -226,10 +226,10 @@ export function DBConnectPanel({
       fetchAccounts();
       if (dbPickMode === 'import') {
         const targetProjectId = selectedProjectId === 'none' ? null : selectedProjectId;
-        const result = await importAsDiagram(catalog.id, erdName.trim() || selectedDbName, targetProjectId);
-        if (result?.diagram?.uid) {
+        const result = await importAsDbClient(catalog.id, erdName.trim() || selectedDbName, targetProjectId);
+        if (result?.dbClient?.uid) {
           onOpenChange(false);
-          onImportComplete?.(result.diagram.uid);
+          onImportComplete?.(result.dbClient.uid);
         }
       }
     }
@@ -247,12 +247,12 @@ export function DBConnectPanel({
     setIsImporting(true);
     try {
       const targetProjectId = selectedProjectId === 'none' ? null : selectedProjectId;
-      const result = await importAsDiagram(importCat.id, importName.trim(), targetProjectId);
-      if (result?.diagram?.uid) {
+      const result = await importAsDbClient(importCat.id, importName.trim(), targetProjectId);
+      if (result?.dbClient?.uid) {
         setImportCat(null);
         setImportName('');
         onOpenChange(false);
-        onImportComplete?.(result.diagram.uid);
+        onImportComplete?.(result.dbClient.uid);
       }
     } finally {
       setIsImporting(false);
@@ -336,9 +336,9 @@ export function DBConnectPanel({
                       const result = await deleteCatalog(cat.id);
                       fetchCatalogs();
                       fetchAccounts();
-                      if (result && (result.deletedDiagrams || result.detachedDiagrams) > 0) {
+                      if (result && result.deletedClients > 0) {
                         toast.info(
-                          `${result.deletedDiagrams || result.detachedDiagrams} ERD file(s) deleted: ${result.diagramNames.join(', ')}`,
+                          `${result.deletedClients} DB Client(s) deleted: ${result.clientNames.join(', ')}`,
                           { duration: 5000 }
                         );
                       }

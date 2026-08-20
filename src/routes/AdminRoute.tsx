@@ -17,9 +17,11 @@ function TrashRoute() {
     trashData, isTrashLoading,
     handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
     handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
+    handleTrashRestoreDbClient,
     handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
     handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
     handleTrashFlowchartPermanentDelete, fetchTrash,
+    handleTrashDbClientPermanentDelete,
   } = useWorkspace();
 
   return (
@@ -38,12 +40,14 @@ function TrashRoute() {
         restoreNote={handleTrashRestoreNote}
         restoreDrawing={handleTrashRestoreDrawing}
         restoreFlowchart={handleTrashRestoreFlowchart}
+        restoreDbClient={handleTrashRestoreDbClient}
         fetchTrash={fetchTrash}
         handleProjectPermanentDelete={handleTrashProjectPermanentDelete}
         handleDiagramPermanentDelete={handleTrashDiagramPermanentDelete}
         handleNotePermanentDelete={handleTrashNotePermanentDelete}
         handleDrawingPermanentDelete={handleTrashDrawingPermanentDelete}
         handleFlowchartPermanentDelete={handleTrashFlowchartPermanentDelete}
+        handleDbClientPermanentDelete={handleTrashDbClientPermanentDelete}
         isLoading={isTrashLoading}
       />
     </React.Suspense>

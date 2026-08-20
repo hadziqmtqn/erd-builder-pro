@@ -17,7 +17,7 @@ export async function list(req: ExpressRequest, res: ExpressResponse): Promise<v
     const rawPublic = req.query.is_public as string;
     const isPublic = rawPublic === "true" ? true : rawPublic === "false" ? false : null;
     const rawSourceType = req.query.source_type as string;
-    const sourceType = rawSourceType === "blank" || rawSourceType === "production_db" ? rawSourceType : undefined;
+    const sourceType = rawSourceType === "blank" ? rawSourceType : undefined;
     const userId = (req as any).user.id;
 
     const result = await diagService.listDiagrams(userId, { limit, offset, projectId, q, isPublic, sourceType });

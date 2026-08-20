@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, Cable, Database, FileText, GitBranch, PenTool, Plus } from 'lucide-react'
+import { Check, Database, DatabaseZap, FileText, GitBranch, PenTool, Plus } from 'lucide-react'
 import { useWorkspace } from '@/providers/WorkspaceProvider'
 import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
+import { isInstalledApp } from '@/lib/api'
 import { localPersistence } from '@/lib/localPersistence'
 import { cn } from '@/lib/utils'
 
-type FeatureTab = 'notes' | 'erd' | 'db-client' | 'flowchart' | 'drawings'
+type FeatureTab = 'notes' | 'erd' | 'flowchart' | 'drawings' | 'db-client'
+type CreateFileType = Exclude<FeatureTab, 'db-client'>
 
 const FEATURES: { id: FeatureTab; label: string; icon: React.ElementType; route: string }[] = [
   { id: 'notes', label: 'Notes', icon: FileText, route: '/notes' },
   { id: 'erd', label: 'ERD Builder', icon: Database, route: '/diagrams' },
-  { id: 'db-client', label: 'DB Client', icon: Cable, route: '/diagrams' },
+  { id: 'db-client', label: 'DB Client', icon: DatabaseZap, route: '/db-client' },
   { id: 'flowchart', label: 'Flowchart', icon: GitBranch, route: '/flowcharts' },
   { id: 'drawings', label: 'Drawings', icon: PenTool, route: '/drawings' },
 ]
@@ -22,15 +24,17 @@ const getFileUid = (file: any) => file.uid || file.id
 const getCreatedTime = (file: any) => new Date(file.created_at || file.createdAt || 0).getTime()
 
 interface Props {
-  currentView: string
+  currentView: FeatureTab
+  currentFile?: any
 }
 
-export function ProjectFileTabs({ currentView }: Props) {
+export function ProjectFileTabs({ currentView, currentFile }: Props) {
   const [createOpen, setCreateOpen] = useState(false)
-  const [createType, setCreateType] = useState<FeatureTab>('notes')
+  const [createType, setCreateType] = useState<CreateFileType>('notes')
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [workspaceDiagrams, setWorkspaceDiagrams] = useState<any[]>([])
+  const [workspaceDbClients, setWorkspaceDbClients] = useState<any[]>([])
   const popoverRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -64,20 +68,21 @@ export function ProjectFileTabs({ currentView }: Props) {
   }, [createOpen, createType])
 
   const projectId = useMemo((): string | number | null => {
-    const activeFile = currentView === 'notes'
+    const activeFile = currentFile ?? (currentView === 'notes'
       ? activeNote
-      : currentView === 'erd' || currentView === 'db-client'
+      : currentView === 'erd'
         ? activeDiagram
         : currentView === 'flowchart'
           ? activeFlowchart
-          : activeDrawing
+          : activeDrawing)
     return activeFile?.project_id ?? activeFile?.projectId
       ?? (activeProjectId && activeProjectId !== 'all' ? activeProjectId : searchParams.get('pid'))
-  }, [activeProjectId, activeNote, activeDiagram, activeFlowchart, activeDrawing, currentView, searchParams])
+  }, [activeProjectId, activeNote, activeDiagram, activeFlowchart, activeDrawing, currentFile, currentView, searchParams])
 
   useEffect(() => {
     if (!projectId) {
       setWorkspaceDiagrams([])
+      setWorkspaceDbClients([])
       return
     }
 
@@ -85,24 +90,42 @@ export function ProjectFileTabs({ currentView }: Props) {
     const loadDiagrams = async () => {
       try {
         let data: any[]
+        let dbClients: any[] = []
         if (isGuest) {
           data = (await localPersistence.getAllResources('erd'))
             .filter(file => !file.is_deleted && String(file.project_id ?? file.projectId) === String(projectId))
         } else {
           // ponytail: cap workspace tabs at 1000; add cursor loading if a workspace reaches this size.
-          const response = await apiFetch(`/api/diagrams?limit=1000&offset=0&project_id=${encodeURIComponent(String(projectId))}`)
+          const [response, dbClientsResponse] = await Promise.all([
+            apiFetch(`/api/diagrams?limit=1000&offset=0&project_id=${encodeURIComponent(String(projectId))}`),
+            isInstalledApp()
+              ? apiFetch(`/api/db-clients?limit=100&offset=0&project_id=${encodeURIComponent(String(projectId))}`)
+              : Promise.resolve(null),
+          ])
           if (!response.ok) return
           const json = await response.json()
           data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []
           data = data.filter(file => String(file.project_id ?? file.projectId) === String(projectId))
+          if (dbClientsResponse?.ok) {
+            const json = await dbClientsResponse.json()
+            dbClients = (Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [])
+              .filter(file => String(file.project_id ?? file.projectId) === String(projectId))
+          }
         }
-        if (!cancelled) setWorkspaceDiagrams(data)
+        if (!cancelled) {
+          setWorkspaceDiagrams(data)
+          setWorkspaceDbClients(dbClients)
+        }
       } catch {
-        if (!cancelled) setWorkspaceDiagrams([])
+        if (!cancelled) {
+          setWorkspaceDiagrams([])
+          setWorkspaceDbClients([])
+        }
       }
     }
 
     setWorkspaceDiagrams([])
+    setWorkspaceDbClients([])
     loadDiagrams()
     return () => { cancelled = true }
   }, [projectId, isGuest])
@@ -112,29 +135,28 @@ export function ProjectFileTabs({ currentView }: Props) {
     const byProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId)
     const projectDiagrams = [...new Map(
       [...workspaceDiagrams, ...diagrams.filter(byProject)]
+        .filter(file => (file.source_type ?? file.sourceType ?? 'blank') !== 'production_db')
         .map(file => [String(getFileUid(file)), file]),
     ).values()]
     return [
       ...notes.filter(byProject).map(file => ({ file, type: 'notes' as const })),
-      ...projectDiagrams.map(file => ({
-        file,
-        type: (file.source_type ?? file.sourceType) === 'production_db' ? 'db-client' as const : 'erd' as const,
-      })),
+      ...projectDiagrams.map(file => ({ file, type: 'erd' as const })),
+      ...workspaceDbClients.filter(byProject).map(file => ({ file, type: 'db-client' as const })),
       ...flowcharts.filter(byProject).map(file => ({ file, type: 'flowchart' as const })),
       ...drawings.filter(byProject).map(file => ({ file, type: 'drawings' as const })),
     ].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
-  }, [projectId, notes, diagrams, workspaceDiagrams, flowcharts, drawings])
+  }, [projectId, notes, diagrams, workspaceDiagrams, workspaceDbClients, flowcharts, drawings])
 
-  const activeUid = currentView === 'notes'
+  const activeUid = currentFile ? getFileUid(currentFile) : currentView === 'notes'
     ? activeNoteUid
-    : currentView === 'erd' || currentView === 'db-client'
+    : currentView === 'erd'
       ? activeDiagram?.uid || activeDiagramId
       : currentView === 'flowchart'
         ? activeFlowchart?.uid || activeFlowchartId
         : activeDrawing?.uid || activeDrawingId
 
   const navigateTo = (type: FeatureTab, file: any) => {
-    if (type === 'erd' || type === 'db-client') {
+    if (type === 'erd') {
       void handleDiagramSelect(String(getFileUid(file)))
       return
     }
@@ -210,7 +232,7 @@ export function ProjectFileTabs({ currentView }: Props) {
                 return (
                   <button
                     key={feature.id}
-                    onClick={() => setCreateType(feature.id)}
+                    onClick={() => setCreateType(feature.id as CreateFileType)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent",
                       createType === feature.id && "bg-accent text-accent-foreground"

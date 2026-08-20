@@ -7,11 +7,12 @@ import { apiFetch } from '../lib/api';
 export function useTrash(isGuest: boolean = false) {
   const [trashData, setTrashData] = useState<{
     diagrams: Diagram[];
+    dbClients: any[];
     notes: Note[];
     drawings: Drawing[];
     flowcharts: Flowchart[];
     projects: Project[];
-  }>({ diagrams: [], notes: [], drawings: [], flowcharts: [], projects: [] });
+  }>({ diagrams: [], dbClients: [], notes: [], drawings: [], flowcharts: [], projects: [] });
   const [isLoading, setIsLoading] = useState(true);
   const isGuestRef = useRef(isGuest);
   useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
@@ -33,6 +34,7 @@ export function useTrash(isGuest: boolean = false) {
         
         setTrashData({
           diagrams: filterDeleted(files),
+          dbClients: [],
           notes: filterDeleted(notes),
           drawings: filterDeleted(drawings),
           flowcharts: filterDeleted(flowchart),
@@ -52,6 +54,7 @@ export function useTrash(isGuest: boolean = false) {
         const data = await res.json();
         const sortedData = {
           diagrams: Array.isArray(data.diagrams) ? data.diagrams.sort((a: any, b: any) => b.id - a.id) : [],
+          dbClients: Array.isArray(data.db_clients) ? data.db_clients.sort((a: any, b: any) => b.id - a.id) : [],
           notes: Array.isArray(data.notes) ? data.notes.sort((a: any, b: any) => b.id - a.id) : [],
           drawings: Array.isArray(data.drawings) ? data.drawings.sort((a: any, b: any) => b.id - a.id) : [],
           flowcharts: Array.isArray(data.flowcharts) ? data.flowcharts.sort((a: any, b: any) => b.id - a.id) : [],
@@ -127,6 +130,19 @@ export function useTrash(isGuest: boolean = false) {
     }
   };
 
+  const restoreDbClient = async (id: number | string) => {
+    const res = await apiFetch(`/api/db-clients/${id}/restore`, { method: 'POST' });
+    if (!res.ok) { toast.error('Failed to restore DB Client'); return; }
+    await fetchTrash();
+    toast.success('DB Client restored successfully');
+  };
+
+  const deleteDbClientPermanent = async (id: number | string) => {
+    const res = await apiFetch(`/api/db-clients/${id}/permanent`, { method: 'DELETE' });
+    if (!res.ok) { toast.error('Failed to permanently delete DB Client'); return; }
+    toast.success('DB Client permanently deleted');
+  };
+
   return {
     trashData,
     setTrashData,
@@ -134,6 +150,8 @@ export function useTrash(isGuest: boolean = false) {
     restoreNote,
     restoreDrawing,
     restoreFlowchart,
+    restoreDbClient,
+    deleteDbClientPermanent,
     isLoading
   };
 }

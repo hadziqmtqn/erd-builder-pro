@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
+import { migrateDbClients } from "./db-client-migration.js";
 
 type PrismaRecord = { id: number | bigint | string };
 
@@ -491,6 +492,7 @@ export async function applySchemaMigrations(): Promise<void> {
   if (isDesktopMode()) {
     await createDbConnectTablesIfMissing();
     await createSqlQueriesTableIfMissing();
+    await migrateDbClients();
     await addColumnIfMissing("db_accounts", "environment", '"environment" TEXT NOT NULL DEFAULT \'development\'');
     await addColumnIfMissing("db_accounts", "safe_mode", '"safe_mode" TEXT NOT NULL DEFAULT \'protected\'');
     await addColumnIfMissing("db_accounts", "ssl_mode", '"ssl_mode" TEXT NOT NULL DEFAULT \'disable\'');

@@ -22,7 +22,7 @@ import { beautifySql, emptyQueryState, newQueryTab, readQueryState, sanitizeQuer
 
 type DataQueryViewProps = {
   connectionId: number;
-  diagramId: number;
+  dbClientId: number;
   initialTable: string | null;
   openNonce?: number;
 };
@@ -34,10 +34,10 @@ const isQueryDirty = (tab: QueryTab, query?: any) => !query
   || tab.name !== (query.name || 'SQL Query')
   || tab.script !== (query.script || '');
 
-export function DataQueryView({ connectionId, diagramId, initialTable, openNonce = 0 }: DataQueryViewProps) {
+export function DataQueryView({ connectionId, dbClientId, initialTable, openNonce = 0 }: DataQueryViewProps) {
   const { resolvedTheme } = useWorkspace();
   const { setActionContextData } = useAIAction();
-  const storageKey = `erd-production-db-query-tabs:${diagramId}:${connectionId}`;
+  const storageKey = `db-client-query-tabs:${dbClientId}:${connectionId}`;
   const [tables, setTables] = useState<any[]>([]);
   const [queries, setQueries] = useState<any[]>([]);
   const [queriesLoaded, setQueriesLoaded] = useState(false);
@@ -74,7 +74,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     setQueriesLoaded(false);
     const [schemaRes, queryRes] = await Promise.all([
       apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' }),
-      apiFetch(`/api/catalogs/${connectionId}/queries?diagramId=${diagramId}`),
+      apiFetch(`/api/catalogs/${connectionId}/queries?dbClientId=${dbClientId}`),
     ]);
     const schemaData = await schemaRes.json();
     const queryData = await queryRes.json();
@@ -85,7 +85,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     setConnectionSecurity(schemaData.connectionSecurity || null);
     setQueries(queryData.queries || []);
     setQueriesLoaded(true);
-  }, [connectionId, diagramId]);
+  }, [connectionId, dbClientId]);
 
   useEffect(() => { load().catch((err: any) => setLoadError(err.message)); }, [load]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
@@ -196,7 +196,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
     const res = await apiFetch(`/api/catalogs/${connectionId}/queries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: tab.id, diagramId, groupName: tab.groupName, name: tab.name, script: tab.script }),
+      body: JSON.stringify({ id: tab.id, dbClientId, groupName: tab.groupName, name: tab.name, script: tab.script }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save SQL query');
@@ -207,7 +207,7 @@ export function DataQueryView({ connectionId, diagramId, initialTable, openNonce
 
   const deleteActiveQuery = async () => {
     if (!activeTab?.id) return;
-    const res = await apiFetch(`/api/catalogs/${connectionId}/queries/${activeTab.id}?diagramId=${diagramId}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/catalogs/${connectionId}/queries/${activeTab.id}?dbClientId=${dbClientId}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete SQL query');
     setQueryState(prev => {

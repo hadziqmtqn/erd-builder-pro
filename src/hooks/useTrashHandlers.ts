@@ -7,6 +7,7 @@ export interface UseTrashHandlersParams {
   restoreNote: (id: any) => Promise<void>;
   restoreDrawing: (id: any) => Promise<void>;
   restoreFlowchart: (id: any) => Promise<void>;
+  restoreDbClient: (id: any) => Promise<void>;
   fetchTrash: () => Promise<void>;
   fetchProjects: (loadMore?: boolean, searchQuery?: string) => Promise<void>;
   fetchDiagrams: (...args: any[]) => Promise<void>;
@@ -40,7 +41,7 @@ function warnIfProjectDeleted(file: any, deletedProjects: any[]): boolean {
 
 export function useTrashHandlers(params: UseTrashHandlersParams) {
   const {
-    restoreProject, restoreDiagram, restoreNote, restoreDrawing, restoreFlowchart,
+    restoreProject, restoreDiagram, restoreNote, restoreDrawing, restoreFlowchart, restoreDbClient,
     fetchTrash, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
     debouncedSearchQuery,
     setItemToDelete, setIsPermanentDeleteConfirmOpen,
@@ -95,6 +96,14 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
     await fetchFlowcharts(false, 'all', debouncedSearchQuery, null, 50, undefined, { silent: true });
   }, [restoreFlowchart, fetchTrash, fetchProjects, fetchFlowcharts, debouncedSearchQuery, deletedProjects]);
 
+  const handleTrashRestoreDbClient = useCallback(async (file: any) => {
+    const id = typeof file === 'object' ? (file.uid ?? file.id) : file;
+    if (warnIfProjectDeleted(file, deletedProjects)) return;
+    await restoreDbClient(id);
+    await fetchTrash();
+    await fetchProjects();
+  }, [restoreDbClient, fetchTrash, fetchProjects, deletedProjects]);
+
   const handleTrashProjectPermanentDelete = useCallback((file: any) => {
     const id = typeof file === 'object' ? file.id : file;
     setItemToDelete({ id, type: 'project' });
@@ -129,16 +138,25 @@ export function useTrashHandlers(params: UseTrashHandlersParams) {
     setIsPermanentDeleteConfirmOpen(true);
   }, [setItemToDelete, setIsPermanentDeleteConfirmOpen]);
 
+  const handleTrashDbClientPermanentDelete = useCallback((file: any) => {
+    const id = typeof file === 'object' ? file.id : file;
+    const uid = typeof file === 'object' ? file.uid : undefined;
+    setItemToDelete({ id, uid, type: 'db-client' });
+    setIsPermanentDeleteConfirmOpen(true);
+  }, [setItemToDelete, setIsPermanentDeleteConfirmOpen]);
+
   return {
     handleTrashRestoreProject,
     handleTrashRestoreDiagram,
     handleTrashRestoreNote,
     handleTrashRestoreDrawing,
     handleTrashRestoreFlowchart,
+    handleTrashRestoreDbClient,
     handleTrashProjectPermanentDelete,
     handleTrashDiagramPermanentDelete,
     handleTrashNotePermanentDelete,
     handleTrashDrawingPermanentDelete,
     handleTrashFlowchartPermanentDelete,
+    handleTrashDbClientPermanentDelete,
   };
 }

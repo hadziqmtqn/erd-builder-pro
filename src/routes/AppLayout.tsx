@@ -117,6 +117,7 @@ function AppLayoutInner() {
   const [searchParams] = useSearchParams();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isExportAllOpen, setIsExportAllOpen] = useState(false);
+  const [activeDbClient, setActiveDbClient] = useState<any>(null);
   const [dbmlContent, setDbmlContent] = useState('');
   const dbmlContentRef = useRef('');
   const dbmlDraftDirtyRef = useRef(false);
@@ -131,17 +132,31 @@ function AppLayoutInner() {
 
   // ─── Derive AI entity context from current route ─────
   const entityContext = useMemo(() => {
-    const m = location.pathname.match(/^\/(notes|diagrams|flowcharts|drawings)\/([^/]+)$/);
+    const m = location.pathname.match(/^\/(notes|diagrams|flowcharts|drawings|db-client)\/([^/]+)$/);
     if (!m) return null;
     const typeMap: Record<string, string> = {
       notes: 'note',
       diagrams: 'diagram',
       flowcharts: 'flowchart',
       drawings: 'drawing',
+      'db-client': 'dbClient',
     };
     return { entityType: typeMap[m[1]], entityUid: m[2] };
   }, [location.pathname]);
   const isActiveDiagramContext = entityContext?.entityType === 'diagram';
+
+  useEffect(() => {
+    if (entityContext?.entityType !== 'dbClient') {
+      setActiveDbClient(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch(`/api/db-clients/${encodeURIComponent(entityContext.entityUid)}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(value => { if (!cancelled) setActiveDbClient(value); })
+      .catch(() => { if (!cancelled) setActiveDbClient(null); });
+    return () => { cancelled = true; };
+  }, [entityContext]);
 
   const {
     view, sidebarView,
@@ -199,6 +214,7 @@ function AppLayoutInner() {
     breadcrumbLabel,
   } = useWorkspace();
   const isDbClientRoute = location.pathname === '/table/db-client'
+    || location.pathname.startsWith('/db-client/')
     || (location.pathname.startsWith('/diagrams/') && searchParams.get('feature') === 'db-client');
   const isFeatureRoute = isDbClientRoute || /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -221,9 +237,9 @@ function AppLayoutInner() {
           const term = query.toLowerCase();
           const projectMap = new Map(projects.map((project: any) => [String(project.id), project]));
           const localDocs = [
-            ...diagrams.map((item: any) => ({
+            ...diagrams.filter((item: any) => (item.source_type ?? item.sourceType) !== 'production_db').map((item: any) => ({
               ...item,
-              type: (item.source_type ?? item.sourceType) === 'production_db' ? 'db-client' : 'erd',
+              type: 'erd',
               name: item.name,
             })),
             ...notes.map((item: any) => ({ ...item, type: 'notes', name: item.title })),
@@ -265,7 +281,7 @@ function AppLayoutInner() {
     const id = result.uid ?? result.id;
     const routes: Record<string, string> = {
       erd: `/diagrams/${id}`,
-      'db-client': `/diagrams/${id}?feature=db-client`,
+      'db-client': `/db-client/${id}`,
       notes: `/notes/${id}`,
       drawings: `/drawings/${id}`,
       flowchart: `/flowcharts/${id}`,
@@ -441,8 +457,8 @@ function AppLayoutInner() {
     }
   }, [entityContext, activeNote, activeDiagram, activeFlowchart, activeDrawing, nodes, edges, searchParams]);
 
-  const isActiveDbClient = isActiveDiagramContext
-    && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const isActiveDbClient = entityContext?.entityType === 'dbClient' || (isActiveDiagramContext
+    && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db');
   const showAIChat = useMemo(() => {
     if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
     if (isActiveDbClient) return true;
@@ -453,9 +469,9 @@ function AppLayoutInner() {
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
   const activeProjectId = useMemo<string | number | null>(() => {
-    const ent = activeNote || activeDiagram || activeFlowchart || activeDrawing;
+    const ent = entityContext?.entityType === 'dbClient' ? activeDbClient : activeNote || activeDiagram || activeFlowchart || activeDrawing;
     return ent?.project_id ?? null;
-  }, [activeNote, activeDiagram, activeFlowchart, activeDrawing]);
+  }, [entityContext, activeDbClient, activeNote, activeDiagram, activeFlowchart, activeDrawing]);
 
   // ── Persist Tauri window size/position (handled by tauri-plugin-window-state) ──
 
@@ -477,6 +493,7 @@ function AppLayoutInner() {
       // Editor routes without a loaded file yet — show type label
       if (path.startsWith('/notes/')) return `Notes | ERD Builder Pro`;
       if (path.startsWith('/diagrams/')) return `${searchParams.get('feature') === 'db-client' ? 'DB Client' : 'Diagram'} | ERD Builder Pro`;
+      if (path.startsWith('/db-client/')) return `${breadcrumbLabel || 'DB Client'} | ERD Builder Pro`;
       if (path.startsWith('/flowcharts/')) return `Flowchart | ERD Builder Pro`;
       if (path.startsWith('/drawings/')) return `Drawing | ERD Builder Pro`;
 
@@ -706,8 +723,8 @@ function AppLayoutInner() {
       )}>
         <MainHeader
           featureLabel={featureLabel}
-          activeProjectName={activeProjectName}
-          activeFileName={activeFileName}
+          activeProjectName={entityContext?.entityType === 'dbClient' ? activeDbClient?.project?.name : activeProjectName}
+          activeFileName={entityContext?.entityType === 'dbClient' ? breadcrumbLabel || '' : activeFileName}
           view={view}
           hasActiveItem={isPublicView ? true : hasActiveItem}
           syncError={syncError}
@@ -960,7 +977,8 @@ function AppLayoutInner() {
                     onClose={() => setRightPanelMode('closed')}
                     entityType={entityContext!.entityType}
                     entityUid={entityContext!.entityUid}
-                    entityTitle={entityContext!.entityType === 'note' ? activeNote?.title : 
+                    entityTitle={entityContext!.entityType === 'dbClient' ? activeDbClient?.name || breadcrumbLabel :
+                                 entityContext!.entityType === 'note' ? activeNote?.title : 
                                  entityContext!.entityType === 'diagram' ? activeDiagram?.name : 
                                  entityContext!.entityType === 'flowchart' ? activeFlowchart?.title : null}
                     entityContextText={entityContextText}

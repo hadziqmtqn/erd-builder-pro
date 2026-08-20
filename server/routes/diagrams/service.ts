@@ -22,6 +22,8 @@ function whereClause(userId: string, query: {
   }
   if (query.sourceType) {
     where.sourceType = query.sourceType;
+  } else {
+    where.OR = [{ sourceType: null }, { sourceType: { not: "production_db" } }];
   }
   if (query.q?.trim()) {
     where.name = { contains: query.q.trim(), mode: "insensitive" };
@@ -45,10 +47,9 @@ async function excludeDeletedProjectIds(): Promise<number[]> {
 async function addDeletedProjectFilter(where: any, _userId: string) {
   const deletedIds = await excludeDeletedProjectIds();
   if (deletedIds.length > 0) {
-    where.OR = [
-      { projectId: null },
-      { projectId: { notIn: deletedIds } },
-    ];
+    where.AND = [...(where.AND || []), { OR: [
+      { projectId: null }, { projectId: { notIn: deletedIds } },
+    ] }];
   }
 }
 

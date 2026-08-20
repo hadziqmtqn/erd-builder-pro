@@ -59,6 +59,8 @@ interface ERDViewProps {
 
   handleExportImage: () => void;
   isReadOnly?: boolean;
+  isDbClient?: boolean;
+  sourceConnectionId?: number;
 
   undo?: () => void;
   redo?: () => void;
@@ -98,6 +100,8 @@ const ERDViewComponent = ({
   onAutoLayout,
   handleExportImage,
   isReadOnly = false,
+  isDbClient = false,
+  sourceConnectionId,
 
   undo,
   redo,
@@ -118,10 +122,9 @@ const ERDViewComponent = ({
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
   const { getViewport } = useReactFlow();
-  const { resolvedTheme, activeDocument } = useWorkspace();
+  const { resolvedTheme } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
-  const isProductionDb = activeDocument?.source_type === 'production_db';
-  const sourceConnectionId = activeDocument?.source_connection_id as number | undefined;
+  const isProductionDb = isDbClient;
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);

@@ -33,7 +33,7 @@ export interface WorkspaceContextValue {
   drawings: any[];
   flowcharts: any[];
   projects: any[];
-  trashData: { diagrams: any[]; notes: any[]; drawings: any[]; flowcharts: any[]; projects: any[] };
+  trashData: { diagrams: any[]; dbClients: any[]; notes: any[]; drawings: any[]; flowcharts: any[]; projects: any[] };
   nodes: Node<Entity>[];
   edges: Edge[];
   setNodes: (nodes: Node<Entity>[] | ((prev: Node<Entity>[]) => Node<Entity>[])) => void;
@@ -233,11 +233,13 @@ export interface WorkspaceContextValue {
   handleTrashRestoreNote: (id: any) => Promise<void>;
   handleTrashRestoreDrawing: (id: any) => Promise<void>;
   handleTrashRestoreFlowchart: (id: any) => Promise<void>;
+  handleTrashRestoreDbClient: (id: any) => Promise<void>;
   handleTrashProjectPermanentDelete: (id: any) => void;
   handleTrashDiagramPermanentDelete: (id: any) => void;
   handleTrashNotePermanentDelete: (id: any) => void;
   handleTrashDrawingPermanentDelete: (id: any) => void;
   handleTrashFlowchartPermanentDelete: (id: any) => void;
+  handleTrashDbClientPermanentDelete: (id: any) => void;
   fetchTrash: () => Promise<void>;
 
   // Perm delete

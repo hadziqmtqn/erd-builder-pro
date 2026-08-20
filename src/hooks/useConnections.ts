@@ -217,7 +217,7 @@ export function useConnections() {
     }
   };
 
-  const importAsDiagram = async (id: number, name: string): Promise<{ diagram: any; table_count: number } | null> => {
+  const importAsDbClient = async (id: number, name: string): Promise<{ dbClient: any; tableCount: number } | null> => {
     try {
       const res = await apiFetch(`/api/connections/${id}/import`, {
         method: 'POST',
@@ -248,7 +248,7 @@ export function useConnections() {
     createConnection,
     updateConnection,
     deleteConnection,
-    importAsDiagram,
+    importAsDbClient,
     getDefaultPort,
   };
 }
@@ -451,21 +451,21 @@ export function useDbCatalogs(accountId?: number) {
     }
   };
 
-  const deleteCatalog = async (id: number): Promise<{ detachedDiagrams: number; deletedDiagrams?: number; diagramNames: string[] } | null> => {
+  const deleteCatalog = async (id: number): Promise<{ deletedClients: number; clientNames: string[] } | null> => {
     try {
       const res = await apiFetch(`/api/catalogs/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete catalog');
       const result = await res.json();
       setCatalogs(prev => prev.filter(c => c.id !== id));
       toast.success('Database disconnected');
-      return result as { detachedDiagrams: number; deletedDiagrams?: number; diagramNames: string[] };
+      return result as { deletedClients: number; clientNames: string[] };
     } catch (e: any) {
       toast.error(e.message || 'Failed to disconnect database');
       return null;
     }
   };
 
-  const importAsDiagram = async (catalogId: number, name: string, projectId?: number | string | null): Promise<{ diagram: any; tableCount: number } | null> => {
+  const importAsDbClient = async (catalogId: number, name: string, projectId?: number | string | null): Promise<{ dbClient: any; tableCount: number } | null> => {
     try {
       const res = await apiFetch(`/api/catalogs/${catalogId}/import`, {
         method: 'POST',
@@ -507,7 +507,7 @@ export function useDbCatalogs(accountId?: number) {
     fetchCatalogs,
     createCatalog,
     deleteCatalog,
-    importAsDiagram,
+    importAsDbClient,
     migrateOldConnections,
   };
 }
