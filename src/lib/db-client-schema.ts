@@ -1,0 +1,57 @@
+import type { Edge, Node } from '@xyflow/react';
+import type { Entity } from '@/types';
+import { databaseColumnToERD } from '@/lib/column-metadata';
+
+export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Entity>[]; edges: Edge[] } {
+  const positions = layout?.nodes || {};
+  const nodes = schema.map((table: any, index) => {
+    const saved = positions[table.table_name] || {};
+    return {
+      id: table.table_name,
+      type: 'entity',
+      position: { x: saved.x ?? (index % 4) * 280 + 50, y: saved.y ?? Math.floor(index / 4) * 220 + 50 },
+      data: {
+        id: table.table_name,
+        name: table.table_name,
+        x: saved.x ?? 0,
+        y: saved.y ?? 0,
+        color: saved.color ?? '#6b7280',
+        columns: (table.columns || []).map((column: any) => ({
+          ...databaseColumnToERD(column, `${table.table_name}.${column.name}`),
+          _is_fk: (table.foreign_keys || []).some((foreignKey: any) => foreignKey.column === column.name),
+        })),
+        collapsed: saved.collapsed ?? false,
+        hidden_columns: saved.hidden_columns ?? [],
+        note: saved.note ?? '',
+        isReadOnly: true,
+      } as Entity,
+    };
+  });
+  const edges: Edge[] = [];
+  for (const table of schema) {
+    for (const foreignKey of table.foreign_keys || []) {
+      edges.push({
+        id: `${table.table_name}.${foreignKey.column}->${foreignKey.ref_table}.${foreignKey.ref_column}`,
+        source: table.table_name,
+        target: foreignKey.ref_table,
+        sourceHandle: `col-${table.table_name}.${foreignKey.column}-source`,
+        targetHandle: `col-${foreignKey.ref_table}.${foreignKey.ref_column}-target`,
+        type: 'smoothstep',
+        data: { constraint_name: foreignKey.constraint_name },
+      });
+    }
+  }
+  return { nodes, edges };
+}
+
+export function canvasLayout(nodes: Node<Entity>[], viewport: any, previous: any) {
+  const positions = Object.fromEntries(nodes.map(node => [node.id, {
+    x: node.position.x,
+    y: node.position.y,
+    color: node.data.color,
+    collapsed: (node.data as any).collapsed ?? false,
+    hidden_columns: (node.data as any).hidden_columns ?? [],
+    note: (node.data as any).note ?? '',
+  }]));
+  return { ...previous, nodes: positions, viewport, _type: 'production_db_positions' };
+}

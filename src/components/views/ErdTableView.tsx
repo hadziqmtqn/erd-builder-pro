@@ -62,9 +62,9 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'actions', label: 'Actions', defaultVisible: true, hideable: false, width: 'w-[8%]' },
 ];
 
-const loadColumnVisibility = (): Record<string, boolean> => {
+const loadColumnVisibility = (storageKey = STORAGE_KEY): Record<string, boolean> => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       const parsed = JSON.parse(saved);
       return { ...parsed };
@@ -107,15 +107,18 @@ export const ErdTableView = React.memo(function ErdTableView({
   );
 
   // Filter out 'source' column in web mode — DB Connect is desktop-only
-  const columns = showDbConnect ? DEFAULT_COLUMNS : DEFAULT_COLUMNS.filter(c => c.id !== 'source');
+  const columns = isDbClient
+    ? DEFAULT_COLUMNS.filter(column => column.id !== 'status' && column.id !== 'expires')
+    : showDbConnect ? DEFAULT_COLUMNS : DEFAULT_COLUMNS.filter(c => c.id !== 'source');
 
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(loadColumnVisibility);
+  const storageKey = isDbClient ? 'db-client-table-column-visibility' : STORAGE_KEY;
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => loadColumnVisibility(storageKey));
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleColumns));
+      localStorage.setItem(storageKey, JSON.stringify(visibleColumns));
     } catch {}
-  }, [visibleColumns]);
+  }, [storageKey, visibleColumns]);
 
   const toggleColumn = useCallback((colId: string) => {
     setVisibleColumns(prev => ({ ...prev, [colId]: !prev[colId] }));
@@ -173,9 +176,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   };
 
   const visibleCols = columns.filter(c => c.id === 'name' || c.id === 'workspace' || c.id === 'actions' || isColVisible(c.id));
-  const visibleDiagrams = diagrams.filter(d =>
-    (d.source_type ?? 'blank') === (isDbClient ? 'production_db' : 'blank')
-  );
+  const visibleDiagrams = isDbClient ? diagrams : diagrams.filter(d => (d.source_type ?? 'blank') === 'blank');
 
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
@@ -314,7 +315,12 @@ export const ErdTableView = React.memo(function ErdTableView({
                       if (col.id === 'source') {
                         return (
                           <TableCell key="source" className="text-muted-foreground text-xs">
-                            {(d.source_type && d.source_type !== 'scratch') ? (
+                            {isDbClient ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs text-blue-500">
+                                <Database className="size-3" />
+                                {(d as any).catalog?.account?.type || (d as any).catalog?.database_name || 'Database'}
+                              </span>
+                            ) : (d.source_type && d.source_type !== 'scratch') ? (
                               <span className="inline-flex items-center gap-1 text-xs bg-blue-500/10 text-blue-500 px-2 py-0.5 rounded-full">
                                 <Database className="w-3 h-3" />
                                 {formatSourceType(d.source_type)}

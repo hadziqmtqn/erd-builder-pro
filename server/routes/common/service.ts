@@ -1,12 +1,18 @@
 import { prisma } from "../../lib/prisma.js";
+import { isDesktopMode } from "../../lib/config.js";
 
 export async function fetchTrashItems(userId: string) {
-  const [diagrams, notes, drawings, flowcharts, projects] = await Promise.all([
+  const [diagrams, dbClients, notes, drawings, flowcharts, projects] = await Promise.all([
     prisma?.diagram.findMany({
-      where: { isDeleted: true, userId },
+      where: { isDeleted: true, userId, sourceType: { not: "production_db" } },
       include: { project: { select: { name: true } } },
       orderBy: { deletedAt: "desc" },
     }),
+    isDesktopMode() ? (prisma as any)?.dbClient.findMany({
+      where: { isDeleted: true, userId },
+      include: { project: { select: { name: true } } },
+      orderBy: { deletedAt: "desc" },
+    }) : Promise.resolve([]),
     prisma?.note.findMany({
       where: { isDeleted: true, userId },
       include: { project: { select: { name: true } } },
@@ -30,6 +36,7 @@ export async function fetchTrashItems(userId: string) {
 
   return {
     diagrams: diagrams || [],
+    dbClients: dbClients || [],
     notes: notes || [],
     drawings: drawings || [],
     flowcharts: flowcharts || [],

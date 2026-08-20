@@ -20,11 +20,13 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DbClientTrashSection } from './DbClientTrashSection';
 
 interface TrashViewProps {
   trashData: {
     projects: any[];
     diagrams: any[];
+    dbClients: any[];
     notes: any[];
     drawings: any[];
     flowcharts: any[];
@@ -34,12 +36,14 @@ interface TrashViewProps {
   restoreNote: (id: number) => Promise<void>;
   restoreDrawing: (id: number) => Promise<void>;
   restoreFlowchart: (id: number) => Promise<void>;
+  restoreDbClient: (client: any) => Promise<void>;
   fetchTrash: () => void;
   handleProjectPermanentDelete: (file: any) => void;
   handleDiagramPermanentDelete: (file: any) => void;
   handleNotePermanentDelete: (file: any) => void;
   handleDrawingPermanentDelete: (file: any) => void;
   handleFlowchartPermanentDelete: (file: any) => void;
+  handleDbClientPermanentDelete: (file: any) => void;
   isLoading?: boolean;
 }
 
@@ -50,12 +54,14 @@ export function TrashView({
   restoreNote,
   restoreDrawing,
   restoreFlowchart,
+  restoreDbClient,
   fetchTrash,
   handleProjectPermanentDelete,
   handleDiagramPermanentDelete,
   handleNotePermanentDelete,
   handleDrawingPermanentDelete,
   handleFlowchartPermanentDelete,
+  handleDbClientPermanentDelete,
   isLoading = false
 }: TrashViewProps) {
   return (
@@ -178,6 +184,12 @@ export function TrashView({
               </div>
             )}
           </section>
+
+          <DbClientTrashSection
+            clients={trashData.dbClients || []}
+            restore={restoreDbClient}
+            permanentlyDelete={handleDbClientPermanentDelete}
+          />
 
           {/* Notes Table */}
           <section>

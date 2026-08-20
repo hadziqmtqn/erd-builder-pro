@@ -133,7 +133,7 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const { isPublicView, duplicateEntity, activeDocument, setSelectedNodeId } = useWorkspace();
   const { setRightPanelMode } = useAIAction();
-  const isProductionDb = activeDocument?.source_type === 'production_db';
+  const isProductionDb = activeDocument?.source_type === 'production_db' || !!(data as any).isReadOnly;
   const isReadOnly = isPublicView || !!data.isDiffMode || isProductionDb;
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

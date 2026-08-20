@@ -30,6 +30,7 @@ import desktopImportRouter from "./routes/desktop-import/index.js";
 import connectionsRouter from "./routes/connections/index.js";
 import storageRouter from "./routes/storage/index.js";
 import entityChangesRouter from "./routes/entity-changes/index.js";
+import dbClientsRouter from "./routes/db-clients/index.js";
 import oauthConsentRouter from "./routes/oauth-consent.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
 
@@ -330,6 +331,7 @@ app.get("/api/version/latest", async (_req, res) => {
 app.use("/api", authRouter);
 app.use("/api", oauthConsentRouter);
 app.use("/api/diagrams", diagramsRouter);
+app.use("/api/db-clients", dbClientsRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/search", searchRouter);
 app.use("/api/notes", notesRouter);

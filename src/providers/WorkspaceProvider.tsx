@@ -318,7 +318,7 @@ export function WorkspaceProvider({
     isLoading: isFlowchartsLoading, isItemLoading: isFlowchartItemLoading, selectFlowchart,
   } = useFlowcharts(isGuest);
 
-  const { trashData, fetchTrash, isLoading: isTrashLoading } = useTrash(isGuest);
+  const { trashData, fetchTrash, restoreDbClient, deleteDbClientPermanent, isLoading: isTrashLoading } = useTrash(isGuest);
 
   // ── Broadcast ──
   const { broadcastMessage } = useBroadcastChannel(useCallback(async (message) => {
@@ -860,11 +860,12 @@ export function WorkspaceProvider({
       else if (type === 'notes') await deleteNotePermanent(uid || String(id));
       else if (type === 'drawings') await deleteDrawingPermanent(uid || String(id));
       else if (type === 'flowchart') await deleteFlowchartPermanent(uid || String(id));
+      else if (type === 'db-client') await deleteDbClientPermanent(uid || String(id));
       setIsPermanentDeleteConfirmOpen(false);
       setItemToDelete(null);
       await fetchTrash();
     }
-  }, [itemToDelete, deleteProjectPermanent, deleteDiagramPermanent, deleteNotePermanent, deleteDrawingPermanent, deleteFlowchartPermanent, fetchTrash]);
+  }, [itemToDelete, deleteProjectPermanent, deleteDiagramPermanent, deleteNotePermanent, deleteDrawingPermanent, deleteFlowchartPermanent, deleteDbClientPermanent, fetchTrash]);
 
   // ── Duplicate ──
   const handleDuplicate = useCallback(() => {
@@ -925,12 +926,12 @@ export function WorkspaceProvider({
   // ── Trash handlers ──
   const {
     handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
-    handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
+    handleTrashRestoreDrawing, handleTrashRestoreFlowchart, handleTrashRestoreDbClient,
     handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
     handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
-    handleTrashFlowchartPermanentDelete,
+    handleTrashFlowchartPermanentDelete, handleTrashDbClientPermanentDelete,
   } = useTrashHandlers({
-    restoreProject, restoreDiagram, restoreNote, restoreDrawing, restoreFlowchart,
+    restoreProject, restoreDiagram, restoreNote, restoreDrawing, restoreFlowchart, restoreDbClient,
     fetchTrash, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts,
     debouncedSearchQuery,
     setItemToDelete, setIsPermanentDeleteConfirmOpen,
@@ -1057,10 +1058,10 @@ export function WorkspaceProvider({
     isInstallable, installApp,
 
     handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
-    handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
+    handleTrashRestoreDrawing, handleTrashRestoreFlowchart, handleTrashRestoreDbClient,
     handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
     handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
-    handleTrashFlowchartPermanentDelete, fetchTrash, isTrashLoading,
+    handleTrashFlowchartPermanentDelete, handleTrashDbClientPermanentDelete, fetchTrash, isTrashLoading,
 
     confirmPermanentDelete,
 
@@ -1136,10 +1137,10 @@ export function WorkspaceProvider({
     syncDrafts, triggerDebouncedSync, broadcastMessage, setIsLocalSaving, hasPendingSyncs, syncError,
     isInstallable, installApp,
     handleTrashRestoreProject, handleTrashRestoreDiagram, handleTrashRestoreNote,
-    handleTrashRestoreDrawing, handleTrashRestoreFlowchart,
+    handleTrashRestoreDrawing, handleTrashRestoreFlowchart, handleTrashRestoreDbClient,
     handleTrashProjectPermanentDelete, handleTrashDiagramPermanentDelete,
     handleTrashNotePermanentDelete, handleTrashDrawingPermanentDelete,
-    handleTrashFlowchartPermanentDelete, fetchTrash, isTrashLoading,
+    handleTrashFlowchartPermanentDelete, handleTrashDbClientPermanentDelete, fetchTrash, isTrashLoading,
     confirmPermanentDelete,
     saveDiagram, saveNote, saveDrawing, saveFlowchart,
     updateDiagram, updateNote, updateDrawing, updateFlowchart,

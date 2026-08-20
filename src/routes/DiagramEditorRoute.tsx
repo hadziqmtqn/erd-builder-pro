@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Database } from 'lucide-react';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
 
@@ -13,6 +13,7 @@ import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 export function DiagramEditorRoute() {
   const ctx = useWorkspace();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const {
     nodes, edges, setNodes, isPublicView, publicData, activeDiagramId, activeDiagram,
@@ -42,6 +43,11 @@ export function DiagramEditorRoute() {
     const show = isPublicView ? publicData : activeDiagram;
     return !isPublicView && show?.source_type === 'production_db';
   }, [isPublicView, publicData, activeDiagram]);
+
+  useEffect(() => {
+    if (!isProductionDb || !activeDiagram) return;
+    navigate(`/db-client/${activeDiagram.uid || activeDiagram.id}`, { replace: true });
+  }, [activeDiagram, isProductionDb, navigate]);
 
   // Tab default: Data for production DB (browse records first), ERD for normal diagrams
   const diagramTab = (searchParams.get('tab') || (isProductionDb ? 'data' : 'erd')) as DataViewerMode;
@@ -139,6 +145,10 @@ export function DiagramEditorRoute() {
     );
   }
 
+  if (isProductionDb) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Opening DB Client…</div>;
+  }
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <ProjectFileTabs currentView={isProductionDb ? 'db-client' : 'erd'} />
@@ -158,7 +168,7 @@ export function DiagramEditorRoute() {
       ) : diagramTab === 'query' && isProductionDb && !isPublicView && sourceConnectionId && show?.id ? (
         <DataQueryView
           connectionId={sourceConnectionId}
-          diagramId={Number(show.id)}
+          dbClientId={Number(show.id)}
           initialTable={queryInitialTable}
           openNonce={queryOpenNonce}
         />
@@ -178,6 +188,8 @@ export function DiagramEditorRoute() {
           handleExportSQL={handleWorkspaceExportSQL}
           handleExportImage={handleWorkspaceExportImage}
           isReadOnly={effectiveReadOnly}
+          isDbClient={isProductionDb}
+          sourceConnectionId={sourceConnectionId}
           undo={undo}
           redo={redo}
           canUndo={canUndo}

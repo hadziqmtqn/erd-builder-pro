@@ -93,13 +93,14 @@ export async function listWorkspaceFiles(userId: string, projectUid?: string) {
     : null;
   if (projectUid && !project) throw new Error("Project not found");
   const where = { userId, isDeleted: false, ...(project ? { projectId: project.id } : {}) };
-  const [projects, notes, flowcharts, diagrams] = await Promise.all([
+  const [projects, notes, flowcharts, diagrams, dbClients] = await Promise.all([
     prisma.project.findMany({ where: { userId, isDeleted: false }, select: { id: true, uid: true, name: true, createdAt: true } }),
     prisma.note.findMany({ where, select: { id: true, uid: true, title: true, projectId: true, updatedAt: true } }),
     prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, projectId: true, updatedAt: true } }),
-    prisma.diagram.findMany({ where, select: { id: true, uid: true, name: true, projectId: true, sourceType: true, updatedAt: true } }),
+    prisma.diagram.findMany({ where: { ...where, AND: [{ OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] }, select: { id: true, uid: true, name: true, projectId: true, sourceType: true, updatedAt: true } }),
+    (prisma as any).dbClient.findMany({ where, select: { id: true, uid: true, name: true, projectId: true, catalogId: true, updatedAt: true } }),
   ]);
-  return serialize({ projects, notes, flowcharts, diagrams });
+  return serialize({ projects, notes, flowcharts, diagrams, dbClients });
 }
 
 export async function readDocument(userId: string, type: McpDocumentType, uid: string) {
@@ -108,7 +109,9 @@ export async function readDocument(userId: string, type: McpDocumentType, uid: s
     : type === "flowcharts"
       ? await getFlowchart(uid, userId)
       : await getDiagramWithData(uid, userId);
-  if (!value || (value as any).isDeleted) throw new Error("Document not found");
+  if (!value || (value as any).isDeleted || (type === "diagrams" && (value as any).sourceType === "production_db")) {
+    throw new Error("Document not found");
+  }
   return serialize(value);
 }
 

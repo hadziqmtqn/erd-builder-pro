@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 
@@ -8,11 +8,10 @@ import { ErdTableView } from '@/components/views/ErdTableView';
 import { DrawingsTableView } from '@/components/views/DrawingsTableView';
 import { FlowchartTableView } from '@/components/views/FlowchartTableView';
 import { WelcomeView } from '@/components/views/WelcomeView';
+import { DbClientTableRoute } from './DbClientTableRoute';
 
 export function TableRoute() {
   const { feature } = useParams<{ feature: string }>();
-  const navigate = useNavigate();
-
   const {
     notes, notesTotal, diagrams, diagramsTotal, drawings, drawingsTotal,
     flowcharts, flowchartsTotal, projects,
@@ -26,10 +25,7 @@ export function TableRoute() {
     fileSearchQuery, setFileSearchQuery, fileSearchRef,
   } = useWorkspace();
 
-  const openDiagram = (uid: string, dbClient = false) => {
-    const selected = handleDiagramSelect(uid);
-    if (dbClient) Promise.resolve(selected).then(() => navigate(`/diagrams/${uid}?feature=db-client`));
-  };
+  const openDiagram = (uid: string) => handleDiagramSelect(uid);
 
   const tablePage = parseInt(tableSearchParams.get('page') || '1', 10);
 
@@ -102,25 +98,7 @@ export function TableRoute() {
         />
       );
     case 'db-client':
-      return (
-        <ErdTableView
-          mode="db-client"
-          diagrams={diagrams}
-          projects={projects}
-          selectedWorkspace={selectedWorkspaceUid}
-          page={tablePage}
-          totalDiagrams={diagramsTotal}
-          isLoading={isDiagramsLoading}
-          onSelectDiagram={(uid) => openDiagram(uid, true)}
-          onPageChange={handlePageChange}
-          onWorkspaceClick={handleWorkspaceClick}
-          onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
-          onDeleteDiagram={makeDeleteHandler(diagrams)}
-          searchQuery={fileSearchQuery}
-          onSearchChange={setFileSearchQuery}
-          searchRef={fileSearchRef}
-        />
-      );
+      return <DbClientTableRoute />;
     case 'drawings':
       return (
         <DrawingsTableView

@@ -62,6 +62,34 @@ export function resolveDesktopMcpTarget(options = {}) {
   );
 }
 
+export function desktopMcpRuntimeCandidates(executable, platform = process.platform) {
+  const executableDir = path.dirname(executable);
+  const resourceDirs = platform === 'darwin'
+    ? [path.resolve(executableDir, '..', 'Resources')]
+    : platform === 'win32'
+      ? [path.join(executableDir, 'resources')]
+      : [path.join(executableDir, 'resources'), path.resolve(executableDir, '..', 'resources')];
+
+  return resourceDirs.map(resourceDir => ({
+    node: path.join(resourceDir, 'dist-server', 'node-bin', platform === 'win32' ? 'node.exe' : 'node'),
+    script: path.join(resourceDir, 'dist-server', 'mcp.js'),
+  }));
+}
+
+export function resolveDesktopMcpRuntime(executable, options = {}) {
+  const exists = options.exists ?? fs.existsSync;
+  const runtime = desktopMcpRuntimeCandidates(executable, options.platform).find(({ node, script }) => exists(node) && exists(script));
+  if (runtime) return runtime;
+
+  throw new Error(`Desktop MCP backend bundle not found beside ${executable}. Reinstall ERD Builder Pro Desktop.`);
+}
+
+export function desktopDataDir({ platform = process.platform, env = process.env, home = os.homedir() } = {}) {
+  if (platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'com.erdbuilderpro.app');
+  if (platform === 'win32') return path.join(env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'com.erdbuilderpro.app');
+  return path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'com.erdbuilderpro.app');
+}
+
 export function startDesktopMcp() {
   const devRoot = process.cwd();
   const devScript = path.join(devRoot, 'dist-server', 'mcp.js');
@@ -98,9 +126,26 @@ export function startDesktopMcp() {
     process.exit(1);
   }
 
-  const child = spawn(executable, ['--mcp'], {
+  let runtime;
+  try {
+    runtime = resolveDesktopMcpRuntime(executable);
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    process.exit(1);
+  }
+
+  const dataDir = desktopDataDir();
+  const child = spawn(runtime.node, [runtime.script], {
+    cwd: dataDir,
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      DATABASE_URL: `file:${path.join(dataDir, 'data.db')}`,
+      DB_VARIANT: 'sqlite',
+      NODE_ENV: 'production',
+      ERD_INSTALL_MODE: 'desktop',
+      ERDBPRO_MCP_STDIO: '1',
+    },
     windowsHide: true,
   });
   child.on('error', (error) => {

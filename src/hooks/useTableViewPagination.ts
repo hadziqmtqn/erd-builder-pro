@@ -106,17 +106,6 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     if (isUserAction && promise?.then) promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
   }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, isDbClientTable, tableLoadingState]);
 
-  // DB Client keeps its own production-database history.
-  useEffect(() => {
-    if (!isDbClientTable || !isAuthenticated || isPublicView) return;
-    const projId = resolveProjectId(selectedWorkspaceUid);
-    const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
-    const isUserAction = tableLoadingState === 'loading';
-    const options = isUserAction ? { page: pageNum, sourceType: 'production_db' } : { silent: true, page: pageNum, sourceType: 'production_db' };
-    const promise = (fetchDiagrams as (...args: any[]) => Promise<any>)(false, projId, fileSearchQuery, null, 10, pageNum, options);
-    if (isUserAction && promise?.then) promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
-  }, [isDbClientTable, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, tableLoadingState]);
-
   // 🗂 Server-side pagination: fetch flowcharts
   useEffect(() => {
     const isTableMode = view === 'flowchart' && !hasActiveItem && isTableView;

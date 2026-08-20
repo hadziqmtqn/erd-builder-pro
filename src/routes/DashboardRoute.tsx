@@ -144,7 +144,7 @@ export function DashboardRoute() {
       return doc.projects?.name || doc.project?.name || (pid ? projectMap.get(String(pid)) : null) || '—'
     }
     const all = [
-      ...(ctx.diagrams || []).filter((d: any) => showDbClient || !isDbClientDiagram(d)).map((d: any) => ({
+      ...(ctx.diagrams || []).filter((d: any) => !isDbClientDiagram(d)).map((d: any) => ({
         ...d,
         _type: 'diagrams' as const,
         _group: isDbClientDiagram(d) ? 'db-client' : 'diagrams',
@@ -158,7 +158,7 @@ export function DashboardRoute() {
       .filter((d) => !d.is_deleted)
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects, showDbClient]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects]);
 
   const [recentQuery, setRecentQuery] = useState('');
   const [recentFilter, setRecentFilter] = useState('all');
@@ -173,11 +173,11 @@ export function DashboardRoute() {
 
   // All non-deleted docs count
   const totalDocs = useMemo(() => {
-    return (ctx.diagrams || []).filter((d: any) => !d.is_deleted && (showDbClient || !isDbClientDiagram(d))).length +
+    return (ctx.diagrams || []).filter((d: any) => !d.is_deleted && !isDbClientDiagram(d)).length +
       (ctx.notes || []).filter((n: any) => !n.is_deleted).length +
       (ctx.drawings || []).filter((d: any) => !d.is_deleted).length +
       (ctx.flowcharts || []).filter((f: any) => !f.is_deleted).length;
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, showDbClient]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts]);
 
   // Workspace document counts — fetched from backend (accurate, not paginated)
   const [projectSummaries, setProjectSummaries] = useState<Record<string, any>>({});
@@ -193,7 +193,8 @@ export function DashboardRoute() {
           diagramsCount: summary.diagrams ?? 0,
           drawingsCount: summary.drawings ?? 0,
           flowchartsCount: summary.flowcharts ?? 0,
-          totalDocs: (summary.notes ?? 0) + (summary.diagrams ?? 0) + (summary.drawings ?? 0) + (summary.flowcharts ?? 0),
+          dbClientsCount: summary.db_clients ?? 0,
+          totalDocs: (summary.notes ?? 0) + (summary.diagrams ?? 0) + (summary.drawings ?? 0) + (summary.flowcharts ?? 0) + (summary.db_clients ?? 0),
         };
       })
       .sort((a: any, b: any) => b.totalDocs - a.totalDocs)

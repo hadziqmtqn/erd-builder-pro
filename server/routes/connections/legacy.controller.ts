@@ -4,6 +4,7 @@ import { erdColumnType } from "../../lib/db-connectors/types.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
+import * as catalogsController from "./catalogs.controller.js";
 
 // ── GET /connections — list all catalogs, shaped like old connections ──
 export async function listLegacyConnections(_req: ExpressRequest, res: ExpressResponse) {
@@ -89,6 +90,9 @@ export async function fetchLegacySchema(req: ExpressRequest, res: ExpressRespons
 
 // ── POST /connections/:id/import — import catalog schema as diagram ──
 export async function importLegacySchema(req: ExpressRequest, res: ExpressResponse) {
+  return catalogsController.importSchema(req, res);
+  /* Legacy implementation kept below for one release as rollback reference.
+     It is unreachable so this endpoint can no longer create production_db diagrams. */
   const userId = (req as any).user.id;
   const { id } = req.params;
   const { name } = req.body;

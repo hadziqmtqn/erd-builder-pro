@@ -104,15 +104,20 @@ export async function deleteAccount(req: ExpressRequest, res: ExpressResponse) {
     const existing = await accountsService.findAccountById(id, userId);
     if (!existing) return res.status(404).json({ error: "Account not found" });
 
-    // Detach diagrams referencing any catalog of this account
+    // A DB Client cannot function without its catalog, so remove both the new
+    // record and its hidden legacy source before the account cascades catalogs.
     const catalogIds = (existing as any).catalogs?.map((c: any) => c.id) ?? [];
+    let deletedClients = 0;
     if (catalogIds.length > 0) {
-      const { detachDiagramsFromCatalogs } = await import("./catalogs.service.js");
-      await detachDiagramsFromCatalogs(catalogIds);
+      const catalogs = await import("./catalogs.service.js");
+      for (const catalogId of catalogIds) {
+        deletedClients += await catalogs.deleteDbClientsForCatalog(catalogId);
+        await catalogs.deleteDiagramsForCatalog(catalogId);
+      }
     }
 
     await accountsService.deleteAccount(id);
-    res.json({ success: true, detachedDiagrams: catalogIds.length });
+    res.json({ success: true, deletedClients });
   } catch (err) {
     console.error("Error deleting account:", err);
     res.status(500).json({ error: "Failed to delete account" });

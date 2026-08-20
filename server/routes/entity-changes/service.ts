@@ -127,6 +127,7 @@ export async function readOwnedEntity(entityType: HistoryEntityType, uid: string
         ? await prisma.drawing.findFirst({ where })
         : await prisma.diagram.findFirst({ where });
   if (!entity) return null;
+  if (entityType === "diagrams" && (entity as any).sourceType === "production_db") return null;
   return {
     entity,
     entityId: String(entity.id),

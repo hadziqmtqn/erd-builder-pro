@@ -159,10 +159,11 @@ export const MainHeader = React.memo(({
               }
 
               // Document editors
-              if (path.startsWith('/notes/') || path.startsWith('/diagrams/') || path.startsWith('/drawings/') || path.startsWith('/flowcharts/')) {
+              if (path.startsWith('/notes/') || path.startsWith('/diagrams/') || path.startsWith('/db-client/') || path.startsWith('/drawings/') || path.startsWith('/flowcharts/')) {
                 const editorInfo: Record<string, { label: string; href: string }> = {
                     notes: { label: 'Notes', href: '/table/notes' },
                     diagrams: { label: 'ERD Builder', href: '/table/erd' },
+                    'db-client': { label: 'DB Client', href: '/table/db-client' },
                   drawings: { label: 'Drawings', href: '/table/drawings' },
                   flowcharts: { label: 'Flowcharts', href: '/table/flowchart' },
                 };

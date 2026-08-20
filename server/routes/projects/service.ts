@@ -4,6 +4,7 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { randomUUID } from "crypto";
 import { getStorageClientForUser } from "../../lib/storage.js";
+import { isDesktopMode } from "../../lib/config.js";
 
 // ── List ──
 
@@ -19,9 +20,9 @@ export async function listProjects(
   if (searchTerm) {
     const containsFilter = (value: string) => ({ contains: value } as any);
 
-    const [dMatches, nMatches, drMatches, fMatches] = await Promise.all([
+    const [dMatches, nMatches, drMatches, fMatches, cMatches] = await Promise.all([
       prisma?.diagram.findMany({
-        where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+        where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] },
         select: { projectId: true },
       }),
       prisma?.note.findMany({
@@ -36,6 +37,10 @@ export async function listProjects(
         where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
         select: { projectId: true },
       }),
+      isDesktopMode() ? (prisma as any)?.dbClient.findMany({
+        where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+        select: { projectId: true },
+      }) : Promise.resolve([]),
     ]);
 
     const matchingProjectIds = new Set<number>([
@@ -43,6 +48,7 @@ export async function listProjects(
       ...(nMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
       ...(drMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
       ...(fMatches || []).map(m => Number(m.projectId)).filter(n => !isNaN(n)),
+      ...(cMatches || []).map((m: any) => Number(m.projectId)).filter((n: number) => !isNaN(n)),
     ]);
 
     if (matchingProjectIds.size > 0) {
@@ -68,7 +74,7 @@ export async function listProjects(
   // Uncategorized files
   const searchLower = searchTerm?.toLowerCase();
   const uncategorizedBase = { projectId: null, userId, isDeleted: false } as const;
-  const uDiagramFilter: Record<string, any> = { ...uncategorizedBase };
+  const uDiagramFilter: Record<string, any> = { ...uncategorizedBase, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] };
   const uNoteFilter: Record<string, any> = { ...uncategorizedBase };
   const uDrawFilter: Record<string, any> = { ...uncategorizedBase };
   const uFlowFilter: Record<string, any> = { ...uncategorizedBase };
@@ -140,6 +146,7 @@ export async function softDeleteProject(projectId: number, userId: string) {
       prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
       prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
       prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+      isDesktopMode() ? (prisma as any).dbClient.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }) : Promise.resolve(),
     ]);
   } catch (err) {
     logger.error({ err }, "Cascading soft delete failed:");
@@ -162,6 +169,7 @@ export async function restoreProject(projectId: number, userId: string) {
       prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
       prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
       prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+      isDesktopMode() ? (prisma as any).dbClient.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }) : Promise.resolve(),
     ]);
   } catch (err) {
     logger.error({ err }, "Cascading restore failed:");
@@ -173,6 +181,9 @@ export async function restoreProject(projectId: number, userId: string) {
 // ── Permanent Delete + Cascade + R2 cleanup ──
 
 export async function permanentDeleteProject(projectId: number, userId: string) {
+  if (isDesktopMode()) {
+    await (prisma as any)?.dbClient.deleteMany({ where: { projectId, userId } });
+  }
   const diagrams = await prisma?.diagram.findMany({
     where: { projectId, userId },
     select: { id: true },
@@ -240,7 +251,7 @@ export async function getProjectSiblings(projectId: number, userId: string) {
       select: { uid: true, title: true, content: true, updatedAt: true },
     }),
     prisma.diagram.findMany({
-      where: { projectId, userId, isDeleted: false },
+      where: { projectId, userId, isDeleted: false, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] },
       select: { id: true, uid: true, name: true, sourceType: true, updatedAt: true },
     }),
     prisma.flowchart.findMany({
@@ -282,20 +293,16 @@ export async function getProjectSiblings(projectId: number, userId: string) {
 export async function getProjectSummary(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
-  const diagramWhere = includeDbClient
-    ? { projectId, userId, isDeleted: false }
-    : {
-        projectId,
-        userId,
-        isDeleted: false,
-        OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }],
-      };
-  const [notes, diagrams, flowcharts, drawings] = await Promise.all([
+  const diagramWhere = { projectId, userId, isDeleted: false, OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }] };
+  const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
     prisma.note.count({ where: { projectId, userId, isDeleted: false } }),
     prisma.diagram.count({ where: diagramWhere }),
     prisma.flowchart.count({ where: { projectId, userId, isDeleted: false } }),
     prisma.drawing.count({ where: { projectId, userId, isDeleted: false } }),
+    includeDbClient && isDesktopMode()
+      ? (prisma as any).dbClient.count({ where: { projectId, userId, isDeleted: false } })
+      : Promise.resolve(0),
   ]);
 
-  return { notes, diagrams, flowcharts, drawings };
+  return { notes, diagrams, flowcharts, drawings, dbClients };
 }
