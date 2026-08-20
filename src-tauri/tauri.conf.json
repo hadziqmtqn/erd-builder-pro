@@ -53,7 +53,8 @@
       "../dist-server/schema.sql": "dist-server/schema.sql",
       "../dist-server/node_modules": "dist-server/node_modules",
       "../dist-server/prisma": "dist-server/prisma",
-      "../dist-server/node-bin": "dist-server/node-bin"
+      "../dist-server/node-bin": "dist-server/node-bin",
+      "../dist-server/bin": "bin"
     }
   },
   "plugins": {

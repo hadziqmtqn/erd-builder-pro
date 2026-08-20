@@ -1035,11 +1035,17 @@ fn start_backend_server(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     startup_log(&log_dir, &format!("  PORT: 3099"));
 
     let mut cmd = Command::new(&node_bin);
+    #[cfg(target_os = "windows")]
+    let mcp_launcher = resource_dir.join("bin/erdbpro-mcp.exe");
+    #[cfg(not(target_os = "windows"))]
+    let mcp_launcher = resource_dir.join("bin/erdbpro-mcp");
     cmd.arg(win_path(&server_script))
         .env("NODE_ENV", "production")
         .env("PORT", "3099")
         .env("NODE_PATH", &node_path)
         .env("DATABASE_URL", format!("file:{}", win_path(&db_path)))
+        .env("ERD_INSTALL_MODE", "desktop")
+        .env("ERDBPRO_MCP_COMMAND", win_path(&mcp_launcher))
         .current_dir(&app_data_dir)
         .stdout(server_stdout)
         .stderr(server_stderr);

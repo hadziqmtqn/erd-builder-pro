@@ -7,8 +7,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import path from "node:path";
 
-import { checkSupabase } from "./lib/middleware.js";
+import { authenticate, checkSupabase } from "./lib/middleware.js";
 import { httpLogger } from "./lib/logger.js";
 import { isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
@@ -241,6 +242,30 @@ app.get("/api/health", (_req, res) => {
 // Lightweight readiness endpoint to verify server is up for desktop/dev CI
 app.get("/api/ready", (_req, res) => {
   res.json({ ready: true, timestamp: new Date().toISOString() });
+});
+
+app.get("/api/mcp/client-config", authenticate, (_req, res) => {
+  const installMode = process.env.ERD_INSTALL_MODE;
+  if (installMode !== "desktop" && installMode !== "cli") {
+    res.status(404).json({ error: "MCP configuration is only available in Desktop and CLI installations." });
+    return;
+  }
+
+  const isDevelopmentDesktop = installMode === "desktop" && process.env.NODE_ENV !== "production";
+  const command = process.env.ERDBPRO_MCP_COMMAND || (isDevelopmentDesktop ? process.execPath : "");
+  if (!command) {
+    res.status(503).json({ error: "The MCP launcher is not available in this development build." });
+    return;
+  }
+
+  try {
+    const fallbackArgs = isDevelopmentDesktop ? [path.resolve("scripts/dev-mcp-launcher.js")] : [];
+    const args = JSON.parse(process.env.ERDBPRO_MCP_ARGS || JSON.stringify(fallbackArgs));
+    if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) throw new Error();
+    res.json({ command, args, platform: process.platform });
+  } catch {
+    res.status(500).json({ error: "The MCP launcher configuration is invalid." });
+  }
 });
 
 // Update-check diagnostic log endpoint — frontend posts structured events
