@@ -42,6 +42,7 @@ export function ProjectFileTabs({ currentView }: Props) {
     activeDiagram, activeNote, activeDrawing, activeFlowchart,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     diagrams, notes, drawings, flowcharts,
+    handleDiagramSelect,
     handleSidebarDiagramCreate, handleSidebarNoteCreate,
     handleSidebarDrawingCreate, handleSidebarFlowchartCreate,
   } = useWorkspace()
@@ -133,10 +134,13 @@ export function ProjectFileTabs({ currentView }: Props) {
         : activeDrawing?.uid || activeDrawingId
 
   const navigateTo = (type: FeatureTab, file: any) => {
+    if (type === 'erd' || type === 'db-client') {
+      void handleDiagramSelect(String(getFileUid(file)))
+      return
+    }
     const feature = FEATURES.find(item => item.id === type)
     if (!feature) return
     const params = new URLSearchParams({ pid: String(projectId) })
-    if (type === 'db-client') params.set('feature', 'db-client')
     navigate(`${feature.route}/${getFileUid(file)}?${params}`)
   }
 

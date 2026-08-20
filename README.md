@@ -60,7 +60,7 @@ A desktop app is also available on the [releases page](https://github.com/hadziq
 > [!WARNING]
 > MCP support is **Experimental**. Tool names, inputs, and capability limits may change. Review write-tool calls before approving them.
 
-Use `erdbpro mcp` for CLI data or `erdbpro mcp --desktop` for Desktop data. Supabase Web App deployments can additionally expose an OAuth-protected Streamable HTTP endpoint by setting `MCP_PUBLIC_URL` and enabling the Supabase OAuth 2.1 server.
+Use `erdbpro mcp` for CLI data or `erdbpro mcp --desktop` for Desktop data. The Desktop command runs its bundled MCP backend directly and does not launch a second GUI application. Supabase Web App deployments can additionally expose an OAuth-protected Streamable HTTP endpoint by setting `MCP_PUBLIC_URL` and enabling the Supabase OAuth 2.1 server.
 
 The local tool set can read DB Client data and apply confirmed Note/history operations. The public Web MCP surface is separate and read-only: it exposes Web workspace documents and history, while DB Client, `production_db`, credentials, SQL execution, filesystem access, and writes are not registered.
 

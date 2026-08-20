@@ -80,7 +80,7 @@ erdbpro mcp                      # MCP using CLI data
 erdbpro mcp --desktop            # MCP using Desktop app data
 ```
 
-`erdbpro mcp` reads `~/.erdbpro/data.db`. The `--desktop` flag detects the installed Desktop application and reads its database instead. In development, run it from the repository root to use the Desktop dev database.
+`erdbpro mcp` reads `~/.erdbpro/data.db`. The `--desktop` flag runs the installed Desktop MCP backend bundle directly against the Desktop database; it does not launch the Desktop GUI. In development, run it from the repository root to use the Desktop dev database.
 
 ---
 

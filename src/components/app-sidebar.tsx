@@ -221,7 +221,7 @@ export const AppSidebar = React.memo(({
 
   const handleWorkspaceClick = (uid: string | null | undefined, fallbackId?: number | string) => {
     const id = uid ?? (fallbackId != null ? String(fallbackId) : null);
-    onViewChange(view, true, id);
+    onWorkspaceFilter(id);
   };
 
   return (
