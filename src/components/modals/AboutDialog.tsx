@@ -180,7 +180,7 @@ export function AboutDialog({
           {/* App Icon */}
           <div className="flex items-center justify-center">
             <img
-              src="/favicon.svg"
+              src="/favicon.png"
               alt="ERD Builder Pro"
               className="size-14"
             />

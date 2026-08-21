@@ -1,11 +1,14 @@
-const CACHE_NAME = 'erd-builder-cache-v1.3'; // Bump: theme inline script
+const CACHE_NAME = 'erd-builder-cache-v1.4'; // Bump: refreshed app icons
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/favicon.png',
   '/manifest.webmanifest',
-  '/icons/icon-192x192-any.svg',
-  '/icons/icon-512x512-any.svg',
+  '/icons/icon-180x180-any.png',
+  '/icons/icon-192x192-any.png',
+  '/icons/icon-192x192-maskable.png',
+  '/icons/icon-512x512-any.png',
+  '/icons/icon-512x512-maskable.png',
 ];
 
 // Install Event: Precaching core assets
