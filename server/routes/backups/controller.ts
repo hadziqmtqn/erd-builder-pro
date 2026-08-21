@@ -136,6 +136,56 @@ export async function create(req: ExpressRequest, res: ExpressResponse): Promise
   }
 }
 
+export async function importDatabase(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  const userId = (req as any).user.id;
+  const file = (req as any).file;
+  if (!file) {
+    res.status(400).json({ error: "No SQLite database file uploaded." });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  const send = (event: object) => {
+    try {
+      res.write(JSON.stringify(event) + "\n");
+    } catch (err) {
+      logger.warn({ err }, "Failed to write SQLite import event");
+    }
+  };
+
+  try {
+    const { autoBackupId, autoBackupName } = await backupsService.performImportedSqliteRestore(
+      Buffer.from(file.buffer),
+      userId,
+      (progress) => send({ type: "progress", ...progress }),
+    );
+
+    send({
+      type: "done",
+      success: true,
+      auto_backup_id: autoBackupId,
+      auto_backup_name: autoBackupName,
+      message: "SQLite database imported successfully. A pre-restore safety backup was created.",
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, "SQLite database import error:");
+    send({
+      type: "error",
+      error: error.message || "Failed to import SQLite database",
+      ...(error.autoBackupId && error.autoBackupName
+        ? { auto_backup_id: error.autoBackupId, auto_backup_name: error.autoBackupName }
+        : {}),
+    });
+  } finally {
+    res.end();
+  }
+}
+
 export async function restore(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   const userId = (req as any).user.id;
   const { id } = req.params;

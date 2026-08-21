@@ -6,5 +6,6 @@ const router = Router();
 
 router.get("/", authenticate, controller.list);
 router.get("/files", authenticate, controller.listFiles);
+router.get("/recent", authenticate, controller.recent);
 
 export default router;

@@ -28,3 +28,12 @@ export async function listFiles(req: ExpressRequest, res: ExpressResponse): Prom
     handleError(res, err, "Failed to list workspace files");
   }
 }
+
+export async function recent(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const data = await service.listRecentFiles((req as any).user.id);
+    res.json({ data });
+  } catch (err: any) {
+    handleError(res, err, "Failed to load recent files");
+  }
+}

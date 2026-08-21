@@ -8,6 +8,7 @@ import {
   PenTool,
   Network,
   Database,
+  DatabaseZap,
   Sparkles,
   Search,
   ArrowUpRight,
@@ -91,6 +92,8 @@ function getDocIcon(type: string) {
       return <PenTool className="h-4 w-4 text-violet-500" />;
     case 'flowcharts':
       return <Network className="h-4 w-4 text-emerald-500" />;
+    case 'db-client':
+      return <DatabaseZap className="h-4 w-4 text-cyan-400" />;
     default:
       return null;
   }
@@ -100,18 +103,25 @@ function isDbClientDiagram(doc: any): boolean {
   return (doc.source_type ?? doc.sourceType) === 'production_db';
 }
 
+function isDbClientFile(doc: any): boolean {
+  return doc?._group === 'db-client' || doc?._type === 'db-client' || isDbClientDiagram(doc);
+}
+
 function getDocLabel(doc: any): string {
   switch (doc._type) {
-    case 'diagrams': return isDbClientDiagram(doc) ? 'DB Client' : 'ERD Builder';
+    case 'diagrams': return isDbClientFile(doc) ? 'DB Client' : 'ERD Builder';
     case 'notes': return 'Note';
     case 'drawings': return 'Drawing';
     case 'flowcharts': return 'Flowchart';
+    case 'db-client': return 'DB Client';
     default: return '';
   }
 }
 
 function getDocRoute(type: string, item: any) {
   const id = item.uid || item.id;
+  if (isDbClientFile(item)) return `/db-client/${id}`;
+
   switch (type) {
     case 'diagrams':
       return `/diagrams/${id}`;
@@ -121,6 +131,8 @@ function getDocRoute(type: string, item: any) {
       return `/drawings/${id}`;
     case 'flowcharts':
       return `/flowcharts/${id}`;
+    case 'db-client':
+      return `/db-client/${id}`;
     default:
       return '/';
   }
@@ -133,9 +145,42 @@ export function DashboardRoute() {
 
   const user = ctx.user;
   const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
+  const [serverRecentDocs, setServerRecentDocs] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (ctx.isGuest || !user) {
+      setServerRecentDocs(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchRecentFiles = async () => {
+      try {
+        const response = await apiFetch('/api/search/recent');
+        if (!response.ok) return;
+        const body = await response.json();
+        if (!cancelled) setServerRecentDocs(Array.isArray(body.data) ? body.data : []);
+      } catch {
+        // Keep local dashboard data as a fallback if the API is unavailable.
+      }
+    };
+
+    void fetchRecentFiles();
+    return () => { cancelled = true; };
+  }, [ctx.isGuest, user]);
 
   // 10 most recently edited items across all types
   const recentDocs = useMemo(() => {
+    if (serverRecentDocs) {
+      return serverRecentDocs.map((doc: any) => ({
+        ...doc,
+        _type: doc.type,
+        _group: doc.group,
+        _workspace: doc.workspace?.name || doc.project?.name || '—',
+        updated_at: doc.updated_at ?? doc.updatedAt,
+      }));
+    }
+
     const projectMap = new Map(
       (ctx.projects || []).map((p: any) => [String(p.id), p.name])
     )
@@ -158,7 +203,7 @@ export function DashboardRoute() {
       .filter((d) => !d.is_deleted)
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
-  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects]);
+  }, [ctx.diagrams, ctx.notes, ctx.drawings, ctx.flowcharts, ctx.projects, serverRecentDocs]);
 
   const [recentQuery, setRecentQuery] = useState('');
   const [recentFilter, setRecentFilter] = useState('all');
@@ -236,7 +281,7 @@ export function DashboardRoute() {
 
   // Show empty state as soon as projects are loaded and empty —
   // don't wait for documents to finish loading
-  const isEmpty = (!ctx.isProjectsLoading && (ctx.projects || []).filter((p: any) => !p.is_deleted).length === 0 && totalDocs === 0);
+  const isEmpty = (!ctx.isProjectsLoading && (ctx.projects || []).filter((p: any) => !p.is_deleted).length === 0 && totalDocs === 0 && !serverRecentDocs?.length);
 
   // Show dashboard content as soon as we have projects or documents
   const showContent = !isEmpty && initialLoadDone;

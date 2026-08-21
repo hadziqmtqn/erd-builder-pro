@@ -26,3 +26,6 @@ cli/dist/
 cli/dist-server/
 cli/menubar/erdbpro-tray
 cli/menubar/ERDBProTray.app/
+
+data.db-shm
+data.db-wal

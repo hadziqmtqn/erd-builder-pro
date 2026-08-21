@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { apiFetch } from "@/lib/api";
+import { useState, useEffect, useRef } from 'react';
+import { apiFetch, isInstalledApp } from "@/lib/api";
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import {
@@ -18,7 +18,8 @@ import {
   FolderOpen,
   RotateCcw,
   Pencil,
-  RotateCcwKey
+  RotateCcwKey,
+  Upload,
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -63,6 +64,7 @@ interface BackupFolderSettings {
 }
 
 const ITEMS_PER_PAGE = 10;
+const IMPORTED_BACKUP_ID = '__imported_sqlite__';
 
 export const BackupsView = () => {
   const { user } = useAuth();
@@ -82,6 +84,8 @@ export const BackupsView = () => {
   // Restore dialog state
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<BackupRecord | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
   // Track whether a restore is currently in flight so we can lock the restore
   // button on every row (preventing double-restore from a second click) and
   // gate `openRestoreDialog` from opening a second dialog mid-restore.
@@ -89,6 +93,7 @@ export const BackupsView = () => {
 
   const isTauri = typeof window !== 'undefined' &&
     !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const isSqliteInstall = isInstalledApp();
 
   const fetchBackups = async () => {
     if (!user) return;
@@ -285,24 +290,56 @@ export const BackupsView = () => {
   const openRestoreDialog = (backup: BackupRecord) => {
     if (restoreInProgress) return; // prevent opening a 2nd dialog mid-restore
     if (backup.status !== 'completed' || !backup.file_path) return;
+    setImportFile(null);
     setRestoreTarget(backup);
+    setRestoreDialogOpen(true);
+  };
+
+  const handleImportFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!/\.(?:db|sqlite|sqlite3|sql)(?:\.gz)?$/i.test(file.name)) {
+      toast.error('Only SQLite .db, .sqlite, .sqlite3, .sql, or .sql.gz files are supported.');
+      return;
+    }
+
+    setImportFile(file);
+    setRestoreTarget({
+      id: IMPORTED_BACKUP_ID,
+      name: file.name,
+      download_url: '',
+      created_at: new Date().toISOString(),
+      status: 'completed',
+      file_size: file.size,
+      destinations: 'local',
+    });
     setRestoreDialogOpen(true);
   };
 
   const performRestore = async (onProgress?: (event: RestoreProgress) => void) => {
     if (!restoreTarget) throw new Error('No backup selected');
     setRestoreInProgress(true);
+    let restoreSucceeded = false;
     try {
       let res: Response;
       try {
-        // Direct fetch (not apiFetch) — we need streaming body access.
-        // apiFetch is a thin wrapper, but the streaming path here must
-        // consume the body via getReader() to parse NDJSON progress events.
-        res = await fetch(`/api/backups/${restoreTarget.id}/restore`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { Accept: 'application/x-ndjson' },
-        });
+        if (restoreTarget.id === IMPORTED_BACKUP_ID) {
+          if (!importFile) throw new Error('No SQLite import file selected');
+          const formData = new FormData();
+          formData.append('database', importFile);
+          res = await apiFetch('/api/backups/import', {
+            method: 'POST',
+            headers: { Accept: 'application/x-ndjson' },
+            body: formData,
+          });
+        } else {
+          res = await fetch(`/api/backups/${restoreTarget.id}/restore`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { Accept: 'application/x-ndjson' },
+          });
+        }
       } catch (err: any) {
         // Network / fetch error (server unreachable, CORS, etc.)
         toast.error('Could not reach the server', {
@@ -348,10 +385,13 @@ export const BackupsView = () => {
             try {
               const event = JSON.parse(trimmed);
               if (event.type === 'progress') {
+                const phase = ['pre-restore', 'decompress', 'replace', 'cleanup'].includes(event.phase)
+                  ? event.phase as RestoreProgress['phase']
+                  : 'replace';
                 onProgress?.({
-                  phase: event.phase,
-                  percent: event.percent,
-                  message: event.message,
+                  phase,
+                  percent: Number(event.percent) || 0,
+                  message: String(event.message || 'Restoring database...'),
                 });
               } else if (event.type === 'done') {
                 finalResult = {
@@ -394,19 +434,20 @@ export const BackupsView = () => {
         throw new Error('Restore completed without a final result event');
       }
 
+      restoreSucceeded = true;
       return finalResult;
     } finally {
-      // Refresh list AFTER restore completes (success or failure) so the
-      // user sees the new pre-restore backup entry — but NOT during the
-      // restore operation itself, which would cause the list to flicker
-      // (Processing → Completed) and confuse the user.
-      void fetchBackups();
+      // A successful restore may invalidate the current session. Wait for the
+      // explicit reload instead of showing a false backup-history error.
+      if (!restoreSucceeded) void fetchBackups();
       setRestoreInProgress(false);
     }
   };
 
   const handleRestoreSuccess = (result: { auto_backup_id: string; auto_backup_name: string }) => {
-    toast.success('Database restored successfully.', {
+    const wasImport = restoreTarget?.id === IMPORTED_BACKUP_ID;
+    setImportFile(null);
+    toast.success(wasImport ? 'Database imported successfully.' : 'Database restored successfully.', {
       description: `Pre-restore safety backup "${result.auto_backup_name}" was created in case you need to roll back.`,
       duration: 10000,
       action: {
@@ -435,35 +476,61 @@ export const BackupsView = () => {
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden">
       {/* Header Area */}
-      <div className="p-6 border-b shrink-0 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Database size={24} className="text-muted-foreground" />
-            Database Backup
-          </h2>
-          <p className="text-sm text-muted-foreground">Manage your database backups and disaster recovery records.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchBackups}
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            onClick={handleCreateBackup}
-            disabled={isCreating}
-            size="sm"
-          >
-            {isCreating ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Plus className="w-4 h-4 mr-2" />
+      <div className="p-6 border-b shrink-0">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Database size={24} className="text-muted-foreground" />
+              Database Backup
+            </h2>
+            <p className="text-sm text-muted-foreground max-w-xl">Manage your database backups and disaster recovery records.</p>
+          </div>
+          <div className="flex w-full flex-wrap items-center justify-start gap-3 xl:w-auto xl:shrink-0 xl:justify-end xl:pt-1">
+            {isSqliteInstall && (
+              <>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".db,.sqlite,.sqlite3,.sql,.sql.gz"
+                  className="hidden"
+                  onChange={handleImportFileSelect}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={restoreInProgress}
+                  title="Import a SQLite database or SQLite SQL dump"
+                  className="whitespace-nowrap"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import Database
+                </Button>
+              </>
             )}
-            Create Backup
-          </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchBackups}
+                disabled={loading}
+                className="shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button
+                onClick={handleCreateBackup}
+                disabled={isCreating}
+                size="sm"
+                className="whitespace-nowrap"
+              >
+                {isCreating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-2" />
+                )}
+                Create Backup
+              </Button>
+          </div>
         </div>
       </div>
 
