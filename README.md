@@ -68,6 +68,8 @@ Use `erdbpro mcp` for CLI data or `erdbpro mcp --desktop` for Desktop data. The 
 
 The local tool set can read DB Client data and apply confirmed Note/history operations. The public Web MCP surface is separate and read-only: it exposes Web workspace documents and history, while DB Client, `production_db`, credentials, SQL execution, filesystem access, and writes are not registered.
 
+In Desktop and CLI, open **Settings → MCP Integration** to copy a ready-to-use local `stdio` configuration for JetBrains AI, VS Code, Codex, Hermes Agent, or a generic MCP client. See the [full MCP setup guide](https://docs.erdbuilderpro.com/configuration/mcp) for client and Web MCP configuration details.
+
 ### 🐳 Docker
 
 ```bash
