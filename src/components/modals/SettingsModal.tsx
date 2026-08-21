@@ -13,6 +13,7 @@ import {
   Download,
   HardDrive,
   Keyboard,
+  ServerCog,
 } from 'lucide-react';
 import {
   Dialog,
@@ -67,6 +68,7 @@ import { DataImport } from '@/components/settings/DataImport';
 import { DataExport } from '@/components/settings/DataExport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { KeymapTab } from '@/components/settings/KeymapTab';
+import { McpServerTab } from '@/components/settings/McpServerTab';
 import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
@@ -77,14 +79,14 @@ export function SettingsModal() {
     setSettingsTab 
   } = useWorkspace();
 
-  const isDesktopApp = typeof window !== 'undefined' && (
-    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__) ||
-    (window as any).ERD_INSTALL_MODE === 'cli'
-  );
+  const isTauriApp = typeof window !== 'undefined' &&
+    !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
+  const isDesktopApp = isTauriApp ||
+    (typeof window !== 'undefined' && (window as any).ERD_INSTALL_MODE === 'cli');
   const [aiSettingsTab, setAiSettingsTab] = React.useState('configuration');
 
   React.useEffect(() => {
-    if (!isDesktopApp) return;
+    if (!isTauriApp) return;
 
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -103,7 +105,7 @@ export function SettingsModal() {
       cancelled = true;
       unlisten?.();
     };
-  }, [isDesktopApp, setIsSettingsOpen, setSettingsTab]);
+  }, [isTauriApp, setIsSettingsOpen, setSettingsTab]);
 
   const {
     providers,
@@ -173,6 +175,7 @@ export function SettingsModal() {
         label: "Feature",
         items: [
           { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
+          ...(isDesktopApp ? [{ id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> }] : []),
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
         ]
@@ -188,7 +191,7 @@ export function SettingsModal() {
         ]
       }
     ];
-  }, [isGuest]);
+  }, [isGuest, isDesktopApp]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {
@@ -369,6 +372,10 @@ export function SettingsModal() {
 
               {settingsTab === 'ai-rules' && (
                 <AIRulesTab />
+              )}
+
+              {isDesktopApp && settingsTab === 'mcp-server' && (
+                <McpServerTab />
               )}
 
               {settingsTab === 'backups' && (

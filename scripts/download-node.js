@@ -37,6 +37,7 @@ import { fileURLToPath } from "url";
 const __dirname = resolve(fileURLToPath(import.meta.url), "..");
 const ROOT = resolve(__dirname, "..");
 const OUT_DIR = resolve(ROOT, "dist-server", "node-bin");
+const COMMAND_TIMEOUT_MS = 30_000;
 
 // ── Platform detection ──────────────────────────────────────────────
 
@@ -89,14 +90,14 @@ function main() {
     try {
       const verCheck = execSync(`"${nodeExe}" --version`, {
         encoding: "utf8",
-        timeout: 5000,
+        timeout: COMMAND_TIMEOUT_MS,
       }).trim();
       if (verCheck === version) {
         // macOS: verify it's a universal binary (both slices present)
         if (platform === "darwin") {
           const lipoInfo = execSync(`lipo -info "${nodeExe}"`, {
             encoding: "utf8",
-            timeout: 5000,
+            timeout: COMMAND_TIMEOUT_MS,
           }).trim();
           if (lipoInfo.includes("arm64") && lipoInfo.includes("x86_64")) {
             console.log(`✅ Node.js ${version} (universal) already bundled: ${nodeExe}`);
@@ -205,7 +206,6 @@ function main() {
     console.log("  Creating universal (fat) binary with lipo...");
     execSync(`lipo -create -output "${nodeExe}" ${extractedNodes.map(s => `"${s}"`).join(" ")}`, {
       stdio: "inherit",
-      timeout: 120_000,
     });
     execSync(`chmod +x "${nodeExe}"`);
   } else {
@@ -231,7 +231,7 @@ function main() {
   // ── Verify ────────────────────────────────────────────────────────
   const verOut = execSync(`"${nodeExe}" --version`, {
     encoding: "utf8",
-    timeout: 5000,
+    timeout: COMMAND_TIMEOUT_MS,
   }).trim();
   console.log(`✅ Node.js bundled: ${nodeExe}`);
   console.log(`   Version: ${verOut}`);

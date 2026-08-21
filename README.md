@@ -1,5 +1,9 @@
 <div align="center">
-  <img width="400" alt="ERD Builder Pro Dashboard" src="public/img/ERD-Builder-Pro-Ori-Light.png" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/img/ERD-Builder-Pro-Dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="public/img/ERD-Builder-Pro-Light.svg" />
+    <img width="400" alt="ERD Builder Pro" src="public/img/ERD-Builder-Pro-Light.svg" />
+  </picture>
 </div>
 
 <div align="center">

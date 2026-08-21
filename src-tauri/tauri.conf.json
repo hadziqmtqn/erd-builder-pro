@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ERD Builder Pro",
   "mainBinaryName": "ERD Builder Pro",
-  "version": "3.4.1",
+  "version": "3.4.2",
   "identifier": "com.erdbuilderpro.app",
   "build": {
     "frontendDist": "../dist",
@@ -53,7 +53,8 @@
       "../dist-server/schema.sql": "dist-server/schema.sql",
       "../dist-server/node_modules": "dist-server/node_modules",
       "../dist-server/prisma": "dist-server/prisma",
-      "../dist-server/node-bin": "dist-server/node-bin"
+      "../dist-server/node-bin": "dist-server/node-bin",
+      "../dist-server/bin": "bin"
     }
   },
   "plugins": {

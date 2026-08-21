@@ -88,6 +88,8 @@ function startServer(port, background) {
     PORT: String(port),
     HOST: '127.0.0.1',
     ERD_INSTALL_MODE: 'cli',
+    ERDBPRO_MCP_COMMAND: process.execPath,
+    ERDBPRO_MCP_ARGS: JSON.stringify([path.join(PKG_ROOT, 'bin', 'erdbpro.js'), 'mcp']),
     APP_VERSION: VERSION,
   };
 
