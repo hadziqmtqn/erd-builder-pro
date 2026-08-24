@@ -51,7 +51,7 @@ export async function findFirstCatalog(accountId: number | string) {
   });
 }
 
-export async function findAllCatalogsByAccountId(accountId: number | string) {
+export async function findAllCatalogsByAccountId(accountId: number | string): Promise<Array<{ databaseName: string }> | undefined> {
   return (prisma as any)?.dbCatalog.findMany({
     where: { accountId: Number(accountId) },
     select: { databaseName: true },

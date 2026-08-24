@@ -7,7 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist-server",
-    "rootDir": "server",
+    "rootDir": ".",
     "allowJs": true,
     "resolveJsonModule": true,
     "declaration": false,

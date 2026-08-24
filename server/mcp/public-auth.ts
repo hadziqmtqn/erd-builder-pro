@@ -61,6 +61,20 @@ export function getPublicMcpConfig(env: NodeJS.ProcessEnv = process.env): Public
   return { authProvider: "local", resourceUrl, issuerUrl, consentUrl, scopes: ["mcp:read"] };
 }
 
+export function getPublicMcpClientConfig(env: NodeJS.ProcessEnv = process.env) {
+  const config = getPublicMcpConfig(env);
+  return {
+    mode: "web" as const,
+    transport: "streamable-http" as const,
+    configured: Boolean(config),
+    ...(config ? {
+      url: config.resourceUrl.href,
+      authProvider: config.authProvider,
+      scopes: config.scopes,
+    } : {}),
+  };
+}
+
 function invalidToken(message: string): never {
   throw new OAuthError(OAuthErrorCode.InvalidToken, message);
 }

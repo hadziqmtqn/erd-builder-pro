@@ -175,7 +175,7 @@ export function SettingsModal() {
         label: "Feature",
         items: [
           { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
-          ...(isDesktopApp ? [{ id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> }] : []),
+          { id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
         ]
@@ -374,7 +374,7 @@ export function SettingsModal() {
                 <AIRulesTab />
               )}
 
-              {isDesktopApp && settingsTab === 'mcp-server' && (
+              {settingsTab === 'mcp-server' && (
                 <McpServerTab />
               )}
 

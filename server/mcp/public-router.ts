@@ -56,7 +56,14 @@ export function createPublicMcpRouter(): Router | null {
   const nodeHandler = toNodeHandler(handler, { onerror: error => logger.error({ err: error }, "Public MCP transport failed") });
 
   if (config.authProvider === "local") {
-    router.use(secureHost);
+    router.use([
+      "/authorize",
+      "/token",
+      "/register",
+      "/revoke",
+      "/.well-known/oauth-authorization-server",
+      metadataPath,
+    ], secureHost);
     router.use(["/token", "/revoke"], express.urlencoded({ extended: false }), (req, _res, next) => {
       if (typeof req.body?.client_secret === "string") req.body.client_secret = hashOAuthSecret(req.body.client_secret);
       next();

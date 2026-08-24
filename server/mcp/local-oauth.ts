@@ -53,7 +53,7 @@ function validateScopes(requested: string[] | undefined, supported: string[]) {
   return scopes;
 }
 
-function validateResource(resource: URL | undefined, expected: URL) {
+function validateResource(resource: URL | undefined, expected: URL): asserts resource is URL {
   if (!resource || resource.href !== expected.href) throw new InvalidTargetError("OAuth resource is invalid");
 }
 

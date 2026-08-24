@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { authenticate, checkSupabase } from "./lib/middleware.js";
 import { httpLogger } from "./lib/logger.js";
-import { isDesktopMode } from "./lib/config.js";
+import { getInstallMode, isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
 import projectsRouter from "./routes/projects/index.js";
@@ -34,6 +34,7 @@ import entityChangesRouter from "./routes/entity-changes/index.js";
 import dbClientsRouter from "./routes/db-clients/index.js";
 import oauthConsentRouter from "./routes/oauth-consent.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
+import { getPublicMcpClientConfig } from "./mcp/public-auth.js";
 
 const app = express();
 
@@ -245,9 +246,9 @@ app.get("/api/ready", (_req, res) => {
 });
 
 app.get("/api/mcp/client-config", authenticate, (_req, res) => {
-  const installMode = process.env.ERD_INSTALL_MODE;
+  const installMode = getInstallMode();
   if (installMode !== "desktop" && installMode !== "cli") {
-    res.status(404).json({ error: "MCP configuration is only available in Desktop and CLI installations." });
+    res.json(getPublicMcpClientConfig());
     return;
   }
 
@@ -262,7 +263,7 @@ app.get("/api/mcp/client-config", authenticate, (_req, res) => {
     const fallbackArgs = isDevelopmentDesktop ? [path.resolve("scripts/dev-mcp-launcher.js")] : [];
     const args = JSON.parse(process.env.ERDBPRO_MCP_ARGS || JSON.stringify(fallbackArgs));
     if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) throw new Error();
-    res.json({ command, args, platform: process.platform });
+    res.json({ mode: installMode, transport: "stdio", command, args, platform: process.platform });
   } catch {
     res.status(500).json({ error: "The MCP launcher configuration is invalid." });
   }

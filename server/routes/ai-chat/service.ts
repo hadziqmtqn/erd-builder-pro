@@ -42,7 +42,7 @@ export async function createSession(data: {
   userId: string;
   entityType?: string;
   entityUid?: string;
-  projectId?: number;
+  projectId?: number | null;
 }) {
   if (!prisma) throw new Error("Database connection not available");
 
@@ -67,7 +67,7 @@ export async function getSession(uid: string, userId: string) {
 export async function updateSession(
   uid: string,
   userId: string,
-  data: { title?: string; projectId?: number }
+  data: { title?: string; projectId?: number | null }
 ) {
   if (!prisma) throw new Error("Database connection not available");
 
