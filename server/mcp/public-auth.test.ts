@@ -36,6 +36,17 @@ describe("public MCP boundary", () => {
     expect(() => getPublicMcpConfig({ ...env, VITE_SUPABASE_ANON_KEY: undefined })).toThrow(/server key/);
   });
 
+  it("uses the built-in OAuth server for Pure PostgreSQL", () => {
+    const config = getPublicMcpConfig({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://user:pass@db:5432/erdbpro",
+      MCP_PUBLIC_URL: "https://mcp.example.com/api/mcp",
+    } as NodeJS.ProcessEnv)!;
+    expect(config).toMatchObject({ authProvider: "local", scopes: ["mcp:read"] });
+    expect(config.issuerUrl.href).toBe("https://mcp.example.com/");
+    expect(config.consentUrl.href).toBe("https://mcp.example.com/oauth/consent");
+  });
+
   it("keeps the public tool allowlist web-only and read-only", () => {
     expect(PUBLIC_MCP_TOOL_NAMES).toEqual(["workspace_list_files", "document_read", "history_list", "history_read"]);
     expect(PUBLIC_MCP_TOOL_NAMES.some(name => name.startsWith("db_") || name.endsWith("_apply"))).toBe(false);
