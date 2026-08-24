@@ -58,12 +58,14 @@ export function buildSqlCompletions(tables: TableSchema[], activeTable: string |
     }
   }
 
+  const options = [...relationOptions, ...keywordOptions, ...tableOptions, ...columnOptions];
+
   return (ctx: CompletionContext): CompletionResult | null => {
     const word = ctx.matchBefore(/[\w.]+$/);
     if (!ctx.explicit && !word) return null;
     return {
       from: word?.from ?? ctx.pos,
-      options: [...relationOptions, ...keywordOptions, ...tableOptions, ...columnOptions],
+      options,
     };
   };
 }

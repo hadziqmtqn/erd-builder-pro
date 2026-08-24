@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
+import { localPersistence } from '@/lib/localPersistence';
 import { toast } from 'sonner';
 
 interface ImportSummary {
@@ -345,6 +346,7 @@ export function DataImport() {
                 phase: String(msg.phase || ''),
               });
             } else if (msg.type === 'complete') {
+              await localPersistence.clearAllPendingSyncs();
               setImportState('done');
               toast.success(msg.message || 'Database restored successfully!');
               abortRef.current = null;

@@ -66,6 +66,7 @@ import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
+import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 
 // ── Inner component that uses AIAction context ──
 
@@ -150,10 +151,18 @@ function AppLayoutInner() {
       setActiveDbClient(null);
       return;
     }
+    const cached = getDbClientCache(entityContext.entityUid);
+    if (cached) {
+      setActiveDbClient(cached);
+      return;
+    }
     let cancelled = false;
     apiFetch(`/api/db-clients/${encodeURIComponent(entityContext.entityUid)}`)
       .then(response => response.ok ? response.json() : null)
-      .then(value => { if (!cancelled) setActiveDbClient(value); })
+      .then(value => {
+        if (value) setDbClientCache(value);
+        if (!cancelled) setActiveDbClient(value);
+      })
       .catch(() => { if (!cancelled) setActiveDbClient(null); });
     return () => { cancelled = true; };
   }, [entityContext]);
@@ -1035,6 +1044,7 @@ function AppLayoutInner() {
         {showAIChat && !rightPanelOpen && (
           <AIChatToggle
             isOpen={false}
+            raised={entityContext?.entityType === 'dbClient'}
             onClick={() => setRightPanelMode('chat')}
           />
         )}

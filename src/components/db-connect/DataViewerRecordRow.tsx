@@ -129,7 +129,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
         return (
           <TableCell
             key={column}
-            className={`group max-w-75 text-sm font-mono ${isEditing ? 'p-0.5' : ''} ${draft ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''}`}
+            className={`group overflow-hidden text-sm font-mono ${isEditing ? 'p-0.5' : ''} ${draft ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''}`}
             onDoubleClick={e => {
               e.stopPropagation();
               if (!editable) return;
@@ -213,7 +213,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                     </DropdownMenuSub>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              ) : (
+              ) : isActive ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -224,7 +224,7 @@ export const DataViewerRecordRow = memo(function DataViewerRecordRow({
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
-              ))}
+              ) : null)}
             </div>
           </TableCell>
         );

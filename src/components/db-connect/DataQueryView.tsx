@@ -19,6 +19,7 @@ import { useAIAction } from '@/contexts/AIActionContext';
 import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
 import { DataQuerySidebar, type QueryExecution } from './DataQuerySidebar';
 import { beautifySql, emptyQueryState, newQueryTab, readQueryState, sanitizeQueryState, type QueryTab } from './data-query-state';
+import { getSchemaCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
 
 type DataQueryViewProps = {
   connectionId: number;
@@ -43,6 +44,7 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   const [queriesLoaded, setQueriesLoaded] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [queryState, setQueryState] = useState(() => readQueryState(storageKey));
+  const queryStateRef = useRef(queryState);
   const { tabs, activeKey } = queryState;
   const activeTab = tabs.find(tab => tab.key === activeKey) || tabs[0] || null;
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -58,6 +60,8 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   const activeTabRef = useRef<QueryTab | null>(activeTab);
   const storageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beautifyFrameRef = useRef<number | null>(null);
+  const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingScriptRef = useRef(false);
   const completion = useMemo(() => buildSqlCompletions(tables, initialTable), [tables, initialTable]);
   const groups = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -72,14 +76,16 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
 
   const load = useCallback(async () => {
     setQueriesLoaded(false);
+    const cachedSchema = getSchemaCache(connectionId);
     const [schemaRes, queryRes] = await Promise.all([
-      apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' }),
+      cachedSchema ? null : apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' }),
       apiFetch(`/api/catalogs/${connectionId}/queries?dbClientId=${dbClientId}`),
     ]);
-    const schemaData = await schemaRes.json();
+    const schemaData = cachedSchema || await schemaRes!.json();
     const queryData = await queryRes.json();
-    if (!schemaRes.ok) throw new Error(schemaData.error || 'Failed to load schema');
+    if (schemaRes && !schemaRes.ok) throw new Error(schemaData.error || 'Failed to load schema');
     if (!queryRes.ok) throw new Error(queryData.error || 'Failed to load SQL queries');
+    if (!cachedSchema) setSchemaCache(connectionId, schemaData);
     setTables(schemaData.schema || []);
     setDbType(schemaData.dbType || null);
     setConnectionSecurity(schemaData.connectionSecurity || null);
@@ -88,6 +94,7 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   }, [connectionId, dbClientId]);
 
   useEffect(() => { load().catch((err: any) => setLoadError(err.message)); }, [load]);
+  useEffect(() => { queryStateRef.current = queryState; }, [queryState]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -137,7 +144,15 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   }, [activeKey, draftLoaded, storageKey, tabs]);
   useEffect(() => () => {
     if (beautifyFrameRef.current !== null) cancelAnimationFrame(beautifyFrameRef.current);
-  }, []);
+    if (scriptTimerRef.current) clearTimeout(scriptTimerRef.current);
+    if (pendingScriptRef.current) {
+      const state = queryStateRef.current;
+      const data = { tabs: state.tabs.map(tab => ({ ...tab, result: null, error: null })), activeKey: state.activeKey };
+      try { sessionStorage.setItem(storageKey, JSON.stringify(data)); } catch {}
+      localPersistence.saveResource({ id: storageKey, type: SQL_QUERY_DRAFT_TYPE, data, updated_at: Date.now() }).catch(() => {});
+      pendingScriptRef.current = false;
+    }
+  }, [storageKey]);
 
   const patchTab = useCallback((key: string, patch: Partial<QueryTab>) => {
     setQueryState(prev => ({ ...prev, tabs: prev.tabs.map(tab => tab.key === key ? { ...tab, ...patch } : tab) }));
@@ -147,6 +162,19 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
     if (!activeKey) return;
     patchTab(activeKey, patch);
   };
+
+  const updateScript = useCallback((script: string) => {
+    const tab = activeTabRef.current;
+    if (!tab) return;
+    activeTabRef.current = { ...tab, script };
+    queryStateRef.current = { ...queryStateRef.current, tabs: queryStateRef.current.tabs.map(item => item.key === tab.key ? { ...item, script } : item) };
+    pendingScriptRef.current = true;
+    if (scriptTimerRef.current) clearTimeout(scriptTimerRef.current);
+    scriptTimerRef.current = setTimeout(() => {
+      pendingScriptRef.current = false;
+      patchTab(tab.key, { script });
+    }, 150);
+  }, [patchTab]);
 
   const addTab = useCallback((table?: string | null) => {
     const tab = newQueryTab(table);
@@ -191,8 +219,8 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   }, [addTab, draftLoaded, initialTable, queries.length, queriesLoaded, tabs.length]);
 
   const save = async () => {
-    if (!activeTab) return;
-    const tab = activeTab;
+    const tab = activeTabRef.current;
+    if (!tab) return;
     const res = await apiFetch(`/api/catalogs/${connectionId}/queries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -321,9 +349,9 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
                     value={activeTab.script}
                     height="100%"
                     theme={resolvedTheme === 'dark' ? oneDark : undefined}
-                    basicSetup={{ autocompletion: true, lineNumbers: true }}
+                    basicSetup={{ autocompletion: false, lineNumbers: true }}
                     extensions={codeMirrorExtensions}
-                    onChange={(script) => patchActiveTab({ script })}
+                    onChange={updateScript}
                     className="h-full text-sm"
                   />
                 </div>

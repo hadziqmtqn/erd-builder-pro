@@ -133,7 +133,11 @@ export const DataViewerRecordsTable = memo(function DataViewerRecordsTable({
           >
             {records && (
               <div className="min-w-fit inline-block align-middle">
-              <table className="w-full min-w-max caption-bottom text-sm">
+              <table className="table-fixed caption-bottom text-sm" style={{ width: `max(100%, ${columns.length * 240 + (canSelectRows ? 40 : 0)}px)` }}>
+                <colgroup>
+                  {canSelectRows && <col className="w-10" />}
+                  {columns.map((column: string) => <col key={column} className="w-60" />)}
+                </colgroup>
                 <TableHeader className="sticky top-0 z-20 bg-background">
                   <TableRow className="bg-background">
                     {canSelectRows && (

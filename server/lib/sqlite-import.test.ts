@@ -65,6 +65,22 @@ describe("normalizeSqliteImport", () => {
     db.close();
   });
 
+  it("preserves feature file project relationships", () => {
+    const sql = `
+      CREATE TABLE users (id TEXT PRIMARY KEY);
+      CREATE TABLE projects (id INTEGER PRIMARY KEY);
+      CREATE TABLE diagrams (id INTEGER PRIMARY KEY, project_id INTEGER REFERENCES projects(id));
+      CREATE TABLE notes (id INTEGER PRIMARY KEY, project_id INTEGER REFERENCES projects(id));
+      INSERT INTO projects VALUES (7);
+      INSERT INTO notes VALUES (11, 7);
+    `;
+
+    const db = new Database(normalizeSqliteImport(Buffer.from(sql)), { readonly: true });
+    expect(db.prepare("SELECT project_id FROM notes WHERE id = 11").pluck().get()).toBe(7);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+    db.close();
+  });
+
   it("rejects MySQL and PostgreSQL SQL", () => {
     expect(() => normalizeSqliteImport(Buffer.from(
       "CREATE TABLE users (id INTEGER) ENGINE=InnoDB;",

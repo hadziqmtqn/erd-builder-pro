@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from '@/hooks/useAuth';
+import { localPersistence } from '@/lib/localPersistence';
 import { RestoreBackupDialog, type RestoreProgress } from '@/components/modals/RestoreBackupDialog';
 
 interface BackupRecord {
@@ -434,6 +435,7 @@ export const BackupsView = () => {
         throw new Error('Restore completed without a final result event');
       }
 
+      await localPersistence.clearAllPendingSyncs();
       restoreSucceeded = true;
       return finalResult;
     } finally {

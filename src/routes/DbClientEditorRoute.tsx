@@ -3,7 +3,9 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useEdgesState, useNodesState, useReactFlow, type Node } from '@xyflow/react';
 import { Database } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { autoLayoutERD } from '@/lib/autoLayoutERD';
 import { canvasLayout, dbSchemaToCanvas } from '@/lib/db-client-schema';
+import { getDbClientCache, getSchemaCache, setDbClientCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
 import { useImageExporter } from '@/hooks/useImageExporter';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { ERDView } from '@/components/views/ERDView';
@@ -42,9 +44,13 @@ export function DbClientEditorRoute() {
     if (!id) return;
     setLoading(true);
     try {
-      const clientResponse = await apiFetch(`/api/db-clients/${encodeURIComponent(id)}`);
-      const nextClient = await clientResponse.json();
-      if (!clientResponse.ok) throw new Error(nextClient.error || 'Failed to load DB Client');
+      let nextClient = getDbClientCache(id);
+      if (!nextClient) {
+        const clientResponse = await apiFetch(`/api/db-clients/${encodeURIComponent(id)}`);
+        nextClient = await clientResponse.json();
+        if (!clientResponse.ok) throw new Error(nextClient.error || 'Failed to load DB Client');
+        setDbClientCache(nextClient);
+      }
       setClient(nextClient);
       setBreadcrumbLabel(nextClient.name);
       const nextCatalogId = Number(nextClient.catalog_id);
@@ -53,9 +59,13 @@ export function DbClientEditorRoute() {
         setEdges([]);
         return;
       }
-      const schemaResponse = await apiFetch(`/api/catalogs/${nextCatalogId}/schema`, { method: 'POST' });
-      const schema = await schemaResponse.json();
-      if (!schemaResponse.ok) throw new Error(schema.error || 'Failed to load database schema');
+      let schema = getSchemaCache(nextCatalogId);
+      if (!schema) {
+        const schemaResponse = await apiFetch(`/api/catalogs/${nextCatalogId}/schema`, { method: 'POST' });
+        schema = await schemaResponse.json();
+        if (!schemaResponse.ok) throw new Error(schema.error || 'Failed to load database schema');
+        setSchemaCache(nextCatalogId, schema);
+      }
       const canvas = dbSchemaToCanvas(schema.schema || [], nextClient.data);
       setNodes(canvas.nodes);
       setEdges(canvas.edges);
@@ -85,14 +95,21 @@ export function DbClientEditorRoute() {
     return () => window.removeEventListener('db-connect-open-query', openQuery);
   }, [setMode]);
 
-  const saveLayout = useCallback(async (viewport = viewportRef.current) => {
+  const saveLayout = useCallback(async (viewport = viewportRef.current, layoutNodes = getNodes()) => {
     if (!client) return;
-    const data = canvasLayout(getNodes(), viewport, client.data);
+    const data = canvasLayout(layoutNodes, viewport, client.data);
     setClient((current: any) => current ? { ...current, data } : current);
+    setDbClientCache({ ...client, data });
     await apiFetch(`/api/db-clients/${encodeURIComponent(client.uid || client.id)}/layout`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }),
     });
   }, [client, getNodes]);
+
+  const handleAutoLayout = useCallback(() => {
+    const nextNodes = autoLayoutERD(nodes, edges);
+    setNodes(nextNodes);
+    void saveLayout(viewportRef.current, nextNodes);
+  }, [edges, nodes, saveLayout, setNodes]);
 
   if (loading) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading DB Client…</div>;
   if (!client) return (
@@ -115,6 +132,7 @@ export function DbClientEditorRoute() {
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={() => {}}
           onNodeClick={() => {}} onPaneClick={() => {}} onMove={(_, viewport) => { viewportRef.current = viewport; }}
           addEntity={() => {}} handleExportSQL={() => {}} handleExportImage={() => handleExportImage(client.name)}
+          onAutoLayout={handleAutoLayout}
           isReadOnly isDbClient sourceConnectionId={catalogId}
           onNodeDragStop={() => { void saveLayout(); }}
           onMoveEnd={(_, viewport) => { viewportRef.current = viewport; void saveLayout(viewport); }}
