@@ -171,10 +171,12 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setRecords(null);
     setPage(1);
     const nextPage = nextActive ? savedPages[nextActive] || 1 : 1;
+    let fetchTimer: ReturnType<typeof setTimeout> | null = null;
     if (nextActive && nextActive !== newTableTab) {
       setPage(nextPage);
-      fetchRecords(nextActive, nextPage, activeState?.appliedFilters || [], activeState?.sort || null);
+      fetchTimer = setTimeout(() => fetchRecords(nextActive, nextPage, activeState?.appliedFilters || [], activeState?.sort || null));
     }
+    return () => { if (fetchTimer) clearTimeout(fetchTimer); };
   }, [storageKey, fetchRecords]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
@@ -19,12 +19,12 @@ import { DataViewerStructureSqlDialog } from './DataViewerStructureSqlDialog';
 import { DataViewerTableTabs } from './DataViewerTableTabs';
 import { createColumnHelpers } from './data-viewer-utils';
 import ConfirmModal from '@/components/ConfirmModal';
-import { useAIAction } from '@/contexts/AIActionContext';
+import { useSetActionContextData } from '@/contexts/AIActionContext';
 import { buildDbClientTableContext } from '@/lib/db-client-ai-context';
 
 interface DataViewerProps { connectionId: number; stateKey?: string; onDbTypeChange?: (dbType: string | null) => void; } type DataViewerView = 'data' | 'structure';
-export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
-  const { setActionContextData } = useAIAction();
+export const DataViewer = memo(function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewerProps) {
+  const setActionContextData = useSetActionContextData();
   const {
     tables, activeTable, openTabs, filters, appliedFilters, sort, records, dbType, connectionSecurity, page, totalPages,
     isLoadingTables, isLoadingRecords, error,
@@ -229,7 +229,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     if (activeTable && patch.truncateTables?.includes(activeTable)) recordEditor.resetRecordEditor();
     return data;
   }, [activeTable, mutateTables, recordEditor.resetRecordEditor]);
-  useEffect(() => { fetchTables(); }, [fetchTables]);
+  useEffect(() => { const timer = setTimeout(() => fetchTables()); return () => clearTimeout(timer); }, [fetchTables]);
   useEffect(() => { onDbTypeChange?.(dbType); }, [dbType, onDbTypeChange]);
   useEffect(() => {
     setActionContextData({
@@ -239,7 +239,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
   }, [activeTableSchema, activeView, dbType, setActionContextData, tables.length]);
   useEffect(() => { recordEditor.syncSelectedRowDraft(); }, [recordEditor.syncSelectedRowDraft]);
   useEffect(() => {
-    if (!activeTable || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {
+    if (!activeTable || !recordEditor.detailsOpen || !recordEditor.selectedRow || foreignKeyByColumn.size === 0) {
       setFkOptionsByColumn({});
       return;
     }
@@ -266,7 +266,7 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
     });
 
     return () => { cancelled = true; };
-  }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.detailsOpen]);
+  }, [activeTable, connectionId, foreignKeyByColumn, recordEditor.detailsOpen, recordEditor.selectedRow]);
   useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); if (!isNewTableTab) structureEditor.close(); }, [activeTable, isNewTableTab]);
   useEffect(() => { recordEditor.resetRecordEditor(); inlineDrafts.clear(); lastRecordRowKeyRef.current = null; }, [page]);
   useEffect(() => {
@@ -549,4 +549,4 @@ export function DataViewer({ connectionId, stateKey, onDbTypeChange }: DataViewe
       />
     </div>
   );
-}
+});

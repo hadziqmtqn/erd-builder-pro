@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { autocompletion } from '@codemirror/autocomplete';
@@ -15,10 +15,10 @@ import { localPersistence } from '@/lib/localPersistence';
 import { buildSqlCompletions } from './query-autocomplete';
 import { DataQueryResultTable } from './DataQueryResultTable';
 import { DataQueryToolbar } from './DataQueryToolbar';
-import { useAIAction } from '@/contexts/AIActionContext';
+import { useSetActionContextData } from '@/contexts/AIActionContext';
 import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
 import { DataQuerySidebar, type QueryExecution } from './DataQuerySidebar';
-import { beautifySql, emptyQueryState, newQueryTab, readQueryState, sanitizeQueryState, type QueryTab } from './data-query-state';
+import { beautifySql, emptyQueryState, getQueryCache, newQueryTab, readQueryState, sanitizeQueryState, setQueryCache, type QueryTab } from './data-query-state';
 import { getSchemaCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
 
 type DataQueryViewProps = {
@@ -35,10 +35,11 @@ const isQueryDirty = (tab: QueryTab, query?: any) => !query
   || tab.name !== (query.name || 'SQL Query')
   || tab.script !== (query.script || '');
 
-export function DataQueryView({ connectionId, dbClientId, initialTable, openNonce = 0 }: DataQueryViewProps) {
+export const DataQueryView = memo(function DataQueryView({ connectionId, dbClientId, initialTable, openNonce = 0 }: DataQueryViewProps) {
   const { resolvedTheme } = useWorkspace();
-  const { setActionContextData } = useAIAction();
+  const setActionContextData = useSetActionContextData();
   const storageKey = `db-client-query-tabs:${dbClientId}:${connectionId}`;
+  const queryCacheKey = `${dbClientId}:${connectionId}`;
   const [tables, setTables] = useState<any[]>([]);
   const [queries, setQueries] = useState<any[]>([]);
   const [queriesLoaded, setQueriesLoaded] = useState(false);
@@ -62,7 +63,7 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
   const beautifyFrameRef = useRef<number | null>(null);
   const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingScriptRef = useRef(false);
-  const completion = useMemo(() => buildSqlCompletions(tables, initialTable), [tables, initialTable]);
+  const completion = useMemo(() => buildSqlCompletions(tables), [tables]);
   const groups = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const query of queries) {
@@ -72,28 +73,30 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
     return [...map.entries()];
   }, [queries]);
   const queryById = useMemo(() => new Map(queries.map((query: any) => [query.id, query])), [queries]);
-  const dirtyQueryIds = useMemo(() => new Set(tabs.filter(tab => tab.id && isQueryDirty(tab, queryById.get(tab.id))).map(tab => tab.id)), [queryById, tabs]);
+  const dirtyQueryIds = useMemo(() => new Set(tabs.flatMap(tab => tab.id !== null && isQueryDirty(tab, queryById.get(tab.id)) ? [tab.id] : [])), [queryById, tabs]);
 
   const load = useCallback(async () => {
     setQueriesLoaded(false);
     const cachedSchema = getSchemaCache(connectionId);
+    const cachedQueries = getQueryCache(queryCacheKey);
     const [schemaRes, queryRes] = await Promise.all([
       cachedSchema ? null : apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' }),
-      apiFetch(`/api/catalogs/${connectionId}/queries?dbClientId=${dbClientId}`),
+      cachedQueries ? null : apiFetch(`/api/catalogs/${connectionId}/queries?dbClientId=${dbClientId}`),
     ]);
     const schemaData = cachedSchema || await schemaRes!.json();
-    const queryData = await queryRes.json();
+    const queryData = cachedQueries ? { queries: cachedQueries } : await queryRes!.json();
     if (schemaRes && !schemaRes.ok) throw new Error(schemaData.error || 'Failed to load schema');
-    if (!queryRes.ok) throw new Error(queryData.error || 'Failed to load SQL queries');
+    if (queryRes && !queryRes.ok) throw new Error(queryData.error || 'Failed to load SQL queries');
     if (!cachedSchema) setSchemaCache(connectionId, schemaData);
+    if (!cachedQueries) setQueryCache(queryCacheKey, queryData.queries || []);
     setTables(schemaData.schema || []);
     setDbType(schemaData.dbType || null);
     setConnectionSecurity(schemaData.connectionSecurity || null);
     setQueries(queryData.queries || []);
     setQueriesLoaded(true);
-  }, [connectionId, dbClientId]);
+  }, [connectionId, dbClientId, queryCacheKey]);
 
-  useEffect(() => { load().catch((err: any) => setLoadError(err.message)); }, [load]);
+  useEffect(() => { const timer = setTimeout(() => { load().catch((err: any) => setLoadError(err.message)); }); return () => clearTimeout(timer); }, [load]);
   useEffect(() => { queryStateRef.current = queryState; }, [queryState]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => {
@@ -109,11 +112,7 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
     localPersistence.getResource(storageKey).then((resource) => {
       if (cancelled) return;
       const saved = sanitizeQueryState(resource?.data);
-      if (saved) {
-        setQueryState(saved);
-      } else {
-        setQueryState(readQueryState(storageKey));
-      }
+      setQueryState(saved || readQueryState(storageKey));
     }).catch(() => {
       if (!cancelled) setQueryState(readQueryState(storageKey));
     }).finally(() => {
@@ -229,7 +228,7 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save SQL query');
     patchTab(tab.key, { id: data.query.id });
-    await load();
+    setQueries(previous => setQueryCache(queryCacheKey, [...previous.filter(query => query.id !== data.query.id), data.query]));
     toast.success('SQL query saved');
   };
 
@@ -238,11 +237,11 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
     const res = await apiFetch(`/api/catalogs/${connectionId}/queries/${activeTab.id}?dbClientId=${dbClientId}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to delete SQL query');
+    setQueries(previous => setQueryCache(queryCacheKey, previous.filter(query => query.id !== activeTab.id)));
     setQueryState(prev => {
       const next = prev.tabs.filter(tab => tab.id !== activeTab.id);
       return next.length ? { tabs: next, activeKey: next.at(-1)!.key } : emptyQueryState;
     });
-    await load();
     toast.success('SQL query deleted');
   };
 
@@ -395,4 +394,4 @@ export function DataQueryView({ connectionId, dbClientId, initialTable, openNonc
       />
     </div>
   );
-}
+});

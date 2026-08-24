@@ -37,6 +37,9 @@ interface ColumnRowProps {
   onDoubleClick?: (event: React.MouseEvent) => void;
 }
 
+const handleBaseClass = '!w-2 !h-2 !border-none cursor-crosshair opacity-0 transition-opacity duration-150 group-hover:!opacity-100 group-focus-within:!opacity-100';
+const readOnlyHandleClass = '!w-2 !h-2 !border-none !opacity-0 !pointer-events-none';
+
 const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoubleClick }: ColumnRowProps) => {
   const isFk = col._is_fk;
   const diffState = col.diffState as 'new' | 'deleted' | undefined;
@@ -49,12 +52,6 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
     top: '50%', right: '-4px', transform: 'translate(50%, -50%)', backgroundColor: borderColor, zIndex: 50,
   }), [borderColor]);
 
-  const handleBaseClass = useMemo(() => cn(
-    '!w-2 !h-2 !border-none cursor-crosshair opacity-0 transition-opacity duration-150',
-    !hideHandles && 'group-hover:!opacity-100 group-focus-within:!opacity-100',
-    hideHandles && '!opacity-0 !pointer-events-none',
-  ), [hideHandles]);
-
   const rowBgClass = useMemo(() => {
     if (diffState === 'new') return 'bg-emerald-500/10 hover:bg-emerald-500/15 border-b border-emerald-500/20';
     if (diffState === 'deleted') return 'bg-red-500/10 hover:bg-red-500/15 line-through opacity-50 border-b border-red-500/20';
@@ -63,38 +60,19 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 
   return (
     <div
-      className={cn("group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0", rowBgClass)}
+      className={cn("erd-column-row group relative px-3 py-2 flex items-center justify-between transition-colors border-b last:border-b-0", rowBgClass)}
       title={col.comment || undefined}
       onDoubleClick={onDoubleClick}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={`col-${col.id}-target`}
-        className={handleBaseClass}
-        style={leftStyle}
-      />
-      <Handle
-        type="source"
-        position={Position.Left}
-        id={`col-${col.id}-source-l`}
-        className={handleBaseClass}
-        style={leftStyle}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={`col-${col.id}-source`}
-        className={handleBaseClass}
-        style={rightStyle}
-      />
-      <Handle
-        type="target"
-        position={Position.Right}
-        id={`col-${col.id}-target-r`}
-        className={handleBaseClass}
-        style={rightStyle}
-      />
+      {hideHandles ? <>
+        {col._is_ref && <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={readOnlyHandleClass} style={leftStyle} />}
+        {col._is_fk && <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={readOnlyHandleClass} style={rightStyle} />}
+      </> : <>
+        <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={handleBaseClass} style={leftStyle} />
+        <Handle type="source" position={Position.Left} id={`col-${col.id}-source-l`} className={handleBaseClass} style={leftStyle} />
+        <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={handleBaseClass} style={rightStyle} />
+        <Handle type="target" position={Position.Right} id={`col-${col.id}-target-r`} className={handleBaseClass} style={rightStyle} />
+      </>}
 
       <div className="flex items-center gap-2">
         <span className={cn(
@@ -207,7 +185,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   }, [data.color, diffState]);
 
   const containerClasses = useMemo(() => cn(
-    "bg-card text-foreground rounded-lg border-2 min-w-[220px] will-change-transform erd-node-container transition-all duration-300",
+    "bg-card text-foreground rounded-lg border-2 min-w-[220px] erd-node-container",
     selected && "ring-2 ring-primary/50",
     diffState === 'new' && "shadow-[0_0_20px_rgba(16,185,129,0.35)] border-emerald-500/50",
     diffState === 'deleted' && "opacity-40 shadow-[0_0_15px_rgba(239,68,68,0.25)] border-red-500/50",

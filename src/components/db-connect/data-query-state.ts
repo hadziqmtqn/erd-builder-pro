@@ -11,6 +11,10 @@ export type QueryTab = {
 
 export const emptyQueryState = { tabs: [] as QueryTab[], activeKey: '' };
 
+const queryCaches = new Map<string, any[]>();
+export const getQueryCache = (key: string) => queryCaches.get(key);
+export const setQueryCache = (key: string, queries: any[]) => { queryCaches.set(key, queries); return queries; };
+
 export const newQueryTab = (table?: string | null): QueryTab => ({ key: crypto.randomUUID(), id: null, groupName: 'Ungrouped', name: 'New SQL Query', script: `SELECT *\nFROM ${table || ''}`, result: null, resultPage: 1, error: null });
 
 export const beautifySql = (sql: string) => sql

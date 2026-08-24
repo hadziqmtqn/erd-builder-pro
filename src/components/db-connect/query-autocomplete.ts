@@ -10,62 +10,64 @@ const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'INNER JOIN', 'GROUP BY', 'ORDER BY',
   'LIMIT', 'OFFSET', 'ON', 'AS', 'AND', 'OR', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
 ];
+const RESERVED_ALIASES = new Set([...SQL_KEYWORDS, 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'OUTER', 'HAVING', 'SET', 'VALUES'].map(word => word.split(' ')[0]));
+const TABLE_REFERENCE = /\b(?:from|join|update|into)\s+((?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))?)(?:\s+(?:as\s+)?([a-z_$][\w$]*))?/gi;
 
-function joinEdges(tables: TableSchema[]) {
-  const edges: Record<string, { to: string; sql: string }[]> = {};
-  const add = (from: string, to: string, sql: string) => {
-    edges[from] ||= [];
-    edges[from].push({ to, sql });
-  };
-  for (const table of tables) {
-    for (const fk of table.foreign_keys || []) {
-      if (!fk.column || !fk.ref_table || !fk.ref_column) continue;
-      add(table.table_name, fk.ref_table, `JOIN ${fk.ref_table} ON ${table.table_name}.${fk.column} = ${fk.ref_table}.${fk.ref_column}`);
-      add(fk.ref_table, table.table_name, `JOIN ${table.table_name} ON ${table.table_name}.${fk.column} = ${fk.ref_table}.${fk.ref_column}`);
-    }
-  }
-  return edges;
+function cleanIdentifier(value: string) {
+  return value.split('.').map(part => part.trim().replace(/^["`\[]|["`\]]$/g, '')).join('.');
 }
 
-export function buildSqlCompletions(tables: TableSchema[], activeTable: string | null) {
-  const tableOptions: Completion[] = tables.map(table => ({ label: table.table_name, type: 'class', detail: 'table' }));
-  const columnOptions: Completion[] = tables.flatMap(table => (table.columns || []).map(column => ({
-    label: `${table.table_name}.${column.name}`,
-    type: 'property',
-    detail: 'column',
-  })));
-  const keywordOptions: Completion[] = SQL_KEYWORDS.map(label => ({ label, type: 'keyword' }));
-  const relationOptions: Completion[] = [];
+// ponytail: regex covers normal SQL references; use the CodeMirror syntax tree if quoted semicolons or complex CTE aliases become common.
+function activeStatement(sql: string, position: number) {
+  const start = sql.lastIndexOf(';', Math.max(0, position - 1)) + 1;
+  const end = sql.indexOf(';', position);
+  return sql.slice(start, end === -1 ? undefined : end);
+}
 
-  if (activeTable) {
-    const edges = joinEdges(tables);
-    const queue = [{ table: activeTable, path: [] as string[] }];
-    const seen = new Set([activeTable]);
-    while (queue.length) {
-      const current = queue.shift()!;
-      for (const edge of edges[current.table] || []) {
-        if (seen.has(edge.to)) continue;
-        const path = [...current.path, edge.sql];
-        seen.add(edge.to);
-        relationOptions.push({
-          label: path[path.length - 1],
-          type: 'variable',
-          detail: path.length > 1 ? `${path.length} joins` : 'foreign key',
-          apply: path.join('\n'),
-        });
-        queue.push({ table: edge.to, path });
-      }
-    }
+function referencedTables(sql: string, tables: TableSchema[]) {
+  const byName = new Map<string, TableSchema>();
+  for (const table of tables) {
+    byName.set(table.table_name.toLowerCase(), table);
+    byName.set(table.table_name.split('.').at(-1)!.toLowerCase(), table);
   }
+  const references: { table: TableSchema; qualifier: string }[] = [];
+  for (const match of sql.matchAll(TABLE_REFERENCE)) {
+    const name = cleanIdentifier(match[1]);
+    const table = byName.get(name.toLowerCase()) || byName.get(name.split('.').at(-1)!.toLowerCase());
+    if (!table) continue;
+    const alias = cleanIdentifier(match[2] || '');
+    const qualifier = alias && !RESERVED_ALIASES.has(alias.toUpperCase()) ? alias : table.table_name;
+    if (!references.some(item => item.table === table && item.qualifier === qualifier)) references.push({ table, qualifier });
+  }
+  return references;
+}
 
-  const options = [...relationOptions, ...keywordOptions, ...tableOptions, ...columnOptions];
+export function buildSqlCompletions(tables: TableSchema[]) {
+  const tableOptions: Completion[] = tables.map(table => ({ label: table.table_name, type: 'class', detail: 'table' }));
+  const keywordOptions: Completion[] = SQL_KEYWORDS.map(label => ({ label, type: 'keyword' }));
+  let previousKey = '';
+  let previousOptions: Completion[] = keywordOptions;
 
   return (ctx: CompletionContext): CompletionResult | null => {
     const word = ctx.matchBefore(/[\w.]+$/);
     if (!ctx.explicit && !word) return null;
+    const sql = ctx.state.doc.toString();
+    const statement = activeStatement(sql, ctx.pos);
+    const statementBeforeCursor = sql.slice(sql.lastIndexOf(';', Math.max(0, ctx.pos - 1)) + 1, ctx.pos);
+    const expectsTable = /\b(?:from|join|update|into)\s+["`\[\]\w$.]*$/i.test(statementBeforeCursor);
+    const key = `${statement}\0${expectsTable}`;
+    if (key !== previousKey) {
+      previousKey = key;
+      const references = referencedTables(statement, tables);
+      const columns = references.flatMap(({ table, qualifier }) => (table.columns || []).map(column => ({
+        label: `${qualifier}.${column.name}`, type: 'property', detail: `${table.table_name} column`,
+      } as Completion)));
+      const referencedTableOptions = references.map(({ table }) => ({ label: table.table_name, type: 'class', detail: 'referenced table' } as Completion));
+      previousOptions = [...keywordOptions, ...(expectsTable ? tableOptions : referencedTableOptions), ...columns];
+    }
     return {
       from: word?.from ?? ctx.pos,
-      options,
+      options: previousOptions,
     };
   };
 }
