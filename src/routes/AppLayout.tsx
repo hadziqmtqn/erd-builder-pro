@@ -63,9 +63,11 @@ import { AIActionProvider, useAIAction } from '@/contexts/AIActionContext';
 import { RightChatSidebar } from '@/components/ai/RightChatSidebar';
 import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
+import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
+import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 
 // ── Inner component that uses AIAction context ──
 
@@ -150,10 +152,18 @@ function AppLayoutInner() {
       setActiveDbClient(null);
       return;
     }
+    const cached = getDbClientCache(entityContext.entityUid);
+    if (cached) {
+      setActiveDbClient(cached);
+      return;
+    }
     let cancelled = false;
     apiFetch(`/api/db-clients/${encodeURIComponent(entityContext.entityUid)}`)
       .then(response => response.ok ? response.json() : null)
-      .then(value => { if (!cancelled) setActiveDbClient(value); })
+      .then(value => {
+        if (value) setDbClientCache(value);
+        if (!cancelled) setActiveDbClient(value);
+      })
       .catch(() => { if (!cancelled) setActiveDbClient(null); });
     return () => { cancelled = true; };
   }, [entityContext]);
@@ -940,17 +950,6 @@ function AppLayoutInner() {
                       Properties
                     </button>
                   )}
-                  <button
-                    onClick={() => setRightPanelMode('chat')}
-                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                      rightPanelMode === 'chat'
-                        ? 'border-primary text-primary bg-background/50'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
-                    }`}
-                  >
-                    <Sparkles className="size-3.5" />
-                    AI Chat
-                  </button>
                   {showDBMLPanel && (
                     <button
                       onClick={openDBMLPanel}
@@ -964,6 +963,17 @@ function AppLayoutInner() {
                       DBML
                     </button>
                   )}
+                  <button
+                    onClick={() => setRightPanelMode('chat')}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                      rightPanelMode === 'chat'
+                        ? 'border-primary text-primary bg-background/50'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                    }`}
+                  >
+                    <Sparkles className="size-3.5" />
+                    AI Chat
+                  </button>
                 </div>
                 <Button variant="ghost" size="icon" className="size-8 mr-1" onClick={() => setRightPanelMode('closed')} title="Close panel">
                   <PanelRightClose className="size-3.5" />
@@ -1014,6 +1024,10 @@ function AppLayoutInner() {
                       key={propertiesEntity.id}
                       selectedEntity={propertiesEntity}
                       onUpdateEntity={handleEntityUpdate}
+                      onBackToTables={() => {
+                        setSelectedNodeId(null);
+                        setPropertiesEntityId(null);
+                      }}
                       onDeleteEntity={(id) => {
                         deleteEntity(id);
                         setSelectedNodeId(null);
@@ -1021,9 +1035,13 @@ function AppLayoutInner() {
                       }}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                      No ERD table is currently selected for editing.
-                    </div>
+                    <ERDTableListPanel
+                      nodes={nodes}
+                      onEdit={(id) => {
+                        setPropertiesEntityId(id);
+                        setSelectedNodeId(id);
+                      }}
+                    />
                   )
                 )}
               </div>
@@ -1035,6 +1053,7 @@ function AppLayoutInner() {
         {showAIChat && !rightPanelOpen && (
           <AIChatToggle
             isOpen={false}
+            raised={entityContext?.entityType === 'dbClient'}
             onClick={() => setRightPanelMode('chat')}
           />
         )}

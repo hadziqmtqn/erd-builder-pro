@@ -41,6 +41,7 @@ interface AIActionContextValue {
 }
 
 const AIActionContext = createContext<AIActionContextValue | null>(null);
+const SetActionContextDataContext = createContext<AIActionContextValue['setActionContextData'] | null>(null);
 
 export function AIActionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
@@ -91,7 +92,8 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
   }, [contentHandler]);
 
   return (
-    <AIActionContext.Provider
+    <SetActionContextDataContext.Provider value={setActionContextData}>
+      <AIActionContext.Provider
       value={{
         sendAction,
         pendingPrompt,
@@ -111,7 +113,8 @@ export function AIActionProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </AIActionContext.Provider>
+      </AIActionContext.Provider>
+    </SetActionContextDataContext.Provider>
   );
 }
 
@@ -121,4 +124,10 @@ export function useAIAction(): AIActionContextValue {
     throw new Error('useAIAction must be used within AIActionProvider');
   }
   return ctx;
+}
+
+export function useSetActionContextData() {
+  const setter = useContext(SetActionContextDataContext);
+  if (!setter) throw new Error('useSetActionContextData must be used within AIActionProvider');
+  return setter;
 }

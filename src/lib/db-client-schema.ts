@@ -4,6 +4,8 @@ import { databaseColumnToERD } from '@/lib/column-metadata';
 
 export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Entity>[]; edges: Edge[] } {
   const positions = layout?.nodes || {};
+  const referencedColumns = new Set(schema.flatMap((table: any) => (table.foreign_keys || [])
+    .map((foreignKey: any) => `${foreignKey.ref_table}.${foreignKey.ref_column}`)));
   const nodes = schema.map((table: any, index) => {
     const saved = positions[table.table_name] || {};
     return {
@@ -19,6 +21,7 @@ export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Enti
         columns: (table.columns || []).map((column: any) => ({
           ...databaseColumnToERD(column, `${table.table_name}.${column.name}`),
           _is_fk: (table.foreign_keys || []).some((foreignKey: any) => foreignKey.column === column.name),
+          _is_ref: referencedColumns.has(`${table.table_name}.${column.name}`),
         })),
         collapsed: saved.collapsed ?? false,
         hidden_columns: saved.hidden_columns ?? [],

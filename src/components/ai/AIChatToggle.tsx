@@ -11,9 +11,10 @@ import {
 interface AIChatToggleProps {
   isOpen: boolean;
   onClick: () => void;
+  raised?: boolean;
 }
 
-export const AIChatToggle: React.FC<AIChatToggleProps> = ({ isOpen, onClick }) => {
+export const AIChatToggle: React.FC<AIChatToggleProps> = ({ isOpen, onClick, raised }) => {
   if (isOpen) return null; // Hidden when panel is open
 
   return (
@@ -23,7 +24,7 @@ export const AIChatToggle: React.FC<AIChatToggleProps> = ({ isOpen, onClick }) =
           render={
             <Button
               onClick={onClick}
-              className="fixed right-6 bottom-4 z-50 size-12 rounded-full shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200 hover:scale-105 active:scale-95"
+              className={`fixed right-6 ${raised ? 'bottom-16' : 'bottom-4'} z-50 size-12 rounded-full shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200 hover:scale-105 active:scale-95`}
               size="icon"
             >
               <Sparkles className="size-5" />

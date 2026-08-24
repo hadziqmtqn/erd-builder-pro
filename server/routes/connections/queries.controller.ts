@@ -26,13 +26,14 @@ async function assertDbClient(req: ExpressRequest, value: unknown) {
 
 export async function listQueries(req: ExpressRequest, res: ExpressResponse) {
   try {
-    const dbClientId = await assertDbClient(req, req.query.dbClientId);
-    const queries = await (prisma as any)?.dbClientQuery.findMany({
-      where: { dbClientId },
-      select: querySelect(),
-      orderBy: [{ groupName: "asc" }, { updatedAt: "desc" }],
+    const id = Number(req.query.dbClientId);
+    if (!id) throw new Error("dbClientId is required");
+    const client = await (prisma as any)?.dbClient.findFirst({
+      where: { id, userId: String((req as any).user.id), isDeleted: false },
+      select: { queries: { select: querySelect(), orderBy: [{ groupName: "asc" }, { updatedAt: "desc" }] } },
     });
-    res.json({ queries: queries || [] });
+    if (!client) throw new Error("DB Client not found");
+    res.json({ queries: client.queries || [] });
   } catch (err: any) {
     res.status(/not found/i.test(err.message) ? 404 : 400).json({ error: err.message || "Failed to load SQL queries" });
   }

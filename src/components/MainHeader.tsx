@@ -11,7 +11,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Globe, CloudOff, Cloud, Save, Check, Loader2 } from 'lucide-react';
+import { Globe, CloudOff, Cloud, Save, Check, Loader2, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -112,6 +113,12 @@ export const MainHeader = React.memo(({
     setIsHistoryOpen(true);
   }, []);
 
+  const copyFilePath = React.useCallback((category: string) => {
+    navigator.clipboard.writeText(`${category} > ${activeProjectName || 'No Workspace'} > ${activeFileName}`)
+      .then(() => toast.success('File path copied'))
+      .catch(() => toast.error('Failed to copy file path'));
+  }, [activeFileName, activeProjectName]);
+
   React.useEffect(() => {
     setIsMac(window.navigator.userAgent.toLowerCase().includes('mac'));
   }, []);
@@ -127,11 +134,8 @@ export const MainHeader = React.memo(({
         )}
         <Breadcrumb className="min-w-0 flex items-center">
           <BreadcrumbList className="flex-nowrap items-center">
-            {/* ── URL-driven breadcrumb — always consistent with current route ── */}
             {!isPublicView && (() => {
               const path = location.pathname;
-
-              // Dashboard (index route)
               if (path === '/') {
                 return (
                   <BreadcrumbItem className="shrink-0">
@@ -139,8 +143,6 @@ export const MainHeader = React.memo(({
                   </BreadcrumbItem>
                 );
               }
-
-              // Table list pages: /table/notes, /table/erd, /table/drawings, /table/flowchart
               if (path.startsWith('/table/')) {
                 const tableLabels: Record<string, string> = {
                   notes: 'Notes',
@@ -157,8 +159,6 @@ export const MainHeader = React.memo(({
                   </BreadcrumbItem>
                 );
               }
-
-              // Document editors
               if (path.startsWith('/notes/') || path.startsWith('/diagrams/') || path.startsWith('/db-client/') || path.startsWith('/drawings/') || path.startsWith('/flowcharts/')) {
                 const editorInfo: Record<string, { label: string; href: string }> = {
                     notes: { label: 'Notes', href: '/table/notes' },
@@ -193,6 +193,12 @@ export const MainHeader = React.memo(({
                       <BreadcrumbItem className="min-w-0 shrink flex items-center gap-2">
                         <BreadcrumbPage className="max-w-30 sm:max-w-50 md:max-w-75 truncate font-semibold text-foreground">{activeFileName}</BreadcrumbPage>
 
+                        {info && (
+                          <Button variant="ghost" size="icon" className="size-6 shrink-0" onClick={() => copyFilePath(info.label)} title="Copy file path" aria-label="Copy file path">
+                            <Copy className="size-3.5" />
+                          </Button>
+                        )}
+
                         {initialShareSettings?.is_public && !isPublicView && (
                           <TooltipProvider delay={0}>
                             <Tooltip>
@@ -219,8 +225,6 @@ export const MainHeader = React.memo(({
                   </>
                 );
               }
-
-              // Trash
               if (path.startsWith('/trash')) {
                 return (
                   <BreadcrumbItem className="shrink-0">
@@ -228,8 +232,6 @@ export const MainHeader = React.memo(({
                   </BreadcrumbItem>
                 );
               }
-
-              // Fallback: breadcrumbLabel override from context, or featureLabel
               if (breadcrumbLabel) {
                 return (
                   <BreadcrumbItem className="shrink-0">

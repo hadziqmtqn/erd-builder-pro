@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import { useState, useEffect, useRef, type PointerEvent } from 'react';
-import { Plus, Trash2, Key, Check, X, Type, GripVertical, Wand2, MoreHorizontal, Clock3 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Key, Check, X, Type, GripVertical, Wand2, MoreHorizontal, Clock3 } from 'lucide-react';
 import { Entity, Column } from '../types';
 import { cn } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
@@ -35,12 +35,14 @@ interface PropertiesPanelProps {
   selectedEntity: Entity | null;
   onUpdateEntity: (entity: Entity, options?: { immediate?: boolean }) => void;
   onDeleteEntity: (id: string) => void;
+  onBackToTables?: () => void;
 }
 
 export default function PropertiesPanel({ 
   selectedEntity, 
   onUpdateEntity, 
-  onDeleteEntity
+  onDeleteEntity,
+  onBackToTables,
 }: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
   const [activeEditorTab, setActiveEditorTab] = useState<'properties' | 'schema' | 'dbml'>('properties');
@@ -290,6 +292,15 @@ export default function PropertiesPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="shrink-0 border-b border-border bg-background px-4 py-3">
+        {onBackToTables && (
+          <div className="mb-3 flex min-w-0 items-center gap-2 text-xs">
+            <button type="button" onClick={onBackToTables} className="flex shrink-0 items-center gap-1 font-medium text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="size-3.5" /> Tables
+            </button>
+            <span className="text-muted-foreground/50">/</span>
+            <span className="truncate font-medium text-foreground">{editingEntity.name}</span>
+          </div>
+        )}
         <div className="flex w-full gap-1 rounded-lg border border-border bg-muted p-1" aria-label="Table editor sections">
           {[
             ['properties', 'Properties'],

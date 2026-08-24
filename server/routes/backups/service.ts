@@ -11,9 +11,12 @@ import {
   restoreLocalBackup,
 } from "../../lib/local-backup.js";
 import { createReadStream } from "fs";
-import { access, readFile, stat } from "fs/promises";
+import { access, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import os from "node:os";
+import { gzipSync } from "node:zlib";
 import path from "path";
 import { getStorageClientForUser } from "../../lib/storage.js";
+import { normalizeSqliteImport } from "../../lib/sqlite-import.js";
 
 // ── Folder Settings ──
 
@@ -244,4 +247,21 @@ export async function performRestore(backupId: string, filePath: string, userId:
     filePath, userId, onProgress, backupId
   );
   return { autoBackupId, autoBackupName };
+}
+
+export async function performImportedSqliteRestore(
+  fileBuffer: Buffer,
+  userId: string,
+  onProgress: (progress: any) => void,
+) {
+  const normalized = normalizeSqliteImport(fileBuffer);
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "erd-builder-import-"));
+  const tempPath = path.join(tempDir, "import.sql.gz");
+
+  try {
+    await writeFile(tempPath, gzipSync(normalized));
+    return await restoreLocalBackup(tempPath, userId, onProgress);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
 }

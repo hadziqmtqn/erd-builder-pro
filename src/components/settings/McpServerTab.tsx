@@ -1,12 +1,26 @@
 import React from 'react';
-import { Check, Copy, Loader2, TerminalSquare } from 'lucide-react';
+import { Check, Copy, Globe2, Loader2, TerminalSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { buildMcpClientConfigs, type McpRuntime } from '@/lib/mcp-client-config';
 
+type WebMcpRuntime = {
+  mode: 'web';
+  transport: 'streamable-http';
+  configured: boolean;
+  url?: string;
+  auth_provider?: 'local' | 'supabase';
+  scopes?: string[];
+};
+
+type LocalMcpRuntime = McpRuntime & {
+  mode?: 'desktop' | 'cli';
+  transport?: 'stdio';
+};
+
 export function McpServerTab() {
-  const [runtime, setRuntime] = React.useState<McpRuntime | null>(null);
+  const [runtime, setRuntime] = React.useState<LocalMcpRuntime | WebMcpRuntime | null>(null);
   const [error, setError] = React.useState('');
   const [copied, setCopied] = React.useState('');
   const [activeClient, setActiveClient] = React.useState('jetbrains');
@@ -45,6 +59,44 @@ export function McpServerTab() {
     return <div className="flex h-full items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
   }
 
+  if (runtime.mode === 'web') {
+    return (
+      <div className="space-y-5 p-4 md:p-6">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <Globe2 className="size-5" />
+            Public MCP Integration
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Detected mode: Web App. This page automatically shows the matching MCP connection for the current installation mode.
+          </p>
+        </div>
+
+        {runtime.configured && runtime.url ? (
+          <>
+            <div className="rounded-lg border bg-muted/30 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Public MCP URL (Streamable HTTP)</p>
+                <Button variant="ghost" size="xs" onClick={() => void copy('public-url', runtime.url!)}>
+                  {copied === 'public-url' ? <Check /> : <Copy />}
+                  {copied === 'public-url' ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+              <code className="mt-1 block break-all text-xs">{runtime.url}</code>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+              Add this URL as a custom connector in Claude Web or Claude Desktop. Authentication uses OAuth and grants user-scoped, read-only access.
+            </div>
+          </>
+        ) : (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
+            Public MCP is not configured. Set MCP_PUBLIC_URL on the Web App server and restart it to publish the connection URL.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const configs = buildMcpClientConfigs(runtime);
   const activeConfig = configs.find((config) => config.id === activeClient) || configs[0];
 
@@ -56,7 +108,7 @@ export function McpServerTab() {
           Connect AI Clients
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Use ERD Builder Pro as a local MCP Server (STDIO) with an external AI client. The launcher runs headlessly without opening another app window.
+          Detected mode: {runtime.mode === 'cli' ? 'CLI' : 'Desktop App'}. Use ERD Builder Pro as a local MCP Server (STDIO) with an external AI client. The launcher runs headlessly without opening another app window.
         </p>
       </div>
 

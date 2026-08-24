@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { DATA_VIEWER_STORAGE_PREFIX, makeRecordFilter, OpenTableTab, RecordFilter, RecordsResult, RecordSort } from './useDataViewerHelpers';
+import { clearSchemaCache, DATA_VIEWER_STORAGE_PREFIX, getRecordCache, getSchemaCache, makeRecordFilter, OpenTableTab, RecordFilter, RecordsResult, RecordSort, setSchemaCache } from './useDataViewerHelpers';
 
 export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [tables, setTables] = useState<any[]>([]);
@@ -18,7 +18,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const [error, setError] = useState<string | null>(null);
   const newTableTab = '__new_table__';
   const abortRef = useRef<AbortController | null>(null);
-  const recordCacheRef = useRef(new Map<string, RecordsResult>());
+  const recordCache = connectionId ? getRecordCache(connectionId) : null;
   const appliedFiltersRef = useRef<RecordFilter[]>([]);
   const sortRef = useRef<RecordSort | null>(null);
   const filtersRef = useRef<RecordFilter[]>([]);
@@ -32,17 +32,27 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     JSON.stringify([connectionId, table, p, nextFilters, nextSort]);
 
   const clearRecordCache = useCallback(() => {
-    recordCacheRef.current.clear();
-  }, []);
+    recordCache?.clear();
+  }, [recordCache]);
 
-  const fetchTables = useCallback(async () => {
+  const fetchTables = useCallback(async (force = false) => {
     if (!connectionId) return;
+    const cached = !force && getSchemaCache(connectionId);
+    if (cached) {
+      setTables(cached.schema || []);
+      setDbType(cached.dbType || null);
+      setConnectionSecurity(cached.connectionSecurity || { environment: 'development', safeMode: 'protected', sslMode: 'disable', queryTimeoutMs: 30000 });
+      setIsLoadingTables(false);
+      setError(null);
+      return;
+    }
     setIsLoadingTables(true);
     setError(null);
     try {
       const res = await apiFetch(`/api/catalogs/${connectionId}/schema`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch tables');
+      setSchemaCache(connectionId, data);
       setTables(data.schema || []);
       setDbType(data.dbType || null);
       setConnectionSecurity(data.connectionSecurity || { environment: 'development', safeMode: 'protected', sslMode: 'disable', queryTimeoutMs: 30000 });
@@ -60,15 +70,20 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
   const fetchRecords = useCallback(async (table: string, p: number = 1, nextFilters = appliedFiltersRef.current, nextSort = sortRef.current) => {
     if (!connectionId) return;
     const cacheKey = recordCacheKey(table, p, nextFilters, nextSort);
-    const cached = recordCacheRef.current.get(cacheKey);
+    const cached = recordCache?.get(cacheKey);
     appliedFiltersRef.current = nextFilters;
     setAppliedFilters(nextFilters);
     sortRef.current = nextSort;
     setSort(nextSort);
     setRecords(cached || null);
     setPage(p);
-    // Abort previous request
     abortRef.current?.abort();
+    if (cached) {
+      pageByTableRef.current[table] = p;
+      setIsLoadingRecords(false);
+      setError(null);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -85,9 +100,9 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
       if (!res.ok) throw new Error(data.error || 'Failed to fetch records');
       if (abortRef.current !== controller) return;
       pageByTableRef.current[table] = p;
-      recordCacheRef.current.set(cacheKey, data);
-      if (recordCacheRef.current.size > 20) {
-        recordCacheRef.current.delete(recordCacheRef.current.keys().next().value!);
+      recordCache?.set(cacheKey, data);
+      if (recordCache && recordCache.size > 20) {
+        recordCache.delete(recordCache.keys().next().value!);
       }
       setRecords(data);
       setPage(p);
@@ -97,7 +112,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     } finally {
       if (abortRef.current === controller) setIsLoadingRecords(false);
     }
-  }, [connectionId]);
+  }, [connectionId, recordCache]);
 
   const saveTableState = useCallback((table: string | null) => {
     if (!table) return;
@@ -156,10 +171,12 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     setRecords(null);
     setPage(1);
     const nextPage = nextActive ? savedPages[nextActive] || 1 : 1;
+    let fetchTimer: ReturnType<typeof setTimeout> | null = null;
     if (nextActive && nextActive !== newTableTab) {
       setPage(nextPage);
-      fetchRecords(nextActive, nextPage, activeState?.appliedFilters || [], activeState?.sort || null);
+      fetchTimer = setTimeout(() => fetchRecords(nextActive, nextPage, activeState?.appliedFilters || [], activeState?.sort || null));
     }
+    return () => { if (fetchTimer) clearTimeout(fetchTimer); };
   }, [storageKey, fetchRecords]);
 
   useEffect(() => {
@@ -371,6 +388,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update tables');
     clearRecordCache();
+    clearSchemaCache(connectionId);
     await fetchTables();
     if (activeTable && patch.truncateTables?.includes(activeTable)) fetchRecords(activeTable, 1);
     return data;
@@ -404,6 +422,7 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update structure');
     clearRecordCache();
+    clearSchemaCache(connectionId);
     const nextTable = patch.createTable?.name || patch.tableName || activeTable;
     setActiveTable(nextTable);
     setOpenTabs(prev => prev.some(tab => tab.name === nextTable)
@@ -418,9 +437,10 @@ export function useDataViewer(connectionId: number | null, stateKey?: string) {
 
   const refreshAll = useCallback(async () => {
     clearRecordCache();
+    if (connectionId) clearSchemaCache(connectionId);
     await fetchTables();
     if (activeTable && activeTable !== newTableTab) fetchRecords(activeTable, pageByTableRef.current[activeTable] ?? page);
-  }, [activeTable, clearRecordCache, fetchRecords, fetchTables, page]);
+  }, [activeTable, clearRecordCache, connectionId, fetchRecords, fetchTables, page]);
 
   const clearFilters = useCallback(() => {
     filtersRef.current = [];

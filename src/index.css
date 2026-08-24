@@ -230,7 +230,6 @@
 .react-flow__edge-path {
   stroke: var(--edge-color) !important;
   stroke-width: 2 !important;
-  transition: all 300ms;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
@@ -243,6 +242,22 @@
   stroke: var(--edge-selected) !important;
   opacity: 0.2;
   stroke-width: 10 !important;
+}
+
+/* Keep far-zoom navigation cheap while preserving node dimensions and relation topology. */
+.erd-canvas-low-detail .erd-column-row > *,
+.erd-canvas-low-detail .react-flow__handle {
+  visibility: hidden;
+}
+
+.erd-canvas-low-detail .react-flow__edge-interaction,
+.erd-canvas-low-detail .react-flow__edge-textwrapper,
+.erd-canvas-low-detail .react-flow__background {
+  display: none;
+}
+
+.erd-canvas-low-detail .react-flow__edge-path {
+  marker-end: none !important;
 }
 
 @keyframes edge_dash_draw {

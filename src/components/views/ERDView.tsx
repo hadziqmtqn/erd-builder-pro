@@ -128,6 +128,17 @@ const ERDViewComponent = ({
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+  const lowDetailRef = React.useRef(false);
+
+  const handleMoveLocal = useCallback((event: any, viewport: any) => {
+    const lowDetail = viewport.zoom < 0.35;
+    if (lowDetail !== lowDetailRef.current) {
+      lowDetailRef.current = lowDetail;
+      canvasRef.current?.classList.toggle('erd-canvas-low-detail', lowDetail);
+    }
+    onMove(event, viewport);
+  }, [onMove]);
 
 
   // ─── Multi-table selection ───────────────────────────
@@ -623,7 +634,7 @@ const ERDViewComponent = ({
           <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       )}
-      <div className="flex-1">
+      <div ref={canvasRef} className="flex-1">
         <ReactFlow
           nodes={pendingDiff ? diffNodesWithMode : styledNodes}
           edges={pendingDiff ? pendingDiff.diffEdges : styledEdges}
@@ -699,7 +710,7 @@ const ERDViewComponent = ({
           onNodeDoubleClick={onNodeDoubleClick}
           onEdgeClick={onEdgeClick}
           onPaneClick={handlePaneClickLocal}
-          onMove={onMove}
+          onMove={handleMoveLocal}
           colorMode={resolvedTheme}
           onlyRenderVisibleElements={true}
           // Production DB ERD stays read-only for schema edits, but table positions are editable.

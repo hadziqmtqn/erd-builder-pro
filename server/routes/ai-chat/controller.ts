@@ -23,7 +23,7 @@ export async function createSession(req: ExpressRequest, res: ExpressResponse): 
     const userId = (req as any).user.id;
     const { entity_type, entity_uid, project_id } = req.body;
 
-    let resolvedProjectId: number | undefined;
+    let resolvedProjectId: number | null | undefined;
     if (project_id !== undefined) {
       if (!prisma) { res.status(500).json({ error: "Database connection not available" }); return; }
       resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
@@ -68,7 +68,7 @@ export async function updateSession(req: ExpressRequest, res: ExpressResponse): 
     const userId = (req as any).user.id;
     const { title, project_id } = req.body;
 
-    let resolvedProjectId: number | undefined;
+    let resolvedProjectId: number | null | undefined;
     if (project_id !== undefined) {
       if (!prisma) { res.status(500).json({ error: "Database connection not available" }); return; }
       resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);

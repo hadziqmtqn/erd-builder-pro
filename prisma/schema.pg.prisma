@@ -54,6 +54,58 @@ model Session {
   @@map("sessions")
 }
 
+// OAuth credentials for the public Web MCP. Tokens/codes are stored only as
+// hashes and are deliberately separate from application login sessions.
+model McpOAuthClient {
+  id             String                  @id
+  metadata       Json
+  createdAt      DateTime                @default(now()) @map("created_at")
+  authorizations McpOAuthAuthorization[]
+  tokens         McpOAuthToken[]
+
+  @@map("mcp_oauth_clients")
+}
+
+model McpOAuthAuthorization {
+  id            String         @id
+  clientId      String         @map("client_id")
+  userId        String?        @map("user_id")
+  redirectUri   String         @map("redirect_uri")
+  scopes        String
+  state         String?
+  resource      String
+  codeChallenge String         @map("code_challenge")
+  codeHash      String?        @unique @map("code_hash")
+  status        String         @default("pending")
+  expiresAt     DateTime       @map("expires_at")
+  approvedAt    DateTime?      @map("approved_at")
+  consumedAt    DateTime?      @map("consumed_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  client        McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@map("mcp_oauth_authorizations")
+}
+
+model McpOAuthToken {
+  id        String         @id @default(uuid())
+  tokenHash String         @unique @map("token_hash")
+  kind      String
+  grantId   String         @map("grant_id")
+  clientId  String         @map("client_id")
+  userId    String         @map("user_id")
+  scopes    String
+  resource  String
+  expiresAt DateTime       @map("expires_at")
+  revokedAt DateTime?      @map("revoked_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+  client    McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([grantId, kind])
+  @@index([clientId, kind, expiresAt])
+  @@map("mcp_oauth_tokens")
+}
+
 // ── Project ──
 model Project {
   id        Int       @id @default(autoincrement())
