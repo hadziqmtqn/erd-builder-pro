@@ -34,6 +34,7 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { databaseColumnToERD } from '@/lib/column-metadata';
 import { keepsDbRelation } from '@/lib/db-client-schema';
+import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -156,6 +157,8 @@ const ERDViewComponent = ({
     diffNodes: Node<Entity>[];
     diffEdges: Edge[];
     diffResult: DiffResult;
+    source: 'proposal' | 'history';
+    version?: number;
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
@@ -323,7 +326,7 @@ const ERDViewComponent = ({
   takeSnapshotRef.current = takeSnapshot;
 
   // ─── Visual Schema Diffing Callbacks ────────────────
-  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[]) => {
+  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[], source: 'proposal' | 'history' = 'proposal', version?: number) => {
     const diffData = computeSchemaDiff(origNodes, origEdges, propNodes, propEdges);
     setApprovedChangeIds(diffData.changes.map(change => change.id));
     setPendingDiff({
@@ -334,9 +337,24 @@ const ERDViewComponent = ({
       diffNodes: diffData.nodes,
       diffEdges: diffData.edges,
       diffResult: diffData,
+      source,
+      version,
     });
-    setShowChecklist(false);
+    setShowChecklist(source === 'history');
   }, []);
+
+  React.useEffect(() => {
+    const previewHistory = (event: Event) => {
+      const preview = (event as CustomEvent<ErdHistoryPreview | undefined>).detail;
+      if (!preview) {
+        setPendingDiff(current => current?.source === 'history' ? null : current);
+        return;
+      }
+      startDiff(nodesRef.current, edgesRef.current, preview.nodes, preview.edges, 'history', preview.version);
+    };
+    window.addEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
+    return () => window.removeEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
+  }, [startDiff]);
   const handleSync = useCallback(async () => {
     if (!sourceConnectionId) return;
     setIsSyncing(true);
@@ -417,8 +435,13 @@ const ERDViewComponent = ({
 
   const handleRejectAll = useCallback(() => {
     setPendingDiff(null);
-    toast.info('AI schema update rejected');
-  }, []);
+    if (pendingDiff?.source === 'history') {
+      setRightPanelMode('closed');
+      toast.info('Version preview closed');
+    } else {
+      toast.info('AI schema update rejected');
+    }
+  }, [pendingDiff?.source, setRightPanelMode]);
 
   const handleApplyMerge = useCallback(() => {
     if (!pendingDiff) return;
@@ -755,15 +778,15 @@ const ERDViewComponent = ({
           {showChecklist && (
             <div className="w-[min(560px,calc(100vw-2rem))] bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Select changes to merge:</span>
-                <button
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{pendingDiff.source === 'history' ? 'Changes in this version:' : 'Select changes to merge:'}</span>
+                {pendingDiff.source !== 'history' && <button
                   onClick={() => {
                     setApprovedChangeIds(approvedChangeIds.length === allChangedIds.length ? [] : [...allChangedIds]);
                   }}
                   className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline font-medium"
                 >
                   {approvedChangeIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
-                </button>
+                </button>}
               </div>
 
               <div className="max-h-75 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
@@ -787,11 +810,11 @@ const ERDViewComponent = ({
                             "grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
                             isChecked ? "bg-background text-foreground hover:bg-muted/50" : "bg-muted/20 text-muted-foreground hover:bg-muted/40",
                           )}>
-                            <Checkbox
-                              checked={isChecked}
-                              onCheckedChange={() => setApprovedChangeIds(prev => prev.includes(change.id) ? prev.filter(id => id !== change.id) : [...prev, change.id])}
-                              className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
-                            />
+                            {pendingDiff.source === 'history' ? <span className="size-2 rounded-full bg-muted-foreground/50" /> : <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={() => setApprovedChangeIds(prev => prev.includes(change.id) ? prev.filter(id => id !== change.id) : [...prev, change.id])}
+                                className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
+                              />}
                             <span className="min-w-0 truncate text-sm font-medium">{changeFieldName(change)}</span>
                             <code className="truncate font-mono text-xs text-muted-foreground">{changeType(change)}</code>
                             <span className={cn(
@@ -817,7 +840,7 @@ const ERDViewComponent = ({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">AI Schema Proposal</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{pendingDiff.source === 'history' ? `Version ${pendingDiff.version} Preview` : 'AI Schema Proposal'}</span>
               <div className="h-4 w-px bg-border mx-2" />
               <div className="flex gap-2 text-[11px] font-bold">
                 {diffNewCount > 0 && (
@@ -846,13 +869,13 @@ const ERDViewComponent = ({
                 variant="destructive"
                 onClick={handleRejectAll}
               >
-                Reject All
+                {pendingDiff.source === 'history' ? 'Close Preview' : 'Reject All'}
               </Button>
-              <Button
+              {pendingDiff.source !== 'history' && <Button
                 onClick={handleApplyMerge}
               >
                 Merge Selected
-              </Button>
+              </Button>}
             </div>
           </div>
         </div>

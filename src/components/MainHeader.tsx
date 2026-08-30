@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareModal } from "./modals/ShareModal";
 import { NavActionsMenu } from "./NavActionsMenu";
-import { VersionHistoryPanel, type HistoryEntityType } from './history/VersionHistoryPanel';
+import { useAIAction } from '@/contexts/AIActionContext';
 
 import { AppView } from '@/types';
 
@@ -57,6 +57,7 @@ interface MainHeaderProps {
   isGuest?: boolean;
   breadcrumbLabel?: string | null;
   noteContent?: string;
+  historyAvailable?: boolean;
 }
 
 export const MainHeader = React.memo(({
@@ -90,13 +91,13 @@ export const MainHeader = React.memo(({
   isGuest = false,
   breadcrumbLabel,
   noteContent,
+  historyAvailable = true,
 }: MainHeaderProps) => {
   const location = useLocation();
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
-  const [historyTargetMinutes, setHistoryTargetMinutes] = React.useState<number>();
+  const { setRightPanelMode } = useAIAction();
   const [isMac, setIsMac] = React.useState(false);
-  const historyEntityType: HistoryEntityType | null = view === 'erd'
+  const historyEntityType = view === 'erd'
     ? 'diagrams'
     : view === 'flowchart'
       ? 'flowcharts'
@@ -104,14 +105,11 @@ export const MainHeader = React.memo(({
         ? view
         : null;
   const historyEnabled = Boolean(
-    historyEntityType && activeFileUid && !isGuest && !isPublicView && isOnline
+    historyAvailable && historyEntityType && activeFileUid && !isGuest && !isPublicView && isOnline
     && !isLocalSaving && !isSyncing && !hasPendingSyncs,
   );
 
-  const openHistory = React.useCallback((minutes?: number) => {
-    setHistoryTargetMinutes(minutes);
-    setIsHistoryOpen(true);
-  }, []);
+  const openHistory = React.useCallback(() => setRightPanelMode('history'), [setRightPanelMode]);
 
   const copyFilePath = React.useCallback((category: string) => {
     navigator.clipboard.writeText(`${category} > ${activeProjectName || 'No Workspace'} > ${activeFileName}`)
@@ -378,17 +376,6 @@ export const MainHeader = React.memo(({
               />
             )}
 
-            {activeFileUid && historyEntityType && (
-              <VersionHistoryPanel
-                open={isHistoryOpen}
-                onOpenChange={setIsHistoryOpen}
-                entityType={historyEntityType}
-                entityUid={activeFileUid}
-                documentTitle={activeFileName || 'Untitled'}
-                targetMinutes={historyTargetMinutes}
-                onRestored={() => window.location.reload()}
-              />
-            )}
           </div>
         )}
       </div>

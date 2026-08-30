@@ -65,6 +65,7 @@ import { AIChatPanel } from '@/components/ai/AIChatPanel';
 import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
+import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
@@ -146,6 +147,15 @@ function AppLayoutInner() {
     return { entityType: typeMap[m[1]], entityUid: m[2] };
   }, [location.pathname]);
   const isActiveDiagramContext = entityContext?.entityType === 'diagram';
+  const historyEntityType: HistoryEntityType | null = entityContext?.entityType === 'diagram'
+    ? 'diagrams'
+    : entityContext?.entityType === 'flowchart'
+      ? 'flowcharts'
+      : entityContext?.entityType === 'note'
+        ? 'notes'
+        : entityContext?.entityType === 'drawing'
+          ? 'drawings'
+          : null;
 
   useEffect(() => {
     if (entityContext?.entityType !== 'dbClient') {
@@ -175,7 +185,7 @@ function AppLayoutInner() {
     isInstallable, installApp, isProjectsLoading,
     handleLogout,
     handleViewChange,
-    handleNoteSelect, handleDrawingSelect, 
+    handleNoteSelect, handleDrawingSelect, refreshActiveDocument,
     handleSidebarProjectCreate, handleSidebarProjectUpdate, handleSidebarProjectDelete,
     handleWorkspaceFilter, selectedWorkspaceUid,
     handleHeaderDelete, handleHeaderRename, handleHeaderSettingsSaved,
@@ -663,10 +673,10 @@ function AppLayoutInner() {
 
   // ── Auto-close right panel when leaving file pages ──
   useEffect(() => {
-    if (!showAIChat) {
+    if (!entityContext || (!showAIChat && rightPanelMode !== 'history')) {
       setRightPanelMode('closed');
     }
-  }, [showAIChat, setRightPanelMode]);
+  }, [entityContext, rightPanelMode, showAIChat, setRightPanelMode]);
 
   // Table properties belong to the currently opened ERD file only.
   const previousEntityContextKeyRef = useRef<string | null>(null);
@@ -762,6 +772,7 @@ function AppLayoutInner() {
           isGuest={isGuest}
           breadcrumbLabel={breadcrumbLabel}
           noteContent={activeNote?.content}
+          historyAvailable={Boolean(historyEntityType)}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
@@ -931,9 +942,18 @@ function AppLayoutInner() {
         )}
 
         {/* Right panel with tabs — sticky right sidebar */}
-        {showAIChat && rightPanelOpen && (
+        {rightPanelOpen && (showAIChat || rightPanelMode === 'history') && (
           <RightChatSidebar>
-            <div className="h-full flex flex-col">
+            {rightPanelMode === 'history' && historyEntityType && entityContext ? (
+              <VersionHistoryPanel
+                key={`${historyEntityType}:${entityContext.entityUid}`}
+                entityType={historyEntityType}
+                entityUid={entityContext.entityUid}
+                documentTitle={activeFileName || 'Untitled'}
+                onClose={() => setRightPanelMode('closed')}
+                onRestored={refreshActiveDocument}
+              />
+            ) : <div className="h-full flex flex-col">
               {/* ── Tab bar ── */}
               <div className="shrink-0 flex items-center border-b border-border bg-muted/20">
                 <div className="flex-1 flex">
@@ -1045,7 +1065,7 @@ function AppLayoutInner() {
                   )
                 )}
               </div>
-            </div>
+            </div>}
           </RightChatSidebar>
         )}
 

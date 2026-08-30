@@ -42,7 +42,7 @@ interface NavActionsMenuProps {
   documentType: 'erd' | 'notes' | 'drawings' | 'flowchart' | string;
   noteContent?: string;
   historyEnabled?: boolean;
-  onOpenHistory?: (minutes?: number) => void;
+  onOpenHistory?: () => void;
 }
 
 
@@ -159,21 +159,10 @@ export const NavActionsMenu = ({
               </DropdownMenuItem>
 
               {onOpenHistory && (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger disabled={!historyEnabled} className="gap-2 cursor-pointer">
-                    <History className="h-4 w-4 text-muted-foreground" />
-                    <span>Version History</span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-52">
-                    <DropdownMenuItem onClick={() => onOpenHistory()} className="cursor-pointer">Browse all versions</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {[5, 10, 30].map(minutes => (
-                      <DropdownMenuItem key={minutes} onClick={() => onOpenHistory(minutes)} className="cursor-pointer">
-                        Preview {minutes} minutes ago
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
+                <DropdownMenuItem disabled={!historyEnabled} onClick={() => onOpenHistory()} className="gap-2 cursor-pointer">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  <span>Version History</span>
+                </DropdownMenuItem>
               )}
 
               <DropdownMenuSeparator />

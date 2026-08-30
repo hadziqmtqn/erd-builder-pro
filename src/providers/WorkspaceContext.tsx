@@ -99,6 +99,7 @@ export interface WorkspaceContextValue {
   handleDiagramSelect: (id: any, setActiveDiagramId?: (id: any) => void, options?: { silent?: boolean }) => Promise<void>;
   handleDrawingSelect: (uid: string, options?: { silent?: boolean }) => Promise<void>;
   handleFlowchartSelect: (id: any, options?: { silent?: boolean }) => Promise<void>;
+  refreshActiveDocument: () => Promise<void>;
 
   // Content
   handleNoteChange: (content: string) => void;

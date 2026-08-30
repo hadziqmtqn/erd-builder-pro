@@ -469,6 +469,33 @@ export function WorkspaceProvider({
     lastLoadedDrawingIdRef.current = uid;
   }
 
+  const refreshActiveDocument = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (view === 'erd' && activeDiagramId) {
+        const restored = await selectDiagram(activeDiagramId, setActiveDiagramId, { silent: true, force: true });
+        if (restored) {
+          setDiagrams(prev => prev.map(diagram =>
+            String(diagram.id) === String(restored.id) || String(diagram.uid) === String(restored.uid)
+              ? { ...diagram, ...restored }
+              : diagram,
+          ));
+        }
+      } else if (view === 'notes' && activeNoteUid) {
+        await selectNote(activeNoteUid, { silent: true, contentVersionAtStart: getContentVersion() });
+      } else if (view === 'drawings' && activeDrawingId) {
+        await selectDrawing(activeDrawingId, { silent: true });
+      } else if (view === 'flowchart' && activeFlowchartId) {
+        await selectFlowchart(String(activeFlowchartId), { silent: true });
+      }
+    } catch (error) {
+      console.error('Failed to refresh restored document:', error);
+      toast.error('Version restored, but the current view could not be refreshed.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [view, activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId, selectDiagram, selectNote, selectDrawing, selectFlowchart, setActiveDiagramId, setDiagrams, getContentVersion]);
+
   // URL routing for /drawings/:uid
   useEffect(() => {
     if (!isAuthenticated || getSharePathInfo()) return;
@@ -1008,7 +1035,7 @@ export function WorkspaceProvider({
     hasActiveItem, activeFileName, activeFileUid, activeProjectName,
     featureLabel, initialShareSettings, currentActiveId,
 
-    handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
+    handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
 
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
@@ -1099,7 +1126,7 @@ export function WorkspaceProvider({
     hasActiveItem, activeFileName, activeFileUid, activeProjectName,
     featureLabel, initialShareSettings, currentActiveId,
     // Navigation/Content/Entity handlers — stable enough via hooks
-    handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect,
+    handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
     // Sidebar handlers
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
