@@ -34,8 +34,12 @@ export const RelationshipPropertiesModal: React.FC<RelationshipPropertiesModalPr
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Relationship Properties</DialogTitle>
-          {!moveOnly && (
+          <DialogTitle>{moveOnly ? 'Move Relationship Connector' : 'Relationship Properties'}</DialogTitle>
+          {moveOnly ? (
+            <DialogDescription>
+              Move this connector without changing its related tables or columns.
+            </DialogDescription>
+          ) : (
             <DialogDescription>
               Set the cardinality and foreign key actions between these two tables.
             </DialogDescription>

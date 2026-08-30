@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useEdgesState, useNodesState, useReactFlow, type Node } from '@xyflow/react';
+import { useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
 import { Database } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
@@ -9,6 +9,7 @@ import { getDbClientCache, getSchemaCache, setDbClientCache, setSchemaCache } fr
 import { useImageExporter } from '@/hooks/useImageExporter';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { ERDView } from '@/components/views/ERDView';
+import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
 import { ProjectFileTabs } from '@/components/ProjectFileTabs';
 import { DataViewer } from '@/components/db-connect/DataViewer';
 import { DataQueryView } from '@/components/db-connect/DataQueryView';
@@ -25,6 +26,7 @@ export function DbClientEditorRoute() {
   const [queryOpenNonce, setQueryOpenNonce] = useState(0);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<Entity>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef({ x: 0, y: 0, zoom: 1 });
   const clientRef = useRef<any>(null);
   const layoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,16 +102,16 @@ export function DbClientEditorRoute() {
     return () => window.removeEventListener('db-connect-open-query', openQuery);
   }, [setMode]);
 
-  const saveLayout = useCallback(async (viewport = viewportRef.current, layoutNodes = getNodes()) => {
+  const saveLayout = useCallback(async (viewport = viewportRef.current, layoutNodes = getNodes(), layoutEdges: Edge[] = edges) => {
     const currentClient = clientRef.current;
     if (!currentClient) return;
-    const data = canvasLayout(layoutNodes, viewport, currentClient.data);
+    const data = canvasLayout(layoutNodes, viewport, currentClient.data, layoutEdges);
     setClient((current: any) => current ? { ...current, data } : current);
     setDbClientCache({ ...currentClient, data });
     await apiFetch(`/api/db-clients/${encodeURIComponent(currentClient.uid || currentClient.id)}/layout`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }),
     });
-  }, [getNodes]);
+  }, [edges, getNodes]);
 
   const scheduleLayoutSave = useCallback(() => {
     if (layoutTimerRef.current) clearTimeout(layoutTimerRef.current);
@@ -138,6 +140,23 @@ export function DbClientEditorRoute() {
     void saveLayout(viewportRef.current, nextNodes);
   }, [edges, nodes, saveLayout, setNodes]);
 
+  const handleEdgeFlip = useCallback((edgeId: string) => {
+    const toggleSide = (handle?: string | null) => {
+      if (!handle) return handle;
+      if (handle.endsWith('-source')) return handle.replace(/-source$/, '-source-l');
+      if (handle.endsWith('-source-l')) return handle.replace(/-source-l$/, '-source');
+      if (handle.endsWith('-target')) return handle.replace(/-target$/, '-target-r');
+      return handle.endsWith('-target-r') ? handle.replace(/-target-r$/, '-target') : handle;
+    };
+    const nextEdges = edges.map(edge => edge.id === edgeId ? {
+      ...edge,
+      sourceHandle: toggleSide(edge.sourceHandle),
+      targetHandle: toggleSide(edge.targetHandle),
+    } : edge);
+    setEdges(nextEdges);
+    void saveLayout(viewportRef.current, getNodes(), nextEdges);
+  }, [edges, getNodes, saveLayout, setEdges]);
+
   if (loading) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading DB Client…</div>;
   if (!client) return (
     <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
@@ -165,12 +184,24 @@ export function DbClientEditorRoute() {
             nodes={nodes} edges={edges} setNodes={setNodes} setEdges={setEdges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={() => {}}
             onNodeClick={() => {}} onPaneClick={() => {}} onMove={handleCanvasMove}
+            onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
             addEntity={() => {}} handleExportSQL={() => {}} handleExportImage={() => handleExportImage(client.name)}
             onAutoLayout={handleAutoLayout}
             isReadOnly isDbClient sourceConnectionId={catalogId}
+            onEdgeReconnect={nextEdges => { void saveLayout(viewportRef.current, getNodes(), nextEdges); }}
             onNodeDragStop={scheduleLayoutSave}
             onMoveEnd={handleCanvasMoveEnd}
             isLoading={loading}
+          />
+          <RelationshipPropertiesModal
+            isOpen={!!selectedEdgeId}
+            onOpenChange={open => { if (!open) setSelectedEdgeId(null); }}
+            selectedEdge={edges.find(edge => edge.id === selectedEdgeId) || null}
+            nodes={nodes}
+            handleEdgeUpdate={() => {}}
+            handleEdgeFlip={handleEdgeFlip}
+            deleteEdge={() => {}}
+            moveOnly
           />
         </div>
       ) : null}

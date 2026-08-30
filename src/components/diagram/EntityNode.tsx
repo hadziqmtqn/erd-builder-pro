@@ -38,7 +38,6 @@ interface ColumnRowProps {
 }
 
 const handleBaseClass = '!w-2 !h-2 !border-none cursor-crosshair opacity-0 transition-opacity duration-150 group-hover:!opacity-100 group-focus-within:!opacity-100';
-const readOnlyHandleClass = '!w-2 !h-2 !border-none !opacity-0 !pointer-events-none';
 
 const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoubleClick }: ColumnRowProps) => {
   const isFk = col._is_fk;
@@ -65,8 +64,14 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
       onDoubleClick={onDoubleClick}
     >
       {hideHandles ? <>
-        {col._is_ref && <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={readOnlyHandleClass} style={leftStyle} />}
-        {col._is_fk && <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={readOnlyHandleClass} style={rightStyle} />}
+        {col._is_ref && <>
+          <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={handleBaseClass} style={leftStyle} />
+          <Handle type="target" position={Position.Right} id={`col-${col.id}-target-r`} className={handleBaseClass} style={rightStyle} />
+        </>}
+        {col._is_fk && <>
+          <Handle type="source" position={Position.Left} id={`col-${col.id}-source-l`} className={handleBaseClass} style={leftStyle} />
+          <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={handleBaseClass} style={rightStyle} />
+        </>}
       </> : <>
         <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={handleBaseClass} style={leftStyle} />
         <Handle type="source" position={Position.Left} id={`col-${col.id}-source-l`} className={handleBaseClass} style={leftStyle} />

@@ -33,6 +33,7 @@ import { apiFetch } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { databaseColumnToERD } from '@/lib/column-metadata';
+import { keepsDbRelation } from '@/lib/db-client-schema';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -77,6 +78,7 @@ interface ERDViewProps {
   extractColumnIdFromHandle?: (handle?: string | null) => string | null;
   getRelationKey?: (edge: Edge) => string | null;
   dedupeEdgesByRelation?: (edges: Edge[]) => Edge[];
+  onEdgeReconnect?: (edges: Edge[]) => void;
 }
 
 
@@ -118,6 +120,7 @@ const ERDViewComponent = ({
   extractColumnIdFromHandle,
   getRelationKey,
   dedupeEdgesByRelation,
+  onEdgeReconnect,
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
@@ -440,7 +443,7 @@ const ERDViewComponent = ({
   const defaultEdgeOptions = React.useMemo(() => ({
     type: 'smoothstep' as const,
     animated: false,
-    reconnectable: true,
+    reconnectable: !isReadOnly || isProductionDb,
     style: {
       stroke: 'var(--edge-color)',
       strokeWidth: 2,
@@ -451,7 +454,7 @@ const ERDViewComponent = ({
       width: 10,
       height: 10,
     },
-  }), []);
+  }), [isProductionDb, isReadOnly]);
 
   // ─── AI Content Handler: apply AI responses back to ERD diagram ──
   React.useEffect(() => {
@@ -641,10 +644,22 @@ const ERDViewComponent = ({
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onReconnectStart={() => setIsReconnecting(true)}
+          onReconnectStart={() => { if (isProductionDb) setIsReconnecting(true); }}
           onReconnectEnd={() => setIsReconnecting(false)}
           onReconnect={(oldEdge, connection) => {
+            if (pendingDiff) return;
             if (!connection.sourceHandle || !connection.targetHandle) return;
+            if (isProductionDb) {
+              if (!keepsDbRelation(oldEdge, connection)) {
+                toast.info('Only the connector position can be changed');
+                return;
+              }
+              const nextEdges = reconnectEdge(oldEdge, connection, edges);
+              setEdges(nextEdges);
+              onEdgeReconnect?.(nextEdges);
+              return;
+            }
+            if (isReadOnly) return;
             const erdIndexes = buildErdIndexes(nodes, edges);
             const sourceNode = erdIndexes.nodesById.get(connection.source);
             const targetNode = erdIndexes.nodesById.get(connection.target);
@@ -716,7 +731,8 @@ const ERDViewComponent = ({
           // Production DB ERD stays read-only for schema edits, but table positions are editable.
           nodesDraggable={!pendingDiff && (!isReadOnly || isProductionDb)}
           nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
-          elementsSelectable={!isReadOnly && !pendingDiff}
+          elementsSelectable={!pendingDiff && (!isReadOnly || isProductionDb)}
+          edgesReconnectable={!pendingDiff && (!isReadOnly || isProductionDb)}
           onNodeDragStop={onNodeDragStop}
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
