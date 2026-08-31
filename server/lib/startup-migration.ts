@@ -143,6 +143,13 @@ async function addColumnIfMissing(
   }
 }
 
+export async function ensureRepositoryLinkColumns(): Promise<void> {
+  if (!prisma || !isDesktopMode()) return;
+  await addColumnIfMissing("diagrams", "repository_path", '"repository_path" TEXT');
+  await addColumnIfMissing("diagrams", "repository_ref", '"repository_ref" TEXT');
+  await addColumnIfMissing("diagrams", "repository_source_id", '"repository_source_id" TEXT');
+}
+
 async function createSqlQueriesTableIfMissing(): Promise<void> {
   if (!prisma || !isDesktopMode()) return;
   try {
@@ -490,6 +497,8 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("relationships", "constraint_name", '"constraint_name" TEXT');
   await createErdMetadataTablesIfMissing();
   if (isDesktopMode()) {
+    // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.
+    await ensureRepositoryLinkColumns();
     await createDbConnectTablesIfMissing();
     await createSqlQueriesTableIfMissing();
     await migrateDbClients();

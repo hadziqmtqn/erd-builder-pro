@@ -58,6 +58,9 @@ CREATE TABLE "diagrams" (
     "source_connection_id" INTEGER,
     "data" TEXT,
     "dbml_source" TEXT,
+    "repository_path" TEXT,
+    "repository_ref" TEXT,
+    "repository_source_id" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
 );

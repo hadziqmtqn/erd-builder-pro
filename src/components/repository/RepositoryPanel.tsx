@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Edge, Node } from '@xyflow/react';
 import { AlertTriangle, FolderGit2, FolderOpen, GitCompareArrows, Loader2, RefreshCw, Unplug, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,8 +33,19 @@ async function postJson(path: string, body: Record<string, unknown>) {
   return value;
 }
 
+async function linkRequest(path: string, method: 'GET' | 'PUT' | 'DELETE', body?: StoredLink) {
+  const response = await apiFetch(path, {
+    method,
+    ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository_path: body.repositoryPath, ref: body.ref, source_id: body.sourceId }) } : {}),
+  });
+  const value = response.status === 204 ? null : await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(value?.error || 'Repository link request failed');
+  return value as StoredLink | null;
+}
+
 export function RepositoryPanel({ diagramUid, nodes, edges, onClose }: Props) {
   const storageKey = `erdbpro:repository-link:${diagramUid}`;
+  const linkPath = `/api/repositories/link/${encodeURIComponent(diagramUid)}`;
   const [repositoryPath, setRepositoryPath] = useState('');
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [selectedRef, setSelectedRef] = useState(WORKTREE);
@@ -42,11 +53,20 @@ export function RepositoryPanel({ diagramUid, nodes, edges, onClose }: Props) {
   const [sourceId, setSourceId] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState<'connect' | 'preview' | 'compare' | null>(null);
+  const persistedLinkRef = useRef<string | null>(null);
   const isTauri = typeof window !== 'undefined' && !!((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
   const saveLink = useCallback((link: StoredLink) => {
+    const signature = JSON.stringify(link);
+    if (persistedLinkRef.current === signature) return;
     localStorage.setItem(storageKey, JSON.stringify(link));
-  }, [storageKey]);
+    void linkRequest(linkPath, 'PUT', link)
+      .then(() => {
+        persistedLinkRef.current = signature;
+        localStorage.removeItem(storageKey);
+      })
+      .catch(() => { /* legacy local fallback remains available */ });
+  }, [linkPath, storageKey]);
 
   const inspect = useCallback(async (path: string, ref: string, preferredSource = '') => {
     const value = await postJson('/api/repositories/inspect', { repository_path: path, ref }) as Inspection;
@@ -61,15 +81,20 @@ export function RepositoryPanel({ diagramUid, nodes, edges, onClose }: Props) {
   }, [saveLink]);
 
   useEffect(() => {
-    let stored: StoredLink | null = null;
-    try { stored = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch { /* reconnect manually */ }
-    if (!stored?.repositoryPath) return;
-    setRepositoryPath(stored.repositoryPath);
     setLoading('connect');
-    inspect(stored.repositoryPath, stored.ref || WORKTREE, stored.sourceId)
+    linkRequest(linkPath, 'GET')
+      .then(stored => {
+        if (stored?.repositoryPath) {
+          persistedLinkRef.current = JSON.stringify(stored);
+          return stored;
+        }
+        try { return JSON.parse(localStorage.getItem(storageKey) || 'null') as StoredLink | null; }
+        catch { return null; }
+      })
+      .then(stored => stored?.repositoryPath ? inspect(stored.repositoryPath, stored.ref || WORKTREE, stored.sourceId) : undefined)
       .catch(error => toast.error(error.message))
       .finally(() => setLoading(null));
-  }, [inspect, storageKey]);
+  }, [inspect, linkPath, storageKey]);
 
   useEffect(() => () => closeRepositoryPreview(), []);
 
@@ -147,12 +172,16 @@ export function RepositoryPanel({ diagramUid, nodes, edges, onClose }: Props) {
   };
 
   const close = () => { closeRepositoryPreview(); onClose(); };
-  const disconnect = () => {
-    localStorage.removeItem(storageKey);
-    closeRepositoryPreview();
-    setInspection(null);
-    setSourceId('');
-    setWarnings([]);
+  const disconnect = async () => {
+    try {
+      await linkRequest(linkPath, 'DELETE');
+      persistedLinkRef.current = null;
+      localStorage.removeItem(storageKey);
+      closeRepositoryPreview();
+      setInspection(null);
+      setSourceId('');
+      setWarnings([]);
+    } catch (error: any) { toast.error(error.message); }
   };
 
   return (

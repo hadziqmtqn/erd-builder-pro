@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { useLocalAuth } from "../lib/config.js";
 import { listHistory, readHistoryRevision, readOwnedEntity } from "../routes/entity-changes/service.js";
+import { searchWorkspaceFiles, type WorkspaceSearchType } from "./workspace-search.js";
 
 export const PUBLIC_MCP_DOCUMENT_TYPES = ["notes", "flowcharts", "drawings", "diagrams"] as const;
 export type PublicMcpDocumentType = (typeof PUBLIC_MCP_DOCUMENT_TYPES)[number];
@@ -58,6 +59,10 @@ export async function listPublicWorkspaceFiles(userId: string, projectUid?: stri
     }),
   ]);
   return serialize({ projects, notes, flowcharts, drawings, diagrams });
+}
+
+export async function searchPublicWorkspace(userId: string, query: string, type?: WorkspaceSearchType, limit = 20) {
+  return serialize(searchWorkspaceFiles(await listPublicWorkspaceFiles(userId), query, type, limit));
 }
 
 async function readAllowedDocument(userId: string, type: PublicMcpDocumentType, uid: string) {

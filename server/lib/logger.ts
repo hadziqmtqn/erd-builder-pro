@@ -4,10 +4,13 @@ import { randomUUID } from 'crypto';
 
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 const isDev = process.env.NODE_ENV !== 'production' && !process.env.VERCEL;
+const isMcpStdio = process.env.ERDBPRO_MCP_STDIO === '1';
 
 const logLevel = process.env.LOG_LEVEL || (isVercel ? 'info' : 'debug');
 
-export const logger = isDev
+export const logger = isMcpStdio
+  ? pino({ level: logLevel }, pino.destination(2))
+  : isDev
   ? pino({ level: logLevel }, pino.transport({
       targets: [
         {
