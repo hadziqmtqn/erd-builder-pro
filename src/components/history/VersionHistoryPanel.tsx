@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { diagramSnapshotToCanvas, ERD_HISTORY_PREVIEW_EVENT } from '@/lib/history-diagram';
+import { NOTE_HISTORY_PREVIEW_EVENT } from '@/lib/note-history-diff';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,15 +46,10 @@ function parseData(value: unknown) {
   try { return JSON.parse(value); } catch { return {}; }
 }
 
-function plainText(html: string) {
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  return document.body.textContent || '';
-}
-
 function Preview({ entityType, detail }: { entityType: HistoryEntityType; detail: RevisionDetail }) {
   const snapshot = detail.snapshot;
   if (entityType === 'notes') {
-    return <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6">{plainText(String(snapshot.content || '')) || 'Empty note'}</pre>;
+    return null;
   }
   if (entityType === 'flowcharts') {
     const data = parseData(snapshot.data);
@@ -134,9 +130,23 @@ export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onCl
     }));
   }, [detail, entityType]);
 
+  useEffect(() => {
+    if (entityType !== 'notes' || !detail) return;
+    window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT, {
+      detail: { content: String(detail.snapshot.content || ''), version: detail.version },
+    }));
+  }, [detail, entityType]);
+
   useEffect(() => () => {
     if (entityType === 'diagrams') window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT));
+    if (entityType === 'notes') window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT));
   }, [entityType, entityUid]);
+
+  const closePanel = () => {
+    if (entityType === 'diagrams') window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT));
+    if (entityType === 'notes') window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT));
+    onClose();
+  };
 
   const selected = useMemo(() => revisions.find(item => item.id === selectedId), [revisions, selectedId]);
 
@@ -153,7 +163,7 @@ export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onCl
       if (!response.ok) throw new Error(body.error || 'Failed to restore version');
       toast.success('Version restored. The previous state was saved as a safety revision.');
       setConfirmOpen(false);
-      onClose();
+      closePanel();
       await onRestored();
     } catch (error: any) {
       toast.error(error.message || 'Failed to restore version');
@@ -170,10 +180,10 @@ export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onCl
             <h2 className="font-semibold">Version History</h2>
             <p className="truncate text-xs text-muted-foreground">{documentTitle}</p>
           </div>
-          <Button variant="ghost" size="icon" className="size-8" onClick={onClose} aria-label="Close version history"><X className="size-4" /></Button>
+          <Button variant="ghost" size="icon" className="size-8" onClick={closePanel} aria-label="Close version history"><X className="size-4" /></Button>
         </div>
-        <div className={entityType === 'diagrams' ? 'grid min-h-0 flex-1 grid-rows-1' : 'grid min-h-0 flex-1 grid-rows-[minmax(140px,35%)_minmax(0,1fr)]'}>
-            <div className={`min-h-0 overflow-y-auto ${entityType === 'diagrams' ? '' : 'border-b'}`}>
+        <div className={entityType === 'diagrams' || entityType === 'notes' ? 'grid min-h-0 flex-1 grid-rows-1' : 'grid min-h-0 flex-1 grid-rows-[minmax(140px,35%)_minmax(0,1fr)]'}>
+            <div className={`min-h-0 overflow-y-auto ${entityType === 'diagrams' || entityType === 'notes' ? '' : 'border-b'}`}>
               {loading ? (
                 <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading history…</div>
               ) : revisions.length === 0 ? (
@@ -200,7 +210,7 @@ export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onCl
                 </div>
               ))}
             </div>
-            {entityType !== 'diagrams' && <div className="flex min-h-0 flex-col">
+            {entityType !== 'diagrams' && entityType !== 'notes' && <div className="flex min-h-0 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {!selected ? (
                   <div className="text-sm text-muted-foreground">Select a version to preview.</div>

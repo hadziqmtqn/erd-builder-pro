@@ -11,6 +11,8 @@ import { getMarkdownFromHtml } from '@/lib/markdownUtils';
 import { NoteImporter } from '@/lib/importers/note-importer';
 import { applyToNoteContent } from '@/components/ai/actions/notesActions';
 import { stripAiFluff } from '@/components/ai/chatUtils';
+import { NotesHistoryPreview } from '@/components/history/NotesHistoryPreview';
+import { NOTE_HISTORY_PREVIEW_EVENT } from '@/lib/note-history-diff';
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -34,7 +36,21 @@ export const NotesView = React.memo(({
   const { registerContentHandler } = useAIAction();
   const confirmLockRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [historyPreview, setHistoryPreview] = useState<{ content: string; version: number } | null>(null);
   const preAiContentRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setHistoryPreview(null);
+    const handleHistoryPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ content?: string; version?: number }>).detail;
+      setHistoryPreview(detail?.content !== undefined ? {
+        content: detail.content,
+        version: Number(detail.version) || 0,
+      } : null);
+    };
+    window.addEventListener(NOTE_HISTORY_PREVIEW_EVENT, handleHistoryPreview);
+    return () => window.removeEventListener(NOTE_HISTORY_PREVIEW_EVENT, handleHistoryPreview);
+  }, [activeNoteUid]);
 
   const showSkeleton = isLoading || (activeNote && activeNote.content == null);
   const [pendingChange, setPendingChange] = useState<{
@@ -208,14 +224,26 @@ export const NotesView = React.memo(({
   return (
     <div className="flex-1 border rounded-xl overflow-hidden bg-background relative">
 
-      <NotesEditor 
-        key={activeNoteUid} 
-        note={activeNote} 
-        onSave={saveNote} 
-        onChange={handleNoteChange} 
-        onDelete={deleteNote} 
-        isReadOnly={isReadOnly}
-      />
+      <div className={`h-full ${historyPreview ? 'hidden' : ''}`} aria-hidden={Boolean(historyPreview)}>
+        <NotesEditor
+          key={activeNoteUid}
+          note={activeNote}
+          onSave={saveNote}
+          onChange={handleNoteChange}
+          onDelete={deleteNote}
+          isReadOnly={isReadOnly}
+        />
+      </div>
+
+      {historyPreview && (
+        <div className="absolute inset-0 z-10 bg-background">
+          <NotesHistoryPreview
+            currentContent={String(activeNote.content || '')}
+            historicalContent={historyPreview.content}
+            version={historyPreview.version}
+          />
+        </div>
+      )}
       
       {pendingChange && (() => {
         const label: Record<string, string> = {
