@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import CodeBlock from '@tiptap/extension-code-block';
-import { mergeAttributes } from '@tiptap/core';
+import { mergeAttributes, type NodeViewRendererProps } from '@tiptap/core';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import { Play, Square } from 'lucide-react';
 import { apiFetch, isInstalledApp } from '@/lib/api';
@@ -172,6 +172,34 @@ function ExecutableCodeBlockView({ node, editor }: NodeViewProps) {
   );
 }
 
+function plainCodeBlockView({ node, editor }: NodeViewRendererProps) {
+  const pre = document.createElement('pre');
+  const code = document.createElement('code');
+  pre.append(code);
+
+  const syncLanguage = (language?: string | null) => {
+    if (language) {
+      pre.dataset.language = language;
+      code.className = `language-${language}`;
+    } else {
+      delete pre.dataset.language;
+      code.removeAttribute('class');
+    }
+  };
+  syncLanguage(node.attrs.language);
+
+  return {
+    dom: pre,
+    contentDOM: code,
+    update: nextNode => {
+      if (nextNode.type !== node.type) return false;
+      if (nextNode.attrs.language === 'sql' && isInstalledApp() && editor.isEditable) return false;
+      syncLanguage(nextNode.attrs.language);
+      return true;
+    },
+  };
+}
+
 export const ExecutableCodeBlock = CodeBlock.extend({
   addAttributes() {
     return {
@@ -189,6 +217,9 @@ export const ExecutableCodeBlock = CodeBlock.extend({
     return ['pre', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), ['code', language ? { class: `language-${language}` } : {}, 0]];
   },
   addNodeView() {
-    return ReactNodeViewRenderer(ExecutableCodeBlockView);
+    const renderExecutable = ReactNodeViewRenderer(ExecutableCodeBlockView);
+    return props => props.node.attrs.language === 'sql' && isInstalledApp() && props.editor.isEditable
+      ? renderExecutable(props)
+      : plainCodeBlockView(props);
   },
 });

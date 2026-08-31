@@ -11,6 +11,7 @@ import {
   Calendar as CalendarIcon} from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isInstalledApp } from '@/lib/api';
 import { motion } from 'framer-motion';
 
 interface SlashMenuItem {
@@ -21,6 +22,7 @@ interface SlashMenuItem {
   command?: (editor: any, range: { from: number; to: number }) => void;
   children?: SlashMenuItem[];
   customView?: 'icon-search';
+  installedOnly?: boolean;
 }
 
 interface SlashMenuProps {
@@ -60,7 +62,7 @@ const MAIN_ITEMS: SlashMenuItem[] = [
   { title: 'Blockquote', icon: <Quote className="w-4 h-4" />, shortcut: '⌘ ⇧ .', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
   { title: 'Toggle Section', icon: <ChevronDown className="w-4 h-4" />, category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).setToggle().run() },
   { title: 'Code block', icon: <Code className="w-4 h-4" />, shortcut: '⌘ ⌥ C', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
-  { title: 'SQL Query', icon: <DatabaseZap className="w-4 h-4" />, category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock({ language: 'sql' }).run() },
+  { title: 'SQL Query', icon: <DatabaseZap className="w-4 h-4" />, category: 'Organization', installedOnly: true, command: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock({ language: 'sql' }).run() },
 
   // Advanced / Table Submenu
   { 
@@ -124,6 +126,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       const flattened: SlashMenuItem[] = [];
       const collect = (items: SlashMenuItem[]) => {
         items.forEach(item => {
+          if (item.installedOnly && !isInstalledApp()) return;
           if (item.command || item.customView) flattened.push(item);
           if (item.children) collect(item.children);
         });
@@ -134,7 +137,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       }
       return flattened.filter(item => item.title.toLowerCase().includes(q));
     }
-    return Array.isArray(currentItems) ? currentItems : [];
+    return Array.isArray(currentItems)
+      ? currentItems.filter(item => !item.installedOnly || isInstalledApp())
+      : [];
   }, [query, currentItems]);
 
   useEffect(() => {

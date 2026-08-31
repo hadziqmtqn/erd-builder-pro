@@ -44,7 +44,7 @@ export function DocumentOutline({ headings, scrollToHeading }: DocumentOutlinePr
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background/80 backdrop-blur-sm hover:bg-accent transition-all duration-300"
+                      className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background hover:bg-accent transition-colors"
                     >
                       <ListTree className="w-5 h-5 text-muted-foreground" />
                     </Button>
@@ -104,7 +104,7 @@ export function DocumentOutline({ headings, scrollToHeading }: DocumentOutlinePr
                   variant="secondary"
                   size="icon"
                   onClick={() => setCalculationHelpOpen(true)}
-                  className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background/80 backdrop-blur-sm hover:bg-accent transition-all duration-300"
+                  className="h-10 w-10 rounded-full shadow-lg border border-border/50 bg-background hover:bg-accent transition-colors"
                 >
                   <Info className="w-5 h-5 text-muted-foreground" />
                 </Button>
