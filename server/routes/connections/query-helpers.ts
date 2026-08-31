@@ -8,3 +8,9 @@ export function normalizeSelectQuery(script: string): string {
   }
   return sql;
 }
+
+export function buildLimitedSelectQuery(script: string, requestedRows: unknown) {
+  const sql = normalizeSelectQuery(script);
+  const maxRows = Math.min(Math.max(Math.trunc(Number(requestedRows) || 100), 1), 500);
+  return { sql: `SELECT * FROM (${sql}) AS erdbpro_limited_query LIMIT ${maxRows + 1}`, maxRows };
+}

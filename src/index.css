@@ -737,6 +737,11 @@ code:not(pre code) {
   font-size: 0.875rem !important;
 }
 
+.tiptap-editor [data-executable-sql] pre {
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
 .tiptap-editor .is-empty::before {
   color: var(--muted-foreground) !important;
   content: attr(data-placeholder) !important;

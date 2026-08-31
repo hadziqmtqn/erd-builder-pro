@@ -36,6 +36,7 @@ import {
   CalendarNode,
   CustomKeyboardShortcuts,
   TrailingNode,
+  ExecutableCodeBlock,
 } from './editor/extensions';
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
@@ -284,7 +285,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     StarterKit.configure({
       link: false,
       underline: false,
+      codeBlock: false,
     }),
+    ExecutableCodeBlock,
     TrailingNode,
     ImageResize.configure({
       inline: false,

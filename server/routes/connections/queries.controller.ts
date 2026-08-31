@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { getConnector } from "../../lib/db-connectors/registry.js";
 import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
-import { normalizeSelectQuery } from "./query-helpers.js";
+import { buildLimitedSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 
 function querySelect() {
   return {
@@ -79,11 +79,12 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const { id } = req.params;
   try {
-    const sql = normalizeSelectQuery(req.body.script);
+    const limited = req.body.maxRows === undefined ? null : buildLimitedSelectQuery(req.body.script, req.body.maxRows);
+    const sql = limited?.sql ?? normalizeSelectQuery(req.body.script);
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
-    const info = buildCatalogConnectionInfo(catalog);
+    const info = { ...buildCatalogConnectionInfo(catalog), safeMode: "read-only" as const };
     if (info.type === "sqlite") return res.status(400).json({ error: "Custom query is supported for MySQL and PostgreSQL only" });
 
     const connector = getConnector(info.type);
@@ -95,10 +96,12 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
     try {
       if (info.type === "postgresql") {
         const result = await (client as any).query(sql);
-        return res.json({ columns: result.fields.map((f: any) => f.name), rows: result.rows, durationMs: Date.now() - started });
+        const rows = limited ? result.rows.slice(0, limited.maxRows) : result.rows;
+        return res.json({ columns: result.fields.map((f: any) => f.name), rows, truncated: limited ? result.rows.length > limited.maxRows : false, durationMs: Date.now() - started });
       }
       const [rows, fields] = await (client as any).execute(sql);
-      res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows, durationMs: Date.now() - started });
+      const values = Array.isArray(rows) ? rows : [];
+      res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows: limited ? values.slice(0, limited.maxRows) : values, truncated: limited ? values.length > limited.maxRows : false, durationMs: Date.now() - started });
     } finally {
       if (runId) activeQueries.delete(`${userId}:${runId}`);
       release();
