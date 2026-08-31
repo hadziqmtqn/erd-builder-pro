@@ -16,7 +16,7 @@ import {
   reconnectEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download } from 'lucide-react';
+import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,12 +29,14 @@ import { computeSchemaDiff, DiffResult, type SchemaDiffChange } from '@/lib/sche
 import { mergeSchemaChanges } from '@/lib/schema-merge';
 import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceContext';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, isInstalledApp } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { databaseColumnToERD } from '@/lib/column-metadata';
 import { keepsDbRelation } from '@/lib/db-client-schema';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
+import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
+import { erdToDBML } from '@/lib/dbml-converter';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -72,7 +74,7 @@ interface ERDViewProps {
   isLoading?: boolean;
   selectedNodeId?: string | null;
   onMoveEnd?: (e: any, v: any) => void;
-  saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any) => Promise<void>;
+  saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any, options?: { dbmlSource?: string }) => Promise<void>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
   // Exposed helpers from useERDSession for onReconnect validation
@@ -157,8 +159,11 @@ const ERDViewComponent = ({
     diffNodes: Node<Entity>[];
     diffEdges: Edge[];
     diffResult: DiffResult;
-    source: 'proposal' | 'history';
+    source: 'proposal' | 'history' | 'repository' | 'repository-compare';
     version?: number;
+    sourceLabel?: string;
+    commit?: string;
+    dbmlSource?: string;
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
@@ -326,8 +331,14 @@ const ERDViewComponent = ({
   takeSnapshotRef.current = takeSnapshot;
 
   // ─── Visual Schema Diffing Callbacks ────────────────
-  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[], source: 'proposal' | 'history' = 'proposal', version?: number) => {
+  const startDiff = useCallback((origNodes: Node<Entity>[], origEdges: Edge[], propNodes: Node<Entity>[], propEdges: Edge[], options: { source?: 'proposal' | 'history' | 'repository' | 'repository-compare'; version?: number; sourceLabel?: string; commit?: string; dbmlSource?: string } = {}) => {
     const diffData = computeSchemaDiff(origNodes, origEdges, propNodes, propEdges);
+    const source = options.source || 'proposal';
+    if (diffData.changes.length === 0) {
+      setPendingDiff(null);
+      toast.success(source.startsWith('repository') ? 'Repository schema matches the comparison source' : 'No schema changes found');
+      return;
+    }
     setApprovedChangeIds(diffData.changes.map(change => change.id));
     setPendingDiff({
       originalNodes: origNodes,
@@ -338,9 +349,12 @@ const ERDViewComponent = ({
       diffEdges: diffData.edges,
       diffResult: diffData,
       source,
-      version,
+      version: options.version,
+      sourceLabel: options.sourceLabel,
+      commit: options.commit,
+      dbmlSource: options.dbmlSource,
     });
-    setShowChecklist(source === 'history');
+    setShowChecklist(source !== 'proposal');
   }, []);
 
   React.useEffect(() => {
@@ -350,10 +364,34 @@ const ERDViewComponent = ({
         setPendingDiff(current => current?.source === 'history' ? null : current);
         return;
       }
-      startDiff(nodesRef.current, edgesRef.current, preview.nodes, preview.edges, 'history', preview.version);
+      startDiff(nodesRef.current, edgesRef.current, preview.nodes, preview.edges, { source: 'history', version: preview.version });
     };
     window.addEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
     return () => window.removeEventListener(ERD_HISTORY_PREVIEW_EVENT, previewHistory);
+  }, [startDiff]);
+
+  React.useEffect(() => {
+    const previewRepository = (event: Event) => {
+      const preview = (event as CustomEvent<RepositoryPreview | undefined>).detail;
+      if (!preview) {
+        setPendingDiff(current => current?.source.startsWith('repository') ? null : current);
+        return;
+      }
+      startDiff(
+        preview.originalNodes || nodesRef.current,
+        preview.originalEdges || edgesRef.current,
+        preview.proposedNodes,
+        preview.proposedEdges,
+        {
+          source: preview.canApply ? 'repository' : 'repository-compare',
+          sourceLabel: preview.sourceLabel,
+          commit: preview.commit,
+          dbmlSource: preview.dbmlSource,
+        },
+      );
+    };
+    window.addEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
+    return () => window.removeEventListener(ERD_REPOSITORY_PREVIEW_EVENT, previewRepository);
   }, [startDiff]);
   const handleSync = useCallback(async () => {
     if (!sourceConnectionId) return;
@@ -438,6 +476,8 @@ const ERDViewComponent = ({
     if (pendingDiff?.source === 'history') {
       setRightPanelMode('closed');
       toast.info('Version preview closed');
+    } else if (pendingDiff?.source.startsWith('repository')) {
+      toast.info('Repository preview closed');
     } else {
       toast.info('AI schema update rejected');
     }
@@ -455,10 +495,21 @@ const ERDViewComponent = ({
     setNodes(finalNodes);
     setEdges(finalEdges);
     setPendingDiff(null);
-    toast.success('AI changes merged successfully!');
+    toast.success(pendingDiff.source === 'repository' ? 'Repository schema merged successfully' : 'AI changes merged successfully!');
     if (saveDiagram) {
-      saveDiagram(finalNodes, finalEdges, getViewport()).then(() => {
+      const repositoryDbml = pendingDiff.source === 'repository'
+        ? approvedChangeIds.length === diffResult.changes.length && pendingDiff.dbmlSource
+          ? pendingDiff.dbmlSource
+          : erdToDBML(finalNodes, finalEdges)
+        : undefined;
+      const saveOptions = repositoryDbml
+        ? { dbmlSource: repositoryDbml }
+        : undefined;
+      saveDiagram(finalNodes, finalEdges, getViewport(), saveOptions).then(() => {
         triggerDebouncedSync?.();
+        if (pendingDiff.source === 'repository') {
+          window.dispatchEvent(new CustomEvent(ERD_REPOSITORY_APPLIED_EVENT, { detail: { dbmlSource: repositoryDbml, commit: pendingDiff.commit } }));
+        }
       }).catch(err => console.error('Error saving after merge:', err));
     }
   }, [pendingDiff, approvedChangeIds, setNodes, setEdges, saveDiagram, triggerDebouncedSync, getViewport]);
@@ -607,6 +658,12 @@ const ERDViewComponent = ({
               <Button onClick={() => setRightPanelMode('dbml')} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
                 <Database className="w-3.5 h-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">DBML</span>
+              </Button>
+            )}
+            {!isReadOnly && !isProductionDb && isInstalledApp() && (
+              <Button onClick={() => setRightPanelMode('repository')} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
+                <FolderGit2 className="w-3.5 h-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Repository</span>
               </Button>
             )}
             <Button onClick={onAutoLayout} variant="outline" size="sm" className="h-9 px-3 border-border hover:bg-muted bg-muted/50 text-xs font-semibold cursor-pointer">
@@ -810,7 +867,7 @@ const ERDViewComponent = ({
                             "grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
                             isChecked ? "bg-background text-foreground hover:bg-muted/50" : "bg-muted/20 text-muted-foreground hover:bg-muted/40",
                           )}>
-                            {pendingDiff.source === 'history' ? <span className="size-2 rounded-full bg-muted-foreground/50" /> : <Checkbox
+                            {pendingDiff.source === 'history' || pendingDiff.source === 'repository-compare' ? <span className="size-2 rounded-full bg-muted-foreground/50" /> : <Checkbox
                                 checked={isChecked}
                                 onCheckedChange={() => setApprovedChangeIds(prev => prev.includes(change.id) ? prev.filter(id => id !== change.id) : [...prev, change.id])}
                                 className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
@@ -840,7 +897,12 @@ const ERDViewComponent = ({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{pendingDiff.source === 'history' ? `Version ${pendingDiff.version} Preview` : 'AI Schema Proposal'}</span>
+              <span className="max-w-52 truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{
+                pendingDiff.source === 'history' ? `Version ${pendingDiff.version} Preview`
+                  : pendingDiff.source === 'repository-compare' ? `Git Comparison · ${pendingDiff.sourceLabel}`
+                    : pendingDiff.source === 'repository' ? `Repository Schema · ${pendingDiff.sourceLabel}`
+                      : 'AI Schema Proposal'
+              }</span>
               <div className="h-4 w-px bg-border mx-2" />
               <div className="flex gap-2 text-[11px] font-bold">
                 {diffNewCount > 0 && (
@@ -869,9 +931,9 @@ const ERDViewComponent = ({
                 variant="destructive"
                 onClick={handleRejectAll}
               >
-                {pendingDiff.source === 'history' ? 'Close Preview' : 'Reject All'}
+                {pendingDiff.source === 'proposal' ? 'Reject All' : 'Close Preview'}
               </Button>
-              {pendingDiff.source !== 'history' && <Button
+              {pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare' && <Button
                 onClick={handleApplyMerge}
               >
                 Merge Selected

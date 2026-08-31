@@ -66,7 +66,9 @@ import { DBMLEditorPanel } from '@/components/diagram/DBMLEditorPanel';
 import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
+import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
+import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
 
@@ -546,7 +548,25 @@ function AppLayoutInner() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [setIsSettingsOpen]);
 
-  const rightPanelOpen = rightPanelMode !== 'closed';
+  const rightPanelOpen = rightPanelMode !== 'closed'
+    && (rightPanelMode !== 'repository' || (isActiveDiagramContext && !activeDiagramIsProductionDb));
+
+  const handleSidebarViewChange = useCallback((...args: Parameters<typeof handleViewChange>) => {
+    if (rightPanelMode === 'repository') {
+      closeRepositoryPreview();
+      setRightPanelMode('closed');
+    }
+    return handleViewChange(...args);
+  }, [handleViewChange, rightPanelMode, setRightPanelMode]);
+
+  useEffect(() => {
+    const syncRepositoryDbml = (event: Event) => {
+      const source = (event as CustomEvent<{ dbmlSource?: string }>).detail?.dbmlSource;
+      if (source) setLocalDbmlContent(source);
+    };
+    window.addEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
+    return () => window.removeEventListener(ERD_REPOSITORY_APPLIED_EVENT, syncRepositoryDbml);
+  }, [setLocalDbmlContent]);
 
   // ── DBML → ERD callback ──
   const handleDBMLApply = useCallback((newNodes: Node<Entity>[], newEdges: Edge[], source: string) => {
@@ -673,7 +693,7 @@ function AppLayoutInner() {
 
   // ── Auto-close right panel when leaving file pages ──
   useEffect(() => {
-    if (!entityContext || (!showAIChat && rightPanelMode !== 'history')) {
+    if (!entityContext || (!showAIChat && rightPanelMode !== 'history' && rightPanelMode !== 'repository')) {
       setRightPanelMode('closed');
     }
   }, [entityContext, rightPanelMode, showAIChat, setRightPanelMode]);
@@ -705,6 +725,12 @@ function AppLayoutInner() {
     }
   }, [rightPanelMode, showDBMLPanel, showAIChat, setRightPanelMode]);
 
+  useEffect(() => {
+    if (rightPanelMode === 'repository' && (!isActiveDiagramContext || activeDiagramIsProductionDb)) {
+      setRightPanelMode('closed');
+    }
+  }, [rightPanelMode, isActiveDiagramContext, activeDiagramIsProductionDb, setRightPanelMode]);
+
   return (
     <>
       {!isOnline && !isPublicView && <OfflineOverlay />}
@@ -717,7 +743,7 @@ function AppLayoutInner() {
           isGlobalSearchLoading={isGlobalSearchLoading}
           onGlobalSearchResultSelect={openGlobalSearchResult}
           projects={projects}
-          onViewChange={handleViewChange}
+          onViewChange={handleSidebarViewChange}
           onNoteSelect={handleNoteSelect}
           onDrawingSelect={handleDrawingSelect}
           onProjectCreate={handleSidebarProjectCreate}
@@ -942,9 +968,17 @@ function AppLayoutInner() {
         )}
 
         {/* Right panel with tabs — sticky right sidebar */}
-        {rightPanelOpen && (showAIChat || rightPanelMode === 'history') && (
+        {rightPanelOpen && (showAIChat || rightPanelMode === 'history' || rightPanelMode === 'repository') && (
           <RightChatSidebar>
-            {rightPanelMode === 'history' && historyEntityType && entityContext ? (
+            {rightPanelMode === 'repository' && entityContext?.entityType === 'diagram' ? (
+              <RepositoryPanel
+                key={entityContext.entityUid}
+                diagramUid={entityContext.entityUid}
+                nodes={nodes}
+                edges={edges}
+                onClose={() => setRightPanelMode('closed')}
+              />
+            ) : rightPanelMode === 'history' && historyEntityType && entityContext ? (
               <VersionHistoryPanel
                 key={`${historyEntityType}:${entityContext.entityUid}`}
                 entityType={historyEntityType}
