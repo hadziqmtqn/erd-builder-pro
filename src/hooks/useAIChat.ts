@@ -16,6 +16,7 @@ import {
   syncSessionProjectId,
   RESPONSE_LANGUAGE_INSTRUCTION,
   recentConversationMessages,
+  planningContext,
 } from './aiChat/index';
 import type { AIRequestContext } from './aiChat/index';
 
@@ -322,7 +323,14 @@ export function useAIChat(
       selection_text: selectionText || null,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, tempUserMsg]);
+    const streamingMsg: AIChatMessage = {
+      id: 'streaming',
+      session_id: currentSession.uid ?? currentSession.id,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempUserMsg, streamingMsg]);
     const sessionUid = String(currentSession.uid ?? currentSession.id);
     const existing = messagesCacheMapRef.current.get(sessionUid) ?? [];
     messagesCacheMapRef.current.set(sessionUid, [...existing, tempUserMsg]);
@@ -357,6 +365,7 @@ export function useAIChat(
         }
       } catch {
         toast.error('Failed to save message');
+        setMessages(prev => prev.filter(message => message.id !== 'streaming'));
         setIsStreaming(false);
         return;
       }
@@ -431,6 +440,10 @@ export function useAIChat(
 
       // Keep recent continuity without drowning the active workspace context.
       const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
+      if (requestContext?.planMode) {
+        const context = planningContext(previousMessages);
+        if (context) apiMessages.push({ role: 'system', content: context });
+      }
       apiMessages.push(...recentConversationMessages(previousMessages));
 
       // User message: context + selection + request
@@ -469,24 +482,30 @@ export function useAIChat(
       apiUserContent += `User request: ${trimmed}`;
       apiMessages.push({ role: 'user', content: apiUserContent });
 
-      // Add streaming placeholder
-      setMessages(prev => [...prev, {
-        id: 'streaming', session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
-      } as AIChatMessage]);
-
       // Call AI
+      let streamingBuffer = '';
+      let streamingFrame: number | null = null;
+      const flushStreamingBuffer = () => {
+        const chunk = streamingBuffer;
+        streamingBuffer = '';
+        streamingFrame = null;
+        if (!chunk) return;
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          return last?.id === 'streaming' ? [...prev.slice(0, -1), { ...last, content: last.content + chunk }] : prev;
+        });
+      };
       abortControllerRef.current = new AbortController();
       const accumulatedResponse = await callAiStream(
         config.baseUrl, config.apiKey, config.model, apiMessages, abortControllerRef.current.signal,
         (token: string) => {
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            if (last?.id === 'streaming') return [...prev.slice(0, -1), { ...last, content: last.content + token }];
-            return prev;
-          });
+          streamingBuffer += token;
+          if (streamingFrame === null) streamingFrame = requestAnimationFrame(flushStreamingBuffer);
         },
         config.providerCode,
       );
+      if (streamingFrame !== null) cancelAnimationFrame(streamingFrame);
+      flushStreamingBuffer();
 
       // Finalize message
       const finalAiMsg: AIChatMessage = {

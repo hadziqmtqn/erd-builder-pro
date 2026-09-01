@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPlanQuestion, formatPlanAnswer, isPlanAnswer } from './plan-question-utils';
+import { extractPlanQuestion, formatPlanAnswer, formatPlanFeedback, hidePlanQuestionProtocol, isPlanAnswer, isPlanResponse } from './plan-question-utils';
 
 describe('plan question protocol', () => {
   it('extracts one valid question without showing its JSON to users', () => {
@@ -26,5 +26,11 @@ describe('plan question protocol', () => {
   it('does not include an unselected custom input in the submitted answer', () => {
     const question = extractPlanQuestion('```plan-question\n{"question":"x","type":"single","options":["A","B"],"recommendedOption":"A"}\n```')?.question;
     expect(formatPlanAnswer(question!, ['A'], '')).toContain('Answer: A');
+  });
+
+  it('marks Plan feedback as answered and hides an in-progress protocol block', () => {
+    const question = extractPlanQuestion('```plan-question\n{"question":"x","type":"single","options":["A","B"],"recommendedOption":"A"}\n```')?.question;
+    expect(isPlanResponse(formatPlanFeedback(question!, 'not-relevant'))).toBe(true);
+    expect(hidePlanQuestionProtocol('Choosing now.\n```plan-question\n{"id":"scope"')).toBe('Choosing now.');
   });
 });

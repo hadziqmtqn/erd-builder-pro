@@ -17,5 +17,7 @@ describe('Plan AI action', () => {
     expect(followUpPrompt).toContain('Do not write a final plan while it would contain a material unresolved question');
     expect(grillMeAction.buildPrompt({})).toContain('```plan-question');
     expect(grillMeAction.buildPrompt({})).toContain('do not include a "Open questions" or "Pertanyaan terbuka" section for material decisions');
+    expect(grillMeAction.buildPrompt({})).toContain('Treat [Plan feedback] as authoritative');
+    expect(grillMeAction.buildPrompt({})).toContain('use the Planning context as the source of user-confirmed decisions');
   });
 });

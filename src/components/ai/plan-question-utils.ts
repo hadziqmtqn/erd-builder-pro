@@ -15,6 +15,7 @@ export interface PlanQuestionPayload {
 }
 
 export const PLAN_ANSWER_PREFIX = '[Plan answer]';
+export const PLAN_FEEDBACK_PREFIX = '[Plan feedback]';
 const QUESTION_BLOCK = /```plan-question\s*\n([\s\S]*?)```/i;
 
 export function extractPlanQuestion(content: string): PlanQuestionPayload | null {
@@ -56,7 +57,23 @@ export function isPlanAnswer(content: string) {
   return content.startsWith(PLAN_ANSWER_PREFIX);
 }
 
+export function isPlanResponse(content: string) {
+  return isPlanAnswer(content) || content.startsWith(PLAN_FEEDBACK_PREFIX);
+}
+
+export function hidePlanQuestionProtocol(content: string) {
+  return content.replace(/```plan-question\b[\s\S]*$/i, '').trimEnd();
+}
+
 export function formatPlanAnswer(question: PlanQuestion, selected: string[], customAnswer: string) {
   const answers = [...selected, ...(customAnswer.trim() ? [customAnswer.trim()] : [])];
   return `${PLAN_ANSWER_PREFIX}\nQuestion: ${question.question}\nAnswer: ${answers.join('; ')}`;
+}
+
+export function formatPlanFeedback(
+  question: PlanQuestion,
+  action: 'not-relevant' | 'undecided' | 'recommend' | 'correct-context' | 'finish-with-assumptions',
+  correction = '',
+) {
+  return `${PLAN_FEEDBACK_PREFIX}\nQuestion: ${question.question}\nAction: ${action}${correction.trim() ? `\nCorrection: ${correction.trim()}` : ''}`;
 }

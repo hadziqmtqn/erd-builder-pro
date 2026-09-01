@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Radio } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
-import { CheckCircle2, Send } from 'lucide-react';
+import { CheckCircle2, MoreHorizontal, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { formatPlanAnswer, type PlanQuestion } from './plan-question-utils';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { formatPlanAnswer, formatPlanFeedback, type PlanQuestion } from './plan-question-utils';
 
 const CUSTOM_OPTION = '__plan-custom-answer__';
 
@@ -21,6 +22,8 @@ export function PlanQuestions({ question, isAnswered, onSubmit }: PlanQuestionsP
   const [selected, setSelected] = useState<string[]>([]);
   const [customSelected, setCustomSelected] = useState(false);
   const [customAnswer, setCustomAnswer] = useState('');
+  const [isCorrectingContext, setIsCorrectingContext] = useState(false);
+  const [contextCorrection, setContextCorrection] = useState('');
   const hasAnswer = useMemo(
     () => selected.length > 0 || (customSelected && Boolean(customAnswer.trim())),
     [selected, customAnswer, customSelected],
@@ -29,6 +32,10 @@ export function PlanQuestions({ question, isAnswered, onSubmit }: PlanQuestionsP
 
   const toggleOption = (option: string, checked: boolean) => {
     setSelected(previous => checked ? [...previous, option] : previous.filter(value => value !== option));
+  };
+
+  const submitFeedback = (action: 'not-relevant' | 'undecided' | 'recommend' | 'correct-context' | 'finish-with-assumptions', correction = '') => {
+    onSubmit(formatPlanFeedback(question, action, correction));
   };
 
   return (
@@ -107,6 +114,42 @@ export function PlanQuestions({ question, isAnswered, onSubmit }: PlanQuestionsP
             disabled={disabled || !customSelected}
             className="min-h-10 resize-none text-xs"
           />
+        )}
+        {!disabled && (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="xs"><MoreHorizontal data-icon="inline-start" />Question options</Button>} />
+            <DropdownMenuContent className="w-52" align="start">
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => submitFeedback('not-relevant')}>This question does not apply</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => submitFeedback('undecided')}>I have not decided yet</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => submitFeedback('recommend')}>Suggest a recommendation</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setIsCorrectingContext(true)}>Correct AI context</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => submitFeedback('finish-with-assumptions')}>Finish with assumptions</DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {isCorrectingContext && !disabled && (
+          <div className="flex flex-col gap-2">
+            <Textarea
+              aria-label="Context correction"
+              rows={1}
+              value={contextCorrection}
+              onChange={event => {
+                setContextCorrection(event.target.value);
+                event.currentTarget.style.height = 'auto';
+                event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+              }}
+              placeholder="State what is incorrect or out of scope"
+              className="min-h-10 resize-none text-xs"
+            />
+            <div className="flex justify-end">
+              <Button size="xs" disabled={!contextCorrection.trim()} onClick={() => submitFeedback('correct-context', contextCorrection)}>Send correction</Button>
+            </div>
+          </div>
         )}
       </CardContent>
       <CardFooter className="justify-between gap-3">

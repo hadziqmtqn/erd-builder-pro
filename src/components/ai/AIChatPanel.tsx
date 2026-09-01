@@ -334,6 +334,7 @@ export const AIChatPanel = ({
       actionPrompt: activeAction?.id === grillMeAction.id
         ? grillMeAction.buildPrompt({ planPhase })
         : activeActionPrompt || undefined,
+      planMode: activeAction?.id === grillMeAction.id || undefined,
     });
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
@@ -347,6 +348,7 @@ export const AIChatPanel = ({
     if (isStreaming) return;
     sendMessage(answer, null, {
       actionPrompt: grillMeAction.buildPrompt({ planPhase: 'follow-up' }),
+      planMode: true,
     });
     setLastActionId(grillMeAction.id);
   }, [isStreaming, sendMessage]);
