@@ -11,7 +11,7 @@
     "build": "vite build",
     "build:server": "node scripts/build-server.js",
     "build:cli": "bash scripts/build-cli.sh",
-    "build:desktop": "cross-env DB_VARIANT=sqlite prisma generate && npm rebuild better-sqlite3 && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && node scripts/build-mcp-launcher.js && rm -rf dist && vite build",
+    "build:desktop": "npm rebuild better-sqlite3 && rm -rf node_modules/.prisma/client && cross-env DB_VARIANT=sqlite prisma generate && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && node scripts/build-mcp-launcher.js && rm -rf dist && vite build",
     "start": "cross-env NODE_ENV=production tsx server/run.ts",
     "preview": "vite preview",
     "postinstall": "npm run db:generate:pg",
@@ -35,7 +35,7 @@
     "dev:desktop:client": "cross-env VITE_API_URL=http://127.0.0.1:3100 vite --port 3098",
     "dev:tauri:servers": "concurrently -n api,client \"npm run dev:desktop\" \"npm run dev:desktop:client\"",
     "dev:tauri": "export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev --config src-tauri/tauri.dev.conf.json",
-    "dev:desktop": "rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && npm rebuild better-sqlite3 && cross-env LANDING_MODE=false PORT=3100 DATABASE_URL=file:./data.db NODE_ENV=development ERD_INSTALL_MODE=desktop tsx watch server/run.ts"
+    "dev:desktop": "npm rebuild better-sqlite3 && rm -rf node_modules/.prisma/client && npm run db:generate:sqlite && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && cross-env LANDING_MODE=false PORT=3100 DATABASE_URL=file:./data.db NODE_ENV=development ERD_INSTALL_MODE=desktop tsx watch server/run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1020.0",

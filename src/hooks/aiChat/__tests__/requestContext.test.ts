@@ -20,14 +20,15 @@ describe('AI request context', () => {
   });
 
   it('keeps Plan answers and corrections beyond the recent conversation window', () => {
-    const messages = Array.from({ length: 14 }, (_, index) => ({
+    const messages = Array.from({ length: 30 }, (_, index) => ({
       id: index,
       session_id: 'session',
       role: 'user',
-      content: index === 0 ? '[Plan answer]\nQuestion: Scope\nAnswer: MVP' : index === 1 ? '[Plan feedback]\nAction: correct-context\nCorrection: Single school' : `message-${index}`,
+      content: index === 0 ? 'Build a school payment app' : index === 1 ? '[Plan answer]\nQuestion: Scope\nAnswer: MVP' : index === 2 ? '[Plan feedback]\nAction: correct-context\nCorrection: Single school' : `message-${index}`,
       created_at: '',
     }));
     const context = planningContext(messages as any);
+    expect(context).toContain('Original goal: Build a school payment app');
     expect(context).toContain('Answer: MVP');
     expect(context).toContain('Correction: Single school');
   });

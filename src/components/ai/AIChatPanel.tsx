@@ -10,6 +10,7 @@ import { SessionItem } from './SessionItem';
 import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
+import { PlanInterviewCard } from './PlanInterviewCard';
 import { apiFetch } from '@/lib/api';
 import { extractPlanQuestion } from './plan-question-utils';
 import type { AIChatSession } from '@/types';
@@ -93,6 +94,7 @@ export const AIChatPanel = ({
     sessions,
     currentSession,
     messages,
+    allMessages,
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
@@ -344,11 +346,22 @@ export const AIChatPanel = ({
     }
   }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, planPhase, resolveMentions]);
 
-  const handlePlanAnswer = useCallback((answer: string) => {
+  const handlePlanAnswer = useCallback(async (answer: string) => {
     if (isStreaming) return;
-    sendMessage(answer, null, {
+    await sendMessage(answer, null, {
       actionPrompt: grillMeAction.buildPrompt({ planPhase: 'follow-up' }),
       planMode: true,
+    });
+    setLastActionId(grillMeAction.id);
+  }, [isStreaming, sendMessage]);
+
+  const handlePlanResume = useCallback(async (answer: string, clientMessageId?: string | null, phase: 'initial' | 'follow-up' = 'follow-up') => {
+    if (isStreaming) return;
+    await sendMessage(answer, null, {
+      actionPrompt: grillMeAction.buildPrompt({ planPhase: phase }),
+      planMode: true,
+      clientMessageId: clientMessageId || undefined,
+      resumeExisting: true,
     });
     setLastActionId(grillMeAction.id);
   }, [isStreaming, sendMessage]);
@@ -493,7 +506,6 @@ export const AIChatPanel = ({
               loadMoreMessages={loadMoreMessages}
               handleNewSession={handleNewSession}
               sendMessage={sendMessage}
-              onPlanAnswer={handlePlanAnswer}
               hasContentHandler={hasContentHandler}
               contentHandlerStrategies={contentHandlerStrategies}
               lastActionId={lastActionId}
@@ -509,6 +521,17 @@ export const AIChatPanel = ({
               noteDefaultName={noteDefaultName}
               activeNoteContent={activeNoteContent}
             />
+
+            {currentSession && (
+              <PlanInterviewCard
+                key={String(currentSession.uid ?? currentSession.id)}
+                sessionUid={String(currentSession.uid ?? currentSession.id)}
+                messages={allMessages}
+                isStreaming={isStreaming}
+                onSubmit={handlePlanAnswer}
+                onResume={handlePlanResume}
+              />
+            )}
 
             {/* ── Selection Bar ────────────────────────── */}
             <SelectionBar

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPlanQuestion, formatPlanAnswer, formatPlanFeedback, hidePlanQuestionProtocol, isPlanAnswer, isPlanResponse } from './plan-question-utils';
+import { collectPlanQuestionEntries, extractPlanQuestion, formatPlanAnswer, formatPlanFeedback, hasSubstantivePlanContent, hidePlanQuestionProtocol, isPlanAnswer, isPlanResponse, parsePlanResponse } from './plan-question-utils';
 
 describe('plan question protocol', () => {
   it('extracts one valid question without showing its JSON to users', () => {
@@ -28,9 +28,37 @@ describe('plan question protocol', () => {
     expect(formatPlanAnswer(question!, ['A'], '')).toContain('Answer: A');
   });
 
+  it('restores selected and custom answers from persisted messages', () => {
+    const question = extractPlanQuestion('```plan-question\n{"question":"x","type":"multiple","options":["A","B"],"recommendedOption":"A"}\n```')?.question;
+    const content = formatPlanAnswer(question!, ['A'], 'Custom details');
+    expect(parsePlanResponse(content, question!)).toMatchObject({
+      kind: 'answer',
+      selected: ['A'],
+      customAnswer: 'Custom details',
+    });
+  });
+
+  it('collects all Plan questions into one ordered interview history', () => {
+    const messages = [
+      { id: 'q1', role: 'assistant', content: '```plan-question\n{"question":"Scope?","type":"single","options":["MVP","Full"],"recommendedOption":"MVP"}\n```' },
+      { id: 'a1', role: 'user', content: '[Plan answer]\nQuestion: Scope?\nAnswer: MVP' },
+      { id: 'q2', role: 'assistant', content: '```plan-question\n{"question":"Stack?","type":"single","options":["Laravel","React"],"recommendedOption":"Laravel"}\n```' },
+    ] as any;
+    const entries = collectPlanQuestionEntries(messages);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].response).toMatchObject({ kind: 'answer', selected: ['MVP'] });
+    expect(entries[1].response).toBeNull();
+  });
+
   it('marks Plan feedback as answered and hides an in-progress protocol block', () => {
     const question = extractPlanQuestion('```plan-question\n{"question":"x","type":"single","options":["A","B"],"recommendedOption":"A"}\n```')?.question;
     expect(isPlanResponse(formatPlanFeedback(question!, 'not-relevant'))).toBe(true);
+    expect(parsePlanResponse(formatPlanFeedback(question!, 'skip'))).toMatchObject({ kind: 'feedback', action: 'skip' });
     expect(hidePlanQuestionProtocol('Choosing now.\n```plan-question\n{"id":"scope"')).toBe('Choosing now.');
+  });
+
+  it('keeps a generated PRD visible when an AI response also asks one next question', () => {
+    expect(hasSubstantivePlanContent('Choose a database direction first.')).toBe(false);
+    expect(hasSubstantivePlanContent('# PRD Aplikasi SPP\n\n## Stack\n- Laravel\n- PostgreSQL\n\n## RBAC\nAdmin dan bendahara.')).toBe(true);
   });
 });

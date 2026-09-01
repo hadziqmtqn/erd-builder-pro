@@ -346,9 +346,12 @@ CREATE TABLE "ai_chat_messages" (
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "selection_text" TEXT,
+    "client_message_id" TEXT,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ai_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "ai_chat_sessions" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
+
+CREATE UNIQUE INDEX "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id");
 
 -- CreateTable
 CREATE TABLE "ai_system_prompts" (

@@ -9,8 +9,9 @@ describe('Plan AI action', () => {
     expect(grillMeAction.buildPrompt({})).toContain('ask exactly one highest-impact question');
     const followUpPrompt = grillMeAction.buildPrompt({ planPhase: 'follow-up' });
     expect(followUpPrompt).toContain('The user has answered the previous question');
-    expect(followUpPrompt).toContain('at least three distinct decision areas');
-    expect(followUpPrompt).toContain('technical direction');
+    expect(followUpPrompt).toContain('chosen language/framework/runtime stack');
+    expect(followUpPrompt).toContain('RBAC roles and permission boundaries');
+    expect(followUpPrompt).toContain('must not be silently assumed');
     expect(followUpPrompt).toContain('not an automatically correct decision');
     expect(followUpPrompt).toContain('ask exactly one clarifying follow-up');
     expect(followUpPrompt).toContain('materially change scope');
@@ -18,6 +19,7 @@ describe('Plan AI action', () => {
     expect(grillMeAction.buildPrompt({})).toContain('```plan-question');
     expect(grillMeAction.buildPrompt({})).toContain('do not include a "Open questions" or "Pertanyaan terbuka" section for material decisions');
     expect(grillMeAction.buildPrompt({})).toContain('Treat [Plan feedback] as authoritative');
+    expect(grillMeAction.buildPrompt({})).toContain('skip means defer this decision');
     expect(grillMeAction.buildPrompt({})).toContain('use the Planning context as the source of user-confirmed decisions');
   });
 });

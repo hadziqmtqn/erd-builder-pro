@@ -143,6 +143,18 @@ async function addColumnIfMissing(
   }
 }
 
+async function ensureAiChatMessageIdempotency(): Promise<void> {
+  if (!prisma) return;
+  await addColumnIfMissing("ai_chat_messages", "client_message_id", '"client_message_id" VARCHAR(64)');
+  try {
+    await prisma.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id")',
+    );
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to create AI chat idempotency index (non-fatal)");
+  }
+}
+
 export async function ensureRepositoryLinkColumns(): Promise<void> {
   if (!prisma || !isDesktopMode()) return;
   await addColumnIfMissing("diagrams", "repository_path", '"repository_path" TEXT');
@@ -495,6 +507,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("relationships", "on_delete", '"on_delete" TEXT');
   await addColumnIfMissing("relationships", "on_update", '"on_update" TEXT');
   await addColumnIfMissing("relationships", "constraint_name", '"constraint_name" TEXT');
+  await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.

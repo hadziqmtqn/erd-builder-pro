@@ -1,5 +1,5 @@
 import { memo, useRef, useState, useEffect, useCallback } from 'react';
-import { MessageSquare, Plus, Bot, User, Loader2, Copy, Check, ChevronDown, RefreshCcw } from 'lucide-react';
+import { MessageSquare, Plus, Bot, User, Loader2, Copy, Check, ChevronDown } from 'lucide-react';
 import { AIChatMessage } from '@/types';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,7 @@ import { FlowchartFromJsonDialog } from './FlowchartFromJsonDialog';
 import { NoteFromTextDialog } from './NoteFromTextDialog';
 import { AssistantMessageActions } from './AssistantMessageActions';
 import { UserMessageBody } from './UserMessageBody';
-import { PlanQuestions } from './PlanQuestions';
-import { extractPlanQuestion, hidePlanQuestionProtocol, isPlanResponse } from './plan-question-utils';
+import { extractPlanQuestion, hasSubstantivePlanContent, hidePlanQuestionProtocol, isPlanResponse } from './plan-question-utils';
 
 interface MentionFile {
   name: string;
@@ -32,7 +31,6 @@ export interface ChatMessagesProps {
   loadMoreMessages: () => void;
   handleNewSession: () => void;
   sendMessage: (content: string, selectionText?: string | null) => void;
-  onPlanAnswer: (content: string) => void;
   hasContentHandler: boolean;
   contentHandlerStrategies: string[];
   lastActionId: string | null;
@@ -62,7 +60,6 @@ export const ChatMessages = memo(function ChatMessages({
   loadMoreMessages,
   handleNewSession,
   sendMessage,
-  onPlanAnswer,
   hasContentHandler,
   contentHandlerStrategies,
   lastActionId,
@@ -211,13 +208,9 @@ export const ChatMessages = memo(function ChatMessages({
               const isStreamingMsg = msg.id === 'streaming';
               const msgKey = msg.id?.toString() || idx.toString();
               const planQuestion = !isUser ? extractPlanQuestion(msg.content) : null;
-              const nextUserMessage = planQuestion ? messages.slice(idx + 1).find(message => message.role === 'user') : null;
-              const planQuestionAnswered = Boolean(nextUserMessage && isPlanResponse(nextUserMessage.content));
               const displayContent = planQuestion ? planQuestion.content : isStreamingMsg ? hidePlanQuestionProtocol(msg.content) : msg.content;
-              const canRetryPlanAnswer = isUser
-                && isPlanResponse(msg.content)
-                && !isStreaming
-                && !messages.slice(idx + 1).some(message => message.role === 'assistant' && message.content.trim());
+              const preservesPlanContent = Boolean(planQuestion && hasSubstantivePlanContent(planQuestion.content));
+              if ((isStreamingMsg && msg.plan_mode) || (planQuestion && !preservesPlanContent) || (isUser && isPlanResponse(msg.content))) return null;
 
               return (
                 <div
@@ -252,10 +245,6 @@ export const ChatMessages = memo(function ChatMessages({
                       )}
                     </div>
 
-                    {planQuestion && !isStreamingMsg && (
-                      <PlanQuestions question={planQuestion.question} isAnswered={planQuestionAnswered} onSubmit={onPlanAnswer} />
-                    )}
-
                     {/* Timestamp */}
                     {!isStreamingMsg && msg.created_at && (
                       <span className="text-[10px] text-muted-foreground/40 px-1 block">
@@ -263,17 +252,10 @@ export const ChatMessages = memo(function ChatMessages({
                       </span>
                     )}
 
-                    {canRetryPlanAnswer && (
-                      <Button variant="outline" size="xs" onClick={() => onPlanAnswer(msg.content)}>
-                        <RefreshCcw data-icon="inline-start" />
-                        Resend Plan answer
-                      </Button>
-                    )}
-
                     {/* User message actions (resend + copy) */}
                     {isUser && !isStreamingMsg && msg.id !== 'streaming' && (
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto">
-                        {idx === messages.length - 1 && !canRetryPlanAnswer && (
+                        {idx === messages.length - 1 && !isPlanResponse(msg.content) && (
                           <button
                             onClick={() => sendMessage(msg.content, msg.selection_text)}
                             className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
@@ -303,7 +285,7 @@ export const ChatMessages = memo(function ChatMessages({
                     {/* Assistant message actions */}
                     {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                       <AssistantMessageActions
-                        content={msg.content}
+                        content={displayContent}
                         msgId={msgKey}
                         hasContentHandler={hasContentHandler}
                         contentHandlerStrategies={contentHandlerStrategies}

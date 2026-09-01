@@ -1,3 +1,5 @@
+import type { AIChatMessage } from '@/types';
+
 export type PlanQuestionType = 'single' | 'multiple';
 
 export interface PlanQuestion {
@@ -12,6 +14,32 @@ export interface PlanQuestion {
 export interface PlanQuestionPayload {
   content: string;
   question: PlanQuestion;
+}
+
+export type PlanFeedbackAction = 'skip' | 'not-relevant' | 'undecided' | 'recommend' | 'correct-context' | 'finish-with-assumptions';
+
+export interface PlanAnswerData {
+  kind: 'answer';
+  question: string;
+  selected: string[];
+  customAnswer: string;
+  summary: string;
+}
+
+export interface PlanFeedbackData {
+  kind: 'feedback';
+  question: string;
+  action: PlanFeedbackAction;
+  correction: string;
+}
+
+export type PlanResponseData = PlanAnswerData | PlanFeedbackData;
+
+export interface PlanQuestionEntry {
+  key: string;
+  question: PlanQuestion;
+  response: PlanResponseData | null;
+  responseMessage: AIChatMessage | null;
 }
 
 export const PLAN_ANSWER_PREFIX = '[Plan answer]';
@@ -61,18 +89,108 @@ export function isPlanResponse(content: string) {
   return isPlanAnswer(content) || content.startsWith(PLAN_FEEDBACK_PREFIX);
 }
 
+function readLine(content: string, name: string) {
+  return content.match(new RegExp(`^${name}:\\s*(.*)$`, 'm'))?.[1]?.trim() ?? '';
+}
+
+export function parsePlanResponse(content: string, question?: PlanQuestion): PlanResponseData | null {
+  if (isPlanAnswer(content)) {
+    const storedQuestion = readLine(content, 'Question');
+    const summary = content.match(/^Answer:\s*([\s\S]*?)(?:\nData:|$)/m)?.[1]?.trim() ?? '';
+    const encoded = readLine(content, 'Data');
+    if (encoded) {
+      try {
+        const data = JSON.parse(encoded) as { selected?: unknown; customAnswer?: unknown };
+        return {
+          kind: 'answer',
+          question: storedQuestion,
+          selected: Array.isArray(data.selected) ? data.selected.filter((value): value is string => typeof value === 'string') : [],
+          customAnswer: typeof data.customAnswer === 'string' ? data.customAnswer : '',
+          summary,
+        };
+      } catch {}
+    }
+
+    const values = summary ? summary.split('; ').map(value => value.trim()).filter(Boolean) : [];
+    const selected = question ? values.filter(value => question.options.includes(value)) : values;
+    const customAnswer = question ? values.filter(value => !question.options.includes(value)).join('; ') : '';
+    return { kind: 'answer', question: storedQuestion, selected, customAnswer, summary };
+  }
+
+  if (content.startsWith(PLAN_FEEDBACK_PREFIX)) {
+    const action = readLine(content, 'Action') as PlanFeedbackAction;
+    if (!['skip', 'not-relevant', 'undecided', 'recommend', 'correct-context', 'finish-with-assumptions'].includes(action)) return null;
+    return {
+      kind: 'feedback',
+      question: readLine(content, 'Question'),
+      action,
+      correction: content.match(/^Correction:\s*([\s\S]*)$/m)?.[1]?.trim() ?? '',
+    };
+  }
+
+  return null;
+}
+
+export function collectPlanQuestionEntries(messages: AIChatMessage[]): PlanQuestionEntry[] {
+  const entries: PlanQuestionEntry[] = [];
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      const payload = extractPlanQuestion(message.content);
+      if (payload) {
+        entries.push({
+          key: String(message.id),
+          question: payload.question,
+          response: null,
+          responseMessage: null,
+        });
+      }
+      continue;
+    }
+
+    if (message.role === 'user' && isPlanResponse(message.content)) {
+      const entry = [...entries].reverse().find(item => !item.response);
+      if (entry) {
+        entry.response = parsePlanResponse(message.content, entry.question);
+        entry.responseMessage = message;
+      }
+    }
+  }
+  return entries;
+}
+
+export function planResponseDisplay(content: string) {
+  const response = parsePlanResponse(content);
+  if (!response) return null;
+  if (response.kind === 'answer') return response.summary;
+  if (response.action === 'skip') return 'Skipped';
+  if (response.action === 'correct-context') return response.correction;
+  return response.action.replaceAll('-', ' ');
+}
+
 export function hidePlanQuestionProtocol(content: string) {
   return content.replace(/```plan-question\b[\s\S]*$/i, '').trimEnd();
 }
 
+/** Keep an accidentally combined PRD + next question visible in history. */
+export function hasSubstantivePlanContent(content: string) {
+  const value = content.trim();
+  if (!value) return false;
+  return value.length >= 400
+    || /^#{1,6}\s/m.test(value)
+    || /^\s*(?:[-*+] |\d+\. )/m.test(value)
+    || (value.match(/\n\s*\n/g)?.length ?? 0) >= 2;
+}
+
 export function formatPlanAnswer(question: PlanQuestion, selected: string[], customAnswer: string) {
-  const answers = [...selected, ...(customAnswer.trim() ? [customAnswer.trim()] : [])];
-  return `${PLAN_ANSWER_PREFIX}\nQuestion: ${question.question}\nAnswer: ${answers.join('; ')}`;
+  const custom = customAnswer.trim();
+  const answers = [...selected, ...(custom ? [custom] : [])];
+  const data = JSON.stringify({ selected, customAnswer: custom });
+  return `${PLAN_ANSWER_PREFIX}\nQuestion: ${question.question}\nAnswer: ${answers.join('; ')}\nData: ${data}`;
 }
 
 export function formatPlanFeedback(
   question: PlanQuestion,
-  action: 'not-relevant' | 'undecided' | 'recommend' | 'correct-context' | 'finish-with-assumptions',
+  action: PlanFeedbackAction,
   correction = '',
 ) {
   return `${PLAN_FEEDBACK_PREFIX}\nQuestion: ${question.question}\nAction: ${action}${correction.trim() ? `\nCorrection: ${correction.trim()}` : ''}`;
