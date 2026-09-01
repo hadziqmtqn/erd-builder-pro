@@ -12,6 +12,8 @@ import { FlowchartFromJsonDialog } from './FlowchartFromJsonDialog';
 import { NoteFromTextDialog } from './NoteFromTextDialog';
 import { AssistantMessageActions } from './AssistantMessageActions';
 import { UserMessageBody } from './UserMessageBody';
+import { PlanQuestions } from './PlanQuestions';
+import { extractPlanQuestion, isPlanAnswer } from './plan-question-utils';
 
 interface MentionFile {
   name: string;
@@ -32,6 +34,7 @@ export interface ChatMessagesProps {
   loadMoreMessages: () => void;
   handleNewSession: () => void;
   sendMessage: (content: string, selectionText?: string | null) => void;
+  onPlanAnswer: (content: string) => void;
   hasContentHandler: boolean;
   contentHandlerStrategies: string[];
   lastActionId: string | null;
@@ -61,6 +64,7 @@ export const ChatMessages = memo(function ChatMessages({
   loadMoreMessages,
   handleNewSession,
   sendMessage,
+  onPlanAnswer,
   hasContentHandler,
   contentHandlerStrategies,
   lastActionId,
@@ -208,6 +212,10 @@ export const ChatMessages = memo(function ChatMessages({
               const isUser = msg.role === 'user';
               const isStreamingMsg = msg.id === 'streaming';
               const msgKey = msg.id?.toString() || idx.toString();
+              const planQuestion = !isUser ? extractPlanQuestion(msg.content) : null;
+              const nextUserMessage = planQuestion ? messages.slice(idx + 1).find(message => message.role === 'user') : null;
+              const planQuestionAnswered = Boolean(nextUserMessage && isPlanAnswer(nextUserMessage.content));
+              const displayContent = planQuestion ? planQuestion.content : msg.content;
 
               return (
                 <div
@@ -268,7 +276,7 @@ export const ChatMessages = memo(function ChatMessages({
                                     return <code className="bg-black/30 px-1 py-0.5 rounded text-[11px]" {...props}>{children}</code>;
                                   }
                                 }}
-                              >{msg.content}</ReactMarkdown>
+                              >{displayContent}</ReactMarkdown>
                               {isStreamingMsg && (
                                 <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
                               )}
@@ -277,6 +285,10 @@ export const ChatMessages = memo(function ChatMessages({
                         </div>
                       )}
                     </div>
+
+                    {planQuestion && !isStreamingMsg && (
+                      <PlanQuestions question={planQuestion.question} isAnswered={planQuestionAnswered} onSubmit={onPlanAnswer} />
+                    )}
 
                     {/* Timestamp */}
                     {!isStreamingMsg && msg.created_at && (

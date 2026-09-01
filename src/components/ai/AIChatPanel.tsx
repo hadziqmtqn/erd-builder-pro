@@ -11,6 +11,7 @@ import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
 import { apiFetch } from '@/lib/api';
+import { extractPlanQuestion } from './plan-question-utils';
 import type { AIChatSession } from '@/types';
 
 interface MentionFile {
@@ -139,6 +140,10 @@ export const AIChatPanel = ({
   // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
   const actions = [grillMeAction, ...(currentViewType ? getActionsForView(currentViewType) : [])];
   const activeAction = actions.find(action => action.id === activeActionId);
+  const planPhase = useMemo(
+    () => messages.some(message => message.role === 'assistant' && extractPlanQuestion(message.content)) ? 'follow-up' : 'initial',
+    [messages],
+  );
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -326,7 +331,9 @@ export const AIChatPanel = ({
 
     sendMessage(text, selectionText, {
       contextPrefix: mentionContext || undefined,
-      actionPrompt: activeActionPrompt || undefined,
+      actionPrompt: activeAction?.id === grillMeAction.id
+        ? grillMeAction.buildPrompt({ planPhase })
+        : activeActionPrompt || undefined,
     });
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
@@ -334,7 +341,15 @@ export const AIChatPanel = ({
       setActiveActionId(null);
       setActiveActionPrompt(null);
     }
-  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, resolveMentions]);
+  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, planPhase, resolveMentions]);
+
+  const handlePlanAnswer = useCallback((answer: string) => {
+    if (isStreaming) return;
+    sendMessage(answer, null, {
+      actionPrompt: grillMeAction.buildPrompt({ planPhase: 'follow-up' }),
+    });
+    setLastActionId(grillMeAction.id);
+  }, [isStreaming, sendMessage]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -476,6 +491,7 @@ export const AIChatPanel = ({
               loadMoreMessages={loadMoreMessages}
               handleNewSession={handleNewSession}
               sendMessage={sendMessage}
+              onPlanAnswer={handlePlanAnswer}
               hasContentHandler={hasContentHandler}
               contentHandlerStrategies={contentHandlerStrategies}
               lastActionId={lastActionId}
