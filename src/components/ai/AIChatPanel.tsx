@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
-import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
+import { AIAction, getActionsForView, grillMeAction, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -137,7 +137,8 @@ export const AIChatPanel = ({
   useEffect(() => { setSessionPage(1); }, [sessionSearch]);
 
   // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
-  const actions = currentViewType ? getActionsForView(currentViewType) : [];
+  const actions = [grillMeAction, ...(currentViewType ? getActionsForView(currentViewType) : [])];
+  const activeAction = actions.find(action => action.id === activeActionId);
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -151,7 +152,7 @@ export const AIChatPanel = ({
   }, [pendingPrompt, onPromptUsed]);
 
   const handleSelectAction = useCallback((action: AIAction) => {
-    if (!entityType || !effectiveEntityContextText || !entityTitle) return;
+    if (action.requiresEntityContext !== false && (!entityType || !effectiveEntityContextText || !entityTitle)) return;
 
     const context = {
       content: effectiveEntityContextText,
@@ -329,9 +330,11 @@ export const AIChatPanel = ({
     });
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
-    setActiveActionId(null);
-    setActiveActionPrompt(null);
-  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, resolveMentions]);
+    if (!activeAction?.persistent) {
+      setActiveActionId(null);
+      setActiveActionPrompt(null);
+    }
+  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, resolveMentions]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

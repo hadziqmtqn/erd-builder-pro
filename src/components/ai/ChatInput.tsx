@@ -35,6 +35,8 @@ function getActionIcon(actionId: string) {
       return <GitBranch className="size-3" />;
     case 'flowchart-import':
       return <FileDown className="size-3" />;
+    case 'grill-me':
+      return <CircleHelp className="size-3" />;
     default:
       return <Sparkles className="size-3" />;
   }
@@ -55,6 +57,7 @@ function getPlaceholder(actionId: string | null | undefined, hasProject: boolean
     case 'flowchart-pseudocode':  return 'Describe pseudocode needs...';
     case 'flowchart-insert':      return 'Describe where to insert a symbol...';
     case 'flowchart-import':      return 'Describe the process to diagram...';
+    case 'grill-me':               return 'Answer the next interview question...';
     default:                      return hasProject ? 'Ask anything... Type @ to reference a file' : 'Ask anything...';
   }
 }

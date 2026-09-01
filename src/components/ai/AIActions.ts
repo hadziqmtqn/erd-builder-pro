@@ -3,10 +3,12 @@ import { erdActions } from './actions/erdActionConfigs';
 import { notesActions } from './actions/notesActionConfigs';
 import { flowchartActions } from './actions/flowchartActionConfigs';
 import { dbClientActions } from './actions/dbClientActionConfigs';
+import { grillMeAction } from './actions/grillMeActionConfig';
 
 // ─── Re-export for external consumers ─────────────────
 export type { AIAction };
 export { actionIcons };
+export { grillMeAction };
 
 // ─── Registry ─────────────────────────────────────────
 
