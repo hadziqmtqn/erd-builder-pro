@@ -89,12 +89,14 @@ async function main() {
     entryPoints: {
       index: resolve(ROOT, "server/run.ts"),
       mcp: resolve(ROOT, "server/mcp.ts"),
+      "schema-check": resolve(ROOT, "server/schema-check.ts"),
     },
     outdir: OUT_DIR,
     bundle: true,
     platform: "node",
     target: "node18",
     format: "esm",
+    alias: { "@": resolve(ROOT, "src") },
     external: EXTERNAL,
     tsconfig: resolve(ROOT, "tsconfig.server.json"),
     sourcemap: false,
@@ -106,6 +108,7 @@ async function main() {
   });
   console.log("   → dist-server/index.js");
   console.log("   → dist-server/mcp.js");
+  console.log("   → dist-server/schema-check.js");
 
   // 2. Copy essential node_modules for external native modules.
   //
