@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { getConnector } from "../../lib/db-connectors/registry.js";
 import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
-import { buildLimitedSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
+import { buildExplainQuery, buildLimitedSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 
 function querySelect() {
   return {
@@ -79,8 +79,10 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
   const userId = (req as any).user.id;
   const { id } = req.params;
   try {
-    const limited = req.body.maxRows === undefined ? null : buildLimitedSelectQuery(req.body.script, req.body.maxRows);
-    const sql = limited?.sql ?? normalizeSelectQuery(req.body.script);
+    const mode = req.body.mode === undefined ? "run" : String(req.body.mode);
+    if (mode !== "run" && mode !== "explain") throw new Error("Invalid query mode");
+    const limited = mode === "run" && req.body.maxRows !== undefined ? buildLimitedSelectQuery(req.body.script, req.body.maxRows) : null;
+    const sql = mode === "explain" ? buildExplainQuery(req.body.script) : limited?.sql ?? normalizeSelectQuery(req.body.script);
     const catalog = await catalogsService.findCatalogById(id, userId);
     if (!catalog) return res.status(404).json({ error: "Catalog not found" });
 
@@ -97,11 +99,11 @@ export async function runQuery(req: ExpressRequest, res: ExpressResponse) {
       if (info.type === "postgresql") {
         const result = await (client as any).query(sql);
         const rows = limited ? result.rows.slice(0, limited.maxRows) : result.rows;
-        return res.json({ columns: result.fields.map((f: any) => f.name), rows, truncated: limited ? result.rows.length > limited.maxRows : false, durationMs: Date.now() - started });
+        return res.json({ columns: result.fields.map((f: any) => f.name), rows, truncated: limited ? result.rows.length > limited.maxRows : false, durationMs: Date.now() - started, mode });
       }
       const [rows, fields] = await (client as any).execute(sql);
       const values = Array.isArray(rows) ? rows : [];
-      res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows: limited ? values.slice(0, limited.maxRows) : values, truncated: limited ? values.length > limited.maxRows : false, durationMs: Date.now() - started });
+      res.json({ columns: (fields || []).map((f: any) => f.name || f.column || f), rows: limited ? values.slice(0, limited.maxRows) : values, truncated: limited ? values.length > limited.maxRows : false, durationMs: Date.now() - started, mode });
     } finally {
       if (runId) activeQueries.delete(`${userId}:${runId}`);
       release();

@@ -4,7 +4,7 @@ import { sqliteConnector } from "../../lib/db-connectors/sqlite.js";
 import { postgresqlConnector } from "../../lib/db-connectors/postgresql.js";
 import { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./catalogs.controller.js";
 import { fetchTableInfo } from "./record-helpers.js";
-import { buildLimitedSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
+import { buildExplainQuery, buildLimitedSelectQuery, normalizeSelectQuery } from "./query-helpers.js";
 import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
 import { extractMySqlCreatedTables, MAX_SQL_IMPORT_BYTES, normalizeMySqlCreateTableDefaults, splitSqlStatements, validateImportSql } from "./structure.controller.js";
 import { assertDestructiveAllowed, assertWritable, normalizeConnectionSecurity } from "../../lib/db-connectors/security.js";
@@ -33,6 +33,11 @@ describe("custom query helpers", () => {
       maxRows: 100,
     });
     expect(buildLimitedSelectQuery("SELECT 1", 50_000).maxRows).toBe(500);
+  });
+
+  it("builds EXPLAIN only after read-only validation", () => {
+    expect(buildExplainQuery("SELECT * FROM users")).toBe("EXPLAIN SELECT * FROM users");
+    expect(() => buildExplainQuery("DELETE FROM users")).toThrow("Only SELECT queries are allowed");
   });
 });
 

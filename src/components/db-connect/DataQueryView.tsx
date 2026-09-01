@@ -4,8 +4,8 @@ import { sql as sqlLang } from '@codemirror/lang-sql';
 import { autocompletion } from '@codemirror/autocomplete';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { Prec } from '@codemirror/state';
-import { keymap } from '@codemirror/view';
-import { Play, Plus, Sparkles, Square, X } from 'lucide-react';
+import { keymap, type EditorView } from '@codemirror/view';
+import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -15,10 +15,11 @@ import { localPersistence } from '@/lib/localPersistence';
 import { buildSqlCompletions } from './query-autocomplete';
 import { DataQueryResultTable } from './DataQueryResultTable';
 import { DataQueryToolbar } from './DataQueryToolbar';
+import { DataQueryEditorActions } from './DataQueryEditorActions';
 import { useSetActionContextData } from '@/contexts/AIActionContext';
 import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
 import { DataQuerySidebar, type QueryExecution } from './DataQuerySidebar';
-import { beautifySql, emptyQueryState, getQueryCache, newQueryTab, readQueryState, sanitizeQueryState, setQueryCache, type QueryTab } from './data-query-state';
+import { beautifySql, emptyQueryState, getQueryCache, newQueryTab, readQueryState, reconcileLiveTab, runnableSql, sanitizeQueryState, setQueryCache, type QueryTab } from './data-query-state';
 import { getSchemaCache, setSchemaCache } from '@/hooks/useDataViewerHelpers';
 
 type DataQueryViewProps = {
@@ -51,11 +52,12 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dbType, setDbType] = useState<string | null>(null);
   const [connectionSecurity, setConnectionSecurity] = useState<any>(null);
-  const [running, setRunning] = useState(false);
+  const [runningMode, setRunningMode] = useState<'run' | 'explain' | null>(null);
   const [history, setHistory] = useState<QueryExecution[]>(() => {
     try { return JSON.parse(localStorage.getItem(`erd-db-query-history:${connectionId}`) || '[]'); } catch { return []; }
   });
   const runningIdRef = useRef<string | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
   const [beautifying, setBeautifying] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const activeTabRef = useRef<QueryTab | null>(activeTab);
@@ -63,6 +65,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
   const beautifyFrameRef = useRef<number | null>(null);
   const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingScriptRef = useRef(false);
+  const draftEditedRef = useRef(false);
   const completion = useMemo(() => buildSqlCompletions(tables), [tables]);
   const groups = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -98,7 +101,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
 
   useEffect(() => { const timer = setTimeout(() => { load().catch((err: any) => setLoadError(err.message)); }); return () => clearTimeout(timer); }, [load]);
   useEffect(() => { queryStateRef.current = queryState; }, [queryState]);
-  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { activeTabRef.current = reconcileLiveTab(activeTab, activeTabRef.current); }, [activeTab]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setActionContextData({ aiContextText: buildDbClientQueryContext(dbType, activeTab, tables) });
@@ -108,13 +111,14 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
   useEffect(() => () => setActionContextData(null), [setActionContextData]);
   useEffect(() => {
     let cancelled = false;
+    draftEditedRef.current = false;
     setDraftLoaded(false);
     localPersistence.getResource(storageKey).then((resource) => {
-      if (cancelled) return;
+      if (cancelled || draftEditedRef.current) return;
       const saved = sanitizeQueryState(resource?.data);
       setQueryState(saved || readQueryState(storageKey));
     }).catch(() => {
-      if (!cancelled) setQueryState(readQueryState(storageKey));
+      if (!cancelled && !draftEditedRef.current) setQueryState(readQueryState(storageKey));
     }).finally(() => {
       if (!cancelled) setDraftLoaded(true);
     });
@@ -152,8 +156,8 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
       pendingScriptRef.current = false;
     }
   }, [storageKey]);
-
   const patchTab = useCallback((key: string, patch: Partial<QueryTab>) => {
+    if (patch.script !== undefined && activeTabRef.current?.key === key) activeTabRef.current = { ...activeTabRef.current, ...patch };
     setQueryState(prev => ({ ...prev, tabs: prev.tabs.map(tab => tab.key === key ? { ...tab, ...patch } : tab) }));
   }, []);
 
@@ -165,6 +169,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
   const updateScript = useCallback((script: string) => {
     const tab = activeTabRef.current;
     if (!tab) return;
+    draftEditedRef.current = true;
     activeTabRef.current = { ...tab, script };
     queryStateRef.current = { ...queryStateRef.current, tabs: queryStateRef.current.tabs.map(item => item.key === tab.key ? { ...item, script } : item) };
     pendingScriptRef.current = true;
@@ -245,10 +250,11 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
     toast.success('SQL query deleted');
   };
 
-  const run = useCallback(async (scriptOverride?: string) => {
+  const execute = useCallback(async (mode: 'run' | 'explain', scriptOverride?: string) => {
     const tab = activeTabRef.current;
     if (!tab) return;
-    setRunning(true);
+    const script = scriptOverride ?? tab.script;
+    setRunningMode(mode);
     const runId = crypto.randomUUID();
     runningIdRef.current = runId;
     const started = Date.now();
@@ -258,7 +264,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
       const res = await apiFetch(`/api/catalogs/${connectionId}/query/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: scriptOverride ?? tab.script, runId }),
+        body: JSON.stringify({ script, runId, mode, ...(mode === 'run' ? { maxRows: 200 } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to run SQL query');
@@ -267,17 +273,19 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
       status = runningIdRef.current ? 'error' : 'cancelled';
       patchTab(tab.key, { error: err.message });
     } finally {
-      const entry: QueryExecution = { id: runId, script: scriptOverride ?? tab.script, status, durationMs: Date.now() - started, executedAt: new Date().toISOString() };
+      const entry: QueryExecution = { id: runId, script, mode, status, durationMs: Date.now() - started, executedAt: new Date().toISOString() };
       setHistory(previous => {
         const next = [entry, ...previous].slice(0, 100);
         try { localStorage.setItem(`erd-db-query-history:${connectionId}`, JSON.stringify(next)); } catch {}
         return next;
       });
       runningIdRef.current = null;
-      setRunning(false);
+      setRunningMode(null);
     }
   }, [connectionId, patchTab]);
 
+  const run = useCallback((script?: string) => execute('run', script), [execute]);
+  const explain = useCallback((script?: string) => execute('explain', script), [execute]);
   const cancelRun = useCallback(async () => {
     const runId = runningIdRef.current;
     if (!runId) return;
@@ -304,8 +312,8 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
     sqlLang(),
     autocompletion({ override: [completion], selectOnOpen: true }),
     Prec.highest(keymap.of([
-      { key: 'Cmd-Enter', run: (view) => { void run(view.state.doc.toString()); return true; } },
-      { key: 'Ctrl-Enter', run: (view) => { void run(view.state.doc.toString()); return true; } },
+      { key: 'Cmd-Enter', run: (view) => { void run(runnableSql(view, '')); return true; } },
+      { key: 'Ctrl-Enter', run: (view) => { void run(runnableSql(view, '')); return true; } },
       { key: 'Cmd-i', run: (view) => { beautifyActiveTab(view.state.doc.toString()); return true; } },
       { key: 'Ctrl-i', run: (view) => { beautifyActiveTab(view.state.doc.toString()); return true; } },
     ])),
@@ -345,7 +353,8 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
               <div className="flex h-full min-h-0 flex-col">
                 <div className="min-h-0 flex-1">
                   <CodeMirror
-                    value={activeTab.script}
+                    onCreateEditor={view => { editorViewRef.current = view; }}
+                    value={reconcileLiveTab(activeTab, activeTabRef.current)?.script || ''}
                     height="100%"
                     theme={resolvedTheme === 'dark' ? oneDark : undefined}
                     basicSetup={{ autocompletion: false, lineNumbers: true }}
@@ -354,14 +363,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
                     className="h-full text-sm"
                   />
                 </div>
-                <div className="flex shrink-0 justify-end gap-2 border-t px-2 py-1">
-                  <Button size="sm" variant="outline" onClick={() => beautifyActiveTab()} disabled={beautifying}>
-                    <Sparkles className="mr-1.5 h-3.5 w-3.5" /> {beautifying ? 'Beautifying' : 'Beautify'}
-                  </Button>
-                  <Button size="sm" variant={running ? 'destructive' : 'default'} onClick={() => running ? cancelRun() : run()}>
-                    {running ? <Square className="mr-1.5 h-3.5 w-3.5" /> : <Play className="mr-1.5 h-3.5 w-3.5" />} {running ? 'Stop' : 'Run'}
-                  </Button>
-                </div>
+                <DataQueryEditorActions beautifying={beautifying} runningMode={runningMode} onBeautify={() => beautifyActiveTab()} onStop={() => void cancelRun()} onExplain={() => explain(runnableSql(editorViewRef.current, activeTab.script))} onRun={() => run(runnableSql(editorViewRef.current, activeTab.script))} />
               </div>
             </div>
           </>
