@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
 import { mergeAttributes } from '@tiptap/core';
@@ -10,9 +10,6 @@ import { SearchableSelect } from '@/components/SearchableSelect';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { dbmlToERD } from '@/lib/dbml-converter';
-import { parseSQLToERD } from '@/lib/sqlParser';
-import { previewFlowchartContent } from '@/components/ai/actions/flowchartActions';
 
 type Catalog = {
   id: number;
@@ -43,20 +40,16 @@ let catalogsPromise: Promise<Catalog[]> | null = null;
 let catalogsCache: Catalog[] | null = null;
 
 export function detectCodeBlockConversions(content: string, language: string | null): CodeBlockConversionKind[] {
-  const source = content.trim();
+  const source = content.slice(0, 20_000).trim();
   if (!source) return [];
   const normalizedLanguage = language?.toLowerCase() || '';
   const kinds: CodeBlockConversionKind[] = [];
   const looksLikeDbml = /(?:^|\n)\s*(?:Project|TableGroup|Table|Enum)\s+(?:"[^"]+"|[\w.]+)\s*\{|(?:^|\n)\s*Ref\s*:/im.test(source);
   const looksLikeSql = /\b(?:create|alter)\s+table\b/i.test(source);
 
-  if (normalizedLanguage === 'dbml' || looksLikeDbml) {
-    try { dbmlToERD(source); kinds.push('erd'); } catch {}
-  } else if ((['sql', 'mysql', 'postgresql', 'sqlite'].includes(normalizedLanguage) || looksLikeSql) && looksLikeSql) {
-    try { if (parseSQLToERD(source).nodes.length) kinds.push('erd'); } catch {}
-  }
+  if (looksLikeDbml || (['sql', 'mysql', 'postgresql', 'sqlite'].includes(normalizedLanguage) && looksLikeSql)) kinds.push('erd');
 
-  if ((['json', 'flowchart'].includes(normalizedLanguage) || source.startsWith('{')) && previewFlowchartContent(source)?.nodes.length) {
+  if ((['json', 'flowchart'].includes(normalizedLanguage) || source.startsWith('{')) && /"nodes"\s*:\s*\[\s*\{/i.test(source)) {
     kinds.push('flowchart');
   }
   return kinds;
@@ -88,32 +81,14 @@ function cellText(value: unknown) {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
-function useCodeBlockConversions(content: string, language: string | null) {
-  const [convertible, setConvertible] = useState<CodeBlockConversionKind[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setConvertible([]);
-    const detect = () => {
-      if (!cancelled) setConvertible(detectCodeBlockConversions(content, language));
-    };
-    const idleId = window.requestIdleCallback?.(detect, { timeout: 500 });
-    const timeoutId = idleId === undefined ? window.setTimeout(detect, 0) : undefined;
-    return () => {
-      cancelled = true;
-      if (idleId !== undefined) window.cancelIdleCallback?.(idleId);
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-    };
-  }, [content, language]);
-
-  return convertible;
-}
-
 function ExecutableCodeBlockView({ node, editor, updateAttributes, getPos }: NodeViewProps) {
   const executable = node.attrs.language === 'sql' && isInstalledApp() && editor.isEditable;
   const language = String(node.attrs.language || 'plaintext');
   const languageLabel = CODE_LANGUAGES.find(([value]) => value === language)?.[1] ?? language;
-  const convertible = useCodeBlockConversions(node.textContent, node.attrs.language);
+  const convertible = useMemo(
+    () => detectCodeBlockConversions(node.textContent, node.attrs.language),
+    [node.attrs.language, node.textContent],
+  );
   const [catalogs, setCatalogs] = useState<Catalog[]>(() => catalogsCache ?? []);
   const [catalogId, setCatalogId] = useState(() => localStorage.getItem(LAST_CATALOG_KEY) || '');
   const [catalogsLoaded, setCatalogsLoaded] = useState(() => catalogsCache !== null);

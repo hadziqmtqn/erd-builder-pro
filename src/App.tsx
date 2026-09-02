@@ -1,5 +1,5 @@
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { useRef, useEffect, useState } from 'react';
+import { lazy, Suspense, useRef, useEffect, useState, type ReactNode } from 'react';
 
 // Components
 import { Login } from './components/Login';
@@ -21,15 +21,20 @@ import { WorkspaceProvider } from './providers/WorkspaceProvider';
 // Routes
 import { AppLayout } from './routes/AppLayout';
 import { TableRoute } from './routes/TableRoute';
-import { NoteEditorRoute } from './routes/NoteEditorRoute';
-import { DiagramEditorRoute } from './routes/DiagramEditorRoute';
-import { DbClientEditorRoute } from './routes/DbClientEditorRoute';
-import { DrawingEditorRoute } from './routes/DrawingEditorRoute';
-import { FlowchartEditorRoute } from './routes/FlowchartEditorRoute';
-import { AdminRoute } from './routes/AdminRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { OAuthConsent } from './components/OAuthConsent';
+
+const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
+const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
+const DbClientEditorRoute = lazy(() => import('./routes/DbClientEditorRoute').then(module => ({ default: module.DbClientEditorRoute })));
+const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
+const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));
+const AdminRoute = lazy(() => import('./routes/AdminRoute').then(module => ({ default: module.AdminRoute })));
+
+function lazyRoute(element: ReactNode) {
+  return <Suspense fallback={<div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">Opening file…</div>}>{element}</Suspense>;
+}
 
 function AppContent() {
   const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
@@ -143,14 +148,14 @@ function AppContent() {
           <Route path="table/:feature" element={<TableRoute />} />
 
           {/* Document editors */}
-          <Route path="notes/:id" element={<NoteEditorRoute />} />
-          <Route path="diagrams/:id" element={<DiagramEditorRoute />} />
-          <Route path="db-client/:id" element={<DbClientEditorRoute />} />
-          <Route path="drawings/:id" element={<DrawingEditorRoute />} />
-          <Route path="flowcharts/:id" element={<FlowchartEditorRoute />} />
+          <Route path="notes/:id" element={lazyRoute(<NoteEditorRoute />)} />
+          <Route path="diagrams/:id" element={lazyRoute(<DiagramEditorRoute />)} />
+          <Route path="db-client/:id" element={lazyRoute(<DbClientEditorRoute />)} />
+          <Route path="drawings/:id" element={lazyRoute(<DrawingEditorRoute />)} />
+          <Route path="flowcharts/:id" element={lazyRoute(<FlowchartEditorRoute />)} />
 
           {/* Admin pages */}
-          <Route path="trash" element={<AdminRoute />} />
+          <Route path="trash" element={lazyRoute(<AdminRoute />)} />
 
           {/* Default: Dashboard */}
           <Route index element={<DashboardRoute />} />

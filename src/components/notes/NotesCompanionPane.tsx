@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addEdge,
   applyEdgeChanges,
@@ -27,14 +27,14 @@ import { type Entity } from '@/types';
 import EntityNode, { NOTES_COMPANION_ENTITY_EDIT_EVENT } from '@/components/diagram/EntityNode';
 import { edgeToRelationship } from '@/lib/diagram-payload';
 import { erdToDBML } from '@/lib/dbml-converter';
-import { FlowchartView } from '@/components/views/FlowchartView';
-import ExcalidrawEditor from '@/components/ExcalidrawEditor';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
 import { Button } from '@/components/ui/button';
 import type { CompanionPane } from './NotesCompanionWorkspace';
 
 const erdNodeTypes = { entity: EntityNode };
+const FlowchartView = lazy(() => import('@/components/views/FlowchartView').then(module => ({ default: module.FlowchartView })));
+const ExcalidrawEditor = lazy(() => import('@/components/ExcalidrawEditor'));
 
 function parseData(value: unknown) {
   if (!value) return null;
@@ -68,6 +68,7 @@ function normalizeEntity(entity: any) {
     position: { x, y },
     data: {
       ...data,
+      _notesCompanion: true,
       id,
       name: data.name ?? entity.name ?? 'Untitled',
       x,
@@ -137,6 +138,22 @@ function diagramState(document: any) {
   } as { nodes: Node<Entity>[]; edges: Edge[] };
 }
 
+export function styleCompanionEdges(edges: Edge[], selectedNodeId: string | null) {
+  const hasSelection = Boolean(selectedNodeId);
+  return edges.map(edge => {
+    const connected = hasSelection && (edge.source === selectedNodeId || edge.target === selectedNodeId);
+    const color = connected || edge.selected ? 'var(--edge-selected)' : 'var(--edge-color)';
+    const classes = [edge.className, connected ? 'edge-animated-active' : hasSelection ? 'edge-dimmed' : ''].filter(Boolean).join(' ');
+    return {
+      ...edge,
+      type: 'smoothstep',
+      style: { ...edge.style, stroke: color, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.Arrow, color, width: 10, height: 10 },
+      className: classes,
+    };
+  });
+}
+
 function DiagramCanvas({ document }: { document: any }) {
   const initial = useMemo(() => diagramState(document), [document]);
   const { isGuest, resolvedTheme } = useWorkspace();
@@ -149,8 +166,6 @@ function DiagramCanvas({ document }: { document: any }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   nodesRef.current = nodes;
   edgesRef.current = edges;
-
-  useEffect(() => { setNodes(initial.nodes); setEdges(initial.edges); setSelectedNodeId(null); }, [initial]);
 
   const persist = useCallback((nextNodes: Node<Entity>[], nextEdges: Edge[]) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -295,17 +310,17 @@ function DiagramCanvas({ document }: { document: any }) {
     style: { stroke: 'var(--edge-color)', strokeWidth: 2 },
     markerEnd: { type: MarkerType.Arrow, color: 'var(--edge-color)', width: 10, height: 10 },
   }), []);
-  const displayNodes = useMemo(() => nodes.map(node => ({
-    ...node,
-    selected: node.id === selectedNodeId,
-    data: { ...node.data, _notesCompanion: true },
-  })), [nodes, selectedNodeId]);
+  const displayNodes = useMemo(() => nodes.map(node => {
+    const selected = node.id === selectedNodeId;
+    return !!node.selected === selected ? node : { ...node, selected };
+  }), [nodes, selectedNodeId]);
+  const displayEdges = useMemo(() => styleCompanionEdges(edges, selectedNodeId), [edges, selectedNodeId]);
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-background">
       <ReactFlow
         nodes={displayNodes}
-        edges={edges}
+        edges={displayEdges}
         nodeTypes={erdNodeTypes}
         onNodesChange={updateNodes}
         onEdgesChange={updateEdges}

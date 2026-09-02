@@ -68,7 +68,6 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
     activeProjectId,
     activeDiagram, activeNote, activeDrawing, activeFlowchart,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
-    diagrams, notes, drawings, flowcharts,
     handleDiagramSelect,
     handleSidebarDiagramCreate, handleSidebarNoteCreate,
     handleSidebarDrawingCreate, handleSidebarFlowchartCreate,
@@ -146,19 +145,19 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
 
   const projectFiles = useMemo(() => {
     if (!projectId) return []
-    const byProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId)
-    const contextFiles: ProjectFileTab[] = [
-      ...notes.filter(byProject).map(file => ({ file, type: 'notes' as const })),
-      ...diagrams.filter(file => byProject(file) && (file.source_type ?? file.sourceType ?? 'blank') !== 'production_db').map(file => ({ file, type: 'erd' as const })),
-      ...flowcharts.filter(byProject).map(file => ({ file, type: 'flowchart' as const })),
-      ...drawings.filter(byProject).map(file => ({ file, type: 'drawings' as const })),
-      ...(currentView === 'db-client' && currentFile ? [{ file: currentFile, type: 'db-client' as const }] : []),
-    ]
+    const activeFile = currentFile ?? (currentView === 'notes'
+      ? activeNote
+      : currentView === 'erd'
+        ? activeDiagram
+        : currentView === 'flowchart'
+          ? activeFlowchart
+          : activeDrawing)
+    const activeEntry: ProjectFileTab[] = activeFile ? [{ file: activeFile, type: currentView }] : []
     return [...new Map<string, ProjectFileTab>([
       ...workspaceFiles.map(file => [`${file.type}-${file.uid}`, { file, type: file.type }] as [string, ProjectFileTab]),
-      ...contextFiles.map(item => [`${item.type}-${getFileUid(item.file)}`, item] as [string, ProjectFileTab]),
+      ...activeEntry.map(item => [`${item.type}-${getFileUid(item.file)}`, item] as [string, ProjectFileTab]),
     ]).values()].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
-  }, [projectId, notes, diagrams, flowcharts, drawings, workspaceFiles, currentView, currentFile])
+  }, [projectId, workspaceFiles, currentView, currentFile, activeNote, activeDiagram, activeFlowchart, activeDrawing])
 
   const activeUid = currentFile ? getFileUid(currentFile) : currentView === 'notes'
     ? activeNoteUid

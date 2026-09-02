@@ -11,7 +11,7 @@
     "build": "vite build",
     "build:server": "node scripts/build-server.js",
     "build:cli": "bash scripts/build-cli.sh",
-    "build:desktop": "npm rebuild better-sqlite3 && rm -rf node_modules/.prisma/client && cross-env DB_VARIANT=sqlite prisma generate && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && node scripts/build-mcp-launcher.js && rm -rf dist && vite build",
+    "build:desktop": "npm rebuild better-sqlite3 && rm -rf node_modules/.prisma/client && cross-env DB_VARIANT=sqlite prisma generate && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && npm run build:server && node -e \"try{require('./dist-server/node_modules/better-sqlite3')}catch(e){console.error('BUILD FAIL: better-sqlite3 load error:',e.message);process.exit(1)}\" && node scripts/download-node.js && node scripts/build-mcp-launcher.js && rm -rf dist && cross-env VITE_SINGLE_BUNDLE=true vite build",
     "start": "cross-env NODE_ENV=production tsx server/run.ts",
     "preview": "vite preview",
     "postinstall": "npm run db:generate:pg",
