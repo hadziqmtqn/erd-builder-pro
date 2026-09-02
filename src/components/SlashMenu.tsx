@@ -114,9 +114,13 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 }) => {
   const requestCompanion = (type: NonNullable<SlashMenuItem['companionType']>) => {
     editor.chain().focus().deleteRange(range).run();
-    const position = editor.state.selection.from;
+    const { $from } = editor.state.selection;
+    const position = $from.parent.content.size === 0 ? $from.before() : $from.after();
+    const insertionRange = $from.parent.content.size === 0
+      ? { from: position, to: $from.after() }
+      : { from: position, to: position };
     onClose();
-    onRequestCompanion?.(type, editor, { from: position, to: position });
+    onRequestCompanion?.(type, editor, insertionRange);
   };
   const [indexStack, setIndexStack] = useState<number[]>([0]);
   const selectedIndex = indexStack[indexStack.length - 1] || 0;
@@ -138,6 +142,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
   const filteredItems = useMemo(() => {
     if (currentItems === 'icon-search') return [];
+    if (isSubMenu) {
+      return currentItems.filter(item => !item.installedOnly || isInstalledApp());
+    }
     
     const q = query.toLowerCase();
     // If searching, we search across all levels for flat access (like Notion)
@@ -146,7 +153,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       const collect = (items: SlashMenuItem[]) => {
         items.forEach(item => {
           if (item.installedOnly && !isInstalledApp()) return;
-          if (item.command || item.customView || item.companionType) flattened.push(item);
+          if (item.title.toLowerCase().includes(q) && (item.command || item.customView || item.companionType || item.children)) {
+            flattened.push(item);
+          }
           if (item.children) collect(item.children);
         });
       };
@@ -159,7 +168,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
     return Array.isArray(currentItems)
       ? currentItems.filter(item => !item.installedOnly || isInstalledApp())
       : [];
-  }, [query, currentItems]);
+  }, [query, currentItems, isSubMenu]);
 
   useEffect(() => {
     setSelectedIndex(0);

@@ -333,9 +333,14 @@ export const NotesView = React.memo(({
                 onClick={() => {
                   const file = companionFiles[companionRequest.type].find(item => item.uid === selectedCompanionUid);
                   if (!file) return;
-                  companionRequest.editor.chain().focus().deleteRange(companionRequest.range).insertContent({
-                    type: 'companionReference', attrs: { targetType: companionRequest.type, targetUid: file.uid, title: file.title },
-                  }).run();
+                  const inserted = companionRequest.editor.chain().focus().insertContentAt(companionRequest.range, [
+                    { type: 'companionReference', attrs: { targetType: companionRequest.type, targetUid: file.uid, title: file.title } },
+                    { type: 'paragraph' },
+                  ]).run();
+                  if (!inserted) {
+                    toast.error('Could not insert preview card');
+                    return;
+                  }
                   openCompanion(companionRequest.type, file.uid, file.title);
                   setCompanionRequest(null);
                 }}
