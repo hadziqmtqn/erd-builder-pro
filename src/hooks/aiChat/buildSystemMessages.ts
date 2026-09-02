@@ -15,9 +15,12 @@ Database & ERD:
 - In the ERD Builder view, when the user asks to CREATE, GENERATE, or MODIFY a schema, output DBML inside \`\`\`dbml blocks. ERD Builder can apply DBML to the canvas manually from the assistant message actions.
 - If the answer is a PRD, note, plan, or documentation that includes a database schema section, that schema section must still use DBML in a \`\`\`dbml block unless the user explicitly asks for SQL.
 - Use SQL only when the user explicitly asks for SQL queries, migrations, DDL, or seed data. In DB Client, match the live MySQL/PostgreSQL dialect and treat SQL as a proposal until confirmed.
-- For DBML: use Table blocks, [pk], [not null], [note: '...'] for column comments, sized types like VARCHAR(100) and DECIMAL(10,2) when modifiers matter, Enum blocks when needed, and Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
+- For DBML: use Table blocks, [pk], [not null], [note: '...'] for column comments, sized types like VARCHAR(100) and DECIMAL(10,2) when modifiers matter, Enum blocks when needed, and standalone Ref lines for relationships. Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM. Use English identifiers unless the user asks otherwise.
 - Character-length rule: always write VARCHAR with an explicit maximum length; if the user does not specify one, use VARCHAR(255). Apply the same rule to other bounded character types such as CHAR, using an explicit length instead of an unbounded type.
 - DBML ENUM rule: every enum-typed column must reference an Enum named exactly {table_name}_{column_name}. Example: jokes.humor_level must use type jokes_humor_level and a matching Enum jokes_humor_level { ... } block; never use a generic type such as humor_level.
+- DBML relationship rule: declare each relationship once using Ref: child.parent_id > parents.id. Never use inline [ref: ...] column attributes, and never omit the > direction marker.
+- DBML unique rule: use [unique] for one column. For a composite unique constraint, put Indexes { (column_a, column_b) [unique] } inside its Table block. Never output SQL-like unique (column_a, column_b).
+- Output only parser-valid DBML. Check these rules before responding; the user must be able to generate an ERD from the block without manually repairing syntax.
 
 Flowcharts:
 - When asked to create/modify a flowchart, output JSON in the format: {"nodes":[{"label":"Name","shape":"rectangle","color":"#3b82f6"}],"edges":[{"sourceLabel":"A","targetLabel":"B"}]}
@@ -42,8 +45,11 @@ export function buildSchemaFormatOverride(): string {
 - If a PRD, note, plan, or documentation includes a database schema section, that schema section must use DBML unless the user explicitly asks for SQL.
 - Use SQL only when the user explicitly asks for SQL, migrations, DDL, queries, or seed data.
 - DBML must use Table blocks, [pk], [not null], Enum blocks when needed, and Ref lines for relationships.
+- Declare each relationship once as Ref: child.parent_id > parents.id; never use inline [ref: ...] attributes or omit the > direction marker.
+- Use [unique] for a single column. For composite uniqueness, use Indexes { (column_a, column_b) [unique] } inside the Table block; never write unique (column_a, column_b).
 - Always write VARCHAR with an explicit maximum length; default to VARCHAR(255) when the user does not specify one. Use explicit lengths for other bounded character types such as CHAR as well.
 - Every enum-typed column must reference an Enum named exactly {table_name}_{column_name}, with a matching Enum block. For example, jokes.humor_level uses jokes_humor_level; never use a generic enum name such as humor_level.
+- Before responding, ensure the DBML can be parsed directly by ERD Builder Pro without manual repair.
 - Tell the user to click Append to preview/apply DBML to the ERD canvas when relevant.`;
 }
 

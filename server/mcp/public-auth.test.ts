@@ -63,7 +63,7 @@ describe("public MCP boundary", () => {
   });
 
   it("keeps the public tool allowlist web-only and read-only", () => {
-    expect(PUBLIC_MCP_TOOL_NAMES).toEqual(["workspace_list_files", "document_read", "history_list", "history_read"]);
+    expect(PUBLIC_MCP_TOOL_NAMES).toEqual(["workspace_list_files", "workspace_search", "document_read", "history_list", "history_read"]);
     expect(PUBLIC_MCP_TOOL_NAMES.some(name => name.startsWith("db_") || name.endsWith("_apply"))).toBe(false);
   });
 

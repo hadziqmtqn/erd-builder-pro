@@ -272,8 +272,13 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
     role TEXT CHECK (role IN ('system', 'user', 'assistant')) NOT NULL,
     content TEXT NOT NULL,
     selection_text TEXT DEFAULT NULL,
+    client_message_id VARCHAR(64) DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE ai_chat_messages ADD COLUMN IF NOT EXISTS client_message_id VARCHAR(64);
+CREATE UNIQUE INDEX IF NOT EXISTS ai_chat_messages_session_id_client_message_id_key
+ON ai_chat_messages(session_id, client_message_id);
 
 -- System Prompts Table
 CREATE TABLE IF NOT EXISTS ai_system_prompts (

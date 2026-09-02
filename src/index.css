@@ -75,6 +75,21 @@
   cursor: help;
 }
 
+/* Lowlight uses highlight.js class names inside Tiptap code blocks. */
+.hljs-comment,
+.hljs-quote { color: hsl(220, 14%, 56%); }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal { color: hsl(273, 73%, 40%); }
+.hljs-string,
+.hljs-attr,
+.hljs-title.class_ { color: hsl(132, 63%, 25%); }
+.hljs-number,
+.hljs-attribute,
+.hljs-symbol { color: hsl(14, 73%, 35%); }
+.hljs-title.function_,
+.hljs-function .hljs-title { color: hsl(221, 87%, 50%); }
+
 /* Dark mode: Dracula-inspired colors */
 .dark .token.comment,
 .dark .token.prolog,
@@ -117,6 +132,20 @@
 .dark .token.keyword {
   color: #ff79c6;
 }
+
+.dark .hljs-comment,
+.dark .hljs-quote { color: #6272a4; }
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal { color: #ff79c6; }
+.dark .hljs-string,
+.dark .hljs-attr,
+.dark .hljs-title.class_ { color: #50fa7b; }
+.dark .hljs-number,
+.dark .hljs-attribute,
+.dark .hljs-symbol { color: #bd93f9; }
+.dark .hljs-title.function_,
+.dark .hljs-function .hljs-title { color: #8be9fd; }
 
 .dark .token.function,
 .dark .token.maybe-class-name {
@@ -735,6 +764,19 @@ code:not(pre code) {
   padding: 0 !important;
   background: none !important;
   font-size: 0.875rem !important;
+}
+
+.tiptap-editor [data-executable-sql] pre {
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* A NodeView owns its own compact frame; the generic prose pre spacing would
+   otherwise create a second empty card inside it. */
+.tiptap-editor [data-note-code-block] > pre {
+  margin: 0 !important;
+  padding: 0.75rem !important;
+  border-radius: 0 !important;
 }
 
 .tiptap-editor .is-empty::before {

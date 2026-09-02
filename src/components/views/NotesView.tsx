@@ -11,6 +11,17 @@ import { getMarkdownFromHtml } from '@/lib/markdownUtils';
 import { NoteImporter } from '@/lib/importers/note-importer';
 import { applyToNoteContent } from '@/components/ai/actions/notesActions';
 import { stripAiFluff } from '@/components/ai/chatUtils';
+import { NotesHistoryPreview } from '@/components/history/NotesHistoryPreview';
+import { NOTE_HISTORY_PREVIEW_EVENT } from '@/lib/note-history-diff';
+import { useWorkspace } from '@/providers/WorkspaceContext';
+import { useSidebar } from '@/components/ui/sidebar';
+import { NotesCompanionWorkspace, type CompanionPane } from '@/components/notes/NotesCompanionWorkspace';
+import { NOTES_COMPANION_EVENT } from '@/components/editor/extensions/CompanionReference';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useNavigate } from 'react-router-dom';
+
+const NotesCompanionPane = React.lazy(() => import('@/components/notes/NotesCompanionPane').then(module => ({ default: module.NotesCompanionPane })));
 
 interface NotesViewProps {
   activeNoteUid: string | null;
@@ -32,9 +43,66 @@ export const NotesView = React.memo(({
   isLoading = false
 }: NotesViewProps) => {
   const { registerContentHandler } = useAIAction();
+  const navigate = useNavigate();
+  const { diagrams, flowcharts, drawings, activeProjectId } = useWorkspace();
+  const { setOpen: setSidebarOpen } = useSidebar();
   const confirmLockRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [historyPreview, setHistoryPreview] = useState<{ content: string; version: number } | null>(null);
   const preAiContentRef = useRef<string | null>(null);
+  const [companionPanes, setCompanionPanes] = useState<CompanionPane[]>([]);
+  const [companionRequest, setCompanionRequest] = useState<{ type: CompanionPane['type']; editor: any; range: { from: number; to: number } } | null>(null);
+  const [selectedCompanionUid, setSelectedCompanionUid] = useState('');
+
+  const companionFiles = React.useMemo(() => {
+    const projectId = activeNote?.project_id ?? activeNote?.projectId ?? activeProjectId;
+    const belongsToActiveProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId);
+    return {
+      erd: diagrams.filter(belongsToActiveProject).map(file => ({ uid: String(file.uid ?? file.id), title: file.name || 'Untitled' })),
+      flowchart: flowcharts.filter(belongsToActiveProject).map(file => ({ uid: String(file.uid ?? file.id), title: file.title || 'Untitled' })),
+      drawing: drawings.filter(belongsToActiveProject).map(file => ({ uid: String(file.uid ?? file.id), title: file.title || 'Untitled' })),
+    };
+  }, [activeNote, activeProjectId, diagrams, drawings, flowcharts]);
+
+  const openCompanion = React.useCallback((type: CompanionPane['type'], uid: string, title?: string) => {
+    const files = companionFiles[type];
+    const file = files.find(item => item.uid === String(uid));
+    setCompanionPanes(current => {
+      if (current.some(pane => pane.type === type && pane.uid === String(uid))) return current;
+      return [{ type, uid: String(uid), title: title || file?.title || 'Unavailable file' }];
+    });
+  }, [companionFiles]);
+
+  useEffect(() => {
+    if (companionPanes.length) setSidebarOpen(false);
+  }, [companionPanes.length, setSidebarOpen]);
+
+  useEffect(() => {
+    setCompanionPanes([]);
+    setCompanionRequest(null);
+  }, [activeNoteUid]);
+
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: CompanionPane['type']; uid?: string; title?: string }>).detail;
+      if (detail?.type && detail.uid) openCompanion(detail.type, detail.uid, detail.title);
+    };
+    window.addEventListener(NOTES_COMPANION_EVENT, onOpen);
+    return () => window.removeEventListener(NOTES_COMPANION_EVENT, onOpen);
+  }, [openCompanion]);
+
+  useEffect(() => {
+    setHistoryPreview(null);
+    const handleHistoryPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ content?: string; version?: number }>).detail;
+      setHistoryPreview(detail?.content !== undefined ? {
+        content: detail.content,
+        version: Number(detail.version) || 0,
+      } : null);
+    };
+    window.addEventListener(NOTE_HISTORY_PREVIEW_EVENT, handleHistoryPreview);
+    return () => window.removeEventListener(NOTE_HISTORY_PREVIEW_EVENT, handleHistoryPreview);
+  }, [activeNoteUid]);
 
   const showSkeleton = isLoading || (activeNote && activeNote.content == null);
   const [pendingChange, setPendingChange] = useState<{
@@ -206,16 +274,81 @@ export const NotesView = React.memo(({
   if (!activeNote) return null;
   
   return (
-    <div className="flex-1 border rounded-xl overflow-hidden bg-background relative">
+    <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border bg-background">
 
-      <NotesEditor 
-        key={activeNoteUid} 
-        note={activeNote} 
-        onSave={saveNote} 
-        onChange={handleNoteChange} 
-        onDelete={deleteNote} 
-        isReadOnly={isReadOnly}
-      />
+      <div className={`h-full min-h-0 ${historyPreview ? 'hidden' : ''}`} aria-hidden={Boolean(historyPreview)}>
+        <NotesCompanionWorkspace
+          panes={companionPanes}
+          onClose={closed => setCompanionPanes(current => current.filter(pane => pane.type !== closed.type || pane.uid !== closed.uid))}
+          onOpenFull={pane => navigate(`/${pane.type === 'erd' ? 'diagrams' : pane.type === 'flowchart' ? 'flowcharts' : 'drawings'}/${pane.uid}?pid=${encodeURIComponent(String(activeNote.project_id ?? activeNote.projectId ?? activeProjectId ?? ''))}`)}
+          note={<NotesEditor
+            note={activeNote}
+            onSave={saveNote}
+            onChange={handleNoteChange}
+            onDelete={deleteNote}
+            isReadOnly={isReadOnly}
+            compactLayout={companionPanes.length > 0}
+            onRequestCompanion={(type, editor, range) => {
+              setSelectedCompanionUid('');
+              setCompanionRequest({ type, editor, range });
+            }}
+          />}
+          renderPane={pane => (
+            <React.Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-muted-foreground">Loading preview...</div>}>
+              <NotesCompanionPane pane={pane} />
+            </React.Suspense>
+          )}
+        />
+      </div>
+
+      {historyPreview && (
+        <div className="absolute inset-0 z-10 bg-background">
+          <NotesHistoryPreview
+            currentContent={String(activeNote.content || '')}
+            historicalContent={historyPreview.content}
+            version={historyPreview.version}
+          />
+        </div>
+      )}
+
+      {companionRequest && (
+        <Dialog open onOpenChange={open => { if (!open) setCompanionRequest(null); }}>
+          <DialogContent size="sm">
+            <DialogHeader><DialogTitle>Open {companionRequest.type === 'erd' ? 'ERD' : companionRequest.type === 'flowchart' ? 'Flowchart' : 'Drawing'} preview</DialogTitle></DialogHeader>
+            <DialogBody className="space-y-4">
+              <Select value={selectedCompanionUid} onValueChange={value => setSelectedCompanionUid(value || '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a file from this project">
+                    {companionFiles[companionRequest.type].find(file => file.uid === selectedCompanionUid)?.title}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {companionFiles[companionRequest.type].map(file => <SelectItem key={file.uid} value={file.uid}>{file.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <button
+                type="button"
+                className="h-9 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                disabled={!selectedCompanionUid}
+                onClick={() => {
+                  const file = companionFiles[companionRequest.type].find(item => item.uid === selectedCompanionUid);
+                  if (!file) return;
+                  const inserted = companionRequest.editor.chain().focus().insertContentAt(companionRequest.range, [
+                    { type: 'companionReference', attrs: { targetType: companionRequest.type, targetUid: file.uid, title: file.title } },
+                    { type: 'paragraph' },
+                  ]).run();
+                  if (!inserted) {
+                    toast.error('Could not insert preview card');
+                    return;
+                  }
+                  openCompanion(companionRequest.type, file.uid, file.title);
+                  setCompanionRequest(null);
+                }}
+              >Open preview</button>
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      )}
       
       {pendingChange && (() => {
         const label: Record<string, string> = {

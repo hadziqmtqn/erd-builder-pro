@@ -9,6 +9,9 @@ const DEFAULT_RULES: Record<string, string> = {
     "- Untuk skema ERD, output schema harus menggunakan DBML dalam code block ```dbml kecuali user eksplisit meminta SQL.\n" +
     "- Setiap tabel harus memiliki primary key bernama id dengan tipe BIGINT atau UUID.\n" +
     "- Gunakan Ref DBML untuk foreign key dan nama kolom relasi berakhiran _id.\n" +
+    "- Deklarasikan setiap relasi sekali saja sebagai Ref: child.parent_id > parents.id; jangan gunakan [ref: ...] inline atau menghilangkan tanda >.\n" +
+    "- Unique satu kolom gunakan [unique]. Unique gabungan gunakan Indexes { (kolom_a, kolom_b) [unique] } di dalam Table; jangan gunakan unique (kolom_a, kolom_b).\n" +
+    "- VARCHAR/CHAR wajib memiliki panjang eksplisit; default VARCHAR(255). Nama Enum wajib {table_name}_{column_name}.\n" +
     "- Gunakan Enum DBML hanya jika value benar-benar terbatas dan reusable.\n" +
     "- Tambahkan kolom deleted_at untuk soft delete pada tabel master.",
   notes:

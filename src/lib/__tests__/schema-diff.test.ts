@@ -142,6 +142,25 @@ describe('computeSchemaDiff', () => {
     ]));
   });
 
+  it('detects and merges defaults, uniqueness, indexes, and constraints', () => {
+    const current = [makeNode('users', ['id', 'email'])];
+    const proposed = [makeNode('users', ['id', 'email'])];
+    Object.assign(proposed[0].data.columns[1], { default_value: "'unknown'", is_unique: true });
+    proposed[0].data.indexes = [{ id: 'idx', entity_id: 'users', name: 'users_email_idx', column_ids: ['1'], is_unique: true }];
+    proposed[0].data.constraints = [{ id: 'check', entity_id: 'users', kind: 'check', expression: 'email <> \'\'' }];
+
+    const diff = computeSchemaDiff(current, [], proposed, []);
+    expect(diff.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'column:users.email', state: 'modified' }),
+      expect.objectContaining({ id: 'table:users', state: 'modified' }),
+    ]));
+
+    const merged = mergeSchemaChanges(current, [], proposed, [], diff, diff.changes.map(change => change.id));
+    expect(merged.nodes[0].data.columns[1]).toMatchObject({ default_value: "'unknown'", is_unique: true });
+    expect(merged.nodes[0].data.indexes?.[0].name).toBe('users_email_idx');
+    expect(merged.nodes[0].data.constraints?.[0].kind).toBe('check');
+  });
+
   it('matches legacy-ID relationships by table and column names', () => {
     const current = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
     const proposed = [makeNode('users', ['id']), makeNode('posts', ['user_id'])];
@@ -153,7 +172,7 @@ describe('computeSchemaDiff', () => {
     const newEdge: Edge = { id: 'new', source: 'new-posts', target: 'new-users', sourceHandle: 'col-new-post-user-id-source', targetHandle: 'col-new-user-id-target', label: '1:N' };
 
     expect(computeSchemaDiff(current, [oldEdge], proposed, [newEdge]).changes.filter(change => change.kind === 'relation')).toEqual([]);
-    newEdge.label = '1:1';
+    newEdge.data = { on_delete: 'cascade' };
     expect(computeSchemaDiff(current, [oldEdge], proposed, [newEdge]).changes).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'relation', state: 'modified', id: 'relation:posts.user_id>users.id' }),
     ]));

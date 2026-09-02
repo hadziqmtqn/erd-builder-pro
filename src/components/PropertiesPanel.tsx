@@ -36,6 +36,7 @@ interface PropertiesPanelProps {
   onUpdateEntity: (entity: Entity, options?: { immediate?: boolean }) => void;
   onDeleteEntity: (id: string) => void;
   onBackToTables?: () => void;
+  propertiesOnly?: boolean;
 }
 
 export default function PropertiesPanel({ 
@@ -43,6 +44,7 @@ export default function PropertiesPanel({
   onUpdateEntity, 
   onDeleteEntity,
   onBackToTables,
+  propertiesOnly = false,
 }: PropertiesPanelProps) {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(selectedEntity);
   const [activeEditorTab, setActiveEditorTab] = useState<'properties' | 'schema' | 'dbml'>('properties');
@@ -292,16 +294,36 @@ export default function PropertiesPanel({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="shrink-0 border-b border-border bg-background px-4 py-3">
-        {onBackToTables && (
-          <div className="mb-3 flex min-w-0 items-center gap-2 text-xs">
+        <div className="mb-3 flex min-w-0 items-center gap-2 text-xs">
+          {onBackToTables ? <>
             <button type="button" onClick={onBackToTables} className="flex shrink-0 items-center gap-1 font-medium text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-3.5" /> Tables
             </button>
             <span className="text-muted-foreground/50">/</span>
             <span className="truncate font-medium text-foreground">{editingEntity.name}</span>
-          </div>
-        )}
-        <div className="flex w-full gap-1 rounded-lg border border-border bg-muted p-1" aria-label="Table editor sections">
+          </> : <span className="truncate font-medium text-foreground">{editingEntity.name}</span>}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="ml-auto shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            title="Delete table"
+            aria-label={`Delete table ${editingEntity.name}`}
+            onClick={() => setConfirmModal({
+              isOpen: true,
+              title: 'Delete Table',
+              message: `Are you sure you want to delete the table "${editingEntity.name}"? This action cannot be undone.`,
+              onConfirm: () => {
+                if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+                onDeleteEntity(editingEntity.id);
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+              },
+            })}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+        {!propertiesOnly && <div className="flex w-full gap-1 rounded-lg border border-border bg-muted p-1" aria-label="Table editor sections">
           {[
             ['properties', 'Properties'],
             ['schema', 'Schema'],
@@ -322,10 +344,10 @@ export default function PropertiesPanel({
               {label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
-      {activeEditorTab !== 'properties' ? (
+      {!propertiesOnly && activeEditorTab !== 'properties' ? (
         <TableCodePanel
           entity={editingEntity}
           mode={activeEditorTab}

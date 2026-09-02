@@ -1,6 +1,7 @@
 export type QueryExecution = {
   id: string;
   script: string;
+  mode?: 'run' | 'explain';
   status: 'success' | 'error' | 'cancelled';
   durationMs: number;
   executedAt: string;
@@ -30,7 +31,7 @@ export function DataQuerySidebar({ groups, history, activeQueryId, dirtyQueryIds
         {history.map(entry => (
           <button key={entry.id} onClick={() => onOpenHistory(entry)} className="w-full rounded px-2 py-1.5 text-left hover:bg-accent/50">
             <div className="truncate font-mono text-[11px]">{entry.script.replace(/\s+/g, ' ')}</div>
-            <div className={`text-[10px] ${entry.status === 'success' ? 'text-emerald-600' : 'text-destructive'}`}>{entry.status} · {entry.durationMs}ms</div>
+            <div className={`text-[10px] ${entry.status === 'success' ? 'text-emerald-600' : 'text-destructive'}`}>{entry.mode || 'run'} · {entry.status} · {entry.durationMs}ms</div>
           </button>
         ))}
         {history.length === 0 && <div className="text-xs text-muted-foreground">No executions yet</div>}

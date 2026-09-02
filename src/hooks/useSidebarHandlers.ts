@@ -53,11 +53,11 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     setIsImportNoteModalOpen, setIsExportNoteModalOpen,
   } = params;
 
-  const handleSidebarDiagramCreate = useCallback(async (n: string, pid?: number | string | null) => {
+  const handleSidebarDiagramCreate = useCallback(async (n: string, pid?: number | string | null, options?: { silent?: boolean }) => {
     const d = await createDiagram(n, pid);
     if (d) {
       await fetchProjects();
-      await handleDiagramSelect(d.uid || d.id);
+      if (!options?.silent) await handleDiagramSelect(d.uid || d.id);
     }
     return d;
   }, [createDiagram, fetchProjects, handleDiagramSelect]);
@@ -71,19 +71,20 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     return n;
   }, [createNote, fetchProjects, handleNoteSelect]);
 
-  const handleSidebarDrawingCreate = useCallback(async (t: string, pid?: number | string | null) => {
+  const handleSidebarDrawingCreate = useCallback(async (t: string, pid?: number | string | null, options?: { silent?: boolean }) => {
     const d = await createDrawing(t, pid);
     if (d) {
       await fetchProjects();
-      await handleDrawingSelect(d.uid ?? d.id);
+      if (!options?.silent) await handleDrawingSelect(d.uid ?? d.id);
     }
+    return d;
   }, [createDrawing, fetchProjects, handleDrawingSelect]);
 
-  const handleSidebarFlowchartCreate = useCallback(async (t: string, pid?: number | string | null) => {
+  const handleSidebarFlowchartCreate = useCallback(async (t: string, pid?: number | string | null, options?: { silent?: boolean }) => {
     const f = await createFlowchart(t, pid);
     if (f) {
       await fetchProjects();
-      await handleFlowchartSelect(f.uid);
+      if (!options?.silent) await handleFlowchartSelect(f.uid);
     }
     return f;
   }, [createFlowchart, fetchProjects, handleFlowchartSelect]);

@@ -9,6 +9,8 @@ export type QueryResult = {
   columns: string[];
   rows: any[];
   durationMs?: number;
+  truncated?: boolean;
+  mode?: 'run' | 'explain';
 };
 
 type DataQueryResultTableProps = {
@@ -78,7 +80,7 @@ export const DataQueryResultTable = memo(function DataQueryResultTable({
         </table>
       </div>
       <div className="flex h-9 shrink-0 items-center justify-between border-t px-2 text-xs text-muted-foreground">
-        <span>{rows.length === 0 ? '0 rows' : `${start + 1}-${Math.min(start + SQL_RESULT_PAGE_SIZE, rows.length)} of ${rows.length} rows`}</span>
+        <span>{result.mode === 'explain' ? 'Query plan' : rows.length === 0 ? '0 rows' : `${start + 1}-${Math.min(start + SQL_RESULT_PAGE_SIZE, rows.length)} of ${rows.length} rows${result.truncated ? ' (limited)' : ''}`}</span>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="icon-xs" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
             <ChevronLeft className="h-4 w-4" />

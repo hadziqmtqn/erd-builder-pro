@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { assertMcpInstallMode } from "./mcp/service.js";
 import { registerTools } from "./mcp/tools.js";
+import { ensureRepositoryLinkColumns } from "./lib/startup-migration.js";
 
 assertMcpInstallMode();
+await ensureRepositoryLinkColumns();
 
 const server = new McpServer({
   name: "erdbpro",

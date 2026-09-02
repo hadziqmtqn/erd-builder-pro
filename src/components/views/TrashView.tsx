@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DbClientTrashSection } from './DbClientTrashSection';
 
 interface TrashViewProps {
@@ -81,10 +82,21 @@ export function TrashView({
         </h2>
         <p className="text-sm text-muted-foreground">Manage your deleted files and projects. Items can be restored or permanently deleted.</p>
       </div>
-      <div className="flex-1 h-0 overflow-y-auto custom-scrollbar">
-        <div className="p-6 space-y-12">
-          {/* Projects Table */}
-          <section>
+      <Tabs defaultValue="projects" className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 overflow-x-auto border-b px-6 py-3 custom-scrollbar">
+          <TabsList className="w-max">
+            <TabsTrigger value="projects">Projects ({trashData.projects.length})</TabsTrigger>
+            <TabsTrigger value="diagrams">ERD ({trashData.diagrams.length})</TabsTrigger>
+            <TabsTrigger value="db-clients">DB Client ({trashData.dbClients?.length || 0})</TabsTrigger>
+            <TabsTrigger value="notes">Notes ({trashData.notes.length})</TabsTrigger>
+            <TabsTrigger value="drawings">Drawings ({trashData.drawings.length})</TabsTrigger>
+            <TabsTrigger value="flowcharts">Flowcharts ({trashData.flowcharts?.length || 0})</TabsTrigger>
+          </TabsList>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+          <div className="p-6">
+            {/* Projects Table */}
+            <TabsContent value="projects" className="mt-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Folder size={18} className="text-orange-400" />
@@ -130,10 +142,10 @@ export function TrashView({
                 </Table>
               </div>
             )}
-          </section>
+            </TabsContent>
 
-          {/* Diagrams Table */}
-          <section>
+            {/* Diagrams Table */}
+            <TabsContent value="diagrams" className="mt-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Database size={18} className="text-blue-400" />
@@ -183,16 +195,18 @@ export function TrashView({
                 </Table>
               </div>
             )}
-          </section>
+            </TabsContent>
 
-          <DbClientTrashSection
-            clients={trashData.dbClients || []}
-            restore={restoreDbClient}
-            permanentlyDelete={handleDbClientPermanentDelete}
-          />
+            <TabsContent value="db-clients" className="mt-0">
+              <DbClientTrashSection
+                clients={trashData.dbClients || []}
+                restore={restoreDbClient}
+                permanentlyDelete={handleDbClientPermanentDelete}
+              />
+            </TabsContent>
 
-          {/* Notes Table */}
-          <section>
+            {/* Notes Table */}
+            <TabsContent value="notes" className="mt-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <StickyNote size={18} className="text-yellow-400" />
@@ -242,10 +256,10 @@ export function TrashView({
                 </Table>
               </div>
             )}
-          </section>
+            </TabsContent>
 
-          {/* Drawings Table */}
-          <section>
+            {/* Drawings Table */}
+            <TabsContent value="drawings" className="mt-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <PenTool size={18} className="text-purple-400" />
@@ -295,9 +309,9 @@ export function TrashView({
                 </Table>
               </div>
             )}
-          </section>
-          {/* Flowcharts Table */}
-          <section>
+            </TabsContent>
+            {/* Flowcharts Table */}
+            <TabsContent value="flowcharts" className="mt-0">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Network size={18} className="text-green-400" />
@@ -347,9 +361,10 @@ export function TrashView({
                 </Table>
               </div>
             )}
-          </section>
+            </TabsContent>
+          </div>
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 }

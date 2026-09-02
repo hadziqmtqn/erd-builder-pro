@@ -4,7 +4,6 @@ import { Check, Database, DatabaseZap, FileText, GitBranch, PenTool, Plus } from
 import { useWorkspace } from '@/providers/WorkspaceProvider'
 import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
-import { isInstalledApp } from '@/lib/api'
 import { localPersistence } from '@/lib/localPersistence'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +21,67 @@ const FEATURES: { id: FeatureTab; label: string; icon: React.ElementType; route:
 const getFileName = (file: any) => file.title || file.name || 'Untitled'
 const getFileUid = (file: any) => file.uid || file.id
 const getCreatedTime = (file: any) => new Date(file.created_at || file.createdAt || 0).getTime()
+const WORKSPACE_TABS_CACHE_MS = 30_000
+export type WorkspaceFile = { type: FeatureTab; uid: string; title: string; createdAt?: string }
+type ProjectFileTab = { file: any; type: FeatureTab }
+const workspaceTabsCache = new Map<string, { expiresAt: number; files: WorkspaceFile[] }>()
+const workspaceTabsRequests = new Map<string, Promise<{ files: WorkspaceFile[] }>>()
+
+const toWorkspaceFile = (file: any, type: FeatureTab): WorkspaceFile | null => {
+  const uid = file?.uid ?? file?.id
+  if (uid == null) return null
+  return {
+    type,
+    uid: String(uid),
+    title: getFileName(file),
+    createdAt: file.created_at ?? file.createdAt,
+  }
+}
+
+export function collectProjectFiles(
+  projectId: string | number,
+  sources: Pick<ReturnType<typeof useWorkspace>, 'notes' | 'diagrams' | 'flowcharts' | 'drawings'>,
+): WorkspaceFile[] {
+  const belongsToProject = (file: any) => !file.is_deleted
+    && !file.isDeleted
+    && String(file.project_id ?? file.projectId) === String(projectId)
+  const mapFiles = (files: any[], type: FeatureTab) => files
+    .filter(belongsToProject)
+    .map(file => toWorkspaceFile(file, type))
+    .filter((file): file is WorkspaceFile => file !== null)
+
+  return [
+    ...mapFiles(sources.notes, 'notes'),
+    ...mapFiles(sources.diagrams.filter(file => (file.source_type ?? file.sourceType) !== 'production_db'), 'erd'),
+    ...mapFiles(sources.flowcharts, 'flowchart'),
+    ...mapFiles(sources.drawings, 'drawings'),
+  ]
+}
+
+export function mergeProjectFiles(...groups: WorkspaceFile[][]): WorkspaceFile[] {
+  return [...new Map(groups.flatMap(group => group.map(file => [`${file.type}-${file.uid}`, file] as const))).values()]
+    .sort((a, b) => getCreatedTime(a) - getCreatedTime(b))
+}
+
+async function loadWorkspaceTabs(projectId: string | number, userId: string | number) {
+  const projectKey = String(projectId)
+  const cacheKey = `${userId}:${projectKey}`
+  const cached = workspaceTabsCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached
+  const pending = workspaceTabsRequests.get(cacheKey)
+  if (pending) return pending
+
+  const request = apiFetch(`/api/projects/${encodeURIComponent(projectKey)}/files`)
+  .then(async response => {
+    if (!response.ok) throw new Error('Failed to load project files')
+    const json = await response.json()
+    const data = { files: Array.isArray(json.data) ? json.data : [] }
+    workspaceTabsCache.set(cacheKey, { ...data, expiresAt: Date.now() + WORKSPACE_TABS_CACHE_MS })
+    return data
+  }).finally(() => workspaceTabsRequests.delete(cacheKey))
+  workspaceTabsRequests.set(cacheKey, request)
+  return request
+}
 
 interface Props {
   currentView: FeatureTab
@@ -33,19 +93,19 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
   const [createType, setCreateType] = useState<CreateFileType>('notes')
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [workspaceDiagrams, setWorkspaceDiagrams] = useState<any[]>([])
-  const [workspaceDbClients, setWorkspaceDbClients] = useState<any[]>([])
+  const [workspaceResult, setWorkspaceResult] = useState<{ projectKey: string; files: WorkspaceFile[] }>({
+    projectKey: '', files: [],
+  })
   const popoverRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const {
-    isGuest,
-    activeProjectId,
+    user, isGuest,
+    activeProjectId, notes, diagrams, drawings, flowcharts,
     activeDiagram, activeNote, activeDrawing, activeFlowchart,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
-    diagrams, notes, drawings, flowcharts,
     handleDiagramSelect,
     handleSidebarDiagramCreate, handleSidebarNoteCreate,
     handleSidebarDrawingCreate, handleSidebarFlowchartCreate,
@@ -79,73 +139,64 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
       ?? (activeProjectId && activeProjectId !== 'all' ? activeProjectId : searchParams.get('pid'))
   }, [activeProjectId, activeNote, activeDiagram, activeFlowchart, activeDrawing, currentFile, currentView, searchParams])
 
+  const projectKey = projectId == null ? '' : String(projectId)
+  const workspaceFiles = workspaceResult.projectKey === projectKey ? workspaceResult.files : []
+  const localProjectFiles = useMemo(
+    () => projectId ? collectProjectFiles(projectId, { notes, diagrams, drawings, flowcharts }) : [],
+    [projectId, notes, diagrams, drawings, flowcharts],
+  )
+
   useEffect(() => {
     if (!projectId) {
-      setWorkspaceDiagrams([])
-      setWorkspaceDbClients([])
+      setWorkspaceResult({ projectKey: '', files: [] })
       return
     }
+    if (!isGuest && user?.id == null) return
 
     let cancelled = false
-    const loadDiagrams = async () => {
+    const requestedProjectKey = String(projectId)
+    const loadFiles = async () => {
       try {
-        let data: any[]
-        let dbClients: any[] = []
+        let files: WorkspaceFile[]
         if (isGuest) {
-          data = (await localPersistence.getAllResources('erd'))
-            .filter(file => !file.is_deleted && String(file.project_id ?? file.projectId) === String(projectId))
-        } else {
-          // ponytail: cap workspace tabs at 1000; add cursor loading if a workspace reaches this size.
-          const [response, dbClientsResponse] = await Promise.all([
-            apiFetch(`/api/diagrams?limit=1000&offset=0&project_id=${encodeURIComponent(String(projectId))}`),
-            isInstalledApp()
-              ? apiFetch(`/api/db-clients?limit=100&offset=0&project_id=${encodeURIComponent(String(projectId))}`)
-              : Promise.resolve(null),
+          const [notes, diagrams, flowcharts, drawings] = await Promise.all([
+            localPersistence.getAllResources('notes'),
+            localPersistence.getAllResources('erd'),
+            localPersistence.getAllResources('flowchart'),
+            localPersistence.getAllResources('drawings'),
           ])
-          if (!response.ok) return
-          const json = await response.json()
-          data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []
-          data = data.filter(file => String(file.project_id ?? file.projectId) === String(projectId))
-          if (dbClientsResponse?.ok) {
-            const json = await dbClientsResponse.json()
-            dbClients = (Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [])
-              .filter(file => String(file.project_id ?? file.projectId) === String(projectId))
-          }
+          files = collectProjectFiles(projectId, { notes, diagrams, flowcharts, drawings })
+        } else {
+          const workspaceTabs = await loadWorkspaceTabs(projectId, user!.id)
+          files = workspaceTabs.files
         }
         if (!cancelled) {
-          setWorkspaceDiagrams(data)
-          setWorkspaceDbClients(dbClients)
+          setWorkspaceResult({ projectKey: requestedProjectKey, files })
         }
       } catch {
         if (!cancelled) {
-          setWorkspaceDiagrams([])
-          setWorkspaceDbClients([])
+          setWorkspaceResult({ projectKey: requestedProjectKey, files: [] })
         }
       }
     }
 
-    setWorkspaceDiagrams([])
-    setWorkspaceDbClients([])
-    loadDiagrams()
+    loadFiles()
     return () => { cancelled = true }
-  }, [projectId, isGuest])
+  }, [projectId, isGuest, user?.id])
 
   const projectFiles = useMemo(() => {
     if (!projectId) return []
-    const byProject = (file: any) => String(file.project_id ?? file.projectId) === String(projectId)
-    const projectDiagrams = [...new Map(
-      [...workspaceDiagrams, ...diagrams.filter(byProject)]
-        .filter(file => (file.source_type ?? file.sourceType ?? 'blank') !== 'production_db')
-        .map(file => [String(getFileUid(file)), file]),
-    ).values()]
-    return [
-      ...notes.filter(byProject).map(file => ({ file, type: 'notes' as const })),
-      ...projectDiagrams.map(file => ({ file, type: 'erd' as const })),
-      ...workspaceDbClients.filter(byProject).map(file => ({ file, type: 'db-client' as const })),
-      ...flowcharts.filter(byProject).map(file => ({ file, type: 'flowchart' as const })),
-      ...drawings.filter(byProject).map(file => ({ file, type: 'drawings' as const })),
-    ].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
-  }, [projectId, notes, diagrams, workspaceDiagrams, workspaceDbClients, flowcharts, drawings])
+    const activeFile = currentFile ?? (currentView === 'notes'
+      ? activeNote
+      : currentView === 'erd'
+        ? activeDiagram
+        : currentView === 'flowchart'
+          ? activeFlowchart
+          : activeDrawing)
+    const activeEntry = activeFile ? toWorkspaceFile(activeFile, currentView) : null
+    return mergeProjectFiles(workspaceFiles, localProjectFiles, activeEntry ? [activeEntry] : [])
+      .map(file => ({ file, type: file.type } satisfies ProjectFileTab))
+  }, [projectId, workspaceFiles, localProjectFiles, currentView, currentFile, activeNote, activeDiagram, activeFlowchart, activeDrawing])
 
   const activeUid = currentFile ? getFileUid(currentFile) : currentView === 'notes'
     ? activeNoteUid

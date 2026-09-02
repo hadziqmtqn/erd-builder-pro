@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useEditor, EditorContent, ReactRenderer } from '@tiptap/react';
 import { mergeAttributes } from '@tiptap/core';
 import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
@@ -26,6 +26,7 @@ import { SlashMenu } from './SlashMenu';
 import { AnimatePresence } from 'framer-motion';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { toast } from 'sonner';
 import { NoteImporter } from '../lib/importers/note-importer';
 
 import {
@@ -36,6 +37,8 @@ import {
   CalendarNode,
   CustomKeyboardShortcuts,
   TrailingNode,
+  ExecutableCodeBlock,
+  CompanionReference,
 } from './editor/extensions';
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
@@ -44,10 +47,16 @@ import { TableContextMenu } from './editor/menus/TableContextMenu';
 import { DocumentOutline, HeadingInfo } from './editor/panels/DocumentOutline';
 import { LinkDialog } from './editor/dialogs/LinkDialog';
 import { FileMentionMenu, FileMentionMenuRef, FileMentionOption } from './editor/FileMentionMenu';
-import { useWorkspace } from '@/providers/WorkspaceContext';
 import { useNavigate } from 'react-router-dom';
 import { localPersistence } from '@/lib/localPersistence';
+import { applyToErdContent } from '@/components/ai/actions/erdActions';
+import { previewFlowchartContent } from '@/components/ai/actions/flowchartActions';
+import { edgeToRelationship } from '@/lib/diagram-payload';
 import { NestedTaskList } from '../lib/tiptap/nested-task-list';
+import { useWorkspace } from '@/providers/WorkspaceContext';
+import { ErdFromSqlDialog } from '@/components/ai/ErdFromSqlDialog';
+import { FlowchartFromJsonDialog } from '@/components/ai/FlowchartFromJsonDialog';
+import { CODE_BLOCK_CONVERT_EVENT, type CodeBlockConversionDetail } from './editor/extensions/ExecutableCodeBlock';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -108,19 +117,28 @@ interface TiptapEditorProps {
   isReadOnly?: boolean;
   /** When true, selection text is NOT synced to AI context (e.g. Notes — selection is for editing, not AI) */
   disableAISelection?: boolean;
+  targetProjectId: string | number | null;
+  noteTitle: string;
+  compactLayout?: boolean;
+  onRequestCompanion?: (type: 'erd' | 'flowchart' | 'drawing', editor: any, range: { from: number; to: number }) => void;
 }
 
-export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false }: TiptapEditorProps) {
+export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false, targetProjectId, noteTitle, compactLayout = false, onRequestCompanion }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
+  const {
+    diagrams, flowcharts,
+    handleSidebarDiagramCreate, handleSidebarFlowchartCreate,
+    handleDiagramSelect, handleFlowchartSelect, triggerPendingErdDiff,
+  } = useWorkspace();
   const navigate = useNavigate();
-  const { notes, diagrams, flowcharts, drawings, projects, isGuest } = useWorkspace();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean | null>(null);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
+  const [erdDialogSchema, setErdDialogSchema] = React.useState<string | null>(null);
+  const [flowchartDialogJson, setFlowchartDialogJson] = React.useState<string | null>(null);
+  const [conversionPosition, setConversionPosition] = React.useState<number | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [loadedMentionFiles, setLoadedMentionFiles] = React.useState<FileMentionOption[]>([]);
 
   React.useEffect(() => {
     const pointerQuery = window.matchMedia('(pointer: coarse)');
@@ -130,86 +148,68 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     return () => pointerQuery.removeEventListener('change', updatePointerMode);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadMentionFiles = async () => {
-      try {
-        if (isGuest) {
-          const [localDiagrams, localNotes, localDrawings, localFlowcharts, localProjects] = await Promise.all([
-            localPersistence.getAllResources('erd'),
-            localPersistence.getAllResources('notes'),
-            localPersistence.getAllResources('drawings'),
-            localPersistence.getAllResources('flowchart'),
-            localPersistence.getAllResources('project'),
-          ]);
-          const projectNames = new Map(localProjects.map((project: any) => [String(project.id), project.name]));
-          const mapLocal = (items: any[], type: FileMentionOption['type'], nameField: string) => items
-            .filter(item => !(item.is_deleted ?? item.isDeleted))
-            .map(item => {
-              const uid = String(item.uid ?? item.id);
-              return {
-                name: item[nameField] || 'Untitled',
-                type,
-                uid,
-                href: `/${type === 'note' ? 'notes' : type === 'diagram' ? 'diagrams' : `${type}s`}/${uid}`,
-                workspaceName: projectNames.get(String(item.project_id ?? item.projectId)) || null,
-              };
-            });
-          if (!cancelled) setLoadedMentionFiles([
-            ...mapLocal(localNotes, 'note', 'title'),
-            ...mapLocal(localDiagrams, 'diagram', 'name'),
-            ...mapLocal(localFlowcharts, 'flowchart', 'title'),
-            ...mapLocal(localDrawings, 'drawing', 'title'),
-          ]);
-          return;
-        }
-
-        const response = await apiFetch('/api/search/files');
-        const json = response.ok ? await response.json() : { data: [] };
-        if (!cancelled) {
-          setLoadedMentionFiles(Array.isArray(json.data) ? json.data.map((file: any) => ({
-            name: file.name || 'Untitled',
-            type: file.type,
-            uid: String(file.uid ?? file.id),
-            href: `/${file.type === 'note' ? 'notes' : file.type === 'diagram' ? 'diagrams' : `${file.type}s`}/${file.uid ?? file.id}`,
-            workspaceName: file.workspaceName,
-          })) : []);
-        }
-      } catch {
-        if (!cancelled) setLoadedMentionFiles([]);
-      }
+  React.useEffect(() => {
+    const handleConvert = (event: Event) => {
+      const detail = (event as CustomEvent<CodeBlockConversionDetail>).detail;
+      if (!detail?.content) return;
+      setConversionPosition(detail.position);
+      if (detail.kind === 'erd') setErdDialogSchema(detail.content);
+      if (detail.kind === 'flowchart') setFlowchartDialogJson(detail.content);
     };
+    window.addEventListener(CODE_BLOCK_CONVERT_EVENT, handleConvert);
+    return () => window.removeEventListener(CODE_BLOCK_CONVERT_EVENT, handleConvert);
+  }, []);
 
-    loadMentionFiles();
-    return () => { cancelled = true; };
-  }, [isGuest]);
+  const mentionFilesPromiseRef = useRef<Promise<FileMentionOption[]> | null>(null);
+  const loadMentionFiles = () => {
+    if (mentionFilesPromiseRef.current) return mentionFilesPromiseRef.current;
 
-  const mentionFiles = useMemo<FileMentionOption[]>(() => {
-    const files = [...loadedMentionFiles];
-    const addContextFiles = (items: any[], type: FileMentionOption['type'], nameField: string) => {
-      for (const item of items) {
-        if (item.is_deleted) continue;
-        const uid = String(item.uid ?? item.id);
-        if (files.some(file => file.type === type && file.uid === uid)) continue;
-        files.push({
-          name: item[nameField] || 'Untitled',
-          type,
-          uid,
-          href: `/${type === 'note' ? 'notes' : type === 'diagram' ? 'diagrams' : `${type}s`}/${uid}`,
-          workspaceName: projects.find(project => String(project.id) === String(item.project_id))?.name,
-        });
+    mentionFilesPromiseRef.current = (async () => {
+      if (sessionStorage.getItem('auth_mode') === 'guest') {
+        const [diagrams, notes, drawings, flowcharts, projects] = await Promise.all([
+          localPersistence.getAllResources('erd'),
+          localPersistence.getAllResources('notes'),
+          localPersistence.getAllResources('drawings'),
+          localPersistence.getAllResources('flowchart'),
+          localPersistence.getAllResources('project'),
+        ]);
+        const projectNames = new Map(projects.map((project: any) => [String(project.id), project.name]));
+        const mapLocal = (items: any[], type: FileMentionOption['type'], nameField: string) => items
+          .filter(item => !(item.is_deleted ?? item.isDeleted))
+          .map(item => {
+            const uid = String(item.uid ?? item.id);
+            return {
+              name: item[nameField] || 'Untitled',
+              type,
+              uid,
+              href: `/${type === 'note' ? 'notes' : type === 'diagram' ? 'diagrams' : `${type}s`}/${uid}`,
+              workspaceName: projectNames.get(String(item.project_id ?? item.projectId)) || null,
+            };
+          });
+        return [
+          ...mapLocal(notes, 'note', 'title'),
+          ...mapLocal(diagrams, 'diagram', 'name'),
+          ...mapLocal(flowcharts, 'flowchart', 'title'),
+          ...mapLocal(drawings, 'drawing', 'title'),
+        ].sort((a, b) => a.name.localeCompare(b.name));
       }
-    };
-    addContextFiles(notes, 'note', 'title');
-    addContextFiles(diagrams, 'diagram', 'name');
-    addContextFiles(flowcharts, 'flowchart', 'title');
-    addContextFiles(drawings, 'drawing', 'title');
-    return files.sort((a, b) => a.name.localeCompare(b.name));
-  }, [loadedMentionFiles, notes, diagrams, flowcharts, drawings, projects]);
 
-  const mentionFilesRef = useRef<FileMentionOption[]>([]);
-  mentionFilesRef.current = mentionFiles;
+      const response = await apiFetch('/api/search/files');
+      const json = response.ok ? await response.json() : { data: [] };
+      return (Array.isArray(json.data) ? json.data : []).map((file: any) => ({
+        name: file.name || 'Untitled',
+        type: file.type,
+        uid: String(file.uid ?? file.id),
+        href: `/${file.type === 'note' ? 'notes' : file.type === 'diagram' ? 'diagrams' : `${file.type}s`}/${file.uid ?? file.id}`,
+        workspaceName: file.workspaceName,
+      }));
+    })().catch(() => {
+      mentionFilesPromiseRef.current = null;
+      return [];
+    });
+
+    return mentionFilesPromiseRef.current;
+  };
   
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -284,7 +284,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     StarterKit.configure({
       link: false,
       underline: false,
+      codeBlock: false,
     }),
+    ExecutableCodeBlock,
+    CompanionReference,
     TrailingNode,
     ImageResize.configure({
       inline: false,
@@ -341,9 +344,10 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       suggestion: {
         char: '@',
         allowSpaces: true,
-        items: ({ query }) => {
+        items: async ({ query }) => {
           const normalizedQuery = query.trim().toLowerCase();
-          return mentionFilesRef.current.filter(file => file.name.toLowerCase().includes(normalizedQuery));
+          const files = await loadMentionFiles();
+          return files.filter(file => file.name.toLowerCase().includes(normalizedQuery));
         },
         command: ({ editor, range, props }) => {
           const file = props as unknown as FileMentionOption;
@@ -393,16 +397,25 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     CustomKeyboardShortcuts,
     DragHandle.configure({
       render: () => {
-        const element = document.createElement('button');
-        element.type = 'button';
+        const element = document.createElement('div');
         element.className = 'tiptap-block-drag-handle';
         element.setAttribute('aria-label', 'Drag block');
+        element.setAttribute('title', 'Drag to move block');
         element.textContent = '⋮⋮';
         return element;
       },
-      nested: {
-        edgeDetection: 'none',
-      },
+      nested: true,
+      dragImageProperties: [
+        'color',
+        'background-color',
+        'font-family',
+        'font-size',
+        'font-weight',
+        'line-height',
+        'padding',
+        'border',
+        'border-radius',
+      ],
     }),
   ], []);
 
@@ -492,6 +505,64 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     },
   });
 
+  const insertGeneratedCompanion = React.useCallback((type: 'erd' | 'flowchart', file: any) => {
+    if (!editor) return;
+    const at = conversionPosition === undefined
+      ? editor.state.selection.to
+      : conversionPosition + (editor.state.doc.nodeAt(conversionPosition)?.nodeSize ?? 0);
+    requestAnimationFrame(() => {
+      if (editor.isDestroyed) return;
+      editor.chain().insertContentAt(at, [
+        { type: 'companionReference', attrs: { targetType: type, targetUid: String(file.uid ?? file.id), title: file.name ?? file.title ?? 'Untitled' } },
+        { type: 'paragraph' },
+      ]).run();
+      toast.success(`${type === 'erd' ? 'ERD' : 'Flowchart'} created. Open it from the card below this code block.`);
+    });
+  }, [conversionPosition, editor]);
+
+  const persistGeneratedErd = React.useCallback(async (file: any, schema: string) => {
+    try {
+      const result = applyToErdContent([], [], 'erd-generate-sql', schema);
+      if (!result) throw new Error('Invalid DBML or SQL schema');
+      const entities = result.nodes.map(node => ({ ...node.data, x: node.position.x, y: node.position.y }));
+      const relationships = result.edges.map(edgeToRelationship);
+      if (sessionStorage.getItem('auth_mode') === 'guest') {
+        const local = await localPersistence.getResource(file.uid ?? file.id);
+        if (local) await localPersistence.saveResource({ ...local, entities, relationships, data: null, dbml_source: schema });
+      } else {
+        const response = await apiFetch(`/api/diagrams/save/${file.uid ?? file.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entities, relationships, viewport: { x: 0, y: 0, zoom: 1 }, data: null, dbmlSource: schema }),
+        });
+        if (!response.ok) throw new Error('Could not save generated ERD');
+      }
+      insertGeneratedCompanion('erd', file);
+    } catch {
+      toast.error('The ERD was created but the DBML could not be applied.');
+    }
+  }, [insertGeneratedCompanion]);
+
+  const persistGeneratedFlowchart = React.useCallback(async (file: any, json: string) => {
+    try {
+      const result = previewFlowchartContent(json);
+      if (!result?.nodes.length) throw new Error('Invalid flowchart definition');
+      const data = JSON.stringify({ nodes: result.nodes, edges: result.edges });
+      if (sessionStorage.getItem('auth_mode') === 'guest') {
+        const local = await localPersistence.getResource(file.uid ?? file.id);
+        if (local) await localPersistence.saveResource({ ...local, data });
+      } else {
+        const response = await apiFetch(`/api/flowcharts/${file.uid ?? file.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: file.title, data, project_id: file.project_id ?? null }),
+        });
+        if (!response.ok) throw new Error('Could not save generated Flowchart');
+      }
+      insertGeneratedCompanion('flowchart', file);
+    } catch {
+      toast.error('The Flowchart was created but could not be applied.');
+    }
+  }, [insertGeneratedCompanion]);
+
   // ─── Selection tracking ──────────────────────────────
   const selectionTextRef = useRef<string | null>(null);
 
@@ -535,6 +606,8 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const htmlContent = (html: string) =>
     html.replace(/\s*class=""\s*/g, '').replace(/\s+/g, ' ').trim();
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const recentLocalContentRef = useRef<string[]>([]);
   const rememberLocalContent = React.useCallback((html: string) => {
     const normalized = htmlContent(html);
@@ -548,9 +621,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     if (!editor || editor.isDestroyed) return;
     if (typeof content !== 'string') return;
 
-    const currentHtml = editor.getHTML();
-    if (currentHtml === content) return;
-
     const normalizedIncoming = htmlContent(content);
 
     // Autosave writes the same local edits back into React state after async
@@ -560,6 +630,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     if (recentLocalContentRef.current.includes(normalizedIncoming)) {
       return;
     }
+
+    const currentHtml = editor.getHTML();
+    if (currentHtml === content) return;
 
     // If the only difference is serializer noise, keep the live editor document
     // untouched so selection stays exactly where the user left it.
@@ -572,10 +645,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
   // Debounce ref for onChange — prevents cascading re-renders on every keystroke
   const onChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Track the content prop value on every render — used in handleUpdate to skip
-  // saves when editor content matches the prop (external sync, not user edit).
-  const contentPropRef = useRef<string>(content ?? '');
-  contentPropRef.current = content ?? '';
+  const headingUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!editor) return;
@@ -591,34 +661,32 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
           });
         }
       });
-      setHeadings(extracted);
+      setHeadings(current => current.length === extracted.length
+        && current.every((heading, index) => heading.text === extracted[index].text
+          && heading.level === extracted[index].level
+          && heading.pos === extracted[index].pos)
+        ? current
+        : extracted);
     };
 
     const handleUpdate = () => {
-      // Skip if normalized HTML matches prop — this update came from
-      // an external content sync, not a user edit. Uses HTML comparison
-      // (not plain text) so format-only edits (alignment) are detected.
-      if (htmlContent(editor.getHTML()) === htmlContent(contentPropRef.current)) {
-        extractHeadings();
-        return;
-      }
-
       // Debounce onChange to avoid firing on every keystroke.
       // The parent (handleNoteChange) also has its own 400ms debounce for the actual save.
-      // This prevents the cascading re-render chain: keystroke → onChange →
-      // re-render → saveNote recreated → handleNoteChange recreated → this effect re-runs.
       if (onChangeTimeoutRef.current) {
         clearTimeout(onChangeTimeoutRef.current);
       }
       onChangeTimeoutRef.current = setTimeout(() => {
-        if (onChange) {
+        if (onChangeRef.current) {
           const latestHtml = editor.getHTML();
           rememberLocalContent(latestHtml);
-          onChange(latestHtml);
+          onChangeRef.current(latestHtml);
         }
       }, 150);
 
-      extractHeadings();
+      if (headingUpdateTimeoutRef.current) {
+        clearTimeout(headingUpdateTimeoutRef.current);
+      }
+      headingUpdateTimeoutRef.current = setTimeout(extractHeadings, 250);
 
       // Slash Menu Logic
       const { $from } = editor.state.selection;
@@ -655,8 +723,11 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       if (onChangeTimeoutRef.current) {
         clearTimeout(onChangeTimeoutRef.current);
       }
+      if (headingUpdateTimeoutRef.current) {
+        clearTimeout(headingUpdateTimeoutRef.current);
+      }
     };
-  }, [editor, onChange, rememberLocalContent]);
+  }, [editor, rememberLocalContent]);
 
   const openLinkDialog = () => {
     if (editor) {
@@ -705,9 +776,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-background relative px-4 sm:px-6 md:px-24"
+        className={`flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-background relative ${compactLayout ? 'px-2 sm:px-3' : 'px-4 sm:px-6 md:px-24'}`}
       >
-        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined">
+        <div className={`mx-auto my-0 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined ${compactLayout ? 'max-w-none sm:my-3 p-4 sm:p-7' : 'max-w-4xl sm:my-12 p-4 sm:p-16'}`}>
 
           <DocumentOutline headings={headings} scrollToHeading={scrollToHeading} />
 
@@ -734,6 +805,35 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         onSubmit={handleLinkSubmit}
       />
 
+      {erdDialogSchema && (
+        <ErdFromSqlDialog
+          schema={erdDialogSchema}
+          onClose={() => { setErdDialogSchema(null); setConversionPosition(undefined); }}
+          diagrams={diagrams}
+          targetProjectId={targetProjectId}
+          erdDefaultName={noteTitle}
+          handleSidebarDiagramCreate={handleSidebarDiagramCreate}
+          handleDiagramSelect={handleDiagramSelect}
+          triggerPendingErdDiff={triggerPendingErdDiff}
+          createSilently
+          onCreated={persistGeneratedErd}
+        />
+      )}
+
+      {flowchartDialogJson && (
+        <FlowchartFromJsonDialog
+          json={flowchartDialogJson}
+          onClose={() => { setFlowchartDialogJson(null); setConversionPosition(undefined); }}
+          flowcharts={flowcharts}
+          targetProjectId={targetProjectId}
+          flowchartDefaultName={noteTitle}
+          handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
+          handleFlowchartSelect={handleFlowchartSelect}
+          createSilently
+          onCreated={persistGeneratedFlowchart}
+        />
+      )}
+
       <AnimatePresence>
         {slashMenu.isOpen && (
           <SlashMenu 
@@ -742,6 +842,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
             range={slashMenu.range}
             coords={slashMenu.coords}
             onClose={() => setSlashMenu(prev => ({ ...prev, isOpen: false }))}
+            onRequestCompanion={onRequestCompanion}
           />
         )}
       </AnimatePresence>

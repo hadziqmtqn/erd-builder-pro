@@ -8,6 +8,7 @@ import { getNote, updateNote } from "../routes/notes/service.js";
 import { getFlowchart } from "../routes/flowcharts/service.js";
 import { getDiagramWithData } from "../routes/diagrams/save-service.js";
 import { listHistory, readHistoryRevision, restoreHistoryRevision } from "../routes/entity-changes/service.js";
+import { repositoryContainsPath, searchWorkspaceFiles, type WorkspaceSearchType } from "./workspace-search.js";
 
 export const MCP_DOCUMENT_TYPES = ["notes", "flowcharts", "diagrams"] as const;
 export type McpDocumentType = (typeof MCP_DOCUMENT_TYPES)[number];
@@ -101,6 +102,36 @@ export async function listWorkspaceFiles(userId: string, projectUid?: string) {
     (prisma as any).dbClient.findMany({ where, select: { id: true, uid: true, name: true, projectId: true, catalogId: true, updatedAt: true } }),
   ]);
   return serialize({ projects, notes, flowcharts, diagrams, dbClients });
+}
+
+export async function searchWorkspace(userId: string, query: string, type?: WorkspaceSearchType, limit = 20) {
+  return serialize(searchWorkspaceFiles(await listWorkspaceFiles(userId), query, type, limit));
+}
+
+export async function resolveRepositoryWorkspace(userId: string, repositoryPath: string) {
+  if (!prisma) throw new Error("Local database is not available");
+  const links = await (prisma as any).diagram.findMany({
+    where: { userId, isDeleted: false, repositoryPath: { not: null } },
+    select: {
+      id: true, uid: true, name: true, projectId: true,
+      repositoryPath: true, repositoryRef: true, repositorySourceId: true,
+      project: { select: { id: true, uid: true, name: true, isDeleted: true } },
+    },
+  });
+  const link = links
+    .filter((item: any) => item.repositoryPath && repositoryContainsPath(item.repositoryPath, repositoryPath) && !item.project?.isDeleted)
+    .sort((a: any, b: any) => b.repositoryPath.length - a.repositoryPath.length)[0];
+  if (!link) throw new Error("No ERD Builder Pro workspace is linked to this repository");
+  const projectUid = link.project ? String(link.project.uid ?? link.project.id) : undefined;
+  const workspace = projectUid
+    ? await listWorkspaceFiles(userId, projectUid)
+    : { projects: [], notes: [], flowcharts: [], diagrams: [{ id: link.id, uid: link.uid, name: link.name, projectId: null }], dbClients: [] };
+  return serialize({
+    repository: { path: link.repositoryPath, ref: link.repositoryRef || "WORKTREE", source_id: link.repositorySourceId },
+    project: link.project ? { uid: projectUid, name: link.project.name } : null,
+    linked_diagram: { uid: String(link.uid ?? link.id), name: link.name },
+    workspace,
+  });
 }
 
 export async function readDocument(userId: string, type: McpDocumentType, uid: string) {

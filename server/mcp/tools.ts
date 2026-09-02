@@ -14,7 +14,10 @@ import {
   readDocument,
   resolveMcpUserId,
   runReadOnlyQuery,
+  resolveRepositoryWorkspace,
+  searchWorkspace,
 } from "./service.js";
+import { WORKSPACE_SEARCH_TYPES } from "./workspace-search.js";
 
 const documentType = z.enum(MCP_DOCUMENT_TYPES);
 const readOnly = { readOnlyHint: true, openWorldHint: false } as const;
@@ -26,6 +29,22 @@ export function registerTools(server: McpServer) {
     description: "List ERD Builder Pro projects, Notes, Flowcharts, and ERD diagrams owned by the local user. Drawings are intentionally excluded.",
     inputSchema: { project_uid: z.string().optional() }, annotations: readOnly,
   }, async ({ project_uid }) => jsonResult(await listWorkspaceFiles(await resolveMcpUserId(), project_uid)));
+
+  server.registerTool("workspace_search", {
+    description: "Find a workspace project or file by semantic path, project name, feature, or title, for example 'Test > Notes > Test saja'. Use document_read with the returned type and uid to read its content.",
+    inputSchema: {
+      query: z.string().min(1).max(500),
+      type: z.enum(WORKSPACE_SEARCH_TYPES).optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+    },
+    annotations: readOnly,
+  }, async ({ query, type, limit }) => jsonResult(await searchWorkspace(await resolveMcpUserId(), query, type, limit)));
+
+  server.registerTool("workspace_resolve_repository", {
+    description: "Resolve the ERD Builder Pro workspace linked to the coding agent's current repository or a nested working directory. Pass the agent workspace path automatically; do not ask the user to repeat it.",
+    inputSchema: { repository_path: z.string().trim().min(1).max(4096) },
+    annotations: readOnly,
+  }, async ({ repository_path }) => jsonResult(await resolveRepositoryWorkspace(await resolveMcpUserId(), repository_path)));
 
   server.registerTool("document_read", {
     description: "Read one local Note, Flowchart, or ERD diagram by UUID or numeric ID.",

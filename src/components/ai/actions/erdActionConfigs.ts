@@ -58,10 +58,13 @@ DBML rules:
 - Use [pk] for primary keys and [not null] for required fields.
 - Use [note: '...'] for column comments and sized types like VARCHAR(100) when max length matters.
 - Use Ref lines for relationships, for example: Ref: posts.user_id > users.id
+- Declare each relationship once with a standalone Ref line; never use inline [ref: ...] attributes and never omit the > direction marker.
+- Use [unique] for a single unique column. For composite uniqueness, use Indexes { (column_a, column_b) [unique] } inside the Table block; never write SQL-like unique (column_a, column_b).
 - Use Enum blocks when a column has constrained values.
 - Prefer portable types: BIGINT, INT, UUID, VARCHAR, TEXT, BOOLEAN, DATE, TIMESTAMP, DECIMAL, FLOAT, DOUBLE, JSON, ENUM.
 - Keep existing tables and columns unless the user explicitly asks to replace or remove them.
 - Avoid duplicate relationship columns. Reuse existing auth/user tables when they already exist.
+- Validate the DBML contract before responding: it must generate an ERD without manual syntax repair.
 
 After the DBML block, add one short sentence telling the user they can click Append to preview and apply it.`;
     },

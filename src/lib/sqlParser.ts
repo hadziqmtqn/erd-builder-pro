@@ -803,6 +803,29 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
     }
   }
 
+  // Prisma migrations often add columns and constraints in later migration files.
+  // Apply parsed ALTER columns before resolving relationships across the full history.
+  for (const alteration of parsed.alterAddColumns) {
+    const node = nodes.find(item => item.data.name.toLowerCase() === alteration.tableName.toLowerCase());
+    if (!node) continue;
+    for (const col of alteration.columns) {
+      if (node.data.columns.some(item => item.name.toLowerCase() === col.name.toLowerCase())) continue;
+      node.data.columns.push({
+        id: crypto.randomUUID(),
+        name: col.name,
+        type: normalizeType(col.type),
+        is_pk: col.is_pk,
+        is_nullable: col.is_nullable,
+        enum_values: col.enum_values || '',
+        comment: col.comment || '',
+        max_length: col.max_length,
+        numeric_precision: col.numeric_precision,
+        numeric_scale: col.numeric_scale,
+        sort_order: node.data.columns.length,
+      });
+    }
+  }
+
   // Helper to resolve relationships
   const processRel = (sourceTable: string, sourceCol: string, targetTable: string, targetCol: string) => {
     const sNode = nodes.find(n => n.data.name.toLowerCase() === sourceTable.toLowerCase());
@@ -816,6 +839,7 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
         // Mark source column as FK
         sCol._is_fk = true;
 
+        if (edges.some(edge => edge.source === sNode.id && edge.target === tNode.id && edge.sourceHandle === `col-${sCol.id}-source` && edge.targetHandle === `col-${tCol.id}-target`)) return;
         edges.push({
           id: `e-${sNode.id}-${tNode.id}-${Math.random()}`,
           source: sNode.id,
@@ -850,6 +874,18 @@ export function parseSQLToERD(sql: string): { nodes: Node<Entity>[]; edges: Edge
       const targetColName = targetCols[idx] || colName;
       processRel(rel.sourceTable, colName, rel.targetTable, targetColName);
     });
+  }
+
+  // Fallback for migration streams containing statements the stateful DDL parser skips.
+  const identifierPattern = '(?:"[^"]+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*)';
+  const fkPattern = new RegExp(`ALTER\\s+TABLE\\s+(${identifierPattern})\\s+ADD(?:\\s+CONSTRAINT\\s+${identifierPattern})?\\s+FOREIGN\\s+KEY\\s*\\(([^)]+)\\)\\s+REFERENCES\\s+(${identifierPattern})\\s*\\(([^)]+)\\)`, 'gi');
+  let match: RegExpExecArray | null;
+  while ((match = fkPattern.exec(sql))) {
+    const sourceTable = cleanIdentifier(match[1]);
+    const sourceColumns = match[2].split(',').map(cleanIdentifier).filter(Boolean);
+    const targetTable = cleanIdentifier(match[3]);
+    const targetColumns = match[4].split(',').map(cleanIdentifier).filter(Boolean);
+    sourceColumns.forEach((column, index) => processRel(sourceTable, column, targetTable, targetColumns[index] || column));
   }
 
   return { nodes, edges };

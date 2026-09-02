@@ -3,6 +3,10 @@ export interface AIAction {
   label: string;
   description: string;
   icon: React.ReactNode;
+  /** Keep this action active for each reply until the user turns it off. */
+  persistent?: boolean;
+  /** Actions such as Grill Me can run without an open workspace file. */
+  requiresEntityContext?: boolean;
   buildPrompt: (context: Record<string, any>) => string;
 }
 

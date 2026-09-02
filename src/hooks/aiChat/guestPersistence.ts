@@ -8,8 +8,10 @@ export async function persistGuestMessages(sessionUid: string, msgs: AIChatMessa
       stored.messages = msgs;
       await localPersistence.saveResource(stored);
     }
+    return true;
   } catch (err) {
     console.warn('[AI Chat] Failed to persist guest messages:', err);
+    return false;
   }
 }
 

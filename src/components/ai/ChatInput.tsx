@@ -35,6 +35,8 @@ function getActionIcon(actionId: string) {
       return <GitBranch className="size-3" />;
     case 'flowchart-import':
       return <FileDown className="size-3" />;
+    case 'grill-me':
+      return <CircleHelp className="size-3" />;
     default:
       return <Sparkles className="size-3" />;
   }
@@ -55,6 +57,7 @@ function getPlaceholder(actionId: string | null | undefined, hasProject: boolean
     case 'flowchart-pseudocode':  return 'Describe pseudocode needs...';
     case 'flowchart-insert':      return 'Describe where to insert a symbol...';
     case 'flowchart-import':      return 'Describe the process to diagram...';
+    case 'grill-me':               return 'Describe what you want to plan...';
     default:                      return hasProject ? 'Ask anything... Type @ to reference a file' : 'Ask anything...';
   }
 }
@@ -221,7 +224,6 @@ export const ChatInput = memo(function ChatInput({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [toolsOpen]);
 
-  const showActions = !isStreaming && actions.length > 0;
   const actionGroup = viewType === 'db-client'
     ? { primaryId: 'db-client-explain-table', primaryLabel: 'Explain Table', toolsLabel: 'DB Client tools', heading: 'Focused DB Client actions' }
     : entityType === 'diagram'
@@ -230,8 +232,14 @@ export const ChatInput = memo(function ChatInput({
       ? { primaryId: 'flowchart-generate', primaryLabel: 'Build Flowchart', toolsLabel: 'Flowchart tools', heading: 'Focused Flowchart actions' }
       : null;
   const primaryAction = actionGroup ? actions.find(action => action.id === actionGroup.primaryId) : undefined;
-  const toolActions = actionGroup && primaryAction ? [primaryAction, ...actions.filter(action => action.id !== actionGroup.primaryId)] : actions;
+  const planAction = actions.find(action => action.id === 'grill-me');
+  const featureActions = actions.filter(action => action.id !== 'grill-me');
+  const toolActions = actionGroup && primaryAction
+    ? [primaryAction, ...featureActions.filter(action => action.id !== actionGroup.primaryId)]
+    : featureActions;
+  const showActions = !isStreaming && toolActions.length > 0;
   const activeAction = actions.find(action => action.id === activeActionId);
+  const activeToolAction = toolActions.find(action => action.id === activeActionId);
 
   if (!hasActiveSession) return null;
 
@@ -288,6 +296,18 @@ export const ChatInput = memo(function ChatInput({
               <AtSign className="size-3.5" />
             </Button>
           )}
+          {planAction && (
+            <Button
+              variant={activeActionId === planAction.id ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-2.5 text-xs"
+              onClick={() => onSelectAction(planAction)}
+              title="Plan mode"
+            >
+              <Sparkles data-icon="inline-start" />
+              Plan
+            </Button>
+          )}
           {showActions && (
             <details
               ref={toolsRef}
@@ -299,7 +319,7 @@ export const ChatInput = memo(function ChatInput({
                 activeAction ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:bg-muted'
               }`}>
                 <SlidersHorizontal className="size-3.5" />
-                <span className="max-w-28 truncate">{activeAction?.label || actionGroup?.toolsLabel || 'Tools'}</span>
+                <span className="max-w-28 truncate">{activeToolAction?.label || actionGroup?.toolsLabel || 'Tools'}</span>
                 <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
               </summary>
               <div className="absolute bottom-8 left-0 z-50 w-64 rounded-xl border bg-popover p-1.5 shadow-lg">

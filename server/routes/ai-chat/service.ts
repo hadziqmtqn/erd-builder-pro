@@ -130,6 +130,7 @@ export async function createMessage(data: {
   role: string;
   content: string;
   selectionText?: string | null;
+  clientMessageId?: string | null;
 }) {
   // Resolve session by uid (or numeric id)
   const sid = String(data.sessionId);
@@ -146,14 +147,31 @@ export async function createMessage(data: {
   });
   if (!session) return null;
 
-  return prisma?.aiChatMessage.create({
-    data: {
-      sessionId: session.id,
-      role: data.role,
-      content: data.content,
-      selectionText: data.selectionText || null,
-    },
-  });
+  if (!prisma) return null;
+  const clientMessageId = data.clientMessageId?.trim() || null;
+  if (clientMessageId) {
+    const existing = await prisma.aiChatMessage.findFirst({
+      where: { sessionId: session.id, clientMessageId },
+    });
+    if (existing) return existing;
+  }
+
+  try {
+    return await prisma.aiChatMessage.create({
+      data: {
+        sessionId: session.id,
+        role: data.role,
+        content: data.content,
+        selectionText: data.selectionText || null,
+        clientMessageId,
+      },
+    });
+  } catch (err: any) {
+    if (clientMessageId && err?.code === "P2002") {
+      return prisma.aiChatMessage.findFirst({ where: { sessionId: session.id, clientMessageId } });
+    }
+    throw err;
+  }
 }
 
 // ── Config / Prompts ──

@@ -238,6 +238,9 @@ export interface AIChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   selection_text?: string | null;
+  client_message_id?: string | null;
+  delivery_status?: 'pending' | 'needs-resume' | 'pending-assistant';
+  plan_mode?: boolean;
   created_at: string;
 }
 

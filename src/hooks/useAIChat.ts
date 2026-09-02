@@ -16,8 +16,17 @@ import {
   syncSessionProjectId,
   RESPONSE_LANGUAGE_INSTRUCTION,
   recentConversationMessages,
+  planningContext,
 } from './aiChat/index';
 import type { AIRequestContext } from './aiChat/index';
+import {
+  assistantClientMessageId,
+  listPlanOutbox,
+  removePlanOutbox,
+  savePlanOutbox,
+  updatePlanOutbox,
+  type PlanOutboxItem,
+} from './aiChat/planRecovery';
 
 export type EntityContext = EntityCtxType;
 
@@ -25,6 +34,7 @@ interface UseAIChatReturn {
   sessions: AIChatSession[];
   currentSession: AIChatSession | null;
   messages: AIChatMessage[];
+  allMessages: AIChatMessage[];
   isSessionsLoading: boolean;
   isMessagesLoading: boolean;
   isStreaming: boolean;
@@ -43,6 +53,56 @@ interface UseAIChatReturn {
 }
 
 const PAGE_SIZE = 30;
+
+function normalizeMessage(message: any): AIChatMessage {
+  return {
+    ...message,
+    session_id: message.session_id ?? message.sessionId,
+    selection_text: message.selection_text ?? message.selectionText ?? null,
+    client_message_id: message.client_message_id ?? message.clientMessageId ?? null,
+    created_at: message.created_at ?? message.createdAt ?? new Date().toISOString(),
+  };
+}
+
+async function mergePlanOutbox(sessionUid: string, messages: AIChatMessage[]) {
+  const items = await listPlanOutbox(sessionUid).catch(() => [] as PlanOutboxItem[]);
+  if (!items.length) return messages;
+  const byClientId = new Map(items.map(item => [item.clientMessageId, item]));
+  const merged = messages.map(message => {
+    const item = message.client_message_id ? byClientId.get(message.client_message_id) : undefined;
+    return item ? { ...message, delivery_status: item.status, plan_mode: true } : message;
+  });
+  const existingIds = new Set(merged.map(message => message.client_message_id).filter(Boolean));
+
+  for (const item of items) {
+    if (!existingIds.has(item.clientMessageId)) {
+      merged.push({
+        id: `local-${item.clientMessageId}`,
+        session_id: sessionUid,
+        role: 'user',
+        content: item.content,
+        selection_text: item.selectionText,
+        client_message_id: item.clientMessageId,
+        delivery_status: item.status,
+        plan_mode: true,
+        created_at: item.createdAt,
+      });
+    }
+    if (item.assistantContent && !existingIds.has(assistantClientMessageId(item.clientMessageId))) {
+      merged.push({
+        id: `local-${assistantClientMessageId(item.clientMessageId)}`,
+        session_id: sessionUid,
+        role: 'assistant',
+        content: item.assistantContent,
+        client_message_id: assistantClientMessageId(item.clientMessageId),
+        delivery_status: 'pending-assistant',
+        created_at: item.createdAt,
+      });
+    }
+  }
+
+  return merged.sort((left, right) => left.created_at.localeCompare(right.created_at));
+}
 
 export function useAIChat(
   entityContext?: EntityContext | null,
@@ -69,6 +129,7 @@ export function useAIChat(
   const displayCountRef = useRef(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const outboxSyncRef = useRef(false);
   const sessionsRef = useRef<AIChatSession[]>(sessions);
   sessionsRef.current = sessions;
 
@@ -184,7 +245,7 @@ export function useAIChat(
         setCurrentSession(session);
         try {
           const stored = await localPersistence.getResource(sessionUid);
-          const allMessages = (stored?.messages as AIChatMessage[]) || [];
+          const allMessages = await mergePlanOutbox(sessionUid, ((stored?.messages as AIChatMessage[]) || []).map(normalizeMessage));
           messagesCacheMapRef.current.set(sessionUid, allMessages);
           displayCountRef.current = Math.min(PAGE_SIZE, allMessages.length);
           setMessages(allMessages.slice(-PAGE_SIZE));
@@ -213,9 +274,10 @@ export function useAIChat(
         const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${FETCH_ALL_LIMIT}`);
         if (!msgRes.ok) throw new Error('Failed to load messages');
         const { data: msgData } = await msgRes.json();
-        allMessages = (msgData || []).reverse().map((m: any) => ({ ...m, selection_text: m.selection_text ?? null }));
-        messagesCacheMapRef.current.set(sessionUid, allMessages!);
+        allMessages = (msgData || []).reverse().map(normalizeMessage);
       }
+      allMessages = await mergePlanOutbox(sessionUid, allMessages);
+      messagesCacheMapRef.current.set(sessionUid, allMessages);
 
       displayCountRef.current = Math.min(PAGE_SIZE, allMessages!.length);
       setMessages(allMessages!.slice(-PAGE_SIZE));
@@ -304,6 +366,13 @@ export function useAIChat(
 
     const trimmed = content.trim();
     const isGuest = isGuestCheck();
+    const isPlanRequest = requestContext?.planMode === true;
+    const sessionUid = String(currentSession.uid ?? currentSession.id);
+    const clientMessageId = requestContext?.clientMessageId ?? crypto.randomUUID();
+    const outbox = isPlanRequest
+      ? (await listPlanOutbox(sessionUid).catch(() => [])).find(item => item.clientMessageId === clientMessageId)
+      : undefined;
+    const resumeExisting = requestContext?.resumeExisting === true && (outbox?.userSaved ?? true);
 
     // Guard: if not guest but user id not available yet, auth still loading
     if (!isGuest && !auth.user?.id) {
@@ -311,26 +380,86 @@ export function useAIChat(
       return;
     }
 
-    setIsStreaming(true);
+    if (isPlanRequest && !outbox && !requestContext?.resumeExisting) {
+      try {
+        await savePlanOutbox({
+          sessionUid,
+          clientMessageId,
+          content: trimmed,
+          selectionText: selectionText || null,
+          requestContext: {
+            contextPrefix: requestContext.contextPrefix,
+            actionPrompt: requestContext.actionPrompt,
+            planMode: true,
+          },
+          status: 'pending',
+          userSaved: false,
+          createdAt: new Date().toISOString(),
+        });
+      } catch {
+        toast.error('Failed to save the Plan answer locally');
+        return;
+      }
+    }
 
-    // Optimistic user message
     const tempUserMsg: AIChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: `temp-${clientMessageId}`,
       session_id: currentSession.uid ?? currentSession.id,
       role: 'user',
       content: trimmed,
       selection_text: selectionText || null,
+      client_message_id: clientMessageId,
+      delivery_status: isPlanRequest ? 'pending' : undefined,
+      plan_mode: isPlanRequest || undefined,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, tempUserMsg]);
-    const sessionUid = String(currentSession.uid ?? currentSession.id);
+    const streamingMsg: AIChatMessage = {
+      id: 'streaming',
+      session_id: currentSession.uid ?? currentSession.id,
+      role: 'assistant',
+      content: '',
+      plan_mode: isPlanRequest || undefined,
+      created_at: new Date().toISOString(),
+    };
+
     const existing = messagesCacheMapRef.current.get(sessionUid) ?? [];
-    messagesCacheMapRef.current.set(sessionUid, [...existing, tempUserMsg]);
+    if (!requestContext?.resumeExisting) {
+      const next = [...existing.filter(message => message.client_message_id !== clientMessageId), tempUserMsg];
+      messagesCacheMapRef.current.set(sessionUid, next);
+      setMessages(previous => [...previous.filter(message => message.client_message_id !== clientMessageId), tempUserMsg]);
+    }
+
+    if (isPlanRequest && !navigator.onLine) {
+      setIsStreaming(false);
+      toast.info('Plan answer saved locally and will sync when the connection returns');
+      return;
+    }
+
+    setIsStreaming(true);
+    setMessages(previous => [...previous.filter(message => message.id !== 'streaming'), streamingMsg]);
+
+    const updateDeliveryStatus = (status?: AIChatMessage['delivery_status']) => {
+      const update = (message: AIChatMessage) => message.client_message_id === clientMessageId
+        ? { ...message, delivery_status: status }
+        : message;
+      setMessages(previous => previous.map(update));
+      messagesCacheMapRef.current.set(sessionUid, (messagesCacheMapRef.current.get(sessionUid) ?? []).map(update));
+    };
 
     // Guest mode: persist user message immediately + auto-title
-    if (isGuest) {
+    if (isGuest && !resumeExisting) {
       const updatedCache = messagesCacheMapRef.current.get(sessionUid) ?? [];
-      persistGuestMessages(currentSession.uid, [...updatedCache]);
+      const persisted = await persistGuestMessages(currentSession.uid, updatedCache);
+      if (!persisted) {
+        setMessages(previous => previous.filter(message => message.id !== 'streaming'));
+        setIsStreaming(false);
+        toast.error(isPlanRequest ? 'Failed to save the Plan answer locally' : 'Failed to save message locally');
+        return;
+      }
+      if (isPlanRequest) {
+        await updatePlanOutbox(clientMessageId, { userSaved: true, status: 'needs-resume' });
+        updateDeliveryStatus('needs-resume');
+      }
       const isFirstMessage = updatedCache.filter(m => m.role === 'user').length === 1;
       if (isFirstMessage) {
         const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '...' : trimmed;
@@ -339,16 +468,28 @@ export function useAIChat(
     }
 
     // Online mode: save user message to DB + auto-title
-    if (!isGuest) {
+    if (!isGuest && !resumeExisting) {
       try {
         const res = await apiFetch('/api/ai/chat/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: currentSession.uid ?? currentSession.id, role: 'user', content: trimmed, selection_text: selectionText || null,
+            client_message_id: clientMessageId,
           }),
         });
         if (!res.ok) throw new Error('Failed to save message');
+        const savedMessage = normalizeMessage(await res.json());
+        const replaceSaved = (message: AIChatMessage) => message.client_message_id === clientMessageId
+          ? {
+              ...savedMessage,
+              delivery_status: isPlanRequest ? 'needs-resume' as const : undefined,
+              plan_mode: isPlanRequest || undefined,
+            }
+          : message;
+        setMessages(previous => previous.map(replaceSaved));
+        messagesCacheMapRef.current.set(sessionUid, (messagesCacheMapRef.current.get(sessionUid) ?? []).map(replaceSaved));
+        if (isPlanRequest) await updatePlanOutbox(clientMessageId, { userSaved: true, status: 'needs-resume' });
 
         const isFirstMessage = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => m.role === 'user').length === 1;
         if (isFirstMessage) {
@@ -356,7 +497,15 @@ export function useAIChat(
           autoTitleSession(currentSession.uid, title, false);
         }
       } catch {
-        toast.error('Failed to save message');
+        setMessages(prev => prev.filter(message => message.id !== 'streaming'));
+        if (isPlanRequest) {
+          const status = navigator.onLine ? 'needs-resume' : 'pending';
+          await updatePlanOutbox(clientMessageId, { status, userSaved: false });
+          updateDeliveryStatus(status);
+          toast.error('Plan answer is saved locally and still needs to sync');
+        } else {
+          toast.error('Failed to save message');
+        }
         setIsStreaming(false);
         return;
       }
@@ -431,6 +580,10 @@ export function useAIChat(
 
       // Keep recent continuity without drowning the active workspace context.
       const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
+      if (requestContext?.planMode) {
+        const context = planningContext(previousMessages);
+        if (context) apiMessages.push({ role: 'system', content: context });
+      }
       apiMessages.push(...recentConversationMessages(previousMessages));
 
       // User message: context + selection + request
@@ -469,46 +622,76 @@ export function useAIChat(
       apiUserContent += `User request: ${trimmed}`;
       apiMessages.push({ role: 'user', content: apiUserContent });
 
-      // Add streaming placeholder
-      setMessages(prev => [...prev, {
-        id: 'streaming', session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: '', created_at: new Date().toISOString(),
-      } as AIChatMessage]);
-
       // Call AI
-      abortControllerRef.current = new AbortController();
+      let streamingBuffer = '';
+      let streamingFrame: number | null = null;
+      const flushStreamingBuffer = () => {
+        const chunk = streamingBuffer;
+        streamingBuffer = '';
+        streamingFrame = null;
+        if (!chunk) return;
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          return last?.id === 'streaming' ? [...prev.slice(0, -1), { ...last, content: last.content + chunk }] : prev;
+        });
+      };
+      const streamController = new AbortController();
+      abortControllerRef.current = streamController;
       const accumulatedResponse = await callAiStream(
-        config.baseUrl, config.apiKey, config.model, apiMessages, abortControllerRef.current.signal,
+        config.baseUrl, config.apiKey, config.model, apiMessages, streamController.signal,
         (token: string) => {
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            if (last?.id === 'streaming') return [...prev.slice(0, -1), { ...last, content: last.content + token }];
-            return prev;
-          });
+          streamingBuffer += token;
+          if (streamingFrame === null) streamingFrame = requestAnimationFrame(flushStreamingBuffer);
         },
         config.providerCode,
       );
+      if (streamingFrame !== null) cancelAnimationFrame(streamingFrame);
+      if (isPlanRequest && streamController.signal.aborted) {
+        streamingBuffer = '';
+        throw new Error('AI response interrupted. Resume when ready.');
+      }
+      flushStreamingBuffer();
 
       // Finalize message
+      const assistantMessageId = assistantClientMessageId(clientMessageId);
       const finalAiMsg: AIChatMessage = {
         id: `ai-${Date.now()}`,
         session_id: currentSession.uid ?? currentSession.id,
         role: 'assistant',
         content: accumulatedResponse,
+        client_message_id: assistantMessageId,
+        delivery_status: isPlanRequest ? 'pending-assistant' : undefined,
         created_at: new Date().toISOString(),
       };
-      const committedUserMsg = { ...tempUserMsg, id: `user-${Date.now()}` };
+      if (isPlanRequest) {
+        const saved = await updatePlanOutbox(clientMessageId, {
+          status: 'pending-assistant',
+          userSaved: true,
+          assistantContent: accumulatedResponse,
+        });
+        if (!saved) throw new Error('Failed to save the AI response locally');
+      }
+      const commitUser = (message: AIChatMessage) => message.client_message_id === clientMessageId
+        ? {
+            ...message,
+            id: String(message.id).startsWith('temp-') ? `user-${clientMessageId}` : message.id,
+            delivery_status: isPlanRequest ? 'pending-assistant' as const : undefined,
+          }
+        : message;
       setMessages(prev => [...prev
         .filter(m => m.id !== 'streaming')
-        .map(message => message.id === tempUserMsg.id ? committedUserMsg : message), finalAiMsg]);
+        .filter(message => message.client_message_id !== assistantMessageId)
+        .map(commitUser), finalAiMsg]);
       const finalCache = messagesCacheMapRef.current.get(sessionUid) ?? [];
       messagesCacheMapRef.current.set(sessionUid, [
-        ...finalCache.map(message => message.id === tempUserMsg.id ? committedUserMsg : message),
+        ...finalCache.filter(message => message.client_message_id !== assistantMessageId).map(commitUser),
         finalAiMsg,
       ]);
 
       // Persist
       if (isGuest) {
-        await persistGuestMessages(currentSession.uid, [...previousMessages, committedUserMsg, finalAiMsg]);
+        const persisted = await persistGuestMessages(currentSession.uid, messagesCacheMapRef.current.get(sessionUid) ?? []);
+        if (!persisted) throw new Error('Failed to save AI response locally');
         setSessions(prev => {
           const updated = prev.map(s => s.uid === currentSession.uid ? { ...s, updated_at: new Date().toISOString() } : s);
           updated.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -520,9 +703,16 @@ export function useAIChat(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: currentSession.uid ?? currentSession.id, role: 'assistant', content: accumulatedResponse,
+            client_message_id: assistantMessageId,
           }),
         });
         if (!saveAIRes.ok) throw new Error('Failed to save AI response');
+        const savedAssistant = normalizeMessage(await saveAIRes.json());
+        const replaceAssistant = (message: AIChatMessage) => message.client_message_id === assistantMessageId
+          ? { ...savedAssistant, delivery_status: undefined }
+          : message;
+        setMessages(previous => previous.map(replaceAssistant));
+        messagesCacheMapRef.current.set(sessionUid, (messagesCacheMapRef.current.get(sessionUid) ?? []).map(replaceAssistant));
 
         // Optimistic local state update
         setSessions(prev => {
@@ -538,17 +728,101 @@ export function useAIChat(
         }).catch(() => {});
       }
 
+      if (isPlanRequest) {
+        await removePlanOutbox(clientMessageId);
+        updateDeliveryStatus(undefined);
+      }
+
       if (onStreamCompleteRef.current) onStreamCompleteRef.current(accumulatedResponse);
 
     } catch (err: any) {
       const errMsg = err.message || 'AI request failed';
       toast.error(errMsg);
       setMessages(prev => prev.filter(m => m.id !== 'streaming'));
+      if (isPlanRequest) {
+        const current = (await listPlanOutbox(sessionUid).catch(() => [])).find(item => item.clientMessageId === clientMessageId);
+        const status = current?.assistantContent ? 'pending-assistant' : current?.userSaved ? 'needs-resume' : 'pending';
+        await updatePlanOutbox(clientMessageId, { status });
+        updateDeliveryStatus(status);
+      }
     } finally {
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
   }, [currentSession, entityContextText, entityContext, viewType, auth.user?.id]);
+
+  useEffect(() => {
+    const flushOutbox = async () => {
+      if (!currentSession || isStreaming || !navigator.onLine || outboxSyncRef.current) return;
+      const sessionUid = String(currentSession.uid ?? currentSession.id);
+      const pending = (await listPlanOutbox(sessionUid).catch(() => []))
+        .find(item => item.status === 'pending' || item.status === 'pending-assistant');
+      if (!pending) return;
+
+      outboxSyncRef.current = true;
+      try {
+        if (pending.status === 'pending-assistant' && pending.assistantContent) {
+          const assistantId = assistantClientMessageId(pending.clientMessageId);
+          const recovered: AIChatMessage = {
+            id: `ai-${assistantId}`,
+            session_id: sessionUid,
+            role: 'assistant',
+            content: pending.assistantContent,
+            client_message_id: assistantId,
+            created_at: new Date().toISOString(),
+          };
+
+          if (isGuestCheck()) {
+            const stored = await localPersistence.getResource(sessionUid);
+            if (stored) {
+              const storedMessages = ((stored.messages as AIChatMessage[]) || []).filter(message => message.client_message_id !== assistantId);
+              const persisted = await persistGuestMessages(sessionUid, [...storedMessages, recovered]);
+              if (!persisted) throw new Error('Failed to sync recovered AI response');
+            }
+          } else {
+            const response = await apiFetch('/api/ai/chat/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: sessionUid,
+                role: 'assistant',
+                content: pending.assistantContent,
+                client_message_id: assistantId,
+              }),
+            });
+            if (!response.ok) throw new Error('Failed to sync recovered AI response');
+            Object.assign(recovered, normalizeMessage(await response.json()));
+          }
+
+          const clearStatus = (message: AIChatMessage) => message.client_message_id === pending.clientMessageId
+            ? { ...message, delivery_status: undefined }
+            : message;
+          const updateMessages = (items: AIChatMessage[]) => [
+            ...items.filter(message => message.client_message_id !== assistantId).map(clearStatus),
+            recovered,
+          ];
+          messagesCacheMapRef.current.set(sessionUid, updateMessages(messagesCacheMapRef.current.get(sessionUid) ?? []));
+          setMessages(previous => updateMessages(previous));
+          await removePlanOutbox(pending.clientMessageId);
+        } else {
+          await sendMessage(pending.content, pending.selectionText, {
+            ...pending.requestContext,
+            clientMessageId: pending.clientMessageId,
+            resumeExisting: pending.userSaved,
+            fromOutbox: true,
+          });
+        }
+      } catch {
+        // Keep the durable item for the next online event or manual retry.
+      } finally {
+        outboxSyncRef.current = false;
+      }
+    };
+
+    void flushOutbox();
+    window.addEventListener('online', flushOutbox);
+    return () => window.removeEventListener('online', flushOutbox);
+  }, [currentSession, isStreaming, sendMessage]);
 
   const clearMessages = useCallback(() => setMessages([]), []);
 
@@ -559,8 +833,12 @@ export function useAIChat(
     }
   }, []);
 
+  const allMessages = currentSession
+    ? messagesCacheMapRef.current.get(String(currentSession.uid ?? currentSession.id)) ?? messages
+    : messages;
+
   return {
-    sessions, currentSession, messages,
+    sessions, currentSession, messages, allMessages,
     isSessionsLoading, isMessagesLoading, isStreaming,
     listSessions, createSession, selectSession, deleteSession, clearSessions,
     sendMessage, clearMessages, abortStream,

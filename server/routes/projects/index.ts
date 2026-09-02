@@ -12,5 +12,6 @@ router.post("/:id/restore", authenticate, ctrl.restore);
 router.delete("/:id/permanent", authenticate, ctrl.permanentDelete);
 router.get("/:id/siblings", authenticate, ctrl.siblings);
 router.get("/:id/summary", authenticate, ctrl.summary);
+router.get("/:id/files", authenticate, ctrl.files);
 
 export default router;

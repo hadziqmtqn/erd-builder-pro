@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Sparkles, Plus, Loader2, Search, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useAIChat, EntityContext } from '@/hooks/useAIChat';
-import { AIAction, getActionsForView, ViewType } from '@/components/ai/AIActions';
+import { AIAction, getActionsForView, grillMeAction, ViewType } from '@/components/ai/AIActions';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -10,7 +10,9 @@ import { SessionItem } from './SessionItem';
 import { SelectionBar } from './SelectionBar';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
+import { PlanInterviewCard } from './PlanInterviewCard';
 import { apiFetch } from '@/lib/api';
+import { extractPlanQuestion } from './plan-question-utils';
 import type { AIChatSession } from '@/types';
 
 interface MentionFile {
@@ -92,6 +94,7 @@ export const AIChatPanel = ({
     sessions,
     currentSession,
     messages,
+    allMessages,
     isSessionsLoading,
     isMessagesLoading,
     isStreaming,
@@ -112,6 +115,7 @@ export const AIChatPanel = ({
   const [minimized, setMinimized] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<AIChatSession | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
+  const [isPlanInterviewVisible, setIsPlanInterviewVisible] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -137,7 +141,12 @@ export const AIChatPanel = ({
   useEffect(() => { setSessionPage(1); }, [sessionSearch]);
 
   // Actions sesuai file fitur yang sedang dibuka (entityType), bukan dari sesi entity_type
-  const actions = currentViewType ? getActionsForView(currentViewType) : [];
+  const actions = [grillMeAction, ...(currentViewType ? getActionsForView(currentViewType) : [])];
+  const activeAction = actions.find(action => action.id === activeActionId);
+  const planPhase = useMemo(
+    () => messages.some(message => message.role === 'assistant' && extractPlanQuestion(message.content)) ? 'follow-up' : 'initial',
+    [messages],
+  );
 
   // ─── Auto-fill prompt from AI action buttons ──────
   useEffect(() => {
@@ -151,7 +160,7 @@ export const AIChatPanel = ({
   }, [pendingPrompt, onPromptUsed]);
 
   const handleSelectAction = useCallback((action: AIAction) => {
-    if (!entityType || !effectiveEntityContextText || !entityTitle) return;
+    if (action.requiresEntityContext !== false && (!entityType || !effectiveEntityContextText || !entityTitle)) return;
 
     const context = {
       content: effectiveEntityContextText,
@@ -325,13 +334,38 @@ export const AIChatPanel = ({
 
     sendMessage(text, selectionText, {
       contextPrefix: mentionContext || undefined,
-      actionPrompt: activeActionPrompt || undefined,
+      actionPrompt: activeAction?.id === grillMeAction.id
+        ? grillMeAction.buildPrompt({ planPhase })
+        : activeActionPrompt || undefined,
+      planMode: activeAction?.id === grillMeAction.id || undefined,
     });
     if (inputRef.current) inputRef.current.value = '';
     setLastActionId(activeActionId);
-    setActiveActionId(null);
-    setActiveActionPrompt(null);
-  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, resolveMentions]);
+    if (!activeAction?.persistent) {
+      setActiveActionId(null);
+      setActiveActionPrompt(null);
+    }
+  }, [isStreaming, sendMessage, selectionText, activeActionPrompt, activeActionId, activeAction, planPhase, resolveMentions]);
+
+  const handlePlanAnswer = useCallback(async (answer: string) => {
+    if (isStreaming) return;
+    await sendMessage(answer, null, {
+      actionPrompt: grillMeAction.buildPrompt({ planPhase: 'follow-up' }),
+      planMode: true,
+    });
+    setLastActionId(grillMeAction.id);
+  }, [isStreaming, sendMessage]);
+
+  const handlePlanResume = useCallback(async (answer: string, clientMessageId?: string | null, phase: 'initial' | 'follow-up' = 'follow-up') => {
+    if (isStreaming) return;
+    await sendMessage(answer, null, {
+      actionPrompt: grillMeAction.buildPrompt({ planPhase: phase }),
+      planMode: true,
+      clientMessageId: clientMessageId || undefined,
+      resumeExisting: true,
+    });
+    setLastActionId(grillMeAction.id);
+  }, [isStreaming, sendMessage]);
 
   // ─── Handle keydown ────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -489,6 +523,18 @@ export const AIChatPanel = ({
               activeNoteContent={activeNoteContent}
             />
 
+            {currentSession && (
+              <PlanInterviewCard
+                key={String(currentSession.uid ?? currentSession.id)}
+                sessionUid={String(currentSession.uid ?? currentSession.id)}
+                messages={allMessages}
+                isStreaming={isStreaming}
+                onSubmit={handlePlanAnswer}
+                onResume={handlePlanResume}
+                onVisibilityChange={setIsPlanInterviewVisible}
+              />
+            )}
+
             {/* ── Selection Bar ────────────────────────── */}
             <SelectionBar
               hasActiveSession={hasActiveSession}
@@ -497,22 +543,24 @@ export const AIChatPanel = ({
             />
 
             {/* ── Input Area ───────────────────────────── */}
-            <ChatInput
-              hasActiveSession={hasActiveSession}
-              isStreaming={isStreaming}
-              entityType={entityType}
-              viewType={currentViewType}
-              actions={actions}
-              activeActionId={activeActionId}
-              inputRef={inputRef}
-              onSend={handleSend}
-              onKeyDown={handleKeyDown}
-              onSelectAction={handleSelectAction}
-              onClearAction={handleClearAction}
-              onAbort={abortStream}
-              hasProject={!!projectId}
-              mentionFiles={mentionFiles}
-            />
+            {!isPlanInterviewVisible && (
+              <ChatInput
+                hasActiveSession={hasActiveSession}
+                isStreaming={isStreaming}
+                entityType={entityType}
+                viewType={currentViewType}
+                actions={actions}
+                activeActionId={activeActionId}
+                inputRef={inputRef}
+                onSend={handleSend}
+                onKeyDown={handleKeyDown}
+                onSelectAction={handleSelectAction}
+                onClearAction={handleClearAction}
+                onAbort={abortStream}
+                hasProject={!!projectId}
+                mentionFiles={mentionFiles}
+              />
+            )}
           </>
         )}
       </div>
