@@ -745,11 +745,7 @@ export function WorkspaceProvider({
     if (!isAuthenticated || isPublicView) return;
     initialFetchDoneRef.current = true;
     fetchProjects(false, '');
-    fetchDiagrams();
-    fetchNotes();
-    fetchDrawings();
-    fetchFlowcharts();
-  }, [isAuthenticated, isPublicView, fetchProjects, fetchDiagrams, fetchNotes, fetchDrawings, fetchFlowcharts]);
+  }, [isAuthenticated, isPublicView, fetchProjects]);
 
   // Fetch trash on trash view
   useEffect(() => {
@@ -1017,7 +1013,7 @@ export function WorkspaceProvider({
     isDrawingItemLoading,
     isFlowchartItemLoading,
     isERDItemLoading,
-    isLoading: isDiagramsLoading || isNotesLoading || isDrawingsLoading || isFlowchartsLoading || isProjectsLoading,
+    isLoading: isProjectsLoading,
     isProjectsLoading,
     isLocalSaving,
     isRefreshing,

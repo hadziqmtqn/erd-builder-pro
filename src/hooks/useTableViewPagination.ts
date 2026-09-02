@@ -46,8 +46,8 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     tableLoadingState, setTableLoadingState,
   } = params;
 
-  // Only fetch paginated data when on an actual table route — skip on dashboard
-  // and editor routes where the initial fetch already provides the data.
+  // Only fetch paginated data when on an actual table route. Editor routes load
+  // their selected item directly and must not compete with an unused list request.
   const isTableView = pathname.startsWith('/table/');
   const isDbClientTable = pathname === '/table/db-client';
 
@@ -91,7 +91,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     triggerFetch(h, projId, pageNum, {});
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
+  }, [view, pathname, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchNotes, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch erd
   useEffect(() => {
@@ -104,7 +104,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     const options = isUserAction ? { page: pageNum, sourceType: 'blank' } : { silent: true, page: pageNum, sourceType: 'blank' };
     const promise = (fetchDiagrams as (...args: any[]) => Promise<any>)(false, projId, fileSearchQuery, null, 10, pageNum, options);
     if (isUserAction && promise?.then) promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, isDbClientTable, tableLoadingState]);
+  }, [view, pathname, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDiagrams, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey, isDbClientTable, tableLoadingState]);
 
   // 🗂 Server-side pagination: fetch flowcharts
   useEffect(() => {
@@ -119,7 +119,7 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     if (isUserAction && promise?.then) {
       promise.then(() => setTableLoadingState('idle')).catch(() => setTableLoadingState('idle'));
     }
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
+  }, [view, pathname, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchFlowcharts, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 
   // 🗂 Server-side pagination: fetch drawings
   useEffect(() => {
@@ -129,5 +129,5 @@ export function useTableViewPagination(params: UseTableViewPaginationParams) {
     const projId = resolveProjectId(selectedWorkspaceUid);
     const pageNum = parseInt(tableSearchParams.get('page') || '1', 10);
     triggerFetch(fetchDrawings, projId, pageNum, {});
-  }, [view, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
+  }, [view, pathname, hasActiveItem, selectedWorkspaceUid, tableSearchParams, projects, fetchDrawings, isAuthenticated, isPublicView, fileSearchQuery, tableRefreshKey]);
 }

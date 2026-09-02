@@ -310,11 +310,9 @@ export async function getProjectSummary(projectId: number, userId: string, inclu
 export async function listProjectFiles(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
-  const project = await prisma.project.findFirst({ where: { id: projectId, userId, isDeleted: false }, select: { id: true } });
-  if (!project) return { data: [] };
-
   const where = { projectId, userId, isDeleted: false };
-  const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
+  const [project, notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
+    prisma.project.findFirst({ where: { id: projectId, userId, isDeleted: false }, select: { id: true } }),
     prisma.note.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
     prisma.diagram.findMany({ where: { ...where, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }, select: { id: true, uid: true, name: true, createdAt: true } }),
     prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
@@ -323,6 +321,7 @@ export async function listProjectFiles(projectId: number, userId: string, includ
       ? (prisma as any).dbClient.findMany({ where, select: { id: true, uid: true, name: true, createdAt: true } })
       : Promise.resolve([]),
   ]);
+  if (!project) return { data: [] };
 
   const files = [
     ...notes.map(file => ({ type: "notes", uid: String(file.uid ?? file.id), title: file.title, createdAt: file.createdAt })),

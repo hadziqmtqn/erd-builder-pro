@@ -22,14 +22,50 @@ const getFileName = (file: any) => file.title || file.name || 'Untitled'
 const getFileUid = (file: any) => file.uid || file.id
 const getCreatedTime = (file: any) => new Date(file.created_at || file.createdAt || 0).getTime()
 const WORKSPACE_TABS_CACHE_MS = 30_000
-type WorkspaceFile = { type: FeatureTab; uid: string; title: string; createdAt?: string }
+export type WorkspaceFile = { type: FeatureTab; uid: string; title: string; createdAt?: string }
 type ProjectFileTab = { file: any; type: FeatureTab }
 const workspaceTabsCache = new Map<string, { expiresAt: number; files: WorkspaceFile[] }>()
 const workspaceTabsRequests = new Map<string, Promise<{ files: WorkspaceFile[] }>>()
 
-async function loadWorkspaceTabs(projectId: string | number, userId: string | number | null | undefined) {
+const toWorkspaceFile = (file: any, type: FeatureTab): WorkspaceFile | null => {
+  const uid = file?.uid ?? file?.id
+  if (uid == null) return null
+  return {
+    type,
+    uid: String(uid),
+    title: getFileName(file),
+    createdAt: file.created_at ?? file.createdAt,
+  }
+}
+
+export function collectProjectFiles(
+  projectId: string | number,
+  sources: Pick<ReturnType<typeof useWorkspace>, 'notes' | 'diagrams' | 'flowcharts' | 'drawings'>,
+): WorkspaceFile[] {
+  const belongsToProject = (file: any) => !file.is_deleted
+    && !file.isDeleted
+    && String(file.project_id ?? file.projectId) === String(projectId)
+  const mapFiles = (files: any[], type: FeatureTab) => files
+    .filter(belongsToProject)
+    .map(file => toWorkspaceFile(file, type))
+    .filter((file): file is WorkspaceFile => file !== null)
+
+  return [
+    ...mapFiles(sources.notes, 'notes'),
+    ...mapFiles(sources.diagrams.filter(file => (file.source_type ?? file.sourceType) !== 'production_db'), 'erd'),
+    ...mapFiles(sources.flowcharts, 'flowchart'),
+    ...mapFiles(sources.drawings, 'drawings'),
+  ]
+}
+
+export function mergeProjectFiles(...groups: WorkspaceFile[][]): WorkspaceFile[] {
+  return [...new Map(groups.flatMap(group => group.map(file => [`${file.type}-${file.uid}`, file] as const))).values()]
+    .sort((a, b) => getCreatedTime(a) - getCreatedTime(b))
+}
+
+async function loadWorkspaceTabs(projectId: string | number, userId: string | number) {
   const projectKey = String(projectId)
-  const cacheKey = `${userId ?? 'anonymous'}:${projectKey}`
+  const cacheKey = `${userId}:${projectKey}`
   const cached = workspaceTabsCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return cached
   const pending = workspaceTabsRequests.get(cacheKey)
@@ -57,7 +93,9 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
   const [createType, setCreateType] = useState<CreateFileType>('notes')
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([])
+  const [workspaceResult, setWorkspaceResult] = useState<{ projectKey: string; files: WorkspaceFile[] }>({
+    projectKey: '', files: [],
+  })
   const popoverRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
@@ -65,7 +103,7 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
 
   const {
     user, isGuest,
-    activeProjectId,
+    activeProjectId, notes, diagrams, drawings, flowcharts,
     activeDiagram, activeNote, activeDrawing, activeFlowchart,
     activeDiagramId, activeNoteUid, activeDrawingId, activeFlowchartId,
     handleDiagramSelect,
@@ -101,14 +139,23 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
       ?? (activeProjectId && activeProjectId !== 'all' ? activeProjectId : searchParams.get('pid'))
   }, [activeProjectId, activeNote, activeDiagram, activeFlowchart, activeDrawing, currentFile, currentView, searchParams])
 
+  const projectKey = projectId == null ? '' : String(projectId)
+  const workspaceFiles = workspaceResult.projectKey === projectKey ? workspaceResult.files : []
+  const localProjectFiles = useMemo(
+    () => projectId ? collectProjectFiles(projectId, { notes, diagrams, drawings, flowcharts }) : [],
+    [projectId, notes, diagrams, drawings, flowcharts],
+  )
+
   useEffect(() => {
     if (!projectId) {
-      setWorkspaceFiles([])
+      setWorkspaceResult({ projectKey: '', files: [] })
       return
     }
+    if (!isGuest && user?.id == null) return
 
     let cancelled = false
-    const loadDiagrams = async () => {
+    const requestedProjectKey = String(projectId)
+    const loadFiles = async () => {
       try {
         let files: WorkspaceFile[]
         if (isGuest) {
@@ -118,28 +165,22 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
             localPersistence.getAllResources('flowchart'),
             localPersistence.getAllResources('drawings'),
           ])
-          const belongsToProject = (file: any) => !file.is_deleted && String(file.project_id ?? file.projectId) === String(projectId)
-          files = [
-            ...notes.filter(belongsToProject).map(file => ({ type: 'notes' as const, uid: String(file.uid ?? file.id), title: file.title, createdAt: file.created_at ?? file.createdAt })),
-            ...diagrams.filter(belongsToProject).map(file => ({ type: 'erd' as const, uid: String(file.uid ?? file.id), title: file.name, createdAt: file.created_at ?? file.createdAt })),
-            ...flowcharts.filter(belongsToProject).map(file => ({ type: 'flowchart' as const, uid: String(file.uid ?? file.id), title: file.title, createdAt: file.created_at ?? file.createdAt })),
-            ...drawings.filter(belongsToProject).map(file => ({ type: 'drawings' as const, uid: String(file.uid ?? file.id), title: file.title, createdAt: file.created_at ?? file.createdAt })),
-          ]
+          files = collectProjectFiles(projectId, { notes, diagrams, flowcharts, drawings })
         } else {
-          const workspaceTabs = await loadWorkspaceTabs(projectId, user?.id)
+          const workspaceTabs = await loadWorkspaceTabs(projectId, user!.id)
           files = workspaceTabs.files
         }
         if (!cancelled) {
-          setWorkspaceFiles(files)
+          setWorkspaceResult({ projectKey: requestedProjectKey, files })
         }
       } catch {
         if (!cancelled) {
-          setWorkspaceFiles([])
+          setWorkspaceResult({ projectKey: requestedProjectKey, files: [] })
         }
       }
     }
 
-    loadDiagrams()
+    loadFiles()
     return () => { cancelled = true }
   }, [projectId, isGuest, user?.id])
 
@@ -152,12 +193,10 @@ export function ProjectFileTabs({ currentView, currentFile }: Props) {
         : currentView === 'flowchart'
           ? activeFlowchart
           : activeDrawing)
-    const activeEntry: ProjectFileTab[] = activeFile ? [{ file: activeFile, type: currentView }] : []
-    return [...new Map<string, ProjectFileTab>([
-      ...workspaceFiles.map(file => [`${file.type}-${file.uid}`, { file, type: file.type }] as [string, ProjectFileTab]),
-      ...activeEntry.map(item => [`${item.type}-${getFileUid(item.file)}`, item] as [string, ProjectFileTab]),
-    ]).values()].sort((a, b) => getCreatedTime(a.file) - getCreatedTime(b.file))
-  }, [projectId, workspaceFiles, currentView, currentFile, activeNote, activeDiagram, activeFlowchart, activeDrawing])
+    const activeEntry = activeFile ? toWorkspaceFile(activeFile, currentView) : null
+    return mergeProjectFiles(workspaceFiles, localProjectFiles, activeEntry ? [activeEntry] : [])
+      .map(file => ({ file, type: file.type } satisfies ProjectFileTab))
+  }, [projectId, workspaceFiles, localProjectFiles, currentView, currentFile, activeNote, activeDiagram, activeFlowchart, activeDrawing])
 
   const activeUid = currentFile ? getFileUid(currentFile) : currentView === 'notes'
     ? activeNoteUid
