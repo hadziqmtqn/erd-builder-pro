@@ -100,7 +100,7 @@
     "date-fns": "^4.1.0",
     "diff": "^9.0.0",
     "docx": "^9.7.1",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.14",
     "dotenv": "^17.2.3",
     "downloadjs": "^1.4.7",
     "express": "^4.21.2",
