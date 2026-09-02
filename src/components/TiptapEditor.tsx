@@ -48,6 +48,10 @@ import { FileMentionMenu, FileMentionMenuRef, FileMentionOption } from './editor
 import { useNavigate } from 'react-router-dom';
 import { localPersistence } from '@/lib/localPersistence';
 import { NestedTaskList } from '../lib/tiptap/nested-task-list';
+import { useWorkspace } from '@/providers/WorkspaceContext';
+import { ErdFromSqlDialog } from '@/components/ai/ErdFromSqlDialog';
+import { FlowchartFromJsonDialog } from '@/components/ai/FlowchartFromJsonDialog';
+import { CODE_BLOCK_CONVERT_EVENT, type CodeBlockConversionDetail } from './editor/extensions/ExecutableCodeBlock';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -112,11 +116,18 @@ interface TiptapEditorProps {
 
 export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
+  const {
+    diagrams, flowcharts, activeProjectId,
+    handleSidebarDiagramCreate, handleSidebarFlowchartCreate,
+    handleDiagramSelect, handleFlowchartSelect, triggerPendingErdDiff,
+  } = useWorkspace();
   const navigate = useNavigate();
   const [headings, setHeadings] = React.useState<HeadingInfo[]>([]);
   const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean | null>(null);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState('');
+  const [erdDialogSchema, setErdDialogSchema] = React.useState<string | null>(null);
+  const [flowchartDialogJson, setFlowchartDialogJson] = React.useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -125,6 +136,17 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     updatePointerMode();
     pointerQuery.addEventListener('change', updatePointerMode);
     return () => pointerQuery.removeEventListener('change', updatePointerMode);
+  }, []);
+
+  React.useEffect(() => {
+    const handleConvert = (event: Event) => {
+      const detail = (event as CustomEvent<CodeBlockConversionDetail>).detail;
+      if (!detail?.content) return;
+      if (detail.kind === 'erd') setErdDialogSchema(detail.content);
+      if (detail.kind === 'flowchart') setFlowchartDialogJson(detail.content);
+    };
+    window.addEventListener(CODE_BLOCK_CONVERT_EVENT, handleConvert);
+    return () => window.removeEventListener(CODE_BLOCK_CONVERT_EVENT, handleConvert);
   }, []);
 
   const mentionFilesPromiseRef = useRef<Promise<FileMentionOption[]> | null>(null);
@@ -712,6 +734,29 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         onUrlChange={setLinkUrl}
         onSubmit={handleLinkSubmit}
       />
+
+      {erdDialogSchema && (
+        <ErdFromSqlDialog
+          schema={erdDialogSchema}
+          onClose={() => setErdDialogSchema(null)}
+          diagrams={diagrams}
+          targetProjectId={activeProjectId}
+          handleSidebarDiagramCreate={handleSidebarDiagramCreate}
+          handleDiagramSelect={handleDiagramSelect}
+          triggerPendingErdDiff={triggerPendingErdDiff}
+        />
+      )}
+
+      {flowchartDialogJson && (
+        <FlowchartFromJsonDialog
+          json={flowchartDialogJson}
+          onClose={() => setFlowchartDialogJson(null)}
+          flowcharts={flowcharts}
+          targetProjectId={activeProjectId}
+          handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
+          handleFlowchartSelect={handleFlowchartSelect}
+        />
+      )}
 
       <AnimatePresence>
         {slashMenu.isOpen && (

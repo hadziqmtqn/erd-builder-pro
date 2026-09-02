@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Radio } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
-import { CheckCircle2, ChevronLeft, ChevronRight, RotateCcw, Send, X } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
 import type { AIChatMessage } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,9 +36,10 @@ interface PlanInterviewCardProps {
   isStreaming: boolean;
   onSubmit: (answer: string) => Promise<void>;
   onResume: (answer: string, clientMessageId?: string | null, phase?: 'initial' | 'follow-up') => Promise<void>;
+  onVisibilityChange?: (visible: boolean) => void;
 }
 
-export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit, onResume }: PlanInterviewCardProps) {
+export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit, onResume, onVisibilityChange }: PlanInterviewCardProps) {
   const entries = useMemo(() => collectPlanQuestionEntries(messages), [messages]);
   const pendingInitialRequest = useMemo(() => [...messages].reverse().find(message =>
     message.role === 'user'
@@ -55,7 +56,14 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
   const [hydratedKey, setHydratedKey] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const hasInterview = entries.length > 0 || Boolean(pendingInitialRequest);
+
   useEffect(() => {
+    onVisibilityChange?.(hasInterview && !collapsed);
+    return () => onVisibilityChange?.(false);
+  }, [collapsed, hasInterview, onVisibilityChange]);
+
+  useLayoutEffect(() => {
     if (entries.length) {
       setPage(entries.length - 1);
     }
@@ -71,7 +79,9 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
   };
 
   const entry = entries[page];
-  useEffect(() => {
+  // Reset before paint when the active question changes. Without this, a
+  // controlled radio can briefly retain "Other answer" from the prior card.
+  useLayoutEffect(() => {
     if (!entry) return;
     let active = true;
     setHydratedKey('');
@@ -132,8 +142,9 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
             <CardTitle className="text-sm">Plan interview</CardTitle>
           </CardHeader>
           <CardFooter className="justify-between gap-3 border-t">
-            <Badge variant="secondary">
-              {needsResume ? 'Needs resume'
+            <Badge variant="secondary" className="gap-1.5">
+              {isStreaming ? <><LoaderCircle className="size-3 animate-spin" /> Preparing your first question</>
+                : needsResume ? 'Needs resume'
                 : pendingInitialRequest.delivery_status === 'pending-assistant' ? 'Saving response'
                 : 'Waiting for connection'}
             </Badge>
@@ -258,7 +269,8 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
 
         <CardFooter className="justify-between gap-3 border-t">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {waitingForConnection ? <Badge variant="secondary">Waiting for connection</Badge>
+            {isStreaming ? <><LoaderCircle className="size-4 animate-spin" /> AI is preparing the next question...</>
+              : waitingForConnection ? <Badge variant="secondary">Waiting for connection</Badge>
               : savingResponse ? <Badge variant="secondary">Saving response</Badge>
               : needsResume ? <Badge variant="secondary">Needs resume</Badge>
               : entry.response ? <><CheckCircle2 className="size-4" /> Answered</>

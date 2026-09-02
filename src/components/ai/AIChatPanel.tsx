@@ -115,6 +115,7 @@ export const AIChatPanel = ({
   const [minimized, setMinimized] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<AIChatSession | null>(null);
   const [confirmOverwritePrompt, setConfirmOverwritePrompt] = useState<string | null>(null);
+  const [isPlanInterviewVisible, setIsPlanInterviewVisible] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -530,6 +531,7 @@ export const AIChatPanel = ({
                 isStreaming={isStreaming}
                 onSubmit={handlePlanAnswer}
                 onResume={handlePlanResume}
+                onVisibilityChange={setIsPlanInterviewVisible}
               />
             )}
 
@@ -541,22 +543,24 @@ export const AIChatPanel = ({
             />
 
             {/* ── Input Area ───────────────────────────── */}
-            <ChatInput
-              hasActiveSession={hasActiveSession}
-              isStreaming={isStreaming}
-              entityType={entityType}
-              viewType={currentViewType}
-              actions={actions}
-              activeActionId={activeActionId}
-              inputRef={inputRef}
-              onSend={handleSend}
-              onKeyDown={handleKeyDown}
-              onSelectAction={handleSelectAction}
-              onClearAction={handleClearAction}
-              onAbort={abortStream}
-              hasProject={!!projectId}
-              mentionFiles={mentionFiles}
-            />
+            {!isPlanInterviewVisible && (
+              <ChatInput
+                hasActiveSession={hasActiveSession}
+                isStreaming={isStreaming}
+                entityType={entityType}
+                viewType={currentViewType}
+                actions={actions}
+                activeActionId={activeActionId}
+                inputRef={inputRef}
+                onSend={handleSend}
+                onKeyDown={handleKeyDown}
+                onSelectAction={handleSelectAction}
+                onClearAction={handleClearAction}
+                onAbort={abortStream}
+                hasProject={!!projectId}
+                mentionFiles={mentionFiles}
+              />
+            )}
           </>
         )}
       </div>

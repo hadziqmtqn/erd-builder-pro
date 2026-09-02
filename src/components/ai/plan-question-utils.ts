@@ -44,7 +44,9 @@ export interface PlanQuestionEntry {
 
 export const PLAN_ANSWER_PREFIX = '[Plan answer]';
 export const PLAN_FEEDBACK_PREFIX = '[Plan feedback]';
-const QUESTION_BLOCK = /```plan-question\s*\n([\s\S]*?)```/i;
+// Some providers shorten the requested fence to `plan`; accept that transport
+// alias but retain the same strict payload validation below.
+const QUESTION_BLOCK = /```(?:plan-question|plan)\s*\n([\s\S]*?)```/i;
 
 export function extractPlanQuestion(content: string): PlanQuestionPayload | null {
   const match = content.match(QUESTION_BLOCK);
@@ -168,7 +170,7 @@ export function planResponseDisplay(content: string) {
 }
 
 export function hidePlanQuestionProtocol(content: string) {
-  return content.replace(/```plan-question\b[\s\S]*$/i, '').trimEnd();
+  return content.replace(/```(?:plan-question|plan)\b[\s\S]*$/i, '').trimEnd();
 }
 
 /** Keep an accidentally combined PRD + next question visible in history. */

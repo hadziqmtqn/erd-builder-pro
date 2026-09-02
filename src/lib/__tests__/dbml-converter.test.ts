@@ -58,6 +58,36 @@ Ref: employees.user_id > users.id`;
     expect(result.edges).toHaveLength(1);
   });
 
+  it('accepts the DBML contract required from AI-generated schemas', () => {
+    const dbml = `Enum classes_level {
+  "1"
+  "2"
+}
+
+Table classes {
+  id BIGINT [pk, increment]
+  name VARCHAR(50) [not null]
+  level classes_level [not null]
+  academic_year VARCHAR(9) [not null]
+
+  Indexes {
+    (name, academic_year) [unique]
+  }
+}
+
+Table students {
+  id BIGINT [pk, increment]
+  class_id BIGINT [not null]
+}
+
+Ref: students.class_id > classes.id`;
+
+    const result = dbmlToERD(dbml);
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+    expect(result.nodes.find(node => node.data.name === 'classes')?.data.columns.find(column => column.name === 'level')?.enum_values).toBe('"1", "2"');
+  });
+
   it('normalizes AI-style DBML with sized types, inline enums, and local refs', () => {
     const dbml = `Table users {
   id bigint [pk, increment]

@@ -10,6 +10,15 @@ describe('plan question protocol', () => {
     });
   });
 
+  it('accepts the provider plan fence alias while keeping the protocol hidden', () => {
+    const content = 'I need one decision.\n```plan\n{"id":"stack","question":"Choose stack","type":"single","options":["Laravel","Node.js"],"recommendedOption":"Laravel","allowCustom":true}\n```';
+    expect(extractPlanQuestion(content)).toMatchObject({
+      content: 'I need one decision.',
+      question: { id: 'stack', recommendedOption: 'Laravel' },
+    });
+    expect(hidePlanQuestionProtocol('I need one decision.\n```plan\n{"id":"stack"')).toBe('I need one decision.');
+  });
+
   it('rejects batches, invalid option counts, and a recommendation outside the options', () => {
     expect(extractPlanQuestion('```plan-question\n{"questions":[]}\n```')).toBeNull();
     expect(extractPlanQuestion('```plan-question\n{"question":"x","type":"single","options":["A"],"recommendedOption":"A"}\n```')).toBeNull();
