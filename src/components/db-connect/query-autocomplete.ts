@@ -42,6 +42,25 @@ function referencedTables(sql: string, tables: TableSchema[]) {
   return references;
 }
 
+function joinOptions(references: ReturnType<typeof referencedTables>, tables: TableSchema[]): Completion[] {
+  const byName = new Map(tables.map(table => [table.table_name.toLowerCase(), table]));
+  const options = new Map<string, Completion>();
+  for (const { table, qualifier } of references) {
+    for (const foreignKey of table.foreign_keys || []) {
+      const target = byName.get(foreignKey.ref_table.toLowerCase());
+      const targetName = target?.table_name || foreignKey.ref_table;
+      options.set(targetName.toLowerCase(), {
+        label: targetName,
+        type: 'class',
+        detail: `${qualifier}.${foreignKey.column} = ${targetName}.${foreignKey.ref_column}`,
+        apply: `${targetName} ON ${qualifier}.${foreignKey.column} = ${targetName}.${foreignKey.ref_column}`,
+        boost: 10,
+      });
+    }
+  }
+  return [...options.values()];
+}
+
 export function buildSqlCompletions(tables: TableSchema[]) {
   const tableOptions: Completion[] = tables.map(table => ({ label: table.table_name, type: 'class', detail: 'table' }));
   const keywordOptions: Completion[] = SQL_KEYWORDS.map(label => ({ label, type: 'keyword' }));
@@ -55,7 +74,8 @@ export function buildSqlCompletions(tables: TableSchema[]) {
     const statement = activeStatement(sql, ctx.pos);
     const statementBeforeCursor = sql.slice(sql.lastIndexOf(';', Math.max(0, ctx.pos - 1)) + 1, ctx.pos);
     const expectsTable = /\b(?:from|join|update|into)\s+["`\[\]\w$.]*$/i.test(statementBeforeCursor);
-    const key = `${statement}\0${expectsTable}`;
+    const expectsJoin = /\bjoin\s+["`\[\]\w$.]*$/i.test(statementBeforeCursor);
+    const key = `${statement}\0${expectsTable}\0${expectsJoin}`;
     if (key !== previousKey) {
       previousKey = key;
       const references = referencedTables(statement, tables);
@@ -63,7 +83,10 @@ export function buildSqlCompletions(tables: TableSchema[]) {
         label: `${qualifier}.${column.name}`, type: 'property', detail: `${table.table_name} column`,
       } as Completion)));
       const referencedTableOptions = references.map(({ table }) => ({ label: table.table_name, type: 'class', detail: 'referenced table' } as Completion));
-      previousOptions = [...keywordOptions, ...(expectsTable ? tableOptions : referencedTableOptions), ...columns];
+      const joins = expectsJoin ? joinOptions(references, tables) : [];
+      const joinedNames = new Set(joins.map(option => option.label.toLowerCase()));
+      const availableTables = expectsTable ? tableOptions.filter(option => !joinedNames.has(option.label.toLowerCase())) : referencedTableOptions;
+      previousOptions = [...keywordOptions, ...joins, ...availableTables, ...columns];
     }
     return {
       from: word?.from ?? ctx.pos,

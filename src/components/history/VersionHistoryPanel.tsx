@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Clock3, Loader2, RotateCcw } from 'lucide-react';
+import { Loader2, RotateCcw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { diagramSnapshotToCanvas, ERD_HISTORY_PREVIEW_EVENT } from '@/lib/history-diagram';
+import { NOTE_HISTORY_PREVIEW_EVENT } from '@/lib/note-history-diff';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,13 +33,11 @@ type RevisionDetail = Revision & {
 };
 
 type Props = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   entityType: HistoryEntityType;
   entityUid: string;
   documentTitle: string;
-  targetMinutes?: number;
-  onRestored: () => void;
+  onClose: () => void;
+  onRestored: () => void | Promise<void>;
 };
 
 function parseData(value: unknown) {
@@ -47,15 +46,10 @@ function parseData(value: unknown) {
   try { return JSON.parse(value); } catch { return {}; }
 }
 
-function plainText(html: string) {
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  return document.body.textContent || '';
-}
-
 function Preview({ entityType, detail }: { entityType: HistoryEntityType; detail: RevisionDetail }) {
   const snapshot = detail.snapshot;
   if (entityType === 'notes') {
-    return <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6">{plainText(String(snapshot.content || '')) || 'Empty note'}</pre>;
+    return null;
   }
   if (entityType === 'flowcharts') {
     const data = parseData(snapshot.data);
@@ -66,16 +60,7 @@ function Preview({ entityType, detail }: { entityType: HistoryEntityType; detail
     const elements = Array.isArray(data) ? data : data.elements || [];
     return <Summary title={snapshot.title} items={[['Elements', elements.length], ['Files', Object.keys(data.files || {}).length]]} />;
   }
-  const productionData = parseData(snapshot.data);
-  const isProduction = snapshot.source_type === 'production_db';
-  return (
-    <Summary
-      title={snapshot.name}
-      items={isProduction
-        ? [['Layout tables', Object.keys(productionData.nodes || {}).length], ['Database schema', 'Not changed']]
-        : [['Tables', snapshot.entities?.length || 0], ['Relationships', snapshot.relationships?.length || 0]]}
-    />
-  );
+  return null;
 }
 
 function Summary({ title, items }: { title?: string; items: Array<[string, string | number]> }) {
@@ -94,7 +79,7 @@ function Summary({ title, items }: { title?: string; items: Array<[string, strin
   );
 }
 
-export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid, documentTitle, targetMinutes, onRestored }: Props) {
+export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onClose, onRestored }: Props) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RevisionDetail | null>(null);
@@ -104,7 +89,6 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     setLoading(true);
     setDetail(null);
@@ -116,21 +100,19 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
         const items = body.revisions || [];
         setRevisions(items);
         setCurrentUpdatedAt(body.current_updated_at || null);
-        const target = targetMinutes ? Date.now() - targetMinutes * 60_000 : null;
-        const selected = target
-          ? items.find((item: Revision) => new Date(item.created_at).getTime() <= target)
-          : items[0];
+        const selected = items[0];
         setSelectedId(selected?.id ?? null);
-        if (target && !selected) toast.info(`No version is available from ${targetMinutes} minutes ago.`);
       })
       .catch(error => toast.error(error.message))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, entityType, entityUid, targetMinutes]);
+  }, [entityType, entityUid]);
 
   useEffect(() => {
-    if (!open || selectedId === null) { setDetail(null); return; }
+    if (selectedId === null) { setDetail(null); return; }
     let cancelled = false;
+    setDetail(null);
+    if (entityType === 'diagrams') window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT));
     apiFetch(`/api/entity-changes/${entityType}/${encodeURIComponent(entityUid)}/${selectedId}`)
       .then(async response => {
         const body = await response.json();
@@ -139,7 +121,32 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
       })
       .catch(error => toast.error(error.message));
     return () => { cancelled = true; };
-  }, [open, selectedId, entityType, entityUid]);
+  }, [selectedId, entityType, entityUid]);
+
+  useEffect(() => {
+    if (entityType !== 'diagrams' || !detail) return;
+    window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT, {
+      detail: { ...diagramSnapshotToCanvas(detail.snapshot), version: detail.version },
+    }));
+  }, [detail, entityType]);
+
+  useEffect(() => {
+    if (entityType !== 'notes' || !detail) return;
+    window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT, {
+      detail: { content: String(detail.snapshot.content || ''), version: detail.version },
+    }));
+  }, [detail, entityType]);
+
+  useEffect(() => () => {
+    if (entityType === 'diagrams') window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT));
+    if (entityType === 'notes') window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT));
+  }, [entityType, entityUid]);
+
+  const closePanel = () => {
+    if (entityType === 'diagrams') window.dispatchEvent(new CustomEvent(ERD_HISTORY_PREVIEW_EVENT));
+    if (entityType === 'notes') window.dispatchEvent(new CustomEvent(NOTE_HISTORY_PREVIEW_EVENT));
+    onClose();
+  };
 
   const selected = useMemo(() => revisions.find(item => item.id === selectedId), [revisions, selectedId]);
 
@@ -156,8 +163,8 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
       if (!response.ok) throw new Error(body.error || 'Failed to restore version');
       toast.success('Version restored. The previous state was saved as a safety revision.');
       setConfirmOpen(false);
-      onOpenChange(false);
-      onRestored();
+      closePanel();
+      await onRestored();
     } catch (error: any) {
       toast.error(error.message || 'Failed to restore version');
     } finally {
@@ -167,35 +174,43 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="4xl" className="h-[calc(100vh-2rem)] max-h-[760px] gap-0">
-          <DialogHeader className="pr-14">
-            <DialogTitle>Version History</DialogTitle>
-            <DialogDescription className="truncate">{documentTitle}</DialogDescription>
-          </DialogHeader>
-          <div className="grid min-h-0 flex-1 grid-rows-[minmax(140px,35%)_minmax(0,1fr)] md:grid-cols-[260px_1fr] md:grid-rows-1">
-            <div className="min-h-0 overflow-y-auto border-b md:border-b-0 md:border-r">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b p-4">
+          <div className="min-w-0">
+            <h2 className="font-semibold">Version History</h2>
+            <p className="truncate text-xs text-muted-foreground">{documentTitle}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="size-8" onClick={closePanel} aria-label="Close version history"><X className="size-4" /></Button>
+        </div>
+        <div className={entityType === 'diagrams' || entityType === 'notes' ? 'grid min-h-0 flex-1 grid-rows-1' : 'grid min-h-0 flex-1 grid-rows-[minmax(140px,35%)_minmax(0,1fr)]'}>
+            <div className={`min-h-0 overflow-y-auto ${entityType === 'diagrams' || entityType === 'notes' ? '' : 'border-b'}`}>
               {loading ? (
                 <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading history…</div>
               ) : revisions.length === 0 ? (
                 <div className="p-5 text-sm text-muted-foreground">No saved versions yet. A version is created after document changes.</div>
               ) : revisions.map(revision => (
-                <button
-                  key={revision.id}
-                  type="button"
-                  onClick={() => setSelectedId(revision.id)}
-                  className={`w-full border-b px-4 py-3 text-left transition-colors ${selectedId === revision.id ? 'bg-accent' : 'hover:bg-muted/50'}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{formatDistanceToNow(new Date(revision.created_at), { addSuffix: true })}</span>
-                    {revision.change_type === 'pre_restore' && <Badge variant="outline">Safety</Badge>}
-                    {revision.change_type === 'restore' && <Badge variant="secondary">Restored</Badge>}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">{format(new Date(revision.created_at), 'MMM d, yyyy HH:mm:ss')}</div>
-                </button>
+                <div key={revision.id} className={`flex items-center border-b transition-colors ${selectedId === revision.id ? 'bg-accent' : 'hover:bg-muted/50'}`}>
+                  <button type="button" onClick={() => setSelectedId(revision.id)} className="min-w-0 flex-1 px-4 py-3 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{formatDistanceToNow(new Date(revision.created_at), { addSuffix: true })}</span>
+                      {revision.change_type === 'pre_restore' && <Badge variant="outline">Safety</Badge>}
+                      {revision.change_type === 'restore' && <Badge variant="secondary">Restored</Badge>}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">{format(new Date(revision.created_at), 'MMM d, yyyy HH:mm:ss')}</div>
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mr-3 shrink-0"
+                    disabled={restoring}
+                    onClick={() => { setSelectedId(revision.id); setConfirmOpen(true); }}
+                  >
+                    <RotateCcw className="size-3.5" />Restore
+                  </Button>
+                </div>
               ))}
             </div>
-            <div className="flex min-h-0 flex-col">
+            {entityType !== 'diagrams' && entityType !== 'notes' && <div className="flex min-h-0 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 {!selected ? (
                   <div className="text-sm text-muted-foreground">Select a version to preview.</div>
@@ -203,14 +218,9 @@ export function VersionHistoryPanel({ open, onOpenChange, entityType, entityUid,
                   <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading preview…</div>
                 ) : <Preview entityType={entityType} detail={detail} />}
               </div>
-              <div className="flex items-center justify-between gap-3 border-t p-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="size-3.5" />Restore creates a safety version first.</div>
-                <Button disabled={!detail || restoring} onClick={() => setConfirmOpen(true)}><RotateCcw className="size-4" />Restore</Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </div>}
+        </div>
+      </div>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

@@ -2,6 +2,15 @@ import type { Edge, Node } from '@xyflow/react';
 import type { Entity } from '@/types';
 import { databaseColumnToERD } from '@/lib/column-metadata';
 
+const columnId = (handle?: string | null) => handle?.replace(/^col-/, '').replace(/-(source|target)(-(l|r))?$/, '');
+
+export function keepsDbRelation(edge: Edge, connection: Pick<Edge, 'source' | 'target' | 'sourceHandle' | 'targetHandle'>) {
+  return edge.source === connection.source
+    && edge.target === connection.target
+    && columnId(edge.sourceHandle) === columnId(connection.sourceHandle)
+    && columnId(edge.targetHandle) === columnId(connection.targetHandle);
+}
+
 export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Entity>[]; edges: Edge[] } {
   const positions = layout?.nodes || {};
   const referencedColumns = new Set(schema.flatMap((table: any) => (table.foreign_keys || [])
@@ -33,12 +42,14 @@ export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Enti
   const edges: Edge[] = [];
   for (const table of schema) {
     for (const foreignKey of table.foreign_keys || []) {
+      const id = `${table.table_name}.${foreignKey.column}->${foreignKey.ref_table}.${foreignKey.ref_column}`;
+      const saved = layout?.edgeHandles?.[id] || {};
       edges.push({
-        id: `${table.table_name}.${foreignKey.column}->${foreignKey.ref_table}.${foreignKey.ref_column}`,
+        id,
         source: table.table_name,
         target: foreignKey.ref_table,
-        sourceHandle: `col-${table.table_name}.${foreignKey.column}-source`,
-        targetHandle: `col-${foreignKey.ref_table}.${foreignKey.ref_column}-target`,
+        sourceHandle: saved.sourceHandle || `col-${table.table_name}.${foreignKey.column}-source`,
+        targetHandle: saved.targetHandle || `col-${foreignKey.ref_table}.${foreignKey.ref_column}-target`,
         type: 'smoothstep',
         data: { constraint_name: foreignKey.constraint_name },
       });
@@ -47,7 +58,7 @@ export function dbSchemaToCanvas(schema: any[], layout: any): { nodes: Node<Enti
   return { nodes, edges };
 }
 
-export function canvasLayout(nodes: Node<Entity>[], viewport: any, previous: any) {
+export function canvasLayout(nodes: Node<Entity>[], viewport: any, previous: any, edges?: Edge[]) {
   const positions = Object.fromEntries(nodes.map(node => [node.id, {
     x: node.position.x,
     y: node.position.y,
@@ -56,5 +67,9 @@ export function canvasLayout(nodes: Node<Entity>[], viewport: any, previous: any
     hidden_columns: (node.data as any).hidden_columns ?? [],
     note: (node.data as any).note ?? '',
   }]));
-  return { ...previous, nodes: positions, viewport, _type: 'production_db_positions' };
+  const edgeHandles = edges && Object.fromEntries(edges.map(edge => [edge.id, {
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+  }]));
+  return { ...previous, nodes: positions, viewport, ...(edgeHandles ? { edgeHandles } : {}), _type: 'production_db_positions' };
 }

@@ -105,6 +105,9 @@ model Diagram {
   sourceConnectionId Int?           @map("source_connection_id")
   data               String?        @map("data") // JSON positions untuk production DB (desktop only)
   dbmlSource         String?        @map("dbml_source")
+  repositoryPath     String?        @map("repository_path")
+  repositoryRef      String?        @map("repository_ref")
+  repositorySourceId String?        @map("repository_source_id")
   user               User?          @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project            Project?       @relation(fields: [projectId], references: [id], onUpdate: NoAction)
   entities           Entity[]
@@ -462,9 +465,11 @@ model AiChatMessage {
   role          String
   content       String
   selectionText String?       @map("selection_text")
+  clientMessageId String?     @map("client_message_id")
   createdAt     DateTime?     @default(now()) @map("created_at")
   session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@unique([sessionId, clientMessageId])
   @@map("ai_chat_messages")
 }
 

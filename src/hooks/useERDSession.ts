@@ -106,7 +106,7 @@ export function useERDSession(
 
   const loadingIdRef = useRef<string | number | null>(null);
 
-  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean; probe?: boolean }): Promise<any> => {
+  const handleDiagramSelect = useCallback(async (id: number | string, setActiveDiagramId: (id: any) => void, options?: { silent?: boolean, isStale?: () => boolean; probe?: boolean; force?: boolean }): Promise<any> => {
     // Prevent duplicate concurrent loads for the same ID
     if (loadingIdRef.current === id) return null;
     loadingIdRef.current = id;
@@ -315,8 +315,8 @@ export function useERDSession(
       // === from SQL) was applied by ERDView's effect while this fetch was    ===
       // === in-flight, don't overwrite the DDL-applied data with empty server ===
       // === data (the diagram was just created and has no entities yet).      ===
-      setNodes(prev => prev.length > 0 ? prev : flowNodes);
-      setEdges(prev => prev.length > 0 ? prev : flowEdges);
+      setNodes(prev => options?.force || prev.length === 0 ? flowNodes : prev);
+      setEdges(prev => options?.force || prev.length === 0 ? flowEdges : prev);
       setSelectedNodeId(null);
 
       // === Apply saved viewport BEFORE hiding loading overlay ===

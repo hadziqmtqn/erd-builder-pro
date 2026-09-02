@@ -23,6 +23,7 @@
         "visible": false,
         "center": true,
         "decorations": true,
+        "dragDropEnabled": false,
         "useHttpsScheme": false
       }
     ],

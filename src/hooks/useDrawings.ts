@@ -4,6 +4,20 @@ import { Drawing, DraftType } from '../types';
 import { localPersistence } from '../lib/localPersistence';
 import { apiFetch } from '../lib/api';
 
+const matchesDrawingId = (drawing: Drawing, uid: string | number) =>
+  String(drawing.id) === String(uid) || String(drawing.uid) === String(uid);
+
+const mergeDrawingRecord = (existing: Drawing | undefined, incoming: Drawing) => existing
+  ? { ...existing, ...incoming, data: incoming.data !== undefined ? incoming.data : existing.data }
+  : incoming;
+
+export function mergeSavedDrawingState(drawings: Drawing[], incoming: Drawing) {
+  const uid = incoming.uid ?? incoming.id;
+  return drawings.some(drawing => matchesDrawingId(drawing, uid))
+    ? drawings.map(drawing => matchesDrawingId(drawing, uid) ? mergeDrawingRecord(drawing, incoming) : drawing)
+    : [incoming, ...drawings];
+}
+
 export function useDrawings(isGuest: boolean = false) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [activeDrawingUid, setActiveDrawingUid] = useState<string | null>(null);
@@ -23,19 +37,6 @@ export function useDrawings(isGuest: boolean = false) {
   // Keep refs in sync
   drawingsRef.current = drawings;
   activeDrawingUidRef.current = activeDrawingUid;
-
-  const matchesDrawingId = (drawing: Drawing, uid: string | number) => {
-    return String(drawing.id) === String(uid) || String(drawing.uid) === String(uid);
-  };
-
-  const mergeDrawingRecord = (existing: Drawing | undefined, incoming: Drawing) => {
-    if (!existing) return incoming;
-    return {
-      ...existing,
-      ...incoming,
-      data: incoming.data !== undefined ? incoming.data : existing.data,
-    };
-  };
 
   const normalizeDrawingData = (raw: any) => {
     if (raw === null || raw === undefined || raw === '') return '';
@@ -281,6 +282,7 @@ export function useDrawings(isGuest: boolean = false) {
         project_id: drawing.project_id || null
       };
       const dataToSave = JSON.stringify(payload);
+      setDrawings(current => mergeSavedDrawingState(current, drawing));
       
       if (isGuestCheck()) {
         const localDrawing = await localPersistence.getResource(drawingId);

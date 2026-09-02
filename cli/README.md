@@ -78,9 +78,34 @@ erdbpro stop                     # Stop background server
 erdbpro status                   # Check if server is running
 erdbpro mcp                      # MCP using CLI data
 erdbpro mcp --desktop            # MCP using Desktop app data
+erdbpro schema check --repo .    # Validate repository schema for local/CI use
+erdbpro schema diff --repo . --base main --head WORKTREE # Compare Git refs
 ```
 
 `erdbpro mcp` reads `~/.erdbpro/data.db`. The `--desktop` flag runs the installed Desktop MCP backend bundle directly against the Desktop database; it does not launch the Desktop GUI. In development, run it from the repository root to use the Desktop dev database.
+
+### Schema checks in CI
+
+The checker supports Laravel migrations, DBML, and SQL schema/migration sources. It never checks out a branch or modifies the repository.
+
+```bash
+erdbpro schema check --repo . --ref WORKTREE
+erdbpro schema check --repo . --source laravel:database/migrations --json
+erdbpro schema check --repo . --fail-on-warnings
+erdbpro schema diff --repo . --base main --head WORKTREE --source laravel:database/migrations
+erdbpro schema diff --repo . --base main --source laravel:database/migrations --fail-on-destructive
+```
+
+GitHub Actions example:
+
+```yaml
+- uses: actions/setup-node@v7
+  with:
+    node-version: "22"
+- run: npx --yes erdbpro@latest schema diff --repo . --base "$BASE_SHA" --head "$HEAD_SHA" --source laravel:database/migrations --fail-on-destructive
+```
+
+`schema diff` reports added, modified, and deleted tables, columns, and relationships. Its `--markdown` output can be appended to GitHub's step summary. Exit code `0` means valid, `1` means the source could not be read or parsed, and `2` means warnings or destructive changes were configured to fail CI.
 
 ---
 

@@ -11,9 +11,10 @@ interface ExcalidrawEditorProps {
   onChange?: (data: string) => void;
   onDelete: (id: number) => void;
   isReadOnly?: boolean;
+  compact?: boolean;
 }
 
-export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false }: ExcalidrawEditorProps) {
+export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, isReadOnly = false, compact = false }: ExcalidrawEditorProps) {
   const { resolvedTheme } = useWorkspace();
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const lastDataRef = useRef(drawing.data);
@@ -319,11 +320,9 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
   const uiOptions = useMemo(() => ({
     canvasActions: {
       toggleTheme: false,
-      export: {
-        saveFileToDisk: true,
-      },
+      export: { saveFileToDisk: !compact },
     },
-  }), []);
+  }), [compact]);
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -337,14 +336,14 @@ export default function ExcalidrawEditor({ drawing, onSave, onChange, onDelete, 
           UIOptions={uiOptions}
           viewModeEnabled={isReadOnly}
         >
-          <WelcomeScreen />
-          <MainMenu>
-            <MainMenu.DefaultItems.ClearCanvas />
-            <MainMenu.DefaultItems.SaveAsImage />
-            <MainMenu.DefaultItems.ChangeCanvasBackground />
-            <MainMenu.DefaultItems.Export />
-            <MainMenu.DefaultItems.Help />
-          </MainMenu>
+          {!compact && <WelcomeScreen />}
+          {!compact && <MainMenu>
+              <MainMenu.DefaultItems.ClearCanvas />
+              <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+              <MainMenu.DefaultItems.Export />
+              <MainMenu.DefaultItems.Help />
+            </MainMenu>}
         </Excalidraw>
       </div>
     </div>

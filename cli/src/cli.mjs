@@ -191,6 +191,37 @@ function startMcpServer() {
   child.on('exit', code => process.exit(code ?? 0));
 }
 
+function startSchemaCheck(options) {
+  const script = path.join(PKG_ROOT, 'dist-server', 'schema-check.js');
+  if (!fs.existsSync(script)) {
+    console.error(`❌ Schema checker not found: ${script}`);
+    process.exit(1);
+  }
+  const args = [script, '--repo', path.resolve(options.repo), '--ref', options.ref];
+  if (options.source) args.push('--source', options.source);
+  if (options.json) args.push('--json');
+  if (options.failOnWarnings) args.push('--fail-on-warnings');
+  const child = spawn(process.execPath, args, { cwd: process.cwd(), stdio: 'inherit' });
+  child.on('error', error => { console.error(`❌ Schema check failed: ${error.message}`); process.exit(1); });
+  child.on('exit', code => process.exit(code ?? 1));
+}
+
+function startSchemaDiff(options) {
+  const script = path.join(PKG_ROOT, 'dist-server', 'schema-diff.js');
+  if (!fs.existsSync(script)) {
+    console.error(`❌ Schema diff tool not found: ${script}`);
+    process.exit(1);
+  }
+  const args = [script, '--repo', path.resolve(options.repo), '--base', options.base, '--head', options.head];
+  if (options.source) args.push('--source', options.source);
+  if (options.json) args.push('--json');
+  if (options.markdown) args.push('--markdown');
+  if (options.failOnDestructive) args.push('--fail-on-destructive');
+  const child = spawn(process.execPath, args, { cwd: process.cwd(), stdio: 'inherit' });
+  child.on('error', error => { console.error(`❌ Schema diff failed: ${error.message}`); process.exit(1); });
+  child.on('exit', code => process.exit(code ?? 1));
+}
+
 function stopServer(silent = false) {
   if (!isServerRunning()) {
     if (!silent) console.log('ℹ️  No server running.');
@@ -521,6 +552,29 @@ program
     }
     startMcpServer();
   });
+
+const schemaCommand = program.command('schema').description('Repository schema checks for local development and CI');
+schemaCommand
+  .command('check')
+  .description('Validate a repository schema source without starting the app')
+  .option('-r, --repo <path>', 'Repository path', process.cwd())
+  .option('--ref <git-ref>', 'Git branch, commit, or WORKTREE', 'WORKTREE')
+  .option('--source <id>', 'Schema source ID when the repository contains multiple sources')
+  .option('--json', 'Print machine-readable JSON')
+  .option('--fail-on-warnings', 'Exit with code 2 when parser warnings are found')
+  .action(options => { checkNodeVersion(); startSchemaCheck(options); });
+
+schemaCommand
+  .command('diff')
+  .description('Compare a schema source between two Git refs without checkout')
+  .option('-r, --repo <path>', 'Repository path', process.cwd())
+  .requiredOption('--base <git-ref>', 'Base Git branch or commit')
+  .option('--head <git-ref>', 'Head Git branch, commit, or WORKTREE', 'WORKTREE')
+  .option('--source <id>', 'Shared schema source ID when the repository contains multiple sources')
+  .option('--json', 'Print machine-readable JSON')
+  .option('--markdown', 'Print a GitHub Step Summary-compatible report')
+  .option('--fail-on-destructive', 'Exit with code 2 when tables, columns, or relations are deleted')
+  .action(options => { checkNodeVersion(); startSchemaDiff(options); });
 
 // Default: "erdbpro" without subcommand = "erdbpro start"
 if (process.argv.slice(2).length === 0) {

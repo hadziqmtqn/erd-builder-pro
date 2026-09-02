@@ -55,6 +55,8 @@ interface FlowchartViewProps {
   isLoading?: boolean;
   saveFlowchart?: (flowchart: any) => Promise<any>;
   triggerDebouncedSync?: () => void;
+  /** Embedded Notes workspace: keep editing tools, omit file-level integrations. */
+  companionMode?: boolean;
 }
 
 export const FlowchartView = React.memo(({ 
@@ -65,6 +67,7 @@ export const FlowchartView = React.memo(({
   isLoading = false,
   saveFlowchart,
   triggerDebouncedSync,
+  companionMode = false,
 }: FlowchartViewProps) => {
   // ── Hooks FIRST (before any conditional return — Rule of Hooks) ──
   const { registerContentHandler, setActionContextData } = useAIAction();
@@ -457,13 +460,14 @@ export const FlowchartView = React.memo(({
 
   // Register SVG export handler in workspace context
   useEffect(() => {
+    if (companionMode) return;
     setFlowchartExportHandler({
       exportAll: handleExportSVGAll,
       exportGroup: handleExportSVGGroup,
       groups: canvasGroups,
     });
     return () => setFlowchartExportHandler(null);
-  }, [handleExportSVGAll, handleExportSVGGroup, canvasGroups, setFlowchartExportHandler]);
+  }, [companionMode, handleExportSVGAll, handleExportSVGGroup, canvasGroups, setFlowchartExportHandler]);
 
   const selectedGroupNodeIds = useMemo(() => {
     if (!selectedGroup) return emptySetRef.current;
@@ -534,6 +538,7 @@ export const FlowchartView = React.memo(({
   // Sync AI action context (for ChatInput dropdown actions)
   // NOTE: skip during drag — prevents cascading re-render on every drag frame
   useEffect(() => {
+    if (companionMode) return;
     if (isDraggingRef.current) return;
     const timer = setTimeout(() => {
       setActionContextData({
@@ -542,12 +547,13 @@ export const FlowchartView = React.memo(({
       });
     }, 500);
     return () => clearTimeout(timer);
-  }, [nodes, edges, setActionContextData]);
+  }, [companionMode, nodes, edges, setActionContextData]);
 
   // AI Content Handler (show preview before applying)
   const pendingContentRef = React.useRef<string | null>(null);
   const pendingActionIdRef = React.useRef<string | null>(null);
   useEffect(() => {
+    if (companionMode) return;
     const unregister = registerContentHandler((content, strategy, actionId) => {
       try {
         pendingActionIdRef.current = actionId || null;
@@ -607,9 +613,10 @@ export const FlowchartView = React.memo(({
     }, ['append', 'replace']);
 
     return unregister;
-  }, [registerContentHandler, setNodes, setEdges, takeSnapshot]);
+  }, [companionMode, registerContentHandler, setNodes, setEdges, takeSnapshot]);
 
   useEffect(() => {
+    if (companionMode) return;
     const pendingFlowchart = localStorage.getItem('pending_create_flowchart_json');
     if (pendingFlowchart) {
       localStorage.removeItem('pending_create_flowchart_json');
@@ -667,7 +674,7 @@ export const FlowchartView = React.memo(({
         toast.success('Updated Flowchart with AI-generated content');
       }
     }
-  }, [setNodes, setEdges, takeSnapshot, handleFlowchartChange, saveFlowchart, activeFlowchart, triggerDebouncedSync]);
+  }, [companionMode, setNodes, setEdges, takeSnapshot, handleFlowchartChange, saveFlowchart, activeFlowchart, triggerDebouncedSync]);
 
   const handleConfirmAppend = useCallback((replaceGroupSection?: string) => {
     const content = pendingContentRef.current;

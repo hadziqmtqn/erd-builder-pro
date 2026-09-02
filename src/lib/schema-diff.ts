@@ -41,12 +41,41 @@ function columnChanged(current: Column, proposed: Column) {
   return current.type.toLowerCase() !== proposed.type.toLowerCase()
     || !!current.is_pk !== !!proposed.is_pk
     || !!current.is_nullable !== !!proposed.is_nullable
+    || !!current.is_unique !== !!proposed.is_unique
+    || (current.default_value ?? null) !== (proposed.default_value ?? null)
     || (current.comment || '') !== (proposed.comment || '')
     || (current.max_length ?? null) !== (proposed.max_length ?? null)
     || (current.numeric_precision ?? null) !== (proposed.numeric_precision ?? null)
     || (current.numeric_scale ?? null) !== (proposed.numeric_scale ?? null)
     || (current.enum_name || '') !== (proposed.enum_name || '')
     || (current.enum_values || '') !== (proposed.enum_values || '');
+}
+
+function tableMetadata(node: Node<Entity>) {
+  const columnName = (id: string) => key(node.data.columns.find(column => String(column.id) === String(id))?.name || id);
+  return JSON.stringify({
+    comment: node.data.comment || '',
+    constraints: (node.data.constraints || []).map(item => ({
+      kind: item.kind,
+      name: item.name || '',
+      columns: (item.column_ids || []).map(columnName),
+      expression: item.expression || '',
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    indexes: (node.data.indexes || []).map(item => ({
+      name: item.name || '',
+      columns: item.column_ids.map(columnName),
+      unique: !!item.is_unique,
+      algorithm: item.algorithm || '',
+    })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  });
+}
+
+function relationChanged(current: Edge, proposed: Edge) {
+  const value = (edge: Edge, name: string) => String((edge.data as Record<string, unknown> | undefined)?.[name] || '').toLowerCase();
+  return (current.label || '') !== (proposed.label || '')
+    || value(current, 'on_delete') !== value(proposed, 'on_delete')
+    || value(current, 'on_update') !== value(proposed, 'on_update')
+    || value(current, 'constraint_name') !== value(proposed, 'constraint_name');
 }
 
 export function computeSchemaDiff(
@@ -80,7 +109,8 @@ export function computeSchemaDiff(
     const currentColumns = new Map(current.data.columns.map(column => [key(column.name), column]));
     const proposedColumns = new Map(proposed.data.columns.map(column => [key(column.name), column]));
     const columnNames = new Set([...currentColumns.keys(), ...proposedColumns.keys()]);
-    let changed = false;
+    let changed = tableMetadata(current) !== tableMetadata(proposed);
+    if (changed) changes.push({ id: tableChangeId, kind: 'table', state: 'modified', label: current.data.name, current, proposed });
     const columns: (Column & { diffState?: DiffState })[] = [];
 
     for (const columnName of columnNames) {
@@ -122,7 +152,7 @@ export function computeSchemaDiff(
     const id = `relation:${relation}`;
     if (!current && proposed) changes.push({ id, kind: 'relation', state: 'new', label: relation, proposed });
     else if (current && !proposed) changes.push({ id, kind: 'relation', state: 'deleted', label: relation, current });
-    else if (current && proposed && (current.label || '') !== (proposed.label || '')) {
+    else if (current && proposed && relationChanged(current, proposed)) {
       changes.push({ id, kind: 'relation', state: 'modified', label: relation, current, proposed });
     }
   }

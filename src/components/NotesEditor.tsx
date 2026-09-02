@@ -8,9 +8,11 @@ interface NotesEditorProps {
   onChange?: (content: string) => void;
   onDelete: (uid: string) => void;
   isReadOnly?: boolean;
+  compactLayout?: boolean;
+  onRequestCompanion?: (type: 'erd' | 'flowchart' | 'drawing', editor: any, range: { from: number; to: number }) => void;
 }
 
-export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOnly = false }: NotesEditorProps) {
+export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOnly = false, compactLayout = false, onRequestCompanion }: NotesEditorProps) {
   const handleContentChange = (newContent: string) => {
     // This is called by TiptapEditor whenever its internal content changes.
     // We simply pass it up to the parent (NotesView) for saving.
@@ -28,6 +30,10 @@ export default function NotesEditor({ note, onSave, onChange, onDelete, isReadOn
           onChange={handleContentChange} 
           isReadOnly={isReadOnly}
           disableAISelection
+          targetProjectId={note.project_id ?? (note as any).projectId ?? null}
+          noteTitle={note.title}
+          compactLayout={compactLayout}
+          onRequestCompanion={onRequestCompanion}
         />
       </div>
     </div>

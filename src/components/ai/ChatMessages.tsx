@@ -1,17 +1,16 @@
 import { memo, useRef, useState, useEffect, useCallback } from 'react';
 import { MessageSquare, Plus, Bot, User, Loader2, Copy, Check, ChevronDown } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { AIChatMessage } from '@/types';
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { Button } from '@/components/ui/button';
-import { CodeBlock } from './CodeBlock';
+import { AssistantMarkdown } from './AssistantMarkdown';
 import { formatTime } from './chatUtils';
 import { ErdFromSqlDialog } from './ErdFromSqlDialog';
 import { FlowchartFromJsonDialog } from './FlowchartFromJsonDialog';
 import { NoteFromTextDialog } from './NoteFromTextDialog';
 import { AssistantMessageActions } from './AssistantMessageActions';
 import { UserMessageBody } from './UserMessageBody';
+import { extractPlanQuestion, hasSubstantivePlanContent, hidePlanQuestionProtocol, isPlanResponse } from './plan-question-utils';
 
 interface MentionFile {
   name: string;
@@ -208,6 +207,10 @@ export const ChatMessages = memo(function ChatMessages({
               const isUser = msg.role === 'user';
               const isStreamingMsg = msg.id === 'streaming';
               const msgKey = msg.id?.toString() || idx.toString();
+              const planQuestion = !isUser ? extractPlanQuestion(msg.content) : null;
+              const displayContent = planQuestion ? planQuestion.content : isStreamingMsg ? hidePlanQuestionProtocol(msg.content) : msg.content;
+              const preservesPlanContent = Boolean(planQuestion && hasSubstantivePlanContent(planQuestion.content));
+              if ((isStreamingMsg && msg.plan_mode) || (planQuestion && !preservesPlanContent) || (isUser && isPlanResponse(msg.content))) return null;
 
               return (
                 <div
@@ -238,43 +241,7 @@ export const ChatMessages = memo(function ChatMessages({
                           mentionFiles={mentionFiles}
                         />
                       ) : (
-                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs" style={{ '--tw-prose-pre-bg': 'var(--muted)', '--tw-prose-pre-code': 'var(--foreground)', '--tw-prose-code': 'var(--foreground)' } as React.CSSProperties}>
-                          {isStreamingMsg && !msg.content ? (
-                            <span className="inline-flex gap-1 py-1">
-                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                              <span className="size-1.5 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                            </span>
-                          ) : (
-                            <>
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  table({ children, ...props }) {
-                                    return (
-                                      <div className="overflow-x-auto -mx-3.5 px-3.5">
-                                        <table className="min-w-full border-collapse" {...props}>{children}</table>
-                                      </div>
-                                    );
-                                  },
-                                  code({ className, children, ...props }) {
-                                    if (className) {
-                                      return <CodeBlock className={className} children={children} />;
-                                    }
-                                    const codeStr = String(children);
-                                    if (codeStr.includes('\n')) {
-                                      return <CodeBlock children={children} />;
-                                    }
-                                    return <code className="bg-black/30 px-1 py-0.5 rounded text-[11px]" {...props}>{children}</code>;
-                                  }
-                                }}
-                              >{msg.content}</ReactMarkdown>
-                              {isStreamingMsg && (
-                                <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />
-                              )}
-                            </>
-                          )}
-                        </div>
+                        <AssistantMarkdown content={displayContent} isStreaming={isStreamingMsg} />
                       )}
                     </div>
 
@@ -288,7 +255,7 @@ export const ChatMessages = memo(function ChatMessages({
                     {/* User message actions (resend + copy) */}
                     {isUser && !isStreamingMsg && msg.id !== 'streaming' && (
                       <div className="flex items-center gap-1.5 h-8 mt-1 overflow-hidden transition-all duration-300 ease-in-out opacity-0 group-hover/msg:opacity-100 group-hover/msg:translate-y-0 -translate-y-2 pointer-events-none group-hover/msg:pointer-events-auto">
-                        {idx === messages.length - 1 && (
+                        {idx === messages.length - 1 && !isPlanResponse(msg.content) && (
                           <button
                             onClick={() => sendMessage(msg.content, msg.selection_text)}
                             className="flex items-center justify-center size-8 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 rounded-md shadow-sm transition-all"
@@ -318,7 +285,7 @@ export const ChatMessages = memo(function ChatMessages({
                     {/* Assistant message actions */}
                     {!isUser && !isStreamingMsg && !isStreaming && msg.content && (
                       <AssistantMessageActions
-                        content={msg.content}
+                        content={displayContent}
                         msgId={msgKey}
                         hasContentHandler={hasContentHandler}
                         contentHandlerStrategies={contentHandlerStrategies}

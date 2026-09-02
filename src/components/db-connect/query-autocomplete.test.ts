@@ -50,4 +50,16 @@ describe('buildSqlCompletions', () => {
     expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ label: 'u.email' })]));
     expect(options).not.toEqual(expect.arrayContaining([expect.objectContaining({ label: 'posts.user_id' })]));
   });
+
+  it('builds JOIN completions from foreign keys on referenced tables', () => {
+    const source = buildSqlCompletions(tables);
+    const options = source(context('SELECT * FROM users u JOIN ro'))?.options || [];
+
+    expect(options).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'roles',
+        apply: 'roles ON u.role_id = roles.id',
+      }),
+    ]));
+  });
 });

@@ -24,9 +24,11 @@ export interface ErdFromSqlDialogProps {
   diagrams: any[];
   targetProjectId: string | number | null | undefined;
   erdDefaultName?: string;
-  handleSidebarDiagramCreate: (name: string, projectId?: any) => Promise<any>;
+  handleSidebarDiagramCreate: (name: string, projectId?: any, options?: { silent?: boolean }) => Promise<any>;
   handleDiagramSelect: (uid: string) => Promise<any>;
   triggerPendingErdDiff: () => void;
+  createSilently?: boolean;
+  onCreated?: (diagram: any, schema: string) => void | Promise<void>;
 }
 
 export function ErdFromSqlDialog({
@@ -38,6 +40,8 @@ export function ErdFromSqlDialog({
   handleSidebarDiagramCreate,
   handleDiagramSelect,
   triggerPendingErdDiff,
+  createSilently = false,
+  onCreated,
 }: ErdFromSqlDialogProps) {
   const [erdMode, setErdMode] = useState<'create' | 'update' | null>(null);
   const [erdUpdateUid, setErdUpdateUid] = useState<string | null>(null);
@@ -165,11 +169,14 @@ export function ErdFromSqlDialog({
   }, [erdUpdateUid, erdMode]);
 
   const handleCreateErd = useCallback(async () => {
-    localStorage.setItem('pending_create_erd_schema', normalizedSchema);
+    if (!createSilently) localStorage.setItem('pending_create_erd_schema', normalizedSchema);
     toast.info('Creating new ERD diagram...');
-    const d = await handleSidebarDiagramCreate(`ERD - ${erdDefaultName}`, targetProjectId);
+    const d = await handleSidebarDiagramCreate(`ERD - ${erdDefaultName}`, targetProjectId, { silent: createSilently });
     if (d?.uid) {
-      localStorage.setItem('chat_erd_uid', d.uid);
+      if (!createSilently) localStorage.setItem('chat_erd_uid', d.uid);
+      onClose();
+      await onCreated?.(d, normalizedSchema);
+      return;
     }
     onClose();
   }, [normalizedSchema, handleSidebarDiagramCreate, targetProjectId, erdDefaultName, onClose]);

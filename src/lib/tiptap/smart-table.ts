@@ -1,5 +1,5 @@
 import { Extension, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Node } from '@tiptap/pm/model';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
@@ -130,6 +130,47 @@ type FormulaKind = 'sum' | 'avg' | 'mul' | 'product' | 'sumv' | 'avgv' | 'mulv' 
 type TableCellInfo = { node: Node, pos: number, text: string, formula: FormulaKind | null };
 type TableRowInfo = { node: Node, pos: number, type: string, cells: TableCellInfo[] };
 
+function positionTouchesTable(doc: Node, pos: number): boolean {
+  const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    if ($pos.node(depth).type.name === 'table') return true;
+  }
+  return false;
+}
+
+function rangeContainsTable(doc: Node, from: number, to: number): boolean {
+  let found = false;
+  doc.nodesBetween(
+    Math.max(0, Math.min(from, doc.content.size)),
+    Math.max(0, Math.min(to, doc.content.size)),
+    node => {
+      if (node.type.name === 'table') found = true;
+      return !found;
+    },
+  );
+  return found;
+}
+
+export function transactionsTouchTable(transactions: readonly Transaction[]): boolean {
+  return transactions.some(transaction => transaction.steps.some((step, index) => {
+    const before = transaction.docs[index];
+    const after = transaction.docs[index + 1] ?? transaction.doc;
+    let touchesTable = false;
+
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      if (touchesTable) return;
+      touchesTable = positionTouchesTable(before, oldStart)
+        || positionTouchesTable(before, oldEnd)
+        || rangeContainsTable(before, oldStart, oldEnd)
+        || positionTouchesTable(after, newStart)
+        || positionTouchesTable(after, newEnd)
+        || rangeContainsTable(after, newStart, newEnd);
+    });
+
+    return touchesTable;
+  }));
+}
+
 function parseFormula(text: string, existing: FormulaKind | null): FormulaKind | null {
   if (text === '=sum' || text === '=sum()') return 'sum';
   if (text === '=avg' || text === '=avg()' || text === '=average' || text === '=average()') return 'avg';
@@ -227,6 +268,9 @@ export const SmartTableEngine = Extension.create({
         key: new PluginKey('smartTableEngine'),
         appendTransaction: (transactions, oldState, newState) => {
           if (!transactions.some(tr => tr.docChanged)) {
+            return;
+          }
+          if (!transactionsTouchTable(transactions)) {
             return;
           }
 

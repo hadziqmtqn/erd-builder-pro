@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   test: {
@@ -9,7 +10,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': '/Users/meowpush/Projects/erd-builder-pro/src',
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
 });

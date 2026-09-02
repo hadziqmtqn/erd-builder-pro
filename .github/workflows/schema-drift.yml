@@ -1,0 +1,29 @@
+name: Schema drift
+
+on:
+  pull_request:
+    paths:
+      - 'sql/pure-postgresql/schema.sql'
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Report schema drift
+        run: >-
+          npx tsx server/schema-diff.ts --repo .
+          --base '${{ github.event.pull_request.base.sha }}'
+          --head '${{ github.event.pull_request.head.sha }}'
+          --source sql:sql/pure-postgresql/schema.sql
+          --markdown --fail-on-destructive >> "$GITHUB_STEP_SUMMARY"

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type EntityNodeProps = NodeProps<Node<Entity>>;
+export const NOTES_COMPANION_ENTITY_EDIT_EVENT = 'erdbpro:notes-companion-edit-entity';
 
 interface ColumnRowProps {
   col: any;
@@ -38,7 +39,6 @@ interface ColumnRowProps {
 }
 
 const handleBaseClass = '!w-2 !h-2 !border-none cursor-crosshair opacity-0 transition-opacity duration-150 group-hover:!opacity-100 group-focus-within:!opacity-100';
-const readOnlyHandleClass = '!w-2 !h-2 !border-none !opacity-0 !pointer-events-none';
 
 const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoubleClick }: ColumnRowProps) => {
   const isFk = col._is_fk;
@@ -65,8 +65,14 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
       onDoubleClick={onDoubleClick}
     >
       {hideHandles ? <>
-        {col._is_ref && <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={readOnlyHandleClass} style={leftStyle} />}
-        {col._is_fk && <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={readOnlyHandleClass} style={rightStyle} />}
+        {col._is_ref && <>
+          <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={handleBaseClass} style={leftStyle} />
+          <Handle type="target" position={Position.Right} id={`col-${col.id}-target-r`} className={handleBaseClass} style={rightStyle} />
+        </>}
+        {col._is_fk && <>
+          <Handle type="source" position={Position.Left} id={`col-${col.id}-source-l`} className={handleBaseClass} style={leftStyle} />
+          <Handle type="source" position={Position.Right} id={`col-${col.id}-source`} className={handleBaseClass} style={rightStyle} />
+        </>}
       </> : <>
         <Handle type="target" position={Position.Left} id={`col-${col.id}-target`} className={handleBaseClass} style={leftStyle} />
         <Handle type="source" position={Position.Left} id={`col-${col.id}-source-l`} className={handleBaseClass} style={leftStyle} />
@@ -111,7 +117,8 @@ const EntityColumnRow = memo(({ col, borderColor, typeColor, hideHandles, onDoub
 const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
   const { isPublicView, duplicateEntity, activeDocument, setSelectedNodeId } = useWorkspace();
   const { setRightPanelMode } = useAIAction();
-  const isProductionDb = activeDocument?.source_type === 'production_db' || !!(data as any).isReadOnly;
+  const isNotesCompanion = Boolean((data as any)._notesCompanion);
+  const isProductionDb = !isNotesCompanion && (activeDocument?.source_type === 'production_db' || !!(data as any).isReadOnly);
   const isReadOnly = isPublicView || !!data.isDiffMode || isProductionDb;
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -130,6 +137,10 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
     e.preventDefault();
     e.stopPropagation();
     if (isReadOnly) return;
+    if (isNotesCompanion) {
+      window.dispatchEvent(new CustomEvent(NOTES_COMPANION_ENTITY_EDIT_EVENT, { detail: { id } }));
+      return;
+    }
     setSelectedNodeId(id);
     setRightPanelMode('properties');
   };
@@ -228,7 +239,7 @@ const EntityNode = ({ data, id, selected }: EntityNodeProps) => {
             )}
           </div>
           
-          {!isReadOnly && (
+          {!isReadOnly && !isNotesCompanion && (
             <DropdownMenu>
               <DropdownMenuTrigger 
                 className="nodrag nopan p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors focus:outline-none"

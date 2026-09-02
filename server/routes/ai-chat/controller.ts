@@ -102,10 +102,14 @@ export async function listMessages(req: ExpressRequest, res: ExpressResponse): P
 export async function createMessage(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const userId = (req as any).user.id;
-    const { session_id, role, content, selection_text } = req.body;
+    const { session_id, role, content, selection_text, client_message_id } = req.body;
 
     if (!session_id || !role || !content) {
       res.status(400).json({ error: "Missing required fields: session_id, role, content" });
+      return;
+    }
+    if (client_message_id !== undefined && (typeof client_message_id !== "string" || client_message_id.length > 64)) {
+      res.status(400).json({ error: "Invalid client_message_id" });
       return;
     }
 
@@ -115,6 +119,7 @@ export async function createMessage(req: ExpressRequest, res: ExpressResponse): 
       role,
       content,
       selectionText: selection_text,
+      clientMessageId: client_message_id,
     });
     if (!result) { res.status(404).json({ error: "Session not found" }); return; }
     res.json(result);

@@ -45,6 +45,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
 
   try {
     let { messages, model, apiKey, baseUrl, providerCode } = req.body;
+    let baseUrlValidated = false;
 
     if (!messages) {
       clearTimeout(timeout);
@@ -80,6 +81,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
         apiKey = resolved.apiKey;
         baseUrl = resolved.baseUrl;
         model = resolved.model;
+        baseUrlValidated = true;
 
         // Pass provider code from DB resolution to proxy routing
         providerCode = resolved.providerCode;
@@ -101,9 +103,11 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    baseUrl = await safeAiBaseUrl(baseUrl, providerCode === "gemini"
-      ? "https://generativelanguage.googleapis.com/v1beta"
-      : "https://api.openai.com/v1");
+    if (!baseUrlValidated) {
+      baseUrl = await safeAiBaseUrl(baseUrl, providerCode === "gemini"
+        ? "https://generativelanguage.googleapis.com/v1beta"
+        : "https://api.openai.com/v1");
+    }
     const isGemini =
       providerCode === "gemini" ||
       (baseUrl || "").includes("generativelanguage.googleapis.com");
@@ -146,16 +150,18 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-
     const reader = response.body?.getReader();
     if (!reader) {
       res.status(500).json({ error: "Response body not readable" });
       return;
     }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.write(": connected\n\n");
 
     const decoder = new TextDecoder();
 

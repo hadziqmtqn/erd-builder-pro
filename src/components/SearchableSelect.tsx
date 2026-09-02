@@ -15,6 +15,7 @@ export interface SearchableSelectProps<T> {
   searchPlaceholder?: string;
   emptyMessage?: string;
   className?: string;
+  disabled?: boolean;
   getItemValue: (item: T) => string;
   getItemLabel: (item: T) => string;
   filterItem: (item: T, query: string) => boolean;
@@ -29,6 +30,7 @@ export function SearchableSelect<T>({
   searchPlaceholder = 'Search...',
   emptyMessage = 'No results found',
   className,
+  disabled = false,
   getItemValue,
   getItemLabel,
   filterItem,
@@ -60,6 +62,7 @@ export function SearchableSelect<T>({
 
   // Close on outside click
   useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideTrigger = containerRef.current?.contains(target);
@@ -68,7 +71,7 @@ export function SearchableSelect<T>({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [open]);
 
   // Update position on scroll/resize while open
   useEffect(() => {
@@ -177,15 +180,16 @@ export function SearchableSelect<T>({
           }
           return !v;
         })}
+        disabled={disabled}
         className={cn(
-          "flex h-8 w-full items-center justify-between rounded-md border border-border/50 bg-background/50 px-2 text-[11px] font-medium whitespace-nowrap transition-all outline-none cursor-pointer",
+          "flex h-8 w-full items-center justify-between rounded-md border border-border/50 bg-background/50 px-2 text-[11px] font-medium whitespace-nowrap transition-all outline-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
           "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20",
           "hover:border-border",
           !value && "text-muted-foreground/50",
           className,
         )}
       >
-        <span className={!value ? 'text-muted-foreground/50' : ''}>
+        <span className={cn('min-w-0 flex-1 truncate text-left', !value && 'text-muted-foreground/50')}>
           {selectedLabel ? getItemLabel(selectedLabel) : placeholder}
         </span>
         {open && above

@@ -5,19 +5,6 @@ on:
     tags:
       - 'v*' # v2.1.5 (stable, from master)
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g. 2.2.0-rc.1)'
-        required: true
-        type: string
-      prerelease:
-        description: 'Mark as pre-release'
-        required: true
-        type: boolean
-        default: true
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -37,12 +24,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -263,7 +250,7 @@ jobs:
 
       - name: Upload macOS artifacts
         if: matrix.platform == 'macos'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-macos
           path: dmg-output/
@@ -271,7 +258,7 @@ jobs:
 
       - name: Upload Linux/Windows artifacts
         if: matrix.platform != 'macos'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.platform }}
           path: |
@@ -295,12 +282,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -422,7 +409,7 @@ jobs:
           cat latest.json
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
@@ -453,7 +440,7 @@ jobs:
 
       - name: Append unsigned notice to release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           append_body: true

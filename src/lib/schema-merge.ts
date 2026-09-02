@@ -42,6 +42,7 @@ export function mergeSchemaChanges(
       if (!tableChange || !approved.has(tableChange.id)) finalNodes.push(current);
       continue;
     }
+    const applyTableMetadata = !!tableChange && approved.has(tableChange.id);
     const columns = current.data.columns.flatMap(currentColumn => {
       const columnName = key(currentColumn.name);
       const proposedColumn = proposed.data.columns.find(column => key(column.name) === columnName);
@@ -55,7 +56,20 @@ export function mergeSchemaChanges(
       const change = changes.get(`column:${name}.${columnName}`);
       if (change && approved.has(change.id)) columns.push(proposedColumn);
     }
-    finalNodes.push({ ...current, data: { ...current.data, columns: columns as Column[] } });
+    const finalColumnIds = new Set(columns.map(column => String(column.id)));
+    const metadataFitsColumns = (columnIds: string[] = []) => columnIds.every(id => finalColumnIds.has(String(id)));
+    finalNodes.push({
+      ...current,
+      data: {
+        ...current.data,
+        ...(applyTableMetadata ? {
+          comment: proposed.data.comment,
+          constraints: (proposed.data.constraints || []).filter(item => metadataFitsColumns(item.column_ids)),
+          indexes: (proposed.data.indexes || []).filter(item => metadataFitsColumns(item.column_ids)),
+        } : {}),
+        columns: columns as Column[],
+      },
+    });
   }
   for (const [name, proposed] of proposedByName) {
     if (currentByName.has(name)) continue;

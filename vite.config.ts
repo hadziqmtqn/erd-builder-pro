@@ -6,6 +6,7 @@ import pkg from './package.json';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const singleBundle = process.env.VITE_SINGLE_BUNDLE === 'true';
   const allowedHosts = new Set<string>();
   for (const value of [env.MCP_PUBLIC_URL, ...(env.CORS_ORIGINS || '').split(',')]) {
     if (!value) continue;
@@ -24,13 +25,13 @@ export default defineConfig(({mode}) => {
       },
     },
     build: {
-      // Force single JS bundle — avoids Windows Tauri chunk-missing bug
       chunkSizeWarningLimit: 10000,
-      rollupOptions: {
+      // Packaged Tauri keeps one bundle to avoid its Windows chunk-missing bug.
+      rollupOptions: singleBundle ? {
         output: {
           manualChunks: () => 'app',
         },
-      },
+      } : undefined,
     },
     server: {
       port: 5173,

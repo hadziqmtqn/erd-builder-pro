@@ -58,6 +58,9 @@ CREATE TABLE "diagrams" (
     "source_connection_id" INTEGER,
     "data" TEXT,
     "dbml_source" TEXT,
+    "repository_path" TEXT,
+    "repository_ref" TEXT,
+    "repository_source_id" TEXT,
     CONSTRAINT "diagrams_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "diagrams_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
 );
@@ -343,9 +346,12 @@ CREATE TABLE "ai_chat_messages" (
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "selection_text" TEXT,
+    "client_message_id" TEXT,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ai_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "ai_chat_sessions" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
+
+CREATE UNIQUE INDEX "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id");
 
 -- CreateTable
 CREATE TABLE "ai_system_prompts" (
