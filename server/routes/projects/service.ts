@@ -306,3 +306,31 @@ export async function getProjectSummary(projectId: number, userId: string, inclu
 
   return { notes, diagrams, flowcharts, drawings, dbClients };
 }
+
+export async function listProjectFiles(projectId: number, userId: string, includeDbClient = true) {
+  if (!prisma) throw new Error("Database connection not available");
+
+  const project = await prisma.project.findFirst({ where: { id: projectId, userId, isDeleted: false }, select: { id: true } });
+  if (!project) return { data: [] };
+
+  const where = { projectId, userId, isDeleted: false };
+  const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
+    prisma.note.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
+    prisma.diagram.findMany({ where: { ...where, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }, select: { id: true, uid: true, name: true, createdAt: true } }),
+    prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
+    prisma.drawing.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
+    includeDbClient && isDesktopMode()
+      ? (prisma as any).dbClient.findMany({ where, select: { id: true, uid: true, name: true, createdAt: true } })
+      : Promise.resolve([]),
+  ]);
+
+  const files = [
+    ...notes.map(file => ({ type: "notes", uid: String(file.uid ?? file.id), title: file.title, createdAt: file.createdAt })),
+    ...diagrams.map(file => ({ type: "erd", uid: String(file.uid ?? file.id), title: file.name, createdAt: file.createdAt })),
+    ...flowcharts.map(file => ({ type: "flowchart", uid: String(file.uid ?? file.id), title: file.title, createdAt: file.createdAt })),
+    ...drawings.map(file => ({ type: "drawings", uid: String(file.uid ?? file.id), title: file.title, createdAt: file.createdAt })),
+    ...(dbClients as any[]).map(file => ({ type: "db-client", uid: String(file.uid ?? file.id), title: file.name, createdAt: file.createdAt })),
+  ];
+
+  return { data: files.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) };
+}

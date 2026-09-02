@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
 import { mergeAttributes } from '@tiptap/core';
@@ -31,7 +31,7 @@ type QueryResult = {
 const LAST_CATALOG_KEY = 'erdbpro:executable-note-catalog';
 export const CODE_BLOCK_CONVERT_EVENT = 'erdbpro:code-block-convert';
 export type CodeBlockConversionKind = 'erd' | 'flowchart';
-export type CodeBlockConversionDetail = { kind: CodeBlockConversionKind; content: string };
+export type CodeBlockConversionDetail = { kind: CodeBlockConversionKind; content: string; position?: number };
 const lowlight = createLowlight(common);
 const CODE_LANGUAGES = [
   ['plaintext', 'Plain text'], ['sql', 'SQL'], ['dbml', 'DBML'], ['json', 'JSON'],
@@ -62,8 +62,8 @@ export function detectCodeBlockConversions(content: string, language: string | n
   return kinds;
 }
 
-function requestConversion(kind: CodeBlockConversionKind, content: string) {
-  window.dispatchEvent(new CustomEvent<CodeBlockConversionDetail>(CODE_BLOCK_CONVERT_EVENT, { detail: { kind, content } }));
+function requestConversion(kind: CodeBlockConversionKind, content: string, position?: number) {
+  window.dispatchEvent(new CustomEvent<CodeBlockConversionDetail>(CODE_BLOCK_CONVERT_EVENT, { detail: { kind, content, position } }));
 }
 
 function loadCatalogs() {
@@ -88,11 +88,32 @@ function cellText(value: unknown) {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
-function ExecutableCodeBlockView({ node, editor, updateAttributes }: NodeViewProps) {
+function useCodeBlockConversions(content: string, language: string | null) {
+  const [convertible, setConvertible] = useState<CodeBlockConversionKind[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setConvertible([]);
+    const detect = () => {
+      if (!cancelled) setConvertible(detectCodeBlockConversions(content, language));
+    };
+    const idleId = window.requestIdleCallback?.(detect, { timeout: 500 });
+    const timeoutId = idleId === undefined ? window.setTimeout(detect, 0) : undefined;
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined) window.cancelIdleCallback?.(idleId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [content, language]);
+
+  return convertible;
+}
+
+function ExecutableCodeBlockView({ node, editor, updateAttributes, getPos }: NodeViewProps) {
   const executable = node.attrs.language === 'sql' && isInstalledApp() && editor.isEditable;
   const language = String(node.attrs.language || 'plaintext');
   const languageLabel = CODE_LANGUAGES.find(([value]) => value === language)?.[1] ?? language;
-  const convertible = useMemo(() => detectCodeBlockConversions(node.textContent, node.attrs.language), [node.attrs.language, node.textContent]);
+  const convertible = useCodeBlockConversions(node.textContent, node.attrs.language);
   const [catalogs, setCatalogs] = useState<Catalog[]>(() => catalogsCache ?? []);
   const [catalogId, setCatalogId] = useState(() => localStorage.getItem(LAST_CATALOG_KEY) || '');
   const [catalogsLoaded, setCatalogsLoaded] = useState(() => catalogsCache !== null);
@@ -168,8 +189,8 @@ function ExecutableCodeBlockView({ node, editor, updateAttributes }: NodeViewPro
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-44" onPointerDown={event => event.stopPropagation()}>
-            {convertible.includes('erd') && <DropdownMenuItem className="cursor-pointer" onClick={() => requestConversion('erd', node.textContent)}><Database /> Generate ERD</DropdownMenuItem>}
-            {convertible.includes('flowchart') && <DropdownMenuItem className="cursor-pointer" onClick={() => requestConversion('flowchart', node.textContent)}><GitBranch /> Generate Flowchart</DropdownMenuItem>}
+            {convertible.includes('erd') && <DropdownMenuItem className="cursor-pointer" onClick={() => requestConversion('erd', node.textContent, typeof getPos === 'function' ? getPos() : undefined)}><Database /> Generate ERD</DropdownMenuItem>}
+            {convertible.includes('flowchart') && <DropdownMenuItem className="cursor-pointer" onClick={() => requestConversion('flowchart', node.textContent, typeof getPos === 'function' ? getPos() : undefined)}><GitBranch /> Generate Flowchart</DropdownMenuItem>}
             {convertible.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem className="cursor-pointer" onClick={() => void navigator.clipboard.writeText(node.textContent)}><Copy /> Copy</DropdownMenuItem>
           </DropdownMenuContent>

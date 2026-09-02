@@ -66,6 +66,12 @@ const LIST_SELECT = {
   project: { select: { name: true, uid: true, id: true } },
 } as const;
 
+const TAB_SELECT = {
+  id: true, uid: true, name: true, projectId: true,
+  createdAt: true, updatedAt: true, isDeleted: true,
+  sourceType: true,
+} as const;
+
 function dedupe<T extends { id: any }>(arr: T[], label: string): T[] {
   const seen = new Set();
   const result: T[] = [];
@@ -249,7 +255,7 @@ export { upsertTableConstraints, upsertTableIndexes };
 
 export async function listDiagrams(
   userId: string,
-  params: { limit: number; offset: number; projectId?: string; q?: string; isPublic?: boolean | null; sourceType?: string }
+  params: { limit: number; offset: number; projectId?: string; q?: string; isPublic?: boolean | null; sourceType?: string; summary?: boolean }
 ) {
   const where = whereClause(userId, params);
   await addDeletedProjectFilter(where, userId);
@@ -260,7 +266,7 @@ export async function listDiagrams(
       orderBy: { createdAt: "desc" },
       skip: params.offset,
       take: params.limit,
-      select: LIST_SELECT,
+      select: params.summary ? TAB_SELECT : LIST_SELECT,
     }) || Promise.resolve([]),
     prisma?.diagram.count({ where }) || Promise.resolve(0),
   ]);

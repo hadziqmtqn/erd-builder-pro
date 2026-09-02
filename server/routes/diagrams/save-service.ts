@@ -202,7 +202,7 @@ export async function saveDiagram(
       viewportX: body.viewport?.x || 0,
       viewportY: body.viewport?.y || 0,
       viewportZoom: body.viewport?.zoom || 1.0,
-      ...(mergedData !== undefined && { data: typeof mergedData === "string" ? mergedData : JSON.stringify(mergedData) }),
+      ...(mergedData !== undefined && { data: mergedData === null ? null : typeof mergedData === "string" ? mergedData : JSON.stringify(mergedData) }),
       ...(normalizedDbmlSource !== undefined && { dbmlSource: normalizedDbmlSource }),
       ...((isDesktopMode() || isLocalPostgres()) && { version: (currentDiagram.version ?? 0) + 1 }),
     },
@@ -255,8 +255,9 @@ export async function getDiagramWithData(uid: string, userId: string) {
 
   const diagramId = Number(diagram.id);
 
-  // Production DB diagram: return data column directly
-  if ((diagram as any).data) {
+  // Only production DB diagrams use `data` as their canvas source. Blank ERDs
+  // remain relational even if an older client left a legacy data payload.
+  if ((diagram as any).sourceType === "production_db" && (diagram as any).data) {
     let parsedData: any = null;
     try {
       parsedData = typeof (diagram as any).data === "string"

@@ -8,7 +8,7 @@ import {
   Minus, Type, Search, ChevronRight,
   ChevronLeft, Undo, Redo, Columns,
   Layout, Trash2, ChevronDown, Tag,
-  Calendar as CalendarIcon} from 'lucide-react';
+  Calendar as CalendarIcon, Database, GitBranch, PenTool, PanelRightOpen} from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isInstalledApp } from '@/lib/api';
@@ -23,6 +23,7 @@ interface SlashMenuItem {
   children?: SlashMenuItem[];
   customView?: 'icon-search';
   installedOnly?: boolean;
+  companionType?: 'erd' | 'flowchart' | 'drawing';
 }
 
 interface SlashMenuProps {
@@ -31,6 +32,7 @@ interface SlashMenuProps {
   range: { from: number; to: number };
   onClose: () => void;
   coords: { top: number; left: number; bottom: number };
+  onRequestCompanion?: (type: 'erd' | 'flowchart' | 'drawing', editor: any, range: { from: number; to: number }) => void;
 }
 
 const CATEGORIES = ["Basic blocks", "Lists", "Media", "Organization", "Advanced", "History"];
@@ -63,6 +65,16 @@ const MAIN_ITEMS: SlashMenuItem[] = [
   { title: 'Toggle Section', icon: <ChevronDown className="w-4 h-4" />, category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).setToggle().run() },
   { title: 'Code block', icon: <Code className="w-4 h-4" />, shortcut: '⌘ ⌥ C', category: 'Organization', command: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
   { title: 'SQL Query', icon: <DatabaseZap className="w-4 h-4" />, category: 'Organization', installedOnly: true, command: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock({ language: 'sql' }).run() },
+  {
+    title: 'Open preview',
+    icon: <PanelRightOpen className="w-4 h-4" />,
+    category: 'Organization',
+    children: [
+      { title: 'ERD Builder', icon: <Database className="w-4 h-4" />, companionType: 'erd' },
+      { title: 'Flowchart', icon: <GitBranch className="w-4 h-4" />, companionType: 'flowchart' },
+      { title: 'Drawing', icon: <PenTool className="w-4 h-4" />, companionType: 'drawing' },
+    ],
+  },
 
   // Advanced / Table Submenu
   { 
@@ -97,8 +109,15 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
   query, 
   range, 
   onClose,
-  coords 
+  coords,
+  onRequestCompanion,
 }) => {
+  const requestCompanion = (type: NonNullable<SlashMenuItem['companionType']>) => {
+    editor.chain().focus().deleteRange(range).run();
+    const position = editor.state.selection.from;
+    onClose();
+    onRequestCompanion?.(type, editor, { from: position, to: position });
+  };
   const [indexStack, setIndexStack] = useState<number[]>([0]);
   const selectedIndex = indexStack[indexStack.length - 1] || 0;
 
@@ -127,7 +146,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
       const collect = (items: SlashMenuItem[]) => {
         items.forEach(item => {
           if (item.installedOnly && !isInstalledApp()) return;
-          if (item.command || item.customView) flattened.push(item);
+          if (item.command || item.customView || item.companionType) flattened.push(item);
           if (item.children) collect(item.children);
         });
       };
@@ -166,6 +185,8 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
           } else if (item.children) {
             setNavStack([...navStack, item.children]);
             setIndexStack(prev => [...prev, 0]);
+          } else if (item.companionType) {
+            requestCompanion(item.companionType);
           } else if (item.command) {
             onClose();
             item.command(editor, range);
@@ -183,7 +204,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [filteredItems, selectedIndex, editor, range, onClose, navStack, query, isSubMenu, currentItems]);
+  }, [filteredItems, selectedIndex, editor, range, onClose, navStack, query, isSubMenu, currentItems, onRequestCompanion]);
 
 
   useEffect(() => {
@@ -255,6 +276,8 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
                 } else if (item.children) {
                   setNavStack([...navStack, item.children]);
                   setIndexStack(prev => [...prev, 0]);
+                } else if (item.companionType) {
+                  requestCompanion(item.companionType);
                 } else if (item.command) { 
                   onClose();
                   item.command(editor, range); 
@@ -275,6 +298,8 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({
           } else if (item.children) {
             setNavStack([...navStack, item.children]);
             setIndexStack(prev => [...prev, 0]);
+          } else if (item.companionType) {
+            requestCompanion(item.companionType);
           } else if (item.command) { 
             onClose();
             item.command(editor, range); 

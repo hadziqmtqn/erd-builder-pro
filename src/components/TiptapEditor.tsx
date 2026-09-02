@@ -26,6 +26,7 @@ import { SlashMenu } from './SlashMenu';
 import { AnimatePresence } from 'framer-motion';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { toast } from 'sonner';
 import { NoteImporter } from '../lib/importers/note-importer';
 
 import {
@@ -37,6 +38,7 @@ import {
   CustomKeyboardShortcuts,
   TrailingNode,
   ExecutableCodeBlock,
+  CompanionReference,
 } from './editor/extensions';
 
 import { TextBubbleMenu } from './editor/menus/TextBubbleMenu';
@@ -47,6 +49,9 @@ import { LinkDialog } from './editor/dialogs/LinkDialog';
 import { FileMentionMenu, FileMentionMenuRef, FileMentionOption } from './editor/FileMentionMenu';
 import { useNavigate } from 'react-router-dom';
 import { localPersistence } from '@/lib/localPersistence';
+import { applyToErdContent } from '@/components/ai/actions/erdActions';
+import { previewFlowchartContent } from '@/components/ai/actions/flowchartActions';
+import { edgeToRelationship } from '@/lib/diagram-payload';
 import { NestedTaskList } from '../lib/tiptap/nested-task-list';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { ErdFromSqlDialog } from '@/components/ai/ErdFromSqlDialog';
@@ -112,12 +117,16 @@ interface TiptapEditorProps {
   isReadOnly?: boolean;
   /** When true, selection text is NOT synced to AI context (e.g. Notes — selection is for editing, not AI) */
   disableAISelection?: boolean;
+  targetProjectId: string | number | null;
+  noteTitle: string;
+  compactLayout?: boolean;
+  onRequestCompanion?: (type: 'erd' | 'flowchart' | 'drawing', editor: any, range: { from: number; to: number }) => void;
 }
 
-export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false }: TiptapEditorProps) {
+export function TiptapEditor({ content, onChange, isReadOnly = false, disableAISelection = false, targetProjectId, noteTitle, compactLayout = false, onRequestCompanion }: TiptapEditorProps) {
   const { setSelectionText } = useAIAction();
   const {
-    diagrams, flowcharts, activeProjectId,
+    diagrams, flowcharts,
     handleSidebarDiagramCreate, handleSidebarFlowchartCreate,
     handleDiagramSelect, handleFlowchartSelect, triggerPendingErdDiff,
   } = useWorkspace();
@@ -128,6 +137,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
   const [linkUrl, setLinkUrl] = React.useState('');
   const [erdDialogSchema, setErdDialogSchema] = React.useState<string | null>(null);
   const [flowchartDialogJson, setFlowchartDialogJson] = React.useState<string | null>(null);
+  const [conversionPosition, setConversionPosition] = React.useState<number | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -142,6 +152,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     const handleConvert = (event: Event) => {
       const detail = (event as CustomEvent<CodeBlockConversionDetail>).detail;
       if (!detail?.content) return;
+      setConversionPosition(detail.position);
       if (detail.kind === 'erd') setErdDialogSchema(detail.content);
       if (detail.kind === 'flowchart') setFlowchartDialogJson(detail.content);
     };
@@ -276,6 +287,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       codeBlock: false,
     }),
     ExecutableCodeBlock,
+    CompanionReference,
     TrailingNode,
     ImageResize.configure({
       inline: false,
@@ -493,6 +505,64 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     },
   });
 
+  const insertGeneratedCompanion = React.useCallback((type: 'erd' | 'flowchart', file: any) => {
+    if (!editor) return;
+    const at = conversionPosition === undefined
+      ? editor.state.selection.to
+      : conversionPosition + (editor.state.doc.nodeAt(conversionPosition)?.nodeSize ?? 0);
+    requestAnimationFrame(() => {
+      if (editor.isDestroyed) return;
+      editor.chain().insertContentAt(at, [
+        { type: 'companionReference', attrs: { targetType: type, targetUid: String(file.uid ?? file.id), title: file.name ?? file.title ?? 'Untitled' } },
+        { type: 'paragraph' },
+      ]).run();
+      toast.success(`${type === 'erd' ? 'ERD' : 'Flowchart'} created. Open it from the card below this code block.`);
+    });
+  }, [conversionPosition, editor]);
+
+  const persistGeneratedErd = React.useCallback(async (file: any, schema: string) => {
+    try {
+      const result = applyToErdContent([], [], 'erd-generate-sql', schema);
+      if (!result) throw new Error('Invalid DBML or SQL schema');
+      const entities = result.nodes.map(node => ({ ...node.data, x: node.position.x, y: node.position.y }));
+      const relationships = result.edges.map(edgeToRelationship);
+      if (sessionStorage.getItem('auth_mode') === 'guest') {
+        const local = await localPersistence.getResource(file.uid ?? file.id);
+        if (local) await localPersistence.saveResource({ ...local, entities, relationships, data: null, dbml_source: schema });
+      } else {
+        const response = await apiFetch(`/api/diagrams/save/${file.uid ?? file.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entities, relationships, viewport: { x: 0, y: 0, zoom: 1 }, data: null, dbmlSource: schema }),
+        });
+        if (!response.ok) throw new Error('Could not save generated ERD');
+      }
+      insertGeneratedCompanion('erd', file);
+    } catch {
+      toast.error('The ERD was created but the DBML could not be applied.');
+    }
+  }, [insertGeneratedCompanion]);
+
+  const persistGeneratedFlowchart = React.useCallback(async (file: any, json: string) => {
+    try {
+      const result = previewFlowchartContent(json);
+      if (!result?.nodes.length) throw new Error('Invalid flowchart definition');
+      const data = JSON.stringify({ nodes: result.nodes, edges: result.edges });
+      if (sessionStorage.getItem('auth_mode') === 'guest') {
+        const local = await localPersistence.getResource(file.uid ?? file.id);
+        if (local) await localPersistence.saveResource({ ...local, data });
+      } else {
+        const response = await apiFetch(`/api/flowcharts/${file.uid ?? file.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: file.title, data, project_id: file.project_id ?? null }),
+        });
+        if (!response.ok) throw new Error('Could not save generated Flowchart');
+      }
+      insertGeneratedCompanion('flowchart', file);
+    } catch {
+      toast.error('The Flowchart was created but could not be applied.');
+    }
+  }, [insertGeneratedCompanion]);
+
   // ─── Selection tracking ──────────────────────────────
   const selectionTextRef = useRef<string | null>(null);
 
@@ -706,9 +776,9 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-background relative px-4 sm:px-6 md:px-24"
+        className={`flex-1 overflow-y-auto overflow-x-visible custom-scrollbar bg-background relative ${compactLayout ? 'px-2 sm:px-3' : 'px-4 sm:px-6 md:px-24'}`}
       >
-        <div className="max-w-4xl mx-auto my-0 sm:my-12 p-4 sm:p-16 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined">
+        <div className={`mx-auto my-0 min-h-[calc(100vh-200px)] bg-card border-x border-b sm:border border-border/40 shadow-none rounded-none sm:rounded-xl relative tiptap-editor-lined ${compactLayout ? 'max-w-none sm:my-3 p-4 sm:p-7' : 'max-w-4xl sm:my-12 p-4 sm:p-16'}`}>
 
           <DocumentOutline headings={headings} scrollToHeading={scrollToHeading} />
 
@@ -738,23 +808,29 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       {erdDialogSchema && (
         <ErdFromSqlDialog
           schema={erdDialogSchema}
-          onClose={() => setErdDialogSchema(null)}
+          onClose={() => { setErdDialogSchema(null); setConversionPosition(undefined); }}
           diagrams={diagrams}
-          targetProjectId={activeProjectId}
+          targetProjectId={targetProjectId}
+          erdDefaultName={noteTitle}
           handleSidebarDiagramCreate={handleSidebarDiagramCreate}
           handleDiagramSelect={handleDiagramSelect}
           triggerPendingErdDiff={triggerPendingErdDiff}
+          createSilently
+          onCreated={persistGeneratedErd}
         />
       )}
 
       {flowchartDialogJson && (
         <FlowchartFromJsonDialog
           json={flowchartDialogJson}
-          onClose={() => setFlowchartDialogJson(null)}
+          onClose={() => { setFlowchartDialogJson(null); setConversionPosition(undefined); }}
           flowcharts={flowcharts}
-          targetProjectId={activeProjectId}
+          targetProjectId={targetProjectId}
+          flowchartDefaultName={noteTitle}
           handleSidebarFlowchartCreate={handleSidebarFlowchartCreate}
           handleFlowchartSelect={handleFlowchartSelect}
+          createSilently
+          onCreated={persistGeneratedFlowchart}
         />
       )}
 
@@ -766,6 +842,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
             range={slashMenu.range}
             coords={slashMenu.coords}
             onClose={() => setSlashMenu(prev => ({ ...prev, isOpen: false }))}
+            onRequestCompanion={onRequestCompanion}
           />
         )}
       </AnimatePresence>

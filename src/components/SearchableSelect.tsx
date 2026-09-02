@@ -62,6 +62,7 @@ export function SearchableSelect<T>({
 
   // Close on outside click
   useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideTrigger = containerRef.current?.contains(target);
@@ -70,7 +71,7 @@ export function SearchableSelect<T>({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [open]);
 
   // Update position on scroll/resize while open
   useEffect(() => {

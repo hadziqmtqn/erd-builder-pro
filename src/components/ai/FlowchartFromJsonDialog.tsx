@@ -22,8 +22,10 @@ export interface FlowchartFromJsonDialogProps {
   flowcharts: any[];
   targetProjectId: string | number | null | undefined;
   flowchartDefaultName?: string;
-  handleSidebarFlowchartCreate: (name: string, projectId?: any) => Promise<any>;
+  handleSidebarFlowchartCreate: (name: string, projectId?: any, options?: { silent?: boolean }) => Promise<any>;
   handleFlowchartSelect: (uid: string) => Promise<any>;
+  createSilently?: boolean;
+  onCreated?: (flowchart: any, json: string) => void | Promise<void>;
 }
 
 export function FlowchartFromJsonDialog({
@@ -34,6 +36,8 @@ export function FlowchartFromJsonDialog({
   flowchartDefaultName = 'New Flowchart',
   handleSidebarFlowchartCreate,
   handleFlowchartSelect,
+  createSilently = false,
+  onCreated,
 }: FlowchartFromJsonDialogProps) {
   const [mode, setMode] = useState<'create' | 'update' | null>(null);
   const [updateUid, setUpdateUid] = useState<string | null>(null);
@@ -172,9 +176,14 @@ export function FlowchartFromJsonDialog({
 
   // ── Create new flowchart ──
   const handleCreate = useCallback(async () => {
-    localStorage.setItem('pending_create_flowchart_json', json);
+    if (!createSilently) localStorage.setItem('pending_create_flowchart_json', json);
     toast.info('Creating new Flowchart...');
-    await handleSidebarFlowchartCreate(`Flowchart - ${flowchartDefaultName}`, targetProjectId);
+    const flowchart = await handleSidebarFlowchartCreate(`Flowchart - ${flowchartDefaultName}`, targetProjectId, { silent: createSilently });
+    if (flowchart) {
+      onClose();
+      await onCreated?.(flowchart, json);
+      return;
+    }
     onClose();
   }, [json, handleSidebarFlowchartCreate, targetProjectId, flowchartDefaultName, onClose]);
 

@@ -88,3 +88,14 @@ export async function summary(req: ExpressRequest, res: ExpressResponse): Promis
     handleError(res, err, "Failed to fetch project summary");
   }
 }
+
+export async function files(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const projectId = Number(req.params.id);
+    const userId = (req as any).user.id;
+    const includeDbClient = req.query.include_db_client !== "false";
+    res.json(await svc.listProjectFiles(projectId, userId, includeDbClient));
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch project files");
+  }
+}
