@@ -1,21 +1,16 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { sql as sqlLang } from '@codemirror/lang-sql';
-import { autocompletion } from '@codemirror/autocomplete';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { Prec } from '@codemirror/state';
-import { keymap, type EditorView } from '@codemirror/view';
+import { useWorkspace } from '@/providers/WorkspaceProvider';
+import type { EditorView } from '@codemirror/view';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ConfirmModal';
-import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { localPersistence } from '@/lib/localPersistence';
-import { buildSqlCompletions } from './query-autocomplete';
 import { DataQueryResultTable } from './DataQueryResultTable';
 import { DataQueryToolbar } from './DataQueryToolbar';
 import { DataQueryEditorActions } from './DataQueryEditorActions';
+import { SqlQueryEditor } from './SqlQueryEditor';
 import { useSetActionContextData } from '@/contexts/AIActionContext';
 import { buildDbClientQueryContext } from '@/lib/db-client-ai-context';
 import { DataQuerySidebar, type QueryExecution } from './DataQuerySidebar';
@@ -57,16 +52,13 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
     try { return JSON.parse(localStorage.getItem(`erd-db-query-history:${connectionId}`) || '[]'); } catch { return []; }
   });
   const runningIdRef = useRef<string | null>(null);
-  const editorViewRef = useRef<EditorView | null>(null);
+  const queryEditorRef = useRef<EditorView | null>(null);
   const [beautifying, setBeautifying] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const activeTabRef = useRef<QueryTab | null>(activeTab);
   const storageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beautifyFrameRef = useRef<number | null>(null);
-  const scriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingScriptRef = useRef(false);
   const draftEditedRef = useRef(false);
-  const completion = useMemo(() => buildSqlCompletions(tables), [tables]);
   const groups = useMemo(() => {
     const map = new Map<string, any[]>();
     for (const query of queries) {
@@ -147,18 +139,20 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
   }, [activeKey, draftLoaded, storageKey, tabs]);
   useEffect(() => () => {
     if (beautifyFrameRef.current !== null) cancelAnimationFrame(beautifyFrameRef.current);
-    if (scriptTimerRef.current) clearTimeout(scriptTimerRef.current);
-    if (pendingScriptRef.current) {
+    if (draftEditedRef.current) {
       const state = queryStateRef.current;
       const data = { tabs: state.tabs.map(tab => ({ ...tab, result: null, error: null })), activeKey: state.activeKey };
       try { sessionStorage.setItem(storageKey, JSON.stringify(data)); } catch {}
       localPersistence.saveResource({ id: storageKey, type: SQL_QUERY_DRAFT_TYPE, data, updated_at: Date.now() }).catch(() => {});
-      pendingScriptRef.current = false;
     }
   }, [storageKey]);
   const patchTab = useCallback((key: string, patch: Partial<QueryTab>) => {
     if (patch.script !== undefined && activeTabRef.current?.key === key) activeTabRef.current = { ...activeTabRef.current, ...patch };
-    setQueryState(prev => ({ ...prev, tabs: prev.tabs.map(tab => tab.key === key ? { ...tab, ...patch } : tab) }));
+    setQueryState(prev => {
+      const next = { ...prev, tabs: prev.tabs.map(tab => tab.key === key ? { ...tab, ...patch } : tab) };
+      queryStateRef.current = next;
+      return next;
+    });
   }, []);
 
   const patchActiveTab = (patch: Partial<QueryTab>) => {
@@ -170,14 +164,7 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
     const tab = activeTabRef.current;
     if (!tab) return;
     draftEditedRef.current = true;
-    activeTabRef.current = { ...tab, script };
-    queryStateRef.current = { ...queryStateRef.current, tabs: queryStateRef.current.tabs.map(item => item.key === tab.key ? { ...item, script } : item) };
-    pendingScriptRef.current = true;
-    if (scriptTimerRef.current) clearTimeout(scriptTimerRef.current);
-    scriptTimerRef.current = setTimeout(() => {
-      pendingScriptRef.current = false;
-      patchTab(tab.key, { script });
-    }, 150);
+    patchTab(tab.key, { script });
   }, [patchTab]);
 
   const addTab = useCallback((table?: string | null) => {
@@ -308,16 +295,11 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
     });
   }, [patchTab]);
 
-  const codeMirrorExtensions = useMemo(() => [
-    sqlLang(),
-    autocompletion({ override: [completion], selectOnOpen: true }),
-    Prec.highest(keymap.of([
-      { key: 'Cmd-Enter', run: (view) => { void run(runnableSql(view, '')); return true; } },
-      { key: 'Ctrl-Enter', run: (view) => { void run(runnableSql(view, '')); return true; } },
-      { key: 'Cmd-i', run: (view) => { beautifyActiveTab(view.state.doc.toString()); return true; } },
-      { key: 'Ctrl-i', run: (view) => { beautifyActiveTab(view.state.doc.toString()); return true; } },
-    ])),
-  ], [beautifyActiveTab, completion, run]);
+  const getRunnableScript = () => {
+    const tab = activeTabRef.current;
+    if (!tab) return '';
+    return runnableSql(queryEditorRef.current, tab.script);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -352,18 +334,18 @@ export const DataQueryView = memo(function DataQueryView({ connectionId, dbClien
             <div className="min-h-0 overflow-hidden">
               <div className="flex h-full min-h-0 flex-col">
                 <div className="min-h-0 flex-1">
-                  <CodeMirror
-                    onCreateEditor={view => { editorViewRef.current = view; }}
+                  <SqlQueryEditor
+                    key={activeTab.key}
+                    editorRef={queryEditorRef}
                     value={reconcileLiveTab(activeTab, activeTabRef.current)?.script || ''}
-                    height="100%"
-                    theme={resolvedTheme === 'dark' ? oneDark : undefined}
-                    basicSetup={{ autocompletion: false, lineNumbers: true }}
-                    extensions={codeMirrorExtensions}
+                    tables={tables}
+                    resolvedTheme={resolvedTheme}
                     onChange={updateScript}
-                    className="h-full text-sm"
+                    onRun={run}
+                    onBeautify={beautifyActiveTab}
                   />
                 </div>
-                <DataQueryEditorActions beautifying={beautifying} runningMode={runningMode} onBeautify={() => beautifyActiveTab()} onStop={() => void cancelRun()} onExplain={() => explain(runnableSql(editorViewRef.current, activeTab.script))} onRun={() => run(runnableSql(editorViewRef.current, activeTab.script))} />
+                <DataQueryEditorActions beautifying={beautifying} runningMode={runningMode} onBeautify={() => beautifyActiveTab()} onStop={() => void cancelRun()} onExplain={() => explain(getRunnableScript())} onRun={() => run(getRunnableScript())} />
               </div>
             </div>
           </>
