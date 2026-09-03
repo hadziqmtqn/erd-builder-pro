@@ -8,6 +8,7 @@ export async function callAiStream(
   signal: AbortSignal,
   onToken: (token: string) => void,
   providerCode?: string,
+  shouldStop?: (content: string) => boolean,
 ): Promise<string> {
   const response = await apiFetch('/api/ai/proxy', {
     method: 'POST',
@@ -58,6 +59,11 @@ export async function callAiStream(
         } catch {
           // Skip malformed JSON chunks
         }
+      }
+
+      if (shouldStop?.(accumulated)) {
+        await reader.cancel();
+        break;
       }
     }
   } catch (err: any) {

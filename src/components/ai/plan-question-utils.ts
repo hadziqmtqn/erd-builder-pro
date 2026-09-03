@@ -8,6 +8,7 @@ export interface PlanQuestion {
   type: PlanQuestionType;
   options: string[];
   recommendedOption: string;
+  recommendedOptions: string[];
   allowCustom: boolean;
 }
 
@@ -48,6 +49,36 @@ export const PLAN_FEEDBACK_PREFIX = '[Plan feedback]';
 // alias but retain the same strict payload validation below.
 const QUESTION_BLOCK = /```(?:plan-question|plan)\s*\n([\s\S]*?)```/i;
 
+function unwrapOuterCodeFence(content: string) {
+  const trimmed = content.trim();
+  const match = trimmed.match(/^(`{3,})[^\r\n]*\r?\n([\s\S]*?)\r?\n\1\s*$/);
+  return match ? match[2].trim() : trimmed;
+}
+
+export function normalizePlanMarkdown(content: string) {
+  const trimmed = content.trim();
+  const wrapped = trimmed.match(/^(`{3,})(?:markdown|md)\s*\r?\n([\s\S]*?)\r?\n\1\s*$/i);
+  if (wrapped) return wrapped[2].trim();
+
+  // A streaming response may not have emitted the outer closing fence yet.
+  return trimmed.replace(/^`{3,}(?:markdown|md)\s*\r?\n/i, '').trim();
+}
+
+function resolveRecommendedOption(value: string, options: string[]) {
+  const exact = options.find(option => option === value);
+  if (exact) return exact;
+
+  // ponytail: accept one unique provider word typo only; structured option IDs are the upgrade path for broader paraphrases.
+  const words = value.normalize('NFKC').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (words.length < 3) return null;
+  const candidates = options.filter(option => {
+    const optionWords = option.normalize('NFKC').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    return optionWords.length === words.length
+      && optionWords.filter((word, index) => word !== words[index]).length <= 1;
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export function extractPlanQuestion(content: string): PlanQuestionPayload | null {
   const match = content.match(QUESTION_BLOCK);
   if (!match) return null;
@@ -57,24 +88,37 @@ export function extractPlanQuestion(content: string): PlanQuestionPayload | null
     const options = Array.isArray(value.options)
       ? value.options.filter((option): option is string => typeof option === 'string' && option.trim().length > 0).slice(0, 8)
       : [];
+    const type = value.type as PlanQuestionType;
+    const recommendedOption = typeof value.recommendedOption === 'string' ? value.recommendedOption.trim() : '';
+    const rawRecommendedOptions = options.includes(recommendedOption)
+      ? [recommendedOption]
+      : type === 'multiple'
+        ? recommendedOption.split(';').map(option => option.trim()).filter(Boolean)
+        : [recommendedOption];
+    const resolvedRecommendedOptions = rawRecommendedOptions.map(option => resolveRecommendedOption(option, options));
+    const recommendedOptions = resolvedRecommendedOptions.length === rawRecommendedOptions.length
+      && resolvedRecommendedOptions.every((option): option is string => Boolean(option))
+      ? resolvedRecommendedOptions
+      : [];
     if (
       Array.isArray(value.questions)
       || typeof value.question !== 'string'
-      || !['single', 'multiple'].includes(String(value.type))
+      || !['single', 'multiple'].includes(String(type))
       || options.length < 2
       || options.length > 7
-      || typeof value.recommendedOption !== 'string'
-      || !options.includes(value.recommendedOption)
+      || !recommendedOptions.length
+      || recommendedOptions.some(option => !options.includes(option))
     ) return null;
 
     return {
-      content: content.replace(QUESTION_BLOCK, '').trim(),
+      content: unwrapOuterCodeFence(content.replace(QUESTION_BLOCK, '')),
       question: {
         id: typeof value.id === 'string' && value.id.trim() ? value.id.trim() : 'plan-question',
         question: value.question.trim(),
-        type: value.type as PlanQuestionType,
+        type,
         options,
-        recommendedOption: value.recommendedOption,
+        recommendedOption: recommendedOptions[0],
+        recommendedOptions,
         allowCustom: value.allowCustom !== false,
       },
     };

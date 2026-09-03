@@ -2,6 +2,7 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock } from './CodeBlock';
+import { normalizePlanMarkdown } from './plan-question-utils';
 
 interface AssistantMarkdownProps {
   content: string;
@@ -9,6 +10,8 @@ interface AssistantMarkdownProps {
 }
 
 export const AssistantMarkdown = memo(function AssistantMarkdown({ content, isStreaming }: AssistantMarkdownProps) {
+  const normalizedContent = normalizePlanMarkdown(content);
+
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none text-xs" style={{ '--tw-prose-pre-bg': 'var(--muted)', '--tw-prose-pre-code': 'var(--foreground)', '--tw-prose-code': 'var(--foreground)' } as React.CSSProperties}>
       {isStreaming && !content ? (
@@ -30,7 +33,7 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({ content, isSt
                 return <code className="bg-black/30 px-1 py-0.5 rounded text-[11px]" {...props}>{children}</code>;
               },
             }}
-          >{content}</ReactMarkdown>
+          >{normalizedContent}</ReactMarkdown>
           {isStreaming && <span className="inline-block size-1.5 rounded-full bg-foreground/40 animate-pulse ml-0.5" />}
         </>
       )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectPlanQuestionEntries, extractPlanQuestion, formatPlanAnswer, formatPlanFeedback, hasSubstantivePlanContent, hidePlanQuestionProtocol, isPlanAnswer, isPlanResponse, parsePlanResponse } from './plan-question-utils';
+import { collectPlanQuestionEntries, extractPlanQuestion, formatPlanAnswer, formatPlanFeedback, hasSubstantivePlanContent, hidePlanQuestionProtocol, isPlanAnswer, isPlanResponse, normalizePlanMarkdown, parsePlanResponse } from './plan-question-utils';
 
 describe('plan question protocol', () => {
   it('extracts one valid question without showing its JSON to users', () => {
@@ -17,6 +17,42 @@ describe('plan question protocol', () => {
       question: { id: 'stack', recommendedOption: 'Laravel' },
     });
     expect(hidePlanQuestionProtocol('I need one decision.\n```plan\n{"id":"stack"')).toBe('I need one decision.');
+  });
+
+  it('renders multiple recommended options from the semicolon format', () => {
+    const result = extractPlanQuestion(`\`\`\`\`kotlin
+Stack ditetapkan: **Laravel + MySQL** dan **React**.
+
+Sekarang tentukan struktur otorisasi untuk memastikan orang tua hanya melihat data anaknya dan admin mengelola sekolah:
+\`\`\`plan-question
+{"id":"rbac","question":"Struktur peran dan akses sistem?","type":"multiple","options":["Admin Sekolah & Operator Keuangan","Guru Kelas (Input Data Siswa)","Orang Tua/Wali Murid (Cek Pembayaran)","Pusatkan semua di tabel User single-table"],"recommendedOption":"Admin Sekolah & Operator Keuangan; Orang Tua/Wali Murid (Cek Pembayaran); Pusatkan semua di tabel User single-table","allowCustom":true}
+\`\`\`
+
+Konfirmasi role lanjut susun skema DB lengkap dan alur transaksi pembayaran.
+\`\`\`\``);
+
+    expect(result?.question.recommendedOptions).toEqual([
+      'Admin Sekolah & Operator Keuangan',
+      'Orang Tua/Wali Murid (Cek Pembayaran)',
+      'Pusatkan semua di tabel User single-table',
+    ]);
+    expect(result?.content).toContain('**Laravel + MySQL**');
+    expect(result?.content).not.toContain('```kotlin');
+  });
+
+  it('canonicalizes one unique provider word typo in a recommendation', () => {
+    const result = extractPlanQuestion('```plan-question\n{"id":"fee_structure","question":"Bagaimana struktur biaya yang diterapkan di sistem?","type":"single","options":["Biaya tetap & terstruktur (contoh: SPP bulanan, uang seragam di awal)","Biaya fleksibel (Bendahara input manual total tagihan per siswa)","Menggabungkan keduanya - template default yang bisa dikustomisasi penuh"],"recommendedOption":"Menggabungkan keduanya - template default tapi bisa dikustomisasi penuh","allowCustom":true}\n```');
+    expect(result?.question.recommendedOption).toBe('Menggabungkan keduanya - template default yang bisa dikustomisasi penuh');
+    expect(result?.question.recommendedOptions).toEqual(['Menggabungkan keduanya - template default yang bisa dikustomisasi penuh']);
+  });
+
+  it('unwraps an outer markdown fence while preserving an inner DBML fence', () => {
+    const content = '```markdown\n# Rencana\n\n```dbml\nTable users {\n  id BIGINT [pk]\n}\n```\n\n## Delivery\n- Build\n```';
+    const normalized = normalizePlanMarkdown(content);
+    expect(normalized).toContain('# Rencana');
+    expect(normalized).toContain('```dbml');
+    expect(normalized).toContain('## Delivery');
+    expect(normalized).not.toMatch(/^```markdown/);
   });
 
   it('rejects batches, invalid option counts, and a recommendation outside the options', () => {

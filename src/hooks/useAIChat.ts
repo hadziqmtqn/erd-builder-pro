@@ -27,6 +27,7 @@ import {
   updatePlanOutbox,
   type PlanOutboxItem,
 } from './aiChat/planRecovery';
+import { extractPlanQuestion } from '@/components/ai/plan-question-utils';
 
 export type EntityContext = EntityCtxType;
 
@@ -579,7 +580,9 @@ export function useAIChat(
       apiMessages.push({ role: 'system', content: RESPONSE_LANGUAGE_INSTRUCTION });
 
       // Keep recent continuity without drowning the active workspace context.
-      const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m => !m.id.toString().startsWith('temp-'));
+      const previousMessages = (messagesCacheMapRef.current.get(sessionUid) ?? []).filter(m =>
+        !m.id.toString().startsWith('temp-') && m.client_message_id !== clientMessageId
+      );
       if (requestContext?.planMode) {
         const context = planningContext(previousMessages);
         if (context) apiMessages.push({ role: 'system', content: context });
@@ -644,6 +647,7 @@ export function useAIChat(
           if (streamingFrame === null) streamingFrame = requestAnimationFrame(flushStreamingBuffer);
         },
         config.providerCode,
+        content => isPlanRequest && Boolean(extractPlanQuestion(content)),
       );
       if (streamingFrame !== null) cancelAnimationFrame(streamingFrame);
       if (isPlanRequest && streamController.signal.aborted) {

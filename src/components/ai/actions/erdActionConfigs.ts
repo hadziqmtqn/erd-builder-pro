@@ -54,6 +54,11 @@ The user will describe the schema they want.
 When the user asks to create or modify the schema, respond with DBML in a \`\`\`dbml code block. The DBML must be directly applicable to the ERD canvas through the Append action.
 
 DBML rules:
+- The code fence language must be exactly dbml. Never label DBML as yaml, arduino, markdown, schema, or sql, and never nest fenced blocks.
+- Use uppercase portable types and explicit VARCHAR/CHAR lengths; omit [null] because nullable is the default. Quote string defaults such as [default: 'pending'].
+- Name every Enum exactly {table_name}_{column_name}; for example, users.access_role uses users_access_role and invoices.status uses invoices_status. Never use generic names such as user_roles or payment_status.
+- Use one standalone Ref: child.parent_id > parents.id per relationship. Never use inline [ref: ...], duplicate a Ref, omit >, or reference undefined tables/columns. Check compatible FK/PK types.
+- Preflight the full output for balanced braces/fences and parser-valid DBML before responding.
 - Use Table blocks for every table that should be created or changed.
 - Use [pk] for primary keys and [not null] for required fields.
 - Use [note: '...'] for column comments and sized types like VARCHAR(100) when max length matters.
