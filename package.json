@@ -106,7 +106,7 @@
     "dompurify": "^3.4.14",
     "dotenv": "^17.2.3",
     "downloadjs": "^1.4.7",
-    "express": "^4.22.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "framer-motion": "^11.18.2",
     "helmet": "^8.2.0",
