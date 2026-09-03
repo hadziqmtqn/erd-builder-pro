@@ -206,7 +206,7 @@ export async function deleteFile(req: ExpressRequest, res: ExpressResponse): Pro
  */
 export async function serveFile(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   // Extract the full key from the wildcard route param
-  const key = req.params.key;
+  const key = Array.isArray(req.params.key) ? req.params.key.join("/") : req.params.key;
   if (!key || !key.startsWith("erd-builder-pro/")) {
     res.status(400).json({ error: "Invalid file key" });
     return;

@@ -222,7 +222,7 @@ app.use((_req, res, next) => {
 // Structured request logging (via Pino)
 app.use(httpLogger);
 
-app.use("/api/*", (req, res, next) => {
+app.use("/api", (req, res, next) => {
   const path = req.originalUrl.split("?")[0];
   if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(path)) {
     return next();
@@ -383,7 +383,7 @@ initAutoBackupScheduler().catch((err) => {
   console.error("Failed to init auto-backup scheduler:", err);
 });
 
-app.use("/api/*", (req, res) => {
+app.use("/api", (req, res) => {
   res.status(404).json({ error: `API route not found: ${req.originalUrl}` });
 });
 
