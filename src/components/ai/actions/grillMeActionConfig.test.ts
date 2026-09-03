@@ -17,6 +17,9 @@ describe('Plan AI action', () => {
     expect(followUpPrompt).toContain('materially change scope');
     expect(followUpPrompt).toContain('Do not write a final plan while it would contain a material unresolved question');
     expect(grillMeAction.buildPrompt({})).toContain('```plan-question');
+    expect(grillMeAction.buildPrompt({})).toContain('copy the selected option character-for-character');
+    expect(grillMeAction.buildPrompt({})).toContain('never join options with semicolons');
+    expect(grillMeAction.buildPrompt({})).toContain('never wrap the whole response in a markdown code fence');
     expect(grillMeAction.buildPrompt({})).toContain('do not include a "Open questions" or "Pertanyaan terbuka" section for material decisions');
     expect(grillMeAction.buildPrompt({})).toContain('Treat [Plan feedback] as authoritative');
     expect(grillMeAction.buildPrompt({})).toContain('skip means defer this decision');

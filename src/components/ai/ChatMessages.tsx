@@ -210,7 +210,7 @@ export const ChatMessages = memo(function ChatMessages({
               const planQuestion = !isUser ? extractPlanQuestion(msg.content) : null;
               const displayContent = planQuestion ? planQuestion.content : isStreamingMsg ? hidePlanQuestionProtocol(msg.content) : msg.content;
               const preservesPlanContent = Boolean(planQuestion && hasSubstantivePlanContent(planQuestion.content));
-              if ((isStreamingMsg && msg.plan_mode) || (planQuestion && !preservesPlanContent) || (isUser && isPlanResponse(msg.content))) return null;
+              if ((planQuestion && !preservesPlanContent) || (isUser && isPlanResponse(msg.content))) return null;
 
               return (
                 <div

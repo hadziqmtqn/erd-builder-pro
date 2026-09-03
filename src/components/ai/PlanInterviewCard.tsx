@@ -225,7 +225,7 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
                     <Radio.Root value={option} className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-background outline-none data-checked:border-primary data-checked:bg-primary focus-visible:ring-2 focus-visible:ring-ring/50">
                       <Radio.Indicator className="size-1.5 rounded-full bg-primary-foreground" />
                     </Radio.Root>
-                    <span>{option === entry.question.recommendedOption && <Badge variant="secondary" className="mr-1">Recommended</Badge>}{option}</span>
+                    <span>{entry.question.recommendedOptions.includes(option) && <Badge variant="secondary" className="mr-1">Recommended</Badge>}{option}</span>
                   </label>
                 ))}
                 {entry.question.allowCustom && (
@@ -241,7 +241,7 @@ export function PlanInterviewCard({ sessionUid, messages, isStreaming, onSubmit,
               entry.question.options.map(option => (
                 <label key={option} className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-xs text-muted-foreground has-[[data-checked]]:bg-muted has-[[data-checked]]:text-foreground">
                   <Checkbox checked={selected.includes(option)} onCheckedChange={value => toggleOption(option, Boolean(value))} />
-                  <span>{option === entry.question.recommendedOption && <Badge variant="secondary" className="mr-1">Recommended</Badge>}{option}</span>
+                  <span>{entry.question.recommendedOptions.includes(option) && <Badge variant="secondary" className="mr-1">Recommended</Badge>}{option}</span>
                 </label>
               ))
             )}
