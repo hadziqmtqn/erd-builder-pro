@@ -15,7 +15,7 @@
     "menubar/"
   ],
   "dependencies": {
-    "commander": "^13.0.0",
+    "commander": "^15.0.0",
     "open": "^11.0.2",
     "better-sqlite3": "^13.0.3"
   },
