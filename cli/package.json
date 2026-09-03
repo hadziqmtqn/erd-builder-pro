@@ -17,7 +17,7 @@
   "dependencies": {
     "commander": "^13.0.0",
     "open": "^10.0.0",
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^13.0.3"
   },
   "scripts": {
     "postinstall": "cp -r node_modules/better-sqlite3 dist-server/node_modules/ 2>/dev/null || true"
