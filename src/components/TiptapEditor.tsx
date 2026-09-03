@@ -427,6 +427,20 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
       attributes: {
         className: 'tiptap-editor-content focus:outline-none focus:ring-0 border-none outline-none min-h-[500px] pb-[350px] [&_img]:block [&_img]:mx-auto [&_img]:my-6 [&_.tiptap-extension-resize-image]:block [&_.tiptap-extension-resize-image]:mx-auto [&_code]:text-primary',
       },
+      handleDOMEvents: {
+        click: (_view, event) => {
+          const target = event.target;
+          const anchor = target instanceof Element
+            ? target.closest<HTMLAnchorElement>('a')
+            : null;
+          const href = anchor?.getAttribute('href');
+          if (!href?.startsWith('/') || href.startsWith('//')) return false;
+
+          event.preventDefault();
+          navigate(href);
+          return true;
+        },
+      },
       handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain');
         const html = event.clipboardData?.getData('text/html');
@@ -492,15 +506,6 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
         if (html) return false;
 
         return false;
-      },
-      handleClick: (_view, _pos, event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLAnchorElement)) return false;
-        const href = target.getAttribute('href');
-        if (!href?.startsWith('/')) return false;
-        event.preventDefault();
-        navigate(href);
-        return true;
       },
     },
   });

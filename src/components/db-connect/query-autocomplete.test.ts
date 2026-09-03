@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSqlCompletions } from './query-autocomplete';
+import { buildSqlCompletions, buildSqlSuggestionSource } from './query-autocomplete';
 
 describe('buildSqlCompletions', () => {
   const tables = [
@@ -60,6 +60,28 @@ describe('buildSqlCompletions', () => {
         label: 'roles',
         apply: 'roles ON u.role_id = roles.id',
       }),
+    ]));
+  });
+
+  it('filters and caps native textarea suggestions', () => {
+    const source = buildSqlSuggestionSource(tables);
+    const suggestions = source('SELECT * FROM po', 'SELECT * FROM po'.length, 1);
+
+    expect(suggestions).toEqual([
+      expect.objectContaining({ label: 'posts', detail: 'table' }),
+    ]);
+  });
+
+  it('suggests columns from tables introduced by JOIN while completing ON', () => {
+    const source = buildSqlSuggestionSource([
+      ...tables,
+      { table_name: 'ppdbs', columns: [{ name: 'siswa_id' }] },
+    ]);
+    const sql = 'SELECT siswas.nama,\n  siswas.nama_ayah\nFROM siswas\nJOIN ppdbs ON ppdbs.siswa_id = siswas.id';
+    const suggestions = source(sql, sql.indexOf('ppdbs.siswa_id') + 'ppdbs.sis'.length);
+
+    expect(suggestions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'ppdbs.siswa_id' }),
     ]));
   });
 });

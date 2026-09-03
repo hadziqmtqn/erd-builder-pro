@@ -6,12 +6,20 @@ type TableSchema = {
   foreign_keys?: { column: string; ref_table: string; ref_column: string }[];
 };
 
+export type SqlSuggestion = {
+  label: string;
+  detail?: string;
+  apply?: string;
+  type?: string;
+};
+
 const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'INNER JOIN', 'GROUP BY', 'ORDER BY',
   'LIMIT', 'OFFSET', 'ON', 'AS', 'AND', 'OR', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
 ];
 const RESERVED_ALIASES = new Set([...SQL_KEYWORDS, 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'OUTER', 'HAVING', 'SET', 'VALUES'].map(word => word.split(' ')[0]));
-const TABLE_REFERENCE = /\b(?:from|join|update|into)\s+((?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[\w$]+))?)(?:\s+(?:as\s+)?([a-z_$][\w$]*))?/gi;
+const RESERVED_ALIAS_PATTERN = [...RESERVED_ALIASES, 'UPDATE', 'INTO', 'UNION'].join('|');
+const TABLE_REFERENCE = new RegExp(`\\b(?:from|join|update|into)\\s+((?:"[^"]+"|\`[^\`]+\`|\\[[^\\]]+\\]|[\\w$]+)(?:\\s*\\.\\s*(?:"[^"]+"|\`[^\`]+\`|\\[[^\\]]+\\]|[\\w$]+))?)(?:\\s+(?:as\\s+)?((?!(?:${RESERVED_ALIAS_PATTERN})\\b)[a-z_$][\\w$]*))?`, 'gi');
 
 function cleanIdentifier(value: string) {
   return value.split('.').map(part => part.trim().replace(/^["`\[]|["`\]]$/g, '')).join('.');
@@ -71,14 +79,21 @@ export function buildSqlCompletions(tables: TableSchema[]) {
     const word = ctx.matchBefore(/[\w.]+$/);
     if (!ctx.explicit && !word) return null;
     const sql = ctx.state.doc.toString();
+    const statementStart = sql.lastIndexOf(';', Math.max(0, ctx.pos - 1)) + 1;
     const statement = activeStatement(sql, ctx.pos);
     const statementBeforeCursor = sql.slice(sql.lastIndexOf(';', Math.max(0, ctx.pos - 1)) + 1, ctx.pos);
     const expectsTable = /\b(?:from|join|update|into)\s+["`\[\]\w$.]*$/i.test(statementBeforeCursor);
     const expectsJoin = /\bjoin\s+["`\[\]\w$.]*$/i.test(statementBeforeCursor);
-    const key = `${statement}\0${expectsTable}\0${expectsJoin}`;
+    const wordText = word?.text || '';
+    const cursorOffset = ctx.pos - statementStart;
+    const wordStart = Math.max(0, cursorOffset - wordText.length);
+    const statementWithoutWord = wordText && statement.slice(wordStart, cursorOffset) === wordText
+      ? statement.slice(0, wordStart) + statement.slice(cursorOffset)
+      : statement;
+    const key = `${statementWithoutWord}\0${expectsTable}\0${expectsJoin}`;
     if (key !== previousKey) {
       previousKey = key;
-      const references = referencedTables(statement, tables);
+      const references = referencedTables(statementWithoutWord, tables);
       const columns = references.flatMap(({ table, qualifier }) => (table.columns || []).map(column => ({
         label: `${qualifier}.${column.name}`, type: 'property', detail: `${table.table_name} column`,
       } as Completion)));
@@ -92,5 +107,32 @@ export function buildSqlCompletions(tables: TableSchema[]) {
       from: word?.from ?? ctx.pos,
       options: previousOptions,
     };
+  };
+}
+
+export function buildSqlSuggestionSource(tables: TableSchema[]) {
+  const completionSource = buildSqlCompletions(tables);
+
+  return (sql: string, position: number, limit = 24): SqlSuggestion[] => {
+    const word = sql.slice(0, position).match(/[\w.]+$/);
+    if (!word) return [];
+
+    const result = completionSource({
+      explicit: false,
+      pos: position,
+      state: { doc: { toString: () => sql } },
+      matchBefore: () => ({ from: position - word[0].length, to: position, text: word[0] }),
+    } as unknown as CompletionContext);
+    const query = word[0].toLowerCase();
+
+    return (result?.options || [])
+      .filter(option => option.label.toLowerCase().includes(query))
+      .slice(0, limit)
+      .map(option => ({
+        label: option.label,
+        detail: option.detail,
+        type: option.type,
+        apply: typeof option.apply === 'string' ? option.apply : undefined,
+      }));
   };
 }
