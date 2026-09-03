@@ -1,5 +1,5 @@
 # Build Stage
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 
 # Build args for Vite env vars (required)
 ARG VITE_SUPABASE_URL
@@ -29,7 +29,7 @@ COPY . .
 RUN npm run build
 
 # Production Stage
-FROM node:22-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 
