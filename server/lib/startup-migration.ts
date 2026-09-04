@@ -1,11 +1,22 @@
 import { prisma } from "./prisma.js";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { logger } from "./logger.js";
-import { isDesktopMode, isLocalPostgres } from "./config.js";
+import { isDesktopMode, isLocalPostgres, SUPABASE_URL } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 import { migrateDbClients } from "./db-client-migration.js";
 
 type PrismaRecord = { id: number | bigint | string };
+
+const SHAREABLE_FILE_TABLES = ["diagrams", "notes", "drawings", "flowcharts"] as const;
+
+function isPostgresDatabase(): boolean {
+  const url = process.env.DATABASE_URL || "";
+  return url.startsWith("postgresql://") || url.startsWith("postgres://");
+}
+
+function postgresDateType(): string {
+  return SUPABASE_URL ? "TIMESTAMPTZ(6)" : "TIMESTAMP(3)";
+}
 
 async function backfillModelUids<T extends PrismaRecord>(
   name: string,
@@ -74,8 +85,8 @@ export async function backfillUids(): Promise<void> {
 
 /**
  * Add a column to a table if it doesn't already exist.
- * Uses PRAGMA table_info to check, then runs ALTER TABLE ADD COLUMN.
- * Safe for SQLite — no-op if column already present.
+ * Uses information_schema for PostgreSQL and PRAGMA for SQLite, then runs
+ * ALTER TABLE ADD COLUMN. Safe to rerun — no-op if the column is present.
  */
 export type ColumnInfo = {
   name: string;
@@ -88,7 +99,7 @@ export type ColumnInfo = {
 async function getColumns(table: string): Promise<ColumnInfo[]> {
   if (!prisma) return [];
   try {
-    if (isLocalPostgres()) {
+    if (isPostgresDatabase()) {
       const rows: any[] = await prisma.$queryRawUnsafe(
         `SELECT column_name AS name, data_type AS type, is_nullable, column_default
          FROM information_schema.columns
@@ -225,11 +236,114 @@ async function createDbConnectTablesIfMissing(): Promise<void> {
   }
 }
 
+async function createTeamTablesIfMissing(): Promise<void> {
+  if (!prisma || (!isDesktopMode() && !isLocalPostgres())) return;
+
+  await addColumnIfMissing("projects", "team_id", '"team_id" TEXT');
+  try {
+    const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "teams" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "license_id" TEXT UNIQUE,
+        "license_code_last_four" TEXT,
+        "license_status" TEXT NOT NULL DEFAULT 'active',
+        "license_expires_at" ${dateType},
+        "max_members" INTEGER,
+        "binding_generation" INTEGER DEFAULT 0,
+        "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "team_members" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "team_id" TEXT NOT NULL,
+        "user_id" TEXT NOT NULL,
+        "role" TEXT NOT NULL DEFAULT 'member',
+        "status" TEXT NOT NULL DEFAULT 'active',
+        "joined_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
+        CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_teams_license_status" ON "teams"("license_status")');
+    await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "team_members_team_user_key" ON "team_members"("team_id", "user_id")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_members_user_status" ON "team_members"("user_id", "status")');
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to create Team tables (non-fatal)");
+  }
+}
+
+async function backfillLegacyFileAccess(table: string): Promise<void> {
+  if (!prisma) return;
+
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "${table}"
+       SET "public_access" = 'read_only'
+       WHERE "public_access" = 'off' AND COALESCE("is_public", false) = true`,
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE "${table}"
+       SET "share_expires_at" = "expiry_date"
+       WHERE "share_expires_at" IS NULL AND "expiry_date" IS NOT NULL`,
+    );
+
+    const rows = await prisma.$queryRawUnsafe<{ id: number | bigint | string; token: string }[]>(
+      `SELECT "id", "share_token" AS "token"
+       FROM "${table}"
+       WHERE "share_token" IS NOT NULL
+         AND "share_token" <> ''
+         AND "share_token_hash" IS NULL`,
+    );
+
+    for (const row of rows) {
+      const hash = createHash("sha256").update(String(row.token), "utf8").digest("hex");
+      if (isPostgresDatabase()) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "${table}" SET "share_token_hash" = $1 WHERE "id" = $2 AND "share_token_hash" IS NULL`,
+          hash,
+          row.id,
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "${table}" SET "share_token_hash" = ? WHERE "id" = ? AND "share_token_hash" IS NULL`,
+          hash,
+          row.id,
+        );
+      }
+    }
+
+    if (rows.length > 0) {
+      logger.info({ table, count: rows.length }, "Backfilled legacy share token hashes");
+    }
+  } catch (err: any) {
+    if (err?.message?.includes("no such table") || err?.message?.includes("does not exist")) {
+      logger.warn({ table }, "File table not found, skipping access backfill");
+      return;
+    }
+    logger.warn({ err: err?.message, table }, "Failed to backfill legacy file access");
+  }
+}
+
+async function ensureFileAccessColumns(): Promise<void> {
+  if (!prisma) return;
+
+  const dateType = isPostgresDatabase() ? postgresDateType() : "DATETIME";
+  for (const table of SHAREABLE_FILE_TABLES) {
+    await addColumnIfMissing(table, "team_access", `"team_access" TEXT NOT NULL DEFAULT 'private'`);
+    await addColumnIfMissing(table, "public_access", `"public_access" TEXT NOT NULL DEFAULT 'off'`);
+    await addColumnIfMissing(table, "share_token_hash", '"share_token_hash" TEXT');
+    await addColumnIfMissing(table, "share_expires_at", `"share_expires_at" ${dateType}`);
+    await backfillLegacyFileAccess(table);
+  }
+}
+
 async function createErdMetadataTablesIfMissing(): Promise<void> {
   if (!prisma) return;
   try {
     const textType = isLocalPostgres() ? "TEXT" : "TEXT";
-    const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
+    const dateType = isPostgresDatabase() ? postgresDateType() : "DATETIME";
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "table_constraints" (
         "id" ${textType} NOT NULL PRIMARY KEY,
@@ -480,8 +594,8 @@ async function ensureColumnType(
  *   // castExpr is optional — omit if existing data is compatible (e.g. TEXT→VARCHAR)
  */
 export async function applySchemaMigrations(): Promise<void> {
-  // Supabase uses managed migrations. Installed SQLite/CLI Postgres self-heal here.
-  if (!prisma || (!isDesktopMode() && !isLocalPostgres())) return;
+  // Additive startup self-heal for installed SQLite and PostgreSQL deployments.
+  if (!prisma || (!isDesktopMode() && !isPostgresDatabase())) return;
 
   // v2.4+ — destinations column on backups table
   await addColumnIfMissing("backups", "destinations", "destinations TEXT");
@@ -507,8 +621,10 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("relationships", "on_delete", '"on_delete" TEXT');
   await addColumnIfMissing("relationships", "on_update", '"on_update" TEXT');
   await addColumnIfMissing("relationships", "constraint_name", '"constraint_name" TEXT');
+  await ensureFileAccessColumns();
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
+  await createTeamTablesIfMissing();
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.
     await ensureRepositoryLinkColumns();

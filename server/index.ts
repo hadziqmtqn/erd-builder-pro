@@ -34,6 +34,7 @@ import entityChangesRouter from "./routes/entity-changes/index.js";
 import dbClientsRouter from "./routes/db-clients/index.js";
 import repositoriesRouter from "./routes/repositories/index.js";
 import oauthConsentRouter from "./routes/oauth-consent.js";
+import teamsRouter from "./routes/teams/index.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
 import { getPublicMcpClientConfig } from "./mcp/public-auth.js";
 
@@ -357,6 +358,7 @@ app.get("/api/version/latest", async (_req, res) => {
 
 app.use("/api", authRouter);
 app.use("/api", oauthConsentRouter);
+app.use("/api/teams", teamsRouter);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/db-clients", dbClientsRouter);
 app.use("/api/repositories", repositoriesRouter);

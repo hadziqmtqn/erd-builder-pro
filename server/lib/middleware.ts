@@ -2,6 +2,7 @@ import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } 
 import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 import { prisma } from "./prisma.js";
+import { canUserLogin } from "../routes/teams/service.js";
 
 /** Extract token: Bearer header first (explicit auth), cookie (implicit), query param (fallback). */
 function extractToken(req: ExpressRequest): string | undefined {
@@ -38,10 +39,17 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
           where: { id: session.userId },
           select: { isSuperAdmin: true },
         });
+        const isSuperAdmin = Boolean(localUser?.isSuperAdmin);
+        if (!isSuperAdmin) {
+          const access = await canUserLogin(session.userId);
+          if (access.allowed === false) {
+            return res.status(403).json({ error: "Team license is not active", code: access.code });
+          }
+        }
         (req as any).user = {
           id: session.userId,
           email: session.email,
-          isSuperAdmin: Boolean(localUser?.isSuperAdmin),
+          isSuperAdmin,
         };
         next();
         return;

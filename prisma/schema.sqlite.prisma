@@ -39,6 +39,7 @@ model User {
   userAiRules     UserAiRule[]
   preferences     UserPreference?
   sessions        Session[]
+  teamMemberships TeamMember[]
 
   @@map("users")
 }
@@ -57,12 +58,47 @@ model Session {
   @@map("sessions")
 }
 
+// ── Team (Self-host Web only; unused by Desktop/CLI) ──
+model Team {
+  id                  String       @id @default(uuid())
+  name                String
+  licenseId           String?      @unique @map("license_id")
+  licenseCodeLastFour String?      @map("license_code_last_four")
+  licenseStatus       String       @default("active") @map("license_status")
+  licenseExpiresAt    DateTime?    @map("license_expires_at")
+  maxMembers          Int?         @map("max_members")
+  bindingGeneration   Int?         @default(0) @map("binding_generation")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  members             TeamMember[]
+  projects            Project[]
+
+  @@index([licenseStatus], map: "idx_teams_license_status")
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String   @map("team_id")
+  userId    String   @map("user_id")
+  role      String   @default("member")
+  status    String   @default("active")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([teamId, userId], map: "team_members_team_user_key")
+  @@index([userId, status], map: "idx_team_members_user_status")
+  @@map("team_members")
+}
+
 // ── Project ──
 model Project {
   id             Int             @id @default(autoincrement())
   uid            String?         @unique
   name           String
   userId         String?         @map("user_id")
+  teamId         String?         @map("team_id")
   color          String?         @default("#6366f1")
   isDeleted      Boolean?        @default(false) @map("is_deleted")
   deletedAt      DateTime?       @map("deleted_at")
@@ -70,6 +106,7 @@ model Project {
   updatedAt      DateTime?       @default(now()) @map("updated_at")
   version        Int?            @default(0) @map("_version")
   user           User?           @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  team           Team?           @relation(fields: [teamId], references: [id], onUpdate: NoAction)
   diagrams       Diagram[]
   dbClients      DbClient[]
   notes          Note[]
@@ -78,6 +115,7 @@ model Project {
   aiChatSessions AiChatSession[]
 
   @@index([userId, isDeleted], map: "idx_projects_user_deleted")
+  @@index([teamId, isDeleted], map: "idx_projects_team_deleted")
   @@index([updatedAt], map: "idx_projects_updated_at")
   @@map("projects")
 }
@@ -98,8 +136,12 @@ model Diagram {
   viewportZoom       Float?         @default(1.0) @map("viewport_zoom")
   version            Int?           @default(0) @map("_version")
   isPublic           Boolean?       @default(false) @map("is_public")
+  teamAccess         String         @default("private") @map("team_access")
+  publicAccess       String         @default("off") @map("public_access")
   shareToken         String?        @map("share_token")
+  shareTokenHash     String?        @map("share_token_hash")
   expiryDate         DateTime?      @map("expiry_date")
+  shareExpiresAt     DateTime?      @map("share_expires_at")
   publishedAt        DateTime?      @map("published_at")
   sourceType         String?        @default("blank") @map("source_type")
   sourceConnectionId Int?           @map("source_connection_id")
@@ -201,8 +243,12 @@ model Note {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  teamAccess  String    @default("private") @map("team_access")
+  publicAccess String   @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
@@ -227,8 +273,12 @@ model Drawing {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  teamAccess  String    @default("private") @map("team_access")
+  publicAccess String    @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
@@ -253,8 +303,12 @@ model Flowchart {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  teamAccess  String    @default("private") @map("team_access")
+  publicAccess String    @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)

@@ -51,6 +51,10 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
         res.status(401).json({ error: "Invalid credentials" });
         return;
       }
+      if ((result as any).blocked) {
+        res.status(403).json({ error: "Team license is not active", code: (result as any).code });
+        return;
+      }
 
       const isSecure = isProd && req.protocol === "https";
       const isDesktop = isDesktopMode();

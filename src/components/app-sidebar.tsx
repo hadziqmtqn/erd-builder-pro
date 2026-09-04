@@ -20,7 +20,8 @@ import { useNavigate } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
+import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
+import { AddTeamDialog } from "@/components/team/AddTeamDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -96,6 +97,13 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user: any;
   isOnline: boolean;
   onOpenFeedback: () => void;
+  teams: SwitcherTeam[];
+  teamsAvailable: boolean;
+  activeTeamId: string | null;
+  onTeamSelect: (teamId: string | null) => void;
+  onTeamManage: (team: SwitcherTeam) => void;
+  onTeamCreate: (input: { name: string; licenseKey: string }) => Promise<unknown>;
+  onTeamCreated: (team: any) => void;
 }
 
 export const AppSidebar = React.memo(({
@@ -120,6 +128,13 @@ export const AppSidebar = React.memo(({
   user,
   isOnline,
   onOpenFeedback,
+  teams,
+  teamsAvailable,
+  activeTeamId,
+  onTeamSelect,
+  onTeamManage,
+  onTeamCreate,
+  onTeamCreated,
   ...props
 }: AppSidebarProps) => {
   const { state } = useSidebar();
@@ -173,6 +188,7 @@ export const AppSidebar = React.memo(({
   const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
 
   // Navigation items for the feature section
   const navMain = [
@@ -229,14 +245,14 @@ export const AppSidebar = React.memo(({
     <>
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher 
-          teams={[
-            {
-              name: "ERD Builder Pro",
-              logo: Database,
-              plan: "Workspace",
-            }
-          ]} 
+        <TeamSwitcher
+          teams={teams}
+          activeTeamId={activeTeamId}
+          enabled={teamsAvailable}
+          canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
+          onSelect={onTeamSelect}
+          onAdd={() => setIsTeamCreateOpen(true)}
+          onManage={onTeamManage}
         />
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
@@ -366,6 +382,12 @@ export const AppSidebar = React.memo(({
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+      <AddTeamDialog
+        open={isTeamCreateOpen}
+        onOpenChange={setIsTeamCreateOpen}
+        onCreate={onTeamCreate}
+        onCreated={onTeamCreated}
+      />
       <Dialog open={isSearchOpen} onOpenChange={(open) => {
         setIsSearchOpen(open);
         if (!open) {

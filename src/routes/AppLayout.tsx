@@ -34,6 +34,7 @@ import {
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { apiFetch } from '@/lib/api';
+import { useTeams, type TeamSummary } from '@/hooks/useTeams';
 
 /** Replace parser-generated column UUID inside handle string with canvas column UUID.
  *  parseSQLToERD's column IDs are "col-xxx", so handles are "col-col-xxx-source".
@@ -235,6 +236,18 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
   } = useWorkspace();
+  const teamState = useTeams(isGuest);
+  const handleTeamSelect = useCallback((teamId: string | null) => {
+    teamState.selectTeam(teamId);
+    navigate(teamId ? `/teams/${teamId}` : '/');
+  }, [navigate, teamState.selectTeam]);
+  const handleTeamManage = useCallback((team: TeamSummary) => {
+    teamState.selectTeam(team.id);
+    navigate(`/teams/${team.id}`);
+  }, [navigate, teamState.selectTeam]);
+  const handleTeamCreated = useCallback((team: TeamSummary) => {
+    navigate(`/teams/${team.id}`);
+  }, [navigate]);
   const isDbClientRoute = location.pathname === '/table/db-client'
     || location.pathname.startsWith('/db-client/')
     || (location.pathname.startsWith('/diagrams/') && searchParams.get('feature') === 'db-client');
@@ -760,6 +773,13 @@ function AppLayoutInner() {
           onInstall={installApp}
           isProjectsLoading={isProjectsLoading}
           onOpenFeedback={() => setIsFeedbackOpen(true)}
+          teams={teamState.teams}
+          teamsAvailable={teamState.isAvailable}
+          activeTeamId={teamState.activeTeamId}
+          onTeamSelect={handleTeamSelect}
+          onTeamManage={handleTeamManage}
+          onTeamCreate={teamState.createTeam}
+          onTeamCreated={handleTeamCreated}
         />
       )}
 

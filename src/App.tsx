@@ -30,6 +30,7 @@ const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then
 const DbClientEditorRoute = lazy(() => import('./routes/DbClientEditorRoute').then(module => ({ default: module.DbClientEditorRoute })));
 const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
 const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));
+const TeamManagementRoute = lazy(() => import('./routes/TeamManagementRoute').then(module => ({ default: module.TeamManagementRoute })));
 const AdminRoute = lazy(() => import('./routes/AdminRoute').then(module => ({ default: module.AdminRoute })));
 
 function lazyRoute(element: ReactNode) {
@@ -156,6 +157,7 @@ function AppContent() {
 
           {/* Admin pages */}
           <Route path="trash" element={lazyRoute(<AdminRoute />)} />
+          <Route path="teams/:id" element={lazyRoute(<TeamManagementRoute />)} />
 
           {/* Default: Dashboard */}
           <Route index element={<DashboardRoute />} />

@@ -80,6 +80,16 @@ export const projectSchema = z.object({
   name: z.string().min(1).max(255),
 });
 
+export const createTeamSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  license_key: z.string().trim().min(1).max(512),
+  activation_grant: z.string().trim().min(1).max(2048).optional(),
+});
+
+export const addTeamMemberSchema = z.object({
+  email: z.string().trim().email().max(255),
+});
+
 export const updateAccountSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).max(255).optional(),

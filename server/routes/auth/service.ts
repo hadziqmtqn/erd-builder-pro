@@ -8,6 +8,7 @@ import {
   deleteSession,
 } from "../../lib/desktop-auth.js";
 import { isDbReady } from "../../lib/db-state.js";
+import { canUserLogin } from "../teams/service.js";
 
 /** Desktop default credentials — embedded in the bundled app, not a secret. */
 const DESKTOP_DEFAULT_EMAIL = "admin@local.dev";
@@ -133,6 +134,11 @@ export async function localLogin(email: string, password: string) {
     return null;
   }
 
+  if (!Boolean((user as any).isSuperAdmin)) {
+    const access = await canUserLogin((user as any).id);
+    if (access.allowed === false) return { blocked: true, code: access.code };
+  }
+
   const token = await createSession(
     (user as any).id,
     (user as any).email,
@@ -244,6 +250,10 @@ export async function getLocalSession(token: string) {
     select: { id: true, email: true, name: true, isSuperAdmin: true },
   });
   if (!user) return null;
+  if (!Boolean((user as any).isSuperAdmin)) {
+    const access = await canUserLogin((user as any).id);
+    if (!access.allowed) return null;
+  }
 
   return {
     id: (user as any).id,
