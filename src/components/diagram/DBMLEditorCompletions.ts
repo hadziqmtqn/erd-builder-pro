@@ -1,5 +1,3 @@
-import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
-import type { MutableRefObject } from 'react';
 import { COLUMN_TYPES } from '@/lib/utils';
 
 export interface DBMLTableData {
@@ -7,7 +5,17 @@ export interface DBMLTableData {
   cols: Map<string, string[]>;
 }
 
-const KEYWORDS: Completion[] = [
+export interface DBMLSuggestion {
+  label: string;
+  type: string;
+  detail?: string;
+  from: number;
+  to: number;
+}
+
+type SuggestionOption = Omit<DBMLSuggestion, 'from' | 'to'>;
+
+const KEYWORDS: SuggestionOption[] = [
   { label: 'Table', type: 'keyword', detail: 'table definition' },
   { label: 'Ref', type: 'keyword', detail: 'relationship' },
   { label: 'Enum', type: 'keyword', detail: 'enum definition' },
@@ -16,7 +24,7 @@ const KEYWORDS: Completion[] = [
   { label: 'Indexes', type: 'keyword', detail: 'index block' },
 ];
 
-const SETTINGS: Completion[] = [
+const SETTINGS: SuggestionOption[] = [
   { label: 'pk', type: 'keyword', detail: 'primary key' },
   { label: 'unique', type: 'keyword', detail: 'unique constraint' },
   { label: 'not null', type: 'keyword', detail: 'not null' },
@@ -27,89 +35,66 @@ const SETTINGS: Completion[] = [
   { label: 'headerColor', type: 'keyword', detail: 'table header color' },
 ];
 
-const TYPES: Completion[] = COLUMN_TYPES.map(type => ({
+const TYPES: SuggestionOption[] = COLUMN_TYPES.map(type => ({
   label: type,
   type: 'type',
   detail: 'column type',
 }));
 
-export function createDBMLCompletionSource(
-  tableDataRef: MutableRefObject<DBMLTableData>,
-) {
-  return (ctx: CompletionContext): CompletionResult | null => {
-    const { names: tableNames, cols: tableCols } = tableDataRef.current;
-    const line = ctx.state.doc.lineAt(ctx.pos);
-    const before = line.text.slice(0, ctx.pos - line.from);
-    const word = ctx.matchBefore(/\w+/);
-    if (!word) return null;
+function columnsFor(tableData: DBMLTableData, tableName: string) {
+  const name = tableData.names.find(table => table.toLowerCase() === tableName.toLowerCase());
+  return name ? { name, columns: tableData.cols.get(name) || [] } : null;
+}
 
-    const partial = word.text.toLowerCase();
-    if (!partial) return null;
+export function getDBMLSuggestions(
+  source: string,
+  position: number,
+  tableData: DBMLTableData,
+  limit = 8,
+): DBMLSuggestion[] {
+  const lineStart = source.lastIndexOf('\n', Math.max(0, position - 1)) + 1;
+  const nextBreak = source.indexOf('\n', position);
+  const line = source.slice(lineStart, nextBreak === -1 ? undefined : nextBreak);
+  const before = source.slice(lineStart, position);
+  const word = before.match(/\w+$/)?.[0];
+  if (!word) return [];
 
-    const beforeTrimmed = before.slice(0, word.from - line.from).trimEnd();
-    const isLineStart = !beforeTrimmed || beforeTrimmed.startsWith('//');
-    const insideTableBody = /^\s/.test(line.text) && !/^\s*(Table|Ref|Enum|TableGroup|Note|Indexes)\b/i.test(line.text);
-    const afterColName = /^\s+"[^"]+"\s+\w*$/.test(before) || /^\s+\w+\s+\w*$/.test(before);
+  const partial = word.toLowerCase();
+  const from = position - word.length;
+  const complete = (options: SuggestionOption[]) => options
+    .filter(option => option.label.toLowerCase().startsWith(partial))
+    .slice(0, limit)
+    .map(option => ({ ...option, from, to: position }));
 
-    const isRefLine = /^\s*Ref:\s/i.test(line.text);
-    if (isRefLine) {
-      const afterRef = before.replace(/^\s*Ref:\s*/, '');
-      if (!/[><]/.test(afterRef)) {
-        const dotMatch = afterRef.match(/^(\w+)\.(\w*)$/);
-        if (dotMatch) {
-          const cols = tableCols.get(dotMatch[1]);
-          if (cols) {
-            const options = cols
-              .filter(column => column.toLowerCase().startsWith(partial))
-              .map(column => ({ label: column, type: 'property' as const, detail: dotMatch[1] }));
-            if (options.length) return { from: word.from, options };
-          }
-          return null;
-        }
+  const beforeWord = before.slice(0, before.length - word.length).trimEnd();
+  const isLineStart = !beforeWord || beforeWord.startsWith('//');
+  const insideTableBody = /^\s/.test(line) && !/^\s*(Table|Ref|Enum|TableGroup|Note|Indexes)\b/i.test(line);
+  const afterColumnName = /^\s+"[^"]+"\s+\w*$/.test(before) || /^\s+\w+\s+\w*$/.test(before);
 
-        const options = tableNames
-          .filter(table => table.toLowerCase().startsWith(partial))
-          .map(table => ({ label: table, type: 'class' as const }));
-        return options.length ? { from: word.from, options } : null;
+  if (/^\s*Ref:\s/i.test(line)) {
+    const afterRef = before.replace(/^\s*Ref:\s*/, '');
+    if (!/[><]/.test(afterRef)) {
+      const dot = afterRef.match(/^(\w+)\.(\w*)$/);
+      if (dot) {
+        const table = columnsFor(tableData, dot[1]);
+        return table ? complete(table.columns.map(label => ({ label, type: 'property', detail: table.name }))) : [];
       }
+      return complete(tableData.names.map(label => ({ label, type: 'class' })));
     }
+  }
 
-    const afterArrow = before.match(/>\s*(\w*)$/i) || before.match(/<\s*(\w*)$/i);
-    if (afterArrow) {
-      const options = tableNames
-        .filter(table => table.toLowerCase().startsWith(partial))
-        .map(table => ({ label: table, type: 'class' as const }));
-      return options.length ? { from: word.from, options } : null;
-    }
+  const afterDot = before.match(/[><]\s*(\w+)\.(\w*)$/i);
+  if (afterDot) {
+    const table = columnsFor(tableData, afterDot[1]);
+    return table ? complete(table.columns.map(label => ({ label, type: 'property', detail: table.name }))) : [];
+  }
 
-    const afterDot = before.match(/>\s*(\w+)\.(\w*)$/i) || before.match(/<\s*(\w+)\.(\w*)$/i);
-    if (afterDot) {
-      const tableName = afterDot[1];
-      const cols = tableCols.get(tableName);
-      if (!cols) return null;
-      const options = cols
-        .filter(column => column.toLowerCase().startsWith(partial))
-        .map(column => ({ label: column, type: 'property' as const, detail: tableName }));
-      return options.length ? { from: word.from, options } : null;
-    }
+  if (/[><]\s*\w*$/i.test(before)) {
+    return complete(tableData.names.map(label => ({ label, type: 'class' })));
+  }
 
-    if (insideTableBody && afterColName) {
-      const options = TYPES.filter(type => type.label.toLowerCase().startsWith(partial));
-      return options.length
-        ? { from: word.from, options }
-        : { from: word.from, options: [], filter: false };
-    }
-
-    if (/\[[^\]]*\w*$/.test(before)) {
-      const options = SETTINGS.filter(setting => setting.label.toLowerCase().startsWith(partial));
-      if (options.length) return { from: word.from, options };
-    }
-
-    if (isLineStart) {
-      const options = KEYWORDS.filter(keyword => keyword.label.toLowerCase().startsWith(partial));
-      if (options.length) return { from: word.from, options };
-    }
-
-    return { from: word.from, options: [], filter: false };
-  };
+  if (insideTableBody && afterColumnName) return complete(TYPES);
+  if (/\[[^\]]*\w*$/.test(before)) return complete(SETTINGS);
+  if (isLineStart) return complete(KEYWORDS);
+  return [];
 }

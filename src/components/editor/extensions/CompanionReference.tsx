@@ -3,11 +3,19 @@ import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tip
 import { Database, GitBranch, PenTool, PanelRightOpen } from 'lucide-react';
 
 export type CompanionType = 'erd' | 'flowchart' | 'drawing';
+export type NotesCompanionEventDetail = {
+  type: CompanionType;
+  uid: string;
+  title?: string;
+  previewSchema?: string;
+};
 
 export const NOTES_COMPANION_EVENT = 'erdbpro:notes-open-companion';
 
-export function openNotesCompanion(type: CompanionType, uid: string, title?: string) {
-  window.dispatchEvent(new CustomEvent(NOTES_COMPANION_EVENT, { detail: { type, uid, title } }));
+export function openNotesCompanion(type: CompanionType, uid: string, title?: string, previewSchema?: string) {
+  window.dispatchEvent(new CustomEvent<NotesCompanionEventDetail>(NOTES_COMPANION_EVENT, {
+    detail: { type, uid, title, previewSchema },
+  }));
 }
 
 const iconByType = { erd: Database, flowchart: GitBranch, drawing: PenTool };

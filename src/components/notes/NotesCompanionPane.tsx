@@ -18,7 +18,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Loader2, Plus, TriangleAlert } from 'lucide-react';
+import { LayoutGrid, Loader2, Plus, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { apiFetch } from '@/lib/api';
@@ -26,58 +26,23 @@ import { localPersistence } from '@/lib/localPersistence';
 import { type Entity } from '@/types';
 import EntityNode, { NOTES_COMPANION_ENTITY_EDIT_EVENT } from '@/components/diagram/EntityNode';
 import { edgeToRelationship } from '@/lib/diagram-payload';
+import { autoLayoutERD } from '@/lib/autoLayoutERD';
 import { erdToDBML } from '@/lib/dbml-converter';
+import { applyToErdContent } from '@/components/ai/actions/erdActions';
+import { computeSchemaDiff, type DiffResult } from '@/lib/schema-diff';
+import { mergeSchemaChanges } from '@/lib/schema-merge';
+import { SchemaDiffOverlay } from '@/components/diagram/SchemaDiffOverlay';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { RelationshipPropertiesModal } from '@/components/modals/RelationshipPropertiesModal';
 import { Button } from '@/components/ui/button';
 import type { CompanionPane } from './NotesCompanionWorkspace';
+import { diagramState, styleCompanionEdges } from './notes-companion-erd-state';
+
+export { styleCompanionEdges } from './notes-companion-erd-state';
 
 const erdNodeTypes = { entity: EntityNode };
 const FlowchartView = lazy(() => import('@/components/views/FlowchartView').then(module => ({ default: module.FlowchartView })));
 const ExcalidrawEditor = lazy(() => import('@/components/ExcalidrawEditor'));
-
-function parseData(value: unknown) {
-  if (!value) return null;
-  try { return typeof value === 'string' ? JSON.parse(value) : value; } catch { return null; }
-}
-
-function normalizeColumn(column: any) {
-  return {
-    ...column,
-    id: String(column.id),
-    is_pk: column.is_pk ?? column.isPk ?? false,
-    is_nullable: column.is_nullable ?? column.isNullable ?? true,
-    is_unique: column.is_unique ?? column.isUnique ?? false,
-    default_value: column.default_value ?? column.defaultValue ?? null,
-    enum_values: column.enum_values ?? column.enumValues ?? '',
-    max_length: column.max_length ?? column.maxLength ?? null,
-    numeric_precision: column.numeric_precision ?? column.numericPrecision ?? null,
-    numeric_scale: column.numeric_scale ?? column.numericScale ?? null,
-    sort_order: column.sort_order ?? column.sortOrder ?? 0,
-  };
-}
-
-function normalizeEntity(entity: any) {
-  const data = entity.data ?? entity;
-  const id = String(entity.id ?? data.id);
-  const x = entity.position?.x ?? entity.x ?? data.x ?? 0;
-  const y = entity.position?.y ?? entity.y ?? data.y ?? 0;
-  return {
-    id,
-    type: 'entity' as const,
-    position: { x, y },
-    data: {
-      ...data,
-      _notesCompanion: true,
-      id,
-      name: data.name ?? entity.name ?? 'Untitled',
-      x,
-      y,
-      color: data.color ?? entity.color ?? '#6366f1',
-      columns: (data.columns ?? entity.columns ?? []).map(normalizeColumn),
-    },
-  };
-}
 
 async function readDocument(type: CompanionPane['type'], uid: string, isGuest: boolean) {
   if (isGuest) {
@@ -92,75 +57,26 @@ async function readDocument(type: CompanionPane['type'], uid: string, isGuest: b
   return response.ok ? response.json() : null;
 }
 
-function diagramState(document: any) {
-  const legacy = parseData(document.data) as any;
-  const entities = Array.isArray(document.entities) && document.entities.length
-    ? document.entities
-    : Array.isArray(legacy?.nodes) ? legacy.nodes : [];
-  const relationships = Array.isArray(document.relationships) && document.relationships.length
-    ? document.relationships
-    : Array.isArray(legacy?.edges) ? legacy.edges : [];
-  const nodes = entities.map(normalizeEntity) as Node<Entity>[];
-  const nodeById = new Map<string, Node<Entity>>(nodes.map(node => [node.id, node]));
-  return {
-    nodes,
-    edges: relationships.map((relationship: any) => {
-      const source = String(relationship.source ?? relationship.source_entity_id ?? relationship.sourceEntityId ?? '');
-      const target = String(relationship.target ?? relationship.target_entity_id ?? relationship.targetEntityId ?? '');
-      const sourceColumn = relationship.sourceHandle ?? relationship.source_handle ?? relationship.sourceColumnId ?? relationship.source_column_id;
-      const targetColumn = relationship.targetHandle ?? relationship.target_handle ?? relationship.targetColumnId ?? relationship.target_column_id;
-      const sourceNode = nodeById.get(source);
-      const targetNode = nodeById.get(target);
-      const sourceOnLeft = (sourceNode?.position.x ?? 0) < (targetNode?.position.x ?? 0);
-      const sourceHandle = String(sourceColumn || '').startsWith('col-')
-        ? sourceColumn
-        : sourceColumn ? `col-${sourceColumn}-${sourceOnLeft ? 'source' : 'source-l'}` : undefined;
-      const targetHandle = String(targetColumn || '').startsWith('col-')
-        ? targetColumn
-        : targetColumn ? `col-${targetColumn}-${sourceOnLeft ? 'target' : 'target-r'}` : undefined;
-      return {
-        ...relationship,
-        id: String(relationship.id),
-        source,
-        target,
-        sourceHandle,
-        targetHandle,
-        label: relationship.label,
-        type: relationship.type ?? 'smoothstep',
-        data: {
-          ...(relationship.data || {}),
-          on_delete: relationship.on_delete ?? relationship.onDelete,
-          on_update: relationship.on_update ?? relationship.onUpdate,
-          constraint_name: relationship.constraint_name ?? relationship.constraintName,
-        },
-      };
-    }),
-  } as { nodes: Node<Entity>[]; edges: Edge[] };
-}
-
-export function styleCompanionEdges(edges: Edge[], selectedNodeId: string | null) {
-  const hasSelection = Boolean(selectedNodeId);
-  return edges.map(edge => {
-    const connected = hasSelection && (edge.source === selectedNodeId || edge.target === selectedNodeId);
-    const color = connected || edge.selected ? 'var(--edge-selected)' : 'var(--edge-color)';
-    const classes = [edge.className, connected ? 'edge-animated-active' : hasSelection ? 'edge-dimmed' : ''].filter(Boolean).join(' ');
-    return {
-      ...edge,
-      type: 'smoothstep',
-      style: { ...edge.style, stroke: color, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.Arrow, color, width: 10, height: 10 },
-      className: classes,
-    };
-  });
-}
-
-function DiagramCanvas({ document }: { document: any }) {
+function DiagramCanvas({ document, previewSchema, previewKey }: {
+  document: any;
+  previewSchema?: string;
+  previewKey?: string;
+}) {
   const initial = useMemo(() => diagramState(document), [document]);
   const { isGuest, resolvedTheme } = useWorkspace();
   const [nodes, setNodes] = useState(initial.nodes);
   const [edges, setEdges] = useState(initial.edges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [pendingDiff, setPendingDiff] = useState<{
+    originalNodes: Node<Entity>[];
+    originalEdges: Edge[];
+    proposedNodes: Node<Entity>[];
+    proposedEdges: Edge[];
+    result: DiffResult;
+  } | null>(null);
+  const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
+  const [showChecklist, setShowChecklist] = useState(false);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -190,6 +106,50 @@ function DiagramCanvas({ document }: { document: any }) {
       }
     }, 350);
   }, [document.id, document.uid, isGuest]);
+
+  useEffect(() => {
+    if (!previewSchema || !previewKey) return;
+    try {
+      const proposal = applyToErdContent(nodesRef.current, edgesRef.current, 'erd-generate-sql', previewSchema);
+      if (!proposal) throw new Error();
+      const result = computeSchemaDiff(nodesRef.current, edgesRef.current, proposal.nodes, proposal.edges);
+      if (result.changes.length === 0) {
+        setPendingDiff(null);
+        toast.success('No schema changes found');
+        return;
+      }
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setApprovedChangeIds(result.changes.map(change => change.id));
+      setShowChecklist(false);
+      setPendingDiff({
+        originalNodes: nodesRef.current,
+        originalEdges: edgesRef.current,
+        proposedNodes: proposal.nodes,
+        proposedEdges: proposal.edges,
+        result,
+      });
+    } catch {
+      toast.error('Could not parse the schema for diff');
+    }
+  }, [previewKey, previewSchema]);
+
+  const mergeDiff = useCallback(() => {
+    if (!pendingDiff) return;
+    const next = mergeSchemaChanges(
+      pendingDiff.originalNodes,
+      pendingDiff.originalEdges,
+      pendingDiff.proposedNodes,
+      pendingDiff.proposedEdges,
+      pendingDiff.result,
+      approvedChangeIds,
+    );
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setPendingDiff(null);
+    persist(next.nodes, next.edges);
+    toast.success('Schema changes merged successfully');
+  }, [approvedChangeIds, pendingDiff, persist]);
 
   const updateNodes = useCallback((changes: NodeChange<Node<Entity>>[]) => {
     const next = applyNodeChanges(changes, nodesRef.current);
@@ -294,6 +254,13 @@ function DiagramCanvas({ document }: { document: any }) {
     persist(next, edgesRef.current);
   }, [persist]);
 
+  const autoLayout = useCallback(() => {
+    if (nodesRef.current.length === 0) return;
+    const next = autoLayoutERD(nodesRef.current, edgesRef.current);
+    setNodes(next);
+    persist(next, edgesRef.current);
+  }, [persist]);
+
   useEffect(() => {
     const edit = (event: Event) => setSelectedNodeId((event as CustomEvent<{ id: string }>).detail?.id ?? null);
     window.addEventListener(NOTES_COMPANION_ENTITY_EDIT_EVENT, edit);
@@ -315,21 +282,25 @@ function DiagramCanvas({ document }: { document: any }) {
     return !!node.selected === selected ? node : { ...node, selected };
   }), [nodes, selectedNodeId]);
   const displayEdges = useMemo(() => styleCompanionEdges(edges, selectedNodeId), [edges, selectedNodeId]);
+  const diffNodes = useMemo(() => pendingDiff?.result.nodes.map(node => ({
+    ...node,
+    data: { ...node.data, isDiffMode: true },
+  })) ?? [], [pendingDiff]);
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-background">
       <ReactFlow
-        nodes={displayNodes}
-        edges={displayEdges}
+        nodes={pendingDiff ? diffNodes : displayNodes}
+        edges={pendingDiff ? pendingDiff.result.edges : displayEdges}
         nodeTypes={erdNodeTypes}
         onNodesChange={updateNodes}
         onEdgesChange={updateEdges}
         onConnect={connect}
         onReconnect={reconnect}
-        nodesDraggable
-        nodesConnectable
-        elementsSelectable
-        edgesReconnectable
+        nodesDraggable={!pendingDiff}
+        nodesConnectable={!pendingDiff}
+        elementsSelectable={!pendingDiff}
+        edgesReconnectable={!pendingDiff}
         defaultEdgeOptions={defaultEdgeOptions}
         onNodeClick={(_, node) => { setSelectedEdgeId(null); setSelectedNodeId(node.id); }}
         onNodeDoubleClick={(_, node) => { setSelectedEdgeId(null); setSelectedNodeId(node.id); }}
@@ -344,8 +315,13 @@ function DiagramCanvas({ document }: { document: any }) {
         <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
         <Controls position="bottom-left" showInteractive={false} />
       </ReactFlow>
-      <Button className="absolute left-3 top-3 z-10" size="sm" onClick={addEntity}><Plus /> Table</Button>
-      {selectedEntity && (
+      {!pendingDiff && <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-sm backdrop-blur">
+          <Button size="sm" onClick={addEntity}><Plus /> Table</Button>
+          <Button variant="outline" size="sm" onClick={autoLayout} disabled={nodes.length === 0} title="Automatically arrange tables"><LayoutGrid /> Auto Layout</Button>
+        </div>
+      </div>}
+      {!pendingDiff && selectedEntity && (
         <aside className="absolute inset-y-0 right-0 z-20 w-[min(22rem,82%)] border-l bg-background shadow-xl">
           <PropertiesPanel
             selectedEntity={selectedEntity}
@@ -357,7 +333,7 @@ function DiagramCanvas({ document }: { document: any }) {
         </aside>
       )}
       <RelationshipPropertiesModal
-        isOpen={!!selectedEdgeId}
+        isOpen={!pendingDiff && !!selectedEdgeId}
         onOpenChange={open => { if (!open) setSelectedEdgeId(null); }}
         selectedEdge={selectedEdge}
         nodes={nodes}
@@ -365,13 +341,30 @@ function DiagramCanvas({ document }: { document: any }) {
         handleEdgeFlip={flipEdge}
         deleteEdge={deleteEdge}
       />
+      {pendingDiff && <SchemaDiffOverlay
+        diff={pendingDiff.result}
+        approvedIds={approvedChangeIds}
+        showChecklist={showChecklist}
+        onApprovedIdsChange={setApprovedChangeIds}
+        onShowChecklistChange={setShowChecklist}
+        onReject={() => {
+          setPendingDiff(null);
+          toast.info('Schema update rejected');
+        }}
+        onMerge={mergeDiff}
+      />}
     </div>
   );
 }
 
 function Content({ pane, document }: { pane: CompanionPane; document: any }) {
   const { saveFlowchart, saveDrawing, triggerDebouncedSync } = useWorkspace();
-  if (pane.type === 'erd') return <ReactFlowProvider><DiagramCanvas key={document.uid ?? document.id} document={document} /></ReactFlowProvider>;
+  if (pane.type === 'erd') return <ReactFlowProvider><DiagramCanvas
+    key={document.uid ?? document.id}
+    document={document}
+    previewSchema={pane.previewSchema}
+    previewKey={pane.previewKey}
+  /></ReactFlowProvider>;
   if (pane.type === 'flowchart') return (
     <FlowchartView
       companionMode

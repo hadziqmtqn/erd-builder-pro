@@ -2,7 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Database, GitBranch, Maximize2, PenTool, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export type CompanionPane = { type: 'erd' | 'flowchart' | 'drawing'; uid: string; title: string };
+export type CompanionPane = {
+  type: 'erd' | 'flowchart' | 'drawing';
+  uid: string;
+  title: string;
+  previewSchema?: string;
+  previewKey?: string;
+};
 
 interface Props {
   panes: CompanionPane[];

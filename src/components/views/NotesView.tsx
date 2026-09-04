@@ -16,7 +16,7 @@ import { NOTE_HISTORY_PREVIEW_EVENT } from '@/lib/note-history-diff';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { useSidebar } from '@/components/ui/sidebar';
 import { NotesCompanionWorkspace, type CompanionPane } from '@/components/notes/NotesCompanionWorkspace';
-import { NOTES_COMPANION_EVENT } from '@/components/editor/extensions/CompanionReference';
+import { NOTES_COMPANION_EVENT, type NotesCompanionEventDetail } from '@/components/editor/extensions/CompanionReference';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
@@ -64,12 +64,19 @@ export const NotesView = React.memo(({
     };
   }, [activeNote, activeProjectId, diagrams, drawings, flowcharts]);
 
-  const openCompanion = React.useCallback((type: CompanionPane['type'], uid: string, title?: string) => {
+  const openCompanion = React.useCallback((type: CompanionPane['type'], uid: string, title?: string, previewSchema?: string) => {
     const files = companionFiles[type];
     const file = files.find(item => item.uid === String(uid));
     setCompanionPanes(current => {
-      if (current.some(pane => pane.type === type && pane.uid === String(uid))) return current;
-      return [{ type, uid: String(uid), title: title || file?.title || 'Unavailable file' }];
+      const existing = current.find(pane => pane.type === type && pane.uid === String(uid));
+      if (existing && !previewSchema) return current;
+      return [{
+        type,
+        uid: String(uid),
+        title: title || file?.title || 'Unavailable file',
+        previewSchema,
+        previewKey: previewSchema ? crypto.randomUUID() : undefined,
+      }];
     });
   }, [companionFiles]);
 
@@ -84,8 +91,8 @@ export const NotesView = React.memo(({
 
   useEffect(() => {
     const onOpen = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: CompanionPane['type']; uid?: string; title?: string }>).detail;
-      if (detail?.type && detail.uid) openCompanion(detail.type, detail.uid, detail.title);
+      const detail = (event as CustomEvent<NotesCompanionEventDetail>).detail;
+      if (detail?.type && detail.uid) openCompanion(detail.type, detail.uid, detail.title, detail.previewSchema);
     };
     window.addEventListener(NOTES_COMPANION_EVENT, onOpen);
     return () => window.removeEventListener(NOTES_COMPANION_EVENT, onOpen);

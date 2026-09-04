@@ -57,6 +57,7 @@ import { useWorkspace } from '@/providers/WorkspaceContext';
 import { ErdFromSqlDialog } from '@/components/ai/ErdFromSqlDialog';
 import { FlowchartFromJsonDialog } from '@/components/ai/FlowchartFromJsonDialog';
 import { CODE_BLOCK_CONVERT_EVENT, type CodeBlockConversionDetail } from './editor/extensions/ExecutableCodeBlock';
+import { openNotesCompanion } from './editor/extensions/CompanionReference';
 
 const MARKDOWN_PATTERNS = [
   /^\s{0,3}#{1,6}\s+\S/m,
@@ -547,6 +548,11 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
     }
   }, [insertGeneratedCompanion]);
 
+  const previewUpdatedErd = React.useCallback((file: any, schema: string) => {
+    openNotesCompanion('erd', String(file.uid ?? file.id), file.name ?? 'Untitled', schema);
+    toast.info('Review the schema changes in the split-pane');
+  }, []);
+
   const persistGeneratedFlowchart = React.useCallback(async (file: any, json: string) => {
     try {
       const result = previewFlowchartContent(json);
@@ -822,6 +828,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
           triggerPendingErdDiff={triggerPendingErdDiff}
           createSilently
           onCreated={persistGeneratedErd}
+          onUpdated={previewUpdatedErd}
         />
       )}
 
