@@ -22,8 +22,6 @@ export interface UseDiagramNavigationProps {
   isERDItemLoading: boolean;
   /** Ref for diagram loaded tracking — created by parent so useAutoSave can share it */
   lastLoadedDiagramIdRef: { current: number | string | null };
-  /** Ref for diagram load timestamp — created by parent so useAutoSave can share it */
-  lastDiagramLoadTimestampRef: { current: number };
 }
 
 // ──────────────────────────────────────────
@@ -52,7 +50,6 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
     isAuthenticated,
     isERDItemLoading,
     lastLoadedDiagramIdRef,
-    lastDiagramLoadTimestampRef,
   } = props;
 
   const navigate = useNavigate();
@@ -186,7 +183,6 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
   useEffect(() => {
     if (activeDiagramId && !isERDItemLoading) {
       lastLoadedDiagramIdRef.current = activeDiagramId;
-      lastDiagramLoadTimestampRef.current = Date.now();
     }
   }, [activeDiagramId, isERDItemLoading]);
 

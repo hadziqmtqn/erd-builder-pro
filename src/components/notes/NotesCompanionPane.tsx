@@ -27,6 +27,7 @@ import { type Entity } from '@/types';
 import EntityNode, { NOTES_COMPANION_ENTITY_EDIT_EVENT } from '@/components/diagram/EntityNode';
 import { edgeToRelationship } from '@/lib/diagram-payload';
 import { autoLayoutERD } from '@/lib/autoLayoutERD';
+import { readSavedViewport } from '@/lib/erd-viewport';
 import { erdToDBML } from '@/lib/dbml-converter';
 import { applyToErdContent } from '@/components/ai/actions/erdActions';
 import { computeSchemaDiff, type DiffResult } from '@/lib/schema-diff';
@@ -39,7 +40,6 @@ import type { CompanionPane } from './NotesCompanionWorkspace';
 import { diagramState, styleCompanionEdges } from './notes-companion-erd-state';
 
 export { styleCompanionEdges } from './notes-companion-erd-state';
-
 const erdNodeTypes = { entity: EntityNode };
 const FlowchartView = lazy(() => import('@/components/views/FlowchartView').then(module => ({ default: module.FlowchartView })));
 const ExcalidrawEditor = lazy(() => import('@/components/ExcalidrawEditor'));
@@ -80,9 +80,11 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistedViewport = useMemo(() => readSavedViewport(document), [document]);
+  const savedViewport = persistedViewport ?? { x: 0, y: 0, zoom: 1 };
+  const viewportRef = useRef(savedViewport);
   nodesRef.current = nodes;
   edgesRef.current = edges;
-
   const persist = useCallback((nextNodes: Node<Entity>[], nextEdges: Edge[]) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
@@ -92,12 +94,22 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
       try {
         if (isGuest) {
           const item = await localPersistence.getResource(document.uid ?? document.id);
-          if (item) await localPersistence.saveResource({ ...item, entities, relationships, data: null, dbml_source: dbmlSource, updated_at: new Date().toISOString() });
+          if (item) await localPersistence.saveResource({
+            ...item,
+            entities,
+            relationships,
+            data: null,
+            dbml_source: dbmlSource,
+            viewport_x: viewportRef.current.x,
+            viewport_y: viewportRef.current.y,
+            viewport_zoom: viewportRef.current.zoom,
+            updated_at: new Date().toISOString(),
+          });
         } else {
           const response = await apiFetch(`/api/diagrams/save/${document.uid ?? document.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ entities, relationships, viewport: { x: 0, y: 0, zoom: 1 }, data: null, dbmlSource }),
+            body: JSON.stringify({ entities, relationships, viewport: viewportRef.current, data: null, dbmlSource }),
           });
           if (!response.ok) throw new Error();
         }
@@ -261,6 +273,15 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
     persist(next, edgesRef.current);
   }, [persist]);
 
+  const handleMove = useCallback((_: unknown, viewport: typeof savedViewport) => {
+    viewportRef.current = viewport;
+  }, []);
+
+  const handleMoveEnd = useCallback((event: unknown, viewport: typeof savedViewport) => {
+    viewportRef.current = viewport;
+    if (event) persist(nodesRef.current, edgesRef.current);
+  }, [persist]);
+
   useEffect(() => {
     const edit = (event: Event) => setSelectedNodeId((event as CustomEvent<{ id: string }>).detail?.id ?? null);
     window.addEventListener(NOTES_COMPANION_ENTITY_EDIT_EVENT, edit);
@@ -282,6 +303,10 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
     return !!node.selected === selected ? node : { ...node, selected };
   }), [nodes, selectedNodeId]);
   const displayEdges = useMemo(() => styleCompanionEdges(edges, selectedNodeId), [edges, selectedNodeId]);
+  const diffEdges = useMemo(
+    () => pendingDiff ? styleCompanionEdges(pendingDiff.result.edges, null) : [],
+    [pendingDiff],
+  );
   const diffNodes = useMemo(() => pendingDiff?.result.nodes.map(node => ({
     ...node,
     data: { ...node.data, isDiffMode: true },
@@ -291,7 +316,7 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
     <div className="relative h-full min-h-0 overflow-hidden bg-background">
       <ReactFlow
         nodes={pendingDiff ? diffNodes : displayNodes}
-        edges={pendingDiff ? pendingDiff.result.edges : displayEdges}
+        edges={pendingDiff ? diffEdges : displayEdges}
         nodeTypes={erdNodeTypes}
         onNodesChange={updateNodes}
         onEdgesChange={updateEdges}
@@ -306,11 +331,14 @@ function DiagramCanvas({ document, previewSchema, previewKey }: {
         onNodeDoubleClick={(_, node) => { setSelectedEdgeId(null); setSelectedNodeId(node.id); }}
         onEdgeClick={(_, edge) => { setSelectedNodeId(null); setSelectedEdgeId(edge.id); }}
         onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+        onMove={handleMove}
+        onMoveEnd={handleMoveEnd}
         colorMode={resolvedTheme}
         connectionLineType={ConnectionLineType.SmoothStep}
         connectionLineStyle={defaultEdgeOptions.style}
         onlyRenderVisibleElements
-        fitView
+        defaultViewport={savedViewport}
+        fitView={!persistedViewport}
       >
         <Background variant={BackgroundVariant.Lines} gap={50} size={1} color={bgColor} />
         <Controls position="bottom-left" showInteractive={false} />

@@ -193,7 +193,6 @@ export function WorkspaceProvider({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isIncomingSyncRef = useRef(false);
   const lastSaveCallRef = useRef(0);
-  const lastDiagramLoadTimestampRef = useRef(0);
   const initialFetchDoneRef = useRef(false);
 
   // Stable state refs
@@ -421,7 +420,7 @@ export function WorkspaceProvider({
 
   const { saveTimeoutRef, flushPendingSaves } = useAutoSave({
     saveCounter, isLocalSavingRef, isIncomingSyncRef, lastLoadedDiagramIdRef,
-    lastSaveCallRef, lastDiagramLoadTimestampRef, isAuthenticated, isGuest,
+    lastSaveCallRef, isAuthenticated, isGuest,
     view, isPublicView, activeDiagramId, nodes, edges, viewportRef,
     saveDiagram, setIsLocalSaving, triggerDebouncedSync, broadcastMessage,
     isRefreshing, isERDItemLoading, isDiagramsLoading,
@@ -440,7 +439,7 @@ export function WorkspaceProvider({
     setView: setViewCompat, setSidebarView: setSidebarViewCompat,
     setNodes, setEdges,
     selectDiagram, flushPendingSaves, isAuthenticated, isERDItemLoading,
-    lastLoadedDiagramIdRef, lastDiagramLoadTimestampRef,
+    lastLoadedDiagramIdRef,
   });
 
   const { handleNoteSelect } = useNoteNavigation({

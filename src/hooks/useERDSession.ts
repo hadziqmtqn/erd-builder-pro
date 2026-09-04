@@ -17,6 +17,7 @@ import { useUndoRedo } from './useUndoRedo';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '../lib/erd-indexes';
 import { getForeignKeyConstraintName } from '../lib/diagram-payload';
 import { databaseColumnToERD } from '../lib/column-metadata';
+import { readSavedViewport } from '../lib/erd-viewport';
 
 /** Fix double "col-" prefix from buggy parseSQLToERD output.
  *  Works for any column ID format: "col-xxx", UUID, etc. */
@@ -49,7 +50,7 @@ export function useERDSession(
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const { setViewport, fitView, getNodes, getEdges } = useReactFlow();
+  const { setViewport, getNodes, getEdges } = useReactFlow();
 
   // Wrapped onNodesChange to broadcast movement
   const onNodesChangeWrapped = useCallback((changes: any) => {
@@ -97,8 +98,6 @@ export function useERDSession(
     }
   }, [redo, nodes, edges, setNodes, setEdges]);
 
-  const isInitializingRef = useRef(false);
-
   const isGuestRef = useRef(isGuest);
   useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
   const isGuestCheck = (): boolean =>
@@ -113,7 +112,6 @@ export function useERDSession(
 
     if (!options?.silent) {
       setIsItemLoading(true);
-      isInitializingRef.current = true;
       // Update active ID immediately to satisfy routing checks and prevent duplicate triggers from parent
       setActiveDiagramId(id);
       // Clear current view to avoid showing stale data from previous diagram
@@ -121,7 +119,7 @@ export function useERDSession(
       setEdges([]);
     }
     try {
-      const draft = await localPersistence.getDraft(DraftType.ERD, id);
+      let draft = await localPersistence.getDraft(DraftType.ERD, id);
       let data: Diagram;
 
       if (isGuestCheck()) {
@@ -149,6 +147,9 @@ export function useERDSession(
           return null;
         }
         data = await res.json();
+        if (!draft && data.uid && String(data.uid) !== String(id)) {
+          draft = await localPersistence.getDraft(DraftType.ERD, data.uid);
+        }
       }
       
       if (!data || data.is_deleted) {
@@ -321,30 +322,22 @@ export function useERDSession(
 
       // === Apply saved viewport BEFORE hiding loading overlay ===
       // This prevents a visible snap/flash from (0,0) to the correct position
-      const vx = finalData.viewport_x;
-      const vy = finalData.viewport_y;
-      const vz = finalData.viewport_zoom;
-      const hasSavedViewport = vx !== undefined && vy !== undefined && vz && (vx !== 0 || vy !== 0);
-      if (hasSavedViewport) {
-        setViewport({ x: vx, y: vy, zoom: vz }, { duration: 0 });
-        viewportRef.current = { x: vx, y: vy, zoom: vz };
+      let pendingViewport: Viewport | null = null;
+      if (draft?.sync_pending) {
+        try { pendingViewport = readSavedViewport(JSON.parse(draft.data)); } catch { /* ignore invalid local draft */ }
+      }
+      const savedViewport = pendingViewport ?? readSavedViewport(finalData);
+      if (savedViewport) {
+        setViewport(savedViewport, { duration: 0 });
+        viewportRef.current = savedViewport;
+      } else {
+        const defaultViewport = { x: 0, y: 0, zoom: 1 };
+        setViewport(defaultViewport, { duration: 0 });
+        viewportRef.current = defaultViewport;
       }
 
       // Now hide loading — viewport is already in the correct position
       setIsItemLoading(false);
-
-      if (!hasSavedViewport && flowNodes.length > 0) {
-        // No saved viewport — fit view after React Flow has rendered nodes
-        setTimeout(() => fitView({ padding: 0.2, duration: 0 }), 100);
-      }
-      if (!finalData.viewport_x && flowNodes.length === 0) {
-        setTimeout(() => setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 0 }), 100);
-      }
-
-      // Allow auto-save only after everything is settled
-      setTimeout(() => {
-        isInitializingRef.current = false;
-      }, 2000);
 
       return finalData;
     } catch (err) {
@@ -872,17 +865,9 @@ export function useERDSession(
     takeSnapshot(currentNodes as Node<Entity>[], currentEdges);
   }, [setEdges, takeSnapshot, getNodes, getEdges, resolveEdgeHandles, dedupeEdgesByRelation]);
 
-  const handleMoveEnd = useCallback((_: any, v: Viewport) => {
-    if (!isPublicView && !isInitializingRef.current) {
-      const prev = viewportRef.current;
-      const hasChanged = 
-        Math.abs((prev.x || 0) - v.x) > 0.5 || 
-        Math.abs((prev.y || 0) - v.y) > 0.5 || 
-        Math.abs((prev.zoom || 1) - v.zoom) > 0.001;
-      if (hasChanged) {
-        viewportRef.current = v;
-      }
-    }
+  const handleMoveEnd = useCallback((event: MouseEvent | TouchEvent | null, v: Viewport) => {
+    viewportRef.current = v;
+    if (!isPublicView && event) setSaveCounter(prev => prev + 1);
   }, [isPublicView]);
 
   // ── ERD Keyboard Shortcuts (undo/redo) ──

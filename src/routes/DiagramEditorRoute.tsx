@@ -86,7 +86,10 @@ export function DiagramEditorRoute() {
     const repositions = autoLayoutERD(nodes, edges);
     takeSnapshot?.(nodes, edges);
     setNodes(repositions);
-  }, [nodes, edges, setNodes, takeSnapshot]);
+    void saveDiagram(repositions, edges, viewportRef.current)
+      .then(() => triggerDebouncedSync())
+      .catch(error => console.error('Error saving ERD auto-layout:', error));
+  }, [nodes, edges, setNodes, takeSnapshot, saveDiagram, triggerDebouncedSync, viewportRef]);
   useEffect(() => {
     if (isPublicView || !id) return;
     if (processedUrlRef.current) return;
@@ -198,6 +201,7 @@ export function DiagramEditorRoute() {
           selectedNodeId={selectedNodeId}
           onNodeDragStop={onNodeDragStop}
           onMoveEnd={onMoveEnd}
+          initialViewport={viewportRef.current}
           saveDiagram={saveDiagram}
           triggerDebouncedSync={triggerDebouncedSync}
           pendingErdDiffTrigger={pendingErdDiffTrigger}

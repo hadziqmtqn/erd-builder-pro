@@ -45,7 +45,10 @@ export async function saveDiagram(
 
   const currentDiagram = await prisma.diagram.findFirst({
     where: diagramWhere,
-    select: { id: true, uid: true, version: true, updatedAt: true, name: true, data: true, sourceType: true, dbmlSource: true },
+    select: {
+      id: true, uid: true, version: true, updatedAt: true, name: true, data: true,
+      sourceType: true, dbmlSource: true, viewportX: true, viewportY: true, viewportZoom: true,
+    },
   });
 
   if (!currentDiagram) return null;
@@ -199,9 +202,9 @@ export async function saveDiagram(
     where: { id: diagramId },
     data: {
       updatedAt: new Date(),
-      viewportX: body.viewport?.x || 0,
-      viewportY: body.viewport?.y || 0,
-      viewportZoom: body.viewport?.zoom || 1.0,
+      viewportX: body.viewport?.x ?? currentDiagram.viewportX ?? 0,
+      viewportY: body.viewport?.y ?? currentDiagram.viewportY ?? 0,
+      viewportZoom: body.viewport?.zoom ?? currentDiagram.viewportZoom ?? 1.0,
       ...(mergedData !== undefined && { data: mergedData === null ? null : typeof mergedData === "string" ? mergedData : JSON.stringify(mergedData) }),
       ...(normalizedDbmlSource !== undefined && { dbmlSource: normalizedDbmlSource }),
       ...((isDesktopMode() || isLocalPostgres()) && { version: (currentDiagram.version ?? 0) + 1 }),

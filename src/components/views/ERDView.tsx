@@ -9,6 +9,7 @@ import {
   OnEdgesChange,
   Node,
   Edge,
+  Viewport,
   MarkerType,
   ConnectionLineType,
   useReactFlow,
@@ -33,6 +34,7 @@ import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { databaseColumnToERD } from '@/lib/column-metadata';
 import { keepsDbRelation } from '@/lib/db-client-schema';
+import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
 import { erdToDBML } from '@/lib/dbml-converter';
@@ -73,6 +75,7 @@ interface ERDViewProps {
   isLoading?: boolean;
   selectedNodeId?: string | null;
   onMoveEnd?: (e: any, v: any) => void;
+  initialViewport?: Viewport;
   saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any, options?: { dbmlSource?: string }) => Promise<void>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
@@ -115,6 +118,7 @@ const ERDViewComponent = ({
   selectedNodeId,
   onNodeDragStop,
   onMoveEnd,
+  initialViewport,
   isLoading,
   saveDiagram,
   triggerDebouncedSync,
@@ -126,7 +130,7 @@ const ERDViewComponent = ({
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
-  const { getViewport } = useReactFlow();
+  const { getViewport, getNodes, getEdges, setViewport } = useReactFlow();
   const { resolvedTheme } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
@@ -144,6 +148,33 @@ const ERDViewComponent = ({
     }
     onMove(event, viewport);
   }, [onMove]);
+
+  const saveCanvasAfterNodeDrag = useCallback(() => {
+    if (!saveDiagram) return;
+    const currentNodes = getNodes() as Node<Entity>[];
+    if (currentNodes.length === 0) return;
+
+    void saveDiagram(currentNodes, getEdges(), getViewport())
+      .then(() => triggerDebouncedSync?.())
+      .catch(error => console.error('Error saving ERD after node drag:', error));
+  }, [getEdges, getNodes, getViewport, saveDiagram, triggerDebouncedSync]);
+
+  const handleNodeDragStopLocal = useCallback(() => {
+    onNodeDragStop?.();
+    if (!saveDiagram) return;
+
+    // React Flow applies the final position before the next paint. Saving on
+    // that frame keeps the node positions and viewport from different renders.
+    requestAnimationFrame(saveCanvasAfterNodeDrag);
+  }, [onNodeDragStop, saveCanvasAfterNodeDrag, saveDiagram]);
+
+  React.useEffect(() => {
+    if (isLoading || !initialViewport) return;
+    const frame = requestAnimationFrame(() => {
+      void setViewport(initialViewport, { duration: 0 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialViewport, isLoading, setViewport]);
 
 
   // ─── Multi-table selection ───────────────────────────
@@ -213,47 +244,11 @@ const ERDViewComponent = ({
     }));
   }, [pendingDiff]);
 
-  const styledEdges = React.useMemo(() => {
-    const hasSelection = allSelectedIds.length > 0;
-
-    return edges.map(edge => {
-      const isConnectedToSelected = hasSelection && allSelectedIds.some(
-        id => edge.source === id || edge.target === id
-      );
-      const edgeColor = isConnectedToSelected || edge.selected
-        ? 'var(--edge-selected)'
-        : 'var(--edge-color)';
-      const baseEdge = {
-        ...edge,
-        type: 'smoothstep',
-        style: {
-          ...edge.style,
-          stroke: edgeColor,
-          strokeWidth: 2,
-        },
-        markerEnd: {
-          type: MarkerType.Arrow,
-          color: edgeColor,
-          width: 10,
-          height: 10,
-        },
-      };
-
-      // Build class list from existing + computed classes
-      const classes: string[] = [];
-      if (edge.className) classes.push(edge.className);
-
-      if (isConnectedToSelected) {
-        classes.push('edge-animated-active');
-      } else if (hasSelection) {
-        classes.push('edge-dimmed');
-      }
-
-      const newClassName = classes.join(' ');
-      if (baseEdge.className === newClassName) return baseEdge;
-      return { ...baseEdge, className: newClassName };
-    });
-  }, [edges, allSelectedIds]);
+  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds), [edges, allSelectedIds]);
+  const styledDiffEdges = React.useMemo(
+    () => pendingDiff ? styleErdEdges(pendingDiff.diffEdges) : [],
+    [pendingDiff],
+  );
 
   // Filter out selection-only changes to avoid unnecessary re-renders from React Flow
   const handleNodesChangeLocal = useCallback(
@@ -700,7 +695,7 @@ const ERDViewComponent = ({
       <div ref={canvasRef} className="flex-1">
         <ReactFlow
           nodes={pendingDiff ? diffNodesWithMode : styledNodes}
-          edges={pendingDiff ? pendingDiff.diffEdges : styledEdges}
+          edges={pendingDiff ? styledDiffEdges : styledEdges}
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -793,11 +788,12 @@ const ERDViewComponent = ({
           nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
           elementsSelectable={!pendingDiff && (!isReadOnly || isProductionDb)}
           edgesReconnectable={!pendingDiff && (!isReadOnly || isProductionDb)}
-          onNodeDragStop={onNodeDragStop}
+          onNodeDragStop={handleNodeDragStopLocal}
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={defaultEdgeOptions}
+          defaultViewport={initialViewport}
           connectionLineType={ConnectionLineType.SmoothStep}
           connectionLineStyle={defaultEdgeOptions.style}
           deleteKeyCode={null}
@@ -874,12 +870,16 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
   const hasData = next.nodes.length > 0;
   const wasEmptyBefore = prev.nodes.length === 0;
   const shouldIgnoreLoading = loadingFlickered && hasData && !wasEmptyBefore;
+  const sameViewport = prev.initialViewport?.x === next.initialViewport?.x &&
+    prev.initialViewport?.y === next.initialViewport?.y &&
+    prev.initialViewport?.zoom === next.initialViewport?.zoom;
 
   return (
     nodesEqual(prev.nodes, next.nodes) &&
     edgesEqual(prev.edges, next.edges) &&
     (shouldIgnoreLoading || prev.isLoading === next.isLoading) &&
     prev.isReadOnly === next.isReadOnly &&
+    sameViewport &&
     prev.selectedNodeId === next.selectedNodeId &&
     prev.canUndo === next.canUndo &&
     prev.canRedo === next.canRedo &&

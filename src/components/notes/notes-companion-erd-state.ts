@@ -1,5 +1,6 @@
-import { MarkerType, type Edge, type Node } from '@xyflow/react';
+import { type Edge, type Node } from '@xyflow/react';
 import type { Entity } from '@/types';
+import { styleErdEdges } from '@/lib/erd-edge-style';
 
 function parseData(value: unknown) {
   if (!value) return null;
@@ -91,17 +92,5 @@ export function diagramState(document: any) {
 }
 
 export function styleCompanionEdges(edges: Edge[], selectedNodeId: string | null) {
-  const hasSelection = Boolean(selectedNodeId);
-  return edges.map(edge => {
-    const connected = hasSelection && (edge.source === selectedNodeId || edge.target === selectedNodeId);
-    const color = connected || edge.selected ? 'var(--edge-selected)' : 'var(--edge-color)';
-    const classes = [edge.className, connected ? 'edge-animated-active' : hasSelection ? 'edge-dimmed' : ''].filter(Boolean).join(' ');
-    return {
-      ...edge,
-      type: 'smoothstep',
-      style: { ...edge.style, stroke: color, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.Arrow, color, width: 10, height: 10 },
-      className: classes,
-    };
-  });
+  return styleErdEdges(edges, selectedNodeId ? [selectedNodeId] : []);
 }
