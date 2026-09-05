@@ -1,12 +1,18 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LicenseClientError, verifySignedEntitlement } from "./license-client";
+import { activateSelfHostLicense, LicenseClientError, verifySignedEntitlement } from "./license-client";
 
 const originalIssuer = process.env.ERDBPRO_LICENSE_ISSUER;
 const originalPublicKey = process.env.ERDBPRO_LICENSE_PUBLIC_KEY;
 const originalKeyId = process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID;
 const originalNodeEnv = process.env.NODE_ENV;
+const originalApiUrl = process.env.ERDBPRO_LICENSE_API_URL;
+const originalStateFile = process.env.ERDBPRO_LICENSE_STATE_FILE;
+let temporaryDirectory: string | null = null;
 
 afterEach(() => {
   if (originalIssuer === undefined) delete process.env.ERDBPRO_LICENSE_ISSUER;
@@ -17,6 +23,13 @@ afterEach(() => {
   else process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID = originalKeyId;
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
+  if (originalApiUrl === undefined) delete process.env.ERDBPRO_LICENSE_API_URL;
+  else process.env.ERDBPRO_LICENSE_API_URL = originalApiUrl;
+  if (originalStateFile === undefined) delete process.env.ERDBPRO_LICENSE_STATE_FILE;
+  else process.env.ERDBPRO_LICENSE_STATE_FILE = originalStateFile;
+  vi.unstubAllGlobals();
+  if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
+  temporaryDirectory = null;
 });
 
 function encode(value: unknown): string {
@@ -37,8 +50,8 @@ function signedEntitlement(installationId: string): string {
     product_type: "self_host",
     client_type: "web",
     installation_id: installationId,
-    sub: "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa",
-    jti: "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa",
+    sub: "01a070a2-beb5-705e-9227-9f4c66e98241",
+    jti: "01a070a2-beb5-705e-9227-9f4c66e98241",
     iat: now,
     exp: now + 3600,
     binding_generation: 2,
@@ -53,12 +66,28 @@ function signedEntitlement(installationId: string): string {
 }
 
 describe("self-host license entitlement verification", () => {
+  it("preserves the canonical SaaS error code", async () => {
+    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
+    process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "SERVICE_UNAVAILABLE", message: "The license service is temporarily unavailable." },
+    }), { status: 503, headers: { "Content-Type": "application/json" } })));
+
+    await expect(activateSelfHostLicense({
+      teamId: "team-1",
+      teamName: "Team One",
+      licenseKey: "license-key",
+      memberCount: 0,
+    })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", status: 503 });
+  });
+
   it("accepts a valid signed team entitlement", () => {
     const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
     const entitlement = verifySignedEntitlement(signedEntitlement(installationId), installationId);
 
     expect(entitlement).toMatchObject({
-      licenseId: "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa",
+      licenseId: "01a070a2-beb5-705e-9227-9f4c66e98241",
       bindingGeneration: 2,
       planCode: "team-10",
       maxMembers: 10,

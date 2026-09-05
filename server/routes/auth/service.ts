@@ -134,9 +134,11 @@ export async function localLogin(email: string, password: string) {
     return null;
   }
 
+  let activeTeamId: string | undefined;
   if (!Boolean((user as any).isSuperAdmin)) {
     const access = await canUserLogin((user as any).id);
     if (access.allowed === false) return { blocked: true, code: access.code };
+    activeTeamId = access.teamId;
   }
 
   const token = await createSession(
@@ -152,6 +154,7 @@ export async function localLogin(email: string, password: string) {
       email: (user as any).email,
       name: (user as any).name,
       isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+      activeTeamId,
       user_metadata: { name: (user as any).name },
     },
   };

@@ -852,7 +852,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
-  await backfillLegacyTeamData();
+  // Legacy projects stay Personal until their owner explicitly links them to a Team.
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.
     await ensureRepositoryLinkColumns();

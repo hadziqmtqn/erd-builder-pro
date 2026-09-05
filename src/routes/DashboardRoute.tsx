@@ -154,6 +154,7 @@ export function DashboardRoute() {
     }
 
     let cancelled = false;
+    setServerRecentDocs(null);
     const fetchRecentFiles = async () => {
       try {
         const response = await apiFetch('/api/search/recent');
@@ -167,7 +168,7 @@ export function DashboardRoute() {
 
     void fetchRecentFiles();
     return () => { cancelled = true; };
-  }, [ctx.isGuest, user]);
+  }, [ctx.isGuest, ctx.teamScopeVersion, user]);
 
   // 10 most recently edited items across all types
   const recentDocs = useMemo(() => {
@@ -226,6 +227,8 @@ export function DashboardRoute() {
 
   // Workspace document counts — fetched from backend (accurate, not paginated)
   const [projectSummaries, setProjectSummaries] = useState<Record<string, any>>({});
+
+  useEffect(() => setProjectSummaries({}), [ctx.teamScopeVersion]);
 
   const projectsWithCounts = useMemo(() => {
     return (ctx.projects || [])

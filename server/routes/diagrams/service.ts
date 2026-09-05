@@ -1,12 +1,10 @@
 import { prisma } from "../../lib/prisma.js";
+import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 
 // ── Helpers ──
 
 function uidWhere(uid: string, userId: string) {
-  const id = Number(uid);
-  return Number.isFinite(id)
-    ? { OR: [{ uid }, { id }], userId }
-    : { uid, userId };
+  return fileIdentifierWhere(uid, userId);
 }
 
 function whereClause(userId: string, query: {
@@ -15,7 +13,7 @@ function whereClause(userId: string, query: {
   isPublic?: boolean | null;
   sourceType?: string;
 }) {
-  const where: any = { isDeleted: false, userId };
+  const where: any = { isDeleted: false, AND: [fileScopeWhere(userId)] };
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
     where.isPublic = query.isPublic;

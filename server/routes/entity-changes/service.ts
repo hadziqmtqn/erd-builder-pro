@@ -7,8 +7,10 @@ import {
 } from "../../lib/entity-history.js";
 import { saveDiagram } from "../diagrams/save-service.js";
 import { useLocalAuth } from "../../lib/config.js";
+import { fileIdentifierWhere } from "../../lib/team-scope.js";
 
 function ownedWhere(uid: string, userId: string): any {
+  if (useLocalAuth()) return fileIdentifierWhere(uid, userId);
   const numericId = /^\d+$/.test(uid) ? (useLocalAuth() ? Number(uid) : BigInt(uid)) : null;
   return numericId !== null
     ? { userId, OR: [{ uid }, { id: numericId }] }

@@ -19,9 +19,10 @@ const AUDIENCE = "erd-self-host";
 // stays in the SaaS signing environment and must never be shipped to clients.
 const OFFICIAL_LICENSE_PUBLIC_KEY_ID = "production-1";
 const OFFICIAL_LICENSE_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAZ4ksEePiEBQEZptNZEZkegws/mFuv2U54z8gR4TrP2Y=
+MCowBQYDK2VwAyEABi1Uek1UFOesLWNtuyL8T7+nZzbWIoBhNeRaQ/6w4Wk=
 -----END PUBLIC KEY-----`;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type VerifiedEntitlement = {
   licenseId: string;
@@ -144,7 +145,7 @@ function configuredApiUrl(): URL {
 
 function endpointUrl(action: "activate" | "check"): URL {
   const base = configuredApiUrl();
-  return new URL(`/api/v1/license-client/${action}`, base.origin);
+  return new URL(`/api/v1/license-client/${PRODUCT_TYPE}/${action}`, base.origin);
 }
 
 async function requestLicenseApi(
@@ -174,7 +175,9 @@ async function requestLicenseApi(
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const code = typeof payload?.code === "string" ? payload.code : "LICENSE_REQUEST_REJECTED";
+    const code = typeof payload?.error?.code === "string"
+      ? payload.error.code
+      : typeof payload?.code === "string" ? payload.code : "LICENSE_REQUEST_REJECTED";
     throw new LicenseClientError(code, response.status);
   }
   if (!payload || typeof payload !== "object") {
@@ -285,7 +288,7 @@ export function verifySignedEntitlement(
     claims?.client_type !== CLIENT_TYPE ||
     claims?.installation_id !== expectedInstallationId ||
     typeof claims?.sub !== "string" ||
-    !UUID_V4.test(claims.sub) ||
+    !UUID_CANONICAL.test(claims.sub) ||
     typeof claims?.jti !== "string" ||
     claims.jti.length < 1 ||
     claims.jti.length > 128 ||

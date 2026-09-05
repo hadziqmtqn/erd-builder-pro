@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, KeyRound, Loader2, RefreshCw, ShieldCheck, UserMinus, Users } from "lucide-react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, KeyRound, Loader2, RefreshCw, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,8 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 import type { TeamLicense, TeamSummary } from "@/hooks/useTeams";
+import { useAuth } from "@/hooks/useAuth";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type TeamDetail = TeamSummary & {
   members: NonNullable<TeamSummary["members"]>;
@@ -37,11 +39,13 @@ async function responseError(response: Response, fallback: string): Promise<Erro
 export function TeamManagementRoute() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
 
   const fetchTeam = useCallback(async () => {
     if (!id) return;
@@ -59,8 +63,10 @@ export function TeamManagementRoute() {
   }, [id]);
 
   useEffect(() => {
-    void fetchTeam();
-  }, [fetchTeam]);
+    if (isSuperAdmin) void fetchTeam();
+  }, [fetchTeam, isSuperAdmin]);
+
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
 
   const addMember = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -94,7 +100,7 @@ export function TeamManagementRoute() {
       setTeam((current) => current && {
         ...current,
         members: current.members.filter((member) => member.id !== userId),
-        member_count: Math.max(0, (current.member_count || 0) - 1),
+        memberCount: Math.max(0, (current.memberCount || 0) - 1),
       });
       toast.success("Member removed");
     } catch (cause: any) {
@@ -136,11 +142,11 @@ export function TeamManagementRoute() {
   }
 
   const license = team.license;
-  const memberLimit = license.max_members ?? "—";
+  const memberLimit = license.maxMembers ?? "—";
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 lg:p-8">
+    <main className="-m-4 flex-1 overflow-auto bg-background">
+      <div className="flex w-full flex-col gap-6 p-6 lg:p-8">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <Button variant="ghost" size="icon" onClick={() => navigate("/")} aria-label="Back to dashboard">
@@ -156,14 +162,14 @@ export function TeamManagementRoute() {
           </div>
         </header>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-          <Card>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Users className="size-4" /> Members</CardTitle>
-              <CardDescription>{team.member_count || 0} of {memberLimit} member seats used. The global SuperAdmin is not counted.</CardDescription>
+              <CardDescription>{team.memberCount || 0} of {memberLimit} member seats used. The global SuperAdmin is not counted.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {team.can_manage && (
+              {team.canManage && (
                 <form onSubmit={addMember} className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <Field className="flex-1">
                     <FieldLabel htmlFor="team-member-email">Add existing account</FieldLabel>
@@ -184,18 +190,19 @@ export function TeamManagementRoute() {
                 </form>
               )}
 
-              <div className="divide-y rounded-lg border">
-                {team.members.length === 0 && <p className="p-4 text-sm text-muted-foreground">No members yet.</p>}
-                {team.members.map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 p-3">
-                    <div className="flex size-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      {(member.name || member.email || "?").slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{member.name || member.email || "Unnamed member"}</p>
-                      {member.name && <p className="truncate text-xs text-muted-foreground">{member.email || "No email"}</p>}
-                    </div>
-                    {team.can_manage && (
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead className="w-16 text-right">Action</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {team.members.length === 0 && <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No members have been added.</TableCell></TableRow>}
+                    {team.members.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell className="font-medium">{member.name || "Unnamed member"}</TableCell>
+                        <TableCell className="text-muted-foreground">{member.email || "—"}</TableCell>
+                        <TableCell><Badge variant="outline">Member</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status}</Badge></TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(member.joinedAt)}</TableCell>
+                        <TableCell className="text-right">
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -205,9 +212,11 @@ export function TeamManagementRoute() {
                       >
                         {action === `remove:${member.id}` ? <Loader2 className="animate-spin" /> : <UserMinus />}
                       </Button>
-                    )}
-                  </div>
-                ))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             </CardContent>
           </Card>
@@ -220,12 +229,12 @@ export function TeamManagementRoute() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                  <dt className="text-muted-foreground">Plan</dt><dd className="text-right font-medium">{license.plan_code || "—"}</dd>
-                  <dt className="text-muted-foreground">Key</dt><dd className="text-right font-medium">{license.code_last_four ? `••••${license.code_last_four}` : "Not shown"}</dd>
+                  <dt className="text-muted-foreground">Plan</dt><dd className="text-right font-medium">{license.planCode || "—"}</dd>
+                  <dt className="text-muted-foreground">Key</dt><dd className="text-right font-medium">{license.codeLastFour ? `••••${license.codeLastFour}` : "Not shown"}</dd>
                   <dt className="text-muted-foreground">Members</dt><dd className="text-right font-medium">{memberLimit}</dd>
-                  <dt className="text-muted-foreground">Expires</dt><dd className="text-right font-medium">{formatDate(license.expires_at)}</dd>
+                  <dt className="text-muted-foreground">Expires</dt><dd className="text-right font-medium">{formatDate(license.expiresAt)}</dd>
                 </dl>
-                {team.can_manage && (
+                {team.canManage && (
                   <Button variant="outline" className="w-full" onClick={() => void checkLicense()} disabled={action !== null}>
                     {action === "license" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
                     Check license
@@ -234,16 +243,6 @@ export function TeamManagementRoute() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-4" /> Access model</CardTitle>
-                <CardDescription>Kept intentionally small for the first Team release.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex flex-wrap gap-2"><Badge variant="outline">SuperAdmin</Badge><Badge variant="outline">Member</Badge></div>
-                <p className="text-muted-foreground">Only the global SuperAdmin manages the Team, license, and members. Team-level Admin and RBAC are not enabled.</p>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>

@@ -235,27 +235,32 @@ function AppLayoutInner() {
     handleEdgeUpdate: handleEdgeUpdate2,
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
+    refreshTeamScope,
   } = useWorkspace();
-  const teamState = useTeams(isGuest);
-  const handleTeamSelect = useCallback((teamId: string | null) => {
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
+  const teamState = useTeams(isGuest, !isSuperAdmin, refreshTeamScope);
+  const handleTeamSelect = useCallback(async (teamId: string | null) => {
+    await syncDrafts();
     teamState.selectTeam(teamId);
-    navigate(teamId ? `/teams/${teamId}` : '/');
-  }, [navigate, teamState.selectTeam]);
+    setGlobalSearchQuery('');
+    setGlobalSearchResults([]);
+    setRightPanelMode('closed');
+    await refreshTeamScope();
+  }, [refreshTeamScope, setRightPanelMode, syncDrafts, teamState.selectTeam]);
   const handleTeamManage = useCallback((team: TeamSummary) => {
-    teamState.selectTeam(team.id);
-    navigate(`/teams/${team.id}`);
-  }, [navigate, teamState.selectTeam]);
-  const handleTeamCreated = useCallback((team: TeamSummary) => {
     navigate(`/teams/${team.id}`);
   }, [navigate]);
+  const handleTeamCreated = useCallback(async (team: TeamSummary) => {
+    await refreshTeamScope();
+    navigate(`/teams/${team.id}`);
+  }, [navigate, refreshTeamScope]);
   const isDbClientRoute = location.pathname === '/table/db-client'
     || location.pathname.startsWith('/db-client/')
     || (location.pathname.startsWith('/diagrams/') && searchParams.get('feature') === 'db-client');
   const isFeatureRoute = isDbClientRoute || /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
-  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
-  const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
-
   useEffect(() => {
     const query = globalSearchQuery.trim();
     if (query.length < 2) {

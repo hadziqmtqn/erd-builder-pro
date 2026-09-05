@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../../lib/prisma.js";
-import { toProjectId, uidOrIdWhere } from "../../lib/utils.js";
+import { toProjectId } from "../../lib/utils.js";
 import { resolveOwnedProjectId } from "../../lib/security.js";
+import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 
 // ── Sessions ──
 
@@ -15,13 +16,13 @@ export async function listSessions(params: {
   const hasProject = !!projectId;
   const hasEntity = !!entityType && !!entityUid;
 
-  let where: any = { userId };
+  let where: any = { AND: [fileScopeWhere(userId)] };
 
   if (hasProject && hasEntity) {
-    where.OR = [
+    where.AND.push({ OR: [
       { projectId: toProjectId(projectId) },
       { projectId: null, entityType, entityUid },
-    ];
+    ] });
   } else if (hasProject) {
     where.projectId = toProjectId(projectId);
   } else if (hasEntity) {
@@ -60,7 +61,7 @@ export async function createSession(data: {
 
 export async function getSession(uid: string, userId: string) {
   return (await prisma?.aiChatSession.findFirst({
-    where: uidOrIdWhere(uid, userId),
+    where: fileIdentifierWhere(uid, userId),
   })) || null;
 }
 
@@ -72,7 +73,7 @@ export async function updateSession(
   if (!prisma) throw new Error("Database connection not available");
 
   const existing = await prisma.aiChatSession.findFirst({
-    where: uidOrIdWhere(uid, userId),
+    where: fileIdentifierWhere(uid, userId),
     select: { id: true },
   });
   if (!existing) return null;
@@ -89,7 +90,7 @@ export async function updateSession(
 
 export async function deleteSession(uid: string, userId: string) {
   const session = await prisma?.aiChatSession.findFirst({
-    where: uidOrIdWhere(uid, userId),
+    where: fileIdentifierWhere(uid, userId),
   });
   if (!session) return null;
 
@@ -106,7 +107,7 @@ export async function listMessages(
   limit: number
 ) {
   const session = await prisma?.aiChatSession.findFirst({
-    where: uidOrIdWhere(sessionUid, userId),
+    where: fileIdentifierWhere(sessionUid, userId),
     select: { id: true },
   });
   if (!session) return null;
@@ -136,13 +137,10 @@ export async function createMessage(data: {
   const sid = String(data.sessionId);
   const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
   const session = await prisma?.aiChatSession.findFirst({
-    where: {
-      userId: data.userId,
-      OR: [
+    where: { AND: [fileScopeWhere(data.userId), { OR: [
         { uid: sid },
         ...(numericId !== undefined ? [{ id: numericId }] : []),
-      ],
-    },
+      ] }] },
     select: { id: true },
   });
   if (!session) return null;

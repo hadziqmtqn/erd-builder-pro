@@ -1,14 +1,12 @@
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
+import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
 function uidWhere(uid: string, userId: string) {
-  const id = Number(uid);
-  return Number.isFinite(id)
-    ? { OR: [{ uid }, { id }], userId }
-    : { uid, userId };
+  return fileIdentifierWhere(uid, userId);
 }
 
 function conditions(userId: string, query: {
@@ -18,7 +16,7 @@ function conditions(userId: string, query: {
 }) {
   const conditions: any[] = [
     { isDeleted: false },
-    { userId },
+    fileScopeWhere(userId),
   ];
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
@@ -37,7 +35,7 @@ function conditions(userId: string, query: {
 
 async function excludeDeletedProjects(userId: string): Promise<any[]> {
   const deleted = await prisma?.project.findMany({
-    where: { userId, isDeleted: true },
+    where: { ...projectScopeWhere(userId), isDeleted: true },
     select: { id: true },
   });
   return deleted?.map(p => p.id) || [];

@@ -5,6 +5,7 @@ import type { ConnectionInfo } from "../../lib/db-connectors/types.js";
 import { encrypt } from "../../lib/crypto.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
+import { fileIdentifierWhere } from "../../lib/team-scope.js";
 import {
   uidWhereClause,
   dedupe,
@@ -34,17 +35,12 @@ export async function saveDiagram(
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
 
-  let diagramWhere: any = { userId };
-  if (isUuid) {
-    diagramWhere.uid = identifier;
-  } else if (!isNaN(Number(identifier))) {
-    diagramWhere.id = Number(identifier);
-  } else {
+  if (!isUuid && !Number.isFinite(Number(identifier))) {
     throw new Error("Invalid identifier format");
   }
 
   const currentDiagram = await prisma.diagram.findFirst({
-    where: diagramWhere,
+    where: fileIdentifierWhere(identifier, userId),
     select: {
       id: true, uid: true, version: true, updatedAt: true, name: true, data: true,
       sourceType: true, dbmlSource: true, viewportX: true, viewportY: true, viewportZoom: true,

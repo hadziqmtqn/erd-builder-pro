@@ -1,27 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiFetch } from "../lib/api";
-
-const ACTIVE_TEAM_KEY = "erd-active-team-id";
+import { ACTIVE_TEAM_KEY, apiFetch } from "../lib/api";
 
 export type TeamLicense = {
   valid: boolean;
   status: string;
   id?: string | null;
-  code_last_four?: string | null;
-  plan_code?: string | null;
-  expires_at?: string | null;
-  max_members?: number | null;
-  binding_generation?: number;
-  last_checked_at?: string | null;
-  error_code?: string;
+  codeLastFour?: string | null;
+  planCode?: string | null;
+  expiresAt?: string | null;
+  maxMembers?: number | null;
+  bindingGeneration?: number;
+  lastCheckedAt?: string | null;
+  errorCode?: string;
 };
 
 export type TeamSummary = {
   id: string;
   name: string;
-  member_count?: number;
-  can_manage?: boolean;
+  memberCount?: number;
+  canManage?: boolean;
   license?: TeamLicense;
   members?: Array<{
     id: string;
@@ -29,7 +27,7 @@ export type TeamSummary = {
     name: string | null;
     role: "member";
     status: string;
-    joined_at: string;
+    joinedAt: string;
   }>;
 };
 
@@ -50,7 +48,7 @@ function writeActiveTeamId(teamId: string | null): void {
   }
 }
 
-export function useTeams(isGuest = false) {
+export function useTeams(isGuest = false, selectFirstTeam = false, onFirstTeamSelected?: () => void | Promise<void>) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
   const [isLoading, setIsLoading] = useState(!isGuest);
@@ -82,6 +80,11 @@ export function useTeams(isGuest = false) {
       const selected = readActiveTeamId();
       if (selected && nextTeams.some((team: TeamSummary) => String(team.id) === selected)) {
         setActiveTeamId(selected);
+      } else if (selectFirstTeam && nextTeams[0]) {
+        const teamId = String(nextTeams[0].id);
+        setActiveTeamId(teamId);
+        writeActiveTeamId(teamId);
+        await onFirstTeamSelected?.();
       } else if (selected) {
         setActiveTeamId(null);
         writeActiveTeamId(null);
@@ -95,7 +98,7 @@ export function useTeams(isGuest = false) {
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]);
+  }, [isGuest, onFirstTeamSelected, selectFirstTeam]);
 
   useEffect(() => {
     void fetchTeams();

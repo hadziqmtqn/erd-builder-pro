@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
+import { ACTIVE_TEAM_KEY, apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
 
 type AuthContextValue = {
   isAuthenticated: boolean | null;
@@ -111,6 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLogin = useCallback((userData?: any) => {
+    if (userData && !Boolean(userData.isSuperAdmin || userData.is_super_admin)) {
+      try {
+        if (userData.activeTeamId) localStorage.setItem(ACTIVE_TEAM_KEY, userData.activeTeamId);
+        else localStorage.removeItem(ACTIVE_TEAM_KEY);
+      } catch { /* ignore */ }
+    }
     setIsAuthenticated(true);
     setIsGuest(false);
     sessionStorage.removeItem('auth_mode');
@@ -126,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleLogout = useCallback(async () => {
     clearAuthToken();
+    try { localStorage.removeItem(ACTIVE_TEAM_KEY); } catch { /* ignore */ }
     if (isGuest) {
       setIsAuthenticated(false);
       setIsGuest(false);

@@ -2,7 +2,8 @@ import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } 
 import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 import { prisma } from "./prisma.js";
-import { canUserLogin } from "../routes/teams/service.js";
+import { canAccessTeam, canUserLogin } from "../routes/teams/service.js";
+import { runWithTeamScope } from "./team-scope.js";
 
 /** Extract token: Bearer header first (explicit auth), cookie (implicit), query param (fallback). */
 function extractToken(req: ExpressRequest): string | undefined {
@@ -51,7 +52,11 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
           email: session.email,
           isSuperAdmin,
         };
-        next();
+        const teamId = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : "";
+        if (teamId && !(await canAccessTeam(teamId, session.userId, isSuperAdmin))) {
+          return res.status(404).json({ error: "Resource not found" });
+        }
+        runWithTeamScope(teamId ? { mode: "team", teamId } : { mode: "personal", teamId: null }, next);
         return;
       }
     }

@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "postinstall": "npm run db:generate:pg",
     "reset-password": "tsx scripts/reset-password.ts",
+    "db:seed:team-isolation": "cross-env DB_VARIANT=pg prisma generate && cross-env DB_VARIANT=pg tsx scripts/seed-team-isolation.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "npm run test:pg && npm run test:sqlite",

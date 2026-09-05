@@ -1,6 +1,7 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { isDesktopMode, isLocalPostgres } from "./config.js";
+import { projectScopeWhere } from "./team-scope.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
   // Desktop/SQLite is a single-user install. Local PostgreSQL can have multiple users.
@@ -47,7 +48,7 @@ export const resolveOwnedProjectId = async (
   }
 
   const project = await prisma.project.findFirst({
-    where: { id: parsed, userId, isDeleted: false },
+    where: { id: parsed, ...projectScopeWhere(userId), isDeleted: false },
     select: { id: true },
   });
 

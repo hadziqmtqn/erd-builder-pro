@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   localPostgres: true,
@@ -60,6 +60,16 @@ const entitlement = {
   bindingGeneration: 1,
 };
 
+const originalFixtureMode = process.env.ERDBPRO_TEAM_FIXTURE_MODE;
+const originalNodeEnv = process.env.NODE_ENV;
+
+afterEach(() => {
+  if (originalFixtureMode === undefined) delete process.env.ERDBPRO_TEAM_FIXTURE_MODE;
+  else process.env.ERDBPRO_TEAM_FIXTURE_MODE = originalFixtureMode;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
+});
+
 beforeEach(() => {
   mocks.localPostgres = true;
   for (const mock of Object.values(mocks)) {
@@ -108,10 +118,36 @@ describe("Team service", () => {
     });
   });
 
-  it("does not expose a Team to a user without active membership", async () => {
-    mocks.teamMemberFindFirst.mockResolvedValue(null);
+  it("treats an explicit local dashboard fixture as an active license", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.ERDBPRO_TEAM_FIXTURE_MODE = "1";
+    mocks.teamFindMany.mockResolvedValue([
+      {
+        id: "team-fixture",
+        name: "Isolation Test Team",
+        status: "active",
+        licenseStatus: "active",
+        licenseId: "test-fixture:team-fixture",
+        licenseExpiresAt: new Date(Date.now() + 60_000),
+        maxMembers: 10,
+        bindingGeneration: 1,
+        _count: { members: 1 },
+      },
+    ]);
 
-    await expect(getTeam("team-1", "user-1", false)).resolves.toBeNull();
+    const [team] = await listTeams("admin-1", true);
+
+    expect(team.license).toMatchObject({
+      valid: true,
+      status: "active",
+      planCode: "team-test",
+      maxMembers: 10,
+    });
+  });
+
+  it("does not expose Team management to a member", async () => {
+    await expect(getTeam("team-1", "user-1", false))
+      .rejects.toMatchObject({ code: "SUPER_ADMIN_REQUIRED", status: 403 });
     expect(mocks.teamFindUnique).not.toHaveBeenCalled();
   });
 
@@ -169,5 +205,24 @@ describe("Team service", () => {
       allowed: false,
       code: "LICENSE_EXPIRED_OR_INVALID",
     });
+  });
+
+  it("allows a seeded member to log in only in local dashboard fixture mode", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.ERDBPRO_TEAM_FIXTURE_MODE = "1";
+    mocks.teamMemberFindMany.mockResolvedValue([
+      {
+        teamId: "team-fixture",
+        team: {
+          id: "team-fixture",
+          status: "active",
+          licenseStatus: "active",
+          licenseId: "test-fixture:team-fixture",
+          licenseExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    ]);
+
+    await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: true, teamId: "team-fixture" });
   });
 });

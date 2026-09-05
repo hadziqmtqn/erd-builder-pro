@@ -15,6 +15,7 @@ import {
 
 const TEAM_ERROR_MESSAGES: Record<string, string> = {
   LICENSE_SERVICE_UNAVAILABLE: "We couldn't reach the license service. Check your internet connection and try again.",
+  SERVICE_UNAVAILABLE: "The license service is temporarily unavailable. Please try again later.",
   LICENSE_CLIENT_NOT_CONFIGURED: "License activation isn't configured on this server. Please contact your administrator.",
   LICENSE_API_MUST_USE_HTTPS: "License activation requires a secure connection. Please contact your administrator.",
   LICENSE_API_URL_INVALID: "The license service address is invalid. Please contact your administrator.",
@@ -42,6 +43,16 @@ const TEAM_ERROR_MESSAGES: Record<string, string> = {
 
 function teamErrorMessage(code: string): string {
   return TEAM_ERROR_MESSAGES[code] || "We couldn't complete this Team request. Please try again or contact your administrator.";
+}
+
+function isLocalDashboardFixture(team: any): boolean {
+  return process.env.NODE_ENV !== "production" &&
+    process.env.ERDBPRO_TEAM_FIXTURE_MODE === "1" &&
+    team?.status === "active" &&
+    team?.licenseStatus === "active" &&
+    team?.licenseId === `test-fixture:${team.id}` &&
+    team?.licenseExpiresAt instanceof Date &&
+    team.licenseExpiresAt.getTime() > Date.now();
 }
 
 export class TeamServiceError extends Error {
@@ -72,6 +83,20 @@ function mapClientError(error: unknown): TeamServiceError | null {
 }
 
 function licenseInfo(team: any) {
+  if (isLocalDashboardFixture(team)) {
+    return {
+      valid: true,
+      status: "active",
+      id: team.licenseId,
+      codeLastFour: "TEST",
+      planCode: "team-test",
+      expiresAt: team.licenseExpiresAt,
+      maxMembers: team.maxMembers ?? 10,
+      bindingGeneration: team.bindingGeneration ?? 1,
+      lastCheckedAt: null,
+    };
+  }
+
   let stored: ReturnType<typeof getStoredLicense>;
   try {
     stored = getStoredLicense(team.id);
@@ -180,6 +205,18 @@ async function findTeam(teamId: string, userId: string, isSuperAdmin: boolean): 
   return team?.type === "personal" ? null : team;
 }
 
+export async function canAccessTeam(teamId: string, userId: string, isSuperAdmin: boolean): Promise<boolean> {
+  const team = await findTeam(teamId, userId, isSuperAdmin);
+  if (!team || team.status !== "active") return false;
+  if (isLocalDashboardFixture(team)) return true;
+  try {
+    verifyStoredLicense(teamId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function listTeams(userId: string, isSuperAdmin: boolean) {
   const database = db();
   const teams = isSuperAdmin
@@ -194,6 +231,7 @@ export async function listTeams(userId: string, isSuperAdmin: boolean) {
 }
 
 export async function getTeam(teamId: string, userId: string, isSuperAdmin: boolean) {
+  assertSuperAdmin(isSuperAdmin);
   const team = await findTeam(teamId, userId, isSuperAdmin);
   return team ? toTeamResponse(team, isSuperAdmin) : null;
 }
@@ -352,18 +390,30 @@ export async function removeMember(teamId: string, userId: string, isSuperAdmin:
 }
 
 /** Existing Team members need a valid signed lease before a local session is accepted. */
-export async function canUserLogin(userId: string): Promise<{ allowed: true } | { allowed: false; code: string }> {
+export async function canUserLogin(userId: string): Promise<{ allowed: true; teamId?: string } | { allowed: false; code: string }> {
   if (!isLocalPostgres() || !prisma) return { allowed: true };
   const memberships = await (prisma as any).teamMember.findMany({
     where: { userId, status: "active" },
-    select: { teamId: true },
+    select: {
+      teamId: true,
+      team: {
+        select: {
+          id: true,
+          status: true,
+          licenseStatus: true,
+          licenseId: true,
+          licenseExpiresAt: true,
+        },
+      },
+    },
   });
   if (memberships.length === 0) return { allowed: true };
 
   for (const membership of memberships) {
+    if (isLocalDashboardFixture(membership.team)) return { allowed: true, teamId: membership.teamId };
     try {
       verifyStoredLicense(membership.teamId);
-      return { allowed: true };
+      return { allowed: true, teamId: membership.teamId };
     } catch {
       // A member may belong to another still-valid Team; only deny when none remain valid.
     }

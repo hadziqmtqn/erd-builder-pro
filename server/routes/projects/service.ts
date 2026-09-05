@@ -5,6 +5,7 @@ import { logger } from "../../lib/logger.js";
 import { randomUUID } from "crypto";
 import { getStorageClientForUser } from "../../lib/storage.js";
 import { isDesktopMode } from "../../lib/config.js";
+import { currentTeamScope, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // ── List ──
 
@@ -15,26 +16,27 @@ export async function listProjects(
   const { limit, offset, q } = params;
   const searchTerm = q?.trim();
 
-  let whereClause: Record<string, any> = { userId, isDeleted: false };
+  let whereClause: Record<string, any> = { ...projectScopeWhere(userId), isDeleted: false };
+  const fileScope = fileScopeWhere(userId);
 
   if (searchTerm) {
     const containsFilter = (value: string) => ({ contains: value } as any);
 
     const [dMatches, nMatches, drMatches, fMatches, cMatches] = await Promise.all([
       prisma?.diagram.findMany({
-        where: { name: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] },
+        where: { name: containsFilter(searchTerm), ...fileScope, projectId: { not: null }, isDeleted: false, AND: [{ OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
         select: { projectId: true },
       }),
       prisma?.note.findMany({
-        where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+        where: { title: containsFilter(searchTerm), ...fileScope, projectId: { not: null }, isDeleted: false },
         select: { projectId: true },
       }),
       prisma?.drawing.findMany({
-        where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+        where: { title: containsFilter(searchTerm), ...fileScope, projectId: { not: null }, isDeleted: false },
         select: { projectId: true },
       }),
       prisma?.flowchart.findMany({
-        where: { title: containsFilter(searchTerm), userId, projectId: { not: null }, isDeleted: false },
+        where: { title: containsFilter(searchTerm), ...fileScope, projectId: { not: null }, isDeleted: false },
         select: { projectId: true },
       }),
       isDesktopMode() ? (prisma as any)?.dbClient.findMany({
@@ -73,7 +75,7 @@ export async function listProjects(
 
   // Uncategorized files
   const searchLower = searchTerm?.toLowerCase();
-  const uncategorizedBase = { projectId: null, userId, isDeleted: false } as const;
+  const uncategorizedBase = { ...fileScope, projectId: null, isDeleted: false } as const;
   const uDiagramFilter: Record<string, any> = { ...uncategorizedBase, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] };
   const uNoteFilter: Record<string, any> = { ...uncategorizedBase };
   const uDrawFilter: Record<string, any> = { ...uncategorizedBase };
@@ -114,8 +116,9 @@ export async function listProjects(
 // ── Create ──
 
 export async function createProject(name: string, userId: string) {
+  const scope = currentTeamScope();
   const project = await prisma?.project.create({
-    data: { name, userId, uid: randomUUID() },
+    data: { name, userId, uid: randomUUID(), ...(scope?.mode === "team" ? { teamId: scope.teamId } : {}) },
   });
   return project || null;
 }
@@ -124,7 +127,7 @@ export async function createProject(name: string, userId: string) {
 
 export async function updateProject(projectId: number, userId: string, name: string) {
   await prisma?.project.updateMany({
-    where: { id: projectId, userId },
+    where: { id: projectId, ...projectScopeWhere(userId) },
     data: { name },
   });
   return { success: true };
@@ -135,17 +138,19 @@ export async function updateProject(projectId: number, userId: string, name: str
 export async function softDeleteProject(projectId: number, userId: string) {
   const now = new Date();
 
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
+  if (!project) return { success: false };
   await prisma?.project.updateMany({
-    where: { id: projectId, userId },
+    where: { id: projectId },
     data: { isDeleted: true, deletedAt: now },
   });
 
   try {
     await Promise.all([
-      prisma?.diagram.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
-      prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
-      prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
-      prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }),
+      prisma?.diagram.updateMany({ where: { projectId }, data: { isDeleted: true, deletedAt: now } }),
+      prisma?.note.updateMany({ where: { projectId }, data: { isDeleted: true, deletedAt: now } }),
+      prisma?.drawing.updateMany({ where: { projectId }, data: { isDeleted: true, deletedAt: now } }),
+      prisma?.flowchart.updateMany({ where: { projectId }, data: { isDeleted: true, deletedAt: now } }),
       isDesktopMode() ? (prisma as any).dbClient.updateMany({ where: { projectId, userId }, data: { isDeleted: true, deletedAt: now } }) : Promise.resolve(),
     ]);
   } catch (err) {
@@ -158,17 +163,19 @@ export async function softDeleteProject(projectId: number, userId: string) {
 // ── Restore + Cascade ──
 
 export async function restoreProject(projectId: number, userId: string) {
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
+  if (!project) return { success: false };
   await prisma?.project.updateMany({
-    where: { id: projectId, userId },
+    where: { id: projectId },
     data: { isDeleted: false, deletedAt: null },
   });
 
   try {
     await Promise.all([
-      prisma?.diagram.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
-      prisma?.note.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
-      prisma?.drawing.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
-      prisma?.flowchart.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }),
+      prisma?.diagram.updateMany({ where: { projectId }, data: { isDeleted: false, deletedAt: null } }),
+      prisma?.note.updateMany({ where: { projectId }, data: { isDeleted: false, deletedAt: null } }),
+      prisma?.drawing.updateMany({ where: { projectId }, data: { isDeleted: false, deletedAt: null } }),
+      prisma?.flowchart.updateMany({ where: { projectId }, data: { isDeleted: false, deletedAt: null } }),
       isDesktopMode() ? (prisma as any).dbClient.updateMany({ where: { projectId, userId }, data: { isDeleted: false, deletedAt: null } }) : Promise.resolve(),
     ]);
   } catch (err) {
@@ -181,11 +188,13 @@ export async function restoreProject(projectId: number, userId: string) {
 // ── Permanent Delete + Cascade + R2 cleanup ──
 
 export async function permanentDeleteProject(projectId: number, userId: string) {
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
+  if (!project) return { success: false };
   if (isDesktopMode()) {
     await (prisma as any)?.dbClient.deleteMany({ where: { projectId, userId } });
   }
   const diagrams = await prisma?.diagram.findMany({
-    where: { projectId, userId },
+    where: { projectId },
     select: { id: true },
   });
   const diagramIds = diagrams?.map(d => d.id) || [];
@@ -206,7 +215,7 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
 
   // Clean up storage images embedded in notes
   const notes = await prisma?.note.findMany({
-    where: { projectId, userId },
+    where: { projectId },
     select: { content: true },
   });
   const userStorage = await getStorageClientForUser(userId, prisma);
@@ -232,10 +241,10 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
     }
   }
 
-  await prisma?.note.deleteMany({ where: { projectId, userId } });
-  await prisma?.drawing.deleteMany({ where: { projectId, userId } });
-  await prisma?.flowchart.deleteMany({ where: { projectId, userId } });
-  await prisma?.project.deleteMany({ where: { id: projectId, userId } });
+  await prisma?.note.deleteMany({ where: { projectId } });
+  await prisma?.drawing.deleteMany({ where: { projectId } });
+  await prisma?.flowchart.deleteMany({ where: { projectId } });
+  await prisma?.project.deleteMany({ where: { id: projectId } });
 
   return { success: true };
 }
@@ -245,17 +254,19 @@ export async function permanentDeleteProject(projectId: number, userId: string) 
 export async function getProjectSiblings(projectId: number, userId: string) {
   if (!prisma) throw new Error("Database connection not available");
 
+  const project = await prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } });
+  if (!project) return { notes: [], diagrams: [], flowcharts: [] };
   const [notes, diagrams, flowcharts] = await Promise.all([
     prisma.note.findMany({
-      where: { projectId, userId, isDeleted: false },
+      where: { projectId, isDeleted: false },
       select: { uid: true, title: true, content: true, updatedAt: true },
     }),
     prisma.diagram.findMany({
-      where: { projectId, userId, isDeleted: false, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] },
+      where: { projectId, isDeleted: false, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] },
       select: { id: true, uid: true, name: true, sourceType: true, updatedAt: true },
     }),
     prisma.flowchart.findMany({
-      where: { projectId, userId, isDeleted: false },
+      where: { projectId, isDeleted: false },
       select: { uid: true, title: true, data: true, updatedAt: true },
     }),
   ]);
@@ -293,12 +304,14 @@ export async function getProjectSiblings(projectId: number, userId: string) {
 export async function getProjectSummary(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
-  const diagramWhere = { projectId, userId, isDeleted: false, OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }] };
+  const project = await prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } });
+  if (!project) return { notes: 0, diagrams: 0, flowcharts: 0, drawings: 0, dbClients: 0 };
+  const diagramWhere = { projectId, isDeleted: false, OR: [{ sourceType: { not: "production_db" } }, { sourceType: null }] };
   const [notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
-    prisma.note.count({ where: { projectId, userId, isDeleted: false } }),
+    prisma.note.count({ where: { projectId, isDeleted: false } }),
     prisma.diagram.count({ where: diagramWhere }),
-    prisma.flowchart.count({ where: { projectId, userId, isDeleted: false } }),
-    prisma.drawing.count({ where: { projectId, userId, isDeleted: false } }),
+    prisma.flowchart.count({ where: { projectId, isDeleted: false } }),
+    prisma.drawing.count({ where: { projectId, isDeleted: false } }),
     includeDbClient && isDesktopMode()
       ? (prisma as any).dbClient.count({ where: { projectId, userId, isDeleted: false } })
       : Promise.resolve(0),
@@ -310,9 +323,9 @@ export async function getProjectSummary(projectId: number, userId: string, inclu
 export async function listProjectFiles(projectId: number, userId: string, includeDbClient = true) {
   if (!prisma) throw new Error("Database connection not available");
 
-  const where = { projectId, userId, isDeleted: false };
+  const where = { projectId, isDeleted: false };
   const [project, notes, diagrams, flowcharts, drawings, dbClients] = await Promise.all([
-    prisma.project.findFirst({ where: { id: projectId, userId, isDeleted: false }, select: { id: true } }),
+    prisma.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId), isDeleted: false }, select: { id: true } }),
     prisma.note.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
     prisma.diagram.findMany({ where: { ...where, OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }, select: { id: true, uid: true, name: true, createdAt: true } }),
     prisma.flowchart.findMany({ where, select: { id: true, uid: true, title: true, createdAt: true } }),
