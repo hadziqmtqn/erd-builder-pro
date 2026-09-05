@@ -1,7 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase, s3Client, R2_BUCKET_NAME } from "../../lib/config.js";
 import { handleError } from "../../lib/utils.js";
-import { resolveOwnedProjectId } from "../../lib/security.js";
+import { resolveNewFileProjectId, resolveOwnedProjectId } from "../../lib/security.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
@@ -30,7 +30,7 @@ export async function create(req: ExpressRequest, res: ExpressResponse): Promise
     if (!prisma) { res.status(500).json({ error: "Database connection not available" }); return; }
     const userId = (req as any).user.id;
     const { title, data, project_id, uid } = req.body;
-    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
+    const resolvedProjectId = await resolveNewFileProjectId(prisma, userId, project_id);
 
     const drawing = await drawingsService.createDrawing({
       title, drawingData: data, projectId: resolvedProjectId, userId, uid,

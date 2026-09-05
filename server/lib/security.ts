@@ -1,7 +1,8 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { isDesktopMode, isLocalPostgres } from "./config.js";
-import { projectScopeWhere } from "./team-scope.js";
+import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
   // Desktop/SQLite is a single-user install. Local PostgreSQL can have multiple users.
@@ -57,4 +58,31 @@ export const resolveOwnedProjectId = async (
   }
 
   return Number(project.id);
+};
+
+/** New files created from an active Team always belong to a Team project. */
+export const resolveNewFileProjectId = async (
+  prisma: PrismaClient,
+  userId: string,
+  projectId: unknown,
+): Promise<number | null> => {
+  if (projectId !== null && projectId !== undefined && projectId !== "" && projectId !== "null") {
+    return resolveOwnedProjectId(prisma, userId, projectId);
+  }
+
+  const scope = currentTeamScope();
+  if (scope?.mode !== "team" || !scope.teamId) return null;
+
+  const existing = await prisma.project.findFirst({
+    where: { teamId: scope.teamId, name: "Uncategorized", isDeleted: false },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (existing) return Number(existing.id);
+
+  const created = await prisma.project.create({
+    data: { uid: randomUUID(), name: "Uncategorized", userId, teamId: scope.teamId },
+    select: { id: true },
+  });
+  return Number(created.id);
 };

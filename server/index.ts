@@ -209,8 +209,8 @@ function camelToSnake(obj: unknown): unknown {
 }
 
 app.use((_req, res, next) => {
-  // Skip camelToSnake for new routes: accounts & catalogs use camelCase natively
-  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage')) {
+  // These newer routes use camelCase natively on both sides.
+  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage') || _req.path.startsWith('/api/teams')) {
     return next();
   }
   const originalJson = res.json.bind(res);

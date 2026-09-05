@@ -52,7 +52,11 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
         return;
       }
       if ((result as any).blocked) {
-        res.status(403).json({ error: "Team license is not active", code: (result as any).code });
+        const inactive = (result as any).code === "MEMBER_INACTIVE";
+        res.status(403).json({
+          error: inactive ? "Your Team membership is inactive. Contact the SuperAdmin to restore access." : "Your Team license is not active. Contact the SuperAdmin.",
+          code: (result as any).code,
+        });
         return;
       }
 

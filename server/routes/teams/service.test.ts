@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   localPostgres: true,
   teamFindMany: vi.fn(),
   teamFindUnique: vi.fn(),
+  teamUpdate: vi.fn(),
   teamMemberFindFirst: vi.fn(),
   teamMemberFindMany: vi.fn(),
   teamMemberCount: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   getStoredLicense: vi.fn(),
   verifyStoredLicense: vi.fn(),
+  checkSelfHostLicense: vi.fn(),
   LicenseClientError: class extends Error {
     code: string;
     status: number;
@@ -33,6 +35,7 @@ vi.mock("../../lib/prisma.js", () => ({
     team: {
       findMany: mocks.teamFindMany,
       findUnique: mocks.teamFindUnique,
+      update: mocks.teamUpdate,
     },
     teamMember: {
       findFirst: mocks.teamMemberFindFirst,
@@ -48,6 +51,7 @@ vi.mock("../../lib/license-client.js", () => ({
   LicenseClientError: mocks.LicenseClientError,
   getStoredLicense: mocks.getStoredLicense,
   verifyStoredLicense: mocks.verifyStoredLicense,
+  checkSelfHostLicense: mocks.checkSelfHostLicense,
 }));
 
 import { addMember, canUserLogin, getTeam, listTeams, TeamServiceError } from "./service.js";
@@ -79,9 +83,11 @@ beforeEach(() => {
     licenseId: entitlement.licenseId,
     codeLastFour: "1234",
     bindingGeneration: entitlement.bindingGeneration,
-    lastCheckedAt: "2026-09-05T00:00:00.000Z",
+    lastCheckedAt: new Date().toISOString(),
   });
   mocks.verifyStoredLicense.mockReturnValue({ entitlement });
+  mocks.checkSelfHostLicense.mockResolvedValue({ entitlement });
+  mocks.teamUpdate.mockResolvedValue({});
 });
 
 describe("Team service", () => {
@@ -196,7 +202,7 @@ describe("Team service", () => {
     mocks.teamMemberFindMany.mockResolvedValueOnce([]);
     await expect(canUserLogin("user-1")).resolves.toEqual({ allowed: true });
 
-    mocks.teamMemberFindMany.mockResolvedValueOnce([{ teamId: "team-1" }]);
+    mocks.teamMemberFindMany.mockResolvedValueOnce([{ teamId: "team-1", status: "active", team: { id: "team-1", name: "Team" } }]);
     mocks.verifyStoredLicense.mockImplementation(() => {
       throw new mocks.LicenseClientError("LICENSE_EXPIRED_OR_INVALID", 403);
     });
@@ -213,6 +219,7 @@ describe("Team service", () => {
     mocks.teamMemberFindMany.mockResolvedValue([
       {
         teamId: "team-fixture",
+        status: "active",
         team: {
           id: "team-fixture",
           status: "active",
@@ -224,5 +231,29 @@ describe("Team service", () => {
     ]);
 
     await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: true, teamId: "team-fixture" });
+  });
+
+  it("blocks a user whose Team memberships are all inactive", async () => {
+    mocks.teamMemberFindMany.mockResolvedValue([{ teamId: "team-1", status: "inactive", team: { id: "team-1" } }]);
+
+    await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: false, code: "MEMBER_INACTIVE" });
+    expect(mocks.verifyStoredLicense).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a stale Team license before allowing login", async () => {
+    mocks.getStoredLicense.mockReturnValue({
+      licenseId: entitlement.licenseId,
+      bindingGeneration: 1,
+      lastCheckedAt: "2020-01-01T00:00:00.000Z",
+    });
+    mocks.teamMemberFindMany.mockResolvedValue([{
+      teamId: "team-1",
+      status: "active",
+      team: { id: "team-1", name: "Acme", status: "active", licenseStatus: "active" },
+    }]);
+    mocks.teamMemberCount.mockResolvedValue(1);
+
+    await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: true, teamId: "team-1" });
+    expect(mocks.checkSelfHostLicense).toHaveBeenCalledWith({ teamId: "team-1", teamName: "Acme", memberCount: 1 });
   });
 });

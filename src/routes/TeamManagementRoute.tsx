@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, KeyRound, Loader2, RefreshCw, UserMinus, Users } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, RefreshCw, UserCheck, UserMinus, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,9 @@ import { apiFetch } from "@/lib/api";
 import type { TeamLicense, TeamSummary } from "@/hooks/useTeams";
 import { useAuth } from "@/hooks/useAuth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useWorkspace } from "@/providers/WorkspaceContext";
 
 type TeamDetail = TeamSummary & {
   members: NonNullable<TeamSummary["members"]>;
@@ -44,8 +47,13 @@ export function TeamManagementRoute() {
   const [isLoading, setIsLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [memberName, setMemberName] = useState("");
+  const [password, setPassword] = useState("");
+  const [createAccount, setCreateAccount] = useState(false);
+  const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [error, setError] = useState("");
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
+  const { setBreadcrumbLabel } = useWorkspace();
 
   const fetchTeam = useCallback(async () => {
     if (!id) return;
@@ -66,6 +74,11 @@ export function TeamManagementRoute() {
     if (isSuperAdmin) void fetchTeam();
   }, [fetchTeam, isSuperAdmin]);
 
+  useEffect(() => {
+    setBreadcrumbLabel(team?.name || "Team management");
+    return () => setBreadcrumbLabel(null);
+  }, [setBreadcrumbLabel, team?.name]);
+
   if (!isSuperAdmin) return <Navigate to="/" replace />;
 
   const addMember = async (event: FormEvent<HTMLFormElement>) => {
@@ -76,11 +89,18 @@ export function TeamManagementRoute() {
       const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({
+          email: email.trim(),
+          ...(createAccount ? { name: memberName.trim(), password } : {}),
+        }),
       });
       if (!response.ok) throw await responseError(response, "Member could not be added.");
       setTeam(await response.json());
       setEmail("");
+      setMemberName("");
+      setPassword("");
+      setCreateAccount(false);
+      setMemberDialogOpen(false);
       toast.success("Member added");
     } catch (cause: any) {
       toast.error(cause?.message || "Member could not be added.");
@@ -97,14 +117,29 @@ export function TeamManagementRoute() {
         method: "DELETE",
       });
       if (!response.ok) throw await responseError(response, "Member could not be removed.");
-      setTeam((current) => current && {
-        ...current,
-        members: current.members.filter((member) => member.id !== userId),
-        memberCount: Math.max(0, (current.memberCount || 0) - 1),
-      });
-      toast.success("Member removed");
+      await fetchTeam();
+      toast.success("Member deactivated");
     } catch (cause: any) {
       toast.error(cause?.message || "Member could not be removed.");
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const reactivateMember = async (memberEmail: string) => {
+    if (!id) return;
+    setAction(`reactivate:${memberEmail}`);
+    try {
+      const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
+      });
+      if (!response.ok) throw await responseError(response, "Member could not be reactivated.");
+      setTeam(await response.json());
+      toast.success("Member reactivated");
+    } catch (cause: any) {
+      toast.error(cause?.message || "Member could not be reactivated.");
     } finally {
       setAction(null);
     }
@@ -164,32 +199,14 @@ export function TeamManagementRoute() {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <Card className="min-w-0">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2"><Users className="size-4" /> Members</CardTitle>
               <CardDescription>{team.memberCount || 0} of {memberLimit} member seats used. The global SuperAdmin is not counted.</CardDescription>
+              </div>
+              <Button onClick={() => setMemberDialogOpen(true)}><UserPlus /> Add member</Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              {team.canManage && (
-                <form onSubmit={addMember} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                  <Field className="flex-1">
-                    <FieldLabel htmlFor="team-member-email">Add existing account</FieldLabel>
-                    <Input
-                      id="team-member-email"
-                      type="email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="member@example.com"
-                      required
-                    />
-                    <FieldDescription>Invitation email will be added in a later slice.</FieldDescription>
-                  </Field>
-                  <Button type="submit" disabled={action !== null || !email.trim()}>
-                    {action === "add-member" && <Loader2 className="animate-spin" />}
-                    Add member
-                  </Button>
-                </form>
-              )}
-
               <div className="rounded-lg border">
                 <Table>
                   <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead className="w-16 text-right">Action</TableHead></TableRow></TableHeader>
@@ -203,15 +220,23 @@ export function TeamManagementRoute() {
                         <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{formatDate(member.joinedAt)}</TableCell>
                         <TableCell className="text-right">
-                      <Button
+                      {member.status === "active" ? <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => void removeMember(member.id, member.name || member.email)}
                         disabled={action !== null}
-                        aria-label={`Remove ${member.name || member.email || "member"}`}
+                        aria-label={`Deactivate ${member.name || member.email || "member"}`}
                       >
                         {action === `remove:${member.id}` ? <Loader2 className="animate-spin" /> : <UserMinus />}
-                      </Button>
+                      </Button> : <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => member.email && void reactivateMember(member.email)}
+                        disabled={action !== null || !member.email}
+                        aria-label={`Reactivate ${member.name || member.email || "member"}`}
+                      >
+                        {action === `reactivate:${member.email}` ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                      </Button>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -246,6 +271,34 @@ export function TeamManagementRoute() {
           </div>
         </div>
       </div>
+      <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
+        <DialogContent size="md">
+          <form onSubmit={addMember}>
+            <DialogHeader>
+              <DialogTitle>Add member</DialogTitle>
+              <DialogDescription>Add an existing account, or create a new account for this Team.</DialogDescription>
+            </DialogHeader>
+            <DialogBody className="space-y-4">
+              <Field>
+                <FieldLabel htmlFor="team-member-email">Email</FieldLabel>
+                <Input id="team-member-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="member@example.com" required autoFocus />
+              </Field>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox checked={createAccount} onCheckedChange={(checked) => setCreateAccount(checked === true)} />
+                Create a new account
+              </label>
+              {createAccount && <>
+                <Field><FieldLabel htmlFor="team-member-name">Name</FieldLabel><Input id="team-member-name" value={memberName} onChange={(event) => setMemberName(event.target.value)} required /></Field>
+                <Field><FieldLabel htmlFor="team-member-password">Temporary password</FieldLabel><Input id="team-member-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /><FieldDescription>Share this password securely. The member can change it after signing in.</FieldDescription></Field>
+              </>}
+            </DialogBody>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMemberDialogOpen(false)} disabled={action !== null}>Cancel</Button>
+              <Button type="submit" disabled={action !== null || !email.trim() || (createAccount && (!memberName.trim() || password.length < 8))}>{action === "add-member" && <Loader2 className="animate-spin" />} Add member</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

@@ -44,7 +44,12 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
         if (!isSuperAdmin) {
           const access = await canUserLogin(session.userId);
           if (access.allowed === false) {
-            return res.status(403).json({ error: "Team license is not active", code: access.code });
+            return res.status(403).json({
+              error: access.code === "MEMBER_INACTIVE"
+                ? "Your Team membership is inactive. Contact the SuperAdmin to restore access."
+                : "Your Team license is not active. Contact the SuperAdmin.",
+              code: access.code,
+            });
           }
         }
         (req as any).user = {

@@ -88,6 +88,8 @@ export const createTeamSchema = z.object({
 
 export const addTeamMemberSchema = z.object({
   email: z.string().trim().email().max(255),
+  name: z.string().trim().min(1).max(255).optional(),
+  password: z.string().min(8).max(128).optional(),
 });
 
 export const updateAccountSchema = z.object({

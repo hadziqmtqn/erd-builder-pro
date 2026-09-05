@@ -76,7 +76,10 @@ export async function checkLicense(req: ExpressRequest, res: ExpressResponse): P
 export async function addMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const current = actor(req);
-    const team = await teams.addMember(req.params.id, req.body.email, current.isSuperAdmin);
+    const team = await teams.addMember(req.params.id, req.body.email, current.isSuperAdmin, {
+      name: req.body.name,
+      password: req.body.password,
+    });
     if (!team) {
       res.status(404).json({ error: "Team not found" });
       return;

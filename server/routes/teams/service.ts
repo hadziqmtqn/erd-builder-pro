@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { isLocalPostgres } from "../../lib/config.js";
+import { hashPassword } from "../../lib/desktop-auth.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   activateSelfHostLicense,
@@ -39,6 +40,7 @@ const TEAM_ERROR_MESSAGES: Record<string, string> = {
   MEMBER_LIMIT_REACHED: "This Team has reached its member limit.",
   MEMBER_ALREADY_EXISTS: "This person is already a member of this Team.",
   MEMBER_ALREADY_ASSIGNED: "This person is already assigned to another Team.",
+  MEMBER_INACTIVE: "Your Team membership is inactive. Contact the SuperAdmin to restore access.",
 };
 
 function teamErrorMessage(code: string): string {
@@ -80,6 +82,40 @@ function assertSuperAdmin(isSuperAdmin: boolean): void {
 function mapClientError(error: unknown): TeamServiceError | null {
   if (!(error instanceof LicenseClientError)) return null;
   return new TeamServiceError(error.code, error.status);
+}
+
+const LICENSE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+
+async function verifyCurrentLicense(team: any): Promise<VerifiedEntitlement> {
+  const stored = getStoredLicense(team.id);
+  if (!stored) throw new TeamServiceError("LICENSE_NOT_ACTIVATED", 403);
+  const lastChecked = Date.parse(stored.lastCheckedAt);
+  if (Number.isFinite(lastChecked) && Date.now() - lastChecked < LICENSE_CHECK_INTERVAL_MS) {
+    return verifyStoredLicense(team.id).entitlement;
+  }
+
+  try {
+    const memberCount = await db().teamMember.count({ where: { teamId: team.id, status: "active" } });
+    const result = await checkSelfHostLicense({ teamId: team.id, teamName: team.name, memberCount });
+    await db().team.update({
+      where: { id: team.id },
+      data: {
+        licenseId: result.entitlement.licenseId,
+        licenseStatus: "active",
+        licenseExpiresAt: new Date(result.entitlement.expiresAt * 1000),
+        maxMembers: result.entitlement.maxMembers,
+        bindingGeneration: result.entitlement.bindingGeneration,
+      },
+    });
+    return result.entitlement;
+  } catch (error) {
+    if (error instanceof LicenseClientError && ["LICENSE_SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE"].includes(error.code)) {
+      return verifyStoredLicense(team.id).entitlement;
+    }
+    const mapped = mapClientError(error);
+    await db().team.update({ where: { id: team.id }, data: { licenseStatus: "invalid" } }).catch(() => {});
+    throw mapped || error;
+  }
 }
 
 function licenseInfo(team: any) {
@@ -175,7 +211,7 @@ function toTeamResponse(team: any, canManage: boolean) {
     id: team.id,
     name: team.name,
     members,
-    memberCount: members ? members.length : team._count?.members ?? 0,
+    memberCount: members ? members.filter((member: any) => member.status === "active").length : team._count?.members ?? 0,
     canManage,
     license: licenseInfo(team),
   };
@@ -194,9 +230,8 @@ async function findTeam(teamId: string, userId: string, isSuperAdmin: boolean): 
   const team = await database.team.findUnique({
     where: { id: teamId },
     include: {
-      _count: { select: { members: true } },
+      _count: { select: { members: { where: { status: "active" } } } },
       members: {
-        where: { status: "active" },
         orderBy: { joinedAt: "asc" },
         include: { user: { select: { id: true, email: true, name: true } } },
       },
@@ -207,10 +242,10 @@ async function findTeam(teamId: string, userId: string, isSuperAdmin: boolean): 
 
 export async function canAccessTeam(teamId: string, userId: string, isSuperAdmin: boolean): Promise<boolean> {
   const team = await findTeam(teamId, userId, isSuperAdmin);
-  if (!team || team.status !== "active") return false;
+  if (!team || team.status !== "active" || team.licenseStatus !== "active") return false;
   if (isLocalDashboardFixture(team)) return true;
   try {
-    verifyStoredLicense(teamId);
+    await verifyCurrentLicense(team);
     return true;
   } catch {
     return false;
@@ -220,11 +255,11 @@ export async function canAccessTeam(teamId: string, userId: string, isSuperAdmin
 export async function listTeams(userId: string, isSuperAdmin: boolean) {
   const database = db();
   const teams = isSuperAdmin
-    ? await database.team.findMany({ orderBy: { createdAt: "desc" }, include: { _count: { select: { members: true } } } })
+    ? await database.team.findMany({ orderBy: { createdAt: "desc" }, include: { _count: { select: { members: { where: { status: "active" } } } } } })
     : (await database.teamMember.findMany({
         where: { userId, status: "active" },
         orderBy: { joinedAt: "desc" },
-        include: { team: { include: { _count: { select: { members: true } } } } },
+        include: { team: { include: { _count: { select: { members: { where: { status: "active" } } } } } } },
       })).map((membership: any) => membership.team);
 
   return teams.filter((team: any) => team?.type !== "personal").map((team: any) => toTeamResponse(team, isSuperAdmin));
@@ -332,7 +367,12 @@ export async function refreshTeamLicense(teamId: string, userId: string, isSuper
   return getTeam(teamId, userId, true);
 }
 
-export async function addMember(teamId: string, email: string, isSuperAdmin: boolean) {
+export async function addMember(
+  teamId: string,
+  email: string,
+  isSuperAdmin: boolean,
+  account: { name?: string; password?: string } = {},
+) {
   assertSuperAdmin(isSuperAdmin);
   const database = db();
   const team = await database.team.findUnique({ where: { id: teamId } });
@@ -340,7 +380,7 @@ export async function addMember(teamId: string, email: string, isSuperAdmin: boo
 
   let entitlement: VerifiedEntitlement;
   try {
-    entitlement = verifyStoredLicense(teamId).entitlement;
+    entitlement = await verifyCurrentLicense(team);
   } catch (error) {
     throw mapClientError(error) || error;
   }
@@ -349,20 +389,29 @@ export async function addMember(teamId: string, email: string, isSuperAdmin: boo
   }
   const maxMembers = entitlement.maxMembers;
 
-  const user = await database.user.findUnique({
+  let user = await database.user.findUnique({
     where: { email: email.trim().toLowerCase() },
     select: { id: true, email: true, name: true, isSuperAdmin: true },
   });
-  if (!user) throw new TeamServiceError("USER_NOT_FOUND", 404);
-  if (user.isSuperAdmin) throw new TeamServiceError("SUPER_ADMIN_CANNOT_BE_MEMBER", 409);
+  if (!user && (!account.name || !account.password)) throw new TeamServiceError("USER_NOT_FOUND", 404);
+  if (user?.isSuperAdmin) throw new TeamServiceError("SUPER_ADMIN_CANNOT_BE_MEMBER", 409);
 
   try {
-    await database.$transaction(async (transaction: any) => {
+    user = await database.$transaction(async (transaction: any) => {
       // ponytail: serializable transaction keeps concurrent member additions inside the seat limit.
       const memberCount = await transaction.teamMember.count({ where: { teamId, status: "active" } });
       if (memberCount >= maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409);
+      const memberUser = user || await transaction.user.create({
+        data: {
+          email: email.trim().toLowerCase(),
+          name: account.name!.trim(),
+          password: hashPassword(account.password!),
+          isSuperAdmin: false,
+        },
+        select: { id: true, email: true, name: true, isSuperAdmin: true },
+      });
       const activeMembership = await transaction.teamMember.findFirst({
-        where: { userId: user.id, status: "active" },
+        where: { userId: memberUser.id, status: "active" },
         select: { teamId: true },
       });
       if (activeMembership) {
@@ -371,9 +420,12 @@ export async function addMember(teamId: string, email: string, isSuperAdmin: boo
           409,
         );
       }
-      await transaction.teamMember.create({
-        data: { id: randomUUID(), teamId, userId: user.id, role: "member", status: "active" },
+      await transaction.teamMember.upsert({
+        where: { teamId_userId: { teamId, userId: memberUser.id } },
+        create: { id: randomUUID(), teamId, userId: memberUser.id, role: "member", status: "active" },
+        update: { status: "active", joinedAt: new Date() },
       });
+      return memberUser;
     }, { isolationLevel: "Serializable" });
   } catch (error: any) {
     if (error?.code === "P2002") throw new TeamServiceError("MEMBER_ALREADY_EXISTS", 409);
@@ -385,7 +437,14 @@ export async function addMember(teamId: string, email: string, isSuperAdmin: boo
 export async function removeMember(teamId: string, userId: string, isSuperAdmin: boolean) {
   assertSuperAdmin(isSuperAdmin);
   const database = db();
-  const result = await database.teamMember.deleteMany({ where: { teamId, userId } });
+  const result = await database.$transaction(async (transaction: any) => {
+    const updated = await transaction.teamMember.updateMany({
+      where: { teamId, userId, status: "active" },
+      data: { status: "inactive" },
+    });
+    if (updated.count > 0) await transaction.session.deleteMany({ where: { userId } });
+    return updated;
+  });
   return result.count > 0;
 }
 
@@ -393,8 +452,9 @@ export async function removeMember(teamId: string, userId: string, isSuperAdmin:
 export async function canUserLogin(userId: string): Promise<{ allowed: true; teamId?: string } | { allowed: false; code: string }> {
   if (!isLocalPostgres() || !prisma) return { allowed: true };
   const memberships = await (prisma as any).teamMember.findMany({
-    where: { userId, status: "active" },
+    where: { userId },
     select: {
+      status: true,
       teamId: true,
       team: {
         select: {
@@ -408,16 +468,19 @@ export async function canUserLogin(userId: string): Promise<{ allowed: true; tea
     },
   });
   if (memberships.length === 0) return { allowed: true };
+  const activeMemberships = memberships.filter((membership: any) => membership.status === "active");
+  if (activeMemberships.length === 0) return { allowed: false, code: "MEMBER_INACTIVE" };
 
-  for (const membership of memberships) {
+  for (const membership of activeMemberships) {
+    if (membership.team?.status !== "active" || membership.team?.licenseStatus !== "active") continue;
     if (isLocalDashboardFixture(membership.team)) return { allowed: true, teamId: membership.teamId };
     try {
-      verifyStoredLicense(membership.teamId);
+      await verifyCurrentLicense(membership.team);
       return { allowed: true, teamId: membership.teamId };
     } catch {
       // A member may belong to another still-valid Team; only deny when none remain valid.
     }
   }
-  const stored = getStoredLicense(memberships[0].teamId);
+  const stored = getStoredLicense(activeMemberships[0].teamId);
   return { allowed: false, code: stored ? "LICENSE_EXPIRED_OR_INVALID" : "LICENSE_NOT_ACTIVATED" };
 }
