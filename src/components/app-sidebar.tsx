@@ -146,6 +146,7 @@ export const AppSidebar = React.memo(({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState('all');
   const showDbClient = isInstalledApp();
+  const isSelfHosted = !showDbClient && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
@@ -249,6 +250,7 @@ export const AppSidebar = React.memo(({
           teams={teams}
           activeTeamId={activeTeamId}
           enabled={teamsAvailable}
+          selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
           onSelect={onTeamSelect}
           onAdd={() => setIsTeamCreateOpen(true)}

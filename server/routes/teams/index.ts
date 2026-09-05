@@ -11,7 +11,7 @@ const licenseRequestLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many license requests, please try again later" },
+  message: { error: "Too many activation attempts. Please wait a few minutes and try again." },
 });
 
 router.use(authenticate);

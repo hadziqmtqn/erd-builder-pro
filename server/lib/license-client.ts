@@ -9,6 +9,7 @@ import path from "node:path";
 import { createPublicKey, randomUUID, verify as verifySignature } from "node:crypto";
 
 import { isLocalPostgres } from "./config.js";
+import { ensureInstallationIdentity } from "./installation-identity.js";
 
 const PROTOCOL_VERSION = 1;
 const PRODUCT_TYPE = "self_host";
@@ -83,13 +84,23 @@ function readState(): LicenseStateFile {
     if (parsed.version !== 1 || typeof parsed.installationId !== "string" || !UUID_V4.test(parsed.installationId) || !parsed.licenses) {
       throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
     }
+    const identity = ensureInstallationIdentity(parsed.installationId);
+    if (identity.installationId !== parsed.installationId) {
+      throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
+    }
     return parsed as LicenseStateFile;
   } catch (error) {
     if (error instanceof LicenseClientError) throw error;
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
       throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
     }
-    const state: LicenseStateFile = { version: 1, installationId: randomUUID(), licenses: {} };
+    let installationId: string;
+    try {
+      installationId = ensureInstallationIdentity().installationId;
+    } catch {
+      throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
+    }
+    const state: LicenseStateFile = { version: 1, installationId, licenses: {} };
     writeState(state);
     return state;
   }

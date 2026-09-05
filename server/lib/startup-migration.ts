@@ -240,12 +240,16 @@ async function createTeamTablesIfMissing(): Promise<void> {
   if (!prisma || (!isDesktopMode() && !isLocalPostgres())) return;
 
   await addColumnIfMissing("projects", "team_id", '"team_id" TEXT');
+
   try {
     const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "teams" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "name" TEXT NOT NULL,
+        "type" TEXT NOT NULL DEFAULT 'team',
+        "created_by" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'active',
         "license_id" TEXT UNIQUE,
         "license_code_last_four" TEXT,
         "license_status" TEXT NOT NULL DEFAULT 'active',
@@ -253,8 +257,12 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "max_members" INTEGER,
         "binding_generation" INTEGER DEFAULT 0,
         "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP
+        "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "teams_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
       )`);
+    await addColumnIfMissing("teams", "type", '"type" TEXT NOT NULL DEFAULT \'team\'');
+    await addColumnIfMissing("teams", "created_by", '"created_by" TEXT');
+    await addColumnIfMissing("teams", "status", '"status" TEXT NOT NULL DEFAULT \'active\'');
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "team_members" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -266,11 +274,230 @@ async function createTeamTablesIfMissing(): Promise<void> {
         CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
         CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
       )`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "team_invitations" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "team_id" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "token_hash" TEXT NOT NULL UNIQUE,
+        "expires_at" ${dateType} NOT NULL,
+        "accepted_at" ${dateType},
+        "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "team_invitations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "team_license_entitlements" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "team_id" TEXT NOT NULL,
+        "activation_id" TEXT NOT NULL UNIQUE,
+        "license_id" TEXT NOT NULL,
+        "installation_id" TEXT NOT NULL,
+        "encrypted_client_token" TEXT NOT NULL,
+        "signed_entitlement" TEXT NOT NULL,
+        "expires_at" ${dateType} NOT NULL,
+        "grace_until" ${dateType},
+        "status" TEXT NOT NULL,
+        "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "team_license_entitlements_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      )`);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "team_audit_events" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "team_id" TEXT,
+        "actor_id" TEXT,
+        "action" TEXT NOT NULL,
+        "target_type" TEXT,
+        "target_id" TEXT,
+        "metadata" TEXT NOT NULL DEFAULT '{}',
+        "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "team_audit_events_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+        CONSTRAINT "team_audit_events_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+      )`);
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_teams_license_status" ON "teams"("license_status")');
     await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "team_members_team_user_key" ON "team_members"("team_id", "user_id")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_members_user_status" ON "team_members"("user_id", "status")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_team_expires" ON "team_invitations"("team_id", "expires_at")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_license_entitlements_team_status" ON "team_license_entitlements"("team_id", "status")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_license_entitlements_license" ON "team_license_entitlements"("license_id")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at")');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_actor_created" ON "team_audit_events"("actor_id", "created_at")');
+    await repairDuplicateActiveMemberships();
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to create Team tables (non-fatal)");
+  }
+}
+
+function sqlLiteral(value: string | number | null): string {
+  if (value === null) return "NULL";
+  if (typeof value === "number") return Number.isSafeInteger(value) ? String(value) : "NULL";
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+async function repairDuplicateActiveMemberships(): Promise<void> {
+  if (!prisma) return;
+  if (!isLocalPostgres()) {
+    try {
+      await prisma.$executeRawUnsafe(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\'',
+      );
+    } catch (err: any) {
+      logger.warn({ err: err?.message }, "Could not add the Team membership guard to SQLite without changing existing rows");
+    }
+    return;
+  }
+  const duplicates = await prisma.$queryRawUnsafe<{ user_id: string; count: number | bigint }[]>(
+    `SELECT "user_id", COUNT(*) AS "count"
+     FROM "team_members"
+     WHERE "status" = 'active'
+     GROUP BY "user_id"
+     HAVING COUNT(*) > 1`,
+  );
+
+  for (const duplicate of duplicates) {
+    const memberships = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT "id" FROM "team_members"
+       WHERE "user_id" = ${sqlLiteral(duplicate.user_id)} AND "status" = 'active'
+       ORDER BY "joined_at" ASC, "id" ASC`,
+    );
+    for (const membership of memberships.slice(1)) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "team_members" SET "status" = 'inactive'
+         WHERE "id" = ${sqlLiteral(membership.id)} AND "status" = 'active'`,
+      );
+    }
+    logger.warn(
+      { userId: duplicate.user_id, retainedMembershipId: memberships[0]?.id, deactivatedCount: Math.max(0, memberships.length - 1) },
+      "Repaired duplicate active Team memberships without deleting rows",
+    );
+  }
+
+  await prisma.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\'',
+  );
+}
+
+type LegacyUser = { id: string; email: string | null; name: string | null; is_super_admin: boolean | number | null };
+type LegacyProject = { id: number; user_id: string | null; team_id: string | null };
+type LegacyTeam = { id: string; type: string | null; status: string | null };
+
+async function recordLegacyRecovery(projectId: number, reason: string): Promise<void> {
+  if (!prisma) return;
+  const targetId = String(projectId);
+  const existing = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT "id" FROM "team_audit_events"
+     WHERE "action" = 'legacy_recovery_required'
+       AND "target_type" = 'project'
+       AND "target_id" = ${sqlLiteral(targetId)}
+     LIMIT 1`,
+  );
+  if (existing.length > 0) return;
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "team_audit_events"
+      ("id", "action", "target_type", "target_id", "metadata")
+     VALUES (${sqlLiteral(randomUUID())}, 'legacy_recovery_required', 'project', ${sqlLiteral(targetId)}, ${sqlLiteral(JSON.stringify({ reason }))})`,
+  );
+}
+
+async function createPersonalTeam(user: LegacyUser): Promise<string> {
+  if (!prisma) throw new Error("Database not available");
+  const existing = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT "id" FROM "teams"
+     WHERE "type" = 'personal' AND "created_by" = ${sqlLiteral(user.id)}
+     ORDER BY "created_at" ASC, "id" ASC LIMIT 1`,
+  );
+  if (existing[0]) return existing[0].id;
+
+  const label = user.name?.trim() || user.email?.split("@")[0]?.trim() || "User";
+  const name = `${label.slice(0, 90)} Personal`;
+  const id = randomUUID();
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "teams" ("id", "name", "type", "created_by", "status", "license_status")
+     VALUES (${sqlLiteral(id)}, ${sqlLiteral(name)}, 'personal', ${sqlLiteral(user.id)}, 'active', 'not_required')`,
+  );
+  return id;
+}
+
+async function backfillLegacyTeamData(): Promise<void> {
+  if (!prisma || !isLocalPostgres()) return;
+
+  try {
+    const [users, teams, projects, memberships] = await Promise.all([
+      prisma.$queryRawUnsafe<LegacyUser[]>(`SELECT "id", "email", "name", "is_super_admin" FROM "users"`),
+      prisma.$queryRawUnsafe<LegacyTeam[]>(`SELECT "id", "type", "status" FROM "teams"`),
+      prisma.$queryRawUnsafe<LegacyProject[]>(`SELECT "id", "user_id", "team_id" FROM "projects" WHERE "team_id" IS NULL`),
+      prisma.$queryRawUnsafe<{ user_id: string; team_id: string }[]>(`SELECT "user_id", "team_id" FROM "team_members" WHERE "status" = 'active'`),
+    ]);
+    if (projects.length === 0) return;
+
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const activeTeamByUser = new Map(memberships.map((membership) => [membership.user_id, membership.team_id]));
+    const candidateTeams = teams.filter((team) => team.status !== "inactive" && team.type !== "personal");
+    const configuredTeamId = process.env.ERDBPRO_LEGACY_TEAM_ID?.trim();
+    const configuredTeam = configuredTeamId && candidateTeams.some((team) => team.id === configuredTeamId)
+      ? configuredTeamId
+      : null;
+    const initialTeamId = configuredTeam || (candidateTeams.length === 1 ? candidateTeams[0].id : null);
+    const needsSelection = !initialTeamId && candidateTeams.length > 0;
+    let assigned = 0;
+    let recovered = 0;
+    const personalTeams = new Map<string, string>();
+
+    for (const project of projects) {
+      if (!project.user_id) {
+        await recordLegacyRecovery(project.id, "missing_owner");
+        recovered++;
+        continue;
+      }
+      const user = userById.get(project.user_id);
+      if (!user) {
+        await recordLegacyRecovery(project.id, "owner_not_found");
+        recovered++;
+        continue;
+      }
+
+      let targetTeamId = activeTeamByUser.get(user.id) || null;
+      if (!targetTeamId && Boolean(user.is_super_admin)) {
+        targetTeamId = personalTeams.get(user.id) || await createPersonalTeam(user);
+        personalTeams.set(user.id, targetTeamId);
+      }
+      if (!targetTeamId && !Boolean(user.is_super_admin)) {
+        targetTeamId = initialTeamId;
+        if (targetTeamId) {
+          const reactivated = await prisma.$executeRawUnsafe(
+            `UPDATE "team_members" SET "status" = 'active'
+             WHERE "team_id" = ${sqlLiteral(targetTeamId)} AND "user_id" = ${sqlLiteral(user.id)}`,
+          );
+          if (!reactivated) {
+            await prisma.$executeRawUnsafe(
+              `INSERT INTO "team_members" ("id", "team_id", "user_id", "role", "status")
+               VALUES (${sqlLiteral(randomUUID())}, ${sqlLiteral(targetTeamId)}, ${sqlLiteral(user.id)}, 'member', 'active')`,
+            );
+          }
+          activeTeamByUser.set(user.id, targetTeamId);
+        }
+      }
+
+      if (!targetTeamId) {
+        await recordLegacyRecovery(project.id, needsSelection ? "initial_team_selection_required" : "initial_team_not_found");
+        recovered++;
+        continue;
+      }
+
+      await prisma.$executeRawUnsafe(
+        `UPDATE "projects" SET "team_id" = ${sqlLiteral(targetTeamId)}
+         WHERE "id" = ${sqlLiteral(project.id)} AND "team_id" IS NULL`,
+      );
+      assigned++;
+    }
+
+    if (assigned || recovered) {
+      logger.info({ assigned, recoveryRequired: recovered }, "Backfilled legacy projects into Team scope");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to backfill legacy Team data (non-fatal)");
   }
 }
 
@@ -625,6 +852,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await backfillLegacyTeamData();
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.
     await ensureRepositoryLinkColumns();

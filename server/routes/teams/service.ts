@@ -13,11 +13,42 @@ import {
   type VerifiedEntitlement,
 } from "../../lib/license-client.js";
 
+const TEAM_ERROR_MESSAGES: Record<string, string> = {
+  LICENSE_SERVICE_UNAVAILABLE: "We couldn't reach the license service. Check your internet connection and try again.",
+  LICENSE_CLIENT_NOT_CONFIGURED: "License activation isn't configured on this server. Please contact your administrator.",
+  LICENSE_API_MUST_USE_HTTPS: "License activation requires a secure connection. Please contact your administrator.",
+  LICENSE_API_URL_INVALID: "The license service address is invalid. Please contact your administrator.",
+  LICENSE_RESPONSE_INVALID: "The license service returned an unexpected response. Please try again later.",
+  LICENSE_REQUEST_REJECTED: "This license key could not be accepted. Check the key and try again.",
+  LICENSE_SIGNATURE_INVALID: "We couldn't verify this license. Please contact your administrator.",
+  LICENSE_VERIFICATION_NOT_CONFIGURED: "License verification isn't configured on this server. Please contact your administrator.",
+  LICENSE_ENTITLEMENT_INVALID: "This license cannot be used to create a Team. Check the key or contact support.",
+  LICENSE_EXPIRED: "This license has expired. Use an active license key and try again.",
+  LICENSE_EXPIRED_OR_INVALID: "This license is invalid or expired. Check the key and try again.",
+  LICENSE_NOT_ACTIVATED: "This Team hasn't been activated yet.",
+  LICENSE_STATE_INVALID: "The saved license information is no longer valid. Please contact your administrator.",
+  BINDING_GENERATION_MISMATCH: "The license information is out of date. Check the license again or contact support.",
+  SELF_HOST_ONLY: "Teams are available only on a self-hosted server.",
+  TEAM_NAME_TAKEN: "A Team with this name already exists. Choose a different name.",
+  TEAM_PERSISTENCE_FAILED: "The Team couldn't be saved after the license was activated. Please contact support before trying again.",
+  SUPER_ADMIN_REQUIRED: "Only the SuperAdmin can manage Teams.",
+  LICENSE_MEMBER_LIMIT_MISSING: "This license doesn't include a member limit. Please contact support.",
+  USER_NOT_FOUND: "No account was found with that email address.",
+  SUPER_ADMIN_CANNOT_BE_MEMBER: "A SuperAdmin cannot be added as a Team member.",
+  MEMBER_LIMIT_REACHED: "This Team has reached its member limit.",
+  MEMBER_ALREADY_EXISTS: "This person is already a member of this Team.",
+  MEMBER_ALREADY_ASSIGNED: "This person is already assigned to another Team.",
+};
+
+function teamErrorMessage(code: string): string {
+  return TEAM_ERROR_MESSAGES[code] || "We couldn't complete this Team request. Please try again or contact your administrator.";
+}
+
 export class TeamServiceError extends Error {
   constructor(
     public readonly code: string,
     public readonly status: number,
-    message = code,
+    message = teamErrorMessage(code),
   ) {
     super(message);
     this.name = "TeamServiceError";
@@ -135,7 +166,7 @@ async function findTeam(teamId: string, userId: string, isSuperAdmin: boolean): 
     if (!membership) return null;
   }
 
-  return database.team.findUnique({
+  const team = await database.team.findUnique({
     where: { id: teamId },
     include: {
       _count: { select: { members: true } },
@@ -146,6 +177,7 @@ async function findTeam(teamId: string, userId: string, isSuperAdmin: boolean): 
       },
     },
   });
+  return team?.type === "personal" ? null : team;
 }
 
 export async function listTeams(userId: string, isSuperAdmin: boolean) {
@@ -158,7 +190,7 @@ export async function listTeams(userId: string, isSuperAdmin: boolean) {
         include: { team: { include: { _count: { select: { members: true } } } } },
       })).map((membership: any) => membership.team);
 
-  return teams.map((team: any) => toTeamResponse(team, isSuperAdmin));
+  return teams.filter((team: any) => team?.type !== "personal").map((team: any) => toTeamResponse(team, isSuperAdmin));
 }
 
 export async function getTeam(teamId: string, userId: string, isSuperAdmin: boolean) {
@@ -205,6 +237,9 @@ export async function createTeam(data: {
       data: {
         id: teamId,
         name,
+        type: "team",
+        createdBy: data.userId,
+        status: "active",
         licenseId: activation.entitlement.licenseId,
         licenseCodeLastFour: activation.codeLastFour,
         licenseStatus: "active",
@@ -288,6 +323,16 @@ export async function addMember(teamId: string, email: string, isSuperAdmin: boo
       // ponytail: serializable transaction keeps concurrent member additions inside the seat limit.
       const memberCount = await transaction.teamMember.count({ where: { teamId, status: "active" } });
       if (memberCount >= maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409);
+      const activeMembership = await transaction.teamMember.findFirst({
+        where: { userId: user.id, status: "active" },
+        select: { teamId: true },
+      });
+      if (activeMembership) {
+        throw new TeamServiceError(
+          activeMembership.teamId === teamId ? "MEMBER_ALREADY_EXISTS" : "MEMBER_ALREADY_ASSIGNED",
+          409,
+        );
+      }
       await transaction.teamMember.create({
         data: { id: randomUUID(), teamId, userId: user.id, role: "member", status: "active" },
       });
