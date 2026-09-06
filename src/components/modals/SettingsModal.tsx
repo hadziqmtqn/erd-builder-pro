@@ -107,6 +107,9 @@ export function SettingsModal() {
     };
   }, [isTauriApp, setIsSettingsOpen, setSettingsTab]);
 
+  const { isGuest, user } = useAuth();
+  const isSuperAdmin = isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin);
+
   const {
     providers,
     configs,
@@ -116,9 +119,7 @@ export function SettingsModal() {
     handleTestConnection,
     updateProviderLocal,
     updateConfigLocal,
-  } = useAIProviders();
-
-  const { isGuest } = useAuth();
+  } = useAIProviders(isSuperAdmin);
 
   const {
     models,
@@ -132,7 +133,7 @@ export function SettingsModal() {
     startEditingModel,
     cancelEdit,
     refresh: refreshModels,
-  } = useAIModels();
+  } = useAIModels(isSuperAdmin);
 
   const {
     prompts,
@@ -155,7 +156,6 @@ export function SettingsModal() {
           label: "More",
           items: [
             { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
-            { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
             { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
           ]
         },
@@ -174,7 +174,7 @@ export function SettingsModal() {
       {
         label: "Feature",
         items: [
-          { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
+          ...(isSuperAdmin ? [{ id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> }] : []),
           { id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
@@ -184,14 +184,22 @@ export function SettingsModal() {
         label: "More",
         items: [
           { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
-          { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
-          { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
-          { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
+          ...(isSuperAdmin ? [
+            { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
+            { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
+            { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
+          ] : []),
           { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
         ]
-      }
+      },
     ];
-  }, [isGuest, isDesktopApp]);
+  }, [isGuest, isDesktopApp, isSuperAdmin]);
+
+  React.useEffect(() => {
+    if (!isSuperAdmin && ['ai-config', 'export-data', 'import-data', 'backups'].includes(settingsTab)) {
+      setSettingsTab(isGuest ? 'appearance' : 'account');
+    }
+  }, [isGuest, isSuperAdmin, settingsTab, setSettingsTab]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {
@@ -299,7 +307,7 @@ export function SettingsModal() {
             </header>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {settingsTab === 'ai-config' && (
+              {isSuperAdmin && settingsTab === 'ai-config' && (
                 <div className="p-4 md:p-6">
                   {/* Button tabs */}
                   <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-full mb-4">
@@ -378,7 +386,7 @@ export function SettingsModal() {
                 <McpServerTab />
               )}
 
-              {settingsTab === 'backups' && (
+              {isSuperAdmin && settingsTab === 'backups' && (
                 <div className="p-6 space-y-6">
                   <BackupsView />
                 </div>
@@ -396,13 +404,13 @@ export function SettingsModal() {
 
               {settingsTab === 'keymap' && <KeymapTab />}
 
-              {settingsTab === 'export-data' && (
+              {isSuperAdmin && settingsTab === 'export-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <DataExport />
                 </div>
               )}
 
-              {settingsTab === 'import-data' && (
+              {isSuperAdmin && settingsTab === 'import-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold">Import Data</h2>

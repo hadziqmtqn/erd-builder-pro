@@ -1,6 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { handleError } from "../../lib/utils.js";
-import { requireAdmin } from "../../lib/security.js";
+import { isAdminUser, requireAdmin } from "../../lib/security.js";
 import * as aiService from "./service.js";
 
 function getUserId(req: ExpressRequest): string {
@@ -154,7 +154,7 @@ export async function listPrompts(req: ExpressRequest, res: ExpressResponse): Pr
 export async function savePrompt(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const userId = getUserId(req);
-    const isAdmin = !!requireAdmin(req, res); // contextual check
+    const isAdmin = isAdminUser(req);
     const result = await aiService.savePrompt(userId, req.body, isAdmin);
     if ((result as any).notFound) { res.status(404).json({ error: "Prompt not found" }); return; }
     if ((result as any).forbidden) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -167,7 +167,7 @@ export async function savePrompt(req: ExpressRequest, res: ExpressResponse): Pro
 export async function deletePrompt(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const userId = getUserId(req);
-    const isAdmin = !!requireAdmin(req, res);
+    const isAdmin = isAdminUser(req);
     const result = await aiService.deletePrompt(req.params.id, userId, isAdmin);
     if ((result as any).notFound) { res.status(404).json({ error: "Prompt not found" }); return; }
     if ((result as any).forbidden) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -179,8 +179,8 @@ export async function deletePrompt(req: ExpressRequest, res: ExpressResponse): P
 
 export async function toggleDefaultPrompt(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
-    const isAdmin = !!requireAdmin(req, res);
-    const result = await aiService.toggleDefaultPrompt(req.params.id, req.body.is_default, isAdmin);
+    const isAdmin = isAdminUser(req);
+    const result = await aiService.toggleDefaultPrompt(req.params.id, req.body.is_default, getUserId(req), isAdmin);
     if ((result as any).notFound) { res.status(404).json({ error: "Prompt not found" }); return; }
     if ((result as any).forbidden) { res.status(403).json({ error: "Forbidden" }); return; }
     res.json(result);

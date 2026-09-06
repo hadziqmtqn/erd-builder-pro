@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma.js";
 import { useLocalAuth } from "../lib/config.js";
-import { listHistory, readHistoryRevision, readOwnedEntity } from "../routes/entity-changes/service.js";
+import { parseRevisionChanges } from "../lib/entity-history.js";
+import { readEntity } from "../routes/entity-changes/service.js";
 import { searchWorkspaceFiles, type WorkspaceSearchType } from "./workspace-search.js";
 
 export const PUBLIC_MCP_DOCUMENT_TYPES = ["notes", "flowcharts", "drawings", "diagrams"] as const;
@@ -24,29 +25,72 @@ function projectIdentifier(identifier: string) {
 async function resolveProject(userId: string, projectUid?: string) {
   if (!projectUid) return null;
   const id = projectIdentifier(projectUid);
+  const projectScope = await publicProjectScope(userId);
   const project = await prisma?.project.findFirst({
-    where: { userId, isDeleted: false, OR: [{ uid: projectUid }, ...(id === null ? [] : [{ id }])] } as any,
+    where: { AND: [projectScope, { OR: [{ uid: projectUid }, ...(id === null ? [] : [{ id }])] }] } as any,
     select: { id: true },
   });
   if (!project) throw new Error("Project not found");
   return project;
 }
 
+async function activeTeamIds(userId: string): Promise<string[]> {
+  if (!useLocalAuth() || !prisma) return [];
+  const memberships = await (prisma as any).teamMember.findMany({
+    where: { userId, status: "active", team: { is: { status: "active", type: { not: "personal" } } } },
+    select: { teamId: true },
+  });
+  return memberships.map((membership: any) => membership.teamId);
+}
+
+async function publicProjectScope(userId: string) {
+  if (!useLocalAuth()) return { userId, isDeleted: false };
+  const teamIds = await activeTeamIds(userId);
+  return {
+    isDeleted: false,
+    OR: [
+      { userId, teamId: null },
+      ...(teamIds.length ? [{ teamId: { in: teamIds } }] : []),
+    ],
+  };
+}
+
+async function publicDocumentScope(userId: string) {
+  if (!useLocalAuth()) return { userId };
+  const teamIds = await activeTeamIds(userId);
+  return {
+    OR: [
+      { userId, projectId: null },
+      { userId, project: { teamId: null } },
+      ...(teamIds.length ? [{ project: { teamId: { in: teamIds } } }] : []),
+    ],
+  };
+}
+
+function documentIdentifier(uid: string) {
+  const id = projectIdentifier(uid);
+  return id === null ? { uid } : { OR: [{ uid }, { id }] };
+}
+
 export async function listPublicWorkspaceFiles(userId: string, projectUid?: string) {
   if (!prisma) throw new Error("Database connection not available");
   const selectedProject = await resolveProject(userId, projectUid);
+  const projectScope = await publicProjectScope(userId);
   const projects = await prisma.project.findMany({
-    where: { userId, isDeleted: false, ...(selectedProject ? { id: selectedProject.id } : {}) },
+    where: { ...projectScope, ...(selectedProject ? { id: selectedProject.id } : {}) },
     select: { id: true, uid: true, name: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
   const projectIds = projects.map(project => project.id);
+  const documentScope = await publicDocumentScope(userId);
   const documentWhere = {
-    userId,
     isDeleted: false,
-    ...(selectedProject
-      ? { projectId: selectedProject.id }
-      : { OR: [{ projectId: null }, ...(projectIds.length ? [{ projectId: { in: projectIds } }] : [])] }),
+    AND: [
+      documentScope,
+      selectedProject
+        ? { projectId: selectedProject.id }
+        : { OR: [{ projectId: null }, ...(projectIds.length ? [{ projectId: { in: projectIds } }] : [])] },
+    ],
   };
 
   const [notes, flowcharts, drawings, diagrams] = await Promise.all([
@@ -66,12 +110,15 @@ export async function searchPublicWorkspace(userId: string, query: string, type?
 }
 
 async function readAllowedDocument(userId: string, type: PublicMcpDocumentType, uid: string) {
-  const current = await readOwnedEntity(type, uid, userId);
+  const documentScope = await publicDocumentScope(userId);
+  const current = await readEntity(type, {
+    AND: [documentIdentifier(uid), documentScope, { isDeleted: false }],
+  });
   if (!current || current.entity.isDeleted) throw new Error("Document not found");
   if (type === "diagrams" && (current.entity as any).sourceType === "production_db") throw new Error("Document not found");
   if (current.entity.projectId !== null && current.entity.projectId !== undefined) {
     const activeProject = await prisma?.project.findFirst({
-      where: { id: current.entity.projectId, userId, isDeleted: false },
+      where: { ...(await publicProjectScope(userId)), id: current.entity.projectId },
       select: { id: true },
     });
     if (!activeProject) throw new Error("Document not found");
@@ -91,15 +138,39 @@ export async function readPublicDocument(userId: string, type: PublicMcpDocument
 }
 
 export async function listPublicHistory(userId: string, type: PublicMcpDocumentType, uid: string, limit: number) {
-  await readAllowedDocument(userId, type, uid);
-  const history = await listHistory(type, uid, userId, limit);
-  if (!history) throw new Error("Document not found");
-  return serialize(history);
+  const current = await readAllowedDocument(userId, type, uid);
+  const revisions = await prisma!.entityChange.findMany({
+    where: { entityType: { in: [type, type.slice(0, -1)] }, entityId: current.entityId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 100),
+    select: { id: true, version: true, changeType: true, createdAt: true },
+  });
+  return serialize({
+    current_updated_at: current.updatedAt,
+    revisions: revisions.map((revision: any) => ({
+      id: String(revision.id),
+      version: revision.version,
+      change_type: revision.changeType,
+      created_at: revision.createdAt,
+    })),
+  });
 }
 
 export async function readPublicHistory(userId: string, type: PublicMcpDocumentType, uid: string, revisionId: string) {
-  await readAllowedDocument(userId, type, uid);
-  const revision = await readHistoryRevision(type, uid, userId, revisionId);
+  const current = await readAllowedDocument(userId, type, uid);
+  const id = projectIdentifier(revisionId);
+  if (id === null) throw new Error("History revision not found");
+  const revision = await prisma!.entityChange.findFirst({
+    where: { id, entityType: { in: [type, type.slice(0, -1)] }, entityId: current.entityId },
+  });
   if (!revision) throw new Error("History revision not found");
-  return serialize(revision);
+  const envelope = parseRevisionChanges(type, revision.changes);
+  return serialize({
+    id: String(revision.id),
+    version: revision.version,
+    change_type: revision.changeType,
+    created_at: revision.createdAt,
+    source: envelope.source,
+    snapshot: envelope.snapshot,
+  });
 }

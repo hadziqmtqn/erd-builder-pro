@@ -92,7 +92,7 @@ export interface Diagram {
   id: number | string;
   uid?: string;
   name: string;
-  user_id?: string;
+  user_id?: string | null;
   project_id: number | string | null;
   projects?: Project;
   is_deleted: boolean;

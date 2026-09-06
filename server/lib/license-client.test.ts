@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { activateSelfHostLicense, LicenseClientError, verifySignedEntitlement } from "./license-client";
+import {
+  activateSelfHostLicense,
+  hasEntitlementCapability,
+  LicenseClientError,
+  verifySignedEntitlement,
+} from "./license-client";
 
 const originalIssuer = process.env.ERDBPRO_LICENSE_ISSUER;
 const originalPublicKey = process.env.ERDBPRO_LICENSE_PUBLIC_KEY;
@@ -36,7 +41,7 @@ function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-function signedEntitlement(installationId: string): string {
+function signedEntitlement(installationId: string, features: unknown = ["team_files"]): string {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   process.env.ERDBPRO_LICENSE_ISSUER = "https://license.example.test";
   process.env.ERDBPRO_LICENSE_PUBLIC_KEY = publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -58,7 +63,7 @@ function signedEntitlement(installationId: string): string {
     organization_type: "team",
     plan_code: "team-10",
     limits: { max_members: 10 },
-    features: ["team_files"],
+    features,
   };
   const signingInput = `${encode(header)}.${encode(claims)}`;
   const signature = sign(null, Buffer.from(signingInput), privateKey).toString("base64url");
@@ -92,7 +97,24 @@ describe("self-host license entitlement verification", () => {
       planCode: "team-10",
       maxMembers: 10,
       organizationType: "team",
+      features: { team_files: true },
     });
+    expect(hasEntitlementCapability(entitlement, "team_files")).toBe(true);
+  });
+
+  it("enables only explicitly signed capabilities", () => {
+    const installationId = "018f3f7e-1c33-43f2-a4e4-19b55e61d3fa";
+    const entitlement = verifySignedEntitlement(signedEntitlement(installationId, {
+      member_billing: true,
+      team_files: false,
+      "invalid-key": true,
+      string_value: "true",
+    }), installationId);
+
+    expect(hasEntitlementCapability(entitlement, "member_billing")).toBe(true);
+    expect(hasEntitlementCapability(entitlement, "team_files")).toBe(false);
+    expect(hasEntitlementCapability(entitlement, "invalid-key")).toBe(false);
+    expect(hasEntitlementCapability(entitlement, "string_value")).toBe(false);
   });
 
   it("rejects a payload changed after signing", () => {

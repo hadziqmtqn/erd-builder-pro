@@ -197,10 +197,21 @@ export async function getAiConfig(userId: string) {
   };
 }
 
-export async function getDefaultPrompt() {
-  const prompt = await prisma?.aiSystemPrompt.findFirst({
-    where: { isDefault: true },
-    select: { content: true },
-  });
-  return { content: prompt?.content || null };
+export async function getDefaultPrompt(userId: string) {
+  const [globalPrompt, personalPrompt] = await Promise.all([
+    prisma?.aiSystemPrompt.findFirst({
+      where: { userId: null, isDefault: true },
+      select: { content: true },
+    }),
+    prisma?.aiSystemPrompt.findFirst({
+      where: { userId, isDefault: true },
+      select: { content: true },
+    }),
+  ]);
+  return {
+    prompts: [
+      ...(globalPrompt?.content ? [{ scope: "global", content: globalPrompt.content }] : []),
+      ...(personalPrompt?.content ? [{ scope: "personal", content: personalPrompt.content }] : []),
+    ],
+  };
 }

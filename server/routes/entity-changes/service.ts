@@ -118,9 +118,8 @@ async function diagramSnapshot(diagram: any) {
   };
 }
 
-export async function readOwnedEntity(entityType: HistoryEntityType, uid: string, userId: string) {
+export async function readEntity(entityType: HistoryEntityType, where: Record<string, unknown>) {
   if (!prisma) throw new Error("Database connection not available");
-  const where = ownedWhere(uid, userId);
   const entity = entityType === "notes"
     ? await prisma.note.findFirst({ where })
     : entityType === "flowcharts"
@@ -136,6 +135,10 @@ export async function readOwnedEntity(entityType: HistoryEntityType, uid: string
     updatedAt: entity.updatedAt ? new Date(entity.updatedAt).toISOString() : null,
     snapshot: entityType === "diagrams" ? await diagramSnapshot(entity) : scalarSnapshot(entityType, entity),
   };
+}
+
+export async function readOwnedEntity(entityType: HistoryEntityType, uid: string, userId: string) {
+  return readEntity(entityType, ownedWhere(uid, userId));
 }
 
 export async function listHistory(entityType: HistoryEntityType, uid: string, userId: string, limit: number) {

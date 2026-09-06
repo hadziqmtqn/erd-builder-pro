@@ -143,9 +143,9 @@ export async function getConfig(req: ExpressRequest, res: ExpressResponse): Prom
   }
 }
 
-export async function getDefaultPrompt(_req: ExpressRequest, res: ExpressResponse): Promise<void> {
+export async function getDefaultPrompt(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
-    const result = await chatService.getDefaultPrompt();
+    const result = await chatService.getDefaultPrompt((req as any).user.id);
     res.json(result);
   } catch {
     res.json({ content: null });

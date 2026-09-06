@@ -23,6 +23,26 @@ MCowBQYDK2VwAyEABi1Uek1UFOesLWNtuyL8T7+nZzbWIoBhNeRaQ/6w4Wk=
 -----END PUBLIC KEY-----`;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CAPABILITY_KEY = /^[a-z][a-z0-9_]*$/;
+
+export type LicenseCapabilities = Readonly<Record<string, boolean>>;
+
+export function normalizeLicenseCapabilities(value: unknown): LicenseCapabilities {
+  const capabilities: Record<string, boolean> = {};
+  const add = (key: unknown, enabled: unknown) => {
+    if (typeof key === "string" && CAPABILITY_KEY.test(key) && enabled === true) {
+      capabilities[key] = true;
+    }
+  };
+
+  if (Array.isArray(value)) {
+    for (const feature of value) add(feature, true);
+  } else if (value && typeof value === "object") {
+    for (const [key, enabled] of Object.entries(value as Record<string, unknown>)) add(key, enabled);
+  }
+
+  return capabilities;
+}
 
 export type VerifiedEntitlement = {
   licenseId: string;
@@ -33,8 +53,15 @@ export type VerifiedEntitlement = {
   maxMembers: number | null;
   issuedAt: number;
   expiresAt: number;
-  features: unknown;
+  features: LicenseCapabilities;
 };
+
+export function hasEntitlementCapability(
+  entitlement: Pick<VerifiedEntitlement, "features">,
+  capability: string,
+): boolean {
+  return CAPABILITY_KEY.test(capability) && entitlement.features[capability] === true;
+}
 
 export type StoredLicense = {
   teamId: string;
@@ -318,7 +345,7 @@ export function verifySignedEntitlement(
     maxMembers: maxMembers ?? null,
     issuedAt: claims.iat,
     expiresAt: claims.exp,
-    features: claims.features ?? [],
+    features: normalizeLicenseCapabilities(claims.features),
   };
 }
 

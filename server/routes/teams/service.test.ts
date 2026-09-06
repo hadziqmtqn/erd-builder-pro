@@ -256,4 +256,15 @@ describe("Team service", () => {
     await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: true, teamId: "team-1" });
     expect(mocks.checkSelfHostLicense).toHaveBeenCalledWith({ teamId: "team-1", teamName: "Acme", memberCount: 1 });
   });
+
+  it("allows login when a valid signed lease outlives a stale invalid Team status", async () => {
+    mocks.teamMemberFindMany.mockResolvedValue([{
+      teamId: "team-1",
+      status: "active",
+      team: { id: "team-1", name: "Acme", status: "active", licenseStatus: "invalid" },
+    }]);
+
+    await expect(canUserLogin("member-1")).resolves.toEqual({ allowed: true, teamId: "team-1" });
+    expect(mocks.verifyStoredLicense).toHaveBeenCalledWith("team-1");
+  });
 });

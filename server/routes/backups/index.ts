@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { authenticate } from "../../lib/middleware.js";
+import { requireAdmin } from "../../lib/security.js";
 import { desktopOnly } from "../connections/middleware.js";
 import * as ctrl from "./controller.js";
 import * as autoBackupCtrl from "./auto-controller.js";
@@ -28,15 +29,16 @@ const sqliteUpload = multer({
   },
 });
 
-router.get("/settings/folder", authenticate, ctrl.getFolderSettings);
-router.put("/settings/folder", authenticate, ctrl.updateFolderSettings);
-router.get("/settings/auto", authenticate, autoBackupCtrl.getSettings);
-router.put("/settings/auto", authenticate, autoBackupCtrl.updateSettings);
-router.get("/", authenticate, ctrl.list);
-router.get("/:id/download", authenticate, ctrl.download);
-router.post("/", authenticate, ctrl.create);
-router.post("/import", authenticate, desktopOnly, sqliteUpload.single("database"), ctrl.importDatabase);
-router.post("/:id/restore", authenticate, ctrl.restore);
+router.use(authenticate, requireAdmin);
+router.get("/settings/folder", ctrl.getFolderSettings);
+router.put("/settings/folder", ctrl.updateFolderSettings);
+router.get("/settings/auto", autoBackupCtrl.getSettings);
+router.put("/settings/auto", autoBackupCtrl.updateSettings);
+router.get("/", ctrl.list);
+router.get("/:id/download", ctrl.download);
+router.post("/", ctrl.create);
+router.post("/import", desktopOnly, sqliteUpload.single("database"), ctrl.importDatabase);
+router.post("/:id/restore", ctrl.restore);
 
 router.use((err: any, _req: any, res: any, next: any) => {
   if (err instanceof multer.MulterError) {

@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { AIProvider, UserAIConfig, AIModel } from '@/types';
 import { toast } from 'sonner';
 
-export const useAIProviders = () => {
+export const useAIProviders = (enabled = true) => {
   const { user, isGuest } = useAuth();
   const userRef = useRef(user);
   userRef.current = user;
@@ -15,8 +15,7 @@ export const useAIProviders = () => {
   const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
 
   const fetchData = useCallback(async () => {
-    if (!userRef.current) return;
-    if (isGuest) { setIsLoading(false); return; }
+    if (!enabled || !userRef.current || isGuest) { setIsLoading(false); return; }
     setIsLoading(true);
     try {
       const [provRes, configsRes] = await Promise.all([
@@ -42,7 +41,7 @@ export const useAIProviders = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest]);
+  }, [enabled, isGuest]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

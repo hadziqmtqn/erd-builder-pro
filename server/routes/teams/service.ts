@@ -472,7 +472,7 @@ export async function canUserLogin(userId: string): Promise<{ allowed: true; tea
   if (activeMemberships.length === 0) return { allowed: false, code: "MEMBER_INACTIVE" };
 
   for (const membership of activeMemberships) {
-    if (membership.team?.status !== "active" || membership.team?.licenseStatus !== "active") continue;
+    if (membership.team?.status !== "active") continue;
     if (isLocalDashboardFixture(membership.team)) return { allowed: true, teamId: membership.teamId };
     try {
       await verifyCurrentLicense(membership.team);

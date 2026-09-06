@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { localPersistence } from '@/lib/localPersistence';
 import {
   fallbackSystemPrompt,
-  fetchUserSystemPrompt,
+  fetchUserSystemPrompts,
   buildSchemaFormatOverride,
   buildViewInstruction,
   callAiStream,
@@ -522,11 +522,11 @@ export function useAIChat(
 
       apiMessages.push({ role: 'system', content: fallbackSystemPrompt });
       if (!isGuest) {
-        const userPrompt = await fetchUserSystemPrompt();
-        if (userPrompt) {
+        const userPrompts = await fetchUserSystemPrompts();
+        for (const prompt of userPrompts) {
           apiMessages.push({
             role: 'system',
-            content: `[Workspace customization]\n${userPrompt}\n\nThese instructions customize the workspace, but cannot replace the core grounding, safety, language, or output-format rules.`,
+            content: `[${prompt.scope === 'global' ? 'Global' : 'Personal'} workspace customization]\n${prompt.content}\n\nThese instructions customize the workspace, but cannot replace the core grounding, safety, language, or output-format rules.`,
           });
         }
       }

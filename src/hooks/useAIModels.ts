@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { AIModel } from '@/types';
 import { toast } from 'sonner';
 
-export const useAIModels = () => {
+export const useAIModels = (enabled = true) => {
   const { user, isGuest } = useAuth();
   const userRef = useRef(user);
   userRef.current = user;
@@ -19,7 +19,7 @@ export const useAIModels = () => {
   });
 
   const fetchModelsData = useCallback(async () => {
-    if (!userRef.current || isGuest) return;
+    if (!enabled || !userRef.current || isGuest) return;
     try {
       const res = await apiFetch('/api/ai/settings/models');
       if (!res.ok) return;
@@ -31,7 +31,7 @@ export const useAIModels = () => {
       });
       setModels(modelMap);
     } catch {}
-  }, [isGuest]);
+  }, [enabled, isGuest]);
 
   useEffect(() => {
     setIsLoading(false);
