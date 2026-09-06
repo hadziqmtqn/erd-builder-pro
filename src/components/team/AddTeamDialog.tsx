@@ -21,18 +21,16 @@ export function AddTeamDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (input: { name: string; licenseKey: string }) => Promise<unknown>;
+  onCreate: (input: { name: string }) => Promise<unknown>;
   onCreated?: (team: any) => void;
 }) {
   const [name, setName] = useState("");
-  const [licenseKey, setLicenseKey] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setName("");
-      setLicenseKey("");
       setError("");
       setIsSubmitting(false);
     }
@@ -43,7 +41,7 @@ export function AddTeamDialog({
     setError("");
     setIsSubmitting(true);
     try {
-      const team = await onCreate({ name, licenseKey });
+      const team = await onCreate({ name });
       onOpenChange(false);
       onCreated?.(team);
     } catch (cause: any) {
@@ -60,7 +58,7 @@ export function AddTeamDialog({
           <DialogHeader>
             <DialogTitle>Add Team</DialogTitle>
             <DialogDescription>
-              Connect a Self-host license to create a Team. The license key is sent only during activation.
+              Create a Team using this installation's active license.
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="space-y-4">
@@ -76,26 +74,14 @@ export function AddTeamDialog({
                 autoFocus
               />
             </Field>
-            <Field>
-              <FieldLabel htmlFor="team-license-key">License key</FieldLabel>
-              <Input
-                id="team-license-key"
-                type="password"
-                value={licenseKey}
-                onChange={(event) => setLicenseKey(event.target.value)}
-                placeholder="Paste your Self-host license key"
-                maxLength={512}
-                required
-              />
-            </Field>
             {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !name.trim() || !licenseKey.trim()}>
-              {isSubmitting ? "Activating…" : "Add Team"}
+            <Button type="submit" disabled={isSubmitting || !name.trim()}>
+              {isSubmitting ? "Creating…" : "Add Team"}
             </Button>
           </DialogFooter>
         </form>

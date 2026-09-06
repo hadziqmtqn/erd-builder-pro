@@ -359,6 +359,7 @@ app.get("/api/version/latest", async (_req, res) => {
 app.use("/api", authRouter);
 app.use("/api", oauthConsentRouter);
 app.use("/api/teams", teamsRouter);
+app.use("/api/license", (await import("./routes/license/index.js")).default);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/db-clients", dbClientsRouter);
 app.use("/api/repositories", repositoriesRouter);

@@ -62,18 +62,11 @@ model Session {
 model Team {
   id                  String       @id @default(uuid())
   name                String
-  licenseId           String?      @unique @map("license_id")
-  licenseCodeLastFour String?      @map("license_code_last_four")
-  licenseStatus       String       @default("active") @map("license_status")
-  licenseExpiresAt    DateTime?    @map("license_expires_at")
-  maxMembers          Int?         @map("max_members")
-  bindingGeneration   Int?         @default(0) @map("binding_generation")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
   members             TeamMember[]
   projects            Project[]
 
-  @@index([licenseStatus], map: "idx_teams_license_status")
   @@map("teams")
 }
 

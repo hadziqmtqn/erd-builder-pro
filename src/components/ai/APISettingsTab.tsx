@@ -21,6 +21,7 @@ interface APISettingsTabProps {
   onUpdateConfig: (code: string, updates: Partial<UserAIConfig>) => void;
   onEnsureModel: (model: { provider_id: number | string; model_identifier: string; display_name?: string }) => Promise<AIModel>;
   onRefreshModels: () => Promise<void>;
+  onInitialize: () => Promise<void>;
 }
 
 export const APISettingsTab: React.FC<APISettingsTabProps> = ({
@@ -34,7 +35,8 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
   onUpdateProvider,
   onUpdateConfig,
   onEnsureModel,
-  onRefreshModels
+  onRefreshModels,
+  onInitialize
 }) => {
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [liveModels, setLiveModels] = useState<Record<string, { model_identifier: string; display_name: string }[]>>({});
@@ -146,6 +148,7 @@ export const APISettingsTab: React.FC<APISettingsTabProps> = ({
       <Card className="border-border/50 bg-background/50 backdrop-blur-sm">
         <CardContent className="py-12 text-center">
           <p className="text-muted-foreground">No AI providers configured.</p>
+          <Button className="mt-4" onClick={() => void onInitialize()}>Initialize AI Configuration</Button>
         </CardContent>
       </Card>
     );

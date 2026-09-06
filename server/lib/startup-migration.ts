@@ -4,6 +4,7 @@ import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres, SUPABASE_URL } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 import { migrateDbClients } from "./db-client-migration.js";
+import { membershipProvisioningSignature, teamProvisioningSignature } from "./team-provisioning.js";
 
 type PrismaRecord = { id: number | bigint | string };
 
@@ -250,12 +251,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "type" TEXT NOT NULL DEFAULT 'team',
         "created_by" TEXT,
         "status" TEXT NOT NULL DEFAULT 'active',
-        "license_id" TEXT UNIQUE,
-        "license_code_last_four" TEXT,
-        "license_status" TEXT NOT NULL DEFAULT 'active',
-        "license_expires_at" ${dateType},
-        "max_members" INTEGER,
-        "binding_generation" INTEGER DEFAULT 0,
+        "provisioning_signature" TEXT,
         "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "teams_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -263,6 +259,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
     await addColumnIfMissing("teams", "type", '"type" TEXT NOT NULL DEFAULT \'team\'');
     await addColumnIfMissing("teams", "created_by", '"created_by" TEXT');
     await addColumnIfMissing("teams", "status", '"status" TEXT NOT NULL DEFAULT \'active\'');
+    await addColumnIfMissing("teams", "provisioning_signature", '"provisioning_signature" TEXT');
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "team_members" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -271,9 +268,11 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "role" TEXT NOT NULL DEFAULT 'member',
         "status" TEXT NOT NULL DEFAULT 'active',
         "joined_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "provisioning_signature" TEXT,
         CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
         CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
       )`);
+    await addColumnIfMissing("team_members", "provisioning_signature", '"provisioning_signature" TEXT');
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "team_invitations" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -284,22 +283,6 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "accepted_at" ${dateType},
         "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "team_invitations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
-      )`);
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "team_license_entitlements" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "team_id" TEXT NOT NULL,
-        "activation_id" TEXT NOT NULL UNIQUE,
-        "license_id" TEXT NOT NULL,
-        "installation_id" TEXT NOT NULL,
-        "encrypted_client_token" TEXT NOT NULL,
-        "signed_entitlement" TEXT NOT NULL,
-        "expires_at" ${dateType} NOT NULL,
-        "grace_until" ${dateType},
-        "status" TEXT NOT NULL,
-        "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "team_license_entitlements_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
       )`);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "team_audit_events" (
@@ -314,19 +297,45 @@ async function createTeamTablesIfMissing(): Promise<void> {
         CONSTRAINT "team_audit_events_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
         CONSTRAINT "team_audit_events_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
       )`);
-    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_teams_license_status" ON "teams"("license_status")');
     await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "team_members_team_user_key" ON "team_members"("team_id", "user_id")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_members_user_status" ON "team_members"("user_id", "status")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_team_expires" ON "team_invitations"("team_id", "expires_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at")');
-    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_license_entitlements_team_status" ON "team_license_entitlements"("team_id", "status")');
-    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_license_entitlements_license" ON "team_license_entitlements"("license_id")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_actor_created" ON "team_audit_events"("actor_id", "created_at")');
     await repairDuplicateActiveMemberships();
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to create Team tables (non-fatal)");
   }
+}
+
+/** Establishes the signed baseline once for Teams that existed before this release. */
+async function sealExistingTeamRecords(): Promise<void> {
+  if (!prisma || !isLocalPostgres()) return;
+  const teams = await prisma.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string }>>(
+    'SELECT "id", "status", "created_at" FROM "teams" WHERE "provisioning_signature" IS NULL',
+  );
+  for (const team of teams) {
+    const createdAt = new Date(team.created_at);
+    const signature = teamProvisioningSignature({ id: team.id, status: team.status, createdAt });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "teams" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(team.id)} AND "provisioning_signature" IS NULL`,
+    );
+  }
+
+  const members = await prisma.$queryRawUnsafe<Array<{
+    id: string; team_id: string; user_id: string; status: string; joined_at: Date | string;
+  }>>('SELECT "id", "team_id", "user_id", "status", "joined_at" FROM "team_members" WHERE "provisioning_signature" IS NULL');
+  for (const member of members) {
+    const joinedAt = new Date(member.joined_at);
+    const signature = membershipProvisioningSignature({
+      id: member.id, teamId: member.team_id, userId: member.user_id, status: member.status, joinedAt,
+    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "team_members" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(member.id)} AND "provisioning_signature" IS NULL`,
+    );
+  }
+  if (teams.length || members.length) logger.info({ teams: teams.length, members: members.length }, "Established Team provisioning baseline");
 }
 
 function sqlLiteral(value: string | number | null): string {
@@ -414,8 +423,8 @@ async function createPersonalTeam(user: LegacyUser): Promise<string> {
   const name = `${label.slice(0, 90)} Personal`;
   const id = randomUUID();
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "teams" ("id", "name", "type", "created_by", "status", "license_status")
-     VALUES (${sqlLiteral(id)}, ${sqlLiteral(name)}, 'personal', ${sqlLiteral(user.id)}, 'active', 'not_required')`,
+    `INSERT INTO "teams" ("id", "name", "type", "created_by", "status")
+     VALUES (${sqlLiteral(id)}, ${sqlLiteral(name)}, 'personal', ${sqlLiteral(user.id)}, 'active')`,
   );
   return id;
 }
@@ -852,6 +861,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await sealExistingTeamRecords();
   // Legacy projects stay Personal until their owner explicitly links them to a Team.
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.

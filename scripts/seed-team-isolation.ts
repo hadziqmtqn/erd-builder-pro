@@ -6,8 +6,6 @@ import { isLocalPostgres } from "../server/lib/config.js";
 import { hashPassword } from "../server/lib/desktop-auth.js";
 import { prisma } from "../server/lib/prisma.js";
 
-const TEST_LICENSE_PREFIX = "test-fixture:";
-
 async function main(): Promise<void> {
   if (process.env.NODE_ENV === "production") {
     throw new Error("The Team isolation seeder is disabled in production.");
@@ -32,7 +30,6 @@ async function main(): Promise<void> {
   const memberName = process.env.TEAM_ISOLATION_MEMBER_NAME?.trim() || "Isolation Test Member";
   const teamId = randomUUID();
   const memberId = randomUUID();
-  const licenseExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   const { team, member } = await prisma.$transaction(async (database) => {
     const team = await database.team.create({
@@ -42,11 +39,6 @@ async function main(): Promise<void> {
         type: "team",
         createdBy: admin.id,
         status: "active",
-        licenseId: `${TEST_LICENSE_PREFIX}${teamId}`,
-        licenseStatus: "active",
-        licenseExpiresAt,
-        maxMembers: 10,
-        bindingGeneration: 1,
       },
     });
 
@@ -76,7 +68,7 @@ async function main(): Promise<void> {
 
   console.log("\nTeam isolation fixture created successfully.");
   console.log(`Team: ${team.name} (${team.id})`);
-  console.log(`Team status: active; local dashboard fixture valid until ${licenseExpiresAt.toISOString()}`);
+  console.log("Team status: active. Activate the installation license before testing access.");
   console.log(`Member: ${member.name} <${member.email}>`);
   console.log(`Member password: ${memberPassword}`);
   console.log(`Created by SuperAdmin: ${admin.email}`);

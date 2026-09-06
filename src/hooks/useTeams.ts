@@ -10,6 +10,7 @@ export type TeamLicense = {
   planCode?: string | null;
   expiresAt?: string | null;
   maxMembers?: number | null;
+  maxTeams?: number | null;
   bindingGeneration?: number;
   lastCheckedAt?: string | null;
   errorCode?: string;
@@ -109,11 +110,11 @@ export function useTeams(isGuest = false, selectFirstTeam = false, onFirstTeamSe
     writeActiveTeamId(teamId);
   }, []);
 
-  const createTeam = useCallback(async (input: { name: string; licenseKey: string }) => {
+  const createTeam = useCallback(async (input: { name: string }) => {
     const response = await apiFetch("/api/teams", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: input.name, license_key: input.licenseKey }),
+      body: JSON.stringify({ name: input.name }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {

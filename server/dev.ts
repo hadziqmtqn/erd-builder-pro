@@ -1,10 +1,13 @@
 import app from "./index.js";
-import { backfillUids } from "./lib/startup-migration.js";
+import { applySchemaMigrations, backfillUids } from "./lib/startup-migration.js";
+import { initializeDefaults } from "./routes/ai-settings/service.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
 const setupDev = async () => {
-  // Backfill null uids (critical for SQLite / desktop)
+  // Keep development schema parity with the installed server before Vite serves the UI.
+  await applySchemaMigrations();
+  await initializeDefaults();
   backfillUids().catch(console.error);
 
   try {

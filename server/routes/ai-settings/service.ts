@@ -336,9 +336,13 @@ export async function initializeDefaults() {
     { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id", isActive: true },
   ];
 
-  await prisma?.aiProvider.createMany({
-    data: defaultProviders,
-  });
+  for (const provider of defaultProviders) {
+    await prisma?.aiProvider.upsert({
+      where: { code: provider.code },
+      update: { name: provider.name, baseUrl: provider.baseUrl, isActive: true },
+      create: provider,
+    });
+  }
 
   const providers = await prisma?.aiProvider.findMany({
     where: { code: { in: defaultProviders.map(p => p.code) } },
@@ -363,11 +367,31 @@ export async function initializeDefaults() {
     }
   });
 
-  if (modelsToInsert.length > 0) {
-    await prisma?.aiModel.createMany({ data: modelsToInsert });
+  for (const model of modelsToInsert) {
+    const exists = await prisma?.aiModel.findFirst({ where: { providerId: model.providerId, modelIdentifier: model.modelIdentifier } });
+    if (!exists) await prisma?.aiModel.create({ data: model });
   }
 
   return { success: true };
+}
+
+export async function initializeUserDefaults(userId: string) {
+  const providers = await prisma?.aiProvider.findMany({ where: { isActive: true } }) || [];
+  for (const provider of providers) {
+    const model = await prisma?.aiModel.findFirst({ where: { providerId: provider.id, isActive: true }, orderBy: { id: "asc" } });
+    await prisma?.userAiConfig.upsert({
+      where: { userId_providerId: { userId, providerId: provider.id } },
+      update: {},
+      create: { userId, providerId: provider.id, selectedModelId: model?.id ?? null, isEnabled: false },
+    });
+  }
+  for (const viewType of ["erd", "notes", "flowchart", "db-client"]) {
+    await prisma?.userAiRule.upsert({
+      where: { userId_viewType: { userId, viewType } },
+      update: {},
+      create: { userId, viewType, content: "", isEnabled: true },
+    });
+  }
 }
 
 // ── Test Connection ──

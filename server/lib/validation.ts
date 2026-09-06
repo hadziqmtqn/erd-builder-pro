@@ -82,8 +82,6 @@ export const projectSchema = z.object({
 
 export const createTeamSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  license_key: z.string().trim().min(1).max(512),
-  activation_grant: z.string().trim().min(1).max(2048).optional(),
 });
 
 export const addTeamMemberSchema = z.object({

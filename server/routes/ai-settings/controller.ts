@@ -194,7 +194,9 @@ export async function toggleDefaultPrompt(req: ExpressRequest, res: ExpressRespo
 export async function initializeDefaults(_req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     if (!requireAdmin(_req, res)) return;
-    res.json(await aiService.initializeDefaults());
+    await aiService.initializeDefaults();
+    await aiService.initializeUserDefaults(getUserId(_req));
+    res.json({ success: true });
   } catch (err: any) {
     handleError(res, err, "Failed to initialize AI settings");
   }

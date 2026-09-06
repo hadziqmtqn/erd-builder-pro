@@ -122,6 +122,34 @@ async function main() {
     }
   }
 
+  // ── SuperAdmin AI configuration and per-view rules ──
+  // A fresh database has provider catalog data, but the application still
+  // needs a user-owned configuration before AI can be enabled with a real key.
+  const superAdmin = await prisma.user.findFirst({
+    where: { isSuperAdmin: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (superAdmin) {
+    for (const provider of [openai, gemini, openaiCompat].filter(Boolean)) {
+      const selectedModel = await prisma.aiModel.findFirst({ where: { providerId: provider!.id, isActive: true }, orderBy: { id: 'asc' } });
+      await prisma.userAiConfig.upsert({
+        where: { userId_providerId: { userId: superAdmin.id, providerId: provider!.id } },
+        update: {},
+        create: { userId: superAdmin.id, providerId: provider!.id, selectedModelId: selectedModel?.id ?? null, isEnabled: false },
+      });
+    }
+    for (const viewType of ['erd', 'notes', 'flowchart', 'db-client']) {
+      await prisma.userAiRule.upsert({
+        where: { userId_viewType: { userId: superAdmin.id, viewType } },
+        update: {},
+        create: { userId: superAdmin.id, viewType, content: '', isEnabled: true },
+      });
+    }
+    console.log(`  ✓ AI configurations and rules for: ${superAdmin.email}`);
+  } else {
+    console.log('  - AI user configuration skipped; create the SuperAdmin first, then rerun the seed');
+  }
+
   // ── Default system prompt ──
   const defaultSystemPrompt = `You are an AI assistant for ERD Builder Pro — an integrated workspace combining Database ERD diagrams, Flowcharts, and Markdown Notes.
 

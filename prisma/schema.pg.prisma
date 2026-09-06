@@ -116,22 +116,15 @@ model Team {
   type                String       @default("team")
   createdBy           String?      @map("created_by")
   status              String       @default("active")
-  licenseId           String?      @unique @map("license_id")
-  licenseCodeLastFour String?      @map("license_code_last_four")
-  licenseStatus       String       @default("active") @map("license_status")
-  licenseExpiresAt    DateTime?    @map("license_expires_at")
-  maxMembers          Int?         @map("max_members")
-  bindingGeneration   Int?         @default(0) @map("binding_generation")
+  provisioningSignature String?    @map("provisioning_signature")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")
   members             TeamMember[]
   projects            Project[]
   creator             User?        @relation("TeamCreator", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
   invitations         TeamInvitation[]
-  licenseEntitlements TeamLicenseEntitlement[]
   auditEvents         TeamAuditEvent[]
 
-  @@index([licenseStatus], map: "idx_teams_license_status")
   @@map("teams")
 }
 
@@ -142,6 +135,7 @@ model TeamMember {
   role      String   @default("member")
   status    String   @default("active")
   joinedAt  DateTime @default(now()) @map("joined_at")
+  provisioningSignature String? @map("provisioning_signature")
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -163,26 +157,6 @@ model TeamInvitation {
   @@index([teamId, expiresAt], map: "idx_team_invitations_team_expires")
   @@index([email, acceptedAt], map: "idx_team_invitations_email_accepted")
   @@map("team_invitations")
-}
-
-model TeamLicenseEntitlement {
-  id                     String   @id @default(uuid())
-  teamId                 String   @map("team_id")
-  activationId           String   @unique @map("activation_id")
-  licenseId              String   @map("license_id")
-  installationId         String   @map("installation_id")
-  encryptedClientToken   String   @map("encrypted_client_token")
-  signedEntitlement      String   @map("signed_entitlement")
-  expiresAt              DateTime @map("expires_at")
-  graceUntil             DateTime? @map("grace_until")
-  status                 String
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @default(now()) @updatedAt @map("updated_at")
-  team                   Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([teamId, status], map: "idx_team_license_entitlements_team_status")
-  @@index([licenseId], map: "idx_team_license_entitlements_license")
-  @@map("team_license_entitlements")
 }
 
 model TeamAuditEvent {

@@ -48,8 +48,6 @@ export async function create(req: ExpressRequest, res: ExpressResponse): Promise
     const current = actor(req);
     const team = await teams.createTeam({
       name: req.body.name,
-      licenseKey: req.body.license_key,
-      activationGrant: req.body.activation_grant,
       userId: current.userId,
       isSuperAdmin: current.isSuperAdmin,
     });

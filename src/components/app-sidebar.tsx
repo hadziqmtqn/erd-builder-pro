@@ -102,7 +102,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeTeamId: string | null;
   onTeamSelect: (teamId: string | null) => void;
   onTeamManage: (team: SwitcherTeam) => void;
-  onTeamCreate: (input: { name: string; licenseKey: string }) => Promise<unknown>;
+  onTeamCreate: (input: { name: string }) => Promise<unknown>;
   onTeamCreated: (team: any) => void;
 }
 

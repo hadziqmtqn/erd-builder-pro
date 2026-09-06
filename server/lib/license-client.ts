@@ -14,7 +14,7 @@ import { ensureInstallationIdentity } from "./installation-identity.js";
 const PROTOCOL_VERSION = 1;
 const PRODUCT_TYPE = "self_host";
 const CLIENT_TYPE = "web";
-const AUDIENCE = "erd-self-host";
+const AUDIENCES = new Set(["erd-self-host", "erd-self-host-instance-license"]);
 // This is the official production verification key. The matching private key
 // stays in the SaaS signing environment and must never be shipped to clients.
 const OFFICIAL_LICENSE_PUBLIC_KEY_ID = "production-1";
@@ -51,6 +51,7 @@ export type VerifiedEntitlement = {
   planCode: string;
   organizationType: "personal" | "team";
   maxMembers: number | null;
+  maxTeams: number | null;
   issuedAt: number;
   expiresAt: number;
   features: LicenseCapabilities;
@@ -74,10 +75,13 @@ export type StoredLicense = {
   lastCheckedAt: string;
 };
 
+export type StoredInstanceLicense = Omit<StoredLicense, "teamId">;
+
 type LicenseStateFile = {
-  version: 1;
+  version: 2;
   installationId: string;
   licenses: Record<string, StoredLicense>;
+  instanceLicense?: StoredInstanceLicense;
 };
 
 export class LicenseClientError extends Error {
@@ -108,15 +112,25 @@ function writeState(state: LicenseStateFile): void {
 function readState(): LicenseStateFile {
   const destination = statePath();
   try {
-    const parsed = JSON.parse(readFileSync(destination, "utf8")) as Partial<LicenseStateFile>;
-    if (parsed.version !== 1 || typeof parsed.installationId !== "string" || !UUID_V4.test(parsed.installationId) || !parsed.licenses) {
+    const parsed = JSON.parse(readFileSync(destination, "utf8")) as {
+      version?: unknown;
+      installationId?: unknown;
+      licenses?: unknown;
+      instanceLicense?: unknown;
+    };
+    if ((parsed.version !== 1 && parsed.version !== 2) || typeof parsed.installationId !== "string" || !UUID_V4.test(parsed.installationId) || !parsed.licenses) {
       throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
     }
     const identity = ensureInstallationIdentity(parsed.installationId);
     if (identity.installationId !== parsed.installationId) {
       throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
     }
-    return parsed as LicenseStateFile;
+    return {
+      version: 2,
+      installationId: parsed.installationId,
+      licenses: parsed.licenses as Record<string, StoredLicense>,
+      ...(parsed.version === 2 && parsed.instanceLicense ? { instanceLicense: parsed.instanceLicense as StoredInstanceLicense } : {}),
+    };
   } catch (error) {
     if (error instanceof LicenseClientError) throw error;
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
@@ -128,7 +142,7 @@ function readState(): LicenseStateFile {
     } catch {
       throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
     }
-    const state: LicenseStateFile = { version: 1, installationId, licenses: {} };
+    const state: LicenseStateFile = { version: 2, installationId, licenses: {} };
     writeState(state);
     return state;
   }
@@ -151,6 +165,22 @@ export function storeLicense(license: StoredLicense): void {
 export function removeStoredLicense(teamId: string): void {
   const state = readState();
   delete state.licenses[teamId];
+  writeState(state);
+}
+
+export function getStoredInstanceLicense(): StoredInstanceLicense | null {
+  return readState().instanceLicense || null;
+}
+
+export function storeInstanceLicense(license: StoredInstanceLicense): void {
+  const state = readState();
+  state.instanceLicense = license;
+  writeState(state);
+}
+
+export function removeStoredInstanceLicense(): void {
+  const state = readState();
+  delete state.instanceLicense;
   writeState(state);
 }
 
@@ -259,7 +289,9 @@ function decodeBase64Url(value: string): Buffer {
 }
 
 function claimAudience(value: unknown): boolean {
-  return typeof value === "string" ? value === AUDIENCE : Array.isArray(value) && value.includes(AUDIENCE);
+  return typeof value === "string"
+    ? AUDIENCES.has(value)
+    : Array.isArray(value) && value.some((audience) => typeof audience === "string" && AUDIENCES.has(audience));
 }
 
 export function verifySignedEntitlement(
@@ -308,6 +340,7 @@ export function verifySignedEntitlement(
   const now = Math.floor(Date.now() / 1000);
   const limits = claims?.limits;
   const maxMembers = limits?.max_members;
+  const maxTeams = limits?.max_teams;
   if (
     claims?.iss !== issuer ||
     !claimAudience(claims?.aud) ||
@@ -335,6 +368,9 @@ export function verifySignedEntitlement(
   if (claims?.organization_type !== "team" || !Number.isInteger(maxMembers) || maxMembers < 1) {
     throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
   }
+  if (maxTeams !== undefined && (!Number.isInteger(maxTeams) || maxTeams < 1)) {
+    throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
+  }
 
   return {
     licenseId: claims.sub,
@@ -343,9 +379,96 @@ export function verifySignedEntitlement(
     planCode: typeof claims.plan_code === "string" ? claims.plan_code : "unknown",
     organizationType: claims.organization_type,
     maxMembers: maxMembers ?? null,
+    maxTeams: maxTeams ?? null,
     issuedAt: claims.iat,
     expiresAt: claims.exp,
     features: normalizeLicenseCapabilities(claims.features),
+  };
+}
+
+function instancePayload(data: {
+  installationId: string;
+  teamCount: number;
+  memberCount: number;
+}) {
+  return {
+    protocol_version: PROTOCOL_VERSION,
+    product_type: PRODUCT_TYPE,
+    client_type: CLIENT_TYPE,
+    installation_id: data.installationId,
+    app_version: (process.env.APP_VERSION || "unknown").slice(0, 100),
+    platform: process.platform.slice(0, 100),
+    device_name: (process.env.ERDBPRO_DEPLOYMENT_NAME || "Self-host deployment").slice(0, 100),
+    usage: { team_count: data.teamCount, member_count: data.memberCount },
+  };
+}
+
+export async function activateSelfHostInstanceLicense(data: {
+  licenseKey: string;
+  activationGrant?: string;
+  teamCount: number;
+  memberCount: number;
+}) {
+  if (!isLocalPostgres()) throw new LicenseClientError("SELF_HOST_ONLY", 403);
+  const installationId = getInstallationId();
+  const response = await requestLicenseApi("activate", {
+    ...instancePayload({ ...data, installationId }),
+    license_key: data.licenseKey,
+    ...(data.activationGrant ? { activation_grant: data.activationGrant } : {}),
+  });
+  const clientToken = typeof response.client_token === "string" ? response.client_token : "";
+  const signedEntitlement = typeof response.signed_entitlement === "string" ? response.signed_entitlement : "";
+  if (!clientToken || !signedEntitlement) throw new LicenseClientError("LICENSE_RESPONSE_INVALID", 502);
+
+  const entitlement = verifySignedEntitlement(signedEntitlement, installationId);
+  const state: StoredInstanceLicense = {
+    installationId,
+    clientToken,
+    signedEntitlement,
+    licenseId: entitlement.licenseId,
+    bindingGeneration: entitlement.bindingGeneration,
+    codeLastFour: typeof response.license?.code_last_four === "string" ? response.license.code_last_four.slice(-4) : null,
+    lastCheckedAt: new Date().toISOString(),
+  };
+  storeInstanceLicense(state);
+  return { entitlement, state };
+}
+
+export async function checkSelfHostInstanceLicense(data: { teamCount: number; memberCount: number }) {
+  if (!isLocalPostgres()) throw new LicenseClientError("SELF_HOST_ONLY", 403);
+  const stored = getStoredInstanceLicense();
+  if (!stored) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409);
+  const installationId = getInstallationId();
+  const response = await requestLicenseApi(
+    "check",
+    instancePayload({ ...data, installationId }),
+    stored.clientToken,
+  );
+  const signedEntitlement = typeof response.signed_entitlement === "string" ? response.signed_entitlement : "";
+  if (!signedEntitlement) throw new LicenseClientError("LICENSE_RESPONSE_INVALID", 502);
+  const entitlement = verifySignedEntitlement(signedEntitlement, installationId, stored.bindingGeneration);
+  const state: StoredInstanceLicense = {
+    ...stored,
+    installationId,
+    signedEntitlement,
+    licenseId: entitlement.licenseId,
+    bindingGeneration: entitlement.bindingGeneration,
+    lastCheckedAt: new Date().toISOString(),
+  };
+  storeInstanceLicense(state);
+  return { entitlement, state };
+}
+
+export function verifyStoredInstanceLicense(): { state: StoredInstanceLicense; entitlement: VerifiedEntitlement } {
+  const state = getStoredInstanceLicense();
+  if (!state) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409);
+  const installationId = getInstallationId();
+  if (state.installationId !== installationId) {
+    throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
+  }
+  return {
+    state,
+    entitlement: verifySignedEntitlement(state.signedEntitlement, installationId, state.bindingGeneration),
   };
 }
 

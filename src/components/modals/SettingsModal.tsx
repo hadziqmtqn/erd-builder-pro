@@ -14,6 +14,7 @@ import {
   HardDrive,
   Keyboard,
   ServerCog,
+  KeyRound,
 } from 'lucide-react';
 import {
   Dialog,
@@ -69,6 +70,7 @@ import { DataExport } from '@/components/settings/DataExport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { KeymapTab } from '@/components/settings/KeymapTab';
 import { McpServerTab } from '@/components/settings/McpServerTab';
+import { LicenseTab } from '@/components/settings/LicenseTab';
 import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
@@ -117,6 +119,7 @@ export function SettingsModal() {
     isSaving: isSavingProviders,
     handleSaveConfig,
     handleTestConnection,
+    handleInitializeProviders,
     updateProviderLocal,
     updateConfigLocal,
   } = useAIProviders(isSuperAdmin);
@@ -175,6 +178,7 @@ export function SettingsModal() {
         label: "Feature",
         items: [
           ...(isSuperAdmin ? [{ id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> }] : []),
+          ...(isSuperAdmin ? [{ id: 'license', label: 'Application License', icon: <KeyRound className="size-4" /> }] : []),
           { id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
@@ -196,7 +200,7 @@ export function SettingsModal() {
   }, [isGuest, isDesktopApp, isSuperAdmin]);
 
   React.useEffect(() => {
-    if (!isSuperAdmin && ['ai-config', 'export-data', 'import-data', 'backups'].includes(settingsTab)) {
+    if (!isSuperAdmin && ['ai-config', 'license', 'export-data', 'import-data', 'backups'].includes(settingsTab)) {
       setSettingsTab(isGuest ? 'appearance' : 'account');
     }
   }, [isGuest, isSuperAdmin, settingsTab, setSettingsTab]);
@@ -349,6 +353,7 @@ export function SettingsModal() {
                       onUpdateConfig={updateConfigLocal}
                       onEnsureModel={ensureModel}
                       onRefreshModels={refreshModels}
+                      onInitialize={handleInitializeProviders}
                     />
                   )}
                   {aiSettingsTab === 'models' && (
@@ -385,6 +390,8 @@ export function SettingsModal() {
               {settingsTab === 'mcp-server' && (
                 <McpServerTab />
               )}
+
+              {isSuperAdmin && settingsTab === 'license' && <LicenseTab />}
 
               {isSuperAdmin && settingsTab === 'backups' && (
                 <div className="p-6 space-y-6">
