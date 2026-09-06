@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, KeyRound, Loader2, RefreshCw, UserCheck, UserMinus, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, UserMinus, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,24 +9,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
-import type { TeamLicense, TeamSummary } from "@/hooks/useTeams";
+import type { TeamSummary } from "@/hooks/useTeams";
 import { useAuth } from "@/hooks/useAuth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/providers/WorkspaceContext";
 
 type TeamDetail = TeamSummary & {
   members: NonNullable<TeamSummary["members"]>;
-  license: TeamLicense;
 };
-
-function licenseLabel(license?: TeamLicense): string {
-  if (license?.valid) return "Active";
-  if (license?.status === "expired") return "Expired";
-  if (license?.status === "not_activated") return "Not activated";
-  return "Unavailable";
-}
 
 function formatDate(value?: string | null): string {
   if (!value) return "—";
@@ -44,11 +37,13 @@ export function TeamManagementRoute() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [team, setTeam] = useState<TeamDetail | null>(null);
+  const [teamName, setTeamName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [memberName, setMemberName] = useState("");
   const [password, setPassword] = useState("");
+  const [memberRole, setMemberRole] = useState<"manager" | "staff">("staff");
   const [createAccount, setCreateAccount] = useState(false);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [error, setError] = useState("");
@@ -70,16 +65,16 @@ export function TeamManagementRoute() {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (isSuperAdmin) void fetchTeam();
-  }, [fetchTeam, isSuperAdmin]);
+  useEffect(() => { void fetchTeam(); }, [fetchTeam]);
 
   useEffect(() => {
     setBreadcrumbLabel(team?.name || "Team management");
     return () => setBreadcrumbLabel(null);
   }, [setBreadcrumbLabel, team?.name]);
 
-  if (!isSuperAdmin) return <Navigate to="/" replace />;
+  useEffect(() => { setTeamName(team?.name || ""); }, [team?.name]);
+
+  if (!isSuperAdmin && team && !team.canManage) return <Navigate to="/" replace />;
 
   const addMember = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -92,6 +87,7 @@ export function TeamManagementRoute() {
         body: JSON.stringify({
           email: email.trim(),
           ...(createAccount ? { name: memberName.trim(), password } : {}),
+          role: memberRole,
         }),
       });
       if (!response.ok) throw await responseError(response, "Member could not be added.");
@@ -100,6 +96,7 @@ export function TeamManagementRoute() {
       setMemberName("");
       setPassword("");
       setCreateAccount(false);
+      setMemberRole("staff");
       setMemberDialogOpen(false);
       toast.success("Member added");
     } catch (cause: any) {
@@ -107,6 +104,30 @@ export function TeamManagementRoute() {
     } finally {
       setAction(null);
     }
+  };
+
+  const updateMemberRole = async (userId: string, role: "manager" | "staff") => {
+    if (!id) return;
+    setAction(`role:${userId}`);
+    try {
+      const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
+      if (!response.ok) throw await responseError(response, "Member role could not be updated.");
+      setTeam(await response.json());
+      toast.success("Member role updated");
+    } catch (cause: any) { toast.error(cause?.message || "Member role could not be updated."); }
+    finally { setAction(null); }
+  };
+
+  const renameTeam = async () => {
+    if (!id || !teamName.trim() || teamName.trim() === team?.name) return;
+    setAction("rename-team");
+    try {
+      const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: teamName.trim() }) });
+      if (!response.ok) throw await responseError(response, "Team name could not be updated.");
+      setTeam(await response.json());
+      toast.success("Team name updated");
+    } catch (cause: any) { toast.error(cause?.message || "Team name could not be updated."); }
+    finally { setAction(null); }
   };
 
   const removeMember = async (userId: string, memberName: string | null) => {
@@ -145,21 +166,6 @@ export function TeamManagementRoute() {
     }
   };
 
-  const checkLicense = async () => {
-    if (!id) return;
-    setAction("license");
-    try {
-      const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/license/check`, { method: "POST" });
-      if (!response.ok) throw await responseError(response, "License could not be checked.");
-      setTeam(await response.json());
-      toast.success("License checked");
-    } catch (cause: any) {
-      toast.error(cause?.message || "License could not be checked.");
-    } finally {
-      setAction(null);
-    }
-  };
-
   if (isLoading) {
     return <main className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin" aria-label="Loading Team" /></main>;
   }
@@ -176,9 +182,6 @@ export function TeamManagementRoute() {
     );
   }
 
-  const license = team.license;
-  const memberLimit = license.maxMembers ?? "—";
-
   return (
     <main className="-m-4 flex-1 overflow-auto bg-background">
       <div className="flex w-full flex-col gap-6 p-6 lg:p-8">
@@ -189,20 +192,20 @@ export function TeamManagementRoute() {
             </Button>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight">{team.name}</h1>
-                <Badge variant={license.valid ? "secondary" : "destructive"}>{licenseLabel(license)}</Badge>
+                <Input value={teamName} onChange={(event) => setTeamName(event.target.value)} className="h-9 w-64 text-xl font-semibold" aria-label="Team name" />
+                <Button variant="outline" size="sm" onClick={() => void renameTeam()} disabled={action !== null || !teamName.trim() || teamName.trim() === team.name}>Save name</Button>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">Team management</p>
+              <p className="mt-1 text-sm text-muted-foreground">Manage members, roles, and this Team's projects.</p>
             </div>
           </div>
         </header>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-4">
           <Card className="min-w-0">
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2"><Users className="size-4" /> Members</CardTitle>
-              <CardDescription>{team.memberCount || 0} of {memberLimit} member seats used. The global SuperAdmin is not counted.</CardDescription>
+              <CardDescription>{team.memberCount || 0} active members. The global SuperAdmin is not counted.</CardDescription>
               </div>
               <Button onClick={() => setMemberDialogOpen(true)}><UserPlus /> Add member</Button>
             </CardHeader>
@@ -216,7 +219,7 @@ export function TeamManagementRoute() {
                       <TableRow key={member.id}>
                         <TableCell className="font-medium">{member.name || "Unnamed member"}</TableCell>
                         <TableCell className="text-muted-foreground">{member.email || "—"}</TableCell>
-                        <TableCell><Badge variant="outline">Member</Badge></TableCell>
+                        <TableCell><Select value={member.role} onValueChange={(value) => value && void updateMemberRole(member.id, value as "manager" | "staff")} disabled={action !== null || member.status !== "active"}><SelectTrigger size="sm" className="w-28"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manager">Manager</SelectItem><SelectItem value="staff">Staff</SelectItem></SelectContent></Select></TableCell>
                         <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{formatDate(member.joinedAt)}</TableCell>
                         <TableCell className="text-right">
@@ -245,30 +248,6 @@ export function TeamManagementRoute() {
               </div>
             </CardContent>
           </Card>
-
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><KeyRound className="size-4" /> License</CardTitle>
-                <CardDescription>Self-host entitlement for this Team.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                  <dt className="text-muted-foreground">Plan</dt><dd className="text-right font-medium">{license.planCode || "—"}</dd>
-                  <dt className="text-muted-foreground">Key</dt><dd className="text-right font-medium">{license.codeLastFour ? `••••${license.codeLastFour}` : "Not shown"}</dd>
-                  <dt className="text-muted-foreground">Members</dt><dd className="text-right font-medium">{memberLimit}</dd>
-                  <dt className="text-muted-foreground">Expires</dt><dd className="text-right font-medium">{formatDate(license.expiresAt)}</dd>
-                </dl>
-                {team.canManage && (
-                  <Button variant="outline" className="w-full" onClick={() => void checkLicense()} disabled={action !== null}>
-                    {action === "license" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                    Check license
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-          </div>
         </div>
       </div>
       <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
@@ -283,6 +262,7 @@ export function TeamManagementRoute() {
                 <FieldLabel htmlFor="team-member-email">Email</FieldLabel>
                 <Input id="team-member-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="member@example.com" required autoFocus />
               </Field>
+              <Field><FieldLabel>Role</FieldLabel><Select value={memberRole} onValueChange={(value) => value && setMemberRole(value as "manager" | "staff")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manager">Manager</SelectItem><SelectItem value="staff">Staff</SelectItem></SelectContent></Select></Field>
               <label className="flex items-center gap-2 text-sm font-medium">
                 <Checkbox checked={createAccount} onCheckedChange={(checked) => setCreateAccount(checked === true)} />
                 Create a new account

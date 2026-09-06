@@ -161,7 +161,7 @@ export async function readPublicHistory(userId: string, type: PublicMcpDocumentT
   const id = projectIdentifier(revisionId);
   if (id === null) throw new Error("History revision not found");
   const revision = await prisma!.entityChange.findFirst({
-    where: { id, entityType: { in: [type, type.slice(0, -1)] }, entityId: current.entityId },
+    where: { id: id as any, entityType: { in: [type, type.slice(0, -1)] }, entityId: current.entityId },
   });
   if (!revision) throw new Error("History revision not found");
   const envelope = parseRevisionChanges(type, revision.changes);

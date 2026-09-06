@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getInstallationIdentity } from "./installation-identity.js";
 
 type TeamRecord = { id: string; status: string; createdAt: Date };
-type MembershipRecord = { id: string; teamId: string; userId: string; status: string; joinedAt: Date };
+type MembershipRecord = { id: string; teamId: string; userId: string; role?: string; status: string; joinedAt: Date };
 
 function sign(value: string): string {
   return createHmac("sha256", getInstallationIdentity().privateKey).update(value).digest("base64url");
@@ -19,7 +19,7 @@ export function teamProvisioningSignature(team: TeamRecord): string {
 }
 
 export function membershipProvisioningSignature(member: MembershipRecord): string {
-  return sign(["member", member.id, member.teamId, member.userId, member.status, member.joinedAt.toISOString()].join("|"));
+  return sign(["member", member.id, member.teamId, member.userId, member.role || "member", member.status, member.joinedAt.toISOString()].join("|"));
 }
 
 export function isProvisionedTeam(team: TeamRecord & { provisioningSignature?: string | null }): boolean {

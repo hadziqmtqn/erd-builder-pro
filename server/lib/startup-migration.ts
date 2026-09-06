@@ -4,7 +4,7 @@ import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres, SUPABASE_URL } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 import { migrateDbClients } from "./db-client-migration.js";
-import { membershipProvisioningSignature, teamProvisioningSignature } from "./team-provisioning.js";
+import { isProvisionedMembership, membershipProvisioningSignature, teamProvisioningSignature } from "./team-provisioning.js";
 
 type PrismaRecord = { id: number | bigint | string };
 
@@ -265,7 +265,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "id" TEXT NOT NULL PRIMARY KEY,
         "team_id" TEXT NOT NULL,
         "user_id" TEXT NOT NULL,
-        "role" TEXT NOT NULL DEFAULT 'member',
+        "role" TEXT NOT NULL DEFAULT 'staff',
         "status" TEXT NOT NULL DEFAULT 'active',
         "joined_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "provisioning_signature" TEXT,
@@ -323,16 +323,18 @@ async function sealExistingTeamRecords(): Promise<void> {
     );
   }
 
+  await prisma.$executeRawUnsafe(`UPDATE "team_members" SET "role" = 'staff' WHERE "role" = 'member'`);
   const members = await prisma.$queryRawUnsafe<Array<{
-    id: string; team_id: string; user_id: string; status: string; joined_at: Date | string;
-  }>>('SELECT "id", "team_id", "user_id", "status", "joined_at" FROM "team_members" WHERE "provisioning_signature" IS NULL');
+    id: string; team_id: string; user_id: string; role: string; status: string; joined_at: Date | string; provisioning_signature: string | null;
+  }>>('SELECT "id", "team_id", "user_id", "role", "status", "joined_at", "provisioning_signature" FROM "team_members"');
   for (const member of members) {
     const joinedAt = new Date(member.joined_at);
     const signature = membershipProvisioningSignature({
-      id: member.id, teamId: member.team_id, userId: member.user_id, status: member.status, joinedAt,
+      id: member.id, teamId: member.team_id, userId: member.user_id, role: member.role, status: member.status, joinedAt,
     });
+    if (isProvisionedMembership({ id: member.id, teamId: member.team_id, userId: member.user_id, role: member.role, status: member.status, joinedAt, provisioningSignature: member.provisioning_signature })) continue;
     await prisma.$executeRawUnsafe(
-      `UPDATE "team_members" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(member.id)} AND "provisioning_signature" IS NULL`,
+      `UPDATE "team_members" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(member.id)}`,
     );
   }
   if (teams.length || members.length) logger.info({ teams: teams.length, members: members.length }, "Established Team provisioning baseline");
@@ -567,7 +569,6 @@ async function ensureFileAccessColumns(): Promise<void> {
 
   const dateType = isPostgresDatabase() ? postgresDateType() : "DATETIME";
   for (const table of SHAREABLE_FILE_TABLES) {
-    await addColumnIfMissing(table, "team_access", `"team_access" TEXT NOT NULL DEFAULT 'private'`);
     await addColumnIfMissing(table, "public_access", `"public_access" TEXT NOT NULL DEFAULT 'off'`);
     await addColumnIfMissing(table, "share_token_hash", '"share_token_hash" TEXT');
     await addColumnIfMissing(table, "share_expires_at", `"share_expires_at" ${dateType}`);

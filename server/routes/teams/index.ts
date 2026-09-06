@@ -2,7 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 
 import { authenticate } from "../../lib/middleware.js";
-import { validate, addTeamMemberSchema, createTeamSchema } from "../../lib/validation.js";
+import { validate, addTeamMemberSchema, createTeamSchema, updateTeamMemberSchema, updateTeamSchema } from "../../lib/validation.js";
 import * as controller from "./controller.js";
 
 const router = Router();
@@ -18,8 +18,9 @@ router.use(authenticate);
 router.get("/", controller.list);
 router.post("/", licenseRequestLimiter, validate(createTeamSchema), controller.create);
 router.get("/:id", controller.get);
-router.post("/:id/license/check", licenseRequestLimiter, controller.checkLicense);
+router.patch("/:id", validate(updateTeamSchema), controller.update);
 router.post("/:id/members", validate(addTeamMemberSchema), controller.addMember);
+router.patch("/:id/members/:userId", validate(updateTeamMemberSchema), controller.updateMember);
 router.delete("/:id/members/:userId", controller.removeMember);
 
 export default router;

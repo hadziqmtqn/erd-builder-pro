@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { getStorageClientForUser } from "../../lib/storage.js";
 import { isDesktopMode } from "../../lib/config.js";
 import { currentTeamScope, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { canManageTeam } from "../teams/service.js";
 
 // ── List ──
 
@@ -126,6 +127,8 @@ export async function createProject(name: string, userId: string) {
 // ── Update ──
 
 export async function updateProject(projectId: number, userId: string, name: string) {
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
+  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId, ...projectScopeWhere(userId) },
     data: { name },
@@ -138,8 +141,8 @@ export async function updateProject(projectId: number, userId: string, name: str
 export async function softDeleteProject(projectId: number, userId: string) {
   const now = new Date();
 
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
-  if (!project) return { success: false };
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
+  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId },
     data: { isDeleted: true, deletedAt: now },
@@ -163,8 +166,8 @@ export async function softDeleteProject(projectId: number, userId: string) {
 // ── Restore + Cascade ──
 
 export async function restoreProject(projectId: number, userId: string) {
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
-  if (!project) return { success: false };
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
+  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId },
     data: { isDeleted: false, deletedAt: null },
@@ -188,8 +191,8 @@ export async function restoreProject(projectId: number, userId: string) {
 // ── Permanent Delete + Cascade + R2 cleanup ──
 
 export async function permanentDeleteProject(projectId: number, userId: string) {
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true } });
-  if (!project) return { success: false };
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
+  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
   if (isDesktopMode()) {
     await (prisma as any)?.dbClient.deleteMany({ where: { projectId, userId } });
   }

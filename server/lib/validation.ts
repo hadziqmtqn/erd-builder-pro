@@ -84,10 +84,17 @@ export const createTeamSchema = z.object({
   name: z.string().trim().min(1).max(100),
 });
 
+export const updateTeamSchema = createTeamSchema;
+
 export const addTeamMemberSchema = z.object({
   email: z.string().trim().email().max(255),
   name: z.string().trim().min(1).max(255).optional(),
   password: z.string().min(8).max(128).optional(),
+  role: z.enum(["manager", "staff"]).default("staff"),
+});
+
+export const updateTeamMemberSchema = z.object({
+  role: z.enum(["manager", "staff"]),
 });
 
 export const updateAccountSchema = z.object({

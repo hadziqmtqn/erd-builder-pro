@@ -19,6 +19,7 @@ import {
 export type SwitcherTeam = {
   id: string;
   name: string;
+  canManage?: boolean;
   license?: { status?: string };
 };
 
@@ -107,7 +108,7 @@ export function TeamSwitcher({
                     <UsersRound className="size-4" />
                     <span className="min-w-0 flex-1 truncate">{team.name}</span>
                     {activeTeamId === team.id && <Check className="size-4" />}
-                    {canManageTeams && <button
+                    {team.canManage && <button
                       type="button"
                       aria-label={`Manage ${team.name}`}
                       className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"

@@ -57,26 +57,24 @@ export async function create(req: ExpressRequest, res: ExpressResponse): Promise
   }
 }
 
-export async function checkLicense(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+export async function update(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const current = actor(req);
-    const team = await teams.refreshTeamLicense(req.params.id, current.userId, current.isSuperAdmin);
-    if (!team) {
-      res.status(404).json({ error: "Team not found" });
-      return;
-    }
+    const team = await teams.updateTeam(req.params.id, req.body.name, current.userId, current.isSuperAdmin);
+    if (!team) { res.status(404).json({ error: "Team not found" }); return; }
     res.json(team);
   } catch (error) {
-    handleTeamError(res, error, "Failed to check team license");
+    handleTeamError(res, error, "Failed to update Team");
   }
 }
 
 export async function addMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const current = actor(req);
-    const team = await teams.addMember(req.params.id, req.body.email, current.isSuperAdmin, {
+    const team = await teams.addMember(req.params.id, req.body.email, current.userId, current.isSuperAdmin, {
       name: req.body.name,
       password: req.body.password,
+      role: req.body.role,
     });
     if (!team) {
       res.status(404).json({ error: "Team not found" });
@@ -88,10 +86,21 @@ export async function addMember(req: ExpressRequest, res: ExpressResponse): Prom
   }
 }
 
+export async function updateMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const current = actor(req);
+    const team = await teams.updateMemberRole(req.params.id, req.params.userId, req.body.role, current.userId, current.isSuperAdmin);
+    if (!team) { res.status(404).json({ error: "Team member not found" }); return; }
+    res.json(team);
+  } catch (error) {
+    handleTeamError(res, error, "Failed to update Team member");
+  }
+}
+
 export async function removeMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const current = actor(req);
-    const removed = await teams.removeMember(req.params.id, req.params.userId, current.isSuperAdmin);
+    const removed = await teams.removeMember(req.params.id, req.params.userId, current.userId, current.isSuperAdmin);
     if (!removed) {
       res.status(404).json({ error: "Team member not found" });
       return;

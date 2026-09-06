@@ -152,6 +152,7 @@ export async function listHistory(entityType: HistoryEntityType, uid: string, us
       version: revision.version,
       change_type: revision.changeType,
       created_at: revision.createdAt?.toISOString() ?? null,
+      actor: revision.user ? { name: revision.user.name, email: revision.user.email } : null,
     })),
   };
 }
@@ -166,6 +167,7 @@ export async function readHistoryRevision(entityType: HistoryEntityType, uid: st
     version: revision.version,
     change_type: revision.changeType,
     created_at: revision.createdAt?.toISOString() ?? null,
+    actor: revision.user ? { name: revision.user.name, email: revision.user.email } : null,
     source: revision.envelope.source,
     snapshot: revision.envelope.snapshot,
   };

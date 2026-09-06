@@ -26,7 +26,7 @@ export type TeamSummary = {
     id: string;
     email: string | null;
     name: string | null;
-    role: "member";
+    role: "manager" | "staff";
     status: string;
     joinedAt: string;
   }>;

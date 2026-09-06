@@ -99,8 +99,9 @@ export async function captureEntityRevision(input: CaptureRevisionInput) {
   const entityId = String(input.entityId);
   const aliases = [input.entityType, input.entityType.slice(0, -1)];
   const snapshot = legacySnapshot(input.entityType, input.snapshot);
+  const personalWhere = currentTeamScope()?.mode === "team" ? {} : { userId: input.userId };
   const last = await prisma.entityChange.findFirst({
-    where: { entityType: { in: aliases }, entityId, userId: input.userId },
+    where: { entityType: { in: aliases }, entityId, ...personalWhere },
     orderBy: { createdAt: "desc" },
   });
 
@@ -113,7 +114,7 @@ export async function captureEntityRevision(input: CaptureRevisionInput) {
   }
 
   const aggregate = await prisma.entityChange.aggregate({
-    where: { entityType: { in: aliases }, entityId, userId: input.userId },
+    where: { entityType: { in: aliases }, entityId, ...personalWhere },
     _max: { version: true },
   });
   const envelope: HistoryEnvelope = {
@@ -135,7 +136,7 @@ export async function captureEntityRevision(input: CaptureRevisionInput) {
 
   if ((input.changeType ?? "update") === "update") {
     const stale = await prisma.entityChange.findMany({
-      where: { entityType: { in: aliases }, entityId, userId: input.userId, changeType: "update" },
+      where: { entityType: { in: aliases }, entityId, ...personalWhere, changeType: "update" },
       orderBy: { createdAt: "desc" },
       skip: AUTO_REVISION_LIMIT,
       select: { id: true },
@@ -160,7 +161,7 @@ export async function listEntityRevisions(entityType: HistoryEntityType, entityI
     where: { entityType: { in: [entityType, entityType.slice(0, -1)] }, entityId: String(entityId), ...(currentTeamScope()?.mode === "team" ? {} : { userId }) },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(limit, 1), 100),
-    select: { id: true, version: true, changeType: true, createdAt: true, userId: true },
+    select: { id: true, version: true, changeType: true, createdAt: true, userId: true, user: { select: { name: true, email: true } } },
   });
 }
 
@@ -174,6 +175,7 @@ export async function getEntityRevision(entityType: HistoryEntityType, entityId:
       entityId: String(entityId),
       ...(currentTeamScope()?.mode === "team" ? {} : { userId }),
     },
+    include: { user: { select: { name: true, email: true } } },
   });
   return revision ? { ...revision, envelope: parseRevisionChanges(entityType, revision.changes) } : null;
 }

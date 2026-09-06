@@ -58,7 +58,7 @@ async function main(): Promise<void> {
         id: randomUUID(),
         teamId: team.id,
         userId: member.id,
-        role: "member",
+        role: "staff",
         status: "active",
       },
     });
