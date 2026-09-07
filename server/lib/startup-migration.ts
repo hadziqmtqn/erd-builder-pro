@@ -834,6 +834,13 @@ export async function applySchemaMigrations(): Promise<void> {
   // Additive startup self-heal for installed SQLite and PostgreSQL deployments.
   if (!prisma || (!isDesktopMode() && !isPostgresDatabase())) return;
 
+  await addColumnIfMissing("users", "must_change_password", '"must_change_password" BOOLEAN NOT NULL DEFAULT false');
+  try {
+    await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "users_email_lower_key" ON "users"(LOWER("email"))');
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to enforce case-insensitive user email uniqueness (non-fatal)");
+  }
+
   // v2.4+ — destinations column on backups table
   await addColumnIfMissing("backups", "destinations", "destinations TEXT");
   await addColumnIfMissing("user_preferences", "auto_backup_enabled", '"auto_backup_enabled" BOOLEAN DEFAULT false');

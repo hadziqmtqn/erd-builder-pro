@@ -13,10 +13,11 @@ import {
   Pencil,
   Trash2,
   FileText,
+  LayoutDashboard,
   ArrowUpRight,
   Loader2,
 } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -91,8 +92,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   selectedWorkspaceUid: string | null;
   globalSearchQuery: string;
   onGlobalSearchChange: (query: string) => void;
-  isInstallable?: boolean;
-  onInstall?: () => void;
   isProjectsLoading?: boolean;
   user: any;
   isOnline: boolean;
@@ -102,6 +101,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeTeamId: string | null;
   onTeamSelect: (teamId: string | null) => void;
   onTeamManage: (team: SwitcherTeam) => void;
+  onUserManage: () => void;
   onTeamCreate: (input: { name: string }) => Promise<unknown>;
   onTeamCreated: (team: any) => void;
 }
@@ -133,13 +133,20 @@ export const AppSidebar = React.memo(({
   activeTeamId,
   onTeamSelect,
   onTeamManage,
+  onUserManage,
   onTeamCreate,
   onTeamCreated,
   ...props
 }: AppSidebarProps) => {
   const { state } = useSidebar();
   const navigate = useNavigate();
+  const location = useLocation();
   const isCollapsed = state === "collapsed";
+  const switcherTeams = teams.length > 0
+    ? teams
+    : user?.activeTeamId
+      ? [{ id: user.activeTeamId, name: "Team workspace" }]
+      : teams;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchShortcutLabel] = useState(getSearchShortcutLabel);
   const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
@@ -247,14 +254,15 @@ export const AppSidebar = React.memo(({
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamSwitcher
-          teams={teams}
+          teams={switcherTeams}
           activeTeamId={activeTeamId}
-          enabled={teamsAvailable}
+          enabled={teamsAvailable || switcherTeams.length > 0}
           selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
           onSelect={onTeamSelect}
           onAdd={() => setIsTeamCreateOpen(true)}
           onManage={onTeamManage}
+          onUserManage={onUserManage}
         />
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
@@ -272,6 +280,22 @@ export const AppSidebar = React.memo(({
                 ))}
               </span>
             </button>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Dashboard"
+                  isActive={location.pathname === '/'}
+                  onClick={() => navigate('/')}
+                >
+                  <LayoutDashboard />
+                  <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">

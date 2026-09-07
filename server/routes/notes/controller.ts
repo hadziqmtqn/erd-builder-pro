@@ -61,7 +61,7 @@ export async function update(req: ExpressRequest, res: ExpressResponse): Promise
 
     let resolvedProjectId: number | null | undefined;
     if (project_id !== undefined) {
-      resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
+      resolvedProjectId = await resolveNewFileProjectId(prisma, userId, project_id);
     }
 
     const result = await notesService.updateNote(req.params.uid, userId, {

@@ -38,7 +38,7 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
       if (session) {
         const localUser = await prisma?.user.findUnique({
           where: { id: session.userId },
-          select: { isSuperAdmin: true },
+          select: { isSuperAdmin: true, mustChangePassword: true },
         });
         const isSuperAdmin = Boolean(localUser?.isSuperAdmin);
         if (!isSuperAdmin) {
@@ -58,7 +58,11 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
           id: session.userId,
           email: session.email,
           isSuperAdmin,
+          mustChangePassword: Boolean(localUser?.mustChangePassword),
         };
+        if (localUser?.mustChangePassword && !(req.method === "PUT" && req.originalUrl.startsWith("/api/account"))) {
+          return res.status(403).json({ error: "You must change your temporary password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
+        }
         const teamId = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : "";
         if (teamId && !(await canAccessTeam(teamId, session.userId, isSuperAdmin))) {
           return res.status(404).json({ error: "Resource not found" });

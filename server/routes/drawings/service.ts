@@ -53,6 +53,7 @@ const LIST_SELECT = {
   id: true, uid: true, title: true, projectId: true,
   isPublic: true, shareToken: true, expiryDate: true,
   createdAt: true, updatedAt: true, isDeleted: true, userId: true,
+  user: { select: { name: true, email: true } },
   project: { select: { name: true, uid: true, id: true } },
 } as const;
 

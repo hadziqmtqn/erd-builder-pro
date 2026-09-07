@@ -21,6 +21,7 @@ router.get("/:id", controller.get);
 router.patch("/:id", validate(updateTeamSchema), controller.update);
 router.post("/:id/members", validate(addTeamMemberSchema), controller.addMember);
 router.patch("/:id/members/:userId", validate(updateTeamMemberSchema), controller.updateMember);
+router.post("/:id/members/:userId/ban", controller.banMember);
 router.delete("/:id/members/:userId", controller.removeMember);
 
 export default router;

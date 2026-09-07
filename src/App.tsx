@@ -24,6 +24,7 @@ import { TableRoute } from './routes/TableRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { OAuthConsent } from './components/OAuthConsent';
+import { ForcePasswordChange } from './components/ForcePasswordChange';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
 const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
@@ -31,6 +32,7 @@ const DbClientEditorRoute = lazy(() => import('./routes/DbClientEditorRoute').th
 const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
 const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));
 const TeamManagementRoute = lazy(() => import('./routes/TeamManagementRoute').then(module => ({ default: module.TeamManagementRoute })));
+const UserManagementRoute = lazy(() => import('./routes/UserManagementRoute').then(module => ({ default: module.UserManagementRoute })));
 const AdminRoute = lazy(() => import('./routes/AdminRoute').then(module => ({ default: module.AdminRoute })));
 
 function lazyRoute(element: ReactNode) {
@@ -38,7 +40,7 @@ function lazyRoute(element: ReactNode) {
 }
 
 function AppContent() {
-  const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
+  const { isAuthenticated, user, setUser, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -132,6 +134,10 @@ function AppContent() {
     return <OAuthConsent />;
   }
 
+  if (user?.mustChangePassword) {
+    return <ForcePasswordChange user={user} onComplete={setUser} />;
+  }
+
   // Main app
   return (
     <WorkspaceProvider
@@ -158,6 +164,7 @@ function AppContent() {
           {/* Admin pages */}
           <Route path="trash" element={lazyRoute(<AdminRoute />)} />
           <Route path="teams/:id" element={lazyRoute(<TeamManagementRoute />)} />
+          <Route path="users" element={lazyRoute(<UserManagementRoute />)} />
 
           {/* Default: Dashboard */}
           <Route index element={<DashboardRoute />} />

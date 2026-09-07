@@ -60,6 +60,7 @@ const LIST_SELECT = {
   id: true, uid: true, name: true, projectId: true,
   isPublic: true, shareToken: true, expiryDate: true,
   createdAt: true, updatedAt: true, isDeleted: true, userId: true,
+  user: { select: { name: true, email: true } },
   sourceType: true, sourceConnectionId: true, dbmlSource: true,
   project: { select: { name: true, uid: true, id: true } },
 } as const;

@@ -23,7 +23,7 @@ export function getApiBaseUrl(): string {
 
 export const AUTH_TOKEN_KEY='***';
 export const ACTIVE_TEAM_KEY = 'erd-active-team-id';
-const TEAM_SCOPED_API = /^\/api\/(?:projects|diagrams|notes|drawings|flowcharts|search|entity-changes|ai\/chat)(?:\/|$)/;
+const TEAM_SCOPED_API = /^\/api\/(?:projects|diagrams|notes|drawings|flowcharts|search|entity-changes|ai\/chat)(?=[/?#]|$)/;
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;

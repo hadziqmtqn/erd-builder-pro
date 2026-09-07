@@ -6,7 +6,7 @@ import { resolveNewFileProjectId } from "./security.js";
 import { runWithTeamScope } from "./team-scope.js";
 
 describe("new file project scope", () => {
-  it("uses the Team Uncategorized project while keeping Personal files projectless", async () => {
+  it("requires a Team project but leaves Personal files unassigned", async () => {
     const prisma = {
       project: {
         findFirst: vi.fn().mockResolvedValue({ id: 42 }),
@@ -17,7 +17,7 @@ describe("new file project scope", () => {
     await expect(runWithTeamScope(
       { mode: "team", teamId: "team-1" },
       () => resolveNewFileProjectId(prisma, "user-1", null),
-    )).resolves.toBe(42);
+    )).rejects.toThrow("Team project is required");
     await expect(runWithTeamScope(
       { mode: "personal", teamId: null },
       () => resolveNewFileProjectId(prisma, "user-1", null),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, UserCheck, UserMinus, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, MoreHorizontal, RefreshCw, UserCheck, UserMinus, UserPlus, UserX, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +16,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/providers/WorkspaceContext";
+import ConfirmModal from "@/components/ConfirmModal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type TeamDetail = TeamSummary & {
   members: NonNullable<TeamSummary["members"]>;
 };
+
+const TEAM_ROLE_LABELS = { manager: "Manager", staff: "Staff" } as const;
+const TEMPORARY_PASSWORD_CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+type PendingMemberAction = { kind: "remove" | "ban"; userId: string; name: string | null };
+
+function createTemporaryPassword(): string {
+  const values = new Uint32Array(18);
+  globalThis.crypto.getRandomValues(values);
+  return Array.from(values, (value) => TEMPORARY_PASSWORD_CHARACTERS[value % TEMPORARY_PASSWORD_CHARACTERS.length]).join("");
+}
 
 function formatDate(value?: string | null): string {
   if (!value) return "—";
@@ -43,12 +55,47 @@ export function TeamManagementRoute() {
   const [email, setEmail] = useState("");
   const [memberName, setMemberName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showMemberPassword, setShowMemberPassword] = useState(false);
+  const [showMemberConfirmPassword, setShowMemberConfirmPassword] = useState(false);
   const [memberRole, setMemberRole] = useState<"manager" | "staff">("staff");
   const [createAccount, setCreateAccount] = useState(false);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
+  const [pendingMemberAction, setPendingMemberAction] = useState<PendingMemberAction | null>(null);
   const [error, setError] = useState("");
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
   const { setBreadcrumbLabel } = useWorkspace();
+  const passwordMismatch = createAccount && confirmPassword.length > 0 && password !== confirmPassword;
+
+  const closeMemberDialog = () => {
+    setMemberDialogOpen(false);
+    setEmail("");
+    setMemberName("");
+    setPassword("");
+    setConfirmPassword("");
+    setShowMemberPassword(false);
+    setShowMemberConfirmPassword(false);
+    setCreateAccount(false);
+    setMemberRole("staff");
+  };
+
+  const generateTemporaryPassword = () => {
+    setPassword(createTemporaryPassword());
+    setConfirmPassword("");
+    setShowMemberPassword(false);
+    setShowMemberConfirmPassword(false);
+  };
+
+  const handleCreateAccountChange = (checked: boolean) => {
+    setCreateAccount(checked);
+    if (checked) generateTemporaryPassword();
+    else {
+      setPassword("");
+      setConfirmPassword("");
+      setShowMemberPassword(false);
+      setShowMemberConfirmPassword(false);
+    }
+  };
 
   const fetchTeam = useCallback(async () => {
     if (!id) return;
@@ -79,6 +126,10 @@ export function TeamManagementRoute() {
   const addMember = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!id || !email.trim()) return;
+    if (createAccount && password !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
     setAction("add-member");
     try {
       const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members`, {
@@ -86,18 +137,13 @@ export function TeamManagementRoute() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
-          ...(createAccount ? { name: memberName.trim(), password } : {}),
+          ...(createAccount ? { name: memberName.trim(), password, confirmPassword } : {}),
           role: memberRole,
         }),
       });
       if (!response.ok) throw await responseError(response, "Member could not be added.");
       setTeam(await response.json());
-      setEmail("");
-      setMemberName("");
-      setPassword("");
-      setCreateAccount(false);
-      setMemberRole("staff");
-      setMemberDialogOpen(false);
+      closeMemberDialog();
       toast.success("Member added");
     } catch (cause: any) {
       toast.error(cause?.message || "Member could not be added.");
@@ -131,7 +177,7 @@ export function TeamManagementRoute() {
   };
 
   const removeMember = async (userId: string, memberName: string | null) => {
-    if (!id || !window.confirm(`Remove ${memberName || "this member"} from the Team?`)) return;
+    if (!id) return;
     setAction(`remove:${userId}`);
     try {
       const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, {
@@ -145,6 +191,18 @@ export function TeamManagementRoute() {
     } finally {
       setAction(null);
     }
+  };
+
+  const banMember = async (userId: string, memberName: string | null) => {
+    if (!id) return;
+    setAction(`ban:${userId}`);
+    try {
+      const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}/ban`, { method: "POST" });
+      if (!response.ok) throw await responseError(response, "Member could not be banned.");
+      await fetchTeam();
+      toast.success("Member banned");
+    } catch (cause: any) { toast.error(cause?.message || "Member could not be banned."); }
+    finally { setAction(null); }
   };
 
   const reactivateMember = async (memberEmail: string) => {
@@ -219,28 +277,10 @@ export function TeamManagementRoute() {
                       <TableRow key={member.id}>
                         <TableCell className="font-medium">{member.name || "Unnamed member"}</TableCell>
                         <TableCell className="text-muted-foreground">{member.email || "—"}</TableCell>
-                        <TableCell><Select value={member.role} onValueChange={(value) => value && void updateMemberRole(member.id, value as "manager" | "staff")} disabled={action !== null || member.status !== "active"}><SelectTrigger size="sm" className="w-28"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manager">Manager</SelectItem><SelectItem value="staff">Staff</SelectItem></SelectContent></Select></TableCell>
+                        <TableCell><Select value={member.role} onValueChange={(value) => value && void updateMemberRole(member.id, value as "manager" | "staff")} disabled={action !== null || member.status !== "active"}><SelectTrigger size="sm" className="w-28"><SelectValue>{TEAM_ROLE_LABELS[member.role]}</SelectValue></SelectTrigger><SelectContent><SelectItem value="manager">{TEAM_ROLE_LABELS.manager}</SelectItem><SelectItem value="staff">{TEAM_ROLE_LABELS.staff}</SelectItem></SelectContent></Select></TableCell>
                         <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{formatDate(member.joinedAt)}</TableCell>
-                        <TableCell className="text-right">
-                      {member.status === "active" ? <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => void removeMember(member.id, member.name || member.email)}
-                        disabled={action !== null}
-                        aria-label={`Deactivate ${member.name || member.email || "member"}`}
-                      >
-                        {action === `remove:${member.id}` ? <Loader2 className="animate-spin" /> : <UserMinus />}
-                      </Button> : <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => member.email && void reactivateMember(member.email)}
-                        disabled={action !== null || !member.email}
-                        aria-label={`Reactivate ${member.name || member.email || "member"}`}
-                      >
-                        {action === `reactivate:${member.email}` ? <Loader2 className="animate-spin" /> : <UserCheck />}
-                      </Button>}
-                        </TableCell>
+                        <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${member.name || member.email || "member"}`} disabled={action !== null}><MoreHorizontal /></Button>} /><DropdownMenuContent align="end" className="w-48"><DropdownMenuGroup><DropdownMenuLabel>Member actions</DropdownMenuLabel>{member.status === "active" ? <><DropdownMenuItem onClick={() => setPendingMemberAction({ kind: "remove", userId: member.id, name: member.name || member.email })}><UserMinus /> Deactivate member</DropdownMenuItem>{isSuperAdmin && <DropdownMenuItem variant="destructive" onClick={() => setPendingMemberAction({ kind: "ban", userId: member.id, name: member.name || member.email })}><UserX /> Ban member</DropdownMenuItem>}</> : <DropdownMenuItem disabled={!member.email} onClick={() => member.email && void reactivateMember(member.email)}><UserCheck /> Reactivate member</DropdownMenuItem>}</DropdownMenuGroup></DropdownMenuContent></DropdownMenu></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -250,7 +290,7 @@ export function TeamManagementRoute() {
           </Card>
         </div>
       </div>
-      <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
+      <Dialog open={memberDialogOpen} onOpenChange={(open) => open ? setMemberDialogOpen(true) : closeMemberDialog()}>
         <DialogContent size="md">
           <form onSubmit={addMember}>
             <DialogHeader>
@@ -262,23 +302,58 @@ export function TeamManagementRoute() {
                 <FieldLabel htmlFor="team-member-email">Email</FieldLabel>
                 <Input id="team-member-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="member@example.com" required autoFocus />
               </Field>
-              <Field><FieldLabel>Role</FieldLabel><Select value={memberRole} onValueChange={(value) => value && setMemberRole(value as "manager" | "staff")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manager">Manager</SelectItem><SelectItem value="staff">Staff</SelectItem></SelectContent></Select></Field>
+              <Field>
+                <FieldLabel>Role</FieldLabel>
+                <div role="radiogroup" aria-label="Member role" className="grid gap-2 sm:grid-cols-2">
+                  {(["manager", "staff"] as const).map((role) => (
+                    <label key={role} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                      <input type="radio" name="team-member-role" value={role} checked={memberRole === role} onChange={() => setMemberRole(role)} className="mt-0.5 size-4 accent-primary" />
+                      <span><span className="block text-sm font-medium capitalize">{role}</span><span className="block text-xs text-muted-foreground">{role === "manager" ? "Can manage this Team and its members." : "Can collaborate on this Team's work."}</span></span>
+                    </label>
+                  ))}
+                </div>
+              </Field>
               <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox checked={createAccount} onCheckedChange={(checked) => setCreateAccount(checked === true)} />
+                <Checkbox checked={createAccount} onCheckedChange={(checked) => handleCreateAccountChange(checked === true)} />
                 Create a new account
               </label>
               {createAccount && <>
                 <Field><FieldLabel htmlFor="team-member-name">Name</FieldLabel><Input id="team-member-name" value={memberName} onChange={(event) => setMemberName(event.target.value)} required /></Field>
-                <Field><FieldLabel htmlFor="team-member-password">Temporary password</FieldLabel><Input id="team-member-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /><FieldDescription>Share this password securely. The member can change it after signing in.</FieldDescription></Field>
+                <Field>
+                  <FieldLabel htmlFor="team-member-password">Temporary password</FieldLabel>
+                  <div className="flex items-start gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Input id="team-member-password" type={showMemberPassword ? "text" : "password"} value={password} readOnly aria-readonly="true" minLength={8} required className="pr-10" />
+                      <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2" onClick={() => setShowMemberPassword((visible) => !visible)} aria-label={showMemberPassword ? "Hide temporary password" : "Show temporary password"} aria-pressed={showMemberPassword}>
+                        {showMemberPassword ? <EyeOff /> : <Eye />}
+                      </Button>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={generateTemporaryPassword}>
+                      <RefreshCw data-icon="inline-start" /> Generate new
+                    </Button>
+                  </div>
+                  <FieldDescription>Generated automatically. Share it securely; the member must change it after signing in.</FieldDescription>
+                </Field>
+                <Field data-invalid={passwordMismatch}>
+                  <FieldLabel htmlFor="team-member-confirm-password">Confirm password</FieldLabel>
+                  <div className="relative">
+                    <Input id="team-member-confirm-password" type={showMemberConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required aria-invalid={passwordMismatch} className="pr-10" />
+                    <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2" onClick={() => setShowMemberConfirmPassword((visible) => !visible)} aria-label={showMemberConfirmPassword ? "Hide confirm password" : "Show confirm password"} aria-pressed={showMemberConfirmPassword}>
+                      {showMemberConfirmPassword ? <EyeOff /> : <Eye />}
+                    </Button>
+                  </div>
+                  {passwordMismatch ? <FieldDescription className="text-destructive">Passwords do not match.</FieldDescription> : <FieldDescription>Enter the same password again.</FieldDescription>}
+                </Field>
               </>}
             </DialogBody>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMemberDialogOpen(false)} disabled={action !== null}>Cancel</Button>
-              <Button type="submit" disabled={action !== null || !email.trim() || (createAccount && (!memberName.trim() || password.length < 8))}>{action === "add-member" && <Loader2 className="animate-spin" />} Add member</Button>
+              <Button type="button" variant="outline" onClick={closeMemberDialog} disabled={action !== null}>Cancel</Button>
+              <Button type="submit" disabled={action !== null || !email.trim() || (createAccount && (!memberName.trim() || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword))}>{action === "add-member" && <Loader2 className="animate-spin" />} Add member</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmModal isOpen={Boolean(pendingMemberAction)} title={pendingMemberAction?.kind === "ban" ? "Ban member?" : "Deactivate member?"} message={pendingMemberAction?.kind === "ban" ? `${pendingMemberAction.name || "This member"} cannot be added to this Team again.` : `${pendingMemberAction?.name || "This member"} will lose access to this Team.`} confirmText={pendingMemberAction?.kind === "ban" ? "Ban member" : "Deactivate member"} cancelText="Cancel" variant="danger" onCancel={() => setPendingMemberAction(null)} onConfirm={() => { const pending = pendingMemberAction; setPendingMemberAction(null); if (pending) void (pending.kind === "ban" ? banMember(pending.userId, pending.name) : removeMember(pending.userId, pending.name)); }} />
     </main>
   );
 }

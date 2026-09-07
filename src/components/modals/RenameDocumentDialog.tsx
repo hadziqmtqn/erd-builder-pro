@@ -31,6 +31,7 @@ interface RenameDocumentDialogProps {
   newName: string;
   setNewName: (name: string) => void;
   projects: any[];
+  requireProject?: boolean;
   selectedProjectId: string;
   setSelectedProjectId: (id: string) => void;
   /** For create mode — called with (title, projectId) when user confirms */
@@ -50,6 +51,10 @@ interface RenameDocumentDialogProps {
 const viewLabel = (v: string) =>
   v === 'erd' ? 'diagram' : v === 'notes' ? 'note' : v === 'drawings' ? 'drawing' : 'flowchart';
 
+const projectScopeLabel = (project: any) => project.teamId ?? project.team_id
+  ? `Team${project.team?.name ? ` · ${project.team.name}` : ''}`
+  : 'Personal';
+
 export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   isOpen,
   onOpenChange,
@@ -59,6 +64,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   newName,
   setNewName,
   projects,
+  requireProject = false,
   selectedProjectId,
   setSelectedProjectId,
   onCreate,
@@ -82,7 +88,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   }, [isOpen]);
 
   const handleSave = async () => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || (requireProject && selectedProjectId === 'none')) return;
 
     if (isCreate) {
       onCreate?.(newName.trim(), selectedProjectId === 'none' ? null : selectedProjectId);
@@ -163,14 +169,14 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
               <Select value={selectedProjectId} onValueChange={(value) => value !== null && setSelectedProjectId(value)}>
                 <SelectTrigger className="h-9">
                   <SelectValue>
-                    {selectedProjectId === "none" ? "Uncategorized" : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
+                    {selectedProjectId === "none" ? (requireProject ? "Select Project" : "No project") : projects.find(p => p.id.toString() === selectedProjectId)?.name || "Select Project"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Uncategorized</SelectItem>
+                  {!requireProject && <SelectItem value="none">No project</SelectItem>}
                   {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id.toString()}>
-                      {project.name}
+                      <span>{project.name}</span><span className="ml-2 text-xs text-muted-foreground">{projectScopeLabel(project)}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -183,7 +189,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
             Cancel
           </DialogClose>
           <Button
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || (requireProject && selectedProjectId === 'none')}
             onClick={handleSave}
             className="h-9 px-6"
           >

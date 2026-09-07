@@ -146,15 +146,18 @@ export function DashboardRoute() {
   const user = ctx.user;
   const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
   const [serverRecentDocs, setServerRecentDocs] = useState<any[] | null>(null);
+  const [recentReady, setRecentReady] = useState(false);
 
   useEffect(() => {
     if (ctx.isGuest || !user) {
       setServerRecentDocs(null);
+      setRecentReady(true);
       return;
     }
 
     let cancelled = false;
     setServerRecentDocs(null);
+    setRecentReady(false);
     const fetchRecentFiles = async () => {
       try {
         const response = await apiFetch('/api/search/recent');
@@ -163,6 +166,8 @@ export function DashboardRoute() {
         if (!cancelled) setServerRecentDocs(Array.isArray(body.data) ? body.data : []);
       } catch {
         // Keep local dashboard data as a fallback if the API is unavailable.
+      } finally {
+        if (!cancelled) setRecentReady(true);
       }
     };
 
@@ -284,14 +289,14 @@ export function DashboardRoute() {
 
   // Show empty state as soon as projects are loaded and empty —
   // don't wait for documents to finish loading
-  const isEmpty = (!ctx.isProjectsLoading && (ctx.projects || []).filter((p: any) => !p.is_deleted).length === 0 && totalDocs === 0 && !serverRecentDocs?.length);
+  const dashboardReady = !isLoading && recentReady;
+  const isEmpty = dashboardReady && totalDocs === 0 && !serverRecentDocs?.length;
 
   // Show dashboard content as soon as we have projects or documents
-  const showContent = !isEmpty && initialLoadDone;
+  const showContent = dashboardReady && !isEmpty && initialLoadDone;
 
   const createDocument = (cfg: typeof typeConfig[number]) => {
-    const fn = (ctx as Record<string, any>)[cfg.createFn];
-    if (fn) fn(`New ${cfg.createLabel}`);
+    (ctx as Record<string, any>).handleOpenCreateDocument?.(cfg.key === 'diagrams' ? 'erd' : cfg.key);
   };
 
   const lastDocument = recentDocs[0];

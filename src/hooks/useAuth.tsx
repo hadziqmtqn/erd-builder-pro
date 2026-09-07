@@ -15,6 +15,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function normalizeLocalUser(value: any) {
+  if (!value) return value;
+  return {
+    ...value,
+    isSuperAdmin: value.isSuperAdmin ?? value.is_super_admin ?? false,
+    mustChangePassword: value.mustChangePassword ?? value.must_change_password ?? false,
+    activeTeamId: value.activeTeamId ?? value.active_team_id ?? null,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<any>(null);
@@ -38,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (data.token) setAuthToken(data.token);
           setIsAuthenticated(true);
           setIsGuest(false);
-          setUser(data.user);
+          setUser(normalizeLocalUser(data.user));
           retryRef.current = 0;
           return;
         } else {
@@ -111,16 +121,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLogin = useCallback((userData?: any) => {
-    if (userData && !Boolean(userData.isSuperAdmin || userData.is_super_admin)) {
+    const normalizedUser = normalizeLocalUser(userData);
+    if (normalizedUser && !Boolean(normalizedUser.isSuperAdmin)) {
       try {
-        if (userData.activeTeamId) localStorage.setItem(ACTIVE_TEAM_KEY, userData.activeTeamId);
+        if (normalizedUser.activeTeamId) localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
         else localStorage.removeItem(ACTIVE_TEAM_KEY);
       } catch { /* ignore */ }
     }
     setIsAuthenticated(true);
     setIsGuest(false);
     sessionStorage.removeItem('auth_mode');
-    if (userData) setUser(userData);
+    if (normalizedUser) setUser(normalizedUser);
   }, []);
 
   const handleGuestLogin = useCallback(() => {

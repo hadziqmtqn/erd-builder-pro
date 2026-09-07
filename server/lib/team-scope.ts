@@ -30,7 +30,7 @@ export function fileScopeWhere(userId: string): Record<string, unknown> {
   if (!scope) return { userId };
   return scope.mode === "team"
     ? { project: { teamId: scope.teamId } }
-    : { userId, OR: [{ projectId: null }, { project: { teamId: null } }] };
+    : { userId, OR: [{ projectId: null }, { project: { userId, teamId: null } }] };
 }
 
 export function fileIdentifierWhere(identifier: string, userId: string): Record<string, unknown> {

@@ -45,6 +45,7 @@ const STORAGE_KEY = 'flowchart-table-column-visibility';
 const COLUMNS: ColumnDef[] = [
   { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[30%]' },
   { id: 'workspace', label: 'Workspace', defaultVisible: true, hideable: false, width: 'w-[20%]' },
+  { id: 'creator', label: 'Creator', defaultVisible: true, hideable: true, width: 'w-[12%]' },
   { id: 'updated', label: 'Updated', defaultVisible: false, hideable: true, width: 'w-[14%]' },
   { id: 'status', label: 'Status', defaultVisible: true, hideable: true, width: 'w-[8%]' },
   { id: 'created', label: 'Created', defaultVisible: true, hideable: true, width: 'w-[12%]' },
@@ -234,6 +235,9 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
                             </span>
                           </TableCell>
                         );
+                      }
+                      if (col.id === 'creator') {
+                        return <TableCell key="creator" className="text-xs text-muted-foreground">{(flowchart as any).user?.name || (flowchart as any).user?.email || '—'}</TableCell>;
                       }
                       if (col.id === 'updated') {
                         return (

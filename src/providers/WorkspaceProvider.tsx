@@ -296,7 +296,7 @@ export function WorkspaceProvider({
   } = useNotes(isGuest);
 
   const {
-    projects, activeProjectId, setActiveProjectId, fetchProjects,
+    projects, setProjects, activeProjectId, setActiveProjectId, fetchProjects,
     createProject, updateProject, deleteProject,
     restoreProject, deleteProjectPermanent,
     isLoading: isProjectsLoading,
@@ -987,6 +987,7 @@ export function WorkspaceProvider({
     setActiveDrawingId(null);
     setActiveFlowchartId(null);
     setActiveProjectId(null);
+    setProjects([]);
     setDiagrams([]);
     setNotes([]);
     setDrawings([]);
@@ -1015,7 +1016,7 @@ export function WorkspaceProvider({
   }, [
     fetchDiagrams, fetchDrawings, fetchFlowcharts, fetchNotes, fetchProjects,
     navigate, setActiveDiagramId, setActiveDrawingId, setActiveFlowchartId,
-    setActiveNoteUid, setActiveProjectId, setDiagrams, setDrawings, setEdges,
+    setActiveNoteUid, setActiveProjectId, setDiagrams, setDrawings, setEdges, setProjects,
     setFileSearchQuery, setFlowcharts, setNodes, setNotes, setSearchQuery,
     setSelectedEdgeId, setSelectedNodeId, setTableSearchParams, setTableLoadingState,
     triggerTableRefresh,

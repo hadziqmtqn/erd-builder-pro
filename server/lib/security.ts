@@ -1,6 +1,5 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
 import { isDesktopMode, isLocalPostgres } from "./config.js";
 import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
 
@@ -60,7 +59,7 @@ export const resolveOwnedProjectId = async (
   return Number(project.id);
 };
 
-/** New files created from an active Team always belong to a Team project. */
+/** Team files require a Team project; Personal files may stay unassigned. */
 export const resolveNewFileProjectId = async (
   prisma: PrismaClient,
   userId: string,
@@ -71,18 +70,6 @@ export const resolveNewFileProjectId = async (
   }
 
   const scope = currentTeamScope();
-  if (scope?.mode !== "team" || !scope.teamId) return null;
-
-  const existing = await prisma.project.findFirst({
-    where: { teamId: scope.teamId, name: "Uncategorized", isDeleted: false },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
-  if (existing) return Number(existing.id);
-
-  const created = await prisma.project.create({
-    data: { uid: randomUUID(), name: "Uncategorized", userId, teamId: scope.teamId },
-    select: { id: true },
-  });
-  return Number(created.id);
+  if (scope?.mode === "team") throw new Error("A Team project is required");
+  return null;
 };

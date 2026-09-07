@@ -20,9 +20,11 @@ describe("apiFetch Team scope", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await apiFetch("/api/notes");
+    await apiFetch("/api/projects?limit=100&offset=0");
     await apiFetch("/api/ai/rules/erd");
 
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-Team-Id")).toBe("team-1");
-    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("X-Team-Id")).toBeNull();
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("X-Team-Id")).toBe("team-1");
+    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("X-Team-Id")).toBeNull();
   });
 });

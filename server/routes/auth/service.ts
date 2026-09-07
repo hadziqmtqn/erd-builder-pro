@@ -154,6 +154,7 @@ export async function localLogin(email: string, password: string) {
       email: (user as any).email,
       name: (user as any).name,
       isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+      mustChangePassword: Boolean((user as any).mustChangePassword),
       activeTeamId,
       user_metadata: { name: (user as any).name },
     },
@@ -250,12 +251,14 @@ export async function getLocalSession(token: string) {
 
   const user = await prisma.user.findFirst({
     where: { id: session.userId } as any,
-    select: { id: true, email: true, name: true, isSuperAdmin: true },
+    select: { id: true, email: true, name: true, isSuperAdmin: true, mustChangePassword: true },
   });
   if (!user) return null;
+  let activeTeamId: string | undefined;
   if (!Boolean((user as any).isSuperAdmin)) {
     const access = await canUserLogin((user as any).id);
     if (!access.allowed) return null;
+    activeTeamId = access.teamId;
   }
 
   return {
@@ -263,6 +266,8 @@ export async function getLocalSession(token: string) {
     email: (user as any).email,
     name: (user as any).name,
     isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+    mustChangePassword: Boolean((user as any).mustChangePassword),
+    activeTeamId,
     user_metadata: { name: (user as any).name },
   };
 }
@@ -318,6 +323,7 @@ export async function updateLocalAccount(
   }
   if (typeof data.newPassword === "string" && data.newPassword.length > 0) {
     updateData.password = hashPassword(data.newPassword);
+    updateData.mustChangePassword = false;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -327,7 +333,7 @@ export async function updateLocalAccount(
   const updated = await prisma.user.update({
     where: { id: userId } as any,
     data: updateData,
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, mustChangePassword: true },
   });
 
   return {
@@ -336,6 +342,7 @@ export async function updateLocalAccount(
       id: (updated as any).id,
       email: (updated as any).email,
       name: (updated as any).name,
+      mustChangePassword: Boolean((updated as any).mustChangePassword),
       user_metadata: { name: (updated as any).name },
     },
   };

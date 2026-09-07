@@ -5,6 +5,7 @@ CREATE TABLE "users" (
     "name" TEXT,
     "password" TEXT NOT NULL,
     "is_super_admin" BOOLEAN,
+    "must_change_password" BOOLEAN NOT NULL DEFAULT false,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -512,6 +513,7 @@ CREATE TABLE "db_catalogs" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+CREATE UNIQUE INDEX "users_email_lower_key" ON "users"(LOWER("email"));
 
 -- CreateIndex
 CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");

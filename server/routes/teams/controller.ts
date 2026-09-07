@@ -110,3 +110,14 @@ export async function removeMember(req: ExpressRequest, res: ExpressResponse): P
     handleTeamError(res, error, "Failed to remove team member");
   }
 }
+
+export async function banMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const current = actor(req);
+    const banned = await teams.banMember(req.params.id, req.params.userId, current.userId, current.isSuperAdmin);
+    if (!banned) { res.status(404).json({ error: "Team member not found" }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    handleTeamError(res, error, "Failed to ban Team member");
+  }
+}

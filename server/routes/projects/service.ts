@@ -114,12 +114,27 @@ export async function listProjects(
   };
 }
 
+/** Projects a document dialog may target in the active workspace only. */
+export async function listSelectableProjects(userId: string) {
+  const scope = currentTeamScope();
+  const where = scope?.mode === "team"
+    ? { teamId: scope.teamId, isDeleted: false }
+    : { userId, teamId: null, isDeleted: false };
+
+  return prisma?.project.findMany({
+    where,
+    select: { id: true, uid: true, name: true, userId: true, teamId: true, team: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  }) || [];
+}
+
 // ── Create ──
 
 export async function createProject(name: string, userId: string) {
   const scope = currentTeamScope();
+  if (name.trim().toLowerCase() === "uncategorized") throw new Error("Uncategorized is reserved by the system");
   const project = await prisma?.project.create({
-    data: { name, userId, uid: randomUUID(), ...(scope?.mode === "team" ? { teamId: scope.teamId } : {}) },
+    data: { name, userId: scope?.mode === "team" ? null : userId, uid: randomUUID(), ...(scope?.mode === "team" ? { teamId: scope.teamId } : {}) },
   });
   return project || null;
 }
@@ -127,7 +142,8 @@ export async function createProject(name: string, userId: string) {
 // ── Update ──
 
 export async function updateProject(projectId: number, userId: string, name: string) {
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
+  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, name: true, userId: true, teamId: true } });
+  if (project?.name.trim().toLowerCase() === "uncategorized" || name.trim().toLowerCase() === "uncategorized") return { success: false };
   if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId, ...projectScopeWhere(userId) },

@@ -10,7 +10,7 @@ describe("Team scope", () => {
       expect(projectScopeWhere("user-1")).toEqual({ userId: "user-1", teamId: null });
       expect(fileScopeWhere("user-1")).toEqual({
         userId: "user-1",
-        OR: [{ projectId: null }, { project: { teamId: null } }],
+        OR: [{ projectId: null }, { project: { userId: "user-1", teamId: null } }],
       });
     });
 

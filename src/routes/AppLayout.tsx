@@ -185,7 +185,7 @@ function AppLayoutInner() {
     view, sidebarView,
     isPublicView, isOnline,
     projects, user,
-    isInstallable, installApp, isProjectsLoading,
+    isProjectsLoading,
     handleLogout,
     handleViewChange,
     handleNoteSelect, handleDrawingSelect, refreshActiveDocument,
@@ -236,12 +236,26 @@ function AppLayoutInner() {
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
     refreshTeamScope,
+    teamScopeVersion,
   } = useWorkspace();
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
   const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
+  const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
-  const teamState = useTeams(isGuest, !isSuperAdmin, refreshTeamScope);
+  const teamState = useTeams(isGuest, false, refreshTeamScope);
+  useEffect(() => {
+    if (isGuest) {
+      setSelectableProjects([]);
+      return;
+    }
+    let cancelled = false;
+    apiFetch('/api/projects/selectable')
+      .then(response => response.ok ? response.json() : { data: [] })
+      .then(body => { if (!cancelled) setSelectableProjects(Array.isArray(body.data) ? body.data : []); })
+      .catch(() => { if (!cancelled) setSelectableProjects([]); });
+    return () => { cancelled = true; };
+  }, [isGuest, teamState.activeTeamId]);
   const handleTeamSelect = useCallback(async (teamId: string | null) => {
     await syncDrafts();
     teamState.selectTeam(teamId);
@@ -253,6 +267,7 @@ function AppLayoutInner() {
   const handleTeamManage = useCallback((team: TeamSummary) => {
     navigate(`/teams/${team.id}`);
   }, [navigate]);
+  const handleUserManage = useCallback(() => navigate("/users"), [navigate]);
   const handleTeamCreated = useCallback(async (team: TeamSummary) => {
     await refreshTeamScope();
     navigate(`/teams/${team.id}`);
@@ -774,8 +789,6 @@ function AppLayoutInner() {
           onGlobalSearchChange={setGlobalSearchQuery}
           user={user}
           isOnline={isOnline}
-          isInstallable={isInstallable}
-          onInstall={installApp}
           isProjectsLoading={isProjectsLoading}
           onOpenFeedback={() => setIsFeedbackOpen(true)}
           teams={teamState.teams}
@@ -783,6 +796,7 @@ function AppLayoutInner() {
           activeTeamId={teamState.activeTeamId}
           onTeamSelect={handleTeamSelect}
           onTeamManage={handleTeamManage}
+          onUserManage={handleUserManage}
           onTeamCreate={teamState.createTeam}
           onTeamCreated={handleTeamCreated}
         />
@@ -827,7 +841,7 @@ function AppLayoutInner() {
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
-          <Outlet />
+          <Outlet key={teamScopeVersion} />
         </div>
 
         <ImportNoteModal
@@ -876,7 +890,8 @@ function AppLayoutInner() {
             activeDocument={editDialogNote ?? activeDocument}
             newName={newName}
             setNewName={setNewName}
-            projects={projects}
+            projects={selectableProjects}
+            requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             updateDiagram={updateDiagram}
@@ -900,7 +915,8 @@ function AppLayoutInner() {
             activeDocument={null}
             newName={newName}
             setNewName={setNewName}
-            projects={projects}
+            projects={selectableProjects}
+            requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             onCreate={(title, projectId) => {

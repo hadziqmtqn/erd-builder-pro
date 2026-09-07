@@ -125,9 +125,7 @@ export async function moveToProject(req: ExpressRequest, res: ExpressResponse): 
   try {
     const userId = (req as any).user.id;
     const raw = req.body.project_id;
-    const projectId = (raw === null || raw === undefined || raw === '' || raw === 'none' || raw === 'uncategorized')
-      ? null
-      : Number(raw);
+    const projectId = await resolveNewFileProjectId(prisma, userId, raw === 'none' || raw === 'uncategorized' ? null : raw);
 
     const result = await diagService.updateDiagram(req.params.uid, userId, { projectId });
     if (!result) { res.status(404).json({ error: "Diagram not found" }); return; }

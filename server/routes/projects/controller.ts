@@ -16,6 +16,14 @@ export async function list(req: ExpressRequest, res: ExpressResponse): Promise<v
   }
 }
 
+export async function selectable(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    res.json({ data: await svc.listSelectableProjects((req as any).user.id) });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch selectable projects");
+  }
+}
+
 export async function create(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const { name } = req.body;

@@ -90,7 +90,11 @@ export const addTeamMemberSchema = z.object({
   email: z.string().trim().email().max(255),
   name: z.string().trim().min(1).max(255).optional(),
   password: z.string().min(8).max(128).optional(),
+  confirmPassword: z.string().min(8).max(128).optional(),
   role: z.enum(["manager", "staff"]).default("staff"),
+}).refine((data) => (!data.password && !data.confirmPassword) || data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 export const updateTeamMemberSchema = z.object({
