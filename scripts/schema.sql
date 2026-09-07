@@ -6,9 +6,13 @@ CREATE TABLE "users" (
     "password" TEXT NOT NULL,
     "is_super_admin" BOOLEAN,
     "must_change_password" BOOLEAN NOT NULL DEFAULT false,
+    "sso_subject" TEXT,
+    "sso_email" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
 
 -- CreateTable
 CREATE TABLE "sessions" (

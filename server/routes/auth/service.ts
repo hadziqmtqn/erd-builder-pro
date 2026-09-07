@@ -1,4 +1,4 @@
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode } from "../../lib/config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode, getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   hashPassword,
@@ -40,6 +40,9 @@ export async function getAuthConfig() {
   }
 
   return {
+    authMode: isSsoAuthMode() ? "sso" : "password",
+    ssoConfigured: !isSsoAuthMode() || getSsoConfig().configured,
+    ssoLoginUrl: "/api/sso/login",
     supabaseAuth: !useLocalAuth(),
     isDesktop: isDesktopMode(),
     isLocalPostgres: isLocalPostgres(),
@@ -47,7 +50,7 @@ export async function getAuthConfig() {
     installMode: getInstallMode(),
     guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "false") === "true",
     guestAiEnabled: (process.env.GUEST_AI_ENABLED || "false") === "true",
-    needsSetup,
+    needsSetup: isSsoAuthMode() ? false : needsSetup,
     ...(isDesktopMode()
       ? {
           desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,

@@ -9,6 +9,10 @@ export const loginSchema = z.object({
   externalToken: z.string().max(2048).optional(),
 });
 
+export const ssoLinkSchema = z.object({
+  password: z.string().min(1).max(128),
+});
+
 export const setupAdminSchema = z.object({
   email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).max(255),
   password: z.string().min(8).max(128),

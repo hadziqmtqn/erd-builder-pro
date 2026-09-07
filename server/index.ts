@@ -167,6 +167,7 @@ const authLimiter = rateLimit({
   message: { error: "Too many login attempts, please try again later" },
 });
 app.use("/api/login", authLimiter);
+app.use("/api/sso/link", authLimiter);
 
 // AI proxy rate limiter — 30 req/min per IP (guest mode is unauthenticated)
 const aiProxyLimiter = rateLimit({

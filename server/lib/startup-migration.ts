@@ -835,6 +835,13 @@ export async function applySchemaMigrations(): Promise<void> {
   if (!prisma || (!isDesktopMode() && !isPostgresDatabase())) return;
 
   await addColumnIfMissing("users", "must_change_password", '"must_change_password" BOOLEAN NOT NULL DEFAULT false');
+  await addColumnIfMissing("users", "sso_subject", '"sso_subject" TEXT');
+  await addColumnIfMissing("users", "sso_email", '"sso_email" TEXT');
+  try {
+    await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "users_sso_subject_key" ON "users"("sso_subject")');
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Failed to enforce SSO subject uniqueness (non-fatal)");
+  }
   try {
     await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "users_email_lower_key" ON "users"(LOWER("email"))');
   } catch (err: any) {

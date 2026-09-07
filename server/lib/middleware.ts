@@ -1,5 +1,5 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "./config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, isSsoAuthMode } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 import { prisma } from "./prisma.js";
 import { canAccessTeam, canUserLogin } from "../routes/teams/service.js";
@@ -98,5 +98,10 @@ export const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: N
       error: "Supabase configuration is missing or invalid. Please check your environment variables."
     });
   }
+  next();
+};
+
+export const rejectInSsoMode = (_req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+  if (isSsoAuthMode()) return res.status(404).json({ error: "Not found" });
   next();
 };

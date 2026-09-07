@@ -55,6 +55,33 @@ export function useLocalAuth(): boolean {
   return isDesktopMode() || isLocalPostgres();
 }
 
+export function isSsoAuthMode(): boolean {
+  return process.env.AUTH_MODE?.trim().toLowerCase() === "sso";
+}
+
+export function getSsoConfig() {
+  const issuerUrl = process.env.SSO_ISSUER_URL?.replace(/\/+$/, "") || "";
+  const clientId = process.env.SSO_CLIENT_ID?.trim() || "";
+  const redirectUri = process.env.SSO_REDIRECT_URI?.trim() || "";
+  const appUrl = process.env.APP_URL?.replace(/\/+$/, "") || "";
+  const urls = [issuerUrl, redirectUri, appUrl];
+  const validUrls = urls.every((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || (process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(url.hostname));
+    } catch {
+      return false;
+    }
+  });
+  return {
+    issuerUrl,
+    clientId,
+    redirectUri,
+    appUrl,
+    configured: isLocalPostgres() && Boolean(clientId) && validUrls,
+  };
+}
+
 // Initialize Supabase
 const SUPABASE_CLIENT_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 export let supabase: any = null;
