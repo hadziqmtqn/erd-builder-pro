@@ -23,7 +23,7 @@ vi.mock("../../lib/storage.js", () => ({ getStorageClientForUser: vi.fn() }));
 vi.mock("../teams/service.js", () => ({ canManageTeam: vi.fn().mockResolvedValue(false) }));
 
 import { runWithTeamScope } from "../../lib/team-scope.js";
-import { createProject, listProjects } from "./service.js";
+import { createProject, listProjects, listSelectableProjects } from "./service.js";
 
 describe("Team project scope", () => {
   it("lists by active team and creates a shared Team project", async () => {
@@ -37,6 +37,18 @@ describe("Team project scope", () => {
     }));
     expect(mocks.project.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ name: "Shared", teamId: "team-1", userId: null }),
+    }));
+  });
+
+  it("lists only the signed-in user's Personal projects", async () => {
+    mocks.project.findMany.mockClear();
+
+    await runWithTeamScope({ mode: "personal", teamId: null }, () =>
+      listSelectableProjects("member-1")
+    );
+
+    expect(mocks.project.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: "member-1", teamId: null, isDeleted: false },
     }));
   });
 });

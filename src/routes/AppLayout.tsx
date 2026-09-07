@@ -255,7 +255,7 @@ function AppLayoutInner() {
       .then(body => { if (!cancelled) setSelectableProjects(Array.isArray(body.data) ? body.data : []); })
       .catch(() => { if (!cancelled) setSelectableProjects([]); });
     return () => { cancelled = true; };
-  }, [isGuest, teamState.activeTeamId]);
+  }, [createDialogOpen, isGuest, isRenameDialogOpen, teamState.activeTeamId]);
   const handleTeamSelect = useCallback(async (teamId: string | null) => {
     await syncDrafts();
     teamState.selectTeam(teamId);
