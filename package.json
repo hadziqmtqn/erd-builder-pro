@@ -100,7 +100,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "cross-env": "^10.1.0",
-    "date-fns": "^4.1.0",
+    "date-fns": "^4.4.0",
     "diff": "^9.0.0",
     "docx": "^9.7.1",
     "dompurify": "^3.4.14",
