@@ -69,7 +69,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tauri-apps/plugin-window-state": "^2.4.1",
-    "@tiptap/extension-bubble-menu": "^3.31.0",
+    "@tiptap/extension-bubble-menu": "^3.31.3",
     "@tiptap/extension-code-block-lowlight": "^3.31.0",
     "@tiptap/extension-collaboration": "^3.31.0",
     "@tiptap/extension-color": "^3.31.0",
