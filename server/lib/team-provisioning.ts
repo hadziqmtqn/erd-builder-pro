@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { getInstallationIdentity } from "./installation-identity.js";
 
-type TeamRecord = { id: string; status: string; createdAt: Date };
+type TeamRecord = { id: string; status: string; createdAt: Date; cloudEntitlement?: string | null };
 type MembershipRecord = { id: string; teamId: string; userId: string; role?: string; status: string; joinedAt: Date };
 
 function sign(value: string): string {
@@ -15,7 +15,7 @@ function matches(actual: string | null | undefined, expected: string): boolean {
 }
 
 export function teamProvisioningSignature(team: TeamRecord): string {
-  return sign(["team", team.id, team.status, team.createdAt.toISOString()].join("|"));
+  return sign(["team", team.id, team.status, team.createdAt.toISOString(), team.cloudEntitlement || ""].join("|"));
 }
 
 export function membershipProvisioningSignature(member: MembershipRecord): string {
@@ -23,7 +23,8 @@ export function membershipProvisioningSignature(member: MembershipRecord): strin
 }
 
 export function isProvisionedTeam(team: TeamRecord & { provisioningSignature?: string | null }): boolean {
-  return matches(team.provisioningSignature, teamProvisioningSignature(team));
+  return matches(team.provisioningSignature, teamProvisioningSignature(team))
+    || (!team.cloudEntitlement && matches(team.provisioningSignature, sign(["team", team.id, team.status, team.createdAt.toISOString()].join("|"))));
 }
 
 export function isProvisionedMembership(member: MembershipRecord & { provisioningSignature?: string | null }): boolean {

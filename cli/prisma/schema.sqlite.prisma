@@ -43,6 +43,8 @@ model User {
   preferences     UserPreference?
   sessions        Session[]
   teamMemberships TeamMember[]
+  createdTeams    Team[] @relation("TeamCreator")
+  teamAuditEvents TeamAuditEvent[] @relation("TeamAuditActor")
 
   @@map("users")
 }
@@ -65,10 +67,19 @@ model Session {
 model Team {
   id                  String       @id @default(uuid())
   name                String
+  type                String       @default("team")
+  createdBy           String?      @map("created_by")
+  ssoOrganizationId   String?      @unique @map("sso_organization_id")
+  status              String       @default("active")
+  cloudEntitlement    String?      @map("cloud_entitlement")
+  provisioningSignature String?    @map("provisioning_signature")
   createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @updatedAt @map("updated_at")
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")
   members             TeamMember[]
   projects            Project[]
+  creator             User?        @relation("TeamCreator", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  invitations         TeamInvitation[]
+  auditEvents         TeamAuditEvent[]
 
   @@map("teams")
 }
@@ -80,12 +91,45 @@ model TeamMember {
   role      String   @default("staff")
   status    String   @default("active")
   joinedAt  DateTime @default(now()) @map("joined_at")
+  provisioningSignature String? @map("provisioning_signature")
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([teamId, userId], map: "team_members_team_user_key")
   @@index([userId, status], map: "idx_team_members_user_status")
   @@map("team_members")
+}
+
+model TeamInvitation {
+  id          String    @id @default(uuid())
+  teamId      String    @map("team_id")
+  email       String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([teamId, expiresAt], map: "idx_team_invitations_team_expires")
+  @@index([email, acceptedAt], map: "idx_team_invitations_email_accepted")
+  @@map("team_invitations")
+}
+
+model TeamAuditEvent {
+  id         String    @id @default(uuid())
+  teamId     String?   @map("team_id")
+  actorId    String?   @map("actor_id")
+  action     String
+  targetType String?   @map("target_type")
+  targetId   String?   @map("target_id")
+  metadata   String    @default("{}")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  team       Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  actor      User?     @relation("TeamAuditActor", fields: [actorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([teamId, createdAt], map: "idx_team_audit_events_team_created")
+  @@index([actorId, createdAt], map: "idx_team_audit_events_actor_created")
+  @@map("team_audit_events")
 }
 
 // ── Project ──

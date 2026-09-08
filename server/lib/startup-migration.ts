@@ -252,6 +252,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "created_by" TEXT,
         "sso_organization_id" TEXT,
         "status" TEXT NOT NULL DEFAULT 'active',
+        "cloud_entitlement" TEXT,
         "provisioning_signature" TEXT,
         "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -261,6 +262,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
     await addColumnIfMissing("teams", "created_by", '"created_by" TEXT');
     await addColumnIfMissing("teams", "sso_organization_id", '"sso_organization_id" TEXT');
     await addColumnIfMissing("teams", "status", '"status" TEXT NOT NULL DEFAULT \'active\'');
+    await addColumnIfMissing("teams", "cloud_entitlement", '"cloud_entitlement" TEXT');
     await addColumnIfMissing("teams", "provisioning_signature", '"provisioning_signature" TEXT');
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "team_members" (
@@ -316,12 +318,12 @@ async function createTeamTablesIfMissing(): Promise<void> {
 /** Establishes the signed baseline once for Teams that existed before this release. */
 async function sealExistingTeamRecords(): Promise<void> {
   if (!prisma || !isLocalPostgres()) return;
-  const teams = await prisma.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string }>>(
-    'SELECT "id", "status", "created_at" FROM "teams" WHERE "provisioning_signature" IS NULL',
+  const teams = await prisma.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string; cloud_entitlement: string | null }>>(
+    'SELECT "id", "status", "created_at", "cloud_entitlement" FROM "teams" WHERE "provisioning_signature" IS NULL',
   );
   for (const team of teams) {
     const createdAt = new Date(team.created_at);
-    const signature = teamProvisioningSignature({ id: team.id, status: team.status, createdAt });
+    const signature = teamProvisioningSignature({ id: team.id, status: team.status, createdAt, cloudEntitlement: team.cloud_entitlement });
     await prisma.$executeRawUnsafe(
       `UPDATE "teams" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(team.id)} AND "provisioning_signature" IS NULL`,
     );

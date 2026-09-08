@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { getCloudWebhookSecret } from "../lib/config.js";
+import { parseCloudEntitlement, serializeCloudEntitlement } from "../lib/cloud-entitlement.js";
 import { isUuid } from "../lib/erd-column-id-migration.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../lib/team-provisioning.js";
 
@@ -37,6 +38,7 @@ export function isValidCloudOrganization(organization: any): boolean {
   if (typeof organization?.id !== "string" || !isUuid(organization.id)
     || typeof organization.name !== "string" || !organization.name.trim() || organization.name.length > 255
     || !["active", "locked"].includes(organization.status)
+    || !parseCloudEntitlement(organization.entitlement, organization.status)
     || !Array.isArray(organization.members) || organization.members.length > 10_000) return false;
 
   const memberIds = organization.members.map((member: any) => member?.user_id);
@@ -68,6 +70,11 @@ router.post("/events", async (req, res) => {
     res.status(400).json({ error: "Invalid webhook payload." });
     return;
   }
+  const entitlement = parseCloudEntitlement(organization.entitlement, organization.status);
+  if (!entitlement) {
+    res.status(400).json({ error: "Invalid webhook payload." });
+    return;
+  }
 
   try {
     const applied = await prisma.$transaction(async (tx) => {
@@ -79,9 +86,10 @@ router.post("/events", async (req, res) => {
       const existing = await tx.team.findUnique({ where: { ssoOrganizationId: organization.id } });
       const createdAt = existing?.createdAt ?? new Date();
       const teamId = existing?.id ?? randomUUID();
+      const cloudEntitlement = serializeCloudEntitlement(entitlement);
       const team = existing
-        ? await tx.team.update({ where: { id: existing.id }, data: { name: organization.name.trim(), status: organization.status, provisioningSignature: teamProvisioningSignature({ id: existing.id, status: organization.status, createdAt }) } })
-        : await tx.team.create({ data: { id: teamId, name: organization.name.trim(), type: "team", status: organization.status, ssoOrganizationId: organization.id, provisioningSignature: teamProvisioningSignature({ id: teamId, status: organization.status, createdAt }), createdAt } });
+        ? await tx.team.update({ where: { id: existing.id }, data: { name: organization.name.trim(), status: organization.status, cloudEntitlement, provisioningSignature: teamProvisioningSignature({ id: existing.id, status: organization.status, createdAt, cloudEntitlement }) } })
+        : await tx.team.create({ data: { id: teamId, name: organization.name.trim(), type: "team", status: organization.status, ssoOrganizationId: organization.id, cloudEntitlement, provisioningSignature: teamProvisioningSignature({ id: teamId, status: organization.status, createdAt, cloudEntitlement }), createdAt } });
       const syncedUserIds = new Set<string>();
 
       for (const member of organization.members) {

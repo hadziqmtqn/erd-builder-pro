@@ -15,6 +15,7 @@ import {
   FileText,
   LayoutDashboard,
   ArrowUpRight,
+  ExternalLink,
   Loader2,
 } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -257,7 +258,6 @@ export const AppSidebar = React.memo(({
           enabled={teamsAvailable || switcherTeams.length > 0}
           selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
-          portalUrl={ssoPortalUrl}
           onSelect={onTeamSelect}
           onAdd={() => setIsTeamCreateOpen(true)}
           onManage={onTeamManage}
@@ -294,6 +294,14 @@ export const AppSidebar = React.memo(({
                   <span>Dashboard</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {ssoPortalUrl && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(ssoPortalUrl)}>
+                    <ExternalLink />
+                    <span>Open ERDBPro SaaS</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

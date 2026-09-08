@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { parseCloudEntitlement, serializeCloudEntitlement, type CloudEntitlement } from "../../lib/cloud-entitlement.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../../lib/team-provisioning.js";
 
 const roles = ["owner", "manager", "staff"] as const;
@@ -10,6 +11,7 @@ export type SsoWorkspace = {
   type: "personal" | "team";
   role: (typeof roles)[number];
   status: "active" | "locked";
+  entitlement: CloudEntitlement | null;
 };
 
 export function parseSsoWorkspaces(value: unknown): SsoWorkspace[] {
@@ -19,11 +21,13 @@ export function parseSsoWorkspaces(value: unknown): SsoWorkspace[] {
   return value.map((item) => {
     if (!item || typeof item !== "object") throw new Error("workspace grant is invalid");
     const grant = item as Record<string, unknown>;
+    const entitlement = grant.type === "team" ? parseCloudEntitlement(grant.entitlement, String(grant.status)) : null;
     if (typeof grant.id !== "string" || !grant.id.trim() || grant.id.length > 255
       || typeof grant.name !== "string" || !grant.name.trim() || grant.name.length > 255
       || (grant.type !== "personal" && grant.type !== "team")
       || !roles.includes(grant.role as SsoWorkspace["role"])
-      || (grant.status !== "active" && grant.status !== "locked")) {
+      || (grant.status !== "active" && grant.status !== "locked")
+      || (grant.type === "team" && !entitlement)) {
       throw new Error("workspace grant is invalid");
     }
     if (identifiers.has(grant.id)) throw new Error("workspace grant is duplicated");
@@ -34,6 +38,7 @@ export function parseSsoWorkspaces(value: unknown): SsoWorkspace[] {
       type: grant.type,
       role: grant.role as SsoWorkspace["role"],
       status: grant.status,
+      entitlement,
     };
   });
 }
@@ -47,10 +52,12 @@ export async function syncSsoWorkspaces(db: any, userId: string, workspaces: Sso
       const existing = await tx.team.findUnique({ where: { ssoOrganizationId: grant.id } });
       const createdAt = existing?.createdAt ?? new Date();
       const teamId = existing?.id ?? randomUUID();
+      const cloudEntitlement = serializeCloudEntitlement(grant.entitlement!);
       const teamData = {
         name: grant.name,
         status: grant.status,
-        provisioningSignature: teamProvisioningSignature({ id: teamId, status: grant.status, createdAt }),
+        cloudEntitlement,
+        provisioningSignature: teamProvisioningSignature({ id: teamId, status: grant.status, createdAt, cloudEntitlement }),
       };
       const team = existing
         ? await tx.team.update({ where: { id: teamId }, data: teamData })

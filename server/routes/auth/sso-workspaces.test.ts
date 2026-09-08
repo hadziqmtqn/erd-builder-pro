@@ -11,9 +11,10 @@ describe("Cloud SSO workspace grants", () => {
   it("rejects an incomplete control-plane response", () => {
     expect(() => parseSsoWorkspaces(undefined)).toThrow("workspace grant response is invalid");
     expect(() => parseSsoWorkspaces([{ id: "org-1", name: "Team" }])).toThrow("workspace grant is invalid");
+    expect(() => parseSsoWorkspaces([{ id: "org-1", name: "Team", type: "team", role: "staff", status: "active" }])).toThrow("workspace grant is invalid");
     expect(() => parseSsoWorkspaces([
-      { id: "org-1", name: "One", type: "team", role: "staff", status: "active" },
-      { id: "org-1", name: "Two", type: "team", role: "staff", status: "active" },
+      { id: "org-1", name: "One", type: "team", role: "staff", status: "active", entitlement: { status: "active", revision: "a".repeat(64), capabilities: {}, limits: { max_members: 1 } } },
+      { id: "org-1", name: "Two", type: "team", role: "staff", status: "active", entitlement: { status: "active", revision: "a".repeat(64), capabilities: {}, limits: { max_members: 1 } } },
     ])).toThrow("workspace grant is duplicated");
   });
 
@@ -42,14 +43,15 @@ describe("Cloud SSO workspace grants", () => {
     const db = { $transaction: (callback: (value: typeof tx) => Promise<void>) => callback(tx) };
 
     await syncSsoWorkspaces(db, "user-1", parseSsoWorkspaces([
-      { id: "org-1", name: " Cloud Team ", type: "team", role: "owner", status: "active" },
-      { id: "personal-1", name: "Personal", type: "personal", role: "owner", status: "active" },
+      { id: "org-1", name: " Cloud Team ", type: "team", role: "owner", status: "active", entitlement: { status: "active", revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5 } } },
+      { id: "personal-1", name: "Personal", type: "personal", role: "owner", status: "active", entitlement: null },
     ]));
 
     expect(tx.team.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       name: "Cloud Team",
       ssoOrganizationId: "org-1",
       status: "active",
+      cloudEntitlement: JSON.stringify({ revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5 } }),
     }) });
     expect(tx.teamMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: "user-1", role: "manager", status: "active" }),

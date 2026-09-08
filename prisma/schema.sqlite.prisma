@@ -71,6 +71,7 @@ model Team {
   createdBy           String?      @map("created_by")
   ssoOrganizationId   String?      @unique @map("sso_organization_id")
   status              String       @default("active")
+  cloudEntitlement    String?      @map("cloud_entitlement")
   provisioningSignature String?    @map("provisioning_signature")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")

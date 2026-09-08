@@ -12,8 +12,6 @@ CREATE TABLE "users" (
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
-
 -- CreateTable
 CREATE TABLE "sessions" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -33,12 +31,8 @@ CREATE TABLE "teams" (
     "created_by" TEXT,
     "sso_organization_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active',
-    "license_id" TEXT,
-    "license_code_last_four" TEXT,
-    "license_status" TEXT NOT NULL DEFAULT 'active',
-    "license_expires_at" DATETIME,
-    "max_members" INTEGER,
-    "binding_generation" INTEGER DEFAULT 0,
+    "cloud_entitlement" TEXT,
+    "provisioning_signature" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "teams_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -52,11 +46,10 @@ CREATE TABLE "team_members" (
     "role" TEXT NOT NULL DEFAULT 'staff',
     "status" TEXT NOT NULL DEFAULT 'active',
     "joined_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "provisioning_signature" TEXT,
     CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
     CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
-
-CREATE UNIQUE INDEX "teams_sso_organization_id_key" ON "teams"("sso_organization_id");
 
 -- CreateTable
 CREATE TABLE "team_invitations" (
@@ -68,23 +61,6 @@ CREATE TABLE "team_invitations" (
     "accepted_at" DATETIME,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "team_invitations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
-);
-
--- CreateTable
-CREATE TABLE "team_license_entitlements" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "team_id" TEXT NOT NULL,
-    "activation_id" TEXT NOT NULL,
-    "license_id" TEXT NOT NULL,
-    "installation_id" TEXT NOT NULL,
-    "encrypted_client_token" TEXT NOT NULL,
-    "signed_entitlement" TEXT NOT NULL,
-    "expires_at" DATETIME NOT NULL,
-    "grace_until" DATETIME,
-    "status" TEXT NOT NULL,
-    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "team_license_entitlements_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -520,7 +496,9 @@ CREATE TABLE "db_catalogs" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
-CREATE UNIQUE INDEX "users_email_lower_key" ON "users"(LOWER("email"));
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");
@@ -529,10 +507,7 @@ CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");
 CREATE INDEX "sessions_token_idx" ON "sessions"("token");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "teams_license_id_key" ON "teams"("license_id");
-
--- CreateIndex
-CREATE INDEX "idx_teams_license_status" ON "teams"("license_status");
+CREATE UNIQUE INDEX "teams_sso_organization_id_key" ON "teams"("sso_organization_id");
 
 -- CreateIndex
 CREATE INDEX "idx_team_members_user_status" ON "team_members"("user_id", "status");
@@ -548,15 +523,6 @@ CREATE INDEX "idx_team_invitations_team_expires" ON "team_invitations"("team_id"
 
 -- CreateIndex
 CREATE INDEX "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "team_license_entitlements_activation_id_key" ON "team_license_entitlements"("activation_id");
-
--- CreateIndex
-CREATE INDEX "idx_team_license_entitlements_team_status" ON "team_license_entitlements"("team_id", "status");
-
--- CreateIndex
-CREATE INDEX "idx_team_license_entitlements_license" ON "team_license_entitlements"("license_id");
 
 -- CreateIndex
 CREATE INDEX "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at");

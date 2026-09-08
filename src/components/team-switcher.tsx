@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Database, ExternalLink, Plus, Settings2, UserCog, UserRound, UsersRound } from "lucide-react";
+import { Check, ChevronsUpDown, Database, Plus, Settings2, UserCog, UserRound, UsersRound } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -30,7 +30,6 @@ export function TeamSwitcher({
   enabled,
   selfHosted,
   canManageTeams,
-  portalUrl,
   onSelect,
   onAdd,
   onManage,
@@ -41,7 +40,6 @@ export function TeamSwitcher({
   enabled: boolean;
   selfHosted: boolean;
   canManageTeams: boolean;
-  portalUrl?: string | null;
   onSelect: (teamId: string | null) => void;
   onAdd: () => void;
   onManage: (team: SwitcherTeam) => void;
@@ -158,19 +156,6 @@ export function TeamSwitcher({
                     <span>Add Team</span>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
-              </>
-            )}
-
-            {portalUrl && (
-              <>
-                <DropdownMenuSeparator className="my-1.5" />
-                <DropdownMenuItem
-                  onClick={() => window.location.assign(portalUrl)}
-                  className="cursor-pointer gap-2 px-2.5 py-2 text-muted-foreground transition-colors hover:bg-brand/10 hover:text-foreground focus:bg-brand/10 focus:text-foreground focus:[&>svg]:text-brand"
-                >
-                  <ExternalLink className="size-4" />
-                  <span>Open ERDBPro SaaS</span>
-                </DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>

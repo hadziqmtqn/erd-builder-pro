@@ -22,11 +22,13 @@ describe("Cloud control-plane webhook", () => {
       id: "01a08006-50f4-730e-86bc-6c7213246329",
       name: "Test Team",
       status: "active",
+      entitlement: { status: "active", revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5 } },
       members: [{ user_id: "01a076cd-f765-710e-a1e1-fd1b1dee9a20", role: "manager", status: "active" }],
     };
 
     expect(isValidCloudOrganization(organization)).toBe(true);
     expect(isValidCloudOrganization({ ...organization, members: [...organization.members, ...organization.members] })).toBe(false);
     expect(isValidCloudOrganization({ ...organization, members: [{ ...organization.members[0], role: "owner" }] })).toBe(false);
+    expect(isValidCloudOrganization({ ...organization, entitlement: { ...organization.entitlement, status: "locked" } })).toBe(false);
   });
 });
