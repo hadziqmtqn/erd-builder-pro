@@ -803,6 +803,7 @@ function AppLayoutInner() {
           onUserManage={handleUserManage}
           onTeamCreate={teamState.createTeam}
           onTeamCreated={handleTeamCreated}
+          ssoPortalUrl={user?.ssoPortalUrl ?? user?.sso_portal_url}
         />
       )}
 

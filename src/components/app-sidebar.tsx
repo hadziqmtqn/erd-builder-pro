@@ -104,6 +104,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onUserManage: () => void;
   onTeamCreate: (input: { name: string }) => Promise<unknown>;
   onTeamCreated: (team: any) => void;
+  ssoPortalUrl?: string | null;
 }
 
 export const AppSidebar = React.memo(({
@@ -136,6 +137,7 @@ export const AppSidebar = React.memo(({
   onUserManage,
   onTeamCreate,
   onTeamCreated,
+  ssoPortalUrl,
   ...props
 }: AppSidebarProps) => {
   const { state } = useSidebar();
@@ -255,6 +257,7 @@ export const AppSidebar = React.memo(({
           enabled={teamsAvailable || switcherTeams.length > 0}
           selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
+          portalUrl={ssoPortalUrl}
           onSelect={onTeamSelect}
           onAdd={() => setIsTeamCreateOpen(true)}
           onManage={onTeamManage}

@@ -270,6 +270,7 @@ export async function getLocalSession(token: string) {
     name: (user as any).name,
     isSuperAdmin: !isSsoAuthMode() && (isDesktopMode() || Boolean((user as any).isSuperAdmin)),
     isSso: isSsoAuthMode(),
+    ssoPortalUrl: isSsoAuthMode() ? getSsoConfig().issuerUrl || null : null,
     mustChangePassword: Boolean((user as any).mustChangePassword),
     activeTeamId,
     user_metadata: { name: (user as any).name },
