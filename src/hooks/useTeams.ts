@@ -101,6 +101,20 @@ export function useTeams(isGuest = false) {
     void fetchTeams();
   }, [fetchTeams]);
 
+  useEffect(() => {
+    if (isGuest) return;
+
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void fetchTeams();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [fetchTeams, isGuest]);
+
   const selectTeam = useCallback((teamId: string | null) => {
     setActiveTeamId(teamId);
     writeActiveTeamId(teamId);

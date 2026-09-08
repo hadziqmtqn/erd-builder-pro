@@ -45,6 +45,25 @@ describe("Team integrity", () => {
     mocks.ssoMode.mockReturnValue(false);
   });
 
+  it("revokes a removed member's access to their Team without affecting Personal access", async () => {
+    mocks.ssoMode.mockReturnValue(true);
+    mocks.database.teamMember.findFirst.mockResolvedValue(null);
+
+    await expect(teams.canAccessTeam("team-1", "removed-user", false)).resolves.toBe(false);
+
+    mocks.ssoMode.mockReturnValue(false);
+  });
+
+  it("revokes access immediately when a Cloud Team is locked", async () => {
+    mocks.ssoMode.mockReturnValue(true);
+    mocks.database.teamMember.findFirst.mockResolvedValue({ teamId: "locked-team", userId: "user-1", status: "active" });
+    mocks.database.team.findUnique.mockResolvedValue({ id: "locked-team", type: "team", status: "locked", members: [] });
+
+    await expect(teams.canAccessTeam("locked-team", "user-1", false)).resolves.toBe(false);
+
+    mocks.ssoMode.mockReturnValue(false);
+  });
+
   it("rejects local Team mutations in Cloud SSO mode", async () => {
     mocks.ssoMode.mockReturnValue(true);
 
