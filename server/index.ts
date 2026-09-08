@@ -38,6 +38,7 @@ import teamsRouter from "./routes/teams/index.js";
 import usersRouter from "./routes/users/index.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
 import { getPublicMcpClientConfig } from "./mcp/public-auth.js";
+import controlPlaneRouter from "./routes/control-plane.js";
 
 const app = express();
 
@@ -189,7 +190,12 @@ const uploadLimiter = rateLimit({
 });
 app.use("/api/upload", uploadLimiter);
 
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req, _res, buffer) => {
+    if (req.url?.split("?")[0] === "/api/control-plane/events") (req as any).rawBody = buffer;
+  },
+}));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
@@ -227,7 +233,7 @@ app.use(httpLogger);
 
 app.use("/api", (req, res, next) => {
   const path = req.originalUrl.split("?")[0];
-  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(path)) {
+  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me", "/api/control-plane/events"].includes(path)) {
     return next();
   }
   checkSupabase(req, res, next);
@@ -359,6 +365,7 @@ app.get("/api/version/latest", async (_req, res) => {
 });
 
 app.use("/api", authRouter);
+app.use("/api/control-plane", controlPlaneRouter);
 app.use("/api", oauthConsentRouter);
 app.use("/api/teams", teamsRouter);
 app.use("/api/users", usersRouter);

@@ -306,6 +306,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_actor_created" ON "team_audit_events"("actor_id", "created_at")');
+    await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "team_audit_cloud_event_key" ON "team_audit_events"("target_type", "target_id") WHERE "target_type" = \'cloud_event\'');
     await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "team_members_one_active_user_key"');
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to create Team tables (non-fatal)");

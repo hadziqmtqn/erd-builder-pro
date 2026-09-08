@@ -82,6 +82,10 @@ export function getSsoConfig() {
   };
 }
 
+export function getCloudWebhookSecret(): string {
+  return process.env.CLOUD_WEBHOOK_SECRET?.trim() || "";
+}
+
 // Initialize Supabase
 const SUPABASE_CLIENT_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 export let supabase: any = null;
