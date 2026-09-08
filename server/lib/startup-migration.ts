@@ -250,6 +250,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
         "name" TEXT NOT NULL,
         "type" TEXT NOT NULL DEFAULT 'team',
         "created_by" TEXT,
+        "sso_organization_id" TEXT,
         "status" TEXT NOT NULL DEFAULT 'active',
         "provisioning_signature" TEXT,
         "created_at" ${dateType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -258,6 +259,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
       )`);
     await addColumnIfMissing("teams", "type", '"type" TEXT NOT NULL DEFAULT \'team\'');
     await addColumnIfMissing("teams", "created_by", '"created_by" TEXT');
+    await addColumnIfMissing("teams", "sso_organization_id", '"sso_organization_id" TEXT');
     await addColumnIfMissing("teams", "status", '"status" TEXT NOT NULL DEFAULT \'active\'');
     await addColumnIfMissing("teams", "provisioning_signature", '"provisioning_signature" TEXT');
     await prisma.$executeRawUnsafe(`
@@ -298,12 +300,13 @@ async function createTeamTablesIfMissing(): Promise<void> {
         CONSTRAINT "team_audit_events_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
       )`);
     await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "team_members_team_user_key" ON "team_members"("team_id", "user_id")');
+    await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "teams_sso_organization_id_key" ON "teams"("sso_organization_id")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_members_user_status" ON "team_members"("user_id", "status")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_team_expires" ON "team_invitations"("team_id", "expires_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at")');
     await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "idx_team_audit_events_actor_created" ON "team_audit_events"("actor_id", "created_at")');
-    await repairDuplicateActiveMemberships();
+    await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "team_members_one_active_user_key"');
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to create Team tables (non-fatal)");
   }
@@ -344,49 +347,6 @@ function sqlLiteral(value: string | number | null): string {
   if (value === null) return "NULL";
   if (typeof value === "number") return Number.isSafeInteger(value) ? String(value) : "NULL";
   return `'${value.replaceAll("'", "''")}'`;
-}
-
-async function repairDuplicateActiveMemberships(): Promise<void> {
-  if (!prisma) return;
-  if (!isLocalPostgres()) {
-    try {
-      await prisma.$executeRawUnsafe(
-        'CREATE UNIQUE INDEX IF NOT EXISTS "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\'',
-      );
-    } catch (err: any) {
-      logger.warn({ err: err?.message }, "Could not add the Team membership guard to SQLite without changing existing rows");
-    }
-    return;
-  }
-  const duplicates = await prisma.$queryRawUnsafe<{ user_id: string; count: number | bigint }[]>(
-    `SELECT "user_id", COUNT(*) AS "count"
-     FROM "team_members"
-     WHERE "status" = 'active'
-     GROUP BY "user_id"
-     HAVING COUNT(*) > 1`,
-  );
-
-  for (const duplicate of duplicates) {
-    const memberships = await prisma.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM "team_members"
-       WHERE "user_id" = ${sqlLiteral(duplicate.user_id)} AND "status" = 'active'
-       ORDER BY "joined_at" ASC, "id" ASC`,
-    );
-    for (const membership of memberships.slice(1)) {
-      await prisma.$executeRawUnsafe(
-        `UPDATE "team_members" SET "status" = 'inactive'
-         WHERE "id" = ${sqlLiteral(membership.id)} AND "status" = 'active'`,
-      );
-    }
-    logger.warn(
-      { userId: duplicate.user_id, retainedMembershipId: memberships[0]?.id, deactivatedCount: Math.max(0, memberships.length - 1) },
-      "Repaired duplicate active Team memberships without deleting rows",
-    );
-  }
-
-  await prisma.$executeRawUnsafe(
-    'CREATE UNIQUE INDEX IF NOT EXISTS "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\'',
-  );
 }
 
 type LegacyUser = { id: string; email: string | null; name: string | null; is_super_admin: boolean | number | null };

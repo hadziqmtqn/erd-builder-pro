@@ -118,6 +118,7 @@ model Team {
   name                String
   type                String       @default("team")
   createdBy           String?      @map("created_by")
+  ssoOrganizationId   String?      @unique @map("sso_organization_id")
   status              String       @default("active")
   provisioningSignature String?    @map("provisioning_signature")
   createdAt           DateTime     @default(now()) @map("created_at")

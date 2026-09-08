@@ -265,6 +265,10 @@ function AppLayoutInner() {
     await refreshTeamScope();
   }, [refreshTeamScope, setRightPanelMode, syncDrafts, teamState.selectTeam]);
   const handleTeamManage = useCallback((team: TeamSummary) => {
+    if (team.manageUrl) {
+      window.location.assign(team.manageUrl);
+      return;
+    }
     navigate(`/teams/${team.id}`);
   }, [navigate]);
   const handleUserManage = useCallback(() => navigate("/users"), [navigate]);

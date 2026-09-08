@@ -4,12 +4,14 @@ import { getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
 import { createSession, hashPassword, verifyPassword } from "../../lib/desktop-auth.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import { parseSsoWorkspaces, syncSsoWorkspaces, type SsoWorkspace } from "./sso-workspaces.js";
 
 const STATE_COOKIE = "erdbpro_sso_state";
 const VERIFIER_COOKIE = "erdbpro_sso_verifier";
 const LINK_TOKEN_COOKIE = "erdbpro_sso_link_token";
 
-type RemoteIdentity = { id: string; email: string; name?: string | null };
+type RemoteAccount = { id: string; email: string; name?: string | null };
+type RemoteIdentity = RemoteAccount & { workspaces: SsoWorkspace[] };
 type LocalIdentity = { id: string; email: string; ssoSubject?: string | null; ssoEmail?: string | null };
 export type SsoAccountAction = "create" | "login" | "link" | "conflict";
 
@@ -24,7 +26,7 @@ export function ssoStorageEmail(subject: string): string {
 export function resolveSsoAccountAction(
   subjectUser: LocalIdentity | null,
   emailUser: LocalIdentity | null,
-  remote: RemoteIdentity,
+  remote: RemoteAccount,
 ): SsoAccountAction {
   if (!subjectUser && !emailUser) return "create";
   if (subjectUser?.id === emailUser?.id || (subjectUser && !emailUser)) return "login";
@@ -87,9 +89,14 @@ async function getRemoteIdentity(accessToken: string, issuerUrl: string): Promis
   const response = await fetch(`${issuerUrl}/api/v1/sso/user`, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
-  const body = await response.json() as { user?: { id?: string; email?: string; name?: string | null } };
+  const body = await response.json() as { user?: { id?: string; email?: string; name?: string | null }; workspaces?: unknown };
   if (!response.ok || !body.user?.id || !body.user.email) throw new Error("identity request failed");
-  return { ...body.user, id: body.user.id, email: body.user.email.trim().toLowerCase() };
+  return {
+    ...body.user,
+    id: body.user.id,
+    email: body.user.email.trim().toLowerCase(),
+    workspaces: parseSsoWorkspaces(body.workspaces),
+  };
 }
 
 async function syntheticAccountHasData(db: any, userId: string): Promise<boolean> {
@@ -209,6 +216,8 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
       });
     }
 
+    phase = "sync_workspaces";
+    await syncSsoWorkspaces(users, user.id, remote.workspaces);
     const session = await createSession(user.id, remote.email, user.name);
     setSessionCookie(res, session);
     res.redirect(config.appUrl);
@@ -259,6 +268,7 @@ export async function linkSsoAccount(req: Request, res: Response): Promise<void>
       });
     }, { isolationLevel: "Serializable" });
 
+    await syncSsoWorkspaces(users, linked.id, remote.workspaces);
     clearLinkCookie(res);
     const session = await createSession(linked.id, remote.email, linked.name);
     setSessionCookie(res, session);

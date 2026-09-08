@@ -21,6 +21,7 @@ export type TeamSummary = {
   name: string;
   memberCount?: number;
   canManage?: boolean;
+  manageUrl?: string;
   license?: TeamLicense;
   members?: Array<{
     id: string;

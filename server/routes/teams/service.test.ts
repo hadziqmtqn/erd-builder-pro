@@ -35,6 +35,15 @@ describe("Team integrity", () => {
     expect(mocks.database.teamMember.findFirst).not.toHaveBeenCalled();
   });
 
+  it("rejects local Team mutations in Cloud SSO mode", async () => {
+    mocks.ssoMode.mockReturnValue(true);
+
+    await expect(teams.createTeam({ name: "Shadow Team", userId: "user-1", isSuperAdmin: true }))
+      .rejects.toMatchObject({ code: "CLOUD_TEAM_MANAGED_EXTERNALLY" });
+
+    mocks.ssoMode.mockReturnValue(false);
+  });
+
   it("blocks every Team management operation for a manually inserted Team", async () => {
     mocks.database.team.findUnique.mockResolvedValue({ id: "manual-team", type: "team", status: "active", members: [] });
 

@@ -31,6 +31,7 @@ CREATE TABLE "teams" (
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL DEFAULT 'team',
     "created_by" TEXT,
+    "sso_organization_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active',
     "license_id" TEXT,
     "license_code_last_four" TEXT,
@@ -54,6 +55,8 @@ CREATE TABLE "team_members" (
     CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
     CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
+
+CREATE UNIQUE INDEX "teams_sso_organization_id_key" ON "teams"("sso_organization_id");
 
 -- CreateTable
 CREATE TABLE "team_invitations" (
@@ -698,5 +701,3 @@ CREATE INDEX "idx_db_accounts_user" ON "db_accounts"("user_id");
 
 -- CreateIndex
 CREATE INDEX "idx_db_catalogs_account" ON "db_catalogs"("account_id");
-
-CREATE UNIQUE INDEX "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = 'active';
