@@ -56,7 +56,10 @@ export function useLocalAuth(): boolean {
 }
 
 export function isSsoAuthMode(): boolean {
-  return process.env.AUTH_MODE?.trim().toLowerCase() === "sso";
+  // Desktop and CLI are always local installations. AUTH_MODE belongs only to
+  // the official Cloud runtime, even if a developer .env also contains it.
+  if (["desktop", "cli"].includes(process.env.ERD_INSTALL_MODE || "")) return false;
+  return isLocalPostgres() && process.env.AUTH_MODE?.trim().toLowerCase() === "sso";
 }
 
 export function getSsoConfig() {

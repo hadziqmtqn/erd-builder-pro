@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { TeamSummary } from "@/hooks/useTeams";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -17,12 +18,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export type SwitcherTeam = {
-  id: string;
-  name: string;
-  canManage?: boolean;
-  license?: { status?: string };
-};
+export type SwitcherTeam = TeamSummary;
 
 export function TeamSwitcher({
   teams,

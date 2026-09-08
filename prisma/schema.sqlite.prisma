@@ -12,6 +12,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// The default client is retained for scripts that import @prisma/client.
+// Runtime servers use this isolated output so a PostgreSQL generate running in
+// another dev process cannot replace Desktop's SQLite client.
+generator runtimeClient {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@erdbpro/prisma-sqlite"
+}
+
 datasource db {
   provider = "sqlite"
 }

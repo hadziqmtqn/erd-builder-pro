@@ -111,7 +111,8 @@ export function SettingsModal() {
 
   const { isGuest, user } = useAuth();
   const isSso = Boolean(user?.isSso);
-  const isSuperAdmin = isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin);
+  // SSO Cloud never grants local administration, including when viewed in Tauri.
+  const isSuperAdmin = !isSso && (isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin));
 
   const {
     providers,
@@ -172,7 +173,7 @@ export function SettingsModal() {
         items: [
           ...(!isSso ? [{ id: 'account', label: 'Account', icon: <User className="size-4" /> }] : []),
           { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
-          ...(isDesktopApp ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
+          ...(isDesktopApp && !isSso ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
         ]
       },
       {

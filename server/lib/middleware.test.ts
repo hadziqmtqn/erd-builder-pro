@@ -25,8 +25,16 @@ vi.mock("../routes/teams/service.js", () => ({
 vi.mock("./team-scope.js", () => ({ runWithTeamScope: (_scope: unknown, next: () => void) => next() }));
 
 const { authenticate } = await import("./middleware.js");
+const { requireAdmin } = await import("./security.js");
 
 describe("SSO authorization", () => {
+  it("rejects local administration even when a legacy record was an administrator", () => {
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+
+    expect(requireAdmin({ user: { isSuperAdmin: true } } as any, res)).toBe(false);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
   it("ignores legacy local administrator and temporary-password flags", async () => {
     mocks.getSession.mockResolvedValue({ userId: "user-1", email: "user@example.com" });
     mocks.findUser.mockResolvedValue({ isSuperAdmin: true, mustChangePassword: true });

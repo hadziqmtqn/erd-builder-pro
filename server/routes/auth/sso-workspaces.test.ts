@@ -18,6 +18,12 @@ describe("Cloud SSO workspace grants", () => {
     ])).toThrow("workspace grant is duplicated");
   });
 
+  it("accepts locked Teams so members can see why access is unavailable", () => {
+    expect(parseSsoWorkspaces([
+      { id: "org-1", name: "Locked Team", type: "team", role: "staff", status: "locked", entitlement: { status: "locked", revision: "a".repeat(64), capabilities: {}, limits: { max_members: null } } },
+    ])).toHaveLength(1);
+  });
+
   it("provisions authoritative Teams and deactivates stale memberships", async () => {
     const stale = {
       id: "member-old",

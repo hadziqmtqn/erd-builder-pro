@@ -1,8 +1,11 @@
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { isLocalPostgres } from "./config.js";
 import path from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 declare global {
   // eslint-disable-next-line no-var
@@ -45,13 +48,30 @@ function buildPrismaPgOptions(): { connectionString: string } {
   }
 }
 
+type PrismaClientConstructor = new (options: {
+  adapter: PrismaPg | PrismaBetterSqlite3;
+  log: ("warn" | "error")[];
+}) => PrismaClient;
+
+function runtimePrismaClient(): PrismaClientConstructor {
+  const url = resolveDatabaseUrl();
+  const packageName = isSqliteUrl(url)
+    ? "@erdbpro/prisma-sqlite"
+    : isLocalPostgres()
+      ? "@erdbpro/prisma-pg-local"
+      : "@erdbpro/prisma-pg-supabase";
+
+  return require(packageName).PrismaClient as PrismaClientConstructor;
+}
+
 function createPrismaClient(): PrismaClient {
   const url = resolveDatabaseUrl();
   const adapter = isSqliteUrl(url)
     ? new PrismaBetterSqlite3({ url })
     : new PrismaPg(buildPrismaPgOptions());
 
-  return new PrismaClient({
+  const Client = runtimePrismaClient();
+  return new Client({
     adapter,
     log: process.env.NODE_ENV === "development"
       ? ["warn", "error"]

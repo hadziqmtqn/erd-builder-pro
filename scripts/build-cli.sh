@@ -6,7 +6,6 @@ echo "=== Building erdbpro CLI package ==="
 
 # 1. Generate Prisma client for SQLite
 echo "[1/5] Prisma client (SQLite)..."
-rm -rf node_modules/.prisma/client
 npx prisma generate --schema=prisma/schema.sqlite.prisma
 
 # 2. Build full server bundle (all routes)

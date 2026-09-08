@@ -24,13 +24,14 @@ import { importDrawings } from "../guest-import/importers.js";
 import { importAiChatSessions } from "../guest-import/importers.js";
 import { createLocalBackup, getDefaultBackupDir, ensureBackupDir } from "../../lib/local-backup.js";
 
-if (!prisma) {
-  throw new Error("Prisma is not available (server started without database)");
-}
-
 // ── JSON Data Import ──
 
 export async function importHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (!prisma) {
+    res.status(503).json({ error: "Database is not available. Restart the application and try again." });
+    return;
+  }
+
   // Only available in desktop (SQLite) mode
   if (!isDesktopMode()) {
     res.status(400).json({ error: "Manual data import is only available in desktop mode." });
@@ -179,6 +180,11 @@ function isSqliteFile(buffer: Buffer): boolean {
 }
 
 export async function restoreHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (!prisma) {
+    res.status(503).json({ error: "Database is not available. Restart the application and try again." });
+    return;
+  }
+
   if (!isDesktopMode()) {
     res.status(400).json({ error: "Database restore is only available in desktop mode." });
     return;

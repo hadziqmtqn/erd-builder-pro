@@ -2,6 +2,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator runtimeClient {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@erdbpro/prisma-pg-supabase"
+}
+
 datasource db {
   provider = "postgresql"
   schemas  = ["auth", "public"]

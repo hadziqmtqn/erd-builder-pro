@@ -1,9 +1,12 @@
 import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
-import { isDesktopMode, isLocalPostgres } from "./config.js";
+import { isDesktopMode, isLocalPostgres, isSsoAuthMode } from "./config.js";
 import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
+  // Cloud administration belongs to the SaaS control plane, never to a local record.
+  if (isSsoAuthMode()) return false;
+
   // Desktop/SQLite is a single-user install. Local PostgreSQL can have multiple users.
   if (isDesktopMode()) return true;
 
