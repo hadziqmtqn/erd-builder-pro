@@ -142,11 +142,7 @@ export const AppSidebar = React.memo(({
   const navigate = useNavigate();
   const location = useLocation();
   const isCollapsed = state === "collapsed";
-  const switcherTeams = teams.length > 0
-    ? teams
-    : user?.activeTeamId
-      ? [{ id: user.activeTeamId, name: "Team workspace" }]
-      : teams;
+  const switcherTeams = teams;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchShortcutLabel] = useState(getSearchShortcutLabel);
   const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];

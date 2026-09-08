@@ -279,7 +279,8 @@ export async function linkSsoAccount(req: Request, res: Response): Promise<void>
         id: linked.id,
         email: remote.email,
         name: linked.name,
-        isSuperAdmin: Boolean(linked.isSuperAdmin),
+        isSuperAdmin: false,
+        isSso: true,
         user_metadata: { name: linked.name },
       },
     });

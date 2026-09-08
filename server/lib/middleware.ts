@@ -40,7 +40,8 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
           where: { id: session.userId },
           select: { isSuperAdmin: true, mustChangePassword: true },
         });
-        const isSuperAdmin = Boolean(localUser?.isSuperAdmin);
+        const isSuperAdmin = !isSsoAuthMode() && Boolean(localUser?.isSuperAdmin);
+        const mustChangePassword = !isSsoAuthMode() && Boolean(localUser?.mustChangePassword);
         if (!isSuperAdmin) {
           const access = await canUserLogin(session.userId);
           if (access.allowed === false) {
@@ -58,9 +59,9 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
           id: session.userId,
           email: session.email,
           isSuperAdmin,
-          mustChangePassword: Boolean(localUser?.mustChangePassword),
+          mustChangePassword,
         };
-        if (localUser?.mustChangePassword && !(req.method === "PUT" && req.originalUrl.startsWith("/api/account"))) {
+        if (mustChangePassword && !(req.method === "PUT" && req.originalUrl.startsWith("/api/account"))) {
           return res.status(403).json({ error: "You must change your temporary password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
         }
         const teamId = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : "";

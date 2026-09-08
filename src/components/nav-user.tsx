@@ -138,7 +138,7 @@ export function NavUser({
               <DropdownMenuGroup>
                 {/* Settings - always shown */}
                 <DropdownMenuItem 
-                  onClick={() => handleOpenSettings(isGuest ? 'appearance' : 'account')}
+                  onClick={() => handleOpenSettings(isGuest || user.isSso ? 'appearance' : 'account')}
                   className="cursor-pointer"
                   disabled={!isGuest && !isOnline}
                 >

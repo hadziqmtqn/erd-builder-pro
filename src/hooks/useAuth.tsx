@@ -20,6 +20,7 @@ function normalizeLocalUser(value: any) {
   return {
     ...value,
     isSuperAdmin: value.isSuperAdmin ?? value.is_super_admin ?? false,
+    isSso: value.isSso ?? value.is_sso ?? false,
     mustChangePassword: value.mustChangePassword ?? value.must_change_password ?? false,
     activeTeamId: value.activeTeamId ?? value.active_team_id ?? null,
   };
@@ -48,7 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (data.token) setAuthToken(data.token);
           setIsAuthenticated(true);
           setIsGuest(false);
-          setUser(normalizeLocalUser(data.user));
+          const normalizedUser = normalizeLocalUser(data.user);
+          try {
+            if (normalizedUser?.activeTeamId) localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
+            else localStorage.removeItem(ACTIVE_TEAM_KEY);
+          } catch { /* localStorage may be unavailable */ }
+          setUser(normalizedUser);
           retryRef.current = 0;
           return;
         } else {

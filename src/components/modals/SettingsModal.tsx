@@ -110,6 +110,7 @@ export function SettingsModal() {
   }, [isTauriApp, setIsSettingsOpen, setSettingsTab]);
 
   const { isGuest, user } = useAuth();
+  const isSso = Boolean(user?.isSso);
   const isSuperAdmin = isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin);
 
   const {
@@ -169,7 +170,7 @@ export function SettingsModal() {
       {
         label: "General",
         items: [
-          { id: 'account', label: 'Account', icon: <User className="size-4" /> },
+          ...(!isSso ? [{ id: 'account', label: 'Account', icon: <User className="size-4" /> }] : []),
           { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
           ...(isDesktopApp ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
         ]
@@ -197,13 +198,14 @@ export function SettingsModal() {
         ]
       },
     ];
-  }, [isGuest, isDesktopApp, isSuperAdmin]);
+  }, [isGuest, isDesktopApp, isSso, isSuperAdmin]);
 
   React.useEffect(() => {
-    if (!isSuperAdmin && ['ai-config', 'license', 'export-data', 'import-data', 'backups'].includes(settingsTab)) {
-      setSettingsTab(isGuest ? 'appearance' : 'account');
+    const unavailableTabs = ['ai-config', 'license', 'export-data', 'import-data', 'backups'];
+    if ((!isSuperAdmin && unavailableTabs.includes(settingsTab)) || (isSso && settingsTab === 'account')) {
+      setSettingsTab(isGuest || isSso ? 'appearance' : 'account');
     }
-  }, [isGuest, isSuperAdmin, settingsTab, setSettingsTab]);
+  }, [isGuest, isSso, isSuperAdmin, settingsTab, setSettingsTab]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {
@@ -399,7 +401,7 @@ export function SettingsModal() {
                 </div>
               )}
 
-              {settingsTab === 'account' && (
+              {!isSso && settingsTab === 'account' && (
                 <AccountTab />
               )}
 

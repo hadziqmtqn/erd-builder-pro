@@ -48,4 +48,27 @@ export async function addMember(teamId: string, email: string, actorId: string, 
 export async function updateMemberRole(teamId: string, userId: string, role: TeamRole, actorId: string, superAdmin: boolean) { localMutation(); if (!await managedTeam(teamId, actorId, superAdmin)) return null; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return null; if (member.role === "manager" && role !== "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { role, provisioningSignature: membershipProvisioningSignature({ ...member, role }) } }); return getTeam(teamId, actorId, superAdmin); }
 export async function removeMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) { localMutation(); if (!superAdmin && userId === actorId) throw new TeamServiceError("CANNOT_REMOVE_SELF", 409, "You cannot deactivate your own Team membership."); if (!await managedTeam(teamId, actorId, superAdmin)) return false; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return false; if (member.role === "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { status: "inactive", provisioningSignature: membershipProvisioningSignature({ ...member, status: "inactive" }) } }); await db.session.deleteMany({ where: { userId } }); return true; }
 export async function banMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) { localMutation(); admin(superAdmin); if (!await managedTeam(teamId, actorId, superAdmin)) return false; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return false; if (member.role === "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { status: "banned", provisioningSignature: membershipProvisioningSignature({ ...member, status: "banned" }) } }); await db.session.deleteMany({ where: { userId } }); return true; }
-export async function canUserLogin(userId: string): Promise<{ allowed: true; teamId?: string } | { allowed: false; code: string }> { if (!isLocalPostgres() || !prisma) return { allowed: true }; const memberships = await (prisma as any).teamMember.findMany({ where: { userId, status: "active" } }); if (!memberships.length) return { allowed: true }; for (const membership of memberships) { const value = await team(membership.teamId, userId, false); try { if (value) { await integrity(value); return { allowed: true, teamId: membership.teamId }; } } catch (error) { if (error instanceof TeamServiceError && error.code === "TEAM_INTEGRITY_UNAVAILABLE") return { allowed: false, code: error.code }; } } return { allowed: false, code: "LICENSE_EXPIRED_OR_INVALID" }; }
+export async function canUserLogin(userId: string): Promise<{ allowed: true; teamId?: string } | { allowed: false; code: string }> {
+  if (!isLocalPostgres() || !prisma) return { allowed: true };
+
+  const memberships = await (prisma as any).teamMember.findMany({ where: { userId, status: "active" } });
+  if (!memberships.length) return { allowed: true };
+
+  for (const membership of memberships) {
+    const value = await team(membership.teamId, userId, false);
+    if (!value || value.status !== "active") continue;
+
+    try {
+      await integrity(value);
+      return { allowed: true, teamId: membership.teamId };
+    } catch (error) {
+      if (error instanceof TeamServiceError && error.code === "TEAM_INTEGRITY_UNAVAILABLE") {
+        return { allowed: false, code: error.code };
+      }
+    }
+  }
+
+  // Cloud users may still use Personal while every remote Team is locked.
+  if (isSsoAuthMode()) return { allowed: true };
+  return { allowed: false, code: "LICENSE_EXPIRED_OR_INVALID" };
+}

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
   database: {
     team: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
-    teamMember: { findFirst: vi.fn(), count: vi.fn(), update: vi.fn() },
+    teamMember: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
   },
 }));
 
@@ -33,6 +33,16 @@ describe("Team integrity", () => {
   it("does not let a Manager deactivate their own Team membership", async () => {
     await expect(teams.removeMember("team-1", "manager-1", "manager-1", false)).rejects.toMatchObject({ code: "CANNOT_REMOVE_SELF" });
     expect(mocks.database.teamMember.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a locked SSO Team as the active workspace", async () => {
+    mocks.ssoMode.mockReturnValue(true);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ teamId: "locked-team", userId: "user-1", status: "active" }]);
+    mocks.database.teamMember.findFirst.mockResolvedValue({ teamId: "locked-team", userId: "user-1", status: "active" });
+    mocks.database.team.findUnique.mockResolvedValue({ id: "locked-team", type: "team", status: "locked", members: [] });
+
+    await expect(teams.canUserLogin("user-1")).resolves.toEqual({ allowed: true });
+    mocks.ssoMode.mockReturnValue(false);
   });
 
   it("rejects local Team mutations in Cloud SSO mode", async () => {
