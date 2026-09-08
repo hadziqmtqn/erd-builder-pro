@@ -50,7 +50,7 @@ function writeActiveTeamId(teamId: string | null): void {
   }
 }
 
-export function useTeams(isGuest = false, selectFirstTeam = false, onFirstTeamSelected?: () => void | Promise<void>) {
+export function useTeams(isGuest = false) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
   const [isLoading, setIsLoading] = useState(!isGuest);
@@ -82,11 +82,6 @@ export function useTeams(isGuest = false, selectFirstTeam = false, onFirstTeamSe
       const selected = readActiveTeamId();
       if (selected && nextTeams.some((team: TeamSummary) => String(team.id) === selected)) {
         setActiveTeamId(selected);
-      } else if (selectFirstTeam && nextTeams[0]) {
-        const teamId = String(nextTeams[0].id);
-        setActiveTeamId(teamId);
-        writeActiveTeamId(teamId);
-        await onFirstTeamSelected?.();
       } else if (selected) {
         setActiveTeamId(null);
         writeActiveTeamId(null);
@@ -100,7 +95,7 @@ export function useTeams(isGuest = false, selectFirstTeam = false, onFirstTeamSe
     } finally {
       setIsLoading(false);
     }
-  }, [isGuest, onFirstTeamSelected, selectFirstTeam]);
+  }, [isGuest]);
 
   useEffect(() => {
     void fetchTeams();
