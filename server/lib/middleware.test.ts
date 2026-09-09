@@ -24,10 +24,21 @@ vi.mock("../routes/teams/service.js", () => ({
 }));
 vi.mock("./team-scope.js", () => ({ runWithTeamScope: (_scope: unknown, next: () => void) => next() }));
 
-const { authenticate } = await import("./middleware.js");
+const { authenticate, rejectInSsoMode } = await import("./middleware.js");
 const { requireAdmin } = await import("./security.js");
 
 describe("SSO authorization", () => {
+  it("hides local administration routes in Cloud SSO mode", () => {
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const next = vi.fn();
+
+    rejectInSsoMode({} as any, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ error: "Not found" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("rejects local administration even when a legacy record was an administrator", () => {
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
 

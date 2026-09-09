@@ -20,11 +20,11 @@ import { WorkspaceProvider } from './providers/WorkspaceProvider';
 
 // Routes
 import { AppLayout } from './routes/AppLayout';
-import { TableRoute } from './routes/TableRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { OAuthConsent } from './components/OAuthConsent';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
+import { CloudFeatureRoute, CloudTableRoute } from './components/CloudFeatureRoute';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
 const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
@@ -152,14 +152,14 @@ function AppContent() {
       <Routes>
         <Route element={<AppLayout />}>
           {/* Table views */}
-          <Route path="table/:feature" element={<TableRoute />} />
+          <Route path="table/:feature" element={<CloudTableRoute />} />
 
           {/* Document editors */}
-          <Route path="notes/:id" element={lazyRoute(<NoteEditorRoute />)} />
-          <Route path="diagrams/:id" element={lazyRoute(<DiagramEditorRoute />)} />
-          <Route path="db-client/:id" element={lazyRoute(<DbClientEditorRoute />)} />
-          <Route path="drawings/:id" element={lazyRoute(<DrawingEditorRoute />)} />
-          <Route path="flowcharts/:id" element={lazyRoute(<FlowchartEditorRoute />)} />
+          <Route path="notes/:id" element={<CloudFeatureRoute capability="notes">{lazyRoute(<NoteEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="diagrams/:id" element={<CloudFeatureRoute capability="erd_builder">{lazyRoute(<DiagramEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="db-client/:id" element={<CloudFeatureRoute capability="desktop_only">{lazyRoute(<DbClientEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="drawings/:id" element={<CloudFeatureRoute capability="drawings">{lazyRoute(<DrawingEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="flowcharts/:id" element={<CloudFeatureRoute capability="flowcharts">{lazyRoute(<FlowchartEditorRoute />)}</CloudFeatureRoute>} />
 
           {/* Admin pages */}
           <Route path="trash" element={lazyRoute(<AdminRoute />)} />

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
-import { resolveSsoAccountAction, ssoStorageEmail, startSso } from "./sso.js";
+import {
+  resolveSsoAccountAction,
+  SsoIdentityError,
+  ssoFailureRedirect,
+  ssoStorageEmail,
+  startSso,
+} from "./sso.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -50,5 +56,16 @@ describe("Cloud SSO", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("state")).toBe(cookies.get("erdbpro_sso_state"));
     expect(url.searchParams.get("code_challenge")).not.toBe(cookies.get("erdbpro_sso_verifier"));
+  });
+
+  it("sends unverified accounts to the trusted issuer verification page", () => {
+    expect(ssoFailureRedirect(
+      new SsoIdentityError("EMAIL_UNVERIFIED", "The email address is not verified."),
+      "https://cloud.example.com",
+      "https://account.example.com",
+    )).toBe("https://account.example.com/email/verify?source=cloud_sso");
+
+    expect(ssoFailureRedirect(new Error("token exchange failed"), "https://cloud.example.com", "https://account.example.com"))
+      .toBe("https://cloud.example.com/?error=Unable%20to%20complete%20SSO%20login");
   });
 });

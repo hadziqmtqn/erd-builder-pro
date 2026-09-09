@@ -1,12 +1,14 @@
 import { Router } from "express";
-import { authenticate } from "../../lib/middleware.js";
+import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { requireAdmin } from "../../lib/security.js";
 import * as ctrl from "./controller.js";
 
 const router = Router();
 const superAdminOnly = (req: Parameters<typeof requireAdmin>[0], res: Parameters<typeof requireAdmin>[1], next: () => void) => {
-  if (!requireAdmin(req, res)) return;
-  next();
+  rejectInSsoMode(req, res, () => {
+    if (!requireAdmin(req, res)) return;
+    next();
+  });
 };
 
 router.get("/providers", authenticate, superAdminOnly, ctrl.listProviders);
@@ -24,6 +26,6 @@ router.get("/prompts", authenticate, ctrl.listPrompts);
 router.post("/prompts", authenticate, ctrl.savePrompt);
 router.delete("/prompts/:id", authenticate, ctrl.deletePrompt);
 router.put("/prompts/:id/toggle-default", authenticate, ctrl.toggleDefaultPrompt);
-router.post("/initialize", authenticate, ctrl.initializeDefaults);
+router.post("/initialize", authenticate, superAdminOnly, ctrl.initializeDefaults);
 
 export default router;

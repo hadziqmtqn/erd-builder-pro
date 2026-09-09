@@ -153,15 +153,20 @@ export const AppSidebar = React.memo(({
   const [searchFilter, setSearchFilter] = useState('all');
   const showDbClient = isInstalledApp();
   const isSelfHosted = !showDbClient && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
+  const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
+  const cloudTeamCapabilities = user?.isSso && activeTeamId
+    ? activeTeam?.capabilities || {}
+    : null;
+  const canUseCloudFeature = (capability: string) => cloudTeamCapabilities === null || cloudTeamCapabilities[capability] === true;
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'workspace', label: 'Workspaces' },
-    { value: 'erd', label: 'ERD Builder' },
+    ...(canUseCloudFeature('erd_builder') ? [{ value: 'erd', label: 'ERD Builder' }] : []),
     ...(showDbClient ? [{ value: 'db-client', label: 'DB Client' }] : []),
-    { value: 'notes', label: 'Notes' },
-    { value: 'flowchart', label: 'Flowcharts' },
-    { value: 'drawings', label: 'Drawings' },
+    ...(canUseCloudFeature('notes') ? [{ value: 'notes', label: 'Notes' }] : []),
+    ...(canUseCloudFeature('flowcharts') ? [{ value: 'flowchart', label: 'Flowcharts' }] : []),
+    ...(canUseCloudFeature('drawings') ? [{ value: 'drawings', label: 'Drawings' }] : []),
   ];
   const visibleSearchResults = searchFilter === 'all'
     ? globalSearchResults
@@ -199,20 +204,20 @@ export const AppSidebar = React.memo(({
 
   // Navigation items for the feature section
   const navMain = [
-    {
+    ...(canUseCloudFeature('notes') ? [{
       title: "Notes",
       url: "#",
       icon: FileText,
       isActive: activeFeatureView === 'notes',
       onClick: () => onViewChange('notes', true),
-    },
-    {
+    }] : []),
+    ...(canUseCloudFeature('erd_builder') ? [{
       title: "ERD Builder",
       url: "#",
       icon: Database,
       isActive: activeFeatureView === 'erd',
       onClick: () => onViewChange('erd', true),
-    },
+    }] : []),
     ...(showDbClient ? [{
       title: "DB Client",
       url: "/table/db-client",
@@ -224,20 +229,20 @@ export const AppSidebar = React.memo(({
         navigate('/table/db-client');
       },
     }] : []),
-    {
+    ...(canUseCloudFeature('flowcharts') ? [{
       title: "Flowchart",
       url: "#",
       icon: Network,
       isActive: activeFeatureView === 'flowchart',
       onClick: () => onViewChange('flowchart', true),
-    },
-    {
+    }] : []),
+    ...(canUseCloudFeature('drawings') ? [{
       title: "Drawings",
       url: "#",
       icon: PenTool,
       isActive: activeFeatureView === 'drawings',
       onClick: () => onViewChange('drawings', true),
-    },
+    }] : []),
   ];
 
   // Filtered non-deleted projects

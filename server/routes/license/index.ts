@@ -1,13 +1,14 @@
 import { Router } from "express";
 
 import { isLocalPostgres } from "../../lib/config.js";
-import { authenticate } from "../../lib/middleware.js";
+import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { prisma } from "../../lib/prisma.js";
 import { requireAdmin } from "../../lib/security.js";
 import { activateSelfHostInstanceLicense, checkSelfHostInstanceLicense, LicenseClientError, verifyStoredInstanceLicense } from "../../lib/license-client.js";
 
 const router = Router();
 router.use(authenticate);
+router.use(rejectInSsoMode);
 router.use((req, res, next) => {
   if (!requireAdmin(req, res)) return;
   next();

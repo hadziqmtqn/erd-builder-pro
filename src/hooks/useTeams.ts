@@ -22,6 +22,7 @@ export type TeamSummary = {
   memberCount?: number;
   canManage?: boolean;
   manageUrl?: string;
+  capabilities?: Record<string, boolean>;
   license?: TeamLicense;
   members?: Array<{
     id: string;
@@ -56,14 +57,14 @@ export function useTeams(isGuest = false) {
   const [isLoading, setIsLoading] = useState(!isGuest);
   const [isAvailable, setIsAvailable] = useState(false);
 
-  const fetchTeams = useCallback(async () => {
+  const fetchTeams = useCallback(async (showLoading = false) => {
     if (isGuest) {
       setIsLoading(false);
       setIsAvailable(false);
       return [];
     }
 
-    setIsLoading(true);
+    if (showLoading) setIsLoading(true);
     try {
       const response = await apiFetch("/api/teams");
       if (response.status === 404 || response.status === 403) {
@@ -93,12 +94,12 @@ export function useTeams(isGuest = false) {
       setIsAvailable(false);
       return [];
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [isGuest]);
 
   useEffect(() => {
-    void fetchTeams();
+    void fetchTeams(true);
   }, [fetchTeams]);
 
   useEffect(() => {

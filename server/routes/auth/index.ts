@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validate, loginSchema, setupAdminSchema, ssoLinkSchema, updateAccountSchema } from "../../lib/validation.js";
-import { authenticate } from "../../lib/middleware.js";
+import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import * as ctrl from "./controller.js";
 import { finishSso, linkSsoAccount, startSso } from "./sso.js";
 
@@ -14,6 +14,6 @@ router.post("/login", validate(loginSchema), ctrl.login);
 router.post("/setup", validate(setupAdminSchema), ctrl.setup);
 router.post("/logout", ctrl.logout);
 router.get("/me", ctrl.me);
-router.put("/account", authenticate, validate(updateAccountSchema), ctrl.updateAccount);
+router.put("/account", authenticate, rejectInSsoMode, validate(updateAccountSchema), ctrl.updateAccount);
 
 export default router;

@@ -5,6 +5,7 @@ import { getCloudWebhookSecret } from "../lib/config.js";
 import { parseCloudEntitlement, serializeCloudEntitlement } from "../lib/cloud-entitlement.js";
 import { isUuid } from "../lib/erd-column-id-migration.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../lib/team-provisioning.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -17,6 +18,11 @@ function equal(actual: string, expected: string): boolean {
 
 function rawBody(req: any): string {
   return Buffer.isBuffer(req.rawBody) ? req.rawBody.toString("utf8") : "";
+}
+
+function invalidPayload(res: any, eventId: string, code: string): void {
+  logger.warn({ eventId, code }, "Rejected Cloud control-plane webhook payload");
+  res.status(400).json({ error: "Invalid webhook payload.", code });
 }
 
 export function isValidCloudWebhook(input: {
@@ -59,20 +65,20 @@ router.post("/events", async (req, res) => {
   }
 
   let event: any;
-  try { event = JSON.parse(body); } catch { res.status(400).json({ error: "Invalid webhook payload." }); return; }
+  try { event = JSON.parse(body); } catch { invalidPayload(res, eventId, "invalid_json"); return; }
   if (event?.id !== eventId || event?.type !== "cloud.workspace.sync" || !event?.data?.organization) {
-    res.status(400).json({ error: "Invalid webhook payload." });
+    invalidPayload(res, eventId, "invalid_event");
     return;
   }
 
   const organization = event.data.organization;
   if (!isValidCloudOrganization(organization)) {
-    res.status(400).json({ error: "Invalid webhook payload." });
+    invalidPayload(res, eventId, "invalid_organization");
     return;
   }
   const entitlement = parseCloudEntitlement(organization.entitlement, organization.status);
   if (!entitlement) {
-    res.status(400).json({ error: "Invalid webhook payload." });
+    invalidPayload(res, eventId, "invalid_entitlement");
     return;
   }
 

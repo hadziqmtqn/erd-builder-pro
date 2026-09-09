@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { authenticate } from "../../lib/middleware.js";
+import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { requireAdmin } from "../../lib/security.js";
 import { desktopOnly } from "../connections/middleware.js";
 import * as ctrl from "./controller.js";
@@ -29,7 +29,7 @@ const sqliteUpload = multer({
   },
 });
 
-router.use(authenticate, requireAdmin);
+router.use(authenticate, rejectInSsoMode, requireAdmin);
 router.get("/settings/folder", ctrl.getFolderSettings);
 router.put("/settings/folder", ctrl.updateFolderSettings);
 router.get("/settings/auto", autoBackupCtrl.getSettings);

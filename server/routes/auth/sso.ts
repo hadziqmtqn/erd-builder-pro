@@ -12,8 +12,19 @@ const LINK_TOKEN_COOKIE = "erdbpro_sso_link_token";
 
 type RemoteAccount = { id: string; email: string; name?: string | null };
 type RemoteIdentity = RemoteAccount & { workspaces: SsoWorkspace[] };
+type RemoteIdentityResponse = {
+  user?: { id?: string; email?: string; name?: string | null };
+  workspaces?: unknown;
+  error?: { code?: string; message?: string };
+};
 type LocalIdentity = { id: string; email: string; ssoSubject?: string | null; ssoEmail?: string | null };
 export type SsoAccountAction = "create" | "login" | "link" | "conflict";
+
+export class SsoIdentityError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+  }
+}
 
 function base64Url(value: Buffer): string {
   return value.toString("base64url");
@@ -58,6 +69,15 @@ function redirectError(res: Response, appUrl: string, message: string): void {
   res.redirect(`${appUrl}/?error=${encodeURIComponent(message)}`);
 }
 
+export function ssoFailureRedirect(error: unknown, appUrl: string, issuerUrl: string): string {
+  if (error instanceof SsoIdentityError && error.code === "EMAIL_UNVERIFIED") {
+    const url = new URL("/email/verify", issuerUrl);
+    url.searchParams.set("source", "cloud_sso");
+    return url.toString();
+  }
+  return `${appUrl}/?error=${encodeURIComponent("Unable to complete SSO login")}`;
+}
+
 export function startSso(req: Request, res: Response): void {
   const config = getSsoConfig();
   if (!isSsoAuthMode() || !config.configured) {
@@ -89,8 +109,14 @@ async function getRemoteIdentity(accessToken: string, issuerUrl: string): Promis
   const response = await fetch(`${issuerUrl}/api/v1/sso/user`, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
-  const body = await response.json() as { user?: { id?: string; email?: string; name?: string | null }; workspaces?: unknown };
-  if (!response.ok || !body.user?.id || !body.user.email) throw new Error("identity request failed");
+  const body = await response.json() as RemoteIdentityResponse;
+  if (!response.ok) {
+    throw new SsoIdentityError(
+      body.error?.code || "IDENTITY_REQUEST_FAILED",
+      body.error?.message || "Identity request failed",
+    );
+  }
+  if (!body.user?.id || !body.user.email) throw new Error("identity request failed");
   return {
     ...body.user,
     id: body.user.id,
@@ -223,7 +249,7 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
     res.redirect(config.appUrl);
   } catch (error) {
     logger.error({ phase, err: error instanceof Error ? error.message : "Unknown SSO error" }, "Cloud SSO callback failed");
-    redirectError(res, config.appUrl, "Unable to complete SSO login");
+    res.redirect(ssoFailureRedirect(error, config.appUrl, config.issuerUrl));
   }
 }
 

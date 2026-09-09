@@ -16,12 +16,12 @@ const licenseRequestLimiter = rateLimit({
 
 router.use(authenticate);
 router.get("/", controller.list);
-router.post("/", licenseRequestLimiter, validate(createTeamSchema), controller.create);
+router.post("/", rejectInSsoMode, licenseRequestLimiter, validate(createTeamSchema), controller.create);
 router.get("/:id", controller.get);
-router.patch("/:id", validate(updateTeamSchema), controller.update);
+router.patch("/:id", rejectInSsoMode, validate(updateTeamSchema), controller.update);
 router.post("/:id/members", rejectInSsoMode, validate(addTeamMemberSchema), controller.addMember);
-router.patch("/:id/members/:userId", validate(updateTeamMemberSchema), controller.updateMember);
-router.post("/:id/members/:userId/ban", controller.banMember);
-router.delete("/:id/members/:userId", controller.removeMember);
+router.patch("/:id/members/:userId", rejectInSsoMode, validate(updateTeamMemberSchema), controller.updateMember);
+router.post("/:id/members/:userId/ban", rejectInSsoMode, controller.banMember);
+router.delete("/:id/members/:userId", rejectInSsoMode, controller.removeMember);
 
 export default router;
