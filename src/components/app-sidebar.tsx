@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   ExternalLink,
   Loader2,
+  Sparkles,
 } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
 
@@ -154,19 +155,38 @@ export const AppSidebar = React.memo(({
   const showDbClient = isInstalledApp();
   const isSelfHosted = !showDbClient && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
-  const cloudTeamCapabilities = user?.isSso && activeTeamId
+  const cloudTeamCapabilities = user?.isSso && activeTeamId && teamsAvailable
     ? activeTeam?.capabilities || {}
     : null;
   const canUseCloudFeature = (capability: string) => cloudTeamCapabilities === null || cloudTeamCapabilities[capability] === true;
+  const isCloudFeatureLocked = (capability: string) => cloudTeamCapabilities !== null && !canUseCloudFeature(capability);
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+
+  const openCloudPricing = () => {
+    if (!ssoPortalUrl) return;
+    try {
+      window.location.assign(new URL('/pricing#cloud-saas', ssoPortalUrl).toString());
+    } catch {
+      // Ignore malformed deployment configuration and keep the dialog open.
+    }
+  };
+
+  const handleFeatureClick = (title: string, capability: string, onOpen: () => void) => {
+    if (isCloudFeatureLocked(capability)) {
+      setUpgradeFeature(title);
+      return;
+    }
+    onOpen();
+  };
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
     { value: 'workspace', label: 'Workspaces' },
-    ...(canUseCloudFeature('erd_builder') ? [{ value: 'erd', label: 'ERD Builder' }] : []),
+    { value: 'erd', label: 'ERD Builder' },
     ...(showDbClient ? [{ value: 'db-client', label: 'DB Client' }] : []),
-    ...(canUseCloudFeature('notes') ? [{ value: 'notes', label: 'Notes' }] : []),
-    ...(canUseCloudFeature('flowcharts') ? [{ value: 'flowchart', label: 'Flowcharts' }] : []),
-    ...(canUseCloudFeature('drawings') ? [{ value: 'drawings', label: 'Drawings' }] : []),
+    { value: 'notes', label: 'Notes' },
+    { value: 'flowchart', label: 'Flowcharts' },
+    { value: 'drawings', label: 'Drawings' },
   ];
   const visibleSearchResults = searchFilter === 'all'
     ? globalSearchResults
@@ -204,20 +224,22 @@ export const AppSidebar = React.memo(({
 
   // Navigation items for the feature section
   const navMain = [
-    ...(canUseCloudFeature('notes') ? [{
+    {
       title: "Notes",
       url: "#",
       icon: FileText,
       isActive: activeFeatureView === 'notes',
-      onClick: () => onViewChange('notes', true),
-    }] : []),
-    ...(canUseCloudFeature('erd_builder') ? [{
+      badge: isCloudFeatureLocked('notes') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Notes', 'notes', () => onViewChange('notes', true)),
+    },
+    {
       title: "ERD Builder",
       url: "#",
       icon: Database,
       isActive: activeFeatureView === 'erd',
-      onClick: () => onViewChange('erd', true),
-    }] : []),
+      badge: isCloudFeatureLocked('erd_builder') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('ERD Builder', 'erd_builder', () => onViewChange('erd', true)),
+    },
     ...(showDbClient ? [{
       title: "DB Client",
       url: "/table/db-client",
@@ -229,20 +251,22 @@ export const AppSidebar = React.memo(({
         navigate('/table/db-client');
       },
     }] : []),
-    ...(canUseCloudFeature('flowcharts') ? [{
+    {
       title: "Flowchart",
       url: "#",
       icon: Network,
       isActive: activeFeatureView === 'flowchart',
-      onClick: () => onViewChange('flowchart', true),
-    }] : []),
-    ...(canUseCloudFeature('drawings') ? [{
+      badge: isCloudFeatureLocked('flowcharts') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Flowchart', 'flowcharts', () => onViewChange('flowchart', true)),
+    },
+    {
       title: "Drawings",
       url: "#",
       icon: PenTool,
       isActive: activeFeatureView === 'drawings',
-      onClick: () => onViewChange('drawings', true),
-    }] : []),
+      badge: isCloudFeatureLocked('drawings') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Drawings', 'drawings', () => onViewChange('drawings', true)),
+    },
   ];
 
   // Filtered non-deleted projects
@@ -503,6 +527,37 @@ export const AppSidebar = React.memo(({
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={upgradeFeature !== null} onOpenChange={(open) => { if (!open) setUpgradeFeature(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="size-4" aria-hidden="true" />
+              </div>
+              <DialogTitle>Unlock {upgradeFeature}</DialogTitle>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {upgradeFeature} is available with a paid Cloud plan. Upgrade to keep using this feature in your Team workspace.
+            </p>
+          </DialogHeader>
+          <DialogBody>
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Cloud workspace feature</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Plans, limits, and checkout are managed in ERDBPro SaaS.</p>
+              </div>
+              <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">PRO</span>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" className="h-9" />}>Not now</DialogClose>
+            <Button className="h-9" onClick={openCloudPricing} disabled={!ssoPortalUrl}>
+              View Cloud plans
+              <ArrowUpRight className="size-4" />
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Rename Workspace Dialog */}

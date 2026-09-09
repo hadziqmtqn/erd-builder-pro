@@ -242,6 +242,8 @@ export function TeamManagementRoute() {
   }
 
   if (isSso) {
+    const manageUrl = team.manageUrl;
+
     return (
       <main className="flex flex-1 flex-col items-start gap-4 p-6">
         <Button variant="ghost" onClick={() => navigate("/")}><ArrowLeft /> Back</Button>
@@ -251,8 +253,8 @@ export function TeamManagementRoute() {
             {team.name} is managed from your ERDBPro SaaS account. This workspace stays available here for collaboration.
           </p>
         </div>
-        {team.manageUrl && (
-          <Button onClick={() => window.location.assign(team.manageUrl)}>
+        {manageUrl && (
+          <Button onClick={() => window.location.assign(manageUrl)}>
             <ExternalLink /> Open ERDBPro SaaS
           </Button>
         )}
@@ -326,7 +328,7 @@ export function TeamManagementRoute() {
                 <FieldLabel>Role</FieldLabel>
                 <div role="radiogroup" aria-label="Member role" className="grid gap-2 sm:grid-cols-2">
                   {(["manager", "staff"] as const).map((role) => (
-                    <label key={role} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                    <label key={role} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-checked:border-primary has-checked:bg-primary/5">
                       <input type="radio" name="team-member-role" value={role} checked={memberRole === role} onChange={() => setMemberRole(role)} className="mt-0.5 size-4 accent-primary" />
                       <span><span className="block text-sm font-medium capitalize">{role}</span><span className="block text-xs text-muted-foreground">{role === "manager" ? "Can manage this Team and its members." : "Can collaborate on this Team's work."}</span></span>
                     </label>

@@ -26,9 +26,17 @@ const LABELS: Record<Capability, string> = {
   desktop_only: 'DB Client',
 };
 
-function CloudFeatureUnavailable({ capability, teamName }: { capability: Capability; teamName?: string }) {
+function CloudFeatureUnavailable({ capability, teamName, ssoPortalUrl }: { capability: Capability; teamName?: string; ssoPortalUrl?: string | null }) {
   const navigate = useNavigate();
   const feature = LABELS[capability];
+  const openCloudPricing = () => {
+    if (!ssoPortalUrl) return;
+    try {
+      window.location.assign(new URL('/pricing#cloud-saas', ssoPortalUrl).toString());
+    } catch {
+      // Keep the unavailable state visible when deployment configuration is malformed.
+    }
+  };
 
   return (
     <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -38,14 +46,17 @@ function CloudFeatureUnavailable({ capability, teamName }: { capability: Capabil
             <CircleAlert className="size-5" aria-hidden="true" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-base font-semibold text-foreground">Feature unavailable</h1>
+            <h1 className="text-base font-semibold text-foreground">Unlock {feature}</h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              {feature} is not included in {teamName || 'this Team'}&apos;s current Cloud plan.
+              {feature} is not included in {teamName || 'this Team'}&apos;s current Cloud plan. Upgrade to continue using it.
             </p>
           </div>
         </div>
         <div className="mt-5 flex justify-end border-t border-border pt-4">
-          <Button variant="outline" onClick={() => navigate('/')}>Return to dashboard</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/')}>Return to dashboard</Button>
+            {ssoPortalUrl && <Button onClick={openCloudPricing}>View Cloud plans</Button>}
+          </div>
         </div>
       </section>
     </div>
@@ -62,7 +73,7 @@ export function CloudFeatureRoute({ capability, children }: { capability: Capabi
   const allowed = capability !== 'desktop_only' && activeTeam?.capabilities?.[capability] === true;
   if (allowed) return <>{children}</>;
 
-  return <CloudFeatureUnavailable capability={capability} teamName={activeTeam?.name} />;
+  return <CloudFeatureUnavailable capability={capability} teamName={activeTeam?.name} ssoPortalUrl={user?.ssoPortalUrl ?? user?.sso_portal_url} />;
 }
 
 export function CloudTableRoute() {
