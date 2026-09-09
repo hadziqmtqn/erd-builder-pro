@@ -21,13 +21,16 @@ export function parseSsoWorkspaces(value: unknown): SsoWorkspace[] {
   return value.map((item) => {
     if (!item || typeof item !== "object") throw new Error("workspace grant is invalid");
     const grant = item as Record<string, unknown>;
-    const entitlement = grant.type === "team" ? parseCloudEntitlement(grant.entitlement, String(grant.status)) : null;
+    const entitlement = (grant.type === "team" || grant.type === "personal")
+      ? parseCloudEntitlement(grant.entitlement, String(grant.status))
+      : null;
     if (typeof grant.id !== "string" || !grant.id.trim() || grant.id.length > 255
       || typeof grant.name !== "string" || !grant.name.trim() || grant.name.length > 255
       || (grant.type !== "personal" && grant.type !== "team")
       || !roles.includes(grant.role as SsoWorkspace["role"])
       || (grant.status !== "active" && grant.status !== "locked")
-      || (grant.type === "team" && !entitlement)) {
+      || (grant.type === "team" && !entitlement)
+      || (grant.type === "personal" && grant.entitlement !== null && !entitlement)) {
       throw new Error("workspace grant is invalid");
     }
     if (identifiers.has(grant.id)) throw new Error("workspace grant is duplicated");
@@ -45,9 +48,17 @@ export function parseSsoWorkspaces(value: unknown): SsoWorkspace[] {
 
 export async function syncSsoWorkspaces(db: any, userId: string, workspaces: SsoWorkspace[]): Promise<void> {
   const grants = workspaces.filter((workspace) => workspace.type === "team");
+  const personal = workspaces.find((workspace) => workspace.type === "personal");
   const authoritativeIds = grants.map((workspace) => workspace.id);
 
   await db.$transaction(async (tx: any) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        cloudPersonalEntitlement: personal?.entitlement ? serializeCloudEntitlement(personal.entitlement) : null,
+      },
+    });
+
     for (const grant of grants) {
       const existing = await tx.team.findUnique({ where: { ssoOrganizationId: grant.id } });
       const createdAt = existing?.createdAt ?? new Date();

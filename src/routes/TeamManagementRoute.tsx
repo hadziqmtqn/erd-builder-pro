@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Loader2, MoreHorizontal, RefreshCw, UserCheck, UserMinus, UserPlus, UserX, Users } from "lucide-react";
+import { ArrowLeft, ExternalLink, Eye, EyeOff, Loader2, MoreHorizontal, RefreshCw, UserCheck, UserMinus, UserPlus, UserX, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +63,7 @@ export function TeamManagementRoute() {
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [pendingMemberAction, setPendingMemberAction] = useState<PendingMemberAction | null>(null);
   const [error, setError] = useState("");
+  const isSso = Boolean(user?.isSso);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
   const { setBreadcrumbLabel } = useWorkspace();
   const passwordMismatch = createAccount && confirmPassword.length > 0 && password !== confirmPassword;
@@ -236,6 +237,25 @@ export function TeamManagementRoute() {
           <h1 className="text-xl font-semibold">Team unavailable</h1>
           <p className="mt-1 text-sm text-muted-foreground">{error || "This Team does not exist or is not accessible."}</p>
         </div>
+      </main>
+    );
+  }
+
+  if (isSso) {
+    return (
+      <main className="flex flex-1 flex-col items-start gap-4 p-6">
+        <Button variant="ghost" onClick={() => navigate("/")}><ArrowLeft /> Back</Button>
+        <div>
+          <h1 className="text-xl font-semibold">Team management is in ERDBPro SaaS</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            {team.name} is managed from your ERDBPro SaaS account. This workspace stays available here for collaboration.
+          </p>
+        </div>
+        {team.manageUrl && (
+          <Button onClick={() => window.location.assign(team.manageUrl)}>
+            <ExternalLink /> Open ERDBPro SaaS
+          </Button>
+        )}
       </main>
     );
   }

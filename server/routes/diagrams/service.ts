@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 
 // ── Helpers ──
@@ -276,14 +277,14 @@ export async function createDiagram(data: {
   name: string; projectId?: number | null; userId: string; uid?: string;
 }) {
   if (!prisma) throw new Error("Database connection not available");
-  return prisma.diagram.create({
+  return createPersonalFile("diagrams", data.userId, (db) => db.diagram.create({
     data: {
       name: data.name,
       projectId: data.projectId ?? null,
       uid: data.uid || undefined,
       userId: data.userId,
     },
-  });
+  }));
 }
 
 export async function getDiagram(uid: string, userId: string) {

@@ -240,6 +240,7 @@ async function createDbConnectTablesIfMissing(): Promise<void> {
 async function createTeamTablesIfMissing(): Promise<void> {
   if (!prisma || (!isDesktopMode() && !isLocalPostgres())) return;
 
+  await addColumnIfMissing("users", "cloud_personal_entitlement", '"cloud_personal_entitlement" TEXT');
   await addColumnIfMissing("projects", "team_id", '"team_id" TEXT');
 
   try {

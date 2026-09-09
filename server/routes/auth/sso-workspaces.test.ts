@@ -20,7 +20,7 @@ describe("Cloud SSO workspace grants", () => {
 
   it("accepts locked Teams so members can see why access is unavailable", () => {
     expect(parseSsoWorkspaces([
-      { id: "org-1", name: "Locked Team", type: "team", role: "staff", status: "locked", entitlement: { status: "locked", revision: "a".repeat(64), capabilities: {}, limits: { max_members: null } } },
+      { id: "org-1", name: "Locked Team", type: "team", role: "staff", status: "locked", entitlement: { status: "locked", revision: "a".repeat(64), capabilities: {}, limits: { max_members: null, max_personal_files_per_feature: null } } },
     ])).toHaveLength(1);
   });
 
@@ -34,6 +34,7 @@ describe("Cloud SSO workspace grants", () => {
       joinedAt: new Date("2026-01-01T00:00:00.000Z"),
     };
     const tx = {
+      user: { update: vi.fn() },
       team: {
         findUnique: vi.fn().mockResolvedValue(null),
         create: vi.fn(({ data }) => Promise.resolve(data)),
@@ -49,15 +50,19 @@ describe("Cloud SSO workspace grants", () => {
     const db = { $transaction: (callback: (value: typeof tx) => Promise<void>) => callback(tx) };
 
     await syncSsoWorkspaces(db, "user-1", parseSsoWorkspaces([
-      { id: "org-1", name: " Cloud Team ", type: "team", role: "owner", status: "active", entitlement: { status: "active", revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5 } } },
-      { id: "personal-1", name: "Personal", type: "personal", role: "owner", status: "active", entitlement: null },
+      { id: "org-1", name: " Cloud Team ", type: "team", role: "owner", status: "active", entitlement: { status: "active", revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5, max_personal_files_per_feature: null } } },
+      { id: "personal-1", name: "Personal", type: "personal", role: "owner", status: "active", entitlement: { status: "active", revision: "b".repeat(64), capabilities: {}, limits: { max_members: null, max_personal_files_per_feature: 3 } } },
     ]));
 
+    expect(tx.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { cloudPersonalEntitlement: JSON.stringify({ revision: "b".repeat(64), capabilities: {}, limits: { max_members: null, max_personal_files_per_feature: 3 } }) },
+    });
     expect(tx.team.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       name: "Cloud Team",
       ssoOrganizationId: "org-1",
       status: "active",
-      cloudEntitlement: JSON.stringify({ revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5 } }),
+      cloudEntitlement: JSON.stringify({ revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5, max_personal_files_per_feature: null } }),
     }) });
     expect(tx.teamMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: "user-1", role: "manager", status: "active" }),

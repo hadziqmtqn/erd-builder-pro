@@ -3,7 +3,7 @@ const capabilityKey = /^[a-z][a-z0-9_]*$/;
 export type CloudEntitlement = {
   revision: string;
   capabilities: Record<string, boolean>;
-  limits: { max_members: number | null };
+  limits: { max_members: number | null; max_personal_files_per_feature: number | null };
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -16,13 +16,19 @@ export function parseCloudEntitlement(value: unknown, workspaceStatus: string): 
 
   const capabilities = Object.entries(value.capabilities);
   const maxMembers = value.limits.max_members;
+  const maxPersonalFiles = value.limits.max_personal_files_per_feature;
   if (capabilities.length > 50 || !capabilities.every(([key, enabled]) => capabilityKey.test(key) && typeof enabled === "boolean")
-    || !(maxMembers === null || (typeof maxMembers === "number" && Number.isSafeInteger(maxMembers) && maxMembers > 0 && maxMembers <= 1_000_000))) return null;
+    || !(maxMembers === null || (typeof maxMembers === "number" && Number.isSafeInteger(maxMembers) && maxMembers > 0 && maxMembers <= 1_000_000))
+    || !(maxPersonalFiles === undefined || maxPersonalFiles === null
+      || (typeof maxPersonalFiles === "number" && Number.isSafeInteger(maxPersonalFiles) && maxPersonalFiles > 0 && maxPersonalFiles <= 1_000_000))) return null;
 
   return {
     revision: value.revision as string,
     capabilities: Object.fromEntries(capabilities.sort(([left], [right]) => left.localeCompare(right))) as Record<string, boolean>,
-    limits: { max_members: maxMembers as number | null },
+    limits: {
+      max_members: maxMembers as number | null,
+      max_personal_files_per_feature: maxPersonalFiles === undefined ? null : maxPersonalFiles as number | null,
+    },
   };
 }
 

@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
+import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
@@ -84,7 +85,7 @@ export async function createNote(data: {
   title: string; content?: string; projectId?: number | null; userId: string; uid?: string;
 }) {
   if (!prisma) throw new Error("Database connection not available");
-  return prisma.note.create({
+  return createPersonalFile("notes", data.userId, (db) => db.note.create({
     data: {
       title: data.title,
       content: data.content || "",
@@ -92,7 +93,7 @@ export async function createNote(data: {
       userId: data.userId,
       ...(data.uid ? { uid: data.uid } : {}),
     },
-  });
+  }));
 }
 
 export async function getNote(uid: string, userId: string) {

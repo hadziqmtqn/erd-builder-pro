@@ -239,7 +239,8 @@ export function useDiagrams(isAuthenticated: boolean | null, view: 'erd' | 'diag
         toast.success('Diagram created successfully');
         return newDiagram;
       } else {
-        toast.error('Failed to create diagram');
+        const error = await res.json().catch(() => null);
+        toast.error(error?.error || 'Failed to create diagram');
       }
     } catch (err) {
       console.error('Error creating diagram:', err);

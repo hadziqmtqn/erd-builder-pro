@@ -6,6 +6,14 @@ import { SUPABASE_URL } from "./config.js";
  */
 export const handleError = (res: ExpressResponse, _error: any, message: string = "Internal Server Error") => {
   console.error(`${message}:`, _error);
+  if (_error?.code === "PERSONAL_FILE_QUOTA_EXCEEDED" && _error?.status === 409) {
+    return res.status(409).json({
+      error: _error.message,
+      code: _error.code,
+      feature: _error.feature,
+      limit: _error.limit,
+    });
+  }
   return res.status(500).json({ 
     error: message
   });
