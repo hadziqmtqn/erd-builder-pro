@@ -35,7 +35,7 @@
     "db:seed:sqlite": "rm -rf node_modules/.prisma/client && cross-env DB_VARIANT=sqlite prisma generate && cross-env DB_VARIANT=sqlite DATABASE_URL=file:./data.db tsx prisma/seed.sqlite.ts",
     "dev:desktop:client": "cross-env VITE_API_URL=http://127.0.0.1:3100 vite --port 3098",
     "dev:tauri:servers": "concurrently -n api,client \"npm run dev:desktop\" \"npm run dev:desktop:client\"",
-    "dev:tauri": "export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:tauri": "rm -rf src-tauri/target/debug && export PATH=\"$HOME/.cargo/bin:$PATH\" && npx tauri dev --config src-tauri/tauri.dev.conf.json",
     "dev:desktop": "npm rebuild better-sqlite3 && npm run db:generate:sqlite && node --input-type=module -e \"import { PrismaClient } from '@prisma/client'; if (typeof PrismaClient !== 'function') process.exit(1)\" && cross-env LANDING_MODE=false PORT=3100 DATABASE_URL=file:./data.db NODE_ENV=development ERD_INSTALL_MODE=desktop tsx watch server/run.ts"
   },
   "dependencies": {

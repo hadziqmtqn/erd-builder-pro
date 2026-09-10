@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Database, Plus, Settings2, UserCog, UserRound, UsersRound } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Settings2, UserRound, UsersRound } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -51,12 +51,13 @@ export function TeamSwitcher({
       className="cursor-pointer transition-colors hover:bg-accent/50 active:bg-accent/70"
       onClick={enabled ? undefined : () => onSelect(null)}
     >
-      <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-brand text-white">
-        <Database className="size-4" />
+      <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
+        <img src="/img/ERD-Builder-Pro-Dark-1.svg" alt="" className="size-full dark:hidden" />
+        <img src="/img/ERD-Builder-Pro-Light-1.svg" alt="" className="hidden size-full dark:block" />
       </div>
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-semibold">
-          ERD Builder <span className="text-brand">Pro</span>
+          ERD Builder <span>Pro</span>
         </span>
         <span className="truncate text-xs">{subtitle}</span>
       </div>
