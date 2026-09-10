@@ -102,6 +102,7 @@ export interface WorkspaceContextValue {
   refreshActiveDocument: () => Promise<void>;
   refreshTeamScope: () => Promise<void>;
   teamScopeVersion: number;
+  isTeamScopeRefreshing: boolean;
 
   // Content
   handleNoteChange: (content: string) => void;

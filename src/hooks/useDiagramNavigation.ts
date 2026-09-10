@@ -20,6 +20,7 @@ export interface UseDiagramNavigationProps {
   flushPendingSaves: () => Promise<void>;
   isAuthenticated: boolean | null;
   isERDItemLoading: boolean;
+  isTeamScopeRefreshing: boolean;
   /** Ref for diagram loaded tracking — created by parent so useAutoSave can share it */
   lastLoadedDiagramIdRef: { current: number | string | null };
 }
@@ -49,6 +50,7 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
     flushPendingSaves,
     isAuthenticated,
     isERDItemLoading,
+    isTeamScopeRefreshing,
     lastLoadedDiagramIdRef,
   } = props;
 
@@ -69,9 +71,12 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
   const lastProcessedDiagramUrlRef = useRef('');
   const diagramTargetRef = useRef<number | string | null>(null);
   const isSwitchingDiagramRef = useRef(false);
+  const isTeamScopeRefreshingRef = useRef(isTeamScopeRefreshing);
+  isTeamScopeRefreshingRef.current = isTeamScopeRefreshing;
 
   // ── handleDiagramSelect: the core orchestration ──
   const handleDiagramSelect = useCallback(async (id: number | string) => {
+    if (isTeamScopeRefreshingRef.current) return;
     // Re-entrant guard: prevents URL effect from re-triggering during a user's
     // click-originated diagram switch
     if (isSwitchingDiagramRef.current) return;
@@ -124,7 +129,7 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
       const loadedData = await selectDiagram(urlIdentifier, (newId: any) => {
         setActiveDiagramId(newId);
         lastLoadedDiagramIdRef.current = newId;
-      }, { isStale: () => diagramTargetRef.current !== id });
+      }, { isStale: () => diagramTargetRef.current !== id || isTeamScopeRefreshingRef.current });
 
       // Add loaded diagram to state if newly created (e.g., from DB import)
       // Must use functional updater + check prev to avoid race with fetchDiagrams
@@ -154,7 +159,7 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
   // ── Effect 1: URL Routing for /diagrams/:id ──
   // Originally in DiagramsPage.tsx
   useEffect(() => {
-    if (!isAuthenticated || getSharePathInfo()) return;
+    if (!isAuthenticated || isTeamScopeRefreshing || getSharePathInfo()) return;
 
     // Already handled by handleDiagramSelect's own navigate call
     if (lastProcessedDiagramUrlRef.current === location.pathname) return;
@@ -171,6 +176,7 @@ export function useDiagramNavigation(props: UseDiagramNavigationProps): UseDiagr
     }
   }, [
     isAuthenticated,
+    isTeamScopeRefreshing,
     location.pathname,
     activeDiagramId,
     handleDiagramSelect,

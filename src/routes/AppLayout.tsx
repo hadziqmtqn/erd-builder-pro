@@ -237,6 +237,7 @@ function AppLayoutInner() {
     breadcrumbLabel,
     refreshTeamScope,
     teamScopeVersion,
+    isTeamScopeRefreshing,
   } = useWorkspace();
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
@@ -846,7 +847,14 @@ function AppLayoutInner() {
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
-          <Outlet key={teamScopeVersion} />
+          {isTeamScopeRefreshing ? (
+            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border bg-muted/10" role="status" aria-live="polite">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+              <p className="mt-4 text-sm font-medium text-muted-foreground">Loading workspace…</p>
+            </div>
+          ) : (
+            <Outlet key={teamScopeVersion} />
+          )}
         </div>
 
         <ImportNoteModal

@@ -311,7 +311,7 @@ export function DashboardRoute() {
             <h1 className="mt-0.5 text-xl font-semibold tracking-tight">{userName}</h1>
             <p className="mt-0.5 text-xs text-muted-foreground">Pick up where you left off.</p>
           </div>
-          {!isEmpty && (
+          {showContent && (
             <button
               onClick={() => createDocument(typeConfig[1])}
               className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"

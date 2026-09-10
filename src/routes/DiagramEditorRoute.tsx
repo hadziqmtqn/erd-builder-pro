@@ -25,6 +25,7 @@ export function DiagramEditorRoute() {
     handleOpenImportModal,
     viewportRef, saveDiagram, triggerDebouncedSync,
     isERDItemLoading, handleDiagramSelect,
+    isTeamScopeRefreshing,
     pendingErdDiffTrigger,
     extractColumnIdFromHandle, getRelationKey, dedupeEdgesByRelation,
   } = ctx;
@@ -91,7 +92,7 @@ export function DiagramEditorRoute() {
       .catch(error => console.error('Error saving ERD auto-layout:', error));
   }, [nodes, edges, setNodes, takeSnapshot, saveDiagram, triggerDebouncedSync, viewportRef]);
   useEffect(() => {
-    if (isPublicView || !id) return;
+    if (isPublicView || isTeamScopeRefreshing || !id) return;
     if (processedUrlRef.current) return;
     if (String(activeDiagramId) === id) {
       processedUrlRef.current = true;
@@ -101,7 +102,7 @@ export function DiagramEditorRoute() {
       processedUrlRef.current = true;
       handleDiagramSelect(id);
     }
-  }, [id, activeDiagramId, isPublicView, handleDiagramSelect]);
+  }, [id, activeDiagramId, isPublicView, isTeamScopeRefreshing, handleDiagramSelect]);
 
   const sourceConnectionId = useMemo<number | undefined>(() => {
     const show = isPublicView ? publicData : activeDiagram;

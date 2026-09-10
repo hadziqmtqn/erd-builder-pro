@@ -137,11 +137,17 @@ export function useERDSession(
         }
         data = localData;
       } else {
+        if (options?.isStale?.()) {
+          setIsItemLoading(false);
+          return null;
+        }
         const res = await apiFetch(`/api/diagrams/${id}`);
         if (!res.ok) {
           const errText = await res.text();
-          console.error(`Failed to fetch diagram ${id}:`, res.status, errText);
-          toast.error("Failed to load diagram details");
+          if (!options?.isStale?.()) {
+            console.error(`Failed to fetch diagram ${id}:`, res.status, errText);
+            toast.error("Failed to load diagram details");
+          }
           setIsItemLoading(false);
           loadingIdRef.current = null;
           return null;
@@ -303,7 +309,10 @@ export function useERDSession(
       // === STALE GUARD: If the user has navigated to a different diagram    ===
       // === while this fetch was in-flight, discard to prevent stale data    ===
       // === overwriting the correct diagram's canvas.                        ===
-      if (options?.isStale && options.isStale()) return;
+      if (options?.isStale && options.isStale()) {
+        setIsItemLoading(false);
+        return;
+      }
 
       // === UUID CORRECTION: After the diagram data is loaded, ensure        ===
       // === activeDiagramId uses the UUID (uid), not the numeric id that may ===

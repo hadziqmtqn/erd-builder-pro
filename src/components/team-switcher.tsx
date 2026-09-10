@@ -43,7 +43,7 @@ export function TeamSwitcher({
 }) {
   const { isMobile } = useSidebar();
   const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
-  const subtitle = selfHosted ? activeTeam?.name || "Personal" : "Workspace";
+  const subtitle = selfHosted ? activeTeam?.name || (activeTeamId ? "Loading workspace…" : "Personal") : "Workspace";
 
   const trigger = (
     <SidebarMenuButton
