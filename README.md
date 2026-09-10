@@ -1,7 +1,7 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="public/img/ERD-Builder-Pro-Dark.svg" />
-    <source media="(prefers-color-scheme: light)" srcset="public/img/ERD-Builder-Pro-Light.svg" />
+    <source media="(prefers-color-scheme: dark)" srcset="public/img/ERD-Builder-Pro-Light.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="public/img/ERD-Builder-Pro-Dark.svg" />
     <img width="400" alt="ERD Builder Pro" src="public/img/ERD-Builder-Pro-Light.svg" />
   </picture>
 </div>
