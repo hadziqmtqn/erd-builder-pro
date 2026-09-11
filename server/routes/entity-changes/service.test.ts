@@ -65,7 +65,7 @@ describe("entity history restore", () => {
       expectedUpdatedAt: refreshed!.current_updated_at,
     })).resolves.toMatchObject({ status: "ok" });
 
-    const restored = await prisma!.note.findUnique({ where: { id: note.id } });
+    const restored = await prisma!.note.findUnique({ where: { id: (note as { id: number }).id } });
     expect(restored).toMatchObject({ title: "Initial", content: "<p>Initial content</p>", version: 3 });
     const revisions = await history.listHistory("notes", "history-note", "history-user", 100);
     expect(revisions?.revisions.map(item => item.change_type)).toEqual(["restore", "pre_restore", "update"]);

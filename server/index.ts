@@ -39,6 +39,7 @@ import usersRouter from "./routes/users/index.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
 import { getPublicMcpClientConfig } from "./mcp/public-auth.js";
 import controlPlaneRouter from "./routes/control-plane.js";
+import { createAuthRateLimiters } from "./lib/auth-rate-limit.js";
 
 const app = express();
 
@@ -159,16 +160,7 @@ const feedbackLimiter = rateLimit({
 });
 app.use("/api/feedback", feedbackLimiter);
 
-// Strict rate limiter for auth endpoints — 10 req/min per IP
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many login attempts, please try again later" },
-});
-app.use("/api/login", authLimiter);
-app.use("/api/sso/link", authLimiter);
+const authRateLimiters = createAuthRateLimiters();
 
 // AI proxy rate limiter — 30 req/min per IP (guest mode is unauthenticated)
 const aiProxyLimiter = rateLimit({
@@ -198,6 +190,15 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
+
+// Auth limits run after body parsing so local login can use email+IP keys.
+app.use("/api/login", authRateLimiters.localIp);
+app.use("/api/login", authRateLimiters.localIpBackoff);
+app.use("/api/login", authRateLimiters.localCredential);
+app.use("/api/login", authRateLimiters.localCredentialBackoff);
+app.use("/api/sso/login", authRateLimiters.ssoIp, authRateLimiters.ssoIpBackoff);
+app.use("/api/sso/callback", authRateLimiters.ssoIp, authRateLimiters.ssoIpBackoff);
+app.use("/api/sso/link", authRateLimiters.localIp, authRateLimiters.localIpBackoff);
 
 // Response field name conversion: Prisma returns camelCase, but frontend expects
 // snake_case (matching the original Supabase API format). This middleware intercepts
