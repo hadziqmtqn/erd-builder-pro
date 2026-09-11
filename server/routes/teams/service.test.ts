@@ -2,19 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
+  provisionedTeam: false,
   database: {
-    team: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
-    teamMember: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
+    team: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
+    teamMember: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), upsert: vi.fn(), update: vi.fn() },
+    user: { findUnique: vi.fn(), create: vi.fn() },
+  },
+  license: {
+    getStored: vi.fn(() => ({ lastCheckedAt: new Date().toISOString() })),
+    verifyStored: vi.fn(() => ({ entitlement: { maxTeams: 10, maxMembers: 10 } })),
+    check: vi.fn(async () => ({ entitlement: { maxTeams: 10, maxMembers: 10 } })),
+    LicenseClientError: class MockLicenseClientError extends Error {
+      constructor(public readonly code: string, public readonly status = 503) { super(code); }
+    },
   },
 }));
 
 vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => true, isSsoAuthMode: mocks.ssoMode }));
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.database }));
 vi.mock("../../lib/team-provisioning.js", () => ({
-  isProvisionedTeam: () => false,
+  isProvisionedTeam: () => mocks.provisionedTeam,
   isProvisionedMembership: () => false,
   membershipProvisioningSignature: () => "signature",
   teamProvisioningSignature: () => "signature",
+}));
+vi.mock("../../lib/license-client.js", () => ({
+  checkSelfHostInstanceLicense: mocks.license.check,
+  getStoredInstanceLicense: mocks.license.getStored,
+  verifyStoredInstanceLicense: mocks.license.verifyStored,
+  LicenseClientError: mocks.license.LicenseClientError,
 }));
 
 const teams = await import("./service.js");
@@ -71,6 +87,33 @@ describe("Team integrity", () => {
       .rejects.toMatchObject({ code: "CLOUD_TEAM_MANAGED_EXTERNALLY" });
 
     mocks.ssoMode.mockReturnValue(false);
+  });
+
+  it("refreshes the entitlement before creating a Team", async () => {
+    mocks.database.team.findFirst.mockResolvedValue(null);
+    mocks.database.team.count.mockResolvedValue(1);
+    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 1, maxMembers: 10 } });
+
+    await expect(teams.createTeam({ name: "Downgraded Team", userId: "admin", isSuperAdmin: true }))
+      .rejects.toMatchObject({ code: "TEAM_LIMIT_REACHED" });
+    expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
+    expect(mocks.database.team.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks adding a member when the freshly checked limit is reached", async () => {
+    mocks.provisionedTeam = true;
+    mocks.database.team.findUnique.mockResolvedValue({ id: "team-1", type: "team", status: "active", members: [] });
+    mocks.database.team.count.mockResolvedValue(1);
+    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.database.user.findUnique.mockResolvedValue({ id: "user-2", email: "user-2@example.com", isSuperAdmin: false });
+    mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
+
+    await expect(teams.addMember("team-1", "user-2@example.com", "admin", true))
+      .rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
+    expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
+    expect(mocks.database.teamMember.upsert).not.toHaveBeenCalled();
+    mocks.provisionedTeam = false;
   });
 
   it("blocks every Team management operation for a manually inserted Team", async () => {

@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, Plus, Settings2, UserRound, UsersRound } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Settings2, UserCog, UserRound, UsersRound } from "lucide-react";
 
 import {
   DropdownMenu,
