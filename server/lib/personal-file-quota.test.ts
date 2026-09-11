@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   diagramCount: vi.fn(),
   diagramCreate: vi.fn(),
+  noteCount: vi.fn(),
+  noteCreate: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -25,7 +27,8 @@ describe("Personal Cloud file quota", () => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback: (db: any) => Promise<unknown>) => callback({
       user: { findUnique: mocks.userFindUnique },
-      diagrams: { count: mocks.diagramCount },
+      diagram: { count: mocks.diagramCount },
+      note: { count: mocks.noteCount },
     }));
     mocks.userFindUnique.mockResolvedValue({ cloudPersonalEntitlement: null });
   });
@@ -52,5 +55,13 @@ describe("Personal Cloud file quota", () => {
 
     await expect(createPersonalFile("diagrams", "user-1", mocks.diagramCreate)).resolves.toEqual({ id: 1 });
     expect(mocks.diagramCreate).toHaveBeenCalledWith(expect.anything());
+  });
+
+  it("uses the singular Prisma model for Notes", async () => {
+    mocks.noteCount.mockResolvedValue(0);
+    mocks.noteCreate.mockResolvedValue({ id: 1 });
+
+    await expect(createPersonalFile("notes", "user-1", mocks.noteCreate)).resolves.toEqual({ id: 1 });
+    expect(mocks.noteCreate).toHaveBeenCalledWith(expect.anything());
   });
 });

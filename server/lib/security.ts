@@ -1,4 +1,4 @@
-import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import type { NextFunction, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
 import { isDesktopMode, isLocalPostgres, isSsoAuthMode } from "./config.js";
 import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
@@ -23,12 +23,13 @@ export const isAdminUser = (req: ExpressRequest) => {
   );
 };
 
-export const requireAdmin = (req: ExpressRequest, res: ExpressResponse) => {
+export const requireAdmin = (req: ExpressRequest, res: ExpressResponse, next?: NextFunction) => {
   if (!isAdminUser(req)) {
     res.status(403).json({ error: "Forbidden" });
     return false;
   }
 
+  next?.();
   return true;
 };
 

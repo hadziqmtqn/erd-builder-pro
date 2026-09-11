@@ -56,7 +56,7 @@ async function assertPersonalFileQuota(db: any, feature: PersonalFileFeature, us
   const limit = await personalFileLimit(db, userId);
   if (limit === null) return;
 
-  const count = await db[feature].count({ where });
+  const count = await db[feature.slice(0, -1)].count({ where });
   if (count >= limit) throw new PersonalFileQuotaError(feature, limit);
 }
 
