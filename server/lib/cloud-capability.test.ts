@@ -31,4 +31,13 @@ describe("Cloud feature capability", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "CLOUD_CAPABILITY_REQUIRED" }));
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("rejects a grant issued for another product family", () => {
+    expect(hasCloudCapability(JSON.stringify({
+      product_type: "self_host",
+      revision: "a".repeat(64),
+      capabilities: { erd_builder: true },
+      limits: { max_members: 5 },
+    }), "active", "erd_builder")).toBe(false);
+  });
 });

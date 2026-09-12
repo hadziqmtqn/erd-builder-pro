@@ -47,10 +47,26 @@ describe("authentication rate limits", () => {
     expect(response.statusCode).toBe(429);
     expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
+
+  it("does not count successful login responses against the credential limit", async () => {
+    const limits = createAuthRateLimiters();
+    const request = { body: { email: "successful@example.com", password: "correct" }, ip: "127.0.0.1" } as any;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = fakeResponse(200);
+      await limits.localCredential(request, response, () => response.finish());
+    }
+
+    const response = fakeResponse(401);
+    await limits.localCredential(request, response, () => {});
+
+    expect(response.statusCode).toBe(401);
+  });
 });
 
 function fakeResponse(statusCode: number) {
   const headers = new Map<string, string>();
+  const finishHandlers: Array<() => void> = [];
 
   return {
     statusCode,
@@ -60,7 +76,12 @@ function fakeResponse(statusCode: number) {
     setHeader(name: string, value: string | number) {
       headers.set(name, String(value));
     },
-    once() {},
+    once(event: string, handler: () => void) {
+      if (event === "finish") finishHandlers.push(handler);
+    },
+    finish() {
+      for (const handler of finishHandlers) handler();
+    },
     status(code: number) {
       this.statusCode = code;
       return this;
