@@ -50,6 +50,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(true);
           setIsGuest(false);
           const normalizedUser = normalizeLocalUser(data.user);
+          try {
+            if (normalizedUser?.activeTeamId && !localStorage.getItem(ACTIVE_TEAM_KEY)) {
+              localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
+            }
+          } catch { /* localStorage may be unavailable */ }
           setUser(normalizedUser);
           retryRef.current = 0;
           return;
