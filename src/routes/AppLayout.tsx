@@ -520,11 +520,12 @@ function AppLayoutInner() {
   const isActiveDbClient = entityContext?.entityType === 'dbClient' || (isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db');
   const showAIChat = useMemo(() => {
-    if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
+    const cloudAiIncluded = !user?.isSso || teamState.activeTeam?.capabilities?.ai_assistant === true;
+    if (!cloudAiIncluded || entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
     if (isActiveDbClient) return true;
     const resolvedTab = searchParams.get('tab') || 'erd';
     return resolvedTab === 'erd';
-  }, [entityContext, isPublicView, isActiveDbClient, searchParams]);
+  }, [entityContext, isPublicView, isActiveDbClient, searchParams, teamState.activeTeam, user?.isSso]);
   const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id

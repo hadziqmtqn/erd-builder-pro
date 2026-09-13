@@ -32,6 +32,7 @@ export const aiProxySchema = z.object({
   apiKey: z.string().max(2048).optional(),
   baseUrl: z.string().url().max(512).optional(),
   providerCode: z.string().max(64).optional(),
+  request_id: z.string().min(1).max(128).optional(),
 }).superRefine((value, ctx) => {
   const total = value.messages.reduce((length, message) => length + message.content.length, 0);
   if (total > 2_000_000) {

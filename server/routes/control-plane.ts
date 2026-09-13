@@ -6,6 +6,7 @@ import { parseCloudEntitlement, serializeCloudEntitlement } from "../lib/cloud-e
 import { isUuid } from "../lib/erd-column-id-migration.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../lib/team-provisioning.js";
 import { logger } from "../lib/logger.js";
+import { revokeCloudAiRuntimeConfig, storeCloudAiEnvelope } from "../lib/cloud-ai.js";
 
 const router = Router();
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -66,7 +67,52 @@ router.post("/events", async (req, res) => {
 
   let event: any;
   try { event = JSON.parse(body); } catch { invalidPayload(res, eventId, "invalid_json"); return; }
-  if (event?.id !== eventId || event?.type !== "cloud.workspace.sync" || !event?.data?.organization) {
+  if (event?.id !== eventId || !["cloud.workspace.sync", "cloud.ai.configuration.updated", "cloud.ai.configuration.revoked"].includes(event?.type)) {
+    invalidPayload(res, eventId, "invalid_event");
+    return;
+  }
+
+  if (event.type === "cloud.ai.configuration.updated" || event.type === "cloud.ai.configuration.revoked") {
+    try {
+      const duplicate = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT "id" FROM "team_audit_events" WHERE "target_type" = ${process.env.DATABASE_URL?.startsWith("postgres") ? "$1" : "?"} AND "target_id" = ${process.env.DATABASE_URL?.startsWith("postgres") ? "$2" : "?"}`,
+        "cloud_event",
+        eventId,
+      );
+      if (duplicate.length > 0) {
+        res.json({ accepted: true, duplicate: true });
+        return;
+      }
+
+      if (event.type === "cloud.ai.configuration.updated") {
+        if (!event.data?.envelope || !(await storeCloudAiEnvelope(event.data.envelope))) {
+          invalidPayload(res, eventId, "invalid_ai_configuration");
+          return;
+        }
+      } else {
+        if (!Number.isSafeInteger(event.data?.revision) || event.data.revision < 1) {
+          invalidPayload(res, eventId, "invalid_ai_revision");
+          return;
+        }
+        await revokeCloudAiRuntimeConfig(event.data.revision);
+      }
+
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "team_audit_events" ("id", "action", "target_type", "target_id", "metadata") VALUES (${process.env.DATABASE_URL?.startsWith("postgres") ? "$1, $2, $3, $4, $5" : "?, ?, ?, ?, ?"})`,
+        eventId,
+        "cloud_webhook_received",
+        "cloud_event",
+        eventId,
+        JSON.stringify({ type: event.type }),
+      );
+      res.json({ accepted: true, duplicate: false });
+    } catch {
+      res.status(500).json({ error: "Webhook processing failed." });
+    }
+    return;
+  }
+
+  if (!event?.data?.organization) {
     invalidPayload(res, eventId, "invalid_event");
     return;
   }

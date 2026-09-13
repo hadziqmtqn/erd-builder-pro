@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate, rejectInSsoMode } from "../../lib/middleware.js";
 import { requireAdmin } from "../../lib/security.js";
+import { requireCloudAiAccess } from "../../lib/cloud-ai.js";
 import * as ctrl from "./controller.js";
 
 const router = Router();
@@ -22,10 +23,10 @@ router.post("/models/ensure", authenticate, superAdminOnly, ctrl.ensureModel);
 router.post("/models", authenticate, superAdminOnly, ctrl.createModel);
 router.put("/models/:id", authenticate, superAdminOnly, ctrl.updateModel);
 router.delete("/models/:id", authenticate, superAdminOnly, ctrl.deleteModel);
-router.get("/prompts", authenticate, ctrl.listPrompts);
-router.post("/prompts", authenticate, ctrl.savePrompt);
-router.delete("/prompts/:id", authenticate, ctrl.deletePrompt);
-router.put("/prompts/:id/toggle-default", authenticate, ctrl.toggleDefaultPrompt);
+router.get("/prompts", authenticate, requireCloudAiAccess, ctrl.listPrompts);
+router.post("/prompts", authenticate, requireCloudAiAccess, ctrl.savePrompt);
+router.delete("/prompts/:id", authenticate, requireCloudAiAccess, ctrl.deletePrompt);
+router.put("/prompts/:id/toggle-default", authenticate, requireCloudAiAccess, ctrl.toggleDefaultPrompt);
 router.post("/initialize", authenticate, superAdminOnly, ctrl.initializeDefaults);
 
 export default router;

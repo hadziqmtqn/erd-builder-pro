@@ -14,7 +14,7 @@ function useActiveTeam(teamId = "team-1") {
 }
 
 describe("apiFetch Team scope", () => {
-  it("sends the active Team only to Team-scoped data endpoints", async () => {
+  it("sends the active Team to all Team-scoped AI endpoints", async () => {
     useActiveTeam();
     const fetchMock = vi.fn().mockResolvedValue(new Response());
     vi.stubGlobal("fetch", fetchMock);
@@ -22,9 +22,13 @@ describe("apiFetch Team scope", () => {
     await apiFetch("/api/notes");
     await apiFetch("/api/projects?limit=100&offset=0");
     await apiFetch("/api/ai/rules/erd");
+    await apiFetch("/api/ai/proxy");
+    await apiFetch("/api/ai/settings/prompts");
 
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-Team-Id")).toBe("team-1");
     expect(new Headers(fetchMock.mock.calls[1][1].headers).get("X-Team-Id")).toBe("team-1");
-    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("X-Team-Id")).toBeNull();
+    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("X-Team-Id")).toBe("team-1");
+    expect(new Headers(fetchMock.mock.calls[3][1].headers).get("X-Team-Id")).toBe("team-1");
+    expect(new Headers(fetchMock.mock.calls[4][1].headers).get("X-Team-Id")).toBe("team-1");
   });
 });

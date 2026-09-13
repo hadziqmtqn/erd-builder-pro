@@ -316,6 +316,58 @@ async function createTeamTablesIfMissing(): Promise<void> {
   }
 }
 
+async function createCloudAiTablesIfMissing(): Promise<void> {
+  if (!prisma) return;
+
+  const dateType = isPostgresDatabase() ? postgresDateType() : "TEXT";
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "cloud_ai_runtime_configs" (
+      "id" TEXT PRIMARY KEY,
+      "revision" INTEGER NOT NULL,
+      "ciphertext" TEXT NOT NULL,
+      "iv" TEXT NOT NULL,
+      "auth_tag" TEXT NOT NULL,
+      "enabled" BOOLEAN NOT NULL DEFAULT true,
+      "expires_at" ${dateType},
+      "received_at" ${dateType} NOT NULL,
+      "updated_at" ${dateType} NOT NULL,
+      "last_error_code" TEXT
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "cloud_ai_usage_periods" (
+      "id" TEXT PRIMARY KEY,
+      "team_id" TEXT NOT NULL,
+      "period_start" ${dateType} NOT NULL,
+      "period_end" ${dateType},
+      "limit_credits" INTEGER NOT NULL,
+      "consumed_credits" INTEGER NOT NULL DEFAULT 0,
+      "reserved_credits" INTEGER NOT NULL DEFAULT 0,
+      "entitlement_revision" TEXT NOT NULL,
+      "created_at" ${dateType} NOT NULL,
+      "updated_at" ${dateType} NOT NULL
+    )
+  `);
+  await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "cloud_ai_usage_period_team_start" ON "cloud_ai_usage_periods"("team_id", "period_start")');
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "cloud_ai_usage_requests" (
+      "id" TEXT PRIMARY KEY,
+      "request_id" TEXT NOT NULL UNIQUE,
+      "team_id" TEXT NOT NULL,
+      "period_id" TEXT NOT NULL,
+      "user_id" TEXT NOT NULL,
+      "credits" INTEGER NOT NULL DEFAULT 1,
+      "state" TEXT NOT NULL,
+      "provider_code" TEXT,
+      "model_identifier" TEXT,
+      "error_code" TEXT,
+      "created_at" ${dateType} NOT NULL,
+      "updated_at" ${dateType} NOT NULL
+    )
+  `);
+  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "cloud_ai_usage_requests_team_created" ON "cloud_ai_usage_requests"("team_id", "created_at")');
+}
+
 /** Establishes the signed baseline once for Teams that existed before this release. */
 async function sealExistingTeamRecords(): Promise<void> {
   if (!prisma || !isLocalPostgres()) return;
@@ -840,6 +892,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await createCloudAiTablesIfMissing();
   await sealExistingTeamRecords();
   // Legacy projects stay Personal until their owner explicitly links them to a Team.
   if (isDesktopMode()) {
