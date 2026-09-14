@@ -9,6 +9,8 @@ import { logger } from "./logger.js";
 
 const CLOUD_AI_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const CLOUD_AI_REQUEST_TIMEOUT_MS = 10_000;
+const CLOUD_AI_USAGE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_CLOUD_AI_USAGE_RETENTION_DAYS = 90;
 
 type RuntimeConfig = {
   providerCode: string;
@@ -40,6 +42,7 @@ type MachineToken = {
 
 const machineTokens = new Map<string, MachineToken>();
 let cloudAiRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let cloudAiUsageRetentionTimer: ReturnType<typeof setInterval> | null = null;
 
 function isPostgresDatabase(): boolean {
   const url = process.env.DATABASE_URL || "";
@@ -262,6 +265,47 @@ export function startCloudAiConfigRefresh(): void {
   void refreshCloudAiRuntimeConfig();
   cloudAiRefreshTimer = setInterval(() => { void refreshCloudAiRuntimeConfig(); }, CLOUD_AI_REFRESH_INTERVAL_MS);
   cloudAiRefreshTimer.unref?.();
+}
+
+function cloudAiUsageRetentionDays(): number {
+  const configured = Number(process.env.CLOUD_AI_USAGE_RETENTION_DAYS);
+  return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_CLOUD_AI_USAGE_RETENTION_DAYS;
+}
+
+export async function pruneCloudAiUsage(now = new Date()): Promise<{ requests: number; periods: number }> {
+  if (!isSsoAuthMode() || !prisma) return { requests: 0, periods: 0 };
+
+  const cutoff = new Date(now.getTime() - cloudAiUsageRetentionDays() * 24 * 60 * 60 * 1000);
+  return prisma.$transaction(async (tx) => {
+    const requestMarks = isPostgresDatabase() ? "$1" : "?";
+    const requests = await (tx as any).$executeRawUnsafe(
+      `DELETE FROM "cloud_ai_usage_requests" WHERE "created_at" < ${requestMarks} AND "state" IN ('consumed', 'released', 'rejected')`,
+      cutoff,
+    );
+    const periodMarks = isPostgresDatabase() ? "$1" : "?";
+    const periods = await (tx as any).$executeRawUnsafe(
+      `DELETE FROM "cloud_ai_usage_periods" WHERE "period_end" IS NOT NULL AND "period_end" < ${periodMarks} AND "reserved_credits" = 0 AND NOT EXISTS (SELECT 1 FROM "cloud_ai_usage_requests" WHERE "cloud_ai_usage_requests"."period_id" = "cloud_ai_usage_periods"."id")`,
+      cutoff,
+    );
+
+    return { requests: Number(requests), periods: Number(periods) };
+  });
+}
+
+export function startCloudAiUsageRetention(): void {
+  if (!isSsoAuthMode() || !prisma || cloudAiUsageRetentionTimer) return;
+
+  const run = (): void => {
+    void pruneCloudAiUsage()
+      .then(({ requests, periods }) => {
+        if (requests > 0 || periods > 0) logger.info({ requests, periods }, "Cloud AI usage retention completed");
+      })
+      .catch((error) => logger.warn({ reason: error instanceof Error ? error.message : "unknown error" }, "Cloud AI usage retention failed"));
+  };
+
+  run();
+  cloudAiUsageRetentionTimer = setInterval(run, CLOUD_AI_USAGE_RETENTION_INTERVAL_MS);
+  cloudAiUsageRetentionTimer.unref?.();
 }
 
 async function resolveAccess(req: Request): Promise<CloudAiAccess | null> {

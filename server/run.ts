@@ -8,7 +8,7 @@ import { applySchemaMigrations } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
-import { startCloudAiConfigRefresh } from "./lib/cloud-ai.js";
+import { startCloudAiConfigRefresh, startCloudAiUsageRetention } from "./lib/cloud-ai.js";
 import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
 import { setDbReady, setDbError } from "./lib/db-state.js";
 
@@ -271,6 +271,7 @@ async function startup(): Promise<void> {
     setDbReady();
     console.log("[startup] Database ready. /api/me will respond. Running background init...");
     startCloudAiConfigRefresh();
+    startCloudAiUsageRetention();
     startCloudTelemetry();
 
     // Fire-and-forget: the rest of background init runs after /api/me works.

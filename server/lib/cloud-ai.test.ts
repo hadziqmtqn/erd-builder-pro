@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   queryRaw: vi.fn(),
   executeRaw: vi.fn(),
+  transaction: vi.fn(),
   teamCount: vi.fn(),
   memberCount: vi.fn(),
   projectCount: vi.fn(),
@@ -47,11 +48,12 @@ vi.mock("./prisma.js", () => ({
     team: { findUnique: mocks.findUnique, count: mocks.teamCount },
     $queryRawUnsafe: mocks.queryRaw,
     $executeRawUnsafe: mocks.executeRaw,
+    $transaction: mocks.transaction,
   },
 }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => ({ mode: "team", teamId: "team-1" }) }));
 
-import { refreshCloudAiRuntimeConfig, requireCloudAiAccess } from "./cloud-ai.js";
+import { pruneCloudAiUsage, refreshCloudAiRuntimeConfig, requireCloudAiAccess } from "./cloud-ai.js";
 import { sendCloudTelemetryHeartbeat } from "./cloud-telemetry.js";
 
 const entitlement = (capabilities: Record<string, boolean>) => JSON.stringify({
@@ -66,6 +68,7 @@ describe("Cloud AI access", () => {
     mocks.findUnique.mockReset();
     mocks.queryRaw.mockReset();
     mocks.executeRaw.mockReset();
+    mocks.transaction.mockReset();
     mocks.teamCount.mockReset();
     mocks.memberCount.mockReset();
     mocks.projectCount.mockReset();
@@ -154,6 +157,29 @@ describe("Cloud AI access", () => {
     await expect(refreshCloudAiRuntimeConfig()).resolves.toBe(false);
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("prunes only terminal Cloud AI usage and completed periods", async () => {
+    mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      $executeRawUnsafe: mocks.executeRaw,
+    }));
+    mocks.executeRaw.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+
+    await expect(pruneCloudAiUsage(new Date("2026-09-14T12:00:00Z"))).resolves.toEqual({ requests: 2, periods: 1 });
+
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(2);
+    expect(mocks.executeRaw.mock.calls[0][0]).toContain("state\" IN ('consumed', 'released', 'rejected')");
+    expect(mocks.executeRaw.mock.calls[1][0]).toContain("reserved_credits\" = 0");
+    expect(mocks.executeRaw.mock.calls[1][0]).toContain("NOT EXISTS");
+  });
+
+  it("does not prune Cloud AI usage outside Cloud SSO mode", async () => {
+    mocks.ssoMode = false;
+
+    await expect(pruneCloudAiUsage(new Date("2026-09-14T12:00:00Z"))).resolves.toEqual({ requests: 0, periods: 0 });
+
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("sends only aggregate telemetry in Cloud SSO mode", async () => {
