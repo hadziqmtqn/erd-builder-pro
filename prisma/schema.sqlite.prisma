@@ -603,6 +603,58 @@ model UserAiRule {
   @@map("user_ai_rules")
 }
 
+// ── Cloud AI runtime (created by the additive startup migration) ──
+// Keep the raw-SQL table definitions represented so local schema sync cannot
+// mistake these runtime-owned tables for data that should be dropped.
+model CloudAiRuntimeConfig {
+  id            String  @id
+  revision      Int
+  ciphertext    String
+  iv            String
+  authTag       String  @map("auth_tag")
+  enabled       Boolean @default(true)
+  expiresAt     String? @map("expires_at")
+  receivedAt    String  @map("received_at")
+  updatedAt     String  @map("updated_at")
+  lastErrorCode String? @map("last_error_code")
+
+  @@map("cloud_ai_runtime_configs")
+}
+
+model CloudAiUsagePeriod {
+  id                  String @id
+  teamId              String @map("team_id")
+  periodStart         String @map("period_start")
+  periodEnd           String? @map("period_end")
+  limitCredits        Int    @map("limit_credits")
+  consumedCredits     Int    @default(0) @map("consumed_credits")
+  reservedCredits     Int    @default(0) @map("reserved_credits")
+  entitlementRevision String @map("entitlement_revision")
+  createdAt           String @map("created_at")
+  updatedAt           String @map("updated_at")
+
+  @@unique([teamId, periodStart], map: "cloud_ai_usage_period_team_start")
+  @@map("cloud_ai_usage_periods")
+}
+
+model CloudAiUsageRequest {
+  id              String  @id
+  requestId       String  @unique @map("request_id")
+  teamId          String  @map("team_id")
+  periodId        String  @map("period_id")
+  userId          String  @map("user_id")
+  credits         Int     @default(1)
+  state           String
+  providerCode    String? @map("provider_code")
+  modelIdentifier String? @map("model_identifier")
+  errorCode       String? @map("error_code")
+  createdAt       String  @map("created_at")
+  updatedAt       String  @map("updated_at")
+
+  @@index([teamId, createdAt], map: "cloud_ai_usage_requests_team_created")
+  @@map("cloud_ai_usage_requests")
+}
+
 // ── User Preferences (desktop app) ──
 model UserPreference {
   id                  String   @id @default(uuid())

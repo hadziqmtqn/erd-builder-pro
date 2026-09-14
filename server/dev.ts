@@ -1,6 +1,8 @@
 import app from "./index.js";
 import { applySchemaMigrations, backfillUids } from "./lib/startup-migration.js";
 import { initializeDefaults } from "./routes/ai-settings/service.js";
+import { startCloudAiConfigRefresh } from "./lib/cloud-ai.js";
+import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
@@ -8,6 +10,8 @@ const setupDev = async () => {
   // Keep development schema parity with the installed server before Vite serves the UI.
   await applySchemaMigrations();
   await initializeDefaults();
+  startCloudAiConfigRefresh();
+  startCloudTelemetry();
   backfillUids().catch(console.error);
 
   try {

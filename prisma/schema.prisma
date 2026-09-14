@@ -459,6 +459,60 @@ model UserAiRule {
   @@schema("public")
 }
 
+// ── Cloud AI runtime (created by the additive startup migration) ──
+// Declared here so Supabase/Cloud schema sync preserves the runtime tables.
+model CloudAiRuntimeConfig {
+  id            String    @id
+  revision      Int
+  ciphertext    String
+  iv            String
+  authTag       String    @map("auth_tag")
+  enabled       Boolean   @default(true)
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(6)
+  receivedAt    DateTime  @map("received_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @map("updated_at") @db.Timestamptz(6)
+  lastErrorCode String?   @map("last_error_code")
+
+  @@map("cloud_ai_runtime_configs")
+  @@schema("public")
+}
+
+model CloudAiUsagePeriod {
+  id                  String    @id
+  teamId              String    @map("team_id")
+  periodStart         DateTime  @map("period_start") @db.Timestamptz(6)
+  periodEnd           DateTime? @map("period_end") @db.Timestamptz(6)
+  limitCredits        Int       @map("limit_credits")
+  consumedCredits     Int       @default(0) @map("consumed_credits")
+  reservedCredits     Int       @default(0) @map("reserved_credits")
+  entitlementRevision String    @map("entitlement_revision")
+  createdAt           DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([teamId, periodStart], map: "cloud_ai_usage_period_team_start")
+  @@map("cloud_ai_usage_periods")
+  @@schema("public")
+}
+
+model CloudAiUsageRequest {
+  id              String    @id
+  requestId       String    @unique @map("request_id")
+  teamId          String    @map("team_id")
+  periodId        String    @map("period_id")
+  userId          String    @map("user_id")
+  credits         Int       @default(1)
+  state           String
+  providerCode    String?   @map("provider_code")
+  modelIdentifier String?   @map("model_identifier")
+  errorCode       String?   @map("error_code")
+  createdAt       DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz(6)
+
+  @@index([teamId, createdAt], map: "cloud_ai_usage_requests_team_created")
+  @@map("cloud_ai_usage_requests")
+  @@schema("public")
+}
+
 // ── User Preferences (desktop app) ──
 model UserPreference {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

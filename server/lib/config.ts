@@ -85,6 +85,27 @@ export function getSsoConfig() {
   };
 }
 
+export function getCloudAiMachineConfig() {
+  const { issuerUrl } = getSsoConfig();
+  return {
+    issuerUrl,
+    clientId: process.env.CLOUD_AI_CONFIG_CLIENT_ID?.trim() || "",
+    clientSecret: process.env.CLOUD_AI_CONFIG_CLIENT_SECRET?.trim() || "",
+  };
+}
+
+export function getCloudTelemetryConfig() {
+  const { issuerUrl } = getSsoConfig();
+  return {
+    issuerUrl,
+    clientId: process.env.CLOUD_TELEMETRY_CLIENT_ID?.trim() || "",
+    clientSecret: process.env.CLOUD_TELEMETRY_CLIENT_SECRET?.trim() || "",
+    deploymentId: process.env.CLOUD_TELEMETRY_DEPLOYMENT_ID?.trim() || "",
+    tenantRef: process.env.CLOUD_TELEMETRY_TENANT_REF?.trim() || "",
+    version: process.env.APP_VERSION?.trim() || process.env.npm_package_version?.trim() || "unknown",
+  };
+}
+
 export function getCloudWebhookSecret(): string {
   return process.env.CLOUD_WEBHOOK_SECRET?.trim() || "";
 }

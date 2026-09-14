@@ -1,10 +1,14 @@
 import { createDecipheriv, createHash, randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { getCloudAiEncryptionKey, isSsoAuthMode } from "./config.js";
+import { getCloudAiEncryptionKey, getCloudAiMachineConfig, isSsoAuthMode } from "./config.js";
 import { parseCloudEntitlement, type CloudEntitlement } from "./cloud-entitlement.js";
 import { authenticate } from "./middleware.js";
 import { prisma } from "./prisma.js";
 import { currentTeamScope } from "./team-scope.js";
+import { logger } from "./logger.js";
+
+const CLOUD_AI_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const CLOUD_AI_REQUEST_TIMEOUT_MS = 10_000;
 
 type RuntimeConfig = {
   providerCode: string;
@@ -26,6 +30,17 @@ type CloudAiReservation = {
   duplicate: boolean;
 };
 
+type MachineToken = {
+  issuerUrl: string;
+  clientId: string;
+  scope: string;
+  value: string;
+  expiresAt: number;
+};
+
+const machineTokens = new Map<string, MachineToken>();
+let cloudAiRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
 function isPostgresDatabase(): boolean {
   const url = process.env.DATABASE_URL || "";
   return url.startsWith("postgresql://") || url.startsWith("postgres://");
@@ -41,6 +56,62 @@ function dateValue(value: unknown): Date | null {
   if (value === null || value === undefined) return null;
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export async function fetchWithTimeout(url: string, init: RequestInit): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CLOUD_AI_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function machineTokenKey(config: { issuerUrl: string; clientId: string }, scope: string): string {
+  return `${scope}:${config.issuerUrl}:${config.clientId}`;
+}
+
+export async function getCloudMachineToken(
+  config: { issuerUrl: string; clientId: string; clientSecret: string },
+  scope: string,
+): Promise<string> {
+  const key = machineTokenKey(config, scope);
+  const cached = machineTokens.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const response = await fetchWithTimeout(new URL("/oauth/token", config.issuerUrl).toString(), {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      scope,
+    }),
+  });
+  const payload = await response.json().catch(() => null) as any;
+  if (!response.ok || typeof payload?.access_token !== "string") {
+    if (response.status === 401 || response.status === 403) machineTokens.delete(key);
+    throw new Error("machine token request failed with HTTP " + response.status);
+  }
+
+  const expiresIn = Number(payload.expires_in);
+  const cacheSeconds = Number.isFinite(expiresIn) && expiresIn > 0 ? Math.max(1, expiresIn - 30) : 300;
+  machineTokens.set(key, {
+    issuerUrl: config.issuerUrl,
+    clientId: config.clientId,
+    scope,
+    value: payload.access_token,
+    expiresAt: Date.now() + cacheSeconds * 1000,
+  });
+  return payload.access_token;
+}
+
+async function getCloudAiMachineToken(config: ReturnType<typeof getCloudAiMachineConfig>): Promise<string> {
+  return getCloudMachineToken(config, "cloud:ai-config");
 }
 
 function decryptEnvelope(envelope: any): RuntimeConfig | null {
@@ -153,6 +224,44 @@ export async function revokeCloudAiRuntimeConfig(revision: number): Promise<void
     "global",
     revision,
   );
+}
+
+export async function refreshCloudAiRuntimeConfig(): Promise<boolean> {
+  if (!isSsoAuthMode() || !prisma) return false;
+
+  const config = getCloudAiMachineConfig();
+  if (!config.issuerUrl || !config.clientId || !config.clientSecret) return false;
+
+  try {
+    const token = await getCloudAiMachineToken(config);
+    const response = await fetchWithTimeout(new URL("/api/v1/cloud/ai-config", config.issuerUrl).toString(), {
+      headers: { Accept: "application/json", Authorization: "Bearer " + token },
+    });
+    const payload = await response.json().catch(() => null) as any;
+
+    if (response.status === 404 && payload?.error?.code === "CLOUD_AI_NOT_CONFIGURED") {
+      await revokeCloudAiRuntimeConfig(Number.MAX_SAFE_INTEGER);
+      return true;
+    }
+    if (!response.ok || !payload?.data?.envelope) {
+      throw new Error("configuration refresh failed with HTTP " + response.status);
+    }
+
+    return await storeCloudAiEnvelope(payload.data.envelope);
+  } catch (error) {
+    if (error instanceof Error && /HTTP 401|HTTP 403/.test(error.message)) {
+      machineTokens.delete(machineTokenKey(config, "cloud:ai-config"));
+    }
+    logger.warn({ reason: error instanceof Error ? error.message : "unknown error" }, "Cloud AI configuration refresh failed");
+    return false;
+  }
+}
+
+export function startCloudAiConfigRefresh(): void {
+  if (!isSsoAuthMode() || cloudAiRefreshTimer) return;
+  void refreshCloudAiRuntimeConfig();
+  cloudAiRefreshTimer = setInterval(() => { void refreshCloudAiRuntimeConfig(); }, CLOUD_AI_REFRESH_INTERVAL_MS);
+  cloudAiRefreshTimer.unref?.();
 }
 
 async function resolveAccess(req: Request): Promise<CloudAiAccess | null> {

@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { getCloudWebhookSecret } from "../lib/config.js";
+import { getCloudWebhookSecret, isSsoAuthMode } from "../lib/config.js";
 import { parseCloudEntitlement, serializeCloudEntitlement } from "../lib/cloud-entitlement.js";
 import { isUuid } from "../lib/erd-column-id-migration.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../lib/team-provisioning.js";
@@ -55,6 +55,11 @@ export function isValidCloudOrganization(organization: any): boolean {
 }
 
 router.post("/events", async (req, res) => {
+  if (!isSsoAuthMode()) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
   const secret = getCloudWebhookSecret();
   const eventId = req.header("X-ERDBPro-Event-Id") || "";
   const timestamp = req.header("X-ERDBPro-Timestamp") || "";

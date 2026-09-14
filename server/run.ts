@@ -8,6 +8,8 @@ import { applySchemaMigrations } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
+import { startCloudAiConfigRefresh } from "./lib/cloud-ai.js";
+import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
 import { setDbReady, setDbError } from "./lib/db-state.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -268,6 +270,8 @@ async function startup(): Promise<void> {
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
     console.log("[startup] Database ready. /api/me will respond. Running background init...");
+    startCloudAiConfigRefresh();
+    startCloudTelemetry();
 
     // Fire-and-forget: the rest of background init runs after /api/me works.
     // These can be async — uid backfill, migrations, etc.
