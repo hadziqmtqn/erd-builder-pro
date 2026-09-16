@@ -39,7 +39,7 @@ fi
 # Compile menubar tray helper (macOS only, graceful if swiftc not available)
 echo "[4.6/5] Compiling menubar tray..."
 if command -v swiftc &>/dev/null; then
-  cp public/favicon.svg cli/menubar/icon.svg 2>/dev/null || true
+  cp public/img/ERD-Builder-Pro-Dark-1.svg cli/menubar/icon.svg 2>/dev/null || true
   swiftc -o cli/menubar/erdbpro-tray cli/menubar/ERDBProTray.swift 2>/dev/null && \
   chmod +x cli/menubar/erdbpro-tray && \
   echo "  ✅ Menubar tray compiled" || \
