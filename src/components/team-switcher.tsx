@@ -52,8 +52,8 @@ export function TeamSwitcher({
       onClick={enabled ? undefined : () => onSelect(null)}
     >
       <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
-        <img src="/img/ERD-Builder-Pro-Dark-1.svg" alt="" className="size-full dark:hidden" />
-        <img src="/img/ERD-Builder-Pro-Light-1.svg" alt="" className="hidden size-full dark:block" />
+        <img src="/img/ERD-Builder-Pro-Light-1.svg" alt="" className="size-full dark:hidden" />
+        <img src="/img/ERD-Builder-Pro-Dark-1.svg" alt="" className="hidden size-full dark:block" />
       </div>
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-semibold">
