@@ -36,6 +36,7 @@ afterEach(() => {
   else process.env.ERDBPRO_LICENSE_API_URL = originalApiUrl;
   if (originalStateFile === undefined) delete process.env.ERDBPRO_LICENSE_STATE_FILE;
   else process.env.ERDBPRO_LICENSE_STATE_FILE = originalStateFile;
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   if (temporaryDirectory) rmSync(temporaryDirectory, { recursive: true, force: true });
   temporaryDirectory = null;
@@ -80,6 +81,7 @@ function signedEntitlement(
 
 describe("self-host license entitlement verification", () => {
   it("preserves the canonical SaaS error code", async () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
     temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
@@ -121,6 +123,7 @@ describe("self-host license entitlement verification", () => {
   });
 
   it("activates one instance license and reports global usage", async () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
     temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
     process.env.ERDBPRO_LICENSE_API_URL = "https://license.example.test";
     process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");

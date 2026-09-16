@@ -33,6 +33,8 @@ describe("Cloud SSO", () => {
 
   it("starts Passport authorization code flow with PKCE S256", () => {
     vi.stubEnv("AUTH_MODE", "sso");
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/erd");
+    vi.stubEnv("ERD_INSTALL_MODE", "web");
     vi.stubEnv("APP_URL", "https://cloud.example.com");
     vi.stubEnv("SSO_ISSUER_URL", "https://account.example.com");
     vi.stubEnv("SSO_CLIENT_ID", "cloud-client");
