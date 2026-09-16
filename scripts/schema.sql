@@ -8,6 +8,7 @@ CREATE TABLE "users" (
     "must_change_password" BOOLEAN NOT NULL DEFAULT false,
     "sso_subject" TEXT,
     "sso_email" TEXT,
+    "cloud_personal_entitlement" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

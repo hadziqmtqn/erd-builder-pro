@@ -56,13 +56,27 @@ describe("Cloud SSO workspace grants", () => {
 
     expect(tx.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-        data: { cloudPersonalEntitlement: JSON.stringify({ product_type: "cloud", revision: "b".repeat(64), capabilities: {}, limits: { max_members: null, max_personal_files_per_feature: 3 } }) },
+        data: { cloudPersonalEntitlement: JSON.stringify({
+          product_type: "cloud",
+          revision: "b".repeat(64),
+          capabilities: {},
+          limits: { max_members: null, max_personal_files_per_feature: 3, ai_credits: 0 },
+          period_start: null,
+          period_end: null,
+        }) },
     });
     expect(tx.team.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       name: "Cloud Team",
       ssoOrganizationId: "org-1",
       status: "active",
-      cloudEntitlement: JSON.stringify({ product_type: "cloud", revision: "a".repeat(64), capabilities: { erd_builder: true }, limits: { max_members: 5, max_personal_files_per_feature: null } }),
+      cloudEntitlement: JSON.stringify({
+        product_type: "cloud",
+        revision: "a".repeat(64),
+        capabilities: { erd_builder: true },
+        limits: { max_members: 5, max_personal_files_per_feature: null, ai_credits: 0 },
+        period_start: null,
+        period_end: null,
+      }),
     }) });
     expect(tx.teamMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ userId: "user-1", role: "manager", status: "active" }),
