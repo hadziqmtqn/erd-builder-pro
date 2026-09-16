@@ -14,6 +14,7 @@ import {
   HardDrive,
   Keyboard,
   ServerCog,
+  KeyRound,
 } from 'lucide-react';
 import {
   Dialog,
@@ -69,6 +70,7 @@ import { DataExport } from '@/components/settings/DataExport';
 import { StorageConfigTab } from '@/components/storage/StorageConfigTab';
 import { KeymapTab } from '@/components/settings/KeymapTab';
 import { McpServerTab } from '@/components/settings/McpServerTab';
+import { LicenseTab } from '@/components/settings/LicenseTab';
 import { useAuth } from '@/hooks/useAuth';
 
 export function SettingsModal() {
@@ -107,6 +109,11 @@ export function SettingsModal() {
     };
   }, [isTauriApp, setIsSettingsOpen, setSettingsTab]);
 
+  const { isGuest, user } = useAuth();
+  const isSso = Boolean(user?.isSso);
+  // SSO Cloud never grants local administration, including when viewed in Tauri.
+  const isSuperAdmin = !isSso && (isDesktopApp || Boolean(user?.isSuperAdmin || user?.is_super_admin));
+
   const {
     providers,
     configs,
@@ -114,11 +121,10 @@ export function SettingsModal() {
     isSaving: isSavingProviders,
     handleSaveConfig,
     handleTestConnection,
+    handleInitializeProviders,
     updateProviderLocal,
     updateConfigLocal,
-  } = useAIProviders();
-
-  const { isGuest } = useAuth();
+  } = useAIProviders(isSuperAdmin);
 
   const {
     models,
@@ -132,7 +138,7 @@ export function SettingsModal() {
     startEditingModel,
     cancelEdit,
     refresh: refreshModels,
-  } = useAIModels();
+  } = useAIModels(isSuperAdmin);
 
   const {
     prompts,
@@ -155,7 +161,6 @@ export function SettingsModal() {
           label: "More",
           items: [
             { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
-            { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
             { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
           ]
         },
@@ -166,15 +171,16 @@ export function SettingsModal() {
       {
         label: "General",
         items: [
-          { id: 'account', label: 'Account', icon: <User className="size-4" /> },
+          ...(!isSso ? [{ id: 'account', label: 'Account', icon: <User className="size-4" /> }] : []),
           { id: 'appearance', label: 'Appearance', icon: <Palette className="size-4" /> },
-          ...(isDesktopApp ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
+          ...(isDesktopApp && !isSso ? [{ id: 'storage', label: 'Storage', icon: <HardDrive className="size-4" /> }] : []),
         ]
       },
       {
         label: "Feature",
         items: [
-          { id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> },
+          ...(isSuperAdmin ? [{ id: 'ai-config', label: 'AI Configuration', icon: <Sparkles className="size-4" /> }] : []),
+          ...(isSuperAdmin ? [{ id: 'license', label: 'Application License', icon: <KeyRound className="size-4" /> }] : []),
           { id: 'mcp-server', label: 'MCP Integration', icon: <ServerCog className="size-4" /> },
           { id: 'ai-rules', label: 'AI Rules', icon: <ListChecks className="size-4" /> },
           { id: 'ai-prompts', label: 'System Prompts', icon: <Brain className="size-4" /> },
@@ -184,14 +190,23 @@ export function SettingsModal() {
         label: "More",
         items: [
           { id: 'keymap', label: 'Keymap', icon: <Keyboard className="size-4" /> },
-          { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
-          { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
-          { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
+          ...(isSuperAdmin ? [
+            { id: 'export-data', label: 'Export Data', icon: <Download className="size-4" /> },
+            { id: 'import-data', label: 'Import Data', icon: <Upload className="size-4" /> },
+            { id: 'backups', label: 'Database Backup', icon: <Database className="size-4" /> },
+          ] : []),
           { id: 'changelog', label: "What's New", icon: <History className="size-4" /> },
         ]
-      }
+      },
     ];
-  }, [isGuest, isDesktopApp]);
+  }, [isGuest, isDesktopApp, isSso, isSuperAdmin]);
+
+  React.useEffect(() => {
+    const unavailableTabs = ['ai-config', 'license', 'export-data', 'import-data', 'backups'];
+    if ((!isSuperAdmin && unavailableTabs.includes(settingsTab)) || (isSso && settingsTab === 'account')) {
+      setSettingsTab(isGuest || isSso ? 'appearance' : 'account');
+    }
+  }, [isGuest, isSso, isSuperAdmin, settingsTab, setSettingsTab]);
 
   const allItems = navGroups.flatMap(g => g.items);
   const getTabLabel = (id: string) => {
@@ -299,7 +314,7 @@ export function SettingsModal() {
             </header>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {settingsTab === 'ai-config' && (
+              {isSuperAdmin && settingsTab === 'ai-config' && (
                 <div className="p-4 md:p-6">
                   {/* Button tabs */}
                   <div className="flex gap-1 bg-muted border border-border rounded-lg p-1 w-full mb-4">
@@ -341,6 +356,7 @@ export function SettingsModal() {
                       onUpdateConfig={updateConfigLocal}
                       onEnsureModel={ensureModel}
                       onRefreshModels={refreshModels}
+                      onInitialize={handleInitializeProviders}
                     />
                   )}
                   {aiSettingsTab === 'models' && (
@@ -378,13 +394,15 @@ export function SettingsModal() {
                 <McpServerTab />
               )}
 
-              {settingsTab === 'backups' && (
+              {isSuperAdmin && settingsTab === 'license' && <LicenseTab />}
+
+              {isSuperAdmin && settingsTab === 'backups' && (
                 <div className="p-6 space-y-6">
                   <BackupsView />
                 </div>
               )}
 
-              {settingsTab === 'account' && (
+              {!isSso && settingsTab === 'account' && (
                 <AccountTab />
               )}
 
@@ -396,13 +414,13 @@ export function SettingsModal() {
 
               {settingsTab === 'keymap' && <KeymapTab />}
 
-              {settingsTab === 'export-data' && (
+              {isSuperAdmin && settingsTab === 'export-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <DataExport />
                 </div>
               )}
 
-              {settingsTab === 'import-data' && (
+              {isSuperAdmin && settingsTab === 'import-data' && (
                 <div className="p-4 md:p-6 overflow-y-auto h-full">
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold">Import Data</h2>

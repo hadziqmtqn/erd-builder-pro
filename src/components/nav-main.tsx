@@ -23,6 +23,7 @@ export function NavMain({
     icon?: LucideIcon
     isActive?: boolean
     iconClassName?: string
+    badge?: string
     items?: {
       title: string
       url: string
@@ -69,6 +70,14 @@ export function NavMain({
             >
               {item.icon && <item.icon className={item.iconClassName} />}
               <span>{item.title}</span>
+              {item.badge && (
+                <span
+                  aria-label={`${item.title} is a Pro feature`}
+                  className="ml-auto shrink-0 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary group-data-[collapsible=icon]:hidden"
+                >
+                  {item.badge}
+                </span>
+              )}
             </SidebarMenuButton>
           )}
         </SidebarMenuItem>

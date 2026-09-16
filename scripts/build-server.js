@@ -32,6 +32,9 @@ const EXTERNAL = [
   "@prisma/client",
   "@prisma/adapter-pg",
   "@prisma/adapter-better-sqlite3",
+  "@erdbpro/prisma-sqlite",
+  "@erdbpro/prisma-pg-local",
+  "@erdbpro/prisma-pg-supabase",
   "better-sqlite3",
   "pg",
   "prebuild-install",
@@ -291,6 +294,10 @@ async function main() {
     }
   }
   if (schemaSql) {
+    const oneActiveMemberIndex = 'CREATE UNIQUE INDEX "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = \'active\';';
+    if (!schemaSql.includes('"team_members_one_active_user_key"')) {
+      schemaSql = `${schemaSql}\n\n${oneActiveMemberIndex}`;
+    }
     writeFileSync(schemaSqlPath, schemaSql + "\n", "utf8");
     console.log(`   → schema.sql (${schemaSql.split("\n").length} lines)`);
   }

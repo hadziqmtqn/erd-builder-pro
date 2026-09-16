@@ -241,7 +241,7 @@ export async function savePrompt(
   userId: string,
   body: {
     id?: string; name: string; content: string;
-    category?: string; is_default?: boolean;
+    category?: string; is_default?: boolean; is_global?: boolean;
   },
   isAdmin: boolean
 ) {
@@ -251,9 +251,15 @@ export async function savePrompt(
       select: { id: true, userId: true, isBuiltIn: true },
     });
     if (!existing) return { notFound: true };
-    if (existing.userId !== userId && !isAdmin) return { forbidden: true };
+    const isGlobal = existing.userId === null;
+    if ((isGlobal && !isAdmin) || (!isGlobal && existing.userId !== userId)) return { forbidden: true };
     if (existing.isBuiltIn && !isAdmin) return { forbidden: true };
-    if (body.is_default && !isAdmin) return { forbidden: true };
+    if (body.is_default) {
+      await prisma?.aiSystemPrompt.updateMany({
+        where: { id: { not: body.id }, userId: existing.userId },
+        data: { isDefault: false },
+      });
+    }
 
     return prisma?.aiSystemPrompt.update({
       where: { id: body.id },
@@ -266,14 +272,21 @@ export async function savePrompt(
       },
     });
   } else {
-    if (body.is_default && !isAdmin) return { forbidden: true };
+    if (body.is_global && !isAdmin) return { forbidden: true };
+    const ownerId = body.is_global ? null : userId;
+    if (body.is_default) {
+      await prisma?.aiSystemPrompt.updateMany({
+        where: { userId: ownerId },
+        data: { isDefault: false },
+      });
+    }
     return prisma?.aiSystemPrompt.create({
       data: {
         name: body.name,
         content: body.content,
         category: body.category,
         isDefault: body.is_default,
-        userId,
+        userId: ownerId,
       },
     });
   }
@@ -285,24 +298,26 @@ export async function deletePrompt(promptId: string, userId: string, isAdmin: bo
     select: { id: true, userId: true, isBuiltIn: true },
   });
   if (!existing) return { notFound: true };
-  if (existing.userId !== userId && !isAdmin) return { forbidden: true };
+  const isGlobal = existing.userId === null;
+  if ((isGlobal && !isAdmin) || (!isGlobal && existing.userId !== userId)) return { forbidden: true };
   if (existing.isBuiltIn && !isAdmin) return { forbidden: true };
 
   await prisma?.aiSystemPrompt.delete({ where: { id: promptId } });
   return { success: true };
 }
 
-export async function toggleDefaultPrompt(promptId: string, isDefault: boolean, isAdmin: boolean) {
-  if (!isAdmin) return { forbidden: true };
-
+export async function toggleDefaultPrompt(promptId: string, isDefault: boolean, userId: string, isAdmin: boolean) {
   const existing = await prisma?.aiSystemPrompt.findFirst({
     where: { id: promptId },
+    select: { id: true, userId: true },
   });
   if (!existing) return { notFound: true };
+  const isGlobal = existing.userId === null;
+  if ((isGlobal && !isAdmin) || (!isGlobal && existing.userId !== userId)) return { forbidden: true };
 
   if (isDefault) {
     await prisma?.aiSystemPrompt.updateMany({
-      where: { id: { not: promptId } },
+      where: { id: { not: promptId }, userId: existing.userId },
       data: { isDefault: false },
     });
   }
@@ -321,9 +336,13 @@ export async function initializeDefaults() {
     { name: "OpenAI Compatible", code: "openai_compatible", baseUrl: "https://ai.paas.id", isActive: true },
   ];
 
-  await prisma?.aiProvider.createMany({
-    data: defaultProviders,
-  });
+  for (const provider of defaultProviders) {
+    await prisma?.aiProvider.upsert({
+      where: { code: provider.code },
+      update: { name: provider.name, baseUrl: provider.baseUrl, isActive: true },
+      create: provider,
+    });
+  }
 
   const providers = await prisma?.aiProvider.findMany({
     where: { code: { in: defaultProviders.map(p => p.code) } },
@@ -348,11 +367,31 @@ export async function initializeDefaults() {
     }
   });
 
-  if (modelsToInsert.length > 0) {
-    await prisma?.aiModel.createMany({ data: modelsToInsert });
+  for (const model of modelsToInsert) {
+    const exists = await prisma?.aiModel.findFirst({ where: { providerId: model.providerId, modelIdentifier: model.modelIdentifier } });
+    if (!exists) await prisma?.aiModel.create({ data: model });
   }
 
   return { success: true };
+}
+
+export async function initializeUserDefaults(userId: string) {
+  const providers = await prisma?.aiProvider.findMany({ where: { isActive: true } }) || [];
+  for (const provider of providers) {
+    const model = await prisma?.aiModel.findFirst({ where: { providerId: provider.id, isActive: true }, orderBy: { id: "asc" } });
+    await prisma?.userAiConfig.upsert({
+      where: { userId_providerId: { userId, providerId: provider.id } },
+      update: {},
+      create: { userId, providerId: provider.id, selectedModelId: model?.id ?? null, isEnabled: false },
+    });
+  }
+  for (const viewType of ["erd", "notes", "flowchart", "db-client"]) {
+    await prisma?.userAiRule.upsert({
+      where: { userId_viewType: { userId, viewType } },
+      update: {},
+      create: { userId, viewType, content: "", isEnabled: true },
+    });
+  }
 }
 
 // ── Test Connection ──

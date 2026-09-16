@@ -1,7 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { logger } from "../../lib/logger.js";
 import { handleError } from "../../lib/utils.js";
-import { useLocalAuth, isDesktopMode } from "../../lib/config.js";
+import { useLocalAuth, isDesktopMode, isSsoAuthMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import * as authService from "./service.js";
 
@@ -11,6 +11,10 @@ export async function getAuthConfig(req: ExpressRequest, res: ExpressResponse): 
 }
 
 export async function setup(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (isSsoAuthMode()) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
   try {
     const result = await authService.setupLocalAdmin(req.body);
     if ((result as any).alreadyConfigured) {
@@ -34,6 +38,10 @@ export async function setup(req: ExpressRequest, res: ExpressResponse): Promise<
 }
 
 export async function login(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (isSsoAuthMode()) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
   const email = req.body.email?.trim();
   const password = req.body.password;
   const externalToken = req.body.externalToken;
@@ -49,6 +57,14 @@ export async function login(req: ExpressRequest, res: ExpressResponse): Promise<
       const result = await authService.localLogin(email, password);
       if (!result) {
         res.status(401).json({ error: "Invalid credentials" });
+        return;
+      }
+      if ((result as any).blocked) {
+        const inactive = (result as any).code === "MEMBER_INACTIVE";
+        res.status(403).json({
+          error: inactive ? "Your Team membership is inactive. Contact the SuperAdmin to restore access." : "Your Team license is not active. Contact the SuperAdmin.",
+          code: (result as any).code,
+        });
         return;
       }
 
@@ -219,6 +235,10 @@ export async function me(req: ExpressRequest, res: ExpressResponse): Promise<voi
 }
 
 export async function updateAccount(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (isSsoAuthMode()) {
+    res.status(403).json({ error: "Account is managed by ERDBPro SaaS" });
+    return;
+  }
   if (!useLocalAuth()) {
     res.status(403).json({
       error: "Account is managed by your auth provider and cannot be changed here",

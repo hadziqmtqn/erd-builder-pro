@@ -1,7 +1,9 @@
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth } from "./config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, isSsoAuthMode } from "./config.js";
 import { getSession } from "./desktop-auth.js";
 import { prisma } from "./prisma.js";
+import { canAccessTeam, canUserLogin } from "../routes/teams/service.js";
+import { runWithTeamScope } from "./team-scope.js";
 
 /** Extract token: Bearer header first (explicit auth), cookie (implicit), query param (fallback). */
 function extractToken(req: ExpressRequest): string | undefined {
@@ -36,14 +38,37 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
       if (session) {
         const localUser = await prisma?.user.findUnique({
           where: { id: session.userId },
-          select: { isSuperAdmin: true },
+          select: { isSuperAdmin: true, mustChangePassword: true },
         });
+        const isSuperAdmin = !isSsoAuthMode() && Boolean(localUser?.isSuperAdmin);
+        const mustChangePassword = !isSsoAuthMode() && Boolean(localUser?.mustChangePassword);
+        if (!isSuperAdmin) {
+          const access = await canUserLogin(session.userId);
+          if (access.allowed === false) {
+            return res.status(403).json({
+              error: access.code === "MEMBER_INACTIVE"
+                ? "Your Team membership is inactive. Contact the SuperAdmin to restore access."
+                : access.code === "TEAM_INTEGRITY_UNAVAILABLE"
+                  ? "Your Team is unavailable. Contact the SuperAdmin."
+                : "Your Team license is not active. Contact the SuperAdmin.",
+              code: access.code,
+            });
+          }
+        }
         (req as any).user = {
           id: session.userId,
           email: session.email,
-          isSuperAdmin: Boolean(localUser?.isSuperAdmin),
+          isSuperAdmin,
+          mustChangePassword,
         };
-        next();
+        if (mustChangePassword && !(req.method === "PUT" && req.originalUrl.startsWith("/api/account"))) {
+          return res.status(403).json({ error: "You must change your temporary password before continuing.", code: "PASSWORD_CHANGE_REQUIRED" });
+        }
+        const teamId = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : "";
+        if (teamId && !(await canAccessTeam(teamId, session.userId, isSuperAdmin))) {
+          return res.status(404).json({ error: "Resource not found" });
+        }
+        runWithTeamScope(teamId ? { mode: "team", teamId } : { mode: "personal", teamId: null }, next);
         return;
       }
     }
@@ -74,5 +99,10 @@ export const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: N
       error: "Supabase configuration is missing or invalid. Please check your environment variables."
     });
   }
+  next();
+};
+
+export const rejectInSsoMode = (_req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+  if (isSsoAuthMode()) return res.status(404).json({ error: "Not found" });
   next();
 };

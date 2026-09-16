@@ -9,7 +9,6 @@ export interface UseAutoSaveParams {
   isIncomingSyncRef: { current: boolean };
   lastLoadedDiagramIdRef: { current: number | string | null };
   lastSaveCallRef: { current: number };
-  lastDiagramLoadTimestampRef: { current: number };
   isAuthenticated: boolean | null;
   isGuest: boolean;
   view: string;
@@ -50,7 +49,6 @@ export function useAutoSave(params: UseAutoSaveParams) {
     isIncomingSyncRef,
     lastLoadedDiagramIdRef,
     lastSaveCallRef,
-    lastDiagramLoadTimestampRef,
     isAuthenticated, isGuest, view, isPublicView,
     activeDiagramId, nodes, edges, viewportRef,
     saveDiagram, setIsLocalSaving, triggerDebouncedSync, broadcastMessage,
@@ -125,6 +123,12 @@ export function useAutoSave(params: UseAutoSaveParams) {
 
     // 🛡️ Guard 1: Only trigger if saveCounter actually changed
     if (saveCounter === lastProcessedCounterRef.current) return;
+
+    // Keep the counter pending until the active diagram is fully ready. The
+    // loading flags are dependencies so this effect retries automatically.
+    if (!activeDiagramId || isRefreshing || isERDItemLoading || isDiagramsLoading) return;
+
+    if (isIncomingSyncRef.current) return;
     
     // 🛡️ Guard 2: If we just saved (via handleEntityUpdate's immediate path), skip —
     // the save is already complete; consuming the counter prevents the duplicate auto-save.
@@ -133,28 +137,12 @@ export function useAutoSave(params: UseAutoSaveParams) {
       return;
     }
 
-    // 🛡️ Guard 3: Ignore any changes (like initial viewport jumps) for the first 2 seconds after load
-    if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
-      lastProcessedCounterRef.current = saveCounter; // Consume the counter so it doesn't trigger later
-      return;
-    }
-
     lastProcessedCounterRef.current = saveCounter;
 
-    if (activeDiagramId && (isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
-      if (isIncomingSyncRef.current) {
-        return;
-      }
-
+    if ((isAuthenticated || isGuest) && view === 'erd' && !isPublicView) {
       setIsLocalSaving(true);
 
       saveTimeoutRef.current = setTimeout(async () => {
-        // Double check load timestamp inside timeout just in case
-        if (Date.now() - lastDiagramLoadTimestampRef.current < 2000) {
-          setIsLocalSaving(false);
-          return;
-        }
-
         if (Date.now() - lastSaveCallRef.current < 500) {
           setIsLocalSaving(false);
           return;
@@ -189,7 +177,11 @@ export function useAutoSave(params: UseAutoSaveParams) {
       }
       setIsLocalSaving(false);
     };
-  }, [saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram, isPublicView, triggerDebouncedSync, broadcastMessage, lastDiagramLoadTimestampRef]);
+  }, [
+    saveCounter, activeDiagramId, isAuthenticated, isGuest, view, saveDiagram,
+    isPublicView, triggerDebouncedSync, broadcastMessage,
+    isRefreshing, isERDItemLoading, isDiagramsLoading,
+  ]);
 
   async function flushPendingSaves() {
     if (!isLocalSavingRef.current) return;

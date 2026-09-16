@@ -1,11 +1,14 @@
 import { Request, Response } from "express";
+import { randomUUID } from "node:crypto";
 import { logger } from "../../lib/logger.js";
 import { supabase, useLocalAuth } from "../../lib/config.js";
 import { getSession } from "../../lib/desktop-auth.js";
 import { safeAiBaseUrl } from "../../lib/ai-security.js";
+import { finalizeCloudAiCredit, getCloudAiAccess, getCloudAiRuntimeConfig, reserveCloudAiCredit } from "../../lib/cloud-ai.js";
 import { resolveAiConfig, getProxyFetchUrl } from "./service.js";
 
 async function resolveRequestUserId(req: Request): Promise<string | undefined> {
+  if ((req as any).user?.id) return (req as any).user.id;
   try {
     const token = req.cookies?.token || (req.headers.authorization?.startsWith("Bearer ")
       ? req.headers.authorization.slice(7)
@@ -26,6 +29,9 @@ async function resolveRequestUserId(req: Request): Promise<string | undefined> {
 
 export async function proxy(req: Request, res: Response): Promise<void> {
   let aborted = false;
+  let cloudCreditReserved = false;
+  let cloudCreditFinalized = false;
+  let cloudRequestId = "";
   const controller = new AbortController();
 
   // Use res.on("close") — fires when client disconnects OR after res.end()
@@ -44,7 +50,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
   }, 30_000);
 
   try {
-    let { messages, model, apiKey, baseUrl, providerCode } = req.body;
+    let { messages, model, apiKey, baseUrl, providerCode, request_id: requestedId } = req.body;
     let baseUrlValidated = false;
 
     if (!messages) {
@@ -54,6 +60,33 @@ export async function proxy(req: Request, res: Response): Promise<void> {
     }
 
     const userId = await resolveRequestUserId(req);
+    const cloudAccess = await getCloudAiAccess(req);
+    if (cloudAccess) {
+      const runtimeConfig = await getCloudAiRuntimeConfig();
+      if (!runtimeConfig) {
+        clearTimeout(timeout);
+        res.status(503).json({ error: "Cloud AI is not configured.", code: "CLOUD_AI_NOT_CONFIGURED" });
+        return;
+      }
+      apiKey = runtimeConfig.apiKey;
+      baseUrl = runtimeConfig.baseUrl;
+      model = runtimeConfig.model;
+      providerCode = runtimeConfig.providerCode;
+      messages = runtimeConfig.globalSystemPrompt
+        ? [{ role: "system", content: runtimeConfig.globalSystemPrompt }, ...messages]
+        : messages;
+      cloudRequestId = String(requestedId || req.header("X-AI-Request-Id") || randomUUID());
+      const reservation = await reserveCloudAiCredit(cloudAccess, cloudRequestId, providerCode, model);
+      if (!reservation.allowed) {
+        clearTimeout(timeout);
+        res.status(reservation.duplicate ? 409 : 429).json({
+          error: reservation.duplicate ? "This AI request has already been accepted or is still processing." : "AI credit quota exhausted.",
+          code: reservation.duplicate ? "CLOUD_AI_REQUEST_DUPLICATE" : "CLOUD_AI_CREDITS_EXHAUSTED",
+        });
+        return;
+      }
+      cloudCreditReserved = true;
+    }
 
     // If still no userId, this is an unauthenticated (guest) request.
     // Block AI for guests unless explicitly enabled.
@@ -139,6 +172,10 @@ export async function proxy(req: Request, res: Response): Promise<void> {
     });
 
     clearTimeout(timeout);
+    if (cloudCreditReserved) {
+      await finalizeCloudAiCredit(cloudRequestId, true);
+      cloudCreditFinalized = true;
+    }
 
     if (!response.ok) {
       logger.error({ status: response.status }, "AI provider error");
@@ -192,6 +229,9 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       try { res.end(); } catch {}
     }
   } catch (err: any) {
+    if (cloudCreditReserved && !cloudCreditFinalized) {
+      await finalizeCloudAiCredit(cloudRequestId, false);
+    }
     if (aborted) return;
     logger.error({ err: err }, "AI proxy error:");
     if (!res.headersSent) {

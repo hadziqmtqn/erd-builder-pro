@@ -34,8 +34,12 @@ import entityChangesRouter from "./routes/entity-changes/index.js";
 import dbClientsRouter from "./routes/db-clients/index.js";
 import repositoriesRouter from "./routes/repositories/index.js";
 import oauthConsentRouter from "./routes/oauth-consent.js";
+import teamsRouter from "./routes/teams/index.js";
+import usersRouter from "./routes/users/index.js";
 import { createPublicMcpRouter } from "./mcp/public-router.js";
 import { getPublicMcpClientConfig } from "./mcp/public-auth.js";
+import controlPlaneRouter from "./routes/control-plane.js";
+import { createAuthRateLimiters } from "./lib/auth-rate-limit.js";
 
 const app = express();
 
@@ -156,15 +160,7 @@ const feedbackLimiter = rateLimit({
 });
 app.use("/api/feedback", feedbackLimiter);
 
-// Strict rate limiter for auth endpoints — 10 req/min per IP
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many login attempts, please try again later" },
-});
-app.use("/api/login", authLimiter);
+const authRateLimiters = createAuthRateLimiters();
 
 // AI proxy rate limiter — 30 req/min per IP (guest mode is unauthenticated)
 const aiProxyLimiter = rateLimit({
@@ -186,9 +182,23 @@ const uploadLimiter = rateLimit({
 });
 app.use("/api/upload", uploadLimiter);
 
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req, _res, buffer) => {
+    if (req.url?.split("?")[0] === "/api/control-plane/events") (req as any).rawBody = buffer;
+  },
+}));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
+
+// Auth limits run after body parsing so local login can use email+IP keys.
+app.use("/api/login", authRateLimiters.localIp);
+app.use("/api/login", authRateLimiters.localIpBackoff);
+app.use("/api/login", authRateLimiters.localCredential);
+app.use("/api/login", authRateLimiters.localCredentialBackoff);
+app.use("/api/sso/login", authRateLimiters.ssoIp, authRateLimiters.ssoIpBackoff);
+app.use("/api/sso/callback", authRateLimiters.ssoIp, authRateLimiters.ssoIpBackoff);
+app.use("/api/sso/link", authRateLimiters.localIp, authRateLimiters.localIpBackoff);
 
 // Response field name conversion: Prisma returns camelCase, but frontend expects
 // snake_case (matching the original Supabase API format). This middleware intercepts
@@ -208,8 +218,8 @@ function camelToSnake(obj: unknown): unknown {
 }
 
 app.use((_req, res, next) => {
-  // Skip camelToSnake for new routes: accounts & catalogs use camelCase natively
-  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage')) {
+  // These newer routes use camelCase natively on both sides.
+  if (_req.path.startsWith('/api/accounts') || _req.path.startsWith('/api/catalogs') || _req.path.startsWith('/api/storage') || _req.path.startsWith('/api/teams')) {
     return next();
   }
   const originalJson = res.json.bind(res);
@@ -224,7 +234,7 @@ app.use(httpLogger);
 
 app.use("/api", (req, res, next) => {
   const path = req.originalUrl.split("?")[0];
-  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me"].includes(path)) {
+  if (["/api/auth-config", "/api/login", "/api/logout", "/api/me", "/api/control-plane/events"].includes(path)) {
     return next();
   }
   checkSupabase(req, res, next);
@@ -356,7 +366,11 @@ app.get("/api/version/latest", async (_req, res) => {
 });
 
 app.use("/api", authRouter);
+app.use("/api/control-plane", controlPlaneRouter);
 app.use("/api", oauthConsentRouter);
+app.use("/api/teams", teamsRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/license", (await import("./routes/license/index.js")).default);
 app.use("/api/diagrams", diagramsRouter);
 app.use("/api/db-clients", dbClientsRouter);
 app.use("/api/repositories", repositoriesRouter);

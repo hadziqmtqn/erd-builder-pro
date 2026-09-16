@@ -7,8 +7,10 @@ import {
 } from "../../lib/entity-history.js";
 import { saveDiagram } from "../diagrams/save-service.js";
 import { useLocalAuth } from "../../lib/config.js";
+import { fileIdentifierWhere } from "../../lib/team-scope.js";
 
 function ownedWhere(uid: string, userId: string): any {
+  if (useLocalAuth()) return fileIdentifierWhere(uid, userId);
   const numericId = /^\d+$/.test(uid) ? (useLocalAuth() ? Number(uid) : BigInt(uid)) : null;
   return numericId !== null
     ? { userId, OR: [{ uid }, { id: numericId }] }
@@ -116,9 +118,8 @@ async function diagramSnapshot(diagram: any) {
   };
 }
 
-export async function readOwnedEntity(entityType: HistoryEntityType, uid: string, userId: string) {
+export async function readEntity(entityType: HistoryEntityType, where: Record<string, unknown>) {
   if (!prisma) throw new Error("Database connection not available");
-  const where = ownedWhere(uid, userId);
   const entity = entityType === "notes"
     ? await prisma.note.findFirst({ where })
     : entityType === "flowcharts"
@@ -136,6 +137,10 @@ export async function readOwnedEntity(entityType: HistoryEntityType, uid: string
   };
 }
 
+export async function readOwnedEntity(entityType: HistoryEntityType, uid: string, userId: string) {
+  return readEntity(entityType, ownedWhere(uid, userId));
+}
+
 export async function listHistory(entityType: HistoryEntityType, uid: string, userId: string, limit: number) {
   const current = await readOwnedEntity(entityType, uid, userId);
   if (!current) return null;
@@ -147,6 +152,7 @@ export async function listHistory(entityType: HistoryEntityType, uid: string, us
       version: revision.version,
       change_type: revision.changeType,
       created_at: revision.createdAt?.toISOString() ?? null,
+      actor: revision.user ? { name: revision.user.name, email: revision.user.email } : null,
     })),
   };
 }
@@ -161,6 +167,7 @@ export async function readHistoryRevision(entityType: HistoryEntityType, uid: st
     version: revision.version,
     change_type: revision.changeType,
     created_at: revision.createdAt?.toISOString() ?? null,
+    actor: revision.user ? { name: revision.user.name, email: revision.user.email } : null,
     source: revision.envelope.source,
     snapshot: revision.envelope.snapshot,
   };

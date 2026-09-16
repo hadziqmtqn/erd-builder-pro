@@ -1,7 +1,7 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { supabase } from "../../lib/config.js";
 import { handleError } from "../../lib/utils.js";
-import { resolveOwnedProjectId } from "../../lib/security.js";
+import { resolveNewFileProjectId } from "../../lib/security.js";
 import { decrypt } from "../../lib/crypto.js";
 import { prisma } from "../../lib/prisma.js";
 import * as diagService from "./service.js";
@@ -33,7 +33,7 @@ export async function create(req: ExpressRequest, res: ExpressResponse): Promise
     if (!prisma) { res.status(500).json({ error: "Database connection not available" }); return; }
     const userId = (req as any).user.id;
     const { name, project_id, uid } = req.body;
-    const resolvedProjectId = await resolveOwnedProjectId(prisma, userId, project_id);
+    const resolvedProjectId = await resolveNewFileProjectId(prisma, userId, project_id);
 
     const diagram = await diagService.createDiagram({
       name, projectId: resolvedProjectId, userId, uid,
@@ -125,9 +125,7 @@ export async function moveToProject(req: ExpressRequest, res: ExpressResponse): 
   try {
     const userId = (req as any).user.id;
     const raw = req.body.project_id;
-    const projectId = (raw === null || raw === undefined || raw === '' || raw === 'none' || raw === 'uncategorized')
-      ? null
-      : Number(raw);
+    const projectId = await resolveNewFileProjectId(prisma, userId, raw === 'none' || raw === 'uncategorized' ? null : raw);
 
     const result = await diagService.updateDiagram(req.params.uid, userId, { projectId });
     if (!result) { res.status(404).json({ error: "Diagram not found" }); return; }

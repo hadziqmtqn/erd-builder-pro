@@ -20,16 +20,19 @@ import { WorkspaceProvider } from './providers/WorkspaceProvider';
 
 // Routes
 import { AppLayout } from './routes/AppLayout';
-import { TableRoute } from './routes/TableRoute';
 import { NotFoundRoute } from './routes/NotFoundRoute';
 import { DashboardRoute } from './routes/DashboardRoute';
 import { OAuthConsent } from './components/OAuthConsent';
+import { ForcePasswordChange } from './components/ForcePasswordChange';
+import { CloudFeatureRoute, CloudTableRoute } from './components/CloudFeatureRoute';
 
 const NoteEditorRoute = lazy(() => import('./routes/NoteEditorRoute').then(module => ({ default: module.NoteEditorRoute })));
 const DiagramEditorRoute = lazy(() => import('./routes/DiagramEditorRoute').then(module => ({ default: module.DiagramEditorRoute })));
 const DbClientEditorRoute = lazy(() => import('./routes/DbClientEditorRoute').then(module => ({ default: module.DbClientEditorRoute })));
 const DrawingEditorRoute = lazy(() => import('./routes/DrawingEditorRoute').then(module => ({ default: module.DrawingEditorRoute })));
 const FlowchartEditorRoute = lazy(() => import('./routes/FlowchartEditorRoute').then(module => ({ default: module.FlowchartEditorRoute })));
+const TeamManagementRoute = lazy(() => import('./routes/TeamManagementRoute').then(module => ({ default: module.TeamManagementRoute })));
+const UserManagementRoute = lazy(() => import('./routes/UserManagementRoute').then(module => ({ default: module.UserManagementRoute })));
 const AdminRoute = lazy(() => import('./routes/AdminRoute').then(module => ({ default: module.AdminRoute })));
 
 function lazyRoute(element: ReactNode) {
@@ -37,7 +40,7 @@ function lazyRoute(element: ReactNode) {
 }
 
 function AppContent() {
-  const { isAuthenticated, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
+  const { isAuthenticated, user, setUser, isGuest, handleLogin, handleGuestLogin, handleLogout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -131,6 +134,10 @@ function AppContent() {
     return <OAuthConsent />;
   }
 
+  if (user?.mustChangePassword) {
+    return <ForcePasswordChange user={user} onComplete={setUser} />;
+  }
+
   // Main app
   return (
     <WorkspaceProvider
@@ -145,17 +152,19 @@ function AppContent() {
       <Routes>
         <Route element={<AppLayout />}>
           {/* Table views */}
-          <Route path="table/:feature" element={<TableRoute />} />
+          <Route path="table/:feature" element={<CloudTableRoute />} />
 
           {/* Document editors */}
-          <Route path="notes/:id" element={lazyRoute(<NoteEditorRoute />)} />
-          <Route path="diagrams/:id" element={lazyRoute(<DiagramEditorRoute />)} />
-          <Route path="db-client/:id" element={lazyRoute(<DbClientEditorRoute />)} />
-          <Route path="drawings/:id" element={lazyRoute(<DrawingEditorRoute />)} />
-          <Route path="flowcharts/:id" element={lazyRoute(<FlowchartEditorRoute />)} />
+          <Route path="notes/:id" element={<CloudFeatureRoute capability="notes">{lazyRoute(<NoteEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="diagrams/:id" element={<CloudFeatureRoute capability="erd_builder">{lazyRoute(<DiagramEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="db-client/:id" element={<CloudFeatureRoute capability="desktop_only">{lazyRoute(<DbClientEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="drawings/:id" element={<CloudFeatureRoute capability="drawings">{lazyRoute(<DrawingEditorRoute />)}</CloudFeatureRoute>} />
+          <Route path="flowcharts/:id" element={<CloudFeatureRoute capability="flowcharts">{lazyRoute(<FlowchartEditorRoute />)}</CloudFeatureRoute>} />
 
           {/* Admin pages */}
           <Route path="trash" element={lazyRoute(<AdminRoute />)} />
+          <Route path="teams/:id" element={lazyRoute(<TeamManagementRoute />)} />
+          <Route path="users" element={lazyRoute(<UserManagementRoute />)} />
 
           {/* Default: Dashboard */}
           <Route index element={<DashboardRoute />} />

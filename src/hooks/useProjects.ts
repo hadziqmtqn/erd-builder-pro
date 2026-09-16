@@ -12,6 +12,7 @@ export function useProjects(isGuest: boolean = false) {
   const [projectsTotal, setProjectsTotal] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(false);
   const projectsRef = useRef<Project[]>(projects);
+  const fetchSequenceRef = useRef(0);
   const isGuestRef = useRef(isGuest);
   useEffect(() => { isGuestRef.current = isGuest; }, [isGuest]);
   const isGuestCheck = (): boolean =>
@@ -28,6 +29,7 @@ export function useProjects(isGuest: boolean = false) {
   }>({ diagrams: [], notes: [], drawings: [], flowcharts: [] });
 
   const fetchProjects = useCallback(async (isLoadMore = false, searchQuery = '') => {
+    const requestId = ++fetchSequenceRef.current;
     if (isGuestCheck()) {
       const [localProjects, uDiagrams, uNotes, uDrawings, uFlowcharts] = await Promise.all([
         localPersistence.getAllResources('project'),
@@ -53,6 +55,7 @@ export function useProjects(isGuest: boolean = false) {
         flowcharts: uFlowcharts.filter(f => !f.is_deleted && String(f.project_id) === String(p.id)),
       }));
 
+      if (requestId !== fetchSequenceRef.current) return;
       setProjects(projectsWithFiles);
       setUncategorized({
         diagrams: uDiagrams.filter(f => !f.is_deleted && !f.project_id),
@@ -73,6 +76,7 @@ export function useProjects(isGuest: boolean = false) {
       const res = await apiFetch(`/api/projects?limit=100&offset=${offset}${qParam}`); // Increased limit for better tree view
       if (res.ok) {
         const json = await res.json();
+        if (requestId !== fetchSequenceRef.current) return null;
         const projectsList = Array.isArray(json.data) ? json.data : [];
         const total = json.total !== undefined ? json.total : projectsList.length;
         
@@ -96,7 +100,7 @@ export function useProjects(isGuest: boolean = false) {
     } catch (err) {
       console.error('Error in fetchProjects:', err);
     } finally {
-      setIsLoading(false);
+      if (requestId === fetchSequenceRef.current) setIsLoading(false);
     }
     return null;
   }, []);
@@ -256,4 +260,3 @@ export function useProjects(isGuest: boolean = false) {
     isLoading
   };
 }
-

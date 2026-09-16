@@ -16,6 +16,14 @@ export async function list(req: ExpressRequest, res: ExpressResponse): Promise<v
   }
 }
 
+export async function selectable(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    res.json({ data: await svc.listSelectableProjects((req as any).user.id) });
+  } catch (err: any) {
+    handleError(res, err, "Failed to fetch selectable projects");
+  }
+}
+
 export async function create(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const { name } = req.body;
@@ -32,7 +40,9 @@ export async function update(req: ExpressRequest, res: ExpressResponse): Promise
   try {
     const { name } = req.body;
     const userId = (req as any).user.id;
-    res.json(await svc.updateProject(Number(req.params.id), userId, name));
+    const result = await svc.updateProject(Number(req.params.id), userId, name);
+    if (!result.success) { res.status(403).json({ error: "Only the Project creator, a Team Manager, or the SuperAdmin can manage this Project." }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to update project");
   }
@@ -42,7 +52,9 @@ export async function remove(req: ExpressRequest, res: ExpressResponse): Promise
   try {
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
-    res.json(await svc.softDeleteProject(projectId, userId));
+    const result = await svc.softDeleteProject(projectId, userId);
+    if (!result.success) { res.status(403).json({ error: "Only the Project creator, a Team Manager, or the SuperAdmin can manage this Project." }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to delete project");
   }
@@ -52,7 +64,9 @@ export async function restore(req: ExpressRequest, res: ExpressResponse): Promis
   try {
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
-    res.json(await svc.restoreProject(projectId, userId));
+    const result = await svc.restoreProject(projectId, userId);
+    if (!result.success) { res.status(403).json({ error: "Only the Project creator, a Team Manager, or the SuperAdmin can manage this Project." }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to restore project");
   }
@@ -62,7 +76,9 @@ export async function permanentDelete(req: ExpressRequest, res: ExpressResponse)
   try {
     const projectId = Number(req.params.id);
     const userId = (req as any).user.id;
-    res.json(await svc.permanentDeleteProject(projectId, userId));
+    const result = await svc.permanentDeleteProject(projectId, userId);
+    if (!result.success) { res.status(403).json({ error: "Only the Project creator, a Team Manager, or the SuperAdmin can manage this Project." }); return; }
+    res.json(result);
   } catch (err: any) {
     handleError(res, err, "Failed to permanently delete project");
   }

@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { isDesktopMode } from "../../lib/config.js";
+import { fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 const projectSelect = { id: true, uid: true, name: true } as const;
 
@@ -7,15 +8,14 @@ export async function listRecentFiles(userId: string) {
   if (!prisma) return [];
 
   const base = {
-    userId,
     isDeleted: false,
-    OR: [{ projectId: null }, { project: { isDeleted: false } }],
+    AND: [fileScopeWhere(userId), { OR: [{ projectId: null }, { project: { isDeleted: false } }] }],
   } as any;
   const select = { id: true, uid: true, project: { select: projectSelect }, updatedAt: true } as const;
 
   const [diagrams, notes, drawings, flowcharts, dbClients] = await Promise.all([
     prisma.diagram.findMany({
-      where: { ...base, AND: [{ OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
+      where: { ...base, AND: [...base.AND, { OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
       orderBy: { updatedAt: "desc" }, take: 10,
       select: { ...select, name: true, sourceType: true },
     }),
@@ -47,20 +47,19 @@ export async function searchDocuments(userId: string, query: string) {
     ? { contains: text }
     : { contains: text, mode: "insensitive" } as any;
   const base = {
-    userId,
     isDeleted: false,
-    OR: [{ projectId: null }, { project: { isDeleted: false } }],
+    AND: [fileScopeWhere(userId), { OR: [{ projectId: null }, { project: { isDeleted: false } }] }],
   } as any;
 
   const [projects, diagrams, notes, drawings, flowcharts, dbClients] = await Promise.all([
     prisma.project.findMany({
-      where: { userId, isDeleted: false, name: contains },
+      where: { ...projectScopeWhere(userId), isDeleted: false, name: contains },
       orderBy: { updatedAt: "desc" },
       take: 5,
       select: { ...projectSelect, updatedAt: true },
     }),
     prisma.diagram.findMany({
-      where: { ...base, name: contains, AND: [{ OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
+      where: { ...base, name: contains, AND: [...base.AND, { OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
       orderBy: { updatedAt: "desc" },
       take: 5,
       select: { id: true, uid: true, name: true, sourceType: true, project: { select: projectSelect }, updatedAt: true },
@@ -110,14 +109,13 @@ export async function listMentionFiles(userId: string) {
   if (!prisma) return [];
 
   const base = {
-    userId,
     isDeleted: false,
-    OR: [{ projectId: null }, { project: { isDeleted: false } }],
+    AND: [fileScopeWhere(userId), { OR: [{ projectId: null }, { project: { isDeleted: false } }] }],
   } as any;
 
   const [diagrams, notes, drawings, flowcharts] = await Promise.all([
     prisma.diagram.findMany({
-      where: { ...base, AND: [{ OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
+      where: { ...base, AND: [...base.AND, { OR: [{ sourceType: null }, { sourceType: { not: "production_db" } }] }] },
       orderBy: { name: "asc" },
       select: { id: true, uid: true, name: true, project: { select: projectSelect } },
     }),

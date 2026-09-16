@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
+import { ACTIVE_TEAM_KEY, apiFetch, clearAuthToken, isInstalledApp, setAuthToken } from '../lib/api';
 
 type AuthContextValue = {
   isAuthenticated: boolean | null;
@@ -14,6 +14,17 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function normalizeLocalUser(value: any) {
+  if (!value) return value;
+  return {
+    ...value,
+    isSuperAdmin: value.isSuperAdmin ?? value.is_super_admin ?? false,
+    isSso: value.isSso ?? value.is_sso ?? false,
+    mustChangePassword: value.mustChangePassword ?? value.must_change_password ?? false,
+    activeTeamId: value.activeTeamId ?? value.active_team_id ?? null,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -38,7 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (data.token) setAuthToken(data.token);
           setIsAuthenticated(true);
           setIsGuest(false);
-          setUser(data.user);
+          const normalizedUser = normalizeLocalUser(data.user);
+          try {
+            if (normalizedUser?.activeTeamId && !localStorage.getItem(ACTIVE_TEAM_KEY)) {
+              localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
+            }
+          } catch { /* localStorage may be unavailable */ }
+          setUser(normalizedUser);
           retryRef.current = 0;
           return;
         } else {
@@ -111,10 +128,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLogin = useCallback((userData?: any) => {
+    const normalizedUser = normalizeLocalUser(userData);
+    if (normalizedUser && !Boolean(normalizedUser.isSuperAdmin)) {
+      try {
+        if (normalizedUser.activeTeamId) localStorage.setItem(ACTIVE_TEAM_KEY, normalizedUser.activeTeamId);
+        else localStorage.removeItem(ACTIVE_TEAM_KEY);
+      } catch { /* ignore */ }
+    }
     setIsAuthenticated(true);
     setIsGuest(false);
     sessionStorage.removeItem('auth_mode');
-    if (userData) setUser(userData);
+    if (normalizedUser) setUser(normalizedUser);
   }, []);
 
   const handleGuestLogin = useCallback(() => {
@@ -126,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleLogout = useCallback(async () => {
     clearAuthToken();
+    try { localStorage.removeItem(ACTIVE_TEAM_KEY); } catch { /* ignore */ }
     if (isGuest) {
       setIsAuthenticated(false);
       setIsGuest(false);

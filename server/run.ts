@@ -8,6 +8,8 @@ import { applySchemaMigrations } from "./lib/startup-migration.js";
 import { prisma } from "./lib/prisma.js";
 import { logger } from "./lib/logger.js";
 import { isDesktopMode, useLocalAuth } from "./lib/config.js";
+import { startCloudAiConfigRefresh, startCloudAiUsageRetention } from "./lib/cloud-ai.js";
+import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
 import { setDbReady, setDbError } from "./lib/db-state.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -256,20 +258,21 @@ async function startup(): Promise<void> {
   }
 
   if (dbOk) {
-    // Seed AI providers synchronously BEFORE frontend loads — otherwise
-    // /api/ai/settings/providers returns [] and the select dropdown stays
-    // empty because the frontend never refetches. Seeding is a few INSERTs,
-    // negligible latency even on cold start.
-    await seedAIProviders();
-
     // Schema migrations must finish before /api/me lets the UI load. Prisma
     // already expects these columns, so background ALTERs can race first load.
     await applySchemaMigrations();
+
+    // Seed only after schema self-heal; fresh Desktop databases otherwise have
+    // no ai_providers table when this first runs.
+    await seedAIProviders();
 
     // DB is functional — signal /api/me to start responding immediately.
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
     console.log("[startup] Database ready. /api/me will respond. Running background init...");
+    startCloudAiConfigRefresh();
+    startCloudAiUsageRetention();
+    startCloudTelemetry();
 
     // Fire-and-forget: the rest of background init runs after /api/me works.
     // These can be async — uid backfill, migrations, etc.

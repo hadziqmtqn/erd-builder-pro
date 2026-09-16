@@ -87,14 +87,18 @@ export function buildSchemaFormatOverride(): string {
 - Tell the user to click Append to preview/apply DBML to the ERD canvas when relevant.`;
 }
 
-export async function fetchUserSystemPrompt(): Promise<string | null> {
+export type ActiveSystemPrompt = { scope: 'global' | 'personal'; content: string };
+
+export async function fetchUserSystemPrompts(): Promise<ActiveSystemPrompt[]> {
   try {
     const res = await apiFetch('/api/ai/chat/prompts/default');
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const data = await res.json();
-    return data.content || null;
+    return Array.isArray(data.prompts) ? data.prompts.filter((prompt: ActiveSystemPrompt) =>
+      (prompt.scope === 'global' || prompt.scope === 'personal') && typeof prompt.content === 'string' && prompt.content.trim(),
+    ) : [];
   } catch {
-    return null;
+    return [];
   }
 }
 

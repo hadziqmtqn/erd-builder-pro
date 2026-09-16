@@ -9,6 +9,10 @@ export const loginSchema = z.object({
   externalToken: z.string().max(2048).optional(),
 });
 
+export const ssoLinkSchema = z.object({
+  password: z.string().min(1).max(128),
+});
+
 export const setupAdminSchema = z.object({
   email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).max(255),
   password: z.string().min(8).max(128),
@@ -28,6 +32,7 @@ export const aiProxySchema = z.object({
   apiKey: z.string().max(2048).optional(),
   baseUrl: z.string().url().max(512).optional(),
   providerCode: z.string().max(64).optional(),
+  request_id: z.string().min(1).max(128).optional(),
 }).superRefine((value, ctx) => {
   const total = value.messages.reduce((length, message) => length + message.content.length, 0);
   if (total > 2_000_000) {
@@ -78,6 +83,27 @@ export const renameSchema = z.object({
 
 export const projectSchema = z.object({
   name: z.string().min(1).max(255),
+});
+
+export const createTeamSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+});
+
+export const updateTeamSchema = createTeamSchema;
+
+export const addTeamMemberSchema = z.object({
+  email: z.string().trim().email().max(255),
+  name: z.string().trim().min(1).max(255).optional(),
+  password: z.string().min(8).max(128).optional(),
+  confirmPassword: z.string().min(8).max(128).optional(),
+  role: z.enum(["manager", "staff"]).default("staff"),
+}).refine((data) => (!data.password && !data.confirmPassword) || data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+export const updateTeamMemberSchema = z.object({
+  role: z.enum(["manager", "staff"]),
 });
 
 export const updateAccountSchema = z.object({

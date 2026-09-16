@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { authenticate } from "../../lib/middleware.js";
+import { desktopOnly } from "../connections/middleware.js";
 import { restoreHandler } from "./controller.js";
 
 const ALLOWED_DB_TYPES = ["application/x-sqlite3", "application/vnd.sqlite3", "application/octet-stream"];
@@ -26,6 +27,7 @@ const router = Router();
 router.post(
   "/restore/database",
   authenticate,
+  desktopOnly,
   upload.single("database"),
   restoreHandler,
 );

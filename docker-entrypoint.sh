@@ -5,8 +5,9 @@ echo "=== ERD Builder Pro — Entrypoint ==="
 
 # ── Detect database mode ──
 if [ -n "$SUPABASE_URL" ]; then
-  # Supabase mode — client was generated at build time, no migration needed
-  echo "Mode: Supabase PostgreSQL — no migration needed"
+  # Supabase mode — additive schema self-heal runs in server/run.ts.
+  # Keep db push out of this entrypoint because Supabase is managed PostgreSQL.
+  echo "Mode: Supabase PostgreSQL — additive startup migration handled by the app"
   exec "$@"
 fi
 

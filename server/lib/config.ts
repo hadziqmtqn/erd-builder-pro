@@ -55,6 +55,65 @@ export function useLocalAuth(): boolean {
   return isDesktopMode() || isLocalPostgres();
 }
 
+export function isSsoAuthMode(): boolean {
+  // Desktop and CLI are always local installations. AUTH_MODE belongs only to
+  // the official Cloud runtime, even if a developer .env also contains it.
+  if (["desktop", "cli"].includes(process.env.ERD_INSTALL_MODE || "")) return false;
+  return isLocalPostgres() && process.env.AUTH_MODE?.trim().toLowerCase() === "sso";
+}
+
+export function getSsoConfig() {
+  const issuerUrl = process.env.SSO_ISSUER_URL?.replace(/\/+$/, "") || "";
+  const clientId = process.env.SSO_CLIENT_ID?.trim() || "";
+  const redirectUri = process.env.SSO_REDIRECT_URI?.trim() || "";
+  const appUrl = process.env.APP_URL?.replace(/\/+$/, "") || "";
+  const urls = [issuerUrl, redirectUri, appUrl];
+  const validUrls = urls.every((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || (process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(url.hostname));
+    } catch {
+      return false;
+    }
+  });
+  return {
+    issuerUrl,
+    clientId,
+    redirectUri,
+    appUrl,
+    configured: isLocalPostgres() && Boolean(clientId) && validUrls,
+  };
+}
+
+export function getCloudAiMachineConfig() {
+  const { issuerUrl } = getSsoConfig();
+  return {
+    issuerUrl,
+    clientId: process.env.CLOUD_AI_CONFIG_CLIENT_ID?.trim() || "",
+    clientSecret: process.env.CLOUD_AI_CONFIG_CLIENT_SECRET?.trim() || "",
+  };
+}
+
+export function getCloudTelemetryConfig() {
+  const { issuerUrl } = getSsoConfig();
+  return {
+    issuerUrl,
+    clientId: process.env.CLOUD_TELEMETRY_CLIENT_ID?.trim() || "",
+    clientSecret: process.env.CLOUD_TELEMETRY_CLIENT_SECRET?.trim() || "",
+    deploymentId: process.env.CLOUD_TELEMETRY_DEPLOYMENT_ID?.trim() || "",
+    tenantRef: process.env.CLOUD_TELEMETRY_TENANT_REF?.trim() || "",
+    version: process.env.APP_VERSION?.trim() || process.env.npm_package_version?.trim() || "unknown",
+  };
+}
+
+export function getCloudWebhookSecret(): string {
+  return process.env.CLOUD_WEBHOOK_SECRET?.trim() || "";
+}
+
+export function getCloudAiEncryptionKey(): string {
+  return process.env.CLOUD_AI_ENCRYPTION_KEY?.trim() || "";
+}
+
 // Initialize Supabase
 const SUPABASE_CLIENT_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 export let supabase: any = null;

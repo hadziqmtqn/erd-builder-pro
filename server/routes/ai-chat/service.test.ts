@@ -1,30 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { findSession, findMessage, createMessage } = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => ({
   findSession: vi.fn(),
   findMessage: vi.fn(),
   createMessage: vi.fn(),
+  findPrompt: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
-    aiChatSession: { findFirst: findSession },
-    aiChatMessage: { findFirst: findMessage, create: createMessage },
+    aiChatSession: { findFirst: mocks.findSession },
+    aiChatMessage: { findFirst: mocks.findMessage, create: mocks.createMessage },
+    aiSystemPrompt: { findFirst: mocks.findPrompt },
   },
 }));
 
-import { createMessage as saveMessage } from './service.js';
+import { createMessage as saveMessage, getDefaultPrompt } from './service.js';
+
+beforeEach(() => {
+  mocks.findSession.mockReset();
+  mocks.findMessage.mockReset();
+  mocks.createMessage.mockReset();
+  mocks.findPrompt.mockReset();
+  mocks.findSession.mockResolvedValue({ id: 10 });
+});
 
 describe('AI chat message idempotency', () => {
-  beforeEach(() => {
-    findSession.mockReset();
-    findMessage.mockReset();
-    createMessage.mockReset();
-    findSession.mockResolvedValue({ id: 10 });
-  });
-
   it('returns an existing message for the same client message id', async () => {
-    findMessage.mockResolvedValue({ id: 20, clientMessageId: 'client-1' });
+    mocks.findMessage.mockResolvedValue({ id: 20, clientMessageId: 'client-1' });
 
     const result = await saveMessage({
       sessionId: 'session-1',
@@ -35,12 +38,12 @@ describe('AI chat message idempotency', () => {
     });
 
     expect(result).toMatchObject({ id: 20 });
-    expect(createMessage).not.toHaveBeenCalled();
+    expect(mocks.createMessage).not.toHaveBeenCalled();
   });
 
   it('recovers the stored message when concurrent inserts hit the unique index', async () => {
-    findMessage.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 21, clientMessageId: 'client-2' });
-    createMessage.mockRejectedValue({ code: 'P2002' });
+    mocks.findMessage.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 21, clientMessageId: 'client-2' });
+    mocks.createMessage.mockRejectedValue({ code: 'P2002' });
 
     const result = await saveMessage({
       sessionId: 'session-1',
@@ -51,5 +54,20 @@ describe('AI chat message idempotency', () => {
     });
 
     expect(result).toMatchObject({ id: 21 });
+  });
+});
+
+describe('active system prompts', () => {
+  it('returns the global prompt before the current user prompt', async () => {
+    mocks.findPrompt
+      .mockResolvedValueOnce({ content: 'Global instruction' })
+      .mockResolvedValueOnce({ content: 'Personal instruction' });
+
+    await expect(getDefaultPrompt('user-1')).resolves.toEqual({
+      prompts: [
+        { scope: 'global', content: 'Global instruction' },
+        { scope: 'personal', content: 'Personal instruction' },
+      ],
+    });
   });
 });

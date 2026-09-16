@@ -22,6 +22,8 @@ export function getApiBaseUrl(): string {
 }
 
 export const AUTH_TOKEN_KEY='***';
+export const ACTIVE_TEAM_KEY = 'erd-active-team-id';
+const TEAM_SCOPED_API = /^\/api\/(?:projects|diagrams|notes|drawings|flowcharts|search|entity-changes|ai\/(?:chat|proxy|rules|settings\/prompts))(?=[/?#]|$)/;
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -40,6 +42,12 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
   const token = getAuthToken();
   const headers = new Headers(init?.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (!isInstalledApp() && TEAM_SCOPED_API.test(input)) {
+    try {
+      const teamId = localStorage.getItem(ACTIVE_TEAM_KEY);
+      if (teamId) headers.set('X-Team-Id', teamId);
+    } catch { /* localStorage may be unavailable */ }
+  }
   return fetch(`${getApiBaseUrl()}${input}`, {
     credentials: 'include',
     ...init,

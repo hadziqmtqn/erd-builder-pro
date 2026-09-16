@@ -9,6 +9,7 @@ import {
   OnEdgesChange,
   Node,
   Edge,
+  Viewport,
   MarkerType,
   ConnectionLineType,
   useReactFlow,
@@ -19,21 +20,21 @@ import '@xyflow/react/dist/style.css';
 import { Plus, Upload, Undo2, Redo2, LayoutGrid, RefreshCw, Database, Download, FolderGit2 } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import EntityNode from '../diagram/EntityNode';
+import { SchemaDiffOverlay } from '../diagram/SchemaDiffOverlay';
 import { Entity } from '@/types';
 import { useAIAction } from '@/contexts/AIActionContext';
 import { applyToErdContent, ErdApplyResult } from '@/components/ai/actions/erdActions';
 import { toast } from 'sonner';
-import { computeSchemaDiff, DiffResult, type SchemaDiffChange } from '@/lib/schema-diff';
+import { computeSchemaDiff, DiffResult } from '@/lib/schema-diff';
 import { mergeSchemaChanges } from '@/lib/schema-merge';
-import { cn } from '@/lib/utils';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { apiFetch, isInstalledApp } from '@/lib/api';
 import { EyeOff, Monitor } from 'lucide-react';
 import { buildErdIndexes, erdColumnKey, erdSourceColumnKey } from '@/lib/erd-indexes';
 import { databaseColumnToERD } from '@/lib/column-metadata';
 import { keepsDbRelation } from '@/lib/db-client-schema';
+import { styleErdEdges } from '@/lib/erd-edge-style';
 import { ERD_HISTORY_PREVIEW_EVENT, type ErdHistoryPreview } from '@/lib/history-diagram';
 import { ERD_REPOSITORY_APPLIED_EVENT, ERD_REPOSITORY_PREVIEW_EVENT, type RepositoryPreview } from '@/lib/repository-preview';
 import { erdToDBML } from '@/lib/dbml-converter';
@@ -74,6 +75,7 @@ interface ERDViewProps {
   isLoading?: boolean;
   selectedNodeId?: string | null;
   onMoveEnd?: (e: any, v: any) => void;
+  initialViewport?: Viewport;
   saveDiagram?: (nodes: Node<Entity>[], edges: Edge[], viewport: any, options?: { dbmlSource?: string }) => Promise<void>;
   triggerDebouncedSync?: () => void;
   pendingErdDiffTrigger?: number;
@@ -116,6 +118,7 @@ const ERDViewComponent = ({
   selectedNodeId,
   onNodeDragStop,
   onMoveEnd,
+  initialViewport,
   isLoading,
   saveDiagram,
   triggerDebouncedSync,
@@ -127,7 +130,7 @@ const ERDViewComponent = ({
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
-  const { getViewport } = useReactFlow();
+  const { getViewport, getNodes, getEdges, setViewport } = useReactFlow();
   const { resolvedTheme } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
@@ -145,6 +148,33 @@ const ERDViewComponent = ({
     }
     onMove(event, viewport);
   }, [onMove]);
+
+  const saveCanvasAfterNodeDrag = useCallback(() => {
+    if (!saveDiagram) return;
+    const currentNodes = getNodes() as Node<Entity>[];
+    if (currentNodes.length === 0) return;
+
+    void saveDiagram(currentNodes, getEdges(), getViewport())
+      .then(() => triggerDebouncedSync?.())
+      .catch(error => console.error('Error saving ERD after node drag:', error));
+  }, [getEdges, getNodes, getViewport, saveDiagram, triggerDebouncedSync]);
+
+  const handleNodeDragStopLocal = useCallback(() => {
+    onNodeDragStop?.();
+    if (!saveDiagram) return;
+
+    // React Flow applies the final position before the next paint. Saving on
+    // that frame keeps the node positions and viewport from different renders.
+    requestAnimationFrame(saveCanvasAfterNodeDrag);
+  }, [onNodeDragStop, saveCanvasAfterNodeDrag, saveDiagram]);
+
+  React.useEffect(() => {
+    if (isLoading || !initialViewport) return;
+    const frame = requestAnimationFrame(() => {
+      void setViewport(initialViewport, { duration: 0 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialViewport, isLoading, setViewport]);
 
 
   // ─── Multi-table selection ───────────────────────────
@@ -167,25 +197,6 @@ const ERDViewComponent = ({
   } | null>(null);
   const [approvedChangeIds, setApprovedChangeIds] = useState<string[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
-
-  // Memoized diff-derived values — prevent filter/map re-run on every ReactFlow render
-  const diffChanges = pendingDiff?.diffResult.changes ?? [];
-  const allChangedIds = diffChanges.map(change => change.id);
-  const diffNewCount = pendingDiff?.diffResult.newCount ?? 0;
-  const diffModCount = pendingDiff?.diffResult.modifiedCount ?? 0;
-  const diffDelCount = pendingDiff?.diffResult.deletedCount ?? 0;
-  const diffKindSummary = React.useMemo(() => ['table', 'column', 'relation'].map(kind => {
-    const count = diffChanges.filter(change => change.kind === kind).length;
-    return count ? `${count} ${kind}${count === 1 ? '' : 's'}` : null;
-  }).filter(Boolean).join(' · '), [diffChanges]);
-  const groupedDiffChanges = React.useMemo(() => {
-    const groups = new Map<string, SchemaDiffChange[]>();
-    for (const change of diffChanges) {
-      const table = changeTableName(change);
-      groups.set(table, [...(groups.get(table) || []), change]);
-    }
-    return [...groups];
-  }, [diffChanges]);
 
   const handleNodeClickLocal = useCallback((e: React.MouseEvent, n: Node) => {
     if (e.ctrlKey || e.metaKey) {
@@ -233,47 +244,11 @@ const ERDViewComponent = ({
     }));
   }, [pendingDiff]);
 
-  const styledEdges = React.useMemo(() => {
-    const hasSelection = allSelectedIds.length > 0;
-
-    return edges.map(edge => {
-      const isConnectedToSelected = hasSelection && allSelectedIds.some(
-        id => edge.source === id || edge.target === id
-      );
-      const edgeColor = isConnectedToSelected || edge.selected
-        ? 'var(--edge-selected)'
-        : 'var(--edge-color)';
-      const baseEdge = {
-        ...edge,
-        type: 'smoothstep',
-        style: {
-          ...edge.style,
-          stroke: edgeColor,
-          strokeWidth: 2,
-        },
-        markerEnd: {
-          type: MarkerType.Arrow,
-          color: edgeColor,
-          width: 10,
-          height: 10,
-        },
-      };
-
-      // Build class list from existing + computed classes
-      const classes: string[] = [];
-      if (edge.className) classes.push(edge.className);
-
-      if (isConnectedToSelected) {
-        classes.push('edge-animated-active');
-      } else if (hasSelection) {
-        classes.push('edge-dimmed');
-      }
-
-      const newClassName = classes.join(' ');
-      if (baseEdge.className === newClassName) return baseEdge;
-      return { ...baseEdge, className: newClassName };
-    });
-  }, [edges, allSelectedIds]);
+  const styledEdges = React.useMemo(() => styleErdEdges(edges, allSelectedIds), [edges, allSelectedIds]);
+  const styledDiffEdges = React.useMemo(
+    () => pendingDiff ? styleErdEdges(pendingDiff.diffEdges) : [],
+    [pendingDiff],
+  );
 
   // Filter out selection-only changes to avoid unnecessary re-renders from React Flow
   const handleNodesChangeLocal = useCallback(
@@ -720,7 +695,7 @@ const ERDViewComponent = ({
       <div ref={canvasRef} className="flex-1">
         <ReactFlow
           nodes={pendingDiff ? diffNodesWithMode : styledNodes}
-          edges={pendingDiff ? pendingDiff.diffEdges : styledEdges}
+          edges={pendingDiff ? styledDiffEdges : styledEdges}
           onNodesChange={handleNodesChangeLocal}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -813,11 +788,12 @@ const ERDViewComponent = ({
           nodesConnectable={!pendingDiff && (!isReadOnly || (isProductionDb && isReconnecting))}
           elementsSelectable={!pendingDiff && (!isReadOnly || isProductionDb)}
           edgesReconnectable={!pendingDiff && (!isReadOnly || isProductionDb)}
-          onNodeDragStop={onNodeDragStop}
+          onNodeDragStop={handleNodeDragStopLocal}
           onMoveEnd={onMoveEnd}
           minZoom={0.1}
           maxZoom={2.5}
           defaultEdgeOptions={defaultEdgeOptions}
+          defaultViewport={initialViewport}
           connectionLineType={ConnectionLineType.SmoothStep}
           connectionLineStyle={defaultEdgeOptions.style}
           deleteKeyCode={null}
@@ -828,145 +804,26 @@ const ERDViewComponent = ({
         </ReactFlow>
       </div>
 
-      {/* Floating Diff Merge Panel */}
-      {pendingDiff && (
-        <div className="absolute bottom-6 inset-x-0 z-50 flex flex-col items-center justify-center gap-2.5 pointer-events-none">
-          {/* Checklist opens above the bottom toolbar. */}
-          {showChecklist && (
-            <div className="w-[min(560px,calc(100vw-2rem))] bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto p-4 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{pendingDiff.source === 'history' ? 'Changes in this version:' : 'Select changes to merge:'}</span>
-                {pendingDiff.source !== 'history' && <button
-                  onClick={() => {
-                    setApprovedChangeIds(approvedChangeIds.length === allChangedIds.length ? [] : [...allChangedIds]);
-                  }}
-                  className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline font-medium"
-                >
-                  {approvedChangeIds.length === allChangedIds.length ? 'Unselect All' : 'Select All'}
-                </button>}
-              </div>
-
-              <div className="max-h-75 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-                {groupedDiffChanges.map(([table, changes]) => (
-                  <section key={table} className="overflow-hidden rounded-lg border border-border">
-                    <div className="flex items-center justify-between border-b border-border bg-muted/50 px-3 py-2">
-                      <span className="text-xs font-semibold text-foreground">{table}</span>
-                      <span className="text-[10px] text-muted-foreground">{changes.length} change{changes.length === 1 ? '' : 's'}</span>
-                    </div>
-                    <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] gap-3 border-b border-border px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      <span />
-                      <span>Column</span>
-                      <span>Type</span>
-                      <span>Change</span>
-                    </div>
-                    <div className="divide-y divide-border">
-                      {changes.map(change => {
-                        const isChecked = approvedChangeIds.includes(change.id);
-                        return (
-                          <label key={change.id} className={cn(
-                            "grid grid-cols-[auto_minmax(0,1fr)_minmax(72px,auto)_auto] items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
-                            isChecked ? "bg-background text-foreground hover:bg-muted/50" : "bg-muted/20 text-muted-foreground hover:bg-muted/40",
-                          )}>
-                            {pendingDiff.source === 'history' || pendingDiff.source === 'repository-compare' ? <span className="size-2 rounded-full bg-muted-foreground/50" /> : <Checkbox
-                                checked={isChecked}
-                                onCheckedChange={() => setApprovedChangeIds(prev => prev.includes(change.id) ? prev.filter(id => id !== change.id) : [...prev, change.id])}
-                                className="border-border bg-transparent data-checked:border-emerald-500 data-checked:bg-emerald-500"
-                              />}
-                            <span className="min-w-0 truncate text-sm font-medium">{changeFieldName(change)}</span>
-                            <code className="truncate font-mono text-xs text-muted-foreground">{changeType(change)}</code>
-                            <span className={cn(
-                              "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                              change.state === 'new' && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                              change.state === 'deleted' && "border-destructive/30 bg-destructive/10 text-destructive",
-                              change.state === 'modified' && "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                            )}>{change.state}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Main Diff Bar */}
-          <div className="flex items-center gap-4 p-2.5 bg-popover/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl pointer-events-auto max-w-[95vw]">
-            <div className="flex items-center gap-2 px-2.5 text-foreground">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="max-w-52 truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{
-                pendingDiff.source === 'history' ? `Version ${pendingDiff.version} Preview`
-                  : pendingDiff.source === 'repository-compare' ? `Git Comparison · ${pendingDiff.sourceLabel}`
-                    : pendingDiff.source === 'repository' ? `Repository Schema · ${pendingDiff.sourceLabel}`
-                      : 'AI Schema Proposal'
-              }</span>
-              <div className="h-4 w-px bg-border mx-2" />
-              <div className="flex gap-2 text-[11px] font-bold">
-                {diffNewCount > 0 && (
-                  <span className="text-emerald-400">{diffNewCount} New</span>
-                )}
-                {diffModCount > 0 && (
-                  <span className="text-amber-400">{diffModCount} Mod</span>
-                )}
-                {diffDelCount > 0 && (
-                  <span className="text-red-400">{diffDelCount} Del</span>
-                )}
-              </div>
-              {diffKindSummary && <span className="text-[10px] text-muted-foreground">{diffKindSummary}</span>}
-            </div>
-
-            <div className="h-6 w-px bg-border" />
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowChecklist(!showChecklist)}
-              >
-                Review Changes
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleRejectAll}
-              >
-                {pendingDiff.source === 'proposal' ? 'Reject All' : 'Close Preview'}
-              </Button>
-              {pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare' && <Button
-                onClick={handleApplyMerge}
-              >
-                Merge Selected
-              </Button>}
-            </div>
-          </div>
-        </div>
-      )}
+      {pendingDiff && <SchemaDiffOverlay
+        diff={pendingDiff.diffResult}
+        approvedIds={approvedChangeIds}
+        showChecklist={showChecklist}
+        label={pendingDiff.source === 'history' ? `Version ${pendingDiff.version} Preview`
+          : pendingDiff.source === 'repository-compare' ? `Git Comparison · ${pendingDiff.sourceLabel}`
+            : pendingDiff.source === 'repository' ? `Repository Schema · ${pendingDiff.sourceLabel}`
+              : undefined}
+        rejectLabel={pendingDiff.source === 'proposal' ? 'Reject All' : 'Close Preview'}
+        canMerge={pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
+        selectable={pendingDiff.source !== 'history' && pendingDiff.source !== 'repository-compare'}
+        checklistTitle={pendingDiff.source === 'history' ? 'Changes in this version:' : 'Select changes to merge:'}
+        onApprovedIdsChange={setApprovedChangeIds}
+        onShowChecklistChange={setShowChecklist}
+        onReject={handleRejectAll}
+        onMerge={handleApplyMerge}
+      />}
     </div>
   );
 };
-
-function changeTableName(change: SchemaDiffChange) {
-  if (change.kind === 'column') {
-    const path = change.id.replace(/^column:/, '');
-    return path.slice(0, path.lastIndexOf('.'));
-  }
-  if (change.kind === 'relation') return change.label.split('.')[0];
-  return change.label;
-}
-
-function changeFieldName(change: SchemaDiffChange) {
-  if (change.kind === 'column') return change.label.slice(change.label.lastIndexOf('.') + 1);
-  if (change.kind === 'table') return 'Table definition';
-  return change.label;
-}
-
-function changeType(change: SchemaDiffChange) {
-  if (change.kind === 'table') return 'TABLE';
-  if (change.kind === 'relation') return 'FK';
-  const column = change.proposed ?? change.current;
-  return column && 'is_pk' in column ? column.type : '—';
-}
 
 // Custom comparator: skip function props to prevent unnecessary re-renders
 // from App.tsx's inline callbacks (save/sync cycle triggers re-render but
@@ -1013,12 +870,16 @@ export const ERDView = React.memo(ERDViewComponent, (prev, next) => {
   const hasData = next.nodes.length > 0;
   const wasEmptyBefore = prev.nodes.length === 0;
   const shouldIgnoreLoading = loadingFlickered && hasData && !wasEmptyBefore;
+  const sameViewport = prev.initialViewport?.x === next.initialViewport?.x &&
+    prev.initialViewport?.y === next.initialViewport?.y &&
+    prev.initialViewport?.zoom === next.initialViewport?.zoom;
 
   return (
     nodesEqual(prev.nodes, next.nodes) &&
     edgesEqual(prev.edges, next.edges) &&
     (shouldIgnoreLoading || prev.isLoading === next.isLoading) &&
     prev.isReadOnly === next.isReadOnly &&
+    sameViewport &&
     prev.selectedNodeId === next.selectedNodeId &&
     prev.canUndo === next.canUndo &&
     prev.canRedo === next.canRedo &&

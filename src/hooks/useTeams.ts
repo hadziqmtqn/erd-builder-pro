@@ -1,0 +1,153 @@
+import { useCallback, useEffect, useState } from "react";
+
+import { ACTIVE_TEAM_KEY, apiFetch } from "../lib/api";
+
+export type TeamLicense = {
+  valid: boolean;
+  status: string;
+  id?: string | null;
+  codeLastFour?: string | null;
+  planCode?: string | null;
+  expiresAt?: string | null;
+  maxMembers?: number | null;
+  maxTeams?: number | null;
+  bindingGeneration?: number;
+  lastCheckedAt?: string | null;
+  errorCode?: string;
+};
+
+export type TeamSummary = {
+  id: string;
+  name: string;
+  memberCount?: number;
+  canManage?: boolean;
+  manageUrl?: string;
+  capabilities?: Record<string, boolean>;
+  license?: TeamLicense;
+  members?: Array<{
+    id: string;
+    email: string | null;
+    name: string | null;
+    role: "manager" | "staff";
+    status: string;
+    joinedAt: string;
+  }>;
+};
+
+function readActiveTeamId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_TEAM_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveTeamId(teamId: string | null): void {
+  try {
+    if (teamId) localStorage.setItem(ACTIVE_TEAM_KEY, teamId);
+    else localStorage.removeItem(ACTIVE_TEAM_KEY);
+  } catch {
+    // localStorage is optional; the current session still works in memory.
+  }
+}
+
+export function useTeams(isGuest = false) {
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
+  const [isLoading, setIsLoading] = useState(!isGuest);
+  const [isAvailable, setIsAvailable] = useState(false);
+
+  const fetchTeams = useCallback(async (showLoading = false) => {
+    if (isGuest) {
+      setIsLoading(false);
+      setIsAvailable(false);
+      return [];
+    }
+
+    if (showLoading) setIsLoading(true);
+    try {
+      const response = await apiFetch("/api/teams");
+      if (response.status === 404 || response.status === 403) {
+        setTeams([]);
+        setActiveTeamId(null);
+        writeActiveTeamId(null);
+        setIsAvailable(false);
+        return [];
+      }
+      if (!response.ok) throw new Error("Failed to fetch teams");
+
+      const body = await response.json();
+      const nextTeams = Array.isArray(body.data) ? body.data : [];
+      setTeams(nextTeams);
+      setIsAvailable(true);
+      const selected = readActiveTeamId();
+      if (selected && nextTeams.some((team: TeamSummary) => String(team.id) === selected)) {
+        setActiveTeamId(selected);
+      } else if (selected) {
+        setActiveTeamId(null);
+        writeActiveTeamId(null);
+      }
+      return nextTeams;
+    } catch (error) {
+      console.error("Failed to fetch teams:", error);
+      setTeams([]);
+      setIsAvailable(false);
+      return [];
+    } finally {
+      if (showLoading) setIsLoading(false);
+    }
+  }, [isGuest]);
+
+  useEffect(() => {
+    void fetchTeams(true);
+  }, [fetchTeams]);
+
+  useEffect(() => {
+    if (isGuest) return;
+
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void fetchTeams();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [fetchTeams, isGuest]);
+
+  const selectTeam = useCallback((teamId: string | null) => {
+    setActiveTeamId(teamId);
+    writeActiveTeamId(teamId);
+  }, []);
+
+  const createTeam = useCallback(async (input: { name: string }) => {
+    const response = await apiFetch("/api/teams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: input.name }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(body.error || "Failed to create team") as Error & { code?: string };
+      error.code = body.code;
+      throw error;
+    }
+
+    const team = body;
+    setTeams((current) => [team, ...current.filter((item) => item.id !== team.id)]);
+    selectTeam(team.id);
+    return team as TeamSummary;
+  }, [selectTeam]);
+
+  return {
+    teams,
+    activeTeamId,
+    activeTeam: teams.find((team) => team.id === activeTeamId) || null,
+    isLoading,
+    isAvailable,
+    fetchTeams,
+    selectTeam,
+    createTeam,
+  };
+}

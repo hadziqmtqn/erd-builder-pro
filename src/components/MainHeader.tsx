@@ -230,6 +230,13 @@ export const MainHeader = React.memo(({
                   </BreadcrumbItem>
                 );
               }
+              if (path.startsWith('/teams/')) {
+                return <>
+                  <BreadcrumbItem className="shrink-0 text-muted-foreground">Teams</BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem className="shrink-0"><BreadcrumbPage className="font-semibold text-foreground">{breadcrumbLabel || 'Team management'}</BreadcrumbPage></BreadcrumbItem>
+                </>;
+              }
               if (breadcrumbLabel) {
                 return (
                   <BreadcrumbItem className="shrink-0">

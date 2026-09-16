@@ -25,6 +25,7 @@ type Revision = {
   version: number;
   change_type: string;
   created_at: string;
+  actor?: { name: string | null; email: string | null } | null;
 };
 
 type RevisionDetail = Revision & {
@@ -197,6 +198,7 @@ export function VersionHistoryPanel({ entityType, entityUid, documentTitle, onCl
                       {revision.change_type === 'restore' && <Badge variant="secondary">Restored</Badge>}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">{format(new Date(revision.created_at), 'MMM d, yyyy HH:mm:ss')}</div>
+                    {revision.actor && <div className="mt-1 text-xs text-muted-foreground">Changed by {revision.actor.name || revision.actor.email || 'Unknown user'}</div>}
                   </button>
                   <Button
                     variant="outline"

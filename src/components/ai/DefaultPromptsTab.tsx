@@ -15,8 +15,8 @@ import {
   Settings2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import {
   Select,
@@ -47,11 +47,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { AISystemPrompt } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+
+type PromptFormData = Partial<AISystemPrompt> & { is_global?: boolean };
 
 interface DefaultPromptsTabProps {
   prompts: AISystemPrompt[];
   isSaving: boolean;
-  onSave: (formData: Partial<AISystemPrompt>, editingId: string | null) => Promise<void>;
+  onSave: (formData: PromptFormData, editingId: string | null) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggleDefault: (id: string) => Promise<void>;
 }
@@ -74,11 +77,14 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Partial<AISystemPrompt>>({
+  const { user } = useAuth();
+  const isSuperAdmin = Boolean((user as any)?.isSuperAdmin || (user as any)?.is_super_admin);
+  const [formData, setFormData] = useState<PromptFormData>({
     name: '',
     content: '',
     category: 'custom',
-    is_default: false
+    is_default: false,
+    is_global: false,
   });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,13 +102,13 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
 
   const handleOpenAdd = () => {
     setEditingId(null);
-    setFormData({ name: '', content: '', category: 'custom', is_default: false });
+    setFormData({ name: '', content: '', category: 'custom', is_default: false, is_global: false });
     setIsDialogOpen(true);
   };
 
   const handleOpenEdit = (prompt: AISystemPrompt) => {
     setEditingId(prompt.id);
-    setFormData({ ...prompt });
+    setFormData({ ...prompt, is_global: prompt.user_id == null });
     setIsDialogOpen(true);
   };
 
@@ -177,6 +183,8 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
         ) : (
           filteredPrompts.map((prompt) => {
             const cat = CATEGORY_MAP[prompt.category] || CATEGORY_MAP.custom;
+            const isGlobal = prompt.user_id == null;
+            const canManage = !isGlobal || isSuperAdmin;
             return (
               <div 
                 key={prompt.id}
@@ -194,6 +202,11 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-sm truncate">{prompt.name}</h3>
+                        <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-tighter ${
+                          isGlobal ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground/70'
+                        }`}>
+                          {isGlobal ? 'Global' : 'Personal'}
+                        </span>
                         <span className="shrink-0 px-1.5 py-0.5 rounded-lg text-[8px] font-bold bg-muted text-muted-foreground/70 uppercase tracking-tighter">
                           {prompt.category}
                         </span>
@@ -208,11 +221,12 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/10">
                   <button 
                     onClick={() => onToggleDefault(prompt.id)}
+                    disabled={!canManage}
                     className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-colors ${
                       prompt.is_default 
                         ? 'bg-primary text-primary-foreground' 
                         : 'bg-muted/50 hover:bg-muted text-muted-foreground'
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     {prompt.is_default ? 'Active' : 'Set Active'}
                   </button>
@@ -221,10 +235,10 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
                     <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-background border border-transparent hover:border-border/40" onClick={() => handleCopy(prompt)}>
                       {copiedId === prompt.id ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5 text-muted-foreground" />}
                     </Button>
-                    <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-background border border-transparent hover:border-border/40" onClick={() => handleOpenEdit(prompt)}>
+                    <Button variant="ghost" size="icon" disabled={!canManage} className="size-8 h-8 w-8 hover:bg-background border border-transparent hover:border-border/40" onClick={() => handleOpenEdit(prompt)}>
                       <Pencil className="size-3.5 text-muted-foreground" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="size-8 h-8 w-8 hover:bg-destructive/10 border border-transparent hover:border-destructive/20" onClick={() => handleDeleteClick(prompt.id)}>
+                    <Button variant="ghost" size="icon" disabled={!canManage} className="size-8 h-8 w-8 hover:bg-destructive/10 border border-transparent hover:border-destructive/20" onClick={() => handleDeleteClick(prompt.id)}>
                       <Trash className="size-3.5 text-destructive/70" />
                     </Button>
                   </div>
@@ -286,16 +300,42 @@ export const DefaultPromptsTab: React.FC<DefaultPromptsTabProps> = ({
               />
             </Field>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/5">
-              <div className="space-y-0.5">
-                <FieldLabel className="text-xs font-semibold m-0 p-0 text-foreground">Set as Global Default</FieldLabel>
-                <p className="text-[10px] text-muted-foreground">Use this prompt for all AI interactions.</p>
-              </div>
-              <Switch 
-                checked={formData.is_default}
-                onCheckedChange={(val: boolean) => setFormData(prev => ({ ...prev, is_default: val }))}
-              />
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <label className="flex cursor-pointer items-center justify-between gap-4">
+                <span className="space-y-0.5">
+                  <FieldLabel className="m-0 p-0 text-xs font-semibold text-foreground">Use in AI Assistant</FieldLabel>
+                  <span className="block text-[10px] text-muted-foreground">One active prompt is used from each scope: global and personal.</span>
+                </span>
+                <Checkbox
+                  checked={formData.is_default === true}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_default: checked === true }))}
+                  className="size-5 border-foreground/50 bg-background data-checked:border-primary data-checked:bg-primary"
+                />
+              </label>
             </div>
+
+            {!editingId && isSuperAdmin && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <label className="flex cursor-pointer items-center justify-between gap-4">
+                  <span className="space-y-0.5">
+                    <FieldLabel className="m-0 p-0 text-xs font-semibold text-foreground">Global prompt</FieldLabel>
+                    <span className="block text-[10px] text-muted-foreground">Applied to every signed-in user. Only SuperAdmin can create or modify it.</span>
+                  </span>
+                  <Checkbox
+                    checked={formData.is_global === true}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_global: checked === true }))}
+                    className="size-5 border-foreground/50 bg-background data-checked:border-primary data-checked:bg-primary"
+                  />
+                </label>
+              </div>
+            )}
+
+            {editingId && formData.is_global && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[10px] text-muted-foreground">
+                This is a global prompt. Its scope cannot be changed after creation.
+              </div>
+            )}
+
           </div>
 
           <DialogFooter className="px-6 py-4 border-t border-border/40 gap-3">

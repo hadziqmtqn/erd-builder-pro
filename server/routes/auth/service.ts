@@ -1,4 +1,4 @@
-import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode } from "../../lib/config.js";
+import { supabase, isDesktopMode, isLocalPostgres, useLocalAuth, getInstallMode, getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   hashPassword,
@@ -8,6 +8,7 @@ import {
   deleteSession,
 } from "../../lib/desktop-auth.js";
 import { isDbReady } from "../../lib/db-state.js";
+import { canUserLogin } from "../teams/service.js";
 
 /** Desktop default credentials — embedded in the bundled app, not a secret. */
 const DESKTOP_DEFAULT_EMAIL = "admin@local.dev";
@@ -39,14 +40,17 @@ export async function getAuthConfig() {
   }
 
   return {
+    authMode: isSsoAuthMode() ? "sso" : "password",
+    ssoConfigured: !isSsoAuthMode() || getSsoConfig().configured,
+    ssoLoginUrl: "/api/sso/login",
     supabaseAuth: !useLocalAuth(),
     isDesktop: isDesktopMode(),
     isLocalPostgres: isLocalPostgres(),
-    supportsPasswordUpdate: isLocalPostgres(),
+    supportsPasswordUpdate: isLocalPostgres() && !isSsoAuthMode(),
     installMode: getInstallMode(),
     guestMode: (process.env.VITE_ENABLE_GUEST_MODE || "false") === "true",
     guestAiEnabled: (process.env.GUEST_AI_ENABLED || "false") === "true",
-    needsSetup,
+    needsSetup: isSsoAuthMode() ? false : needsSetup,
     ...(isDesktopMode()
       ? {
           desktopDefaultEmail: DESKTOP_DEFAULT_EMAIL,
@@ -133,6 +137,13 @@ export async function localLogin(email: string, password: string) {
     return null;
   }
 
+  let activeTeamId: string | undefined;
+  if (!Boolean((user as any).isSuperAdmin)) {
+    const access = await canUserLogin((user as any).id);
+    if (access.allowed === false) return { blocked: true, code: access.code };
+    activeTeamId = access.teamId;
+  }
+
   const token = await createSession(
     (user as any).id,
     (user as any).email,
@@ -146,6 +157,8 @@ export async function localLogin(email: string, password: string) {
       email: (user as any).email,
       name: (user as any).name,
       isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+      mustChangePassword: Boolean((user as any).mustChangePassword),
+      activeTeamId,
       user_metadata: { name: (user as any).name },
     },
   };
@@ -241,15 +254,25 @@ export async function getLocalSession(token: string) {
 
   const user = await prisma.user.findFirst({
     where: { id: session.userId } as any,
-    select: { id: true, email: true, name: true, isSuperAdmin: true },
+    select: { id: true, email: true, name: true, isSuperAdmin: true, mustChangePassword: true },
   });
   if (!user) return null;
+  let activeTeamId: string | undefined;
+  if (!Boolean((user as any).isSuperAdmin)) {
+    const access = await canUserLogin((user as any).id);
+    if (!access.allowed) return null;
+    activeTeamId = access.teamId;
+  }
 
   return {
     id: (user as any).id,
     email: (user as any).email,
     name: (user as any).name,
-    isSuperAdmin: isDesktopMode() || Boolean((user as any).isSuperAdmin),
+    isSuperAdmin: !isSsoAuthMode() && (isDesktopMode() || Boolean((user as any).isSuperAdmin)),
+    isSso: isSsoAuthMode(),
+    ssoPortalUrl: isSsoAuthMode() ? getSsoConfig().issuerUrl || null : null,
+    mustChangePassword: Boolean((user as any).mustChangePassword),
+    activeTeamId,
     user_metadata: { name: (user as any).name },
   };
 }
@@ -305,6 +328,7 @@ export async function updateLocalAccount(
   }
   if (typeof data.newPassword === "string" && data.newPassword.length > 0) {
     updateData.password = hashPassword(data.newPassword);
+    updateData.mustChangePassword = false;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -314,7 +338,7 @@ export async function updateLocalAccount(
   const updated = await prisma.user.update({
     where: { id: userId } as any,
     data: updateData,
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, mustChangePassword: true },
   });
 
   return {
@@ -323,6 +347,7 @@ export async function updateLocalAccount(
       id: (updated as any).id,
       email: (updated as any).email,
       name: (updated as any).name,
+      mustChangePassword: Boolean((updated as any).mustChangePassword),
       user_metadata: { name: (updated as any).name },
     },
   };

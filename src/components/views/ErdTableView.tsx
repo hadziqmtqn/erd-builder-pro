@@ -54,6 +54,7 @@ interface ColumnDef {
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'name', label: 'Name', defaultVisible: true, hideable: false, width: 'w-[22%]' },
   { id: 'workspace', label: 'Workspace', defaultVisible: true, hideable: false, width: 'w-[15%]' },
+  { id: 'creator', label: 'Creator', defaultVisible: true, hideable: true, width: 'w-[12%]' },
   { id: 'source', label: 'Source', defaultVisible: true, hideable: true, width: 'w-[12%]' },
   { id: 'updated', label: 'Updated', defaultVisible: false, hideable: true, width: 'w-[12%]' },
   { id: 'status', label: 'Status', defaultVisible: true, hideable: true, width: 'w-[8%]' },
@@ -311,6 +312,9 @@ export const ErdTableView = React.memo(function ErdTableView({
                             </span>
                           </TableCell>
                         );
+                      }
+                      if (col.id === 'creator') {
+                        return <TableCell key="creator" className="text-xs text-muted-foreground">{(d as any).user?.name || (d as any).user?.email || '—'}</TableCell>;
                       }
                       if (col.id === 'source') {
                         return (

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { apiFetch, getInstallMode, isInstalledApp, setAuthToken } from "@/lib/api";
+import { SsoLogin } from "@/components/SsoLogin";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -35,6 +36,9 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   const [dbError, setDbError] = useState<string | null>(null);
   const [guestMode, setGuestMode] = useState(false);
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
+  const [authMode, setAuthMode] = useState<'password' | 'sso'>('password');
+  const [ssoConfigured, setSsoConfigured] = useState(true);
+  const [ssoLoginUrl, setSsoLoginUrl] = useState('/api/sso/login');
 
   // Fetch runtime config (guest mode, auth config)
   useEffect(() => {
@@ -43,17 +47,11 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
       .then(d => {
         setGuestMode(d.guest_mode !== false);
         setSetupRequired(d.needs_setup === true || d.needsSetup === true);
+        setAuthMode((d.auth_mode ?? d.authMode) === 'sso' ? 'sso' : 'password');
+        setSsoConfigured((d.sso_configured ?? d.ssoConfigured) !== false);
+        setSsoLoginUrl(d.sso_login_url ?? d.ssoLoginUrl ?? '/api/sso/login');
       })
       .catch(() => setSetupRequired(false));
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get('error');
-    if (error) {
-      toast.error(error);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
   }, []);
 
   // Installed local apps use auto-login via /api/me — login form should never show.
@@ -145,6 +143,10 @@ export function Login({ onLogin, onGuestLogin }: LoginProps) {
   }
 
   const setupMode = setupRequired;
+
+  if (authMode === 'sso') {
+    return <SsoLogin configured={ssoConfigured} loginUrl={ssoLoginUrl} onLogin={onLogin} />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

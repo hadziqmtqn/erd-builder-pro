@@ -29,6 +29,7 @@ export interface ErdFromSqlDialogProps {
   triggerPendingErdDiff: () => void;
   createSilently?: boolean;
   onCreated?: (diagram: any, schema: string) => void | Promise<void>;
+  onUpdated?: (diagram: any, schema: string) => void | Promise<void>;
 }
 
 export function ErdFromSqlDialog({
@@ -42,6 +43,7 @@ export function ErdFromSqlDialog({
   triggerPendingErdDiff,
   createSilently = false,
   onCreated,
+  onUpdated,
 }: ErdFromSqlDialogProps) {
   const [erdMode, setErdMode] = useState<'create' | 'update' | null>(null);
   const [erdUpdateUid, setErdUpdateUid] = useState<string | null>(null);
@@ -182,6 +184,12 @@ export function ErdFromSqlDialog({
   }, [normalizedSchema, handleSidebarDiagramCreate, targetProjectId, erdDefaultName, onClose]);
 
   const handleUpdateErd = useCallback(async (uid: string) => {
+    const diagram = diagrams.find(item => String(item.uid ?? item.id) === String(uid));
+    if (onUpdated && diagram) {
+      await onUpdated(diagram, normalizedSchema);
+      onClose();
+      return;
+    }
     localStorage.setItem('pending_update_erd_schema', normalizedSchema);
     localStorage.setItem('chat_erd_uid', uid);
     toast.info('Review schema changes in the ERD diff panel...');
@@ -192,7 +200,7 @@ export function ErdFromSqlDialog({
     }
     await handleDiagramSelect(uid);
     onClose();
-  }, [normalizedSchema, handleDiagramSelect, triggerPendingErdDiff, onClose]);
+  }, [diagrams, normalizedSchema, handleDiagramSelect, triggerPendingErdDiff, onClose, onUpdated]);
 
   const eligibleDiagrams = useMemo(() => diagrams.filter((d: any) => {
     if (targetProjectId == null || targetProjectId === 'none') {

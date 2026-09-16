@@ -5,9 +5,14 @@ CREATE TABLE "users" (
     "name" TEXT,
     "password" TEXT NOT NULL,
     "is_super_admin" BOOLEAN,
+    "must_change_password" BOOLEAN NOT NULL DEFAULT false,
+    "sso_subject" TEXT,
+    "sso_email" TEXT,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX "users_sso_subject_key" ON "users"("sso_subject");
 
 -- CreateTable
 CREATE TABLE "sessions" (
@@ -21,18 +26,93 @@ CREATE TABLE "sessions" (
 );
 
 -- CreateTable
+CREATE TABLE "teams" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'team',
+    "created_by" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "license_id" TEXT,
+    "license_code_last_four" TEXT,
+    "license_status" TEXT NOT NULL DEFAULT 'active',
+    "license_expires_at" DATETIME,
+    "max_members" INTEGER,
+    "binding_generation" INTEGER DEFAULT 0,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "teams_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "team_members" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "team_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'staff',
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "joined_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "team_members_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION,
+    CONSTRAINT "team_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "team_invitations" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "team_id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "token_hash" TEXT NOT NULL,
+    "expires_at" DATETIME NOT NULL,
+    "accepted_at" DATETIME,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "team_invitations_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "team_license_entitlements" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "team_id" TEXT NOT NULL,
+    "activation_id" TEXT NOT NULL,
+    "license_id" TEXT NOT NULL,
+    "installation_id" TEXT NOT NULL,
+    "encrypted_client_token" TEXT NOT NULL,
+    "signed_entitlement" TEXT NOT NULL,
+    "expires_at" DATETIME NOT NULL,
+    "grace_until" DATETIME,
+    "status" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "team_license_entitlements_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+-- CreateTable
+CREATE TABLE "team_audit_events" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "team_id" TEXT,
+    "actor_id" TEXT,
+    "action" TEXT NOT NULL,
+    "target_type" TEXT,
+    "target_id" TEXT,
+    "metadata" TEXT NOT NULL DEFAULT '{}',
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "team_audit_events_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+    CONSTRAINT "team_audit_events_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+);
+
+-- CreateTable
 CREATE TABLE "projects" (
     "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     "uid" TEXT,
     "name" TEXT NOT NULL,
     "user_id" TEXT,
+    "team_id" TEXT,
     "color" TEXT DEFAULT '#6366f1',
     "is_deleted" BOOLEAN DEFAULT false,
     "deleted_at" DATETIME,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "_version" INTEGER DEFAULT 0,
-    CONSTRAINT "projects_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
+    CONSTRAINT "projects_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+    CONSTRAINT "projects_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
 );
 
 -- CreateTable
@@ -51,8 +131,11 @@ CREATE TABLE "diagrams" (
     "viewport_zoom" REAL DEFAULT 1.0,
     "_version" INTEGER DEFAULT 0,
     "is_public" BOOLEAN DEFAULT false,
+    "public_access" TEXT NOT NULL DEFAULT 'off',
     "share_token" TEXT,
+    "share_token_hash" TEXT,
     "expiry_date" DATETIME,
+    "share_expires_at" DATETIME,
     "published_at" DATETIME,
     "source_type" TEXT DEFAULT 'blank',
     "source_connection_id" INTEGER,
@@ -134,8 +217,11 @@ CREATE TABLE "notes" (
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "_version" INTEGER DEFAULT 0,
     "is_public" BOOLEAN DEFAULT false,
+    "public_access" TEXT NOT NULL DEFAULT 'off',
     "share_token" TEXT,
+    "share_token_hash" TEXT,
     "expiry_date" DATETIME,
+    "share_expires_at" DATETIME,
     "published_at" DATETIME,
     CONSTRAINT "notes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "notes_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -155,8 +241,11 @@ CREATE TABLE "drawings" (
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "_version" INTEGER DEFAULT 0,
     "is_public" BOOLEAN DEFAULT false,
+    "public_access" TEXT NOT NULL DEFAULT 'off',
     "share_token" TEXT,
+    "share_token_hash" TEXT,
     "expiry_date" DATETIME,
+    "share_expires_at" DATETIME,
     "published_at" DATETIME,
     CONSTRAINT "drawings_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "drawings_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -176,8 +265,11 @@ CREATE TABLE "flowcharts" (
     "updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     "_version" INTEGER DEFAULT 0,
     "is_public" BOOLEAN DEFAULT false,
+    "public_access" TEXT NOT NULL DEFAULT 'off',
     "share_token" TEXT,
+    "share_token_hash" TEXT,
     "expiry_date" DATETIME,
+    "share_expires_at" DATETIME,
     "published_at" DATETIME,
     CONSTRAINT "flowcharts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
     CONSTRAINT "flowcharts_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE SET NULL ON UPDATE NO ACTION
@@ -351,8 +443,6 @@ CREATE TABLE "ai_chat_messages" (
     CONSTRAINT "ai_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "ai_chat_sessions" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
-CREATE UNIQUE INDEX "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id");
-
 -- CreateTable
 CREATE TABLE "ai_system_prompts" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -435,10 +525,49 @@ CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");
 CREATE INDEX "sessions_token_idx" ON "sessions"("token");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "teams_license_id_key" ON "teams"("license_id");
+
+-- CreateIndex
+CREATE INDEX "idx_teams_license_status" ON "teams"("license_status");
+
+-- CreateIndex
+CREATE INDEX "idx_team_members_user_status" ON "team_members"("user_id", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "team_members_team_user_key" ON "team_members"("team_id", "user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "team_invitations_token_hash_key" ON "team_invitations"("token_hash");
+
+-- CreateIndex
+CREATE INDEX "idx_team_invitations_team_expires" ON "team_invitations"("team_id", "expires_at");
+
+-- CreateIndex
+CREATE INDEX "idx_team_invitations_email_accepted" ON "team_invitations"("email", "accepted_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "team_license_entitlements_activation_id_key" ON "team_license_entitlements"("activation_id");
+
+-- CreateIndex
+CREATE INDEX "idx_team_license_entitlements_team_status" ON "team_license_entitlements"("team_id", "status");
+
+-- CreateIndex
+CREATE INDEX "idx_team_license_entitlements_license" ON "team_license_entitlements"("license_id");
+
+-- CreateIndex
+CREATE INDEX "idx_team_audit_events_team_created" ON "team_audit_events"("team_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "idx_team_audit_events_actor_created" ON "team_audit_events"("actor_id", "created_at");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "projects_uid_key" ON "projects"("uid");
 
 -- CreateIndex
 CREATE INDEX "idx_projects_user_deleted" ON "projects"("user_id", "is_deleted");
+
+-- CreateIndex
+CREATE INDEX "idx_projects_team_deleted" ON "projects"("team_id", "is_deleted");
 
 -- CreateIndex
 CREATE INDEX "idx_projects_updated_at" ON "projects"("updated_at");
@@ -555,6 +684,9 @@ CREATE INDEX "idx_ai_chat_sessions_entity" ON "ai_chat_sessions"("entity_type", 
 CREATE INDEX "idx_ai_chat_sessions_project_id" ON "ai_chat_sessions"("project_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "user_ai_rules_user_id_view_type_key" ON "user_ai_rules"("user_id", "view_type");
 
 -- CreateIndex
@@ -565,3 +697,5 @@ CREATE INDEX "idx_db_accounts_user" ON "db_accounts"("user_id");
 
 -- CreateIndex
 CREATE INDEX "idx_db_catalogs_account" ON "db_catalogs"("account_id");
+
+CREATE UNIQUE INDEX "team_members_one_active_user_key" ON "team_members"("user_id") WHERE "status" = 'active';

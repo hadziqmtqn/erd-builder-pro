@@ -5,16 +5,17 @@ import { dbmlToERD, erdToDBML } from '@/lib/dbml-converter';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql as sqlLang } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { autocompletion } from '@codemirror/autocomplete';
-import { EditorView } from '@codemirror/view';
+import { Prec } from '@codemirror/state';
+import { EditorView, keymap, type ViewUpdate } from '@codemirror/view';
 import { useWorkspace } from '@/providers/WorkspaceContext';
 import { dedupeDBMLEnumBlocks } from '@/lib/dbml-utils';
-import { createDBMLCompletionSource, type DBMLTableData } from './DBMLEditorCompletions';
+import { getDBMLSuggestions, type DBMLSuggestion, type DBMLTableData } from './DBMLEditorCompletions';
 import { createDBMLLinter } from './DBMLEditorLinter';
 import { DBMLReferenceDialog } from './DBMLReferenceDialog';
 import { canvasFingerprint, isStructurallyComplete } from './dbml-editor-utils';
 import type { Node, Edge } from '@xyflow/react';
 import type { Entity } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface DBMLEditorPanelProps {
   value: string;
@@ -27,6 +28,9 @@ interface DBMLEditorPanelProps {
 
 const APPLY_DEBOUNCE_MS = 1500;
 const REVERSE_DEBOUNCE_MS = 800;
+const MAX_SUGGESTIONS = 8;
+const SUGGESTION_MENU_HEIGHT = 176;
+const SUGGESTION_MENU_WIDTH = 320;
 
 /** Live two-way DBML ↔ ERD editor. */
 export const DBMLEditorPanel = memo(function DBMLEditorPanel({
@@ -38,6 +42,9 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   onSelectTable,
 }: DBMLEditorPanelProps) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<DBMLSuggestion[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(0);
+  const [suggestionPosition, setSuggestionPosition] = useState({ top: 16, left: 16 });
   const { resolvedTheme } = useWorkspace();
 
   const applyingFromDBML = useRef(false);
@@ -46,6 +53,10 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
   const applyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reverseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastCanvasHash = useRef('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const suggestionsRef = useRef<DBMLSuggestion[]>([]);
+  const selectedSuggestionRef = useRef(0);
 
   const tableDataRef = useRef<DBMLTableData>({ names: [], cols: new Map() });
   tableDataRef.current = useMemo(() => ({
@@ -53,7 +64,6 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
     cols: new Map(nodes.map(node => [node.data.name, node.data.columns.map(column => column.name)])),
   }), [nodes]);
 
-  const dbmlCompletions = useMemo(() => createDBMLCompletionSource(tableDataRef), []);
   const dbmlLinter = useMemo(() => createDBMLLinter(), []);
 
   const onSelectTableRef = useRef(onSelectTable);
@@ -75,43 +85,117 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
     }
   }), []);
 
-  const extensions = useMemo(() => [
-    sqlLang(),
-    autocompletion({ override: [dbmlCompletions], selectOnOpen: true }),
-    dbmlLinter,
-    cursorTracker,
-  ], [dbmlCompletions, dbmlLinter, cursorTracker]);
-
   const onApplyRef = useRef(onApply);
   onApplyRef.current = onApply;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const prevValue = useRef(value);
   const lastParsedValue = useRef('');
-  const editorRef = useRef<{ view?: {
-    hasFocus: boolean;
-    dispatch: (transaction: Record<string, unknown>) => void;
-    state: {
-      doc: { toString: () => string };
-      update: (spec: Record<string, unknown>) => Record<string, unknown>;
-    };
-  } | null } | null>(null);
+  const updateSuggestionPosition = useCallback((view: EditorView, count = suggestionsRef.current.length) => {
+    if (!count || !containerRef.current) return;
+    const coords = view.coordsAtPos(view.state.selection.main.head);
+    if (!coords) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const width = Math.min(SUGGESTION_MENU_WIDTH, Math.max(0, rect.width - 16));
+    const height = Math.min(SUGGESTION_MENU_HEIGHT, count * 30 + 8);
+    const left = Math.max(8, Math.min(coords.left - rect.left, rect.width - width - 8));
+    const below = coords.bottom - rect.top + 4;
+    const above = coords.top - rect.top - height - 4;
+    const hasRoomBelow = rect.bottom - coords.bottom >= height + 8;
+    setSuggestionPosition({ left, top: hasRoomBelow || coords.top - rect.top <= height + 8 ? below : above });
+  }, []);
 
-  const handleChange = useCallback((nextValue: string) => {
+  const applySuggestion = useCallback((suggestion: DBMLSuggestion) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    view.dispatch({
+      changes: { from: suggestion.from, to: suggestion.to, insert: suggestion.label },
+      selection: { anchor: suggestion.from + suggestion.label.length },
+    });
+    suggestionsRef.current = [];
+    setSuggestions([]);
+    view.focus();
+  }, []);
+
+  const handleChange = useCallback((nextValue: string, viewUpdate: ViewUpdate) => {
     prevValue.current = nextValue;
     clearTimeout(reverseTimer.current);
     onChange(nextValue);
-  }, [onChange]);
+    const next = getDBMLSuggestions(
+      nextValue,
+      viewUpdate.state.selection.main.head,
+      tableDataRef.current,
+      MAX_SUGGESTIONS,
+    );
+    suggestionsRef.current = next;
+    selectedSuggestionRef.current = 0;
+    setSuggestions(next);
+    setSelectedSuggestion(0);
+    if (next.length) updateSuggestionPosition(viewUpdate.view, next.length);
+  }, [onChange, updateSuggestionPosition]);
+
+  const handleEditorUpdate = useCallback((viewUpdate: ViewUpdate) => {
+    if (viewUpdate.focusChanged && !viewUpdate.view.hasFocus) {
+      suggestionsRef.current = [];
+      setSuggestions([]);
+      return;
+    }
+    if (suggestionsRef.current.length) updateSuggestionPosition(viewUpdate.view);
+  }, [updateSuggestionPosition]);
+
+  const extensions = useMemo(() => [
+    sqlLang(),
+    dbmlLinter,
+    cursorTracker,
+    Prec.highest(keymap.of([
+      {
+        key: 'ArrowDown',
+        run: () => {
+          if (!suggestionsRef.current.length) return false;
+          const next = Math.min(selectedSuggestionRef.current + 1, suggestionsRef.current.length - 1);
+          selectedSuggestionRef.current = next;
+          setSelectedSuggestion(next);
+          return true;
+        },
+      },
+      {
+        key: 'ArrowUp',
+        run: () => {
+          if (!suggestionsRef.current.length) return false;
+          const next = Math.max(selectedSuggestionRef.current - 1, 0);
+          selectedSuggestionRef.current = next;
+          setSelectedSuggestion(next);
+          return true;
+        },
+      },
+      {
+        key: 'Escape',
+        run: () => {
+          if (!suggestionsRef.current.length) return false;
+          suggestionsRef.current = [];
+          setSuggestions([]);
+          return true;
+        },
+      },
+      ...['Enter', 'Tab'].map(key => ({
+        key,
+        run: () => {
+          const suggestion = suggestionsRef.current[selectedSuggestionRef.current];
+          if (!suggestion) return false;
+          applySuggestion(suggestion);
+          return true;
+        },
+      })),
+    ])),
+  ], [applySuggestion, cursorTracker, dbmlLinter]);
 
   useEffect(() => {
-    const view = editorRef.current?.view;
+    const view = editorViewRef.current;
     if (!view || view.hasFocus) return;
     const currentDocument = view.state.doc.toString();
     if (value === currentDocument) return;
 
-    view.dispatch(view.state.update({
-      changes: { from: 0, to: currentDocument.length, insert: value },
-    }));
+    view.dispatch({ changes: { from: 0, to: currentDocument.length, insert: value } });
   }, [value]);
 
   useEffect(() => {
@@ -221,9 +305,8 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
         </Button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden">
         <CodeMirror
-          ref={editorRef as any}
           value={value}
           height="100%"
           theme={resolvedTheme === 'dark' ? oneDark : undefined}
@@ -237,10 +320,40 @@ export const DBMLEditorPanel = memo(function DBMLEditorPanel({
             bracketMatching: true,
             closeBrackets: true,
             indentOnInput: true,
-            autocompletion: true,
+            autocompletion: false,
           }}
+          onCreateEditor={view => { editorViewRef.current = view; }}
           onChange={handleChange}
+          onUpdate={handleEditorUpdate}
         />
+        {suggestions.length > 0 && (
+          <div
+            role="listbox"
+            aria-label="DBML suggestions"
+            style={{ top: suggestionPosition.top, left: suggestionPosition.left }}
+            className="absolute z-20 max-h-44 w-80 max-w-[calc(100%-1rem)] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
+          >
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.label}-${index}`}
+                type="button"
+                role="option"
+                aria-selected={index === selectedSuggestion}
+                className={cn(
+                  'flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left text-xs',
+                  index === selectedSuggestion ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
+                )}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  applySuggestion(suggestion);
+                }}
+              >
+                <span className="truncate font-mono">{suggestion.label}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">{suggestion.detail || suggestion.type}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <DBMLReferenceDialog

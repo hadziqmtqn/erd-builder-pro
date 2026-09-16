@@ -1,8 +1,12 @@
-import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import type { NextFunction, Request as ExpressRequest, Response as ExpressResponse } from "express";
 import type { PrismaClient } from "@prisma/client";
-import { isDesktopMode, isLocalPostgres } from "./config.js";
+import { isDesktopMode, isLocalPostgres, isSsoAuthMode } from "./config.js";
+import { currentTeamScope, projectScopeWhere } from "./team-scope.js";
 
 export const isAdminUser = (req: ExpressRequest) => {
+  // Cloud administration belongs to the SaaS control plane, never to a local record.
+  if (isSsoAuthMode()) return false;
+
   // Desktop/SQLite is a single-user install. Local PostgreSQL can have multiple users.
   if (isDesktopMode()) return true;
 
@@ -19,12 +23,13 @@ export const isAdminUser = (req: ExpressRequest) => {
   );
 };
 
-export const requireAdmin = (req: ExpressRequest, res: ExpressResponse) => {
+export const requireAdmin = (req: ExpressRequest, res: ExpressResponse, next?: NextFunction) => {
   if (!isAdminUser(req)) {
     res.status(403).json({ error: "Forbidden" });
     return false;
   }
 
+  next?.();
   return true;
 };
 
@@ -47,7 +52,7 @@ export const resolveOwnedProjectId = async (
   }
 
   const project = await prisma.project.findFirst({
-    where: { id: parsed, userId, isDeleted: false },
+    where: { id: parsed, ...projectScopeWhere(userId), isDeleted: false },
     select: { id: true },
   });
 
@@ -56,4 +61,19 @@ export const resolveOwnedProjectId = async (
   }
 
   return Number(project.id);
+};
+
+/** Team files require a Team project; Personal files may stay unassigned. */
+export const resolveNewFileProjectId = async (
+  prisma: PrismaClient,
+  userId: string,
+  projectId: unknown,
+): Promise<number | null> => {
+  if (projectId !== null && projectId !== undefined && projectId !== "" && projectId !== "null") {
+    return resolveOwnedProjectId(prisma, userId, projectId);
+  }
+
+  const scope = currentTeamScope();
+  if (scope?.mode === "team") throw new Error("A Team project is required");
+  return null;
 };

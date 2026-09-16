@@ -13,14 +13,18 @@ import {
   Pencil,
   Trash2,
   FileText,
+  LayoutDashboard,
   ArrowUpRight,
+  ExternalLink,
   Loader2,
+  Sparkles,
 } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
+import { TeamSwitcher, type SwitcherTeam } from "@/components/team-switcher"
+import { AddTeamDialog } from "@/components/team/AddTeamDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -90,12 +94,19 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   selectedWorkspaceUid: string | null;
   globalSearchQuery: string;
   onGlobalSearchChange: (query: string) => void;
-  isInstallable?: boolean;
-  onInstall?: () => void;
   isProjectsLoading?: boolean;
   user: any;
   isOnline: boolean;
   onOpenFeedback: () => void;
+  teams: SwitcherTeam[];
+  teamsAvailable: boolean;
+  activeTeamId: string | null;
+  onTeamSelect: (teamId: string | null) => void;
+  onTeamManage: (team: SwitcherTeam) => void;
+  onUserManage: () => void;
+  onTeamCreate: (input: { name: string }) => Promise<unknown>;
+  onTeamCreated: (team: any) => void;
+  ssoPortalUrl?: string | null;
 }
 
 export const AppSidebar = React.memo(({
@@ -120,17 +131,53 @@ export const AppSidebar = React.memo(({
   user,
   isOnline,
   onOpenFeedback,
+  teams,
+  teamsAvailable,
+  activeTeamId,
+  onTeamSelect,
+  onTeamManage,
+  onUserManage,
+  onTeamCreate,
+  onTeamCreated,
+  ssoPortalUrl,
   ...props
 }: AppSidebarProps) => {
   const { state } = useSidebar();
   const navigate = useNavigate();
+  const location = useLocation();
   const isCollapsed = state === "collapsed";
+  const switcherTeams = teams;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchShortcutLabel] = useState(getSearchShortcutLabel);
   const searchShortcutKeys = searchShortcutLabel === '⌘K' ? ['⌘', 'K'] : ['Ctrl', 'K'];
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState('all');
   const showDbClient = isInstalledApp();
+  const isSelfHosted = !showDbClient && (user?.isSuperAdmin !== undefined || user?.is_super_admin !== undefined);
+  const activeTeam = teams.find((team) => team.id === activeTeamId) || null;
+  const cloudTeamCapabilities = user?.isSso && activeTeamId && teamsAvailable
+    ? activeTeam?.capabilities || {}
+    : null;
+  const canUseCloudFeature = (capability: string) => cloudTeamCapabilities === null || cloudTeamCapabilities[capability] === true;
+  const isCloudFeatureLocked = (capability: string) => cloudTeamCapabilities !== null && !canUseCloudFeature(capability);
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+
+  const openCloudPricing = () => {
+    if (!ssoPortalUrl) return;
+    try {
+      window.location.assign(new URL('/pricing#cloud-saas', ssoPortalUrl).toString());
+    } catch {
+      // Ignore malformed deployment configuration and keep the dialog open.
+    }
+  };
+
+  const handleFeatureClick = (title: string, capability: string, onOpen: () => void) => {
+    if (isCloudFeatureLocked(capability)) {
+      setUpgradeFeature(title);
+      return;
+    }
+    onOpen();
+  };
 
   const searchFilterOptions = [
     { value: 'all', label: 'All' },
@@ -173,6 +220,7 @@ export const AppSidebar = React.memo(({
   const [deletingProject, setDeletingProject] = useState<{ id: number | string; name: string } | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [isTeamCreateOpen, setIsTeamCreateOpen] = useState(false);
 
   // Navigation items for the feature section
   const navMain = [
@@ -181,14 +229,16 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: FileText,
       isActive: activeFeatureView === 'notes',
-      onClick: () => onViewChange('notes', true),
+      badge: isCloudFeatureLocked('notes') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Notes', 'notes', () => onViewChange('notes', true)),
     },
     {
       title: "ERD Builder",
       url: "#",
       icon: Database,
       isActive: activeFeatureView === 'erd',
-      onClick: () => onViewChange('erd', true),
+      badge: isCloudFeatureLocked('erd_builder') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('ERD Builder', 'erd_builder', () => onViewChange('erd', true)),
     },
     ...(showDbClient ? [{
       title: "DB Client",
@@ -206,14 +256,16 @@ export const AppSidebar = React.memo(({
       url: "#",
       icon: Network,
       isActive: activeFeatureView === 'flowchart',
-      onClick: () => onViewChange('flowchart', true),
+      badge: isCloudFeatureLocked('flowcharts') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Flowchart', 'flowcharts', () => onViewChange('flowchart', true)),
     },
     {
       title: "Drawings",
       url: "#",
       icon: PenTool,
       isActive: activeFeatureView === 'drawings',
-      onClick: () => onViewChange('drawings', true),
+      badge: isCloudFeatureLocked('drawings') ? 'PRO' : undefined,
+      onClick: () => handleFeatureClick('Drawings', 'drawings', () => onViewChange('drawings', true)),
     },
   ];
 
@@ -229,14 +281,16 @@ export const AppSidebar = React.memo(({
     <>
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher 
-          teams={[
-            {
-              name: "ERD Builder Pro",
-              logo: Database,
-              plan: "Workspace",
-            }
-          ]} 
+        <TeamSwitcher
+          teams={switcherTeams}
+          activeTeamId={activeTeamId}
+          enabled={teamsAvailable || switcherTeams.length > 0}
+          selfHosted={isSelfHosted}
+          canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
+          onSelect={onTeamSelect}
+          onAdd={() => setIsTeamCreateOpen(true)}
+          onManage={onTeamManage}
+          onUserManage={onUserManage}
         />
         <SidebarGroup className="py-0 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent className="relative">
@@ -254,6 +308,30 @@ export const AppSidebar = React.memo(({
                 ))}
               </span>
             </button>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:p-0">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Dashboard"
+                  isActive={location.pathname === '/'}
+                  onClick={() => navigate('/')}
+                >
+                  <LayoutDashboard />
+                  <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {user?.isSso && ssoPortalUrl && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(ssoPortalUrl)}>
+                    <ExternalLink />
+                    <span>Open ERDBPro SaaS</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:p-0">
@@ -366,6 +444,12 @@ export const AppSidebar = React.memo(({
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+      <AddTeamDialog
+        open={isTeamCreateOpen}
+        onOpenChange={setIsTeamCreateOpen}
+        onCreate={onTeamCreate}
+        onCreated={onTeamCreated}
+      />
       <Dialog open={isSearchOpen} onOpenChange={(open) => {
         setIsSearchOpen(open);
         if (!open) {
@@ -443,6 +527,37 @@ export const AppSidebar = React.memo(({
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={upgradeFeature !== null} onOpenChange={(open) => { if (!open) setUpgradeFeature(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="size-4" aria-hidden="true" />
+              </div>
+              <DialogTitle>Unlock {upgradeFeature}</DialogTitle>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {upgradeFeature} is available with a paid Cloud plan. Upgrade to keep using this feature in your Team workspace.
+            </p>
+          </DialogHeader>
+          <DialogBody>
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Cloud workspace feature</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Plans, limits, and checkout are managed in ERDBPro SaaS.</p>
+              </div>
+              <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">PRO</span>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" className="h-9" />}>Not now</DialogClose>
+            <Button className="h-9" onClick={openCloudPricing} disabled={!ssoPortalUrl}>
+              View Cloud plans
+              <ArrowUpRight className="size-4" />
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Rename Workspace Dialog */}

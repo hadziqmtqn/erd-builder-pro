@@ -191,9 +191,9 @@ export function WorkspaceProvider({
   const lastLoadedFlowchartIdRef = useRef<any>(null);
   const lastProcessedDrawingUrlRef = useRef('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isTeamScopeRefreshing, setIsTeamScopeRefreshing] = useState(false);
   const isIncomingSyncRef = useRef(false);
   const lastSaveCallRef = useRef(0);
-  const lastDiagramLoadTimestampRef = useRef(0);
   const initialFetchDoneRef = useRef(false);
 
   // Stable state refs
@@ -297,7 +297,7 @@ export function WorkspaceProvider({
   } = useNotes(isGuest);
 
   const {
-    projects, activeProjectId, setActiveProjectId, fetchProjects,
+    projects, setProjects, activeProjectId, setActiveProjectId, fetchProjects,
     createProject, updateProject, deleteProject,
     restoreProject, deleteProjectPermanent,
     isLoading: isProjectsLoading,
@@ -421,7 +421,7 @@ export function WorkspaceProvider({
 
   const { saveTimeoutRef, flushPendingSaves } = useAutoSave({
     saveCounter, isLocalSavingRef, isIncomingSyncRef, lastLoadedDiagramIdRef,
-    lastSaveCallRef, lastDiagramLoadTimestampRef, isAuthenticated, isGuest,
+    lastSaveCallRef, isAuthenticated, isGuest,
     view, isPublicView, activeDiagramId, nodes, edges, viewportRef,
     saveDiagram, setIsLocalSaving, triggerDebouncedSync, broadcastMessage,
     isRefreshing, isERDItemLoading, isDiagramsLoading,
@@ -440,7 +440,8 @@ export function WorkspaceProvider({
     setView: setViewCompat, setSidebarView: setSidebarViewCompat,
     setNodes, setEdges,
     selectDiagram, flushPendingSaves, isAuthenticated, isERDItemLoading,
-    lastLoadedDiagramIdRef, lastDiagramLoadTimestampRef,
+    isTeamScopeRefreshing,
+    lastLoadedDiagramIdRef,
   });
 
   const { handleNoteSelect } = useNoteNavigation({
@@ -980,6 +981,53 @@ export function WorkspaceProvider({
 
   // ── Breadcrumb state (set by Page components) ──
   const [breadcrumbLabel, setBreadcrumbLabel] = React.useState<string | null>(null);
+  const [teamScopeVersion, setTeamScopeVersion] = useState(0);
+
+  const refreshTeamScope = useCallback(async () => {
+    setIsTeamScopeRefreshing(true);
+    setActiveDiagramId(null);
+    setActiveNoteUid(null);
+    setActiveDrawingId(null);
+    setActiveFlowchartId(null);
+    setActiveProjectId(null);
+    setProjects([]);
+    setDiagrams([]);
+    setNotes([]);
+    setDrawings([]);
+    setFlowcharts([]);
+    setNodes([]);
+    setEdges([]);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    setSearchQuery('');
+    setFileSearchQuery('');
+    setBreadcrumbLabel(null);
+    setTableSearchParams(new URLSearchParams(), { replace: true });
+    setTableLoadingState('loading');
+    setTeamScopeVersion(version => version + 1);
+    navigate('/', { replace: true });
+
+    try {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      await Promise.all([
+        fetchProjects(false, ''),
+        fetchDiagrams(),
+        fetchNotes(),
+        fetchDrawings(),
+        fetchFlowcharts(),
+      ]);
+      triggerTableRefresh();
+    } finally {
+      setIsTeamScopeRefreshing(false);
+    }
+  }, [
+    fetchDiagrams, fetchDrawings, fetchFlowcharts, fetchNotes, fetchProjects,
+    navigate, setActiveDiagramId, setActiveDrawingId, setActiveFlowchartId,
+    setActiveNoteUid, setActiveProjectId, setDiagrams, setDrawings, setEdges, setProjects,
+    setFileSearchQuery, setFlowcharts, setNodes, setNotes, setSearchQuery,
+    setSelectedEdgeId, setSelectedNodeId, setTableSearchParams, setTableLoadingState,
+    triggerTableRefresh,
+  ]);
 
   // ── Flowchart SVG export handler (set by FlowchartView) ──
   const [flowchartExportHandler, setFlowchartExportHandler] = React.useState<FlowchartExportHandler | null>(null);
@@ -1017,6 +1065,7 @@ export function WorkspaceProvider({
     isProjectsLoading,
     isLocalSaving,
     isRefreshing,
+    isTeamScopeRefreshing,
     isSyncing,
     isOnline,
 
@@ -1032,6 +1081,7 @@ export function WorkspaceProvider({
     featureLabel, initialShareSettings, currentActiveId,
 
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
+    refreshTeamScope, teamScopeVersion,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
 
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,
@@ -1123,6 +1173,7 @@ export function WorkspaceProvider({
     featureLabel, initialShareSettings, currentActiveId,
     // Navigation/Content/Entity handlers — stable enough via hooks
     handleViewChange, handleNoteSelect, handleDiagramSelect, handleDrawingSelect, handleFlowchartSelect, refreshActiveDocument,
+    refreshTeamScope, teamScopeVersion, isTeamScopeRefreshing,
     handleNoteChange, handleDrawingChange, handleFlowchartChange, handleEntityUpdate,
     // Sidebar handlers
     handleSidebarDiagramCreate, handleSidebarNoteCreate, handleSidebarDrawingCreate,

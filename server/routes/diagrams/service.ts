@@ -1,12 +1,11 @@
 import { prisma } from "../../lib/prisma.js";
+import { createPersonalFile } from "../../lib/personal-file-quota.js";
+import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
 
 // ── Helpers ──
 
 function uidWhere(uid: string, userId: string) {
-  const id = Number(uid);
-  return Number.isFinite(id)
-    ? { OR: [{ uid }, { id }], userId }
-    : { uid, userId };
+  return fileIdentifierWhere(uid, userId);
 }
 
 function whereClause(userId: string, query: {
@@ -15,7 +14,7 @@ function whereClause(userId: string, query: {
   isPublic?: boolean | null;
   sourceType?: string;
 }) {
-  const where: any = { isDeleted: false, userId };
+  const where: any = { isDeleted: false, AND: [fileScopeWhere(userId)] };
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
     where.isPublic = query.isPublic;
@@ -62,6 +61,7 @@ const LIST_SELECT = {
   id: true, uid: true, name: true, projectId: true,
   isPublic: true, shareToken: true, expiryDate: true,
   createdAt: true, updatedAt: true, isDeleted: true, userId: true,
+  user: { select: { name: true, email: true } },
   sourceType: true, sourceConnectionId: true, dbmlSource: true,
   project: { select: { name: true, uid: true, id: true } },
 } as const;
@@ -277,14 +277,14 @@ export async function createDiagram(data: {
   name: string; projectId?: number | null; userId: string; uid?: string;
 }) {
   if (!prisma) throw new Error("Database connection not available");
-  return prisma.diagram.create({
+  return createPersonalFile("diagrams", data.userId, (db) => db.diagram.create({
     data: {
       name: data.name,
       projectId: data.projectId ?? null,
       uid: data.uid || undefined,
       userId: data.userId,
     },
-  });
+  }));
 }
 
 export async function getDiagram(uid: string, userId: string) {

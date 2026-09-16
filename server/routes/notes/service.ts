@@ -1,14 +1,13 @@
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
+import { createPersonalFile } from "../../lib/personal-file-quota.js";
+import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
 function uidWhere(uid: string, userId: string) {
-  const id = Number(uid);
-  return Number.isFinite(id)
-    ? { OR: [{ uid }, { id }], userId }
-    : { uid, userId };
+  return fileIdentifierWhere(uid, userId);
 }
 
 // ── Shared helpers ──
@@ -18,7 +17,7 @@ function whereClause(userId: string, query: {
   q?: string;
   isPublic?: boolean | null;
 }) {
-  const where: any = { isDeleted: false, userId };
+  const where: any = { isDeleted: false, AND: [fileScopeWhere(userId)] };
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
     where.isPublic = query.isPublic;
@@ -36,7 +35,7 @@ function whereClause(userId: string, query: {
 
 async function excludeDeletedProjects(userId: string): Promise<any[]> {
   const deleted = await prisma?.project.findMany({
-    where: { userId, isDeleted: true },
+    where: { ...projectScopeWhere(userId), isDeleted: true },
     select: { id: true },
   });
   return deleted?.map(p => p.id) || [];
@@ -45,10 +44,10 @@ async function excludeDeletedProjects(userId: string): Promise<any[]> {
 async function addDeletedProjectFilter(where: any, userId: string) {
   const deletedIds = await excludeDeletedProjects(userId);
   if (deletedIds.length > 0) {
-    where.OR = [
+    where.AND.push({ OR: [
       { projectId: null },
       { projectId: { notIn: deletedIds } },
-    ];
+    ] });
   }
 }
 
@@ -56,6 +55,7 @@ const LIST_SELECT = {
   id: true, uid: true, title: true, projectId: true,
   isPublic: true, shareToken: true, expiryDate: true,
   createdAt: true, updatedAt: true, isDeleted: true, userId: true,
+  user: { select: { name: true, email: true } },
   project: { select: { name: true, uid: true, id: true } },
 } as const;
 
@@ -85,7 +85,7 @@ export async function createNote(data: {
   title: string; content?: string; projectId?: number | null; userId: string; uid?: string;
 }) {
   if (!prisma) throw new Error("Database connection not available");
-  return prisma.note.create({
+  return createPersonalFile("notes", data.userId, (db) => db.note.create({
     data: {
       title: data.title,
       content: data.content || "",
@@ -93,7 +93,7 @@ export async function createNote(data: {
       userId: data.userId,
       ...(data.uid ? { uid: data.uid } : {}),
     },
-  });
+  }));
 }
 
 export async function getNote(uid: string, userId: string) {

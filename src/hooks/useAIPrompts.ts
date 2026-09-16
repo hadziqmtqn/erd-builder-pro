@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { AISystemPrompt } from '@/types';
 import { toast } from 'sonner';
 
+type PromptFormData = Partial<AISystemPrompt> & { is_global?: boolean };
+
 export const useAIPrompts = () => {
   const { user, isGuest } = useAuth();
   const userRef = useRef(user);
@@ -27,7 +29,7 @@ export const useAIPrompts = () => {
     fetchPromptsData();
   }, [fetchPromptsData]);
 
-  const handleSavePrompt = async (formData: Partial<AISystemPrompt>, editingId: string | null) => {
+  const handleSavePrompt = async (formData: PromptFormData, editingId: string | null) => {
     if (!user) return;
     setIsSaving(true);
     try {
@@ -40,6 +42,7 @@ export const useAIPrompts = () => {
           content: formData.content,
           category: formData.category,
           is_default: formData.is_default,
+          is_global: formData.is_global,
         }),
       });
       if (!res.ok) {

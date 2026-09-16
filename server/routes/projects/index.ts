@@ -5,6 +5,7 @@ import * as ctrl from "./controller.js";
 const router = Router();
 
 router.get("/", authenticate, ctrl.list);
+router.get("/selectable", authenticate, ctrl.selectable);
 router.post("/", authenticate, ctrl.create);
 router.put("/:id", authenticate, ctrl.update);
 router.delete("/:id", authenticate, ctrl.remove);

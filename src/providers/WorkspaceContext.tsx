@@ -100,6 +100,9 @@ export interface WorkspaceContextValue {
   handleDrawingSelect: (uid: string, options?: { silent?: boolean }) => Promise<void>;
   handleFlowchartSelect: (id: any, options?: { silent?: boolean }) => Promise<void>;
   refreshActiveDocument: () => Promise<void>;
+  refreshTeamScope: () => Promise<void>;
+  teamScopeVersion: number;
+  isTeamScopeRefreshing: boolean;
 
   // Content
   handleNoteChange: (content: string) => void;

@@ -21,6 +21,10 @@ import { Settings2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { SQLImportForm, type SQLImportFormProps } from './SQLImportForm';
 
+const projectScopeLabel = (project: any) => project.teamId ?? project.team_id
+  ? `Team${project.team?.name ? ` · ${project.team.name}` : ''}`
+  : 'Personal';
+
 interface ERDSettingsDialogProps extends SQLImportFormProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -140,7 +144,7 @@ export function ERDSettingsDialog({
                   <SelectItem value="none">Uncategorized</SelectItem>
                   {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id.toString()}>
-                      {project.name}
+                      <span>{project.name}</span><span className="ml-2 text-xs text-muted-foreground">{projectScopeLabel(project)}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

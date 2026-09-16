@@ -12,6 +12,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// The default client is retained for scripts that import @prisma/client.
+// Runtime servers use this isolated output so a PostgreSQL generate running in
+// another dev process cannot replace Desktop's SQLite client.
+generator runtimeClient {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@erdbpro/prisma-sqlite"
+}
+
 datasource db {
   provider = "sqlite"
 }
@@ -23,6 +31,10 @@ model User {
   name         String?
   password     String
   isSuperAdmin Boolean? @map("is_super_admin")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  ssoSubject   String?  @unique @map("sso_subject")
+  ssoEmail     String?  @map("sso_email")
+  cloudPersonalEntitlement String? @map("cloud_personal_entitlement")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @map("updated_at")
 
@@ -39,6 +51,9 @@ model User {
   userAiRules     UserAiRule[]
   preferences     UserPreference?
   sessions        Session[]
+  teamMemberships TeamMember[]
+  createdTeams    Team[] @relation("TeamCreator")
+  teamAuditEvents TeamAuditEvent[] @relation("TeamAuditActor")
 
   @@map("users")
 }
@@ -57,12 +72,82 @@ model Session {
   @@map("sessions")
 }
 
+// ── Team (Self-host Web only; unused by Desktop/CLI) ──
+model Team {
+  id                  String       @id @default(uuid())
+  name                String
+  type                String       @default("team")
+  createdBy           String?      @map("created_by")
+  ssoOrganizationId   String?      @unique @map("sso_organization_id")
+  status              String       @default("active")
+  cloudEntitlement    String?      @map("cloud_entitlement")
+  provisioningSignature String?    @map("provisioning_signature")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")
+  members             TeamMember[]
+  projects            Project[]
+  creator             User?        @relation("TeamCreator", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  invitations         TeamInvitation[]
+  auditEvents         TeamAuditEvent[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String   @map("team_id")
+  userId    String   @map("user_id")
+  role      String   @default("staff")
+  status    String   @default("active")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  provisioningSignature String? @map("provisioning_signature")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([teamId, userId], map: "team_members_team_user_key")
+  @@index([userId, status], map: "idx_team_members_user_status")
+  @@map("team_members")
+}
+
+model TeamInvitation {
+  id          String    @id @default(uuid())
+  teamId      String    @map("team_id")
+  email       String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([teamId, expiresAt], map: "idx_team_invitations_team_expires")
+  @@index([email, acceptedAt], map: "idx_team_invitations_email_accepted")
+  @@map("team_invitations")
+}
+
+model TeamAuditEvent {
+  id         String    @id @default(uuid())
+  teamId     String?   @map("team_id")
+  actorId    String?   @map("actor_id")
+  action     String
+  targetType String?   @map("target_type")
+  targetId   String?   @map("target_id")
+  metadata   String    @default("{}")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  team       Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  actor      User?     @relation("TeamAuditActor", fields: [actorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([teamId, createdAt], map: "idx_team_audit_events_team_created")
+  @@index([actorId, createdAt], map: "idx_team_audit_events_actor_created")
+  @@map("team_audit_events")
+}
+
 // ── Project ──
 model Project {
   id             Int             @id @default(autoincrement())
   uid            String?         @unique
   name           String
   userId         String?         @map("user_id")
+  teamId         String?         @map("team_id")
   color          String?         @default("#6366f1")
   isDeleted      Boolean?        @default(false) @map("is_deleted")
   deletedAt      DateTime?       @map("deleted_at")
@@ -70,6 +155,7 @@ model Project {
   updatedAt      DateTime?       @default(now()) @map("updated_at")
   version        Int?            @default(0) @map("_version")
   user           User?           @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  team           Team?           @relation(fields: [teamId], references: [id], onUpdate: NoAction)
   diagrams       Diagram[]
   dbClients      DbClient[]
   notes          Note[]
@@ -78,6 +164,7 @@ model Project {
   aiChatSessions AiChatSession[]
 
   @@index([userId, isDeleted], map: "idx_projects_user_deleted")
+  @@index([teamId, isDeleted], map: "idx_projects_team_deleted")
   @@index([updatedAt], map: "idx_projects_updated_at")
   @@map("projects")
 }
@@ -98,8 +185,11 @@ model Diagram {
   viewportZoom       Float?         @default(1.0) @map("viewport_zoom")
   version            Int?           @default(0) @map("_version")
   isPublic           Boolean?       @default(false) @map("is_public")
+  publicAccess       String         @default("off") @map("public_access")
   shareToken         String?        @map("share_token")
+  shareTokenHash     String?        @map("share_token_hash")
   expiryDate         DateTime?      @map("expiry_date")
+  shareExpiresAt     DateTime?      @map("share_expires_at")
   publishedAt        DateTime?      @map("published_at")
   sourceType         String?        @default("blank") @map("source_type")
   sourceConnectionId Int?           @map("source_connection_id")
@@ -201,8 +291,11 @@ model Note {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  publicAccess String   @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
@@ -227,8 +320,11 @@ model Drawing {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  publicAccess String    @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
@@ -253,8 +349,11 @@ model Flowchart {
   updatedAt   DateTime? @default(now()) @map("updated_at")
   version     Int?      @default(0) @map("_version")
   isPublic    Boolean?  @default(false) @map("is_public")
+  publicAccess String    @default("off") @map("public_access")
   shareToken  String?   @map("share_token")
+  shareTokenHash String? @map("share_token_hash")
   expiryDate  DateTime? @map("expiry_date")
+  shareExpiresAt DateTime? @map("share_expires_at")
   publishedAt DateTime? @map("published_at")
   user        User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project     Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
@@ -502,6 +601,58 @@ model UserAiRule {
 
   @@unique([userId, viewType])
   @@map("user_ai_rules")
+}
+
+// ── Cloud AI runtime (created by the additive startup migration) ──
+// Keep the raw-SQL table definitions represented so local schema sync cannot
+// mistake these runtime-owned tables for data that should be dropped.
+model CloudAiRuntimeConfig {
+  id            String  @id
+  revision      Int
+  ciphertext    String
+  iv            String
+  authTag       String  @map("auth_tag")
+  enabled       Boolean @default(true)
+  expiresAt     String? @map("expires_at")
+  receivedAt    String  @map("received_at")
+  updatedAt     String  @map("updated_at")
+  lastErrorCode String? @map("last_error_code")
+
+  @@map("cloud_ai_runtime_configs")
+}
+
+model CloudAiUsagePeriod {
+  id                  String @id
+  teamId              String @map("team_id")
+  periodStart         String @map("period_start")
+  periodEnd           String? @map("period_end")
+  limitCredits        Int    @map("limit_credits")
+  consumedCredits     Int    @default(0) @map("consumed_credits")
+  reservedCredits     Int    @default(0) @map("reserved_credits")
+  entitlementRevision String @map("entitlement_revision")
+  createdAt           String @map("created_at")
+  updatedAt           String @map("updated_at")
+
+  @@unique([teamId, periodStart], map: "cloud_ai_usage_period_team_start")
+  @@map("cloud_ai_usage_periods")
+}
+
+model CloudAiUsageRequest {
+  id              String  @id
+  requestId       String  @unique @map("request_id")
+  teamId          String  @map("team_id")
+  periodId        String  @map("period_id")
+  userId          String  @map("user_id")
+  credits         Int     @default(1)
+  state           String
+  providerCode    String? @map("provider_code")
+  modelIdentifier String? @map("model_identifier")
+  errorCode       String? @map("error_code")
+  createdAt       String  @map("created_at")
+  updatedAt       String  @map("updated_at")
+
+  @@index([teamId, createdAt], map: "cloud_ai_usage_requests_team_created")
+  @@map("cloud_ai_usage_requests")
 }
 
 // ── User Preferences (desktop app) ──

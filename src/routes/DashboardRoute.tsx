@@ -14,6 +14,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/WorkspaceProvider';
+import { useTeams } from '../hooks/useTeams';
 import { apiFetch, isInstalledApp } from '../lib/api';
 
 const typeConfig = [
@@ -142,18 +143,28 @@ export function DashboardRoute() {
   const navigate = useNavigate();
   const ctx = useWorkspace();
   const showDbClient = isInstalledApp();
+  const teamState = useTeams(ctx.isGuest);
+  const isCloudTeam = Boolean(ctx.user?.isSso && teamState.activeTeamId);
+  const capabilityFor = (key: string) => key === 'diagrams' ? 'erd_builder' : key;
+  const canUseCloudFeature = (key: string) => !isCloudTeam
+    || (teamState.isAvailable && teamState.activeTeam?.capabilities?.[capabilityFor(key)] === true);
+  const availableTypeConfig = typeConfig.filter((cfg) => canUseCloudFeature(cfg.key));
 
   const user = ctx.user;
   const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
   const [serverRecentDocs, setServerRecentDocs] = useState<any[] | null>(null);
+  const [recentReady, setRecentReady] = useState(false);
 
   useEffect(() => {
     if (ctx.isGuest || !user) {
       setServerRecentDocs(null);
+      setRecentReady(true);
       return;
     }
 
     let cancelled = false;
+    setServerRecentDocs(null);
+    setRecentReady(false);
     const fetchRecentFiles = async () => {
       try {
         const response = await apiFetch('/api/search/recent');
@@ -162,12 +173,14 @@ export function DashboardRoute() {
         if (!cancelled) setServerRecentDocs(Array.isArray(body.data) ? body.data : []);
       } catch {
         // Keep local dashboard data as a fallback if the API is unavailable.
+      } finally {
+        if (!cancelled) setRecentReady(true);
       }
     };
 
     void fetchRecentFiles();
     return () => { cancelled = true; };
-  }, [ctx.isGuest, user]);
+  }, [ctx.isGuest, ctx.teamScopeVersion, user]);
 
   // 10 most recently edited items across all types
   const recentDocs = useMemo(() => {
@@ -227,6 +240,8 @@ export function DashboardRoute() {
   // Workspace document counts — fetched from backend (accurate, not paginated)
   const [projectSummaries, setProjectSummaries] = useState<Record<string, any>>({});
 
+  useEffect(() => setProjectSummaries({}), [ctx.teamScopeVersion]);
+
   const projectsWithCounts = useMemo(() => {
     return (ctx.projects || [])
       .filter((p: any) => !p.is_deleted)
@@ -281,14 +296,15 @@ export function DashboardRoute() {
 
   // Show empty state as soon as projects are loaded and empty —
   // don't wait for documents to finish loading
-  const isEmpty = (!ctx.isProjectsLoading && (ctx.projects || []).filter((p: any) => !p.is_deleted).length === 0 && totalDocs === 0 && !serverRecentDocs?.length);
+  const dashboardReady = !isLoading && recentReady;
+  const isEmpty = dashboardReady && totalDocs === 0 && !serverRecentDocs?.length;
 
   // Show dashboard content as soon as we have projects or documents
-  const showContent = !isEmpty && initialLoadDone;
+  const showContent = dashboardReady && !isEmpty && initialLoadDone;
 
   const createDocument = (cfg: typeof typeConfig[number]) => {
-    const fn = (ctx as Record<string, any>)[cfg.createFn];
-    if (fn) fn(`New ${cfg.createLabel}`);
+    if (!canUseCloudFeature(cfg.key)) return;
+    (ctx as Record<string, any>).handleOpenCreateDocument?.(cfg.key === 'diagrams' ? 'erd' : cfg.key);
   };
 
   const lastDocument = recentDocs[0];
@@ -303,7 +319,7 @@ export function DashboardRoute() {
             <h1 className="mt-0.5 text-xl font-semibold tracking-tight">{userName}</h1>
             <p className="mt-0.5 text-xs text-muted-foreground">Pick up where you left off.</p>
           </div>
-          {!isEmpty && (
+          {showContent && canUseCloudFeature('diagrams') && (
             <button
               onClick={() => createDocument(typeConfig[1])}
               className="hidden h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:inline-flex"
@@ -327,7 +343,7 @@ export function DashboardRoute() {
             and start building your workspace.
           </p>
           <div className="flex flex-wrap justify-center gap-2 mt-5">
-            {typeConfig.map((cfg) => (
+            {availableTypeConfig.map((cfg) => (
               <button
                 key={cfg.key}
                 onClick={() => createDocument(cfg)}
@@ -384,7 +400,7 @@ export function DashboardRoute() {
                 <Plus className="size-4 text-muted-foreground" />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {typeConfig.map((cfg) => (
+                {availableTypeConfig.map((cfg) => (
                   <button
                     key={cfg.key}
                     onClick={() => createDocument(cfg)}

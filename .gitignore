@@ -9,6 +9,7 @@ logs/*
 .env*
 !.env.example
 .erd-encryption-key
+.erdbpro/
 *.db
 backups/
 !server/routes/backups

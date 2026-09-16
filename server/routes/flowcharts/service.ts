@@ -1,14 +1,13 @@
 import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
+import { createPersonalFile } from "../../lib/personal-file-quota.js";
+import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
 function uidWhere(uid: string, userId: string) {
-  const id = Number(uid);
-  return Number.isFinite(id)
-    ? { OR: [{ uid }, { id }], userId }
-    : { uid, userId };
+  return fileIdentifierWhere(uid, userId);
 }
 
 function conditions(userId: string, query: {
@@ -18,7 +17,7 @@ function conditions(userId: string, query: {
 }) {
   const conditions: any[] = [
     { isDeleted: false },
-    { userId },
+    fileScopeWhere(userId),
   ];
 
   if (query.isPublic !== null && query.isPublic !== undefined) {
@@ -37,7 +36,7 @@ function conditions(userId: string, query: {
 
 async function excludeDeletedProjects(userId: string): Promise<any[]> {
   const deleted = await prisma?.project.findMany({
-    where: { userId, isDeleted: true },
+    where: { ...projectScopeWhere(userId), isDeleted: true },
     select: { id: true },
   });
   return deleted?.map(p => p.id) || [];
@@ -59,6 +58,7 @@ const LIST_SELECT = {
   id: true, uid: true, title: true, projectId: true,
   isPublic: true, shareToken: true, expiryDate: true,
   createdAt: true, updatedAt: true, isDeleted: true, userId: true,
+  user: { select: { name: true, email: true } },
   project: { select: { name: true, uid: true, id: true } },
 } as const;
 
@@ -89,7 +89,7 @@ export async function createFlowchart(data: {
   title: string; fcData?: string; projectId?: number | null; userId: string; uid?: string;
 }) {
   if (!prisma) throw new Error("Database connection not available");
-  return prisma.flowchart.create({
+  return createPersonalFile("flowcharts", data.userId, (db) => db.flowchart.create({
     data: {
       title: data.title,
       data: data.fcData || '{"nodes":[], "edges":[]}',
@@ -97,7 +97,7 @@ export async function createFlowchart(data: {
       userId: data.userId,
       ...(data.uid ? { uid: data.uid } : {}),
     },
-  });
+  }));
 }
 
 export async function getFlowchart(uid: string, userId: string) {

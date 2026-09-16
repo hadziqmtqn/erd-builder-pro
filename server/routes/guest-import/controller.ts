@@ -10,11 +10,6 @@ import { importFlowcharts } from "./importers.js";
 import { importDrawings } from "./importers.js";
 import { importAiChatSessions } from "./importers.js";
 
-// Assert Prisma is available at module level
-if (!prisma) {
-  throw new Error("Prisma is not available (server started without database)");
-}
-
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
@@ -32,6 +27,11 @@ function parseDbmlFromData(data: string | null | undefined): string | null {
 }
 
 export async function exportHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (!prisma) {
+    res.status(503).json({ error: "Database is not available. Restart the application and try again." });
+    return;
+  }
+
   try {
     const userId = (req as any).user.id;
     const [
@@ -143,6 +143,11 @@ function handleExportError(res: ExpressResponse, err: any): void {
 }
 
 export async function importHandler(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  if (!prisma) {
+    res.status(503).json({ error: "Database is not available. Restart the application and try again." });
+    return;
+  }
+
   const userId = (req as any).user.id;
 
   // 0. Size guard — reject before JSON parsing if body is huge

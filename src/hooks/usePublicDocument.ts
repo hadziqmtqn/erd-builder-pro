@@ -3,6 +3,7 @@ import { Node, Edge, useReactFlow } from '@xyflow/react';
 import { toast } from 'sonner';
 import { Entity, AppView } from '../types';
 import { apiFetch } from '../lib/api';
+import { readSavedViewport } from '../lib/erd-viewport';
 
 export interface ForbiddenDoc {
   title: string;
@@ -107,15 +108,15 @@ export function usePublicDocument(
         setNodes(flowNodes);
         setEdges(flowEdges);
         const applyViewport = (duration: number = 0) => {
-          if (data.viewport_x !== undefined && (data.viewport_x !== 0 || data.viewport_y !== 0)) {
-            setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration });
+          const viewport = readSavedViewport(data);
+          if (viewport) {
+            setViewport(viewport, { duration });
           } else if (flowNodes.length > 0) {
             fitView({ padding: 0.2, duration });
           }
         };
 
-        setTimeout(() => applyViewport(0), 50);
-        setTimeout(() => applyViewport(0), 300);
+        setTimeout(() => applyViewport(0), 100);
       } else if (type === 'flowchart') {
         try {
           const parsedData = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
@@ -123,15 +124,15 @@ export function usePublicDocument(
           setEdges(parsedData.edges || []);
           
           const applyViewport = (duration: number = 0) => {
-            if (data.viewport_x !== undefined && (data.viewport_x !== 0 || data.viewport_y !== 0)) {
-              setViewport({ x: data.viewport_x, y: data.viewport_y, zoom: data.viewport_zoom || 1 }, { duration });
+            const viewport = readSavedViewport(data);
+            if (viewport) {
+              setViewport(viewport, { duration });
             } else if (parsedData.nodes?.length > 0) {
               fitView({ padding: 0.2, duration });
             }
           };
 
-          setTimeout(() => applyViewport(0), 50);
-          setTimeout(() => applyViewport(0), 300);
+          setTimeout(() => applyViewport(0), 100);
         } catch (e) {
           console.error("Failed to parse flowchart data:", e);
         }

@@ -34,6 +34,7 @@ import {
 
 import { useWorkspace } from '@/providers/WorkspaceProvider';
 import { apiFetch } from '@/lib/api';
+import { useTeams, type TeamSummary } from '@/hooks/useTeams';
 
 /** Replace parser-generated column UUID inside handle string with canvas column UUID.
  *  parseSQLToERD's column IDs are "col-xxx", so handles are "col-col-xxx-source".
@@ -184,7 +185,7 @@ function AppLayoutInner() {
     view, sidebarView,
     isPublicView, isOnline,
     projects, user,
-    isInstallable, installApp, isProjectsLoading,
+    isProjectsLoading,
     handleLogout,
     handleViewChange,
     handleNoteSelect, handleDrawingSelect, refreshActiveDocument,
@@ -234,15 +235,52 @@ function AppLayoutInner() {
     handleEdgeUpdate: handleEdgeUpdate2,
     handleEdgeFlip: handleEdgeFlip2,
     breadcrumbLabel,
+    refreshTeamScope,
+    teamScopeVersion,
+    isTeamScopeRefreshing,
   } = useWorkspace();
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
+  const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
+  const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
+  const teamState = useTeams(isGuest);
+  useEffect(() => {
+    if (isGuest) {
+      setSelectableProjects([]);
+      return;
+    }
+    let cancelled = false;
+    apiFetch('/api/projects/selectable')
+      .then(response => response.ok ? response.json() : { data: [] })
+      .then(body => { if (!cancelled) setSelectableProjects(Array.isArray(body.data) ? body.data : []); })
+      .catch(() => { if (!cancelled) setSelectableProjects([]); });
+    return () => { cancelled = true; };
+  }, [createDialogOpen, isGuest, isRenameDialogOpen, teamState.activeTeamId]);
+  const handleTeamSelect = useCallback(async (teamId: string | null) => {
+    await syncDrafts();
+    teamState.selectTeam(teamId);
+    setGlobalSearchQuery('');
+    setGlobalSearchResults([]);
+    setRightPanelMode('closed');
+    await refreshTeamScope();
+  }, [refreshTeamScope, setRightPanelMode, syncDrafts, teamState.selectTeam]);
+  const handleTeamManage = useCallback((team: TeamSummary) => {
+    if (team.manageUrl) {
+      window.location.assign(team.manageUrl);
+      return;
+    }
+    navigate(`/teams/${team.id}`);
+  }, [navigate]);
+  const handleUserManage = useCallback(() => navigate("/users"), [navigate]);
+  const handleTeamCreated = useCallback(async (team: TeamSummary) => {
+    await refreshTeamScope();
+    navigate(`/teams/${team.id}`);
+  }, [navigate, refreshTeamScope]);
   const isDbClientRoute = location.pathname === '/table/db-client'
     || location.pathname.startsWith('/db-client/')
     || (location.pathname.startsWith('/diagrams/') && searchParams.get('feature') === 'db-client');
   const isFeatureRoute = isDbClientRoute || /^\/(table\/(erd|notes|drawings|flowchart)|(notes|diagrams|drawings|flowcharts)\/)/.test(location.pathname);
-  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
-  const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
-
   useEffect(() => {
     const query = globalSearchQuery.trim();
     if (query.length < 2) {
@@ -482,11 +520,12 @@ function AppLayoutInner() {
   const isActiveDbClient = entityContext?.entityType === 'dbClient' || (isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db');
   const showAIChat = useMemo(() => {
-    if (entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
+    const cloudAiIncluded = !user?.isSso || teamState.activeTeam?.capabilities?.ai_assistant === true;
+    if (!cloudAiIncluded || entityContext === null || isPublicView || entityContext.entityType === 'drawing') return false;
     if (isActiveDbClient) return true;
     const resolvedTab = searchParams.get('tab') || 'erd';
     return resolvedTab === 'erd';
-  }, [entityContext, isPublicView, isActiveDbClient, searchParams]);
+  }, [entityContext, isPublicView, isActiveDbClient, searchParams, teamState.activeTeam, user?.isSso]);
   const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
@@ -756,10 +795,17 @@ function AppLayoutInner() {
           onGlobalSearchChange={setGlobalSearchQuery}
           user={user}
           isOnline={isOnline}
-          isInstallable={isInstallable}
-          onInstall={installApp}
           isProjectsLoading={isProjectsLoading}
           onOpenFeedback={() => setIsFeedbackOpen(true)}
+          teams={teamState.teams}
+          teamsAvailable={teamState.isAvailable}
+          activeTeamId={teamState.activeTeamId}
+          onTeamSelect={handleTeamSelect}
+          onTeamManage={handleTeamManage}
+          onUserManage={handleUserManage}
+          onTeamCreate={teamState.createTeam}
+          onTeamCreated={handleTeamCreated}
+          ssoPortalUrl={user?.isSso ? (user.ssoPortalUrl ?? user.sso_portal_url) : null}
         />
       )}
 
@@ -802,7 +848,14 @@ function AppLayoutInner() {
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
-          <Outlet />
+          {isTeamScopeRefreshing ? (
+            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border bg-muted/10" role="status" aria-live="polite">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+              <p className="mt-4 text-sm font-medium text-muted-foreground">Loading workspace…</p>
+            </div>
+          ) : (
+            <Outlet key={teamScopeVersion} />
+          )}
         </div>
 
         <ImportNoteModal
@@ -851,7 +904,8 @@ function AppLayoutInner() {
             activeDocument={editDialogNote ?? activeDocument}
             newName={newName}
             setNewName={setNewName}
-            projects={projects}
+            projects={selectableProjects}
+            requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             updateDiagram={updateDiagram}
@@ -875,7 +929,8 @@ function AppLayoutInner() {
             activeDocument={null}
             newName={newName}
             setNewName={setNewName}
-            projects={projects}
+            projects={selectableProjects}
+            requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
             onCreate={(title, projectId) => {
