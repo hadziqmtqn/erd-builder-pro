@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { S3Client } from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 import fs from "fs";
+import { logger } from "./logger.js";
 
 dotenv.config({ quiet: process.env.ERDBPRO_MCP_STDIO === "1" });
 
@@ -122,7 +123,7 @@ try {
     supabase = createClient(SUPABASE_URL, SUPABASE_CLIENT_KEY);
   }
 } catch (err) {
-  console.error("Failed to initialize Supabase client:", err);
+  logger.error({ err }, "Failed to initialize Supabase client");
 }
 
 // Initialize S3/R2

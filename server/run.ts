@@ -197,7 +197,7 @@ async function ensureDatabaseTables(): Promise<boolean> {
 if (isProd) {
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
-    console.log(`Serving static files from: ${distPath}`);
+    logger.info({ dist_path: distPath }, "Serving static files");
     app.use(express.static(distPath, { index: false }));
     app.get("/{*splat}", (req, res, next) => {
       // Only serve index.html for HTML requests (not API calls)
@@ -219,15 +219,15 @@ if (isProd) {
 
 const HOST = process.env.HOST || (isDesktopMode() ? "127.0.0.1" : "0.0.0.0");
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Server running on http://${HOST}:${PORT} [${isProd ? "production" : "development"}]`);
+  logger.info({ host: HOST, port: PORT }, "Server listening");
 });
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`FATAL: Port ${PORT} is already in use. Is another instance of ERD Builder Pro running?`);
+    logger.fatal({ err, port: PORT }, "Server port is already in use");
     process.exit(1);
   }
-  console.error('Server error:', err.message);
+  logger.fatal({ err }, "Server error");
   process.exit(1);
 });
 
@@ -252,7 +252,7 @@ async function startup(): Promise<void> {
   let dbOk = false;
   if (isDesktopMode()) {
     dbOk = await ensureDatabaseTables();
-    console.log(`[startup] db-readiness check: ${dbOk ? 'READY' : 'FAILED'}`);
+    logger.info({ ready: dbOk }, "Database readiness check completed");
   } else {
     dbOk = true;
   }
@@ -269,7 +269,7 @@ async function startup(): Promise<void> {
     // DB is functional — signal /api/me to start responding immediately.
     // This gets the frontend past "Connecting..." while background init runs.
     setDbReady();
-    console.log("[startup] Database ready. /api/me will respond. Running background init...");
+    logger.info("Database ready; running background initialization");
     startCloudAiConfigRefresh();
     startCloudAiUsageRetention();
     startCloudTelemetry();

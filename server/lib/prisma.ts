@@ -4,6 +4,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { isLocalPostgres } from "./config.js";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { logger } from "./logger.js";
 
 const require = createRequire(import.meta.url);
 
@@ -95,7 +96,7 @@ try {
     }
   }
 } catch (err) {
-  console.error("Failed to initialize Prisma client:", err);
+  logger.error({ err }, "Failed to initialize Prisma client");
   // CRITICAL: DO NOT throw here. A Prisma init failure must NOT crash the
   // Node.js server process. The server should start without Prisma so that
   // health-check endpoints (/api/me, etc.) can return graceful error responses

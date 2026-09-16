@@ -1,11 +1,12 @@
 import { Response as ExpressResponse } from "express";
 import { SUPABASE_URL } from "./config.js";
+import { logger } from "./logger.js";
 
 /**
  * Standardize API error responses — never leak internal error details
  */
 export const handleError = (res: ExpressResponse, _error: any, message: string = "Internal Server Error") => {
-  console.error(`${message}:`, _error);
+  logger.error({ err: _error }, message);
   if (_error?.code === "PERSONAL_FILE_QUOTA_EXCEEDED" && _error?.status === 409) {
     return res.status(409).json({
       error: _error.message,

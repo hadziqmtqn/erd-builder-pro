@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
 import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { logger } from "../../lib/logger.js";
 
 // ── Helpers ──
 
@@ -77,7 +78,7 @@ function dedupe<T extends { id: any }>(arr: T[], label: string): T[] {
   const result: T[] = [];
   for (const item of arr) {
     if (seen.has(item.id)) {
-      console.warn(`[Save Warning] Duplicate ${label} id=${item.id} removed`);
+      logger.warn({ label, item_id: item.id }, "Duplicate diagram item removed");
       continue;
     }
     seen.add(item.id);

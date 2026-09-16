@@ -1,5 +1,6 @@
 import { scryptSync, randomBytes, randomUUID } from "crypto";
 import { prisma } from "./prisma.js";
+import { logger } from "./logger.js";
 
 const SESSION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -31,7 +32,7 @@ export async function createSession(userId: string, email: string, name: string 
       data: { token, userId, email, name },
     });
   } catch (err) {
-    console.error("Failed to create session:", err);
+    logger.error({ err }, "Failed to create session");
   }
 
   return token;

@@ -6,6 +6,7 @@ import { buildAccountConnectionInfo, buildConnectionInfo, maskPassword } from ".
 import * as accountsService from "./accounts.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
 import { assertWritable } from "../../lib/db-connectors/security.js";
+import { logger } from "../../lib/logger.js";
 
 const DATABASE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_$-]{0,62}$/;
 const ENVIRONMENTS = new Set(["local", "development", "staging", "production"]);
@@ -36,7 +37,7 @@ export async function listAccounts(req: ExpressRequest, res: ExpressResponse) {
     const accounts = await accountsService.findAllAccounts(userId);
     res.json((accounts || []).map(maskPassword));
   } catch (err) {
-    console.error("Error listing accounts:", err);
+    logger.error({ err }, "Error listing accounts");
     res.status(500).json({ error: "Failed to list accounts" });
   }
 }
@@ -63,7 +64,7 @@ export async function createAccount(req: ExpressRequest, res: ExpressResponse) {
     });
     res.status(201).json(maskPassword(account as any));
   } catch (err) {
-    console.error("Error creating account:", err);
+    logger.error({ err }, "Error creating account");
     res.status(500).json({ error: "Failed to create account" });
   }
 }
@@ -91,7 +92,7 @@ export async function updateAccount(req: ExpressRequest, res: ExpressResponse) {
     const updated = await accountsService.updateAccount(id, data);
     res.json(maskPassword(updated as any));
   } catch (err) {
-    console.error("Error updating account:", err);
+    logger.error({ err }, "Error updating account");
     res.status(500).json({ error: "Failed to update account" });
   }
 }
@@ -119,7 +120,7 @@ export async function deleteAccount(req: ExpressRequest, res: ExpressResponse) {
     await accountsService.deleteAccount(id);
     res.json({ success: true, deletedClients });
   } catch (err) {
-    console.error("Error deleting account:", err);
+    logger.error({ err }, "Error deleting account");
     res.status(500).json({ error: "Failed to delete account" });
   }
 }
@@ -239,7 +240,7 @@ export async function listDatabases(req: ExpressRequest, res: ExpressResponse) {
       })),
     });
   } catch (err: any) {
-    console.error("Error listing databases:", err);
+    logger.error({ err }, "Error listing databases");
     res.status(500).json({ error: `Failed to list databases: ${err.message}` });
   }
 }
@@ -281,7 +282,7 @@ export async function createDatabase(req: ExpressRequest, res: ExpressResponse) 
       release();
     }
   } catch (err: any) {
-    console.error("Error creating database:", err);
+    logger.error({ err }, "Error creating database");
     res.status(/Safe Mode/.test(err.message) ? 403 : 500).json({ error: `Failed to create database: ${err.message}` });
   }
 }
