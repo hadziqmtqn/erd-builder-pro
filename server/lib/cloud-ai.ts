@@ -220,12 +220,16 @@ export async function getCloudAiRuntimeConfig(): Promise<RuntimeConfig | null> {
   });
 }
 
-export async function revokeCloudAiRuntimeConfig(revision: number): Promise<void> {
+export async function revokeCloudAiRuntimeConfig(revision?: number): Promise<void> {
   if (!prisma) return;
+  const postgres = isPostgresDatabase();
+  const revisionCondition = revision === undefined
+    ? ""
+    : ` AND "revision" <= ${postgres ? "$2" : "?"}`;
   await prisma.$executeRawUnsafe(
-    `DELETE FROM "cloud_ai_runtime_configs" WHERE "id" = ${isPostgresDatabase() ? "$1" : "?"} AND "revision" <= ${isPostgresDatabase() ? "$2" : "?"}`,
+    `DELETE FROM "cloud_ai_runtime_configs" WHERE "id" = ${postgres ? "$1" : "?"}${revisionCondition}`,
     "global",
-    revision,
+    ...(revision === undefined ? [] : [revision]),
   );
 }
 
@@ -243,7 +247,7 @@ export async function refreshCloudAiRuntimeConfig(): Promise<boolean> {
     const payload = await response.json().catch(() => null) as any;
 
     if (response.status === 404 && payload?.error?.code === "CLOUD_AI_NOT_CONFIGURED") {
-      await revokeCloudAiRuntimeConfig(Number.MAX_SAFE_INTEGER);
+      await revokeCloudAiRuntimeConfig();
       return true;
     }
     if (!response.ok || !payload?.data?.envelope) {

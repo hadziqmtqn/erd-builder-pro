@@ -159,6 +159,27 @@ describe("Cloud AI access", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("clears the cached configuration when SaaS reports it is not configured", async () => {
+    mocks.machineConfig.clientId = "cloud-machine-revocation-test";
+    const response = (payload: unknown, status = 200) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: vi.fn().mockResolvedValue(payload),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ access_token: "machine-token", expires_in: 3600 }))
+      .mockResolvedValueOnce(response({ error: { code: "CLOUD_AI_NOT_CONFIGURED" } }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.executeRaw.mockResolvedValue(1);
+
+    await expect(refreshCloudAiRuntimeConfig()).resolves.toBe(true);
+
+    const revokeCall = mocks.executeRaw.mock.calls.at(-1);
+    expect(revokeCall?.[0]).toContain('DELETE FROM "cloud_ai_runtime_configs"');
+    expect(revokeCall).toHaveLength(2);
+    expect(revokeCall?.[1]).toBe("global");
+  });
+
   it("prunes only terminal Cloud AI usage and completed periods", async () => {
     mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
       $executeRawUnsafe: mocks.executeRaw,
