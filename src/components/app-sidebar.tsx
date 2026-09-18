@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 import { isInstalledApp } from "@/lib/api"
+import { isFileCreator } from "@/lib/fileOwnership"
 
 import { Project, AppView } from "../types"
 import { SponsorCarousel } from "@/components/SponsorCarousel"
@@ -415,11 +416,15 @@ export const AppSidebar = React.memo(({
                               <Pencil className="h-3.5 w-3.5 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setDeletingProject(project)}>
-                              <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
-                              Delete
-                            </DropdownMenuItem>
+                            {isFileCreator(project, user?.id, user?.id === 'guest') && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setDeletingProject(project)}>
+                                  <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </span>

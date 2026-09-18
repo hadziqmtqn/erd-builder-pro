@@ -34,6 +34,7 @@ interface DrawingsTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteDrawing: (uid: string) => void;
+  canDeleteFile: (drawing: Drawing) => boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement | null>;
@@ -66,6 +67,7 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteDrawing,
+  canDeleteFile,
   searchQuery,
   onSearchChange,
   searchRef,
@@ -283,11 +285,15 @@ export const DrawingsTableView = React.memo(function DrawingsTableView({
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit Document
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => onDeleteDrawing(uid)} className="text-destructive">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {canDeleteFile(drawing) && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => onDeleteDrawing(uid)} className="text-destructive">
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>

@@ -34,6 +34,7 @@ interface NotesTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteNote: (uid: string) => void;
+  canDeleteFile: (note: Note) => boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement | null>;
@@ -66,6 +67,7 @@ export const NotesTableView = React.memo(function NotesTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteNote,
+  canDeleteFile,
   searchQuery,
   onSearchChange,
   searchRef,
@@ -285,11 +287,15 @@ export const NotesTableView = React.memo(function NotesTableView({
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit Document
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => onDeleteNote(uid)} className="text-destructive">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {canDeleteFile(note) && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => onDeleteNote(uid)} className="text-destructive">
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>

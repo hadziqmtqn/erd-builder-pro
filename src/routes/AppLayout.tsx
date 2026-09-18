@@ -72,6 +72,7 @@ import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from 
 import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
+import { isFileCreator } from '@/lib/fileOwnership';
 
 // ── Inner component that uses AIAction context ──
 
@@ -352,6 +353,7 @@ function AppLayoutInner() {
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const canDeleteActiveDocument = isFileCreator(activeDocument, user?.id, isGuest);
   const documentToDelete = tableDeleteDoc ?? activeDocument;
   const deletingDbClient = (documentToDelete?.source_type ?? documentToDelete?.sourceType) === 'production_db';
   const propertiesEntity = useMemo(() => {
@@ -832,7 +834,7 @@ function AppLayoutInner() {
           onSettingsSaved={handleHeaderSettingsSaved}
           isOnline={isOnline}
           updatedAt={activeDocument?.updated_at}
-          onDelete={handleHeaderDelete}
+          onDelete={canDeleteActiveDocument ? handleHeaderDelete : undefined}
           onRename={handleHeaderRename}
           onExportAll={activeDiagramIsProductionDb ? undefined : () => setIsExportAllOpen(true)}
           onExportSQL={handleHeaderExportSQL}

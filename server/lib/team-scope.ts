@@ -38,3 +38,8 @@ export function fileIdentifierWhere(identifier: string, userId: string): Record<
   const identity = Number.isFinite(id) ? { OR: [{ uid: identifier }, { id }] } : { uid: identifier };
   return { AND: [identity, fileScopeWhere(userId)] };
 }
+
+/** File identifier constrained to the signed-in creator for destructive actions. */
+export function creatorFileIdentifierWhere(identifier: string, userId: string): Record<string, unknown> {
+  return { AND: [fileIdentifierWhere(identifier, userId), { userId }] };
+}

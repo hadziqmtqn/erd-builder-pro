@@ -5,8 +5,10 @@ const mocks = vi.hoisted(() => ({
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
     create: vi.fn().mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data })),
+    findFirst: vi.fn(),
+    updateMany: vi.fn(),
   },
-  file: { findMany: vi.fn().mockResolvedValue([]) },
+  file: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn(), updateMany: vi.fn() },
 }));
 
 vi.mock("../../lib/prisma.js", () => ({
@@ -23,7 +25,7 @@ vi.mock("../../lib/storage.js", () => ({ getStorageClientForUser: vi.fn() }));
 vi.mock("../teams/service.js", () => ({ canManageTeam: vi.fn().mockResolvedValue(false) }));
 
 import { runWithTeamScope } from "../../lib/team-scope.js";
-import { createProject, listProjects, listSelectableProjects } from "./service.js";
+import { createProject, listProjects, listSelectableProjects, softDeleteProject } from "./service.js";
 
 describe("Team project scope", () => {
   it("lists by active team and creates a shared Team project", async () => {
@@ -36,7 +38,7 @@ describe("Team project scope", () => {
       where: { teamId: "team-1", isDeleted: false },
     }));
     expect(mocks.project.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ name: "Shared", teamId: "team-1", userId: null }),
+      data: expect.objectContaining({ name: "Shared", teamId: "team-1", userId: "member-1" }),
     }));
   });
 
@@ -50,5 +52,19 @@ describe("Team project scope", () => {
     expect(mocks.project.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: "member-1", teamId: null, isDeleted: false },
     }));
+  });
+
+  it("rejects non-creators and cascade deletion across another creator's file", async () => {
+    mocks.project.findFirst.mockResolvedValue({ id: 1, userId: "creator-1", teamId: "team-1" });
+
+    await runWithTeamScope({ mode: "team", teamId: "team-1" }, async () => {
+      expect(await softDeleteProject(1, "member-1")).toEqual({ success: false });
+
+      mocks.file.findFirst.mockReset();
+      mocks.file.findFirst.mockResolvedValueOnce({ id: 9 }).mockResolvedValue(null);
+      expect(await softDeleteProject(1, "creator-1")).toEqual({ success: false });
+    });
+
+    expect(mocks.project.updateMany).not.toHaveBeenCalled();
   });
 });

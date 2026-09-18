@@ -93,7 +93,7 @@ export async function restore(req: ExpressRequest, res: ExpressResponse): Promis
 export async function permanentDelete(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     const userId = (req as any).user.id;
-    const diagram = await diagService.getDiagram(req.params.uid, userId);
+    const diagram = await diagService.getDiagramForPermanentDelete(req.params.uid, userId);
     if (!diagram) { res.status(404).json({ error: "Diagram not found" }); return; }
 
     await diagService.permanentDeleteDiagram(Number(diagram.id));

@@ -134,7 +134,7 @@ export async function createProject(name: string, userId: string) {
   const scope = currentTeamScope();
   if (name.trim().toLowerCase() === "uncategorized") throw new Error("Uncategorized is reserved by the system");
   const project = await prisma?.project.create({
-    data: { name, userId: scope?.mode === "team" ? null : userId, uid: randomUUID(), ...(scope?.mode === "team" ? { teamId: scope.teamId } : {}) },
+    data: { name, userId, uid: randomUUID(), ...(scope?.mode === "team" ? { teamId: scope.teamId } : {}) },
   });
   return project || null;
 }
@@ -154,11 +154,32 @@ export async function updateProject(projectId: number, userId: string, name: str
 
 // ── Soft Delete + Cascade ──
 
+async function findCreatorProjectForDestructiveAction(projectId: number, userId: string) {
+  const project = await prisma?.project.findFirst({
+    where: { id: projectId, ...projectScopeWhere(userId) },
+    select: { id: true, userId: true, teamId: true },
+  });
+  if (!project || project.userId !== userId) return null;
+
+  const foreignOwnerWhere = {
+    projectId,
+    OR: [{ userId: { not: userId } }, { userId: null }],
+  };
+  const [diagram, note, drawing, flowchart] = await Promise.all([
+    prisma?.diagram.findFirst({ where: foreignOwnerWhere, select: { id: true } }),
+    prisma?.note.findFirst({ where: foreignOwnerWhere, select: { id: true } }),
+    prisma?.drawing.findFirst({ where: foreignOwnerWhere, select: { id: true } }),
+    prisma?.flowchart.findFirst({ where: foreignOwnerWhere, select: { id: true } }),
+  ]);
+  if (diagram || note || drawing || flowchart) return null;
+  return project;
+}
+
 export async function softDeleteProject(projectId: number, userId: string) {
   const now = new Date();
 
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
-  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
+  const project = await findCreatorProjectForDestructiveAction(projectId, userId);
+  if (!project) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId },
     data: { isDeleted: true, deletedAt: now },
@@ -182,8 +203,8 @@ export async function softDeleteProject(projectId: number, userId: string) {
 // ── Restore + Cascade ──
 
 export async function restoreProject(projectId: number, userId: string) {
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
-  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
+  const project = await findCreatorProjectForDestructiveAction(projectId, userId);
+  if (!project) return { success: false };
   await prisma?.project.updateMany({
     where: { id: projectId },
     data: { isDeleted: false, deletedAt: null },
@@ -207,8 +228,8 @@ export async function restoreProject(projectId: number, userId: string) {
 // ── Permanent Delete + Cascade + R2 cleanup ──
 
 export async function permanentDeleteProject(projectId: number, userId: string) {
-  const project = await prisma?.project.findFirst({ where: { id: projectId, ...projectScopeWhere(userId) }, select: { id: true, userId: true, teamId: true } });
-  if (!project || (project.teamId && project.userId !== userId && !(await canManageTeam(project.teamId, userId)))) return { success: false };
+  const project = await findCreatorProjectForDestructiveAction(projectId, userId);
+  if (!project) return { success: false };
   if (isDesktopMode()) {
     await (prisma as any)?.dbClient.deleteMany({ where: { projectId, userId } });
   }

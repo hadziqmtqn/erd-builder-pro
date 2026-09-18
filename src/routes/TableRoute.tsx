@@ -9,6 +9,8 @@ import { DrawingsTableView } from '@/components/views/DrawingsTableView';
 import { FlowchartTableView } from '@/components/views/FlowchartTableView';
 import { WelcomeView } from '@/components/views/WelcomeView';
 import { DbClientTableRoute } from './DbClientTableRoute';
+import { useAuth } from '@/hooks/useAuth';
+import { isFileCreator } from '@/lib/fileOwnership';
 
 export function TableRoute() {
   const { feature } = useParams<{ feature: string }>();
@@ -24,6 +26,8 @@ export function TableRoute() {
     setTableLoadingState,
     fileSearchQuery, setFileSearchQuery, fileSearchRef,
   } = useWorkspace();
+  const { user, isGuest } = useAuth();
+  const canDeleteFile = (item: any) => isFileCreator(item, user?.id, isGuest);
 
   const openDiagram = (uid: string) => handleDiagramSelect(uid);
 
@@ -72,6 +76,7 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteNote={makeDeleteHandler(notes)}
+          canDeleteFile={canDeleteFile}
           searchQuery={fileSearchQuery}
           onSearchChange={setFileSearchQuery}
           searchRef={fileSearchRef}
@@ -92,6 +97,7 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteDiagram={makeDeleteHandler(diagrams)}
+          canDeleteFile={canDeleteFile}
           searchQuery={fileSearchQuery}
           onSearchChange={setFileSearchQuery}
           searchRef={fileSearchRef}
@@ -114,6 +120,7 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteDrawing={makeDeleteHandler(drawings)}
+          canDeleteFile={canDeleteFile}
           searchQuery={fileSearchQuery}
           onSearchChange={setFileSearchQuery}
           searchRef={fileSearchRef}
@@ -134,6 +141,7 @@ export function TableRoute() {
           onWorkspaceClick={handleWorkspaceClick}
           onOpenEditDocument={(uid: string) => handleOpenEditDocument(uid)}
           onDeleteFlowchart={makeDeleteHandler(flowcharts)}
+          canDeleteFile={canDeleteFile}
           searchQuery={fileSearchQuery}
           onSearchChange={setFileSearchQuery}
           searchRef={fileSearchRef}

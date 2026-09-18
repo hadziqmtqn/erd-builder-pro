@@ -6,7 +6,9 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import * as drawingsService from "./service.js";
-import { getStorageClientForUser } from "../../lib/storage.js";
+import { generateSignedUrl, getStorageClientForUser } from "../../lib/storage.js";
+import { privateStorageKeysFromDrawingData, replacePrivateStorageUrlsInDrawingData } from "../../lib/storage-access.js";
+import { resolveStorage } from "../common/controller.js";
 
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
@@ -153,6 +155,23 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
       const providedToken = (req.headers["x-share-token"] as string) || (req.query.token as string);
       if (drawing.shareToken && drawing.shareToken !== providedToken) {
         res.status(401).json({ error: "Invalid access token", requiresToken: true }); return;
+      }
+    }
+
+    if (drawing.data && drawing.userId) {
+      const storage = await resolveStorage(drawing.userId);
+      const keys = privateStorageKeysFromDrawingData(drawing.data);
+      if (storage && keys.length > 0) {
+        const replacements: Record<string, string> = {};
+        await Promise.all(keys.map(async (key) => {
+          try {
+            replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
+          } catch (err) {
+            logger.warn({ err, key }, "Failed to sign public Drawing asset");
+          }
+        }));
+        res.json({ ...drawing, data: replacePrivateStorageUrlsInDrawingData(drawing.data, replacements) });
+        return;
       }
     }
 

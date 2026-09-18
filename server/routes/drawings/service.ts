@@ -2,12 +2,16 @@ import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
-import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
 function uidWhere(uid: string, userId: string) {
   return fileIdentifierWhere(uid, userId);
+}
+
+function creatorUidWhere(uid: string, userId: string) {
+  return creatorFileIdentifierWhere(uid, userId);
 }
 
 // Shared helpers (same pattern as notes)
@@ -131,7 +135,7 @@ export async function updateDrawing(
 
 export async function softDeleteDrawing(uid: string, userId: string) {
   const existing = await prisma?.drawing.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -144,7 +148,7 @@ export async function softDeleteDrawing(uid: string, userId: string) {
 
 export async function restoreDrawing(uid: string, userId: string) {
   const existing = await prisma?.drawing.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -158,7 +162,7 @@ export async function restoreDrawing(uid: string, userId: string) {
 /** Returns drawing id + parsed data for R2 cleanup */
 export async function getDrawingForPermanentDelete(uid: string, userId: string) {
   const drawing = await prisma?.drawing.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
     select: { data: true, id: true },
   });
   return drawing || null;

@@ -74,6 +74,7 @@ export interface Project {
   id: number | string;
   uid?: string;
   name: string;
+  user_id?: string | null;
   is_deleted: boolean;
   deleted_at?: string;
   created_at: string;

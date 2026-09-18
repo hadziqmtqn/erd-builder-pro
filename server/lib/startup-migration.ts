@@ -592,6 +592,34 @@ async function ensureFileAccessColumns(): Promise<void> {
   }
 }
 
+/** Recover legacy file ownership only when the containing project has a known creator. */
+async function backfillLegacyFileOwners(): Promise<void> {
+  if (!prisma) return;
+
+  for (const table of SHAREABLE_FILE_TABLES) {
+    try {
+      const updated = await prisma.$executeRawUnsafe(`
+        UPDATE "${table}"
+        SET "user_id" = (
+          SELECT "user_id" FROM "projects"
+          WHERE "projects"."id" = "${table}"."project_id"
+        )
+        WHERE "user_id" IS NULL
+          AND "project_id" IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM "projects"
+            WHERE "projects"."id" = "${table}"."project_id"
+              AND "projects"."user_id" IS NOT NULL
+          )
+      `);
+      if (updated > 0) logger.info({ table, count: updated }, "Backfilled legacy file creators from project owners");
+    } catch (err: any) {
+      if (err?.message?.includes("no such table") || err?.message?.includes("does not exist")) continue;
+      logger.warn({ err: err?.message, table }, "Failed to backfill legacy file creators (non-fatal)");
+    }
+  }
+}
+
 async function createErdMetadataTablesIfMissing(): Promise<void> {
   if (!prisma) return;
   try {
@@ -892,6 +920,7 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await backfillLegacyFileOwners();
   await createCloudAiTablesIfMissing();
   await sealExistingTeamRecords();
   // Legacy projects stay Personal until their owner explicitly links them to a Team.

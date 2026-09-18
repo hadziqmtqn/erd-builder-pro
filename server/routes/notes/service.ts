@@ -2,12 +2,16 @@ import { prisma } from "../../lib/prisma.js";
 import { captureEntityRevisionSafely } from "../../lib/entity-history.js";
 import { isDesktopMode, isLocalPostgres } from "../../lib/config.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
-import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
+import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere } from "../../lib/team-scope.js";
 
 // Helper: build uid-or-id where clause that works with both UUIDs and numeric IDs
 // Prisma's @prisma/adapter-pg throws "Argument id is missing" when id is NaN
 function uidWhere(uid: string, userId: string) {
   return fileIdentifierWhere(uid, userId);
+}
+
+function creatorUidWhere(uid: string, userId: string) {
+  return creatorFileIdentifierWhere(uid, userId);
 }
 
 // ── Shared helpers ──
@@ -134,7 +138,7 @@ export async function updateNote(
 
 export async function softDeleteNote(uid: string, userId: string) {
   const existing = await prisma?.note.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -147,7 +151,7 @@ export async function softDeleteNote(uid: string, userId: string) {
 
 export async function restoreNote(uid: string, userId: string) {
   const existing = await prisma?.note.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -164,7 +168,7 @@ export async function restoreNote(uid: string, userId: string) {
  */
 export async function getNoteForPermanentDelete(uid: string, userId: string) {
   const note = await prisma?.note.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
     select: { content: true, id: true },
   });
   return note || null;

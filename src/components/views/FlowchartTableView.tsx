@@ -34,6 +34,7 @@ interface FlowchartTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteFlowchart: (uid: string) => void;
+  canDeleteFile: (flowchart: Flowchart) => boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement | null>;
@@ -66,6 +67,7 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteFlowchart,
+  canDeleteFile,
   searchQuery,
   onSearchChange,
   searchRef,
@@ -283,11 +285,15 @@ export const FlowchartTableView = React.memo(function FlowchartTableView({
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit Document
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => onDeleteFlowchart(uid)} className="text-destructive">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {canDeleteFile(flowchart) && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => onDeleteFlowchart(uid)} className="text-destructive">
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
