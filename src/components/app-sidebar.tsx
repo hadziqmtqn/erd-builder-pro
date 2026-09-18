@@ -325,7 +325,7 @@ export const AppSidebar = React.memo(({
               </SidebarMenuItem>
               {user?.isSso && ssoPortalUrl && (
                 <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(ssoPortalUrl)}>
+                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(new URL('/dashboard', ssoPortalUrl).toString())}>
                     <ExternalLink />
                     <span>Open ERDBPro SaaS</span>
                   </SidebarMenuButton>
