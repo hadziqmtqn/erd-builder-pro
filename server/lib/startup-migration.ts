@@ -4,7 +4,7 @@ import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres, SUPABASE_URL } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 import { migrateDbClients } from "./db-client-migration.js";
-import { claimTeamProvisioningBaseline } from "./installation-identity.js";
+import { claimTeamProvisioningBaseline, hasTeamProvisioningBaseline } from "./installation-identity.js";
 import { isProvisionedMembership, membershipProvisioningSignature, teamProvisioningSignature } from "./team-provisioning.js";
 
 type PrismaRecord = { id: number | bigint | string };
@@ -371,7 +371,7 @@ async function createCloudAiTablesIfMissing(): Promise<void> {
 
 /** Establishes the signed baseline once for Teams that existed before this release. */
 async function sealExistingTeamRecords(): Promise<void> {
-  if (!prisma || !isLocalPostgres() || !claimTeamProvisioningBaseline()) return;
+  if (!prisma || !isLocalPostgres() || hasTeamProvisioningBaseline()) return;
   const { teamCount, memberCount } = await prisma.$transaction(async (tx) => {
     const teams = await tx.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string; cloud_entitlement: string | null }>>(
       'SELECT "id", "status", "created_at", "cloud_entitlement" FROM "teams" WHERE "provisioning_signature" IS NULL',
@@ -410,6 +410,7 @@ async function sealExistingTeamRecords(): Promise<void> {
     }
     return { teamCount: teams.length, memberCount: members.length };
   });
+  claimTeamProvisioningBaseline();
   if (teamCount || memberCount) logger.info({ teams: teamCount, members: memberCount }, "Established Team provisioning baseline");
 }
 

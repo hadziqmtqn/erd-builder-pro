@@ -102,6 +102,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   teams: SwitcherTeam[];
   teamsAvailable: boolean;
   activeTeamId: string | null;
+  onTeamsRefresh: () => void;
   onTeamSelect: (teamId: string | null) => void;
   onTeamManage: (team: SwitcherTeam) => void;
   onUserManage: () => void;
@@ -135,6 +136,7 @@ export const AppSidebar = React.memo(({
   teams,
   teamsAvailable,
   activeTeamId,
+  onTeamsRefresh,
   onTeamSelect,
   onTeamManage,
   onUserManage,
@@ -285,6 +287,7 @@ export const AppSidebar = React.memo(({
         <TeamSwitcher
           teams={switcherTeams}
           activeTeamId={activeTeamId}
+          onOpen={onTeamsRefresh}
           enabled={teamsAvailable || switcherTeams.length > 0}
           selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}

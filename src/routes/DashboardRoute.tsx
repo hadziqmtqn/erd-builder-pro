@@ -143,7 +143,7 @@ export function DashboardRoute() {
   const navigate = useNavigate();
   const ctx = useWorkspace();
   const showDbClient = isInstalledApp();
-  const teamState = useTeams(ctx.isGuest);
+  const teamState = useTeams(ctx.isGuest, Boolean(ctx.user?.isSso));
   const isCloudTeam = Boolean(ctx.user?.isSso && teamState.activeTeamId);
   const capabilityFor = (key: string) => key === 'diagrams' ? 'erd_builder' : key;
   const canUseCloudFeature = (key: string) => !isCloudTeam

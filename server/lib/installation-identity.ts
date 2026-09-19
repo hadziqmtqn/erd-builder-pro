@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -108,4 +109,8 @@ export function claimTeamProvisioningBaseline(): boolean {
     if ((error as NodeJS.ErrnoException)?.code === "EEXIST") return false;
     throw error;
   }
+}
+
+export function hasTeamProvisioningBaseline(): boolean {
+  return existsSync(path.join(path.dirname(identityPath()), "team-provisioning-baseline-v1"));
 }

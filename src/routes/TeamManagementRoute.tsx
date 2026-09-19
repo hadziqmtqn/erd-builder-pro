@@ -22,6 +22,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 type TeamDetail = TeamSummary & {
   members: NonNullable<TeamSummary["members"]>;
 };
+type IntegrityReview = {
+  team: { id: string; name: string; status: string };
+  teamSignatureValid: boolean;
+  members: Array<{ id: string; userId: string; name: string | null; email: string | null; status: string; signatureValid: boolean }>;
+};
+type PendingIntegrityQuarantine = { kind: "team"; name: string } | { kind: "member"; userId: string; name: string };
 
 const TEAM_ROLE_LABELS = { manager: "Manager", staff: "Staff" } as const;
 const TEMPORARY_PASSWORD_CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
@@ -49,6 +55,7 @@ export function TeamManagementRoute() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [team, setTeam] = useState<TeamDetail | null>(null);
+  const [integrityReview, setIntegrityReview] = useState<IntegrityReview | null>(null);
   const [teamName, setTeamName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
@@ -62,6 +69,7 @@ export function TeamManagementRoute() {
   const [createAccount, setCreateAccount] = useState(false);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [pendingMemberAction, setPendingMemberAction] = useState<PendingMemberAction | null>(null);
+  const [pendingIntegrityQuarantine, setPendingIntegrityQuarantine] = useState<PendingIntegrityQuarantine | null>(null);
   const [error, setError] = useState("");
   const isSso = Boolean(user?.isSso);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
@@ -102,18 +110,39 @@ export function TeamManagementRoute() {
     if (!id) return;
     setIsLoading(true);
     setError("");
+    setTeam(null);
+    setIntegrityReview(null);
     try {
       const response = await apiFetch(`/api/teams/${encodeURIComponent(id)}`);
-      if (!response.ok) throw await responseError(response, "Team could not be loaded.");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        if (isSuperAdmin && body.code === "TEAM_INTEGRITY_UNAVAILABLE") {
+          const reviewResponse = await apiFetch(`/api/teams/${encodeURIComponent(id)}/integrity-review`);
+          if (reviewResponse.ok) {
+            setIntegrityReview(await reviewResponse.json());
+            return;
+          }
+        }
+        throw new Error(typeof body.error === "string" ? body.error : "Team could not be loaded.");
+      }
       setTeam(await response.json());
     } catch (cause: any) {
       setError(cause?.message || "Team could not be loaded.");
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [id, isSuperAdmin]);
 
   useEffect(() => { void fetchTeam(); }, [fetchTeam]);
+
+  useEffect(() => {
+    if (!isSso) return;
+    const refreshTeam = (event: Event) => {
+      if ((event as CustomEvent<{ teamId?: string }>).detail?.teamId === id) void fetchTeam();
+    };
+    window.addEventListener("cloud-workspace-sync", refreshTeam);
+    return () => window.removeEventListener("cloud-workspace-sync", refreshTeam);
+  }, [fetchTeam, id, isSso]);
 
   useEffect(() => {
     setBreadcrumbLabel(team?.name || "Team management");
@@ -206,6 +235,29 @@ export function TeamManagementRoute() {
     finally { setAction(null); }
   };
 
+  const quarantineIntegrityRecord = async (pending: PendingIntegrityQuarantine) => {
+    if (!id) return;
+    setAction(`quarantine:${pending.kind}`);
+    try {
+      const endpoint = pending.kind === "team"
+        ? `/api/teams/${encodeURIComponent(id)}/integrity/quarantine`
+        : `/api/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(pending.userId)}/integrity/quarantine`;
+      const response = await apiFetch(endpoint, { method: "POST" });
+      if (!response.ok) throw await responseError(response, "Integrity issue could not be quarantined.");
+      setPendingIntegrityQuarantine(null);
+      toast.success(pending.kind === "team" ? "Team quarantined; its data was retained." : "Membership quarantined; its data was retained.");
+      if (pending.kind === "team") {
+        window.dispatchEvent(new CustomEvent("team-quarantined", { detail: { teamId: id } }));
+        navigate("/", { replace: true });
+      }
+      else await fetchTeam();
+    } catch (cause: any) {
+      toast.error(cause?.message || "Integrity issue could not be quarantined.");
+    } finally {
+      setAction(null);
+    }
+  };
+
   const reactivateMember = async (memberEmail: string) => {
     if (!id) return;
     setAction(`reactivate:${memberEmail}`);
@@ -227,6 +279,57 @@ export function TeamManagementRoute() {
 
   if (isLoading) {
     return <main className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin" aria-label="Loading Team" /></main>;
+  }
+
+  if (!team && integrityReview) {
+    const invalidMembers = integrityReview.members.filter((member) => member.status === "active" && !member.signatureValid);
+    const canQuarantineTeam = !integrityReview.teamSignatureValid && integrityReview.team.status !== "quarantined";
+    const canQuarantineMembers = integrityReview.teamSignatureValid && integrityReview.team.status === "active" && invalidMembers.length > 0;
+    return (
+      <main className="flex flex-1 flex-col items-start gap-4 p-6">
+        <Button variant="ghost" onClick={() => navigate("/")}><ArrowLeft /> Back</Button>
+        <div>
+          <h1 className="text-xl font-semibold">Team integrity issue</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{integrityReview.team.name} management is blocked. This review only allows quarantine when a provisioning signature is invalid; it never changes signatures or deletes data, and every action is audited.</p>
+        </div>
+        {!integrityReview.teamSignatureValid && (
+          <Card className="w-full max-w-2xl">
+            <CardHeader><CardTitle>Team signature is invalid</CardTitle><CardDescription>Disable this Team to block access while preserving its projects and other data.</CardDescription></CardHeader>
+            <CardContent>
+              {canQuarantineTeam
+                ? <Button variant="destructive" disabled={action !== null} onClick={() => setPendingIntegrityQuarantine({ kind: "team", name: integrityReview.team.name })}>Quarantine Team</Button>
+                : <p className="text-sm text-muted-foreground">This Team is already quarantined. Its data is retained.</p>}
+            </CardContent>
+          </Card>
+        )}
+        {integrityReview.teamSignatureValid && invalidMembers.length > 0 && (
+          <Card className="w-full max-w-2xl">
+            <CardHeader><CardTitle>Membership signatures are invalid</CardTitle><CardDescription>Disable only the affected memberships. The user account and other Team memberships stay intact.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              {invalidMembers.map((member) => (
+                <div key={member.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+                  <div><p className="font-medium">{member.name || "Unnamed member"}</p><p className="text-sm text-muted-foreground">{member.email || "—"}</p></div>
+                  <Button variant="destructive" size="sm" disabled={action !== null} onClick={() => setPendingIntegrityQuarantine({ kind: "member", userId: member.userId, name: member.name || member.email || "this member" })}>Quarantine membership</Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+        {!canQuarantineTeam && !canQuarantineMembers && integrityReview.teamSignatureValid && invalidMembers.length === 0 && (
+          <p className="text-sm text-muted-foreground">No active invalid signatures were found. Check this installation’s license and capacity limits.</p>
+        )}
+        <ConfirmModal
+          isOpen={Boolean(pendingIntegrityQuarantine)}
+          title={pendingIntegrityQuarantine?.kind === "team" ? "Quarantine this Team?" : "Quarantine this membership?"}
+          message={`${pendingIntegrityQuarantine?.name || "This record"} will be deactivated. Its data and signature will be kept, and the action will be recorded in the audit log.`}
+          confirmText="Quarantine"
+          cancelText="Cancel"
+          variant="danger"
+          onCancel={() => setPendingIntegrityQuarantine(null)}
+          onConfirm={() => { const pending = pendingIntegrityQuarantine; setPendingIntegrityQuarantine(null); if (pending) void quarantineIntegrityRecord(pending); }}
+        />
+      </main>
+    );
   }
 
   if (!team) {
@@ -300,9 +403,9 @@ export function TeamManagementRoute() {
                         <TableCell className="font-medium">{member.name || "Unnamed member"}</TableCell>
                         <TableCell className="text-muted-foreground">{member.email || "—"}</TableCell>
                         <TableCell><Select value={member.role} onValueChange={(value) => value && void updateMemberRole(member.id, value as "manager" | "staff")} disabled={action !== null || member.status !== "active"}><SelectTrigger size="sm" className="w-28"><SelectValue>{TEAM_ROLE_LABELS[member.role]}</SelectValue></SelectTrigger><SelectContent><SelectItem value="manager">{TEAM_ROLE_LABELS.manager}</SelectItem><SelectItem value="staff">{TEAM_ROLE_LABELS.staff}</SelectItem></SelectContent></Select></TableCell>
-                        <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{member.status === "active" ? "Active" : member.status === "quarantined" ? "Quarantined" : member.status}</Badge></TableCell>
                         <TableCell className="text-muted-foreground">{formatDate(member.joinedAt)}</TableCell>
-                        <TableCell className="text-right"><DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${member.name || member.email || "member"}`} disabled={action !== null}><MoreHorizontal /></Button>} /><DropdownMenuContent align="end" className="w-48"><DropdownMenuGroup><DropdownMenuLabel>Member actions</DropdownMenuLabel>{member.status === "active" ? <><DropdownMenuItem onClick={() => setPendingMemberAction({ kind: "remove", userId: member.id, name: member.name || member.email })}><UserMinus /> Deactivate member</DropdownMenuItem>{isSuperAdmin && <DropdownMenuItem variant="destructive" onClick={() => setPendingMemberAction({ kind: "ban", userId: member.id, name: member.name || member.email })}><UserX /> Ban member</DropdownMenuItem>}</> : <DropdownMenuItem disabled={!member.email} onClick={() => member.email && void reactivateMember(member.email)}><UserCheck /> Reactivate member</DropdownMenuItem>}</DropdownMenuGroup></DropdownMenuContent></DropdownMenu></TableCell>
+                        <TableCell className="text-right">{(isSuperAdmin || member.id !== user?.id) && <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${member.name || member.email || "member"}`} disabled={action !== null}><MoreHorizontal /></Button>} /><DropdownMenuContent align="end" className="w-48"><DropdownMenuGroup><DropdownMenuLabel>Member actions</DropdownMenuLabel>{member.status === "active" ? <><DropdownMenuItem onClick={() => setPendingMemberAction({ kind: "remove", userId: member.id, name: member.name || member.email })}><UserMinus /> Deactivate member</DropdownMenuItem>{isSuperAdmin && <DropdownMenuItem variant="destructive" onClick={() => setPendingMemberAction({ kind: "ban", userId: member.id, name: member.name || member.email })}><UserX /> Ban member</DropdownMenuItem>}</> : member.status === "quarantined" ? <DropdownMenuItem disabled><UserX /> Quarantined</DropdownMenuItem> : <DropdownMenuItem disabled={!member.email} onClick={() => member.email && void reactivateMember(member.email)}><UserCheck /> Reactivate member</DropdownMenuItem>}</DropdownMenuGroup></DropdownMenuContent></DropdownMenu>}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -354,7 +457,7 @@ export function TeamManagementRoute() {
                       <RefreshCw data-icon="inline-start" /> Generate new
                     </Button>
                   </div>
-                  <FieldDescription>Generated automatically. Share it securely; the member must change it after signing in.</FieldDescription>
+                  <FieldDescription>Generated automatically. Share it securely; changing this password after signing in is optional.</FieldDescription>
                 </Field>
                 <Field data-invalid={passwordMismatch}>
                   <FieldLabel htmlFor="team-member-confirm-password">Confirm password</FieldLabel>

@@ -245,7 +245,7 @@ function AppLayoutInner() {
   const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
   const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
-  const teamState = useTeams(isGuest);
+  const teamState = useTeams(isGuest, Boolean(user?.isSso));
   useEffect(() => {
     if (isGuest) {
       setSelectableProjects([]);
@@ -802,6 +802,7 @@ function AppLayoutInner() {
           teams={teamState.teams}
           teamsAvailable={teamState.isAvailable}
           activeTeamId={teamState.activeTeamId}
+          onTeamsRefresh={() => { void teamState.fetchTeams(); }}
           onTeamSelect={handleTeamSelect}
           onTeamManage={handleTeamManage}
           onUserManage={handleUserManage}

@@ -26,6 +26,7 @@ export function TeamSwitcher({
   enabled,
   selfHosted,
   canManageTeams,
+  onOpen,
   onSelect,
   onAdd,
   onManage,
@@ -36,6 +37,7 @@ export function TeamSwitcher({
   enabled: boolean;
   selfHosted: boolean;
   canManageTeams: boolean;
+  onOpen: () => void;
   onSelect: (teamId: string | null) => void;
   onAdd: () => void;
   onManage: (team: SwitcherTeam) => void;
@@ -78,7 +80,7 @@ export function TeamSwitcher({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => { if (open) onOpen(); }}>
           <DropdownMenuTrigger render={trigger} />
           <DropdownMenuContent
             className="min-w-64 border border-border/70 p-1.5 shadow-xl"

@@ -11,6 +11,7 @@ import { isDesktopMode, useLocalAuth } from "./lib/config.js";
 import { startCloudAiConfigRefresh, startCloudAiUsageRetention } from "./lib/cloud-ai.js";
 import { startCloudTelemetry } from "./lib/cloud-telemetry.js";
 import { setDbReady, setDbError } from "./lib/db-state.js";
+import { attachCloudLiveSync } from "./lib/cloud-live-sync.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
@@ -221,6 +222,7 @@ const HOST = process.env.HOST || (isDesktopMode() ? "127.0.0.1" : "0.0.0.0");
 const server = app.listen(PORT, HOST, () => {
   logger.info({ host: HOST, port: PORT }, "Server listening");
 });
+attachCloudLiveSync(server);
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {

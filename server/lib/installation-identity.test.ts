@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { claimTeamProvisioningBaseline, getInstallationIdentity } from "./installation-identity";
+import { claimTeamProvisioningBaseline, getInstallationIdentity, hasTeamProvisioningBaseline } from "./installation-identity";
 
 const originalIdentityPath = process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE;
 const originalStatePath = process.env.ERDBPRO_LICENSE_STATE_FILE;
@@ -52,7 +52,9 @@ describe("installation identity", () => {
     temporaryDirectories.push(directory);
     process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE = path.join(directory, "installation-identity.json");
 
+    expect(hasTeamProvisioningBaseline()).toBe(false);
     expect(claimTeamProvisioningBaseline()).toBe(true);
+    expect(hasTeamProvisioningBaseline()).toBe(true);
     expect(claimTeamProvisioningBaseline()).toBe(false);
     expect(statSync(path.join(directory, "team-provisioning-baseline-v1")).mode & 0o777).toBe(0o600);
   });

@@ -6,6 +6,7 @@ import { checkSelfHostInstanceLicense, getStoredInstanceLicense, LicenseClientEr
 import { prisma } from "../../lib/prisma.js";
 import { isProvisionedMembership, isProvisionedTeam, membershipProvisioningSignature, teamProvisioningSignature } from "../../lib/team-provisioning.js";
 import { cloudCapabilities } from "../../lib/cloud-capability.js";
+import { instanceLicenseUsage } from "../../lib/instance-license-usage.js";
 
 export const TEAM_ROLES = ["manager", "staff"] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
@@ -13,6 +14,9 @@ export type TeamRole = (typeof TEAM_ROLES)[number];
 const messages: Record<string, string> = {
   SELF_HOST_ONLY: "Teams are available only on a self-hosted server.", SUPER_ADMIN_REQUIRED: "Only the SuperAdmin can create Teams.", TEAM_MANAGER_REQUIRED: "Only a Team Manager can manage this Team.", TEAM_NAME_TAKEN: "A Team with this name already exists.", TEAM_LIMIT_REACHED: "This installation has reached its Team limit.", MEMBER_LIMIT_REACHED: "This installation has reached its active member limit.", MEMBER_ALREADY_EXISTS: "This person is already a member of this Team.", MEMBER_BANNED: "This member has been banned from this Team.", USER_NOT_FOUND: "No account was found with that email address.", SUPER_ADMIN_CANNOT_BE_MEMBER: "A SuperAdmin cannot be added as a Team member.", LAST_MANAGER_REQUIRED: "A Team must retain at least one Manager.", MEMBER_INACTIVE: "Your Team membership is inactive. Contact the SuperAdmin to restore access.", TEAM_INTEGRITY_UNAVAILABLE: "This Team is unavailable because its membership records could not be verified. Contact the SuperAdmin.", LICENSE_SYNC_REQUIRED: "License verification is temporarily unavailable. Team and member capacity changes are disabled until this installation can reach ERDBPro SaaS.",
   CLOUD_TEAM_MANAGED_EXTERNALLY: "Cloud Teams and members are managed from your ERDBPro account.",
+  INTEGRITY_QUARANTINE_NOT_APPLICABLE: "This Team no longer has an active integrity issue that can be quarantined.",
+  MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE: "This membership no longer has an active integrity issue that can be quarantined.",
+  MEMBER_QUARANTINED: "This membership is quarantined and cannot be reactivated through Team management.",
 };
 export class TeamServiceError extends Error { constructor(public readonly code: string, public readonly status: number, message = messages[code] || "We couldn't complete this Team request.") { super(message); this.name = "TeamServiceError"; } }
 const database = () => { if (!isLocalPostgres() || !prisma) throw new TeamServiceError("SELF_HOST_ONLY", 404); return prisma as any; };
@@ -20,7 +24,7 @@ const admin = (value: boolean) => { if (!value) throw new TeamServiceError("SUPE
 const localMutation = () => { if (isSsoAuthMode()) throw new TeamServiceError("CLOUD_TEAM_MANAGED_EXTERNALLY", 403); };
 export const isTeamRole = (value: unknown): value is TeamRole => typeof value === "string" && (TEAM_ROLES as readonly string[]).includes(value);
 
-async function usage() { const db = database(); const [teamCount, members] = await Promise.all([db.team.count({ where: { type: { not: "personal" }, status: "active" } }), db.teamMember.findMany({ where: { status: "active" }, select: { userId: true }, distinct: ["userId"] })]); return { teamCount, memberCount: members.length }; }
+const usage = instanceLicenseUsage;
 async function entitlement(forceRefresh = false): Promise<VerifiedEntitlement> {
   try { const state = getStoredInstanceLicense(); if (!state) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409); if (!forceRefresh && Date.now() - Date.parse(state.lastCheckedAt) < 900_000) return verifyStoredInstanceLicense().entitlement; return (await checkSelfHostInstanceLicense(await usage())).entitlement; }
   catch (error) { if (error instanceof LicenseClientError && ["LICENSE_SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE"].includes(error.code)) { if (!forceRefresh) return verifyStoredInstanceLicense().entitlement; throw new TeamServiceError("LICENSE_SYNC_REQUIRED", 503); } if (error instanceof LicenseClientError) throw new TeamServiceError(error.code, error.status); throw error; }
@@ -40,6 +44,101 @@ async function team(id: string, userId: string, superAdmin: boolean) { const db 
 async function integrity(value: any) { if (!isProvisionedTeam(value)) throw new TeamServiceError("TEAM_INTEGRITY_UNAVAILABLE", 403); const members = value.members || await database().teamMember.findMany({ where: { teamId: value.id } }); if (members.filter((member: any) => member.status === "active").some((member: any) => !isProvisionedMembership(member))) throw new TeamServiceError("TEAM_INTEGRITY_UNAVAILABLE", 403); if (isSsoAuthMode()) return null; const valueEntitlement = await entitlement(); const current = await usage(); if ((valueEntitlement.maxTeams !== null && current.teamCount > valueEntitlement.maxTeams) || (valueEntitlement.maxMembers !== null && current.memberCount > valueEntitlement.maxMembers)) throw new TeamServiceError("TEAM_INTEGRITY_UNAVAILABLE", 403); return valueEntitlement; }
 async function managedTeam(id: string, userId: string, superAdmin: boolean) { manager(await canManageTeam(id, userId, superAdmin)); const value = await team(id, userId, superAdmin); if (value) await integrity(value); return value; }
 
+export async function reviewTeamIntegrity(id: string, superAdmin: boolean) {
+  admin(superAdmin);
+  localMutation();
+  const value = await database().team.findUnique({ where: { id }, include: teamInclude() });
+  if (!value || value.type === "personal") return null;
+  const teamSignatureValid = isProvisionedTeam(value);
+  const members = (value.members || []).map((member: any) => ({
+    id: member.id,
+    userId: member.userId,
+    name: member.user?.name || null,
+    email: member.user?.email || null,
+    status: member.status,
+    signatureValid: isProvisionedMembership(member),
+  }));
+  return {
+    team: { id: value.id, name: value.name, status: value.status },
+    teamSignatureValid,
+    members,
+  };
+}
+
+export async function quarantineTeam(id: string, actorId: string, superAdmin: boolean): Promise<boolean> {
+  localMutation();
+  admin(superAdmin);
+  const db = database();
+  return db.$transaction(async (tx: any) => {
+    const value = await tx.team.findUnique({ where: { id } });
+    if (!value || value.type === "personal") return false;
+    if (value.status === "quarantined" || isProvisionedTeam(value)) throw new TeamServiceError("INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
+
+    const changed = await tx.team.updateMany({
+      where: {
+        id: value.id,
+        status: value.status,
+        createdAt: value.createdAt,
+        cloudEntitlement: value.cloudEntitlement,
+        provisioningSignature: value.provisioningSignature,
+      },
+      data: { status: "quarantined" },
+    });
+    if (changed.count !== 1) throw new TeamServiceError("INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
+    await tx.teamAuditEvent.create({
+      data: {
+        teamId: value.id,
+        actorId,
+        action: "integrity_quarantine",
+        targetType: "team",
+        targetId: value.id,
+        metadata: JSON.stringify({ reason: "invalid_provisioning_signature" }),
+      },
+    });
+    return true;
+  });
+}
+
+export async function quarantineMember(teamId: string, userId: string, actorId: string, superAdmin: boolean): Promise<boolean> {
+  localMutation();
+  admin(superAdmin);
+  const db = database();
+  return db.$transaction(async (tx: any) => {
+    const value = await tx.team.findUnique({ where: { id: teamId } });
+    if (!value || value.type === "personal") return false;
+    if (value.status !== "active" || !isProvisionedTeam(value)) throw new TeamServiceError("MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
+
+    const member = await tx.teamMember.findFirst({ where: { teamId, userId, status: "active" } });
+    if (!member) return false;
+    if (isProvisionedMembership(member)) throw new TeamServiceError("MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
+
+    const changed = await tx.teamMember.updateMany({
+      where: {
+        id: member.id,
+        teamId: member.teamId,
+        userId: member.userId,
+        role: member.role,
+        status: member.status,
+        joinedAt: member.joinedAt,
+        provisioningSignature: member.provisioningSignature,
+      },
+      data: { status: "quarantined" },
+    });
+    if (changed.count !== 1) throw new TeamServiceError("MEMBER_INTEGRITY_QUARANTINE_NOT_APPLICABLE", 409);
+    await tx.teamAuditEvent.create({
+      data: {
+        teamId: value.id,
+        actorId,
+        action: "integrity_quarantine",
+        targetType: "team_member",
+        targetId: member.id,
+        metadata: JSON.stringify({ reason: "invalid_provisioning_signature", userId }),
+      },
+    });
+    return true;
+  });
+}
+
 export async function canManageTeam(teamId: string, userId: string, superAdmin?: boolean) { const db = database(); const isSuperAdmin = superAdmin ?? Boolean((await db.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }))?.isSuperAdmin); if (isSuperAdmin) return true; return (await db.teamMember.findFirst({ where: { teamId, userId, status: "active" }, select: { role: true } }))?.role === "manager"; }
 function manager(canManage: boolean) { if (!canManage) throw new TeamServiceError("TEAM_MANAGER_REQUIRED", 403); }
 export async function canAccessTeam(id: string, userId: string, superAdmin: boolean) { try { const value = await team(id, userId, superAdmin); if (!value || value.status !== "active") return false; await integrity(value); return true; } catch { return false; } }
@@ -47,7 +146,7 @@ export async function listTeams(userId: string, superAdmin: boolean) { if (!isSs
 export async function getTeam(id: string, userId: string, superAdmin: boolean) { const value = await managedTeam(id, userId, superAdmin); return value ? response(value, true) : null; }
 export async function createTeam(data: { name: string; userId: string; isSuperAdmin: boolean }) { localMutation(); admin(data.isSuperAdmin); const db = database(); const name = data.name.trim(); if (await db.team.findFirst({ where: { name: { equals: name, mode: "insensitive" } } })) throw new TeamServiceError("TEAM_NAME_TAKEN", 409); const value = await requireActiveInstanceLicense({ refresh: true }); const current = await usage(); if (value.maxTeams !== null && current.teamCount >= value.maxTeams) throw new TeamServiceError("TEAM_LIMIT_REACHED", 409); const id = randomUUID(); const createdAt = new Date(); const created = await db.team.create({ data: { id, name, type: "team", createdBy: data.userId, status: "active", createdAt, provisioningSignature: teamProvisioningSignature({ id, status: "active", createdAt }) } }); return response(created, true); }
 export async function updateTeam(id: string, name: string, userId: string, superAdmin: boolean) { localMutation(); const db = database(); const value = await managedTeam(id, userId, superAdmin); if (!value) return null; const normalized = name.trim(); const duplicate = await db.team.findFirst({ where: { id: { not: id }, name: { equals: normalized, mode: "insensitive" } }, select: { id: true } }); if (duplicate) throw new TeamServiceError("TEAM_NAME_TAKEN", 409); await db.team.update({ where: { id }, data: { name: normalized } }); return getTeam(id, userId, superAdmin); }
-export async function addMember(teamId: string, email: string, actorId: string, superAdmin: boolean, account: { name?: string; password?: string; role?: TeamRole } = {}) { localMutation(); const db = database(); const value = await managedTeam(teamId, actorId, superAdmin); if (!value) return null; const plan = await requireActiveInstanceLicense({ refresh: true }); let user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } }); if (!user && (!account.name || !account.password)) throw new TeamServiceError("USER_NOT_FOUND", 404); if (user?.isSuperAdmin) throw new TeamServiceError("SUPER_ADMIN_CANNOT_BE_MEMBER", 409); const existing = user && await db.teamMember.findFirst({ where: { teamId, userId: user.id } }); if (existing?.status === "banned") throw new TeamServiceError("MEMBER_BANNED", 403); const active = user && await db.teamMember.findFirst({ where: { userId: user.id, status: "active" } }); if (active?.teamId === teamId) throw new TeamServiceError("MEMBER_ALREADY_EXISTS", 409); const current = await usage(); if (!active && plan.maxMembers != null && current.memberCount >= plan.maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409); user = user || await db.user.create({ data: { email: email.trim().toLowerCase(), name: account.name!.trim(), password: hashPassword(account.password!), isSuperAdmin: false } }); const id = existing?.id || randomUUID(); const joinedAt = new Date(); const role = account.role || "staff"; const provisioningSignature = membershipProvisioningSignature({ id, teamId, userId: user.id, role, status: "active", joinedAt }); await db.teamMember.upsert({ where: { teamId_userId: { teamId, userId: user.id } }, create: { id, teamId, userId: user.id, role, status: "active", joinedAt, provisioningSignature }, update: { role, status: "active", joinedAt, provisioningSignature } }); return getTeam(teamId, actorId, superAdmin); }
+export async function addMember(teamId: string, email: string, actorId: string, superAdmin: boolean, account: { name?: string; password?: string; role?: TeamRole } = {}) { localMutation(); const db = database(); const value = await managedTeam(teamId, actorId, superAdmin); if (!value) return null; const plan = await requireActiveInstanceLicense({ refresh: true }); let user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } }); if (!user && (!account.name || !account.password)) throw new TeamServiceError("USER_NOT_FOUND", 404); if (user?.isSuperAdmin) throw new TeamServiceError("SUPER_ADMIN_CANNOT_BE_MEMBER", 409); const existing = user && await db.teamMember.findFirst({ where: { teamId, userId: user.id } }); if (existing?.status === "banned") throw new TeamServiceError("MEMBER_BANNED", 403); if (existing?.status === "quarantined") throw new TeamServiceError("MEMBER_QUARANTINED", 403); const active = user && await db.teamMember.findFirst({ where: { userId: user.id, status: "active" } }); if (active?.teamId === teamId) throw new TeamServiceError("MEMBER_ALREADY_EXISTS", 409); const current = await usage(); if (!active && plan.maxMembers != null && current.memberCount >= plan.maxMembers) throw new TeamServiceError("MEMBER_LIMIT_REACHED", 409); user = user || await db.user.create({ data: { email: email.trim().toLowerCase(), name: account.name!.trim(), password: hashPassword(account.password!), isSuperAdmin: false } }); const id = existing?.id || randomUUID(); const joinedAt = new Date(); const role = account.role || "staff"; const provisioningSignature = membershipProvisioningSignature({ id, teamId, userId: user.id, role, status: "active", joinedAt }); await db.teamMember.upsert({ where: { teamId_userId: { teamId, userId: user.id } }, create: { id, teamId, userId: user.id, role, status: "active", joinedAt, provisioningSignature }, update: { role, status: "active", joinedAt, provisioningSignature } }); return getTeam(teamId, actorId, superAdmin); }
 export async function updateMemberRole(teamId: string, userId: string, role: TeamRole, actorId: string, superAdmin: boolean) { localMutation(); if (!await managedTeam(teamId, actorId, superAdmin)) return null; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return null; if (member.role === "manager" && role !== "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { role, provisioningSignature: membershipProvisioningSignature({ ...member, role }) } }); return getTeam(teamId, actorId, superAdmin); }
 export async function removeMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) { localMutation(); if (!superAdmin && userId === actorId) throw new TeamServiceError("CANNOT_REMOVE_SELF", 409, "You cannot deactivate your own Team membership."); if (!await managedTeam(teamId, actorId, superAdmin)) return false; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return false; if (member.role === "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { status: "inactive", provisioningSignature: membershipProvisioningSignature({ ...member, status: "inactive" }) } }); await db.session.deleteMany({ where: { userId } }); return true; }
 export async function banMember(teamId: string, userId: string, actorId: string, superAdmin: boolean) { localMutation(); admin(superAdmin); if (!await managedTeam(teamId, actorId, superAdmin)) return false; const db = database(); const member = await db.teamMember.findFirst({ where: { teamId, userId, status: "active" } }); if (!member) return false; if (member.role === "manager" && await db.teamMember.count({ where: { teamId, status: "active", role: "manager" } }) <= 1) throw new TeamServiceError("LAST_MANAGER_REQUIRED", 409); await db.teamMember.update({ where: { id: member.id }, data: { status: "banned", provisioningSignature: membershipProvisioningSignature({ ...member, status: "banned" }) } }); await db.session.deleteMany({ where: { userId } }); return true; }
@@ -57,6 +156,7 @@ export async function canUserLogin(userId: string): Promise<{ allowed: true; tea
   const memberships = await (prisma as any).teamMember.findMany({ where: { userId, status: "active" } });
   if (!memberships.length) return { allowed: true };
 
+  let integrityUnavailable = false;
   for (const membership of memberships) {
     const value = await team(membership.teamId, userId, false);
     if (!value || value.status !== "active") continue;
@@ -66,12 +166,12 @@ export async function canUserLogin(userId: string): Promise<{ allowed: true; tea
       return { allowed: true, teamId: membership.teamId };
     } catch (error) {
       if (error instanceof TeamServiceError && error.code === "TEAM_INTEGRITY_UNAVAILABLE") {
-        return { allowed: false, code: error.code };
+        integrityUnavailable = true;
       }
     }
   }
 
   // Cloud users may still use Personal while every remote Team is locked.
   if (isSsoAuthMode()) return { allowed: true };
-  return { allowed: false, code: "LICENSE_EXPIRED_OR_INVALID" };
+  return { allowed: false, code: integrityUnavailable ? "TEAM_INTEGRITY_UNAVAILABLE" : "LICENSE_EXPIRED_OR_INVALID" };
 }

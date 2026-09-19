@@ -65,7 +65,7 @@ function CloudFeatureUnavailable({ capability, teamName, ssoPortalUrl }: { capab
 
 export function CloudFeatureRoute({ capability, children }: { capability: Capability; children: ReactNode }) {
   const { user, isGuest } = useAuth();
-  const { activeTeamId, activeTeam, isLoading } = useTeams(isGuest);
+  const { activeTeamId, activeTeam, isLoading } = useTeams(isGuest, Boolean(user?.isSso));
 
   if (!user?.isSso || !activeTeamId) return <>{children}</>;
   if (isLoading) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Checking Team plan…</div>;
