@@ -4,6 +4,7 @@ import { logger } from "./logger.js";
 import { isDesktopMode, isLocalPostgres, SUPABASE_URL } from "./config.js";
 import { isUuid, replaceColumnIdInHandle } from "./erd-column-id-migration.js";
 import { migrateDbClients } from "./db-client-migration.js";
+import { claimTeamProvisioningBaseline } from "./installation-identity.js";
 import { isProvisionedMembership, membershipProvisioningSignature, teamProvisioningSignature } from "./team-provisioning.js";
 
 type PrismaRecord = { id: number | bigint | string };
@@ -370,33 +371,46 @@ async function createCloudAiTablesIfMissing(): Promise<void> {
 
 /** Establishes the signed baseline once for Teams that existed before this release. */
 async function sealExistingTeamRecords(): Promise<void> {
-  if (!prisma || !isLocalPostgres()) return;
-  const teams = await prisma.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string; cloud_entitlement: string | null }>>(
-    'SELECT "id", "status", "created_at", "cloud_entitlement" FROM "teams" WHERE "provisioning_signature" IS NULL',
-  );
-  for (const team of teams) {
-    const createdAt = new Date(team.created_at);
-    const signature = teamProvisioningSignature({ id: team.id, status: team.status, createdAt, cloudEntitlement: team.cloud_entitlement });
-    await prisma.$executeRawUnsafe(
-      `UPDATE "teams" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(team.id)} AND "provisioning_signature" IS NULL`,
+  if (!prisma || !isLocalPostgres() || !claimTeamProvisioningBaseline()) return;
+  const { teamCount, memberCount } = await prisma.$transaction(async (tx) => {
+    const teams = await tx.$queryRawUnsafe<Array<{ id: string; status: string; created_at: Date | string; cloud_entitlement: string | null }>>(
+      'SELECT "id", "status", "created_at", "cloud_entitlement" FROM "teams" WHERE "provisioning_signature" IS NULL',
     );
-  }
+    for (const team of teams) {
+      const createdAt = new Date(team.created_at);
+      const signature = teamProvisioningSignature({ id: team.id, status: team.status, createdAt, cloudEntitlement: team.cloud_entitlement });
+      await tx.$executeRawUnsafe(
+        `UPDATE "teams" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(team.id)} AND "provisioning_signature" IS NULL`,
+      );
+    }
 
-  await prisma.$executeRawUnsafe(`UPDATE "team_members" SET "role" = 'staff' WHERE "role" = 'member'`);
-  const members = await prisma.$queryRawUnsafe<Array<{
-    id: string; team_id: string; user_id: string; role: string; status: string; joined_at: Date | string; provisioning_signature: string | null;
-  }>>('SELECT "id", "team_id", "user_id", "role", "status", "joined_at", "provisioning_signature" FROM "team_members"');
-  for (const member of members) {
-    const joinedAt = new Date(member.joined_at);
-    const signature = membershipProvisioningSignature({
-      id: member.id, teamId: member.team_id, userId: member.user_id, role: member.role, status: member.status, joinedAt,
-    });
-    if (isProvisionedMembership({ id: member.id, teamId: member.team_id, userId: member.user_id, role: member.role, status: member.status, joinedAt, provisioningSignature: member.provisioning_signature })) continue;
-    await prisma.$executeRawUnsafe(
-      `UPDATE "team_members" SET "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(member.id)}`,
-    );
-  }
-  if (teams.length || members.length) logger.info({ teams: teams.length, members: members.length }, "Established Team provisioning baseline");
+    const members = await tx.$queryRawUnsafe<Array<{
+      id: string; team_id: string; user_id: string; role: string; status: string; joined_at: Date | string; provisioning_signature: string | null;
+    }>>('SELECT "id", "team_id", "user_id", "role", "status", "joined_at", "provisioning_signature" FROM "team_members"');
+    for (const member of members) {
+      const joinedAt = new Date(member.joined_at);
+      const signatureValid = isProvisionedMembership({
+        id: member.id, teamId: member.team_id, userId: member.user_id, role: member.role, status: member.status, joinedAt, provisioningSignature: member.provisioning_signature,
+      });
+      const role = member.role === "member" ? "staff" : member.role;
+      if (member.provisioning_signature && !(member.role === "member" && signatureValid)) {
+        if (role !== member.role) {
+          await tx.$executeRawUnsafe(
+            `UPDATE "team_members" SET "role" = 'staff' WHERE "id" = ${sqlLiteral(member.id)} AND "role" = 'member'`,
+          );
+        }
+        continue;
+      }
+      const signature = membershipProvisioningSignature({
+        id: member.id, teamId: member.team_id, userId: member.user_id, role, status: member.status, joinedAt,
+      });
+      await tx.$executeRawUnsafe(
+        `UPDATE "team_members" SET "role" = ${sqlLiteral(role)}, "provisioning_signature" = ${sqlLiteral(signature)} WHERE "id" = ${sqlLiteral(member.id)}`,
+      );
+    }
+    return { teamCount: teams.length, memberCount: members.length };
+  });
+  if (teamCount || memberCount) logger.info({ teams: teamCount, members: memberCount }, "Established Team provisioning baseline");
 }
 
 function sqlLiteral(value: string | number | null): string {
@@ -920,10 +934,10 @@ export async function applySchemaMigrations(): Promise<void> {
   await ensureAiChatMessageIdempotency();
   await createErdMetadataTablesIfMissing();
   await createTeamTablesIfMissing();
+  await backfillLegacyTeamData();
   await backfillLegacyFileOwners();
   await createCloudAiTablesIfMissing();
   await sealExistingTeamRecords();
-  // Legacy projects stay Personal until their owner explicitly links them to a Team.
   if (isDesktopMode()) {
     // v3.4.3+ — local Repository-Aware ERD link used by Desktop/CLI MCP.
     await ensureRepositoryLinkColumns();

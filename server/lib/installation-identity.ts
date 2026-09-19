@@ -96,3 +96,16 @@ export function ensureInstallationIdentity(preferredInstallationId?: string): In
 export function getInstallationIdentity(): InstallationIdentity {
   return ensureInstallationIdentity();
 }
+
+export function claimTeamProvisioningBaseline(): boolean {
+  ensureInstallationIdentity();
+  try {
+    const marker = path.join(path.dirname(identityPath()), "team-provisioning-baseline-v1");
+    writeFileSync(marker, "v1\n", { encoding: "utf8", flag: "wx", mode: 0o600 });
+    chmodSync(marker, 0o600);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") return false;
+    throw error;
+  }
+}

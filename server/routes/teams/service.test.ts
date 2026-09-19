@@ -92,12 +92,17 @@ describe("Team integrity", () => {
   it("refreshes the entitlement before creating a Team", async () => {
     mocks.database.team.findFirst.mockResolvedValue(null);
     mocks.database.team.count.mockResolvedValue(1);
-    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 1, maxMembers: 10 } });
 
     await expect(teams.createTeam({ name: "Downgraded Team", userId: "admin", isSuperAdmin: true }))
       .rejects.toMatchObject({ code: "TEAM_LIMIT_REACHED" });
     expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
+    expect(mocks.database.teamMember.findMany).toHaveBeenCalledWith({
+      where: { status: "active" },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
     expect(mocks.database.team.create).not.toHaveBeenCalled();
   });
 
@@ -105,7 +110,8 @@ describe("Team integrity", () => {
     mocks.provisionedTeam = true;
     mocks.database.team.findUnique.mockResolvedValue({ id: "team-1", type: "team", status: "active", members: [] });
     mocks.database.team.count.mockResolvedValue(1);
-    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
+    mocks.database.teamMember.findFirst.mockReset().mockResolvedValue(null);
     mocks.database.user.findUnique.mockResolvedValue({ id: "user-2", email: "user-2@example.com", isSuperAdmin: false });
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
 
@@ -113,6 +119,30 @@ describe("Team integrity", () => {
       .rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
     expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
     expect(mocks.database.teamMember.upsert).not.toHaveBeenCalled();
+    mocks.provisionedTeam = false;
+  });
+
+  it("allows an active member to join another Team with a different role without using another seat", async () => {
+    mocks.ssoMode.mockReturnValue(false);
+    mocks.provisionedTeam = true;
+    mocks.database.team.findUnique.mockResolvedValue({ id: "team-2", type: "team", status: "active", members: [] });
+    mocks.database.team.count.mockResolvedValue(2);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
+    mocks.database.teamMember.findFirst.mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ teamId: "team-1", userId: "user-1", status: "active", role: "manager" });
+    mocks.database.teamMember.upsert.mockReset().mockResolvedValue({});
+    mocks.database.user.findUnique.mockResolvedValue({ id: "user-1", email: "user@example.com", isSuperAdmin: false });
+    mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
+
+    await teams.addMember("team-2", "user@example.com", "admin", true, { role: "staff" });
+
+    expect(mocks.database.teamMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { teamId_userId: { teamId: "team-2", userId: "user-1" } },
+      create: expect.objectContaining({ role: "staff" }),
+      update: expect.objectContaining({ role: "staff" }),
+    }));
+    expect(mocks.database.teamMember.findFirst).toHaveBeenCalledTimes(2);
     mocks.provisionedTeam = false;
   });
 
