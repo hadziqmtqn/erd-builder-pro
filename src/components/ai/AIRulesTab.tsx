@@ -15,6 +15,7 @@ export function AIRulesTab() {
   const [activeView, setActiveView] = useState<ViewType>('erd');
   const { rules, isLoading, isSaving, saveRules } = useAIRules(activeView);
   const [draft, setDraft] = useState('');
+  const canEdit = rules?.can_edit === true;
 
   useEffect(() => {
     setDraft(rules?.content ?? '');
@@ -30,9 +31,11 @@ export function AIRulesTab() {
       <div>
         <h2 className="text-lg font-semibold text-foreground">AI Rules</h2>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Define custom rules the AI should follow when generating content in each view.
-          Rules are injected as system instructions — if you explicitly ask the AI to do something
-          that contradicts a rule, your request takes precedence.
+          {canEdit
+            ? 'Define custom rules the AI should follow when generating content in each view.'
+            : 'These shared rules are managed by your SuperAdmin and apply to AI output in each view.'}
+          {' '}Rules are advisory — if you explicitly ask the AI to do something that contradicts a rule,
+          your request takes precedence.
         </p>
       </div>
 
@@ -76,6 +79,7 @@ export function AIRulesTab() {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            readOnly={!canEdit}
             placeholder={`e.g. for ${activeView.toUpperCase()}:\n- Always use snake_case for naming\n- Every table must have created_at and updated_at columns\n- Use English for all identifiers\n- ...`}
             className="w-full min-h-70 bg-muted/30 border border-border rounded-lg p-4 text-sm font-mono text-foreground focus:outline-none focus:border-primary/50 resize-y placeholder:text-muted-foreground/50"
           />
@@ -85,22 +89,24 @@ export function AIRulesTab() {
       {/* Footer */}
       <div className="flex items-center justify-between pt-2">
         <p className="text-[11px] text-muted-foreground max-w-lg">
-          Rules are advisory — the AI will follow them unless you explicitly request otherwise in your prompt.
+          The AI follows these rules unless you explicitly request otherwise in your prompt.
         </p>
-        <Button
-          onClick={handleSave}
-          disabled={isSaving || isLoading}
-          variant="outline"
-          size="sm"
-          className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
-        >
-          {isSaving ? (
-            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-          ) : (
-            <Save className="w-3.5 h-3.5 mr-1.5" />
-          )}
-          Save Rules
-        </Button>
+        {canEdit && (
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || isLoading}
+            variant="outline"
+            size="sm"
+            className="h-9 px-4 border-border hover:bg-muted bg-muted/50 text-xs font-semibold"
+          >
+            {isSaving ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            Save Rules
+          </Button>
+        )}
       </div>
     </div>
   );
