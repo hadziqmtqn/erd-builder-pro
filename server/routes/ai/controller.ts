@@ -32,6 +32,7 @@ export async function proxy(req: Request, res: Response): Promise<void> {
   let cloudCreditReserved = false;
   let cloudCreditFinalized = false;
   let cloudRequestId = "";
+  let cloudProviderResponded = false;
   const controller = new AbortController();
 
   // Use res.on("close") — fires when client disconnects OR after res.end()
@@ -170,14 +171,15 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       }),
       signal: controller.signal,
     });
+    cloudProviderResponded = true;
 
     clearTimeout(timeout);
-    if (cloudCreditReserved) {
-      await finalizeCloudAiCredit(cloudRequestId, true);
-      cloudCreditFinalized = true;
-    }
 
     if (!response.ok) {
+      if (cloudCreditReserved) {
+        await finalizeCloudAiCredit(cloudRequestId, true, "CLOUD_AI_PROVIDER_ERROR");
+        cloudCreditFinalized = true;
+      }
       logger.error({ status: response.status }, "AI provider error");
       // Use 502 Bad Gateway — upstream provider failure, not an auth error.
       // The global 401 interceptor in the frontend must NOT catch this.
@@ -189,6 +191,10 @@ export async function proxy(req: Request, res: Response): Promise<void> {
 
     const reader = response.body?.getReader();
     if (!reader) {
+      if (cloudCreditReserved) {
+        await finalizeCloudAiCredit(cloudRequestId, true, "CLOUD_AI_RESPONSE_UNREADABLE");
+        cloudCreditFinalized = true;
+      }
       res.status(500).json({ error: "Response body not readable" });
       return;
     }
@@ -225,12 +231,18 @@ export async function proxy(req: Request, res: Response): Promise<void> {
       }
     }
 
+    if (cloudCreditReserved && !cloudCreditFinalized) {
+      await finalizeCloudAiCredit(cloudRequestId, true, aborted ? "CLOUD_AI_STREAM_INTERRUPTED" : undefined);
+      cloudCreditFinalized = true;
+    }
+
     if (!aborted) {
       try { res.end(); } catch {}
     }
   } catch (err: any) {
     if (cloudCreditReserved && !cloudCreditFinalized) {
-      await finalizeCloudAiCredit(cloudRequestId, false);
+      await finalizeCloudAiCredit(cloudRequestId, cloudProviderResponded, cloudProviderResponded ? "CLOUD_AI_STREAM_FAILED" : "CLOUD_AI_SERVICE_UNAVAILABLE");
+      cloudCreditFinalized = true;
     }
     if (aborted) return;
     logger.error({ err: err }, "AI proxy error:");

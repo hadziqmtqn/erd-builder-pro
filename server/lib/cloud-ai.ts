@@ -44,7 +44,7 @@ const machineTokens = new Map<string, MachineToken>();
 let cloudAiRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let cloudAiUsageRetentionTimer: ReturnType<typeof setInterval> | null = null;
 
-function isPostgresDatabase(): boolean {
+export function isPostgresDatabase(): boolean {
   const url = process.env.DATABASE_URL || "";
   return url.startsWith("postgresql://") || url.startsWith("postgres://");
 }
@@ -401,21 +401,20 @@ export async function reserveCloudAiCredit(access: CloudAiAccess, requestId: str
   });
 }
 
-export async function finalizeCloudAiCredit(requestId: string, consume: boolean): Promise<void> {
+export async function finalizeCloudAiCredit(requestId: string, consume: boolean, errorCode?: string): Promise<void> {
   if (!prisma) return;
   await prisma.$transaction(async (tx) => {
     const rows = await (tx as any).$queryRawUnsafe(`SELECT "period_id", "credits" FROM "cloud_ai_usage_requests" WHERE "request_id" = ${isPostgresDatabase() ? "$1" : "?"} AND "state" = 'reserved'`, requestId) as any[];
     const row = rows[0];
     if (!row) return;
     const now = new Date();
-    const requestParam = isPostgresDatabase() ? "$1" : "?";
     const boundedReserved = isPostgresDatabase() ? 'GREATEST("reserved_credits"-1, 0)' : 'MAX("reserved_credits"-1, 0)';
     if (isPostgresDatabase()) {
       await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_periods" SET "reserved_credits"=${boundedReserved}, "consumed_credits"="consumed_credits"+${consume ? 1 : 0}, "updated_at"=$2 WHERE "id"=$1`, row.period_id, now);
-      await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_requests" SET "state"=$2, "updated_at"=$3 WHERE "request_id"=$1`, requestId, consume ? "consumed" : "released", now);
+      await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_requests" SET "state"=$2, "error_code"=$3, "updated_at"=$4 WHERE "request_id"=$1`, requestId, consume ? "consumed" : "released", errorCode ?? null, now);
     } else {
       await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_periods" SET "reserved_credits"=${boundedReserved}, "consumed_credits"="consumed_credits"+${consume ? 1 : 0}, "updated_at"=? WHERE "id"=?`, now, row.period_id);
-      await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_requests" SET "state"=?, "updated_at"=? WHERE "request_id"=?`, consume ? "consumed" : "released", now, requestId);
+      await (tx as any).$executeRawUnsafe(`UPDATE "cloud_ai_usage_requests" SET "state"=?, "error_code"=?, "updated_at"=? WHERE "request_id"=?`, consume ? "consumed" : "released", errorCode ?? null, now, requestId);
     }
   });
 }
