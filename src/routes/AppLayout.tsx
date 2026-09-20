@@ -857,7 +857,7 @@ function AppLayoutInner() {
               <p className="mt-4 text-sm font-medium text-muted-foreground">Loading workspace…</p>
             </div>
           ) : (
-            <Outlet key={teamScopeVersion} />
+            <Outlet key={teamScopeVersion} context={teamState} />
           )}
         </div>
 

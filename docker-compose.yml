@@ -10,6 +10,12 @@ services:
       # Volume mount for SQLite — data persists across container restarts
       - erd-data:/app/data
     restart: unless-stopped
+    # OPS-002: Keep Self-host logs local even when the host daemon uses a remote default.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       # Guest mode & AI Chat for guests (both disabled by default)
       - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-false}

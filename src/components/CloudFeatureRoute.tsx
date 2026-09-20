@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { useTeams } from '@/hooks/useTeams';
+import type { TeamsState } from '@/hooks/useTeams';
 import { TableRoute } from '@/routes/TableRoute';
 
 type Capability = 'erd_builder' | 'notes' | 'drawings' | 'flowcharts' | 'desktop_only';
@@ -64,8 +64,8 @@ function CloudFeatureUnavailable({ capability, teamName, ssoPortalUrl }: { capab
 }
 
 export function CloudFeatureRoute({ capability, children }: { capability: Capability; children: ReactNode }) {
-  const { user, isGuest } = useAuth();
-  const { activeTeamId, activeTeam, isLoading } = useTeams(isGuest, Boolean(user?.isSso));
+  const { user } = useAuth();
+  const { activeTeamId, activeTeam, isLoading } = useOutletContext<TeamsState>();
 
   if (!user?.isSso || !activeTeamId) return <>{children}</>;
   if (isLoading) return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Checking Team plan…</div>;

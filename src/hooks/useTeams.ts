@@ -142,6 +142,7 @@ export function useTeams(isGuest = false, isSso = false) {
     let socket: WebSocket | null = null;
     let reconnectTimer = 0;
     let retries = 0;
+    let refreshOnReconnect = false;
     const connect = () => {
       if (disposed || document.hidden) return;
       const apiUrl = new URL(getApiBaseUrl() || window.location.origin, window.location.origin);
@@ -150,7 +151,13 @@ export function useTeams(isGuest = false, isSso = false) {
       apiUrl.search = new URLSearchParams({ team_id: activeTeamId }).toString();
       const current = new WebSocket(apiUrl.toString());
       socket = current;
-      current.onopen = () => { retries = 0; };
+      current.onopen = () => {
+        if (refreshOnReconnect) {
+          refreshOnReconnect = false;
+          void fetchTeams();
+        }
+        retries = 0;
+      };
       current.onmessage = (message) => {
         let event: { teamId?: unknown; eventType?: unknown; revision?: unknown };
         try { event = JSON.parse(message.data); }
@@ -161,6 +168,9 @@ export function useTeams(isGuest = false, isSso = false) {
       };
       current.onclose = () => {
         if (socket === current) socket = null;
+        if (!disposed) {
+          refreshOnReconnect = true;
+        }
         if (!disposed && !document.hidden) {
           reconnectTimer = window.setTimeout(() => {
             reconnectTimer = 0;
@@ -218,3 +228,5 @@ export function useTeams(isGuest = false, isSso = false) {
     createTeam,
   };
 }
+
+export type TeamsState = ReturnType<typeof useTeams>;
