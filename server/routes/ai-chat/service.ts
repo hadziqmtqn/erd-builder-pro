@@ -126,51 +126,105 @@ export async function listMessages(
   return { data: data || [], count: total || 0 };
 }
 
-export async function createMessage(data: {
+async function resolveSessionId(sessionId: string, userId: string): Promise<number | null> {
+  // Resolve session by uid (or numeric id)
+  const sid = String(sessionId);
+  const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
+  const session = await prisma?.aiChatSession.findFirst({
+    where: { AND: [fileScopeWhere(userId), { OR: [
+        { uid: sid },
+        ...(numericId !== undefined ? [{ id: numericId }] : []),
+      ] }] },
+    select: { id: true },
+  });
+  return session ? Number(session.id) : null;
+}
+
+async function saveMessage(data: {
   sessionId: string;
   userId: string;
   role: "user" | "assistant";
   content: string;
   selectionText?: string | null;
   clientMessageId?: string | null;
-}) {
-  // Resolve session by uid (or numeric id)
-  const sid = String(data.sessionId);
-  const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
-  const session = await prisma?.aiChatSession.findFirst({
-    where: { AND: [fileScopeWhere(data.userId), { OR: [
-        { uid: sid },
-        ...(numericId !== undefined ? [{ id: numericId }] : []),
-      ] }] },
-    select: { id: true },
-  });
-  if (!session) return null;
+}, isTrustedAssistant: boolean) {
+  const sessionId = await resolveSessionId(data.sessionId, data.userId);
+  if (sessionId === null) return null;
 
   if (!prisma) return null;
   const clientMessageId = data.clientMessageId?.trim() || null;
   if (clientMessageId) {
     const existing = await prisma.aiChatMessage.findFirst({
-      where: { sessionId: session.id, clientMessageId },
+      where: { sessionId, clientMessageId },
     });
-    if (existing) return existing;
+    if (existing) {
+      return existing.role === data.role
+        && existing.content === data.content
+        && Boolean(existing.isTrustedAssistant) === isTrustedAssistant
+        ? existing
+        : null;
+    }
   }
 
   try {
     return await prisma.aiChatMessage.create({
       data: {
-        sessionId: session.id,
+        sessionId,
         role: data.role,
         content: data.content,
         selectionText: data.selectionText || null,
         clientMessageId,
+        isTrustedAssistant,
       },
     });
   } catch (err: any) {
     if (clientMessageId && err?.code === "P2002") {
-      return prisma.aiChatMessage.findFirst({ where: { sessionId: session.id, clientMessageId } });
+      const existing = await prisma.aiChatMessage.findFirst({ where: { sessionId, clientMessageId } });
+      return existing?.role === data.role
+        && existing.content === data.content
+        && Boolean(existing.isTrustedAssistant) === isTrustedAssistant
+        ? existing
+        : null;
     }
     throw err;
   }
+}
+
+export function createMessage(data: {
+  sessionId: string;
+  userId: string;
+  role: "user";
+  content: string;
+  selectionText?: string | null;
+  clientMessageId?: string | null;
+}) {
+  return saveMessage(data, false);
+}
+
+export function createTrustedAssistantMessage(data: {
+  sessionId: string;
+  userId: string;
+  content: string;
+  clientMessageId: string;
+}) {
+  return saveMessage({ ...data, role: "assistant" }, true);
+}
+
+export async function getTrustedAssistantMessage(data: {
+  sessionId: string;
+  userId: string;
+  clientMessageId: string;
+}) {
+  const sessionId = await resolveSessionId(data.sessionId, data.userId);
+  if (sessionId === null) return null;
+  return (await prisma?.aiChatMessage.findFirst({
+    where: {
+      sessionId,
+      clientMessageId: data.clientMessageId,
+      role: "assistant",
+      isTrustedAssistant: true,
+    },
+  })) || null;
 }
 
 // ── Config / Prompts ──

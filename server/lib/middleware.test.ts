@@ -24,10 +24,29 @@ vi.mock("../routes/teams/service.js", () => ({
 }));
 vi.mock("./team-scope.js", () => ({ runWithTeamScope: (_scope: unknown, next: () => void) => next() }));
 
-const { authenticate, rejectInSsoMode } = await import("./middleware.js");
+const { authenticate, authenticateIfPresent, rejectInSsoMode } = await import("./middleware.js");
 const { requireAdmin } = await import("./security.js");
 
 describe("SSO authorization", () => {
+  it("keeps guest AI requests optional but authenticates a supplied token", async () => {
+    const guestNext = vi.fn();
+    const guestRes = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    await authenticateIfPresent({ headers: {}, cookies: {}, query: {} } as any, guestRes, guestNext);
+    expect(guestNext).toHaveBeenCalledOnce();
+
+    mocks.getSession.mockResolvedValue({ userId: "user-1", email: "user@example.com" });
+    mocks.findUser.mockResolvedValue({ isSuperAdmin: false, mustChangePassword: false });
+    mocks.canUserLogin.mockResolvedValue({ allowed: true });
+    const next = vi.fn();
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
+    const req = { headers: { authorization: "Bearer token" }, cookies: {}, query: {}, method: "POST", originalUrl: "/api/ai/proxy" } as any;
+
+    await authenticateIfPresent(req, res, next);
+
+    expect(req.user).toMatchObject({ id: "user-1", isSuperAdmin: false });
+    expect(next).toHaveBeenCalledOnce();
+  });
+
   it("hides local administration routes in Cloud SSO mode", () => {
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() } as any;
     const next = vi.fn();

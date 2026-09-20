@@ -318,6 +318,7 @@ export async function importAiChatSessions(
         sessionId: created.id,
         role: String(msg.role),
         content: String(msg.content),
+        isTrustedAssistant: false,
         selectionText: msg.selection_text || msg.selectionText || null,
         createdAt: safeDate(msg.created_at),
       });

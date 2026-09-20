@@ -37,4 +37,28 @@ describe('callAiStream', () => {
     expect(result).toBe(question);
     expect(cancelled).toBe(true);
   });
+
+  it('keeps the last UTF-8 token when an SSE frame has no trailing newline', async () => {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'jawaban 🌏' } }] })}`);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, bytes.length - 2));
+        controller.enqueue(bytes.slice(bytes.length - 2));
+        controller.close();
+      },
+    });
+    vi.mocked(apiFetch).mockResolvedValue(new Response(body));
+
+    const result = await callAiStream(
+      undefined,
+      undefined,
+      undefined,
+      [],
+      new AbortController().signal,
+      () => {},
+    );
+
+    expect(result).toBe('jawaban 🌏');
+  });
 });

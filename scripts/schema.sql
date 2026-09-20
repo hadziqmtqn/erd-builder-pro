@@ -419,6 +419,7 @@ CREATE TABLE "ai_chat_messages" (
     "content" TEXT NOT NULL,
     "selection_text" TEXT,
     "client_message_id" TEXT,
+    "is_trusted_assistant" BOOLEAN NOT NULL DEFAULT false,
     "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ai_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "ai_chat_sessions" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );

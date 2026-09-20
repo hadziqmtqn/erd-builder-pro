@@ -4,7 +4,9 @@ import { logger } from "../../lib/logger.js";
 import { supabase, useLocalAuth } from "../../lib/config.js";
 import { getSession } from "../../lib/desktop-auth.js";
 import { safeAiBaseUrl } from "../../lib/ai-security.js";
+import { createOpenAiStreamContentCollector } from "../../lib/ai-chat-stream.js";
 import { finalizeCloudAiCredit, getCloudAiAccess, getCloudAiRuntimeConfig, reserveCloudAiCredit } from "../../lib/cloud-ai.js";
+import { createTrustedAssistantMessage } from "../ai-chat/service.js";
 import { resolveAiConfig, getProxyFetchUrl } from "./service.js";
 
 async function resolveRequestUserId(req: Request): Promise<string | undefined> {
@@ -51,7 +53,16 @@ export async function proxy(req: Request, res: Response): Promise<void> {
   }, 30_000);
 
   try {
-    let { messages, model, apiKey, baseUrl, providerCode, request_id: requestedId } = req.body;
+    let {
+      messages,
+      model,
+      apiKey,
+      baseUrl,
+      providerCode,
+      request_id: requestedId,
+      chat_session_id: chatSessionId,
+      assistant_client_message_id: assistantClientMessageId,
+    } = req.body;
     let baseUrlValidated = false;
 
     if (!messages) {
@@ -61,6 +72,9 @@ export async function proxy(req: Request, res: Response): Promise<void> {
     }
 
     const userId = await resolveRequestUserId(req);
+    const assistantContent = userId && chatSessionId && assistantClientMessageId
+      ? createOpenAiStreamContentCollector()
+      : null;
     const cloudAccess = await getCloudAiAccess(req);
     if (cloudAccess) {
       const runtimeConfig = await getCloudAiRuntimeConfig();
@@ -224,10 +238,25 @@ export async function proxy(req: Request, res: Response): Promise<void> {
 
       if (!aborted) {
         try {
+          assistantContent?.push(value);
           res.write(decoder.decode(value, { stream: true }));
         } catch {
           break;
         }
+      }
+    }
+
+    const trustedContent = assistantContent?.finish();
+    if (trustedContent?.trim() && userId && chatSessionId && assistantClientMessageId) {
+      try {
+        await createTrustedAssistantMessage({
+          sessionId: chatSessionId,
+          userId,
+          content: trustedContent,
+          clientMessageId: assistantClientMessageId,
+        });
+      } catch (err) {
+        logger.warn({ err }, "Failed to persist trusted AI chat response");
       }
     }
 

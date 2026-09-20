@@ -117,6 +117,21 @@ export async function createMessage(req: ExpressRequest, res: ExpressResponse): 
       return;
     }
 
+    if (role === "assistant") {
+      if (!client_message_id) {
+        res.status(404).json({ error: "Message not found" });
+        return;
+      }
+      const saved = await chatService.getTrustedAssistantMessage({
+        sessionId: session_id,
+        userId,
+        clientMessageId: client_message_id,
+      });
+      if (!saved) { res.status(404).json({ error: "Message not found" }); return; }
+      res.json(saved);
+      return;
+    }
+
     const result = await chatService.createMessage({
       sessionId: session_id,
       userId,

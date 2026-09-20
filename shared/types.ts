@@ -240,6 +240,7 @@ export interface AIChatMessage {
   content: string;
   selection_text?: string | null;
   client_message_id?: string | null;
+  is_trusted_assistant?: boolean;
   delivery_status?: 'pending' | 'needs-resume' | 'pending-assistant';
   plan_mode?: boolean;
   created_at: string;

@@ -9,11 +9,22 @@ export async function callAiStream(
   onToken: (token: string) => void,
   providerCode?: string,
   shouldStop?: (content: string) => boolean,
+  chatPersistence?: { sessionId: string; assistantClientMessageId: string },
 ): Promise<string> {
   const response = await apiFetch('/api/ai/proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, model, apiKey, baseUrl, providerCode }),
+    body: JSON.stringify({
+      messages,
+      model,
+      apiKey,
+      baseUrl,
+      providerCode,
+      ...(chatPersistence ? {
+        chat_session_id: chatPersistence.sessionId,
+        assistant_client_message_id: chatPersistence.assistantClientMessageId,
+      } : {}),
+    }),
     signal,
   });
 
@@ -32,6 +43,22 @@ export async function callAiStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let accumulated = '';
+  const consumeLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const data = trimmed.slice(5).trimStart();
+    if (!data || data === '[DONE]') return;
+    try {
+      const parsed = JSON.parse(data);
+      const token = parsed.choices?.[0]?.delta?.content || '';
+      if (token) {
+        accumulated += token;
+        onToken(token);
+      }
+    } catch {
+      // Skip malformed JSON chunks.
+    }
+  };
 
   try {
     while (true) {
@@ -42,24 +69,7 @@ export async function callAiStream(
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const token = parsed.choices?.[0]?.delta?.content || '';
-          if (token) {
-            accumulated += token;
-            onToken(token);
-          }
-        } catch {
-          // Skip malformed JSON chunks
-        }
-      }
+      lines.forEach(consumeLine);
 
       if (shouldStop?.(accumulated)) {
         await reader.cancel();
@@ -70,6 +80,9 @@ export async function callAiStream(
     if (err.name === 'AbortError') return accumulated;
     throw err;
   }
+
+  buffer += decoder.decode();
+  if (buffer) consumeLine(buffer);
 
   return accumulated;
 }

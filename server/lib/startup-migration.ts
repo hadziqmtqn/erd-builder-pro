@@ -159,6 +159,7 @@ async function addColumnIfMissing(
 async function ensureAiChatMessageIdempotency(): Promise<void> {
   if (!prisma) return;
   await addColumnIfMissing("ai_chat_messages", "client_message_id", '"client_message_id" VARCHAR(64)');
+  await addColumnIfMissing("ai_chat_messages", "is_trusted_assistant", '"is_trusted_assistant" BOOLEAN NOT NULL DEFAULT false');
   try {
     await prisma.$executeRawUnsafe(
       'CREATE UNIQUE INDEX IF NOT EXISTS "ai_chat_messages_session_id_client_message_id_key" ON "ai_chat_messages"("session_id", "client_message_id")',

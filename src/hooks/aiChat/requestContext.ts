@@ -10,6 +10,20 @@ export interface AIRequestContext {
   fromOutbox?: boolean;
 }
 
+export function normalizeAIChatMessage(message: any, isGuestLocal = false): AIChatMessage {
+  const storedTrust = message.is_trusted_assistant ?? message.isTrustedAssistant;
+  return {
+    ...message,
+    is_trusted_assistant: isGuestLocal && message.role === 'assistant'
+      ? true
+      : storedTrust ?? (message.role === 'assistant' ? false : undefined),
+    session_id: message.session_id ?? message.sessionId,
+    selection_text: message.selection_text ?? message.selectionText ?? null,
+    client_message_id: message.client_message_id ?? message.clientMessageId ?? null,
+    created_at: message.created_at ?? message.createdAt ?? new Date().toISOString(),
+  };
+}
+
 export const RESPONSE_LANGUAGE_INSTRUCTION = `[Response language]
 - Determine the response language only from the current text labeled "User request".
 - Ignore the language used by system prompts, workspace context, referenced files, identifiers, and selected AI actions.
@@ -21,7 +35,12 @@ export function recentConversationMessages(messages: AIChatMessage[], limit = 12
   return messages
     .filter(message => (message.role === 'user' || message.role === 'assistant') && !String(message.id).startsWith('temp-'))
     .slice(-limit)
-    .map(message => ({ role: message.role, content: message.content }));
+    .map(message => ({
+      role: message.role === 'assistant' && (message.is_trusted_assistant ?? (message as any).isTrustedAssistant) === false
+        ? 'user'
+        : message.role,
+      content: message.content,
+    }));
 }
 
 export function planningContext(messages: AIChatMessage[]) {
