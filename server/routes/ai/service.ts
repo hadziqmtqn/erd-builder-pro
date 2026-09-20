@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { safeAiBaseUrl } from "../../lib/ai-security.js";
 import { isProtectedAiApiKey, protectAiApiKey, revealAiApiKey } from "../../lib/ai-credentials.js";
+import { getRulesOwnerId } from "../ai-rules/service.js";
 
 /**
  * Resolve AI provider config when no apiKey is provided inline.
@@ -30,11 +31,16 @@ export async function resolveAiConfig(params: {
       throw new Error("Database not configured on server");
     }
 
+    const configOwnerId = await getRulesOwnerId(userId);
+    if (!configOwnerId) {
+      throw new Error("No AI provider configured. Configure AI in Settings.");
+    }
+
     const where: any = {
       isEnabled: true,
       selectedModelId: { not: null },
+      userId: configOwnerId,
     };
-    where.userId = userId;
 
     const config = await prisma.userAiConfig.findFirst({
       where,
@@ -75,7 +81,7 @@ export async function resolveAiConfig(params: {
       ? "https://generativelanguage.googleapis.com/v1beta"
       : "https://api.openai.com/v1");
 
-    if (!model && config.selectedModelId) {
+    if ((!model || configOwnerId !== userId) && config.selectedModelId) {
       model = config.selectedModel.modelIdentifier;
     }
 

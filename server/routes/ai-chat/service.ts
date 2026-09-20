@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { toProjectId } from "../../lib/utils.js";
 import { resolveOwnedProjectId } from "../../lib/security.js";
 import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { getRulesOwnerId } from "../ai-rules/service.js";
 
 // ── Sessions ──
 
@@ -128,7 +129,7 @@ export async function listMessages(
 export async function createMessage(data: {
   sessionId: string;
   userId: string;
-  role: string;
+  role: "user" | "assistant";
   content: string;
   selectionText?: string | null;
   clientMessageId?: string | null;
@@ -175,8 +176,11 @@ export async function createMessage(data: {
 // ── Config / Prompts ──
 
 export async function getAiConfig(userId: string) {
+  const configOwnerId = await getRulesOwnerId(userId);
+  if (!configOwnerId) return null;
+
   const config = await prisma?.userAiConfig.findFirst({
-    where: { userId, isEnabled: true, selectedModelId: { not: null } },
+    where: { userId: configOwnerId, isEnabled: true, selectedModelId: { not: null } },
     include: { provider: true, selectedModel: true },
     orderBy: { updatedAt: "desc" },
   });

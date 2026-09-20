@@ -19,7 +19,7 @@ export const RESPONSE_LANGUAGE_INSTRUCTION = `[Response language]
 
 export function recentConversationMessages(messages: AIChatMessage[], limit = 12) {
   return messages
-    .filter(message => message.role !== 'system' && !String(message.id).startsWith('temp-'))
+    .filter(message => (message.role === 'user' || message.role === 'assistant') && !String(message.id).startsWith('temp-'))
     .slice(-limit)
     .map(message => ({ role: message.role, content: message.content }));
 }
