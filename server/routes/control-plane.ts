@@ -7,6 +7,7 @@ import { isUuid } from "../lib/erd-column-id-migration.js";
 import { membershipProvisioningSignature, teamProvisioningSignature } from "../lib/team-provisioning.js";
 import { logger } from "../lib/logger.js";
 import { revokeCloudAiRuntimeConfig, storeCloudAiEnvelope } from "../lib/cloud-ai.js";
+import { publishCloudWorkspaceSync } from "../lib/cloud-live-sync.js";
 
 const router = Router();
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -134,11 +135,11 @@ router.post("/events", async (req, res) => {
   }
 
   try {
-    const applied = await prisma.$transaction(async (tx) => {
+    const teamId = await prisma.$transaction(async (tx) => {
       const inserted = await tx.$executeRawUnsafe(
         `INSERT INTO "team_audit_events" ("id", "action", "target_type", "target_id", "metadata") VALUES ('${eventId}', 'cloud_webhook_received', 'cloud_event', '${eventId}', '{"type":"cloud.workspace.sync"}') ON CONFLICT ("target_type", "target_id") WHERE "target_type" = 'cloud_event' DO NOTHING`,
       );
-      if (inserted === 0) return false;
+      if (inserted === 0) return null;
 
       const existing = await tx.team.findUnique({ where: { ssoOrganizationId: organization.id } });
       const createdAt = existing?.createdAt ?? new Date();
@@ -165,9 +166,12 @@ router.post("/events", async (req, res) => {
         if (syncedUserIds.has(member.userId)) continue;
         await tx.teamMember.update({ where: { id: member.id }, data: { status: "inactive", provisioningSignature: membershipProvisioningSignature({ ...member, status: "inactive" }) } });
       }
-      return true;
+      return team.id;
     });
-    res.json({ accepted: true, duplicate: !applied });
+    if (teamId) {
+      await publishCloudWorkspaceSync({ teamId, eventType: "cloud.workspace.sync", revision: eventId });
+    }
+    res.json({ accepted: true, duplicate: !teamId });
   } catch {
     res.status(500).json({ error: "Webhook processing failed." });
   }

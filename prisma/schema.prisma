@@ -421,6 +421,7 @@ model AiChatMessage {
   content       String
   selectionText String?       @map("selection_text")
   clientMessageId String?     @map("client_message_id") @db.VarChar(64)
+  isTrustedAssistant Boolean  @default(false) @map("is_trusted_assistant")
   createdAt     DateTime?     @default(now()) @map("created_at") @db.Timestamptz(6)
   session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 

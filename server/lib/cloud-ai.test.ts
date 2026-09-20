@@ -159,6 +159,27 @@ describe("Cloud AI access", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("clears the cached configuration when SaaS reports it is not configured", async () => {
+    mocks.machineConfig.clientId = "cloud-machine-revocation-test";
+    const response = (payload: unknown, status = 200) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: vi.fn().mockResolvedValue(payload),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ access_token: "machine-token", expires_in: 3600 }))
+      .mockResolvedValueOnce(response({ error: { code: "CLOUD_AI_NOT_CONFIGURED" } }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.executeRaw.mockResolvedValue(1);
+
+    await expect(refreshCloudAiRuntimeConfig()).resolves.toBe(true);
+
+    const revokeCall = mocks.executeRaw.mock.calls.at(-1);
+    expect(revokeCall?.[0]).toContain('DELETE FROM "cloud_ai_runtime_configs"');
+    expect(revokeCall).toHaveLength(2);
+    expect(revokeCall?.[1]).toBe("global");
+  });
+
   it("prunes only terminal Cloud AI usage and completed periods", async () => {
     mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
       $executeRawUnsafe: mocks.executeRaw,
@@ -199,6 +220,15 @@ describe("Cloud AI access", () => {
     mocks.noteCount.mockResolvedValue(3);
     mocks.drawingCount.mockResolvedValue(1);
     mocks.flowchartCount.mockResolvedValue(3);
+    mocks.queryRaw.mockResolvedValue([{
+      organization_id: "44444444-4444-4444-8444-444444444444",
+      period_start: new Date("2026-09-01T00:00:00.000Z"),
+      period_end: new Date("2026-10-01T00:00:00.000Z"),
+      credits_used: 4,
+      requests_succeeded: 3,
+      requests_failed: 1,
+      source_revision: "revision-7",
+    }]);
 
     await expect(sendCloudTelemetryHeartbeat()).resolves.toBe(true);
 
@@ -207,7 +237,17 @@ describe("Cloud AI access", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       deployment_id: mocks.telemetryConfig.deploymentId,
       aggregate: { teams: 2, members: 5, projects: 3, files: 9 },
+      ai_usage: [{
+        organization_id: "44444444-4444-4444-8444-444444444444",
+        period_start: "2026-09-01T00:00:00.000Z",
+        period_end: "2026-10-01T00:00:00.000Z",
+        credits_used: 4,
+        requests_succeeded: 3,
+        requests_failed: 1,
+        source_revision: "revision-7",
+      }],
     });
     expect(fetchMock.mock.calls[1][1].body).not.toContain("document");
+    expect(mocks.queryRaw.mock.calls[0][0]).toContain('teams."sso_organization_id" AS organization_id');
   });
 });

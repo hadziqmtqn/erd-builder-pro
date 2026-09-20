@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./config.js", () => ({ isLocalPostgres: () => true }));
 
-import { fileIdentifierWhere, fileScopeWhere, projectScopeWhere, runWithTeamScope } from "./team-scope.js";
+import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere, projectScopeWhere, runWithTeamScope } from "./team-scope.js";
 
 describe("Team scope", () => {
   it("keeps Personal private and Team data constrained to the selected Team", () => {
@@ -18,6 +18,12 @@ describe("Team scope", () => {
       expect(projectScopeWhere("user-1")).toEqual({ teamId: "team-1" });
       expect(fileIdentifierWhere("file-1", "user-1")).toEqual({
         AND: [{ uid: "file-1" }, { project: { teamId: "team-1" } }],
+      });
+      expect(creatorFileIdentifierWhere("file-1", "user-1")).toEqual({
+        AND: [
+          { AND: [{ uid: "file-1" }, { project: { teamId: "team-1" } }] },
+          { userId: "user-1" },
+        ],
       });
     });
   });

@@ -7,6 +7,9 @@ import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import * as notesService from "./service.js";
 import { getStorageClientForUser } from "../../lib/storage.js";
+import { generateSignedUrl } from "../../lib/storage.js";
+import { privateStorageKeysFromMarkup, replacePrivateStorageUrls } from "../../lib/storage-access.js";
+import { resolveStorage } from "../common/controller.js";
 
 export async function list(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
@@ -152,6 +155,23 @@ export async function getPublic(req: ExpressRequest, res: ExpressResponse): Prom
       const providedToken = (req.headers["x-share-token"] as string) || (req.query.token as string);
       if (note.shareToken && note.shareToken !== providedToken) {
         res.status(401).json({ error: "Invalid access token", requiresToken: true }); return;
+      }
+    }
+
+    if (note.content && note.userId) {
+      const storage = await resolveStorage(note.userId);
+      const keys = privateStorageKeysFromMarkup(note.content);
+      if (storage && keys.length > 0) {
+        const replacements: Record<string, string> = {};
+        await Promise.all(keys.map(async (key) => {
+          try {
+            replacements[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, 900);
+          } catch (err) {
+            logger.warn({ err, key }, "Failed to sign public Note asset");
+          }
+        }));
+        res.json({ ...note, content: replacePrivateStorageUrls(note.content, replacements) });
+        return;
       }
     }
 

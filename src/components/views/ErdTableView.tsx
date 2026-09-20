@@ -35,6 +35,7 @@ interface ErdTableViewProps {
   onWorkspaceClick: (projectUid: string | null) => void;
   onOpenEditDocument: (uid: string) => void;
   onDeleteDiagram: (uid: string) => void;
+  canDeleteFile?: (diagram: Diagram) => boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement | null>;
@@ -95,6 +96,7 @@ export const ErdTableView = React.memo(function ErdTableView({
   onWorkspaceClick,
   onOpenEditDocument,
   onDeleteDiagram,
+  canDeleteFile = () => true,
   searchQuery,
   onSearchChange,
   searchRef,
@@ -383,11 +385,15 @@ export const ErdTableView = React.memo(function ErdTableView({
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit Document
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => onDeleteDiagram(uid)} className="text-destructive focus:text-destructive">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {canDeleteFile(d) && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => onDeleteDiagram(uid)} className="text-destructive focus:text-destructive">
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>

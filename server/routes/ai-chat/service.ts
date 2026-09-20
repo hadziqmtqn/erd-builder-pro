@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { toProjectId } from "../../lib/utils.js";
 import { resolveOwnedProjectId } from "../../lib/security.js";
 import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { getRulesOwnerId } from "../ai-rules/service.js";
 
 // ── Sessions ──
 
@@ -125,58 +126,115 @@ export async function listMessages(
   return { data: data || [], count: total || 0 };
 }
 
-export async function createMessage(data: {
-  sessionId: string;
-  userId: string;
-  role: string;
-  content: string;
-  selectionText?: string | null;
-  clientMessageId?: string | null;
-}) {
+async function resolveSessionId(sessionId: string, userId: string): Promise<number | null> {
   // Resolve session by uid (or numeric id)
-  const sid = String(data.sessionId);
+  const sid = String(sessionId);
   const numericId = /^\d+$/.test(sid) ? Number(sid) : undefined;
   const session = await prisma?.aiChatSession.findFirst({
-    where: { AND: [fileScopeWhere(data.userId), { OR: [
+    where: { AND: [fileScopeWhere(userId), { OR: [
         { uid: sid },
         ...(numericId !== undefined ? [{ id: numericId }] : []),
       ] }] },
     select: { id: true },
   });
-  if (!session) return null;
+  return session ? Number(session.id) : null;
+}
+
+async function saveMessage(data: {
+  sessionId: string;
+  userId: string;
+  role: "user" | "assistant";
+  content: string;
+  selectionText?: string | null;
+  clientMessageId?: string | null;
+}, isTrustedAssistant: boolean) {
+  const sessionId = await resolveSessionId(data.sessionId, data.userId);
+  if (sessionId === null) return null;
 
   if (!prisma) return null;
   const clientMessageId = data.clientMessageId?.trim() || null;
   if (clientMessageId) {
     const existing = await prisma.aiChatMessage.findFirst({
-      where: { sessionId: session.id, clientMessageId },
+      where: { sessionId, clientMessageId },
     });
-    if (existing) return existing;
+    if (existing) {
+      return existing.role === data.role
+        && existing.content === data.content
+        && Boolean(existing.isTrustedAssistant) === isTrustedAssistant
+        ? existing
+        : null;
+    }
   }
 
   try {
     return await prisma.aiChatMessage.create({
       data: {
-        sessionId: session.id,
+        sessionId,
         role: data.role,
         content: data.content,
         selectionText: data.selectionText || null,
         clientMessageId,
+        isTrustedAssistant,
       },
     });
   } catch (err: any) {
     if (clientMessageId && err?.code === "P2002") {
-      return prisma.aiChatMessage.findFirst({ where: { sessionId: session.id, clientMessageId } });
+      const existing = await prisma.aiChatMessage.findFirst({ where: { sessionId, clientMessageId } });
+      return existing?.role === data.role
+        && existing.content === data.content
+        && Boolean(existing.isTrustedAssistant) === isTrustedAssistant
+        ? existing
+        : null;
     }
     throw err;
   }
 }
 
+export function createMessage(data: {
+  sessionId: string;
+  userId: string;
+  role: "user";
+  content: string;
+  selectionText?: string | null;
+  clientMessageId?: string | null;
+}) {
+  return saveMessage(data, false);
+}
+
+export function createTrustedAssistantMessage(data: {
+  sessionId: string;
+  userId: string;
+  content: string;
+  clientMessageId: string;
+}) {
+  return saveMessage({ ...data, role: "assistant" }, true);
+}
+
+export async function getTrustedAssistantMessage(data: {
+  sessionId: string;
+  userId: string;
+  clientMessageId: string;
+}) {
+  const sessionId = await resolveSessionId(data.sessionId, data.userId);
+  if (sessionId === null) return null;
+  return (await prisma?.aiChatMessage.findFirst({
+    where: {
+      sessionId,
+      clientMessageId: data.clientMessageId,
+      role: "assistant",
+      isTrustedAssistant: true,
+    },
+  })) || null;
+}
+
 // ── Config / Prompts ──
 
 export async function getAiConfig(userId: string) {
+  const configOwnerId = await getRulesOwnerId(userId);
+  if (!configOwnerId) return null;
+
   const config = await prisma?.userAiConfig.findFirst({
-    where: { userId, isEnabled: true, selectedModelId: { not: null } },
+    where: { userId: configOwnerId, isEnabled: true, selectedModelId: { not: null } },
     include: { provider: true, selectedModel: true },
     orderBy: { updatedAt: "desc" },
   });

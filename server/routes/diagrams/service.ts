@@ -1,11 +1,16 @@
 import { prisma } from "../../lib/prisma.js";
 import { createPersonalFile } from "../../lib/personal-file-quota.js";
-import { fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { creatorFileIdentifierWhere, fileIdentifierWhere, fileScopeWhere } from "../../lib/team-scope.js";
+import { logger } from "../../lib/logger.js";
 
 // ── Helpers ──
 
 function uidWhere(uid: string, userId: string) {
   return fileIdentifierWhere(uid, userId);
+}
+
+function creatorUidWhere(uid: string, userId: string) {
+  return creatorFileIdentifierWhere(uid, userId);
 }
 
 function whereClause(userId: string, query: {
@@ -77,7 +82,7 @@ function dedupe<T extends { id: any }>(arr: T[], label: string): T[] {
   const result: T[] = [];
   for (const item of arr) {
     if (seen.has(item.id)) {
-      console.warn(`[Save Warning] Duplicate ${label} id=${item.id} removed`);
+      logger.warn({ label, item_id: item.id }, "Duplicate diagram item removed");
       continue;
     }
     seen.add(item.id);
@@ -314,7 +319,7 @@ export async function updateDiagram(
 
 export async function softDeleteDiagram(uid: string, userId: string) {
   const existing = await prisma?.diagram.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -327,7 +332,7 @@ export async function softDeleteDiagram(uid: string, userId: string) {
 
 export async function restoreDiagram(uid: string, userId: string) {
   const existing = await prisma?.diagram.findFirst({
-    where: uidWhere(uid, userId),
+    where: creatorUidWhere(uid, userId),
   });
   if (!existing) return null;
 
@@ -336,6 +341,13 @@ export async function restoreDiagram(uid: string, userId: string) {
     data: { isDeleted: false, deletedAt: null },
   });
   return { success: true };
+}
+
+export async function getDiagramForPermanentDelete(uid: string, userId: string) {
+  return prisma?.diagram.findFirst({
+    where: creatorUidWhere(uid, userId),
+    select: { id: true },
+  }) || null;
 }
 
 export async function permanentDeleteDiagram(diagramId: number) {

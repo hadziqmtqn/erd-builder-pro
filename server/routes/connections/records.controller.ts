@@ -3,6 +3,7 @@ import { fetchSchemaForClient, getConnector } from "../../lib/db-connectors/regi
 import { buildCatalogConnectionInfo } from "./middleware.js";
 import { assertDestructiveAllowed, assertWritable } from "../../lib/db-connectors/security.js";
 import * as catalogsService from "./catalogs.service.js";
+import { logger } from "../../lib/logger.js";
 import {
   buildRecordOrder,
   buildRecordDelete,
@@ -101,7 +102,7 @@ export async function queryRecords(req: ExpressRequest, res: ExpressResponse) {
       release();
     }
   } catch (err: any) {
-    console.error("Error querying records:", err);
+    logger.error({ err }, "Error querying records");
     res.status(500).json({ error: `Failed to query records: ${err.message}` });
   }
 }
@@ -164,7 +165,7 @@ export async function updateRecord(req: ExpressRequest, res: ExpressResponse) {
       release();
     }
   } catch (err: any) {
-    console.error("Error updating record:", err);
+    logger.error({ err }, "Error updating record");
     res.status(mutationErrorStatus(err.message)).json({ error: `Failed to update record: ${err.message}` });
   }
 }

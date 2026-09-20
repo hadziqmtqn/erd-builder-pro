@@ -50,6 +50,41 @@ export async function get(req: ExpressRequest, res: ExpressResponse): Promise<vo
   }
 }
 
+export async function reviewIntegrity(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    const current = actor(req);
+    const review = await teams.reviewTeamIntegrity(req.params.id, current.isSuperAdmin);
+    if (!review) { res.status(404).json({ error: "Team not found" }); return; }
+    res.json(review);
+  } catch (error) {
+    handleTeamError(res, error, "Failed to review Team integrity");
+  }
+}
+
+export async function quarantineTeam(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    requireLocalTeamManagement();
+    const current = actor(req);
+    const quarantined = await teams.quarantineTeam(req.params.id, current.userId, current.isSuperAdmin);
+    if (!quarantined) { res.status(404).json({ error: "Team not found" }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    handleTeamError(res, error, "Failed to quarantine Team");
+  }
+}
+
+export async function quarantineMember(req: ExpressRequest, res: ExpressResponse): Promise<void> {
+  try {
+    requireLocalTeamManagement();
+    const current = actor(req);
+    const quarantined = await teams.quarantineMember(req.params.id, req.params.userId, current.userId, current.isSuperAdmin);
+    if (!quarantined) { res.status(404).json({ error: "Team member not found" }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    handleTeamError(res, error, "Failed to quarantine Team member");
+  }
+}
+
 export async function create(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   try {
     requireLocalTeamManagement();

@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/dialog"
 import { MoveToTrashAlert } from "@/components/modals/MoveToTrashAlert"
 import { isInstalledApp } from "@/lib/api"
+import { isFileCreator } from "@/lib/fileOwnership"
 
 import { Project, AppView } from "../types"
 import { SponsorCarousel } from "@/components/SponsorCarousel"
@@ -101,6 +102,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   teams: SwitcherTeam[];
   teamsAvailable: boolean;
   activeTeamId: string | null;
+  onTeamsRefresh: () => void;
   onTeamSelect: (teamId: string | null) => void;
   onTeamManage: (team: SwitcherTeam) => void;
   onUserManage: () => void;
@@ -134,6 +136,7 @@ export const AppSidebar = React.memo(({
   teams,
   teamsAvailable,
   activeTeamId,
+  onTeamsRefresh,
   onTeamSelect,
   onTeamManage,
   onUserManage,
@@ -284,6 +287,7 @@ export const AppSidebar = React.memo(({
         <TeamSwitcher
           teams={switcherTeams}
           activeTeamId={activeTeamId}
+          onOpen={onTeamsRefresh}
           enabled={teamsAvailable || switcherTeams.length > 0}
           selfHosted={isSelfHosted}
           canManageTeams={Boolean(user?.isSuperAdmin || user?.is_super_admin)}
@@ -325,7 +329,7 @@ export const AppSidebar = React.memo(({
               </SidebarMenuItem>
               {user?.isSso && ssoPortalUrl && (
                 <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(ssoPortalUrl)}>
+                  <SidebarMenuButton tooltip="Open ERDBPro SaaS" onClick={() => window.location.assign(new URL('/dashboard', ssoPortalUrl).toString())}>
                     <ExternalLink />
                     <span>Open ERDBPro SaaS</span>
                   </SidebarMenuButton>
@@ -415,11 +419,15 @@ export const AppSidebar = React.memo(({
                               <Pencil className="h-3.5 w-3.5 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setDeletingProject(project)}>
-                              <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
-                              Delete
-                            </DropdownMenuItem>
+                            {isFileCreator(project, user?.id, user?.id === 'guest') && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setDeletingProject(project)}>
+                                  <Trash2 className="h-3.5 w-3.5 mr-2 text-destructive" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </span>

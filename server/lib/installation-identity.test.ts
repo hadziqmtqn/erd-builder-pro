@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getInstallationIdentity } from "./installation-identity";
+import { claimTeamProvisioningBaseline, getInstallationIdentity, hasTeamProvisioningBaseline } from "./installation-identity";
 
 const originalIdentityPath = process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE;
 const originalStatePath = process.env.ERDBPRO_LICENSE_STATE_FILE;
@@ -45,5 +45,17 @@ describe("installation identity", () => {
     }));
 
     expect(getInstallationIdentity().installationId).toBe("018f3f7e-1c33-43f2-a4e4-19b55e61d3fa");
+  });
+
+  it("claims the Team provisioning baseline only once outside the database", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "erd-installation-"));
+    temporaryDirectories.push(directory);
+    process.env.ERDBPRO_INSTALLATION_IDENTITY_FILE = path.join(directory, "installation-identity.json");
+
+    expect(hasTeamProvisioningBaseline()).toBe(false);
+    expect(claimTeamProvisioningBaseline()).toBe(true);
+    expect(hasTeamProvisioningBaseline()).toBe(true);
+    expect(claimTeamProvisioningBaseline()).toBe(false);
+    expect(statSync(path.join(directory, "team-provisioning-baseline-v1")).mode & 0o777).toBe(0o600);
   });
 });

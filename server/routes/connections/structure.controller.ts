@@ -6,6 +6,7 @@ import { assertDestructiveAllowed, assertWritable } from "../../lib/db-connector
 import * as catalogsService from "./catalogs.service.js";
 import { quoteIdentifier } from "./record-helpers.js";
 import { buildConstraintStatements, buildCreateTableSql, buildIndexStatements, buildStructureStatements, removedEnumValues } from "./structure-helpers.js";
+import { logger } from "../../lib/logger.js";
 
 export const MAX_SQL_IMPORT_BYTES = 25 * 1024 * 1024;
 const MYSQL_LARGE_VALUE_COLUMN = /((?:`(?:``|[^`])+`|[a-z0-9_$]+)\s+)((?:tiny|medium|long)?(?:text|blob)|json|geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)\b([^,)]*)/gim;
@@ -179,7 +180,7 @@ export async function updateStructure(req: ExpressRequest, res: ExpressResponse)
       release();
     }
   } catch (err: any) {
-    console.error("Error updating structure:", err);
+    logger.error({ err }, "Error updating structure");
     const status = /Safe Mode|Type ".*" to confirm/.test(err.message) ? 403 : 500;
     res.status(status).json({ error: `Failed to update structure: ${err.message}` });
   }
@@ -220,7 +221,7 @@ export async function getStructureSql(req: ExpressRequest, res: ExpressResponse)
       release();
     }
   } catch (err: any) {
-    console.error("Error fetching structure SQL:", err);
+    logger.error({ err }, "Error fetching structure SQL");
     res.status(500).json({ error: `Failed to fetch structure SQL: ${err.message}` });
   }
 }
@@ -276,7 +277,7 @@ export async function importStructureSql(req: ExpressRequest, res: ExpressRespon
       release();
     }
   } catch (err: any) {
-    console.error("Error importing SQL:", err);
+    logger.error({ err }, "Error importing SQL");
     const status = /Safe Mode|Type ".*" to confirm/.test(err.message) ? 403 : 400;
     res.status(status).json({ error: err.message || "Failed to import SQL" });
   }

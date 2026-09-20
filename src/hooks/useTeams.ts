@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ACTIVE_TEAM_KEY, apiFetch } from "../lib/api";
+import { ACTIVE_TEAM_KEY, apiFetch, getApiBaseUrl } from "../lib/api";
 
 export type TeamLicense = {
   valid: boolean;
@@ -51,13 +51,15 @@ function writeActiveTeamId(teamId: string | null): void {
   }
 }
 
-export function useTeams(isGuest = false) {
+export function useTeams(isGuest = false, isSso = false) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
   const [isLoading, setIsLoading] = useState(!isGuest);
   const [isAvailable, setIsAvailable] = useState(false);
+  const fetchVersion = useRef(0);
 
   const fetchTeams = useCallback(async (showLoading = false) => {
+    const version = ++fetchVersion.current;
     if (isGuest) {
       setIsLoading(false);
       setIsAvailable(false);
@@ -67,6 +69,7 @@ export function useTeams(isGuest = false) {
     if (showLoading) setIsLoading(true);
     try {
       const response = await apiFetch("/api/teams");
+      if (version !== fetchVersion.current) return [];
       if (response.status === 404 || response.status === 403) {
         setTeams([]);
         setActiveTeamId(null);
@@ -78,6 +81,7 @@ export function useTeams(isGuest = false) {
 
       const body = await response.json();
       const nextTeams = Array.isArray(body.data) ? body.data : [];
+      if (version !== fetchVersion.current) return nextTeams;
       setTeams(nextTeams);
       setIsAvailable(true);
       const selected = readActiveTeamId();
@@ -89,12 +93,13 @@ export function useTeams(isGuest = false) {
       }
       return nextTeams;
     } catch (error) {
+      if (version !== fetchVersion.current) return [];
       console.error("Failed to fetch teams:", error);
       setTeams([]);
       setIsAvailable(false);
       return [];
     } finally {
-      if (showLoading) setIsLoading(false);
+      if (showLoading && version === fetchVersion.current) setIsLoading(false);
     }
   }, [isGuest]);
 
@@ -115,6 +120,78 @@ export function useTeams(isGuest = false) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [fetchTeams, isGuest]);
+
+  useEffect(() => {
+    const clearQuarantinedTeam = (event: Event) => {
+      const teamId = (event as CustomEvent<{ teamId?: string }>).detail?.teamId;
+      if (!teamId) return;
+      if (teamId === activeTeamId) {
+        setActiveTeamId(null);
+        writeActiveTeamId(null);
+      }
+      void fetchTeams();
+    };
+    window.addEventListener("team-quarantined", clearQuarantinedTeam);
+    return () => window.removeEventListener("team-quarantined", clearQuarantinedTeam);
+  }, [activeTeamId, fetchTeams]);
+
+  useEffect(() => {
+    if (isGuest || !isSso || !activeTeamId) return;
+
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer = 0;
+    let retries = 0;
+    let refreshOnReconnect = false;
+    const connect = () => {
+      if (disposed || document.hidden) return;
+      const apiUrl = new URL(getApiBaseUrl() || window.location.origin, window.location.origin);
+      apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+      apiUrl.pathname = "/api/cloud/live-sync";
+      apiUrl.search = new URLSearchParams({ team_id: activeTeamId }).toString();
+      const current = new WebSocket(apiUrl.toString());
+      socket = current;
+      current.onopen = () => {
+        if (refreshOnReconnect) {
+          refreshOnReconnect = false;
+          void fetchTeams();
+        }
+        retries = 0;
+      };
+      current.onmessage = (message) => {
+        let event: { teamId?: unknown; eventType?: unknown; revision?: unknown };
+        try { event = JSON.parse(message.data); }
+        catch { return; }
+        if (event.teamId !== activeTeamId || event.eventType !== "cloud.workspace.sync" || typeof event.revision !== "string" || !event.revision) return;
+        void fetchTeams();
+        window.dispatchEvent(new CustomEvent("cloud-workspace-sync", { detail: event }));
+      };
+      current.onclose = () => {
+        if (socket === current) socket = null;
+        if (!disposed) {
+          refreshOnReconnect = true;
+        }
+        if (!disposed && !document.hidden) {
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = 0;
+            connect();
+          }, Math.min(30_000, 1_000 * 2 ** Math.min(retries++, 5)));
+        }
+      };
+      current.onerror = () => current.close();
+    };
+    const reconnectWhenVisible = () => {
+      if (!document.hidden && !socket && !reconnectTimer) connect();
+    };
+    document.addEventListener("visibilitychange", reconnectWhenVisible);
+    connect();
+    return () => {
+      disposed = true;
+      window.clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", reconnectWhenVisible);
+      socket?.close();
+    };
+  }, [activeTeamId, fetchTeams, isGuest, isSso]);
 
   const selectTeam = useCallback((teamId: string | null) => {
     setActiveTeamId(teamId);
@@ -151,3 +228,5 @@ export function useTeams(isGuest = false) {
     createTeam,
   };
 }
+
+export type TeamsState = ReturnType<typeof useTeams>;

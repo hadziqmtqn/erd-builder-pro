@@ -3,6 +3,7 @@ import { testConnection, fetchSchema, getConnector } from "../../lib/db-connecto
 import { buildConnectionInfo } from "./middleware.js";
 import * as catalogsService from "./catalogs.service.js";
 import * as catalogsController from "./catalogs.controller.js";
+import { logger } from "../../lib/logger.js";
 
 // ── GET /connections — list all catalogs, shaped like old connections ──
 export async function listLegacyConnections(_req: ExpressRequest, res: ExpressResponse) {
@@ -23,7 +24,7 @@ export async function listLegacyConnections(_req: ExpressRequest, res: ExpressRe
     }));
     res.json(shaped);
   } catch (err) {
-    console.error("Error listing connections:", err);
+    logger.error({ err }, "Error listing connections");
     res.status(500).json({ error: "Failed to list connections" });
   }
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
   FileText,
   FolderKanban,
@@ -14,7 +14,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { useWorkspace } from '../providers/WorkspaceProvider';
-import { useTeams } from '../hooks/useTeams';
+import type { TeamsState } from '../hooks/useTeams';
 import { apiFetch, isInstalledApp } from '../lib/api';
 
 const typeConfig = [
@@ -143,7 +143,7 @@ export function DashboardRoute() {
   const navigate = useNavigate();
   const ctx = useWorkspace();
   const showDbClient = isInstalledApp();
-  const teamState = useTeams(ctx.isGuest);
+  const teamState = useOutletContext<TeamsState>();
   const isCloudTeam = Boolean(ctx.user?.isSso && teamState.activeTeamId);
   const capabilityFor = (key: string) => key === 'diagrams' ? 'erd_builder' : key;
   const canUseCloudFeature = (key: string) => !isCloudTeam

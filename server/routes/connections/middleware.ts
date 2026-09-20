@@ -8,6 +8,7 @@ import { isDesktopMode, getInstallMode } from "../../lib/config.js";
 import { encrypt, decrypt } from "../../lib/crypto.js";
 import type { ConnectionInfo, DbType } from "../../lib/db-connectors/types.js";
 import { normalizeConnectionSecurity } from "../../lib/db-connectors/security.js";
+import { logger } from "../../lib/logger.js";
 
 // ── Desktop-only guard ──
 export function desktopOnly(
@@ -88,8 +89,9 @@ export async function runStartupMigration() {
       .catch(() => []) as any[];
     if (!oldConns || oldConns.length === 0) return;
 
-    console.log(
-      `[migrate] Migrating ${oldConns.length} local_db_connections → DbAccount + DbCatalog`,
+    logger.info(
+      { count: oldConns.length },
+      "Migrating legacy local connections",
     );
 
     for (const conn of oldConns) {
@@ -127,9 +129,9 @@ export async function runStartupMigration() {
       });
     }
 
-    console.log("[migrate] Migration complete");
+    logger.info("Legacy local connection migration complete");
   } catch (err) {
-    console.error("[migrate] Error (non-fatal):", err);
+    logger.error({ err }, "Legacy local connection migration failed (non-fatal)");
   }
 }
 

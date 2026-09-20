@@ -10,7 +10,7 @@ import rateLimit from "express-rate-limit";
 import path from "node:path";
 
 import { authenticate, checkSupabase } from "./lib/middleware.js";
-import { httpLogger } from "./lib/logger.js";
+import { httpLogger, logger, requestIdMiddleware, redactLogValue } from "./lib/logger.js";
 import { getInstallMode, isDesktopMode } from "./lib/config.js";
 import authRouter from "./routes/auth/index.js";
 import diagramsRouter from "./routes/diagrams/index.js";
@@ -42,6 +42,7 @@ import controlPlaneRouter from "./routes/control-plane.js";
 import { createAuthRateLimiters } from "./lib/auth-rate-limit.js";
 
 const app = express();
+app.use(requestIdMiddleware);
 
 // Trust proxy for Vercel (X-Forwarded-For) — required by express-rate-limit
 app.set('trust proxy', 1);
@@ -130,7 +131,7 @@ app.use(cors({
     }
     
     if (process.env.NODE_ENV === "production") {
-      console.warn(`[cors] Rejected origin: ${origin}`);
+      logger.warn({ origin }, "CORS origin rejected");
     }
     callback(new Error("Not allowed by CORS"));
   },
@@ -283,8 +284,12 @@ app.get("/api/mcp/client-config", authenticate, (_req, res) => {
 // Update-check diagnostic log endpoint — frontend posts structured events
 // so failures can be diagnosed from the server log.
 app.post("/api/log/update", (req, res) => {
-  const { level, message, extra, timestamp } = req.body || {};
-  console.log(`[update:${level || 'info'}] ${message || '?'} ${extra || ''} (${timestamp || '?'})`);
+  const { level, extra, timestamp } = req.body || {};
+  logger.info({
+    client_level: typeof level === "string" ? level : "info",
+    client_timestamp: typeof timestamp === "string" ? timestamp : null,
+    client_details: redactLogValue(extra),
+  }, "Client update diagnostic received");
   res.json({ ok: true });
 });
 
@@ -394,7 +399,7 @@ app.use("/api/entity-changes", entityChangesRouter);
 
 // ── Auto-backup scheduler (desktop mode) ──
 initAutoBackupScheduler().catch((err) => {
-  console.error("Failed to init auto-backup scheduler:", err);
+  logger.error({ err }, "Failed to init auto-backup scheduler");
 });
 
 app.use("/api", (req, res) => {

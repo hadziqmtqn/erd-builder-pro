@@ -108,8 +108,27 @@ export async function createMessage(req: ExpressRequest, res: ExpressResponse): 
       res.status(400).json({ error: "Missing required fields: session_id, role, content" });
       return;
     }
+    if (role !== "user" && role !== "assistant") {
+      res.status(400).json({ error: "Invalid message role" });
+      return;
+    }
     if (client_message_id !== undefined && (typeof client_message_id !== "string" || client_message_id.length > 64)) {
       res.status(400).json({ error: "Invalid client_message_id" });
+      return;
+    }
+
+    if (role === "assistant") {
+      if (!client_message_id) {
+        res.status(404).json({ error: "Message not found" });
+        return;
+      }
+      const saved = await chatService.getTrustedAssistantMessage({
+        sessionId: session_id,
+        userId,
+        clientMessageId: client_message_id,
+      });
+      if (!saved) { res.status(404).json({ error: "Message not found" }); return; }
+      res.json(saved);
       return;
     }
 

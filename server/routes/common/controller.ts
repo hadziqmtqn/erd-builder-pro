@@ -4,13 +4,14 @@ import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { fetchTrashItems } from "./service.js";
 import { StorageConfig, buildS3Client, uploadToS3, deleteFromS3, getEnvStorageConfig, generateSignedUrl, serveFromS3 } from "../../lib/storage.js";
+import { getStorageAssetAccess, normalizeStorageKey, requiresPrivateStorage } from "../../lib/storage-access.js";
 
 /**
  * Try to resolve an S3 client and storage config, checking:
  * 1. Environment variables (existing .env setup)
  * 2. Database-stored configuration (for desktop app)
  */
-async function resolveStorage(userId: string): Promise<{
+export async function resolveStorage(userId: string): Promise<{
   s3: any;
   config: StorageConfig;
 } | null> {
@@ -118,7 +119,11 @@ export async function uploadFile(req: any, res: ExpressResponse): Promise<void> 
 
   try {
     const { s3, config } = storage;
-    const feature = req.body.feature || "general";
+    const feature = String(req.body.feature || "general").trim().toLowerCase();
+    if (requiresPrivateStorage(feature) && config.publicUrl) {
+      res.status(409).json({ error: "Private document assets require storage without a public URL." });
+      return;
+    }
     const file = req.file;
     const path = await import("node:path");
     const fileExt = path.extname(file.originalname);
@@ -164,10 +169,8 @@ export async function uploadFile(req: any, res: ExpressResponse): Promise<void> 
 }
 
 export async function deleteFile(req: ExpressRequest, res: ExpressResponse): Promise<void> {
-  const { key } = req.body;
-  if (!key) { res.status(400).json({ error: "No key provided" }); return; }
-
-  if (!key.startsWith("erd-builder-pro/")) {
+  const key = normalizeStorageKey(req.body?.key);
+  if (!key) {
     res.status(403).json({ error: "Invalid file key" });
     return;
   }
@@ -175,6 +178,12 @@ export async function deleteFile(req: ExpressRequest, res: ExpressResponse): Pro
   const userId = (req as any).user?.id;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const access = await getStorageAssetAccess(userId, key);
+  if (!access.canDelete) {
+    res.status(404).json({ error: "File not found" });
     return;
   }
 
@@ -206,8 +215,9 @@ export async function deleteFile(req: ExpressRequest, res: ExpressResponse): Pro
  */
 export async function serveFile(req: ExpressRequest, res: ExpressResponse): Promise<void> {
   // Extract the full key from the wildcard route param
-  const key = Array.isArray(req.params.key) ? req.params.key.join("/") : req.params.key;
-  if (!key || !key.startsWith("erd-builder-pro/")) {
+  const rawKey = Array.isArray(req.params.key) ? req.params.key.join("/") : req.params.key;
+  const key = normalizeStorageKey(rawKey);
+  if (!key) {
     res.status(400).json({ error: "Invalid file key" });
     return;
   }
@@ -215,6 +225,12 @@ export async function serveFile(req: ExpressRequest, res: ExpressResponse): Prom
   const userId = (req as any).user?.id;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const access = await getStorageAssetAccess(userId, key);
+  if (!access.canRead) {
+    res.status(404).json({ error: "File not found" });
     return;
   }
 
@@ -268,11 +284,12 @@ export async function getSignedUrls(req: ExpressRequest, res: ExpressResponse): 
     const ttl = typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : 3600;
 
     for (const key of keys) {
-      if (typeof key !== "string" || !key.startsWith("erd-builder-pro/")) {
+      const normalizedKey = normalizeStorageKey(key);
+      if (!normalizedKey || !(await getStorageAssetAccess(userId, normalizedKey)).canRead) {
         urls[key] = "";
         continue;
       }
-      urls[key] = await generateSignedUrl(storage.s3 as any, storage.config, key, ttl);
+      urls[key] = await generateSignedUrl(storage.s3 as any, storage.config, normalizedKey, ttl);
     }
 
     res.json({ urls });

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { getSsoConfig, isSsoAuthMode } from "../../lib/config.js";
 import { createSession, hashPassword, verifyPassword } from "../../lib/desktop-auth.js";
@@ -105,9 +105,9 @@ export function startSso(req: Request, res: Response): void {
   res.redirect(url.toString());
 }
 
-async function getRemoteIdentity(accessToken: string, issuerUrl: string): Promise<RemoteIdentity> {
+async function getRemoteIdentity(accessToken: string, issuerUrl: string, requestId: string): Promise<RemoteIdentity> {
   const response = await fetch(`${issuerUrl}/api/v1/sso/user`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json", "X-Request-Id": requestId },
   });
   const body = await response.json() as RemoteIdentityResponse;
   if (!response.ok) {
@@ -189,9 +189,14 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
 
   try {
     phase = "exchange_token";
+    const requestId = req.header("X-Request-Id") || randomUUID();
     const tokenResponse = await fetch(`${config.issuerUrl}/oauth/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        "X-Request-Id": requestId,
+      },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: config.clientId,
@@ -204,7 +209,7 @@ export async function finishSso(req: Request, res: Response): Promise<void> {
     if (!tokenResponse.ok || !token.access_token) throw new Error("token exchange failed");
 
     phase = "fetch_identity";
-    const remote = await getRemoteIdentity(token.access_token, config.issuerUrl);
+    const remote = await getRemoteIdentity(token.access_token, config.issuerUrl, requestId);
 
     phase = "sync_user";
     const users = prisma as any;
@@ -262,7 +267,7 @@ export async function linkSsoAccount(req: Request, res: Response): Promise<void>
   }
 
   try {
-    const remote = await getRemoteIdentity(accessToken, config.issuerUrl);
+    const remote = await getRemoteIdentity(accessToken, config.issuerUrl, req.header("X-Request-Id") || randomUUID());
     const users = prisma as any;
     const user = await users.user.findUnique({ where: { email: remote.email } });
     if (!user || !verifyPassword(req.body.password, user.password || "")) {

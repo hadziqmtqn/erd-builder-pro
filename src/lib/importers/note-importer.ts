@@ -4,19 +4,8 @@
  */
 
 import { compressImage } from '../image-compression';
-import { apiFetch, getAuthToken } from '../api';
+import { apiFetch } from '../api';
 import JSZip from 'jszip';
-
-/** Append auth token to proxy/serve URLs so images load from private S3 buckets. */
-function resolveImageUrl(url: string): string {
-  if (url.includes('/api/serve/') || url.includes('/api/storage/proxy')) {
-    const token = getAuthToken();
-    if (token) {
-      url += (url.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
-    }
-  }
-  return url;
-}
 
 export class NoteImporter {
   private static uploadQueue: Promise<any> = Promise.resolve();
@@ -125,7 +114,7 @@ export class NoteImporter {
 
               const data = await response.json();
               if (data.url) {
-                return { src: resolveImageUrl(data.url) };
+                return { src: data.url };
               }
               
               throw new Error('No URL returned from server');
@@ -214,7 +203,7 @@ export class NoteImporter {
             if (uploadRes.ok) {
               const data = await uploadRes.json();
               if (data.url) {
-                img.setAttribute("src", resolveImageUrl(data.url));
+                img.setAttribute("src", data.url);
               }
             }
           } catch (err) {

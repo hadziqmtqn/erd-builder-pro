@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   ssoMode: vi.fn(() => false),
   provisionedTeam: false,
+  provisionedMembership: vi.fn((member: { teamId: string }) => false),
   database: {
     team: { findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
     teamMember: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
+    $transaction: vi.fn(),
   },
   license: {
     getStored: vi.fn(() => ({ lastCheckedAt: new Date().toISOString() })),
@@ -22,7 +24,7 @@ vi.mock("../../lib/config.js", () => ({ isLocalPostgres: () => true, isSsoAuthMo
 vi.mock("../../lib/prisma.js", () => ({ prisma: mocks.database }));
 vi.mock("../../lib/team-provisioning.js", () => ({
   isProvisionedTeam: () => mocks.provisionedTeam,
-  isProvisionedMembership: () => false,
+  isProvisionedMembership: mocks.provisionedMembership,
   membershipProvisioningSignature: () => "signature",
   teamProvisioningSignature: () => "signature",
 }));
@@ -92,12 +94,17 @@ describe("Team integrity", () => {
   it("refreshes the entitlement before creating a Team", async () => {
     mocks.database.team.findFirst.mockResolvedValue(null);
     mocks.database.team.count.mockResolvedValue(1);
-    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 1, maxMembers: 10 } });
 
     await expect(teams.createTeam({ name: "Downgraded Team", userId: "admin", isSuperAdmin: true }))
       .rejects.toMatchObject({ code: "TEAM_LIMIT_REACHED" });
     expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
+    expect(mocks.database.teamMember.findMany).toHaveBeenCalledWith({
+      where: { status: "active" },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
     expect(mocks.database.team.create).not.toHaveBeenCalled();
   });
 
@@ -105,7 +112,8 @@ describe("Team integrity", () => {
     mocks.provisionedTeam = true;
     mocks.database.team.findUnique.mockResolvedValue({ id: "team-1", type: "team", status: "active", members: [] });
     mocks.database.team.count.mockResolvedValue(1);
-    mocks.database.teamMember.count.mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
+    mocks.database.teamMember.findFirst.mockReset().mockResolvedValue(null);
     mocks.database.user.findUnique.mockResolvedValue({ id: "user-2", email: "user-2@example.com", isSuperAdmin: false });
     mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
 
@@ -113,6 +121,30 @@ describe("Team integrity", () => {
       .rejects.toMatchObject({ code: "MEMBER_LIMIT_REACHED" });
     expect(mocks.license.check).toHaveBeenCalledWith({ teamCount: 1, memberCount: 1 });
     expect(mocks.database.teamMember.upsert).not.toHaveBeenCalled();
+    mocks.provisionedTeam = false;
+  });
+
+  it("allows an active member to join another Team with a different role without using another seat", async () => {
+    mocks.ssoMode.mockReturnValue(false);
+    mocks.provisionedTeam = true;
+    mocks.database.team.findUnique.mockResolvedValue({ id: "team-2", type: "team", status: "active", members: [] });
+    mocks.database.team.count.mockResolvedValue(2);
+    mocks.database.teamMember.findMany.mockResolvedValue([{ userId: "user-1" }]);
+    mocks.database.teamMember.findFirst.mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ teamId: "team-1", userId: "user-1", status: "active", role: "manager" });
+    mocks.database.teamMember.upsert.mockReset().mockResolvedValue({});
+    mocks.database.user.findUnique.mockResolvedValue({ id: "user-1", email: "user@example.com", isSuperAdmin: false });
+    mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 1 } });
+
+    await teams.addMember("team-2", "user@example.com", "admin", true, { role: "staff" });
+
+    expect(mocks.database.teamMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { teamId_userId: { teamId: "team-2", userId: "user-1" } },
+      create: expect.objectContaining({ role: "staff" }),
+      update: expect.objectContaining({ role: "staff" }),
+    }));
+    expect(mocks.database.teamMember.findFirst).toHaveBeenCalledTimes(2);
     mocks.provisionedTeam = false;
   });
 
@@ -126,5 +158,94 @@ describe("Team integrity", () => {
 
     expect(mocks.database.team.update).not.toHaveBeenCalled();
     expect(mocks.database.teamMember.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps login available through a valid Team when another membership fails integrity", async () => {
+    mocks.provisionedTeam = true;
+    mocks.provisionedMembership.mockImplementation((member: { teamId: string }) => member.teamId === "valid-team");
+    mocks.database.teamMember.findMany.mockReset()
+      .mockResolvedValueOnce([
+        { teamId: "invalid-team", userId: "user-1", status: "active" },
+        { teamId: "valid-team", userId: "user-1", status: "active" },
+      ])
+      .mockResolvedValueOnce([{ userId: "user-1" }]);
+    mocks.database.teamMember.findFirst.mockReset()
+      .mockResolvedValueOnce({ teamId: "invalid-team", userId: "user-1", status: "active" })
+      .mockResolvedValueOnce({ teamId: "valid-team", userId: "user-1", status: "active" });
+    mocks.database.team.findUnique.mockReset()
+      .mockResolvedValueOnce({ id: "invalid-team", type: "team", status: "active", members: [{ teamId: "invalid-team", status: "active" }] })
+      .mockResolvedValueOnce({ id: "valid-team", type: "team", status: "active", members: [{ teamId: "valid-team", status: "active" }] });
+    mocks.database.team.count.mockResolvedValue(2);
+
+    await expect(teams.canUserLogin("user-1")).resolves.toEqual({ allowed: true, teamId: "valid-team" });
+
+    mocks.provisionedTeam = false;
+    mocks.provisionedMembership.mockReset().mockReturnValue(false);
+  });
+
+  it("quarantines an invalid Team without changing its signature and audits atomically", async () => {
+    const team = { id: "team-1", type: "team", status: "active", createdAt: new Date("2026-01-01T00:00:00Z"), cloudEntitlement: null, provisioningSignature: "invalid" };
+    const tx = {
+      team: { findUnique: vi.fn().mockResolvedValue(team), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      teamAuditEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    mocks.database.$transaction.mockReset().mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
+    mocks.provisionedTeam = false;
+
+    await expect(teams.quarantineTeam("team-1", "admin-1", true)).resolves.toBe(true);
+
+    expect(tx.team.updateMany).toHaveBeenCalledWith({
+      where: { id: team.id, status: team.status, createdAt: team.createdAt, cloudEntitlement: team.cloudEntitlement, provisioningSignature: team.provisioningSignature },
+      data: { status: "quarantined" },
+    });
+    expect(tx.teamAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actorId: "admin-1", action: "integrity_quarantine", targetType: "team", targetId: "team-1", metadata: JSON.stringify({ reason: "invalid_provisioning_signature" }) }) });
+  });
+
+  it("quarantines only an invalid active membership and keeps its signature", async () => {
+    const member = { id: "membership-1", teamId: "team-1", userId: "user-1", role: "staff", status: "active", joinedAt: new Date("2026-01-01T00:00:00Z"), provisioningSignature: "invalid" };
+    const tx = {
+      team: { findUnique: vi.fn().mockResolvedValue({ id: "team-1", type: "team", status: "active" }) },
+      teamMember: { findFirst: vi.fn().mockResolvedValue(member), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      teamAuditEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    mocks.database.$transaction.mockReset().mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
+    mocks.provisionedTeam = true;
+    mocks.provisionedMembership.mockReturnValue(false);
+
+    await expect(teams.quarantineMember("team-1", "user-1", "admin-1", true)).resolves.toBe(true);
+
+    expect(tx.teamMember.updateMany).toHaveBeenCalledWith({
+      where: { id: member.id, teamId: member.teamId, userId: member.userId, role: member.role, status: member.status, joinedAt: member.joinedAt, provisioningSignature: member.provisioningSignature },
+      data: { status: "quarantined" },
+    });
+    expect(tx.teamAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actorId: "admin-1", action: "integrity_quarantine", targetType: "team_member", targetId: member.id }) });
+    mocks.provisionedTeam = false;
+    mocks.provisionedMembership.mockReset().mockReturnValue(false);
+  });
+
+  it("does not quarantine records with valid signatures", async () => {
+    const tx = { team: { findUnique: vi.fn().mockResolvedValue({ id: "team-1", type: "team", status: "active" }) } };
+    mocks.database.$transaction.mockReset().mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
+    mocks.provisionedTeam = true;
+
+    await expect(teams.quarantineTeam("team-1", "admin-1", true)).rejects.toMatchObject({ code: "INTEGRITY_QUARANTINE_NOT_APPLICABLE" });
+
+    mocks.provisionedTeam = false;
+  });
+
+  it("does not reactivate a quarantined membership through the add-member flow", async () => {
+    mocks.provisionedTeam = true;
+    mocks.database.team.findUnique.mockReset().mockResolvedValue({ id: "team-1", type: "team", status: "active", members: [] });
+    mocks.database.teamMember.findFirst.mockReset().mockResolvedValue({ id: "membership-1", teamId: "team-1", userId: "user-1", status: "quarantined" });
+    mocks.database.teamMember.upsert.mockReset();
+    mocks.database.team.count.mockReset().mockResolvedValue(1);
+    mocks.database.teamMember.findMany.mockReset().mockResolvedValue([{ userId: "user-1" }]);
+    mocks.database.user.findUnique.mockReset().mockResolvedValue({ id: "user-1", email: "user@example.com", isSuperAdmin: false });
+    mocks.license.check.mockReset().mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+
+    await expect(teams.addMember("team-1", "user@example.com", "admin", true)).rejects.toMatchObject({ code: "MEMBER_QUARANTINED" });
+
+    expect(mocks.database.teamMember.upsert).not.toHaveBeenCalled();
+    mocks.provisionedTeam = false;
   });
 });

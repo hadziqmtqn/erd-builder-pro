@@ -9,6 +9,7 @@ interface AIRulesData {
   view_type: ViewType;
   content: string;
   is_enabled: boolean;
+  can_edit?: boolean;
 }
 
 export function useAIRules(viewType: ViewType | null) {

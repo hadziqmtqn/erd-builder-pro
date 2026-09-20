@@ -17,6 +17,7 @@ import {
   RESPONSE_LANGUAGE_INSTRUCTION,
   recentConversationMessages,
   planningContext,
+  normalizeAIChatMessage,
 } from './aiChat/index';
 import type { AIRequestContext } from './aiChat/index';
 import {
@@ -54,16 +55,6 @@ interface UseAIChatReturn {
 }
 
 const PAGE_SIZE = 30;
-
-function normalizeMessage(message: any): AIChatMessage {
-  return {
-    ...message,
-    session_id: message.session_id ?? message.sessionId,
-    selection_text: message.selection_text ?? message.selectionText ?? null,
-    client_message_id: message.client_message_id ?? message.clientMessageId ?? null,
-    created_at: message.created_at ?? message.createdAt ?? new Date().toISOString(),
-  };
-}
 
 async function mergePlanOutbox(sessionUid: string, messages: AIChatMessage[]) {
   const items = await listPlanOutbox(sessionUid).catch(() => [] as PlanOutboxItem[]);
@@ -246,7 +237,7 @@ export function useAIChat(
         setCurrentSession(session);
         try {
           const stored = await localPersistence.getResource(sessionUid);
-          const allMessages = await mergePlanOutbox(sessionUid, ((stored?.messages as AIChatMessage[]) || []).map(normalizeMessage));
+          const allMessages = await mergePlanOutbox(sessionUid, ((stored?.messages as AIChatMessage[]) || []).map(message => normalizeAIChatMessage(message, true)));
           messagesCacheMapRef.current.set(sessionUid, allMessages);
           displayCountRef.current = Math.min(PAGE_SIZE, allMessages.length);
           setMessages(allMessages.slice(-PAGE_SIZE));
@@ -275,7 +266,7 @@ export function useAIChat(
         const msgRes = await apiFetch(`/api/ai/chat/sessions/${session.uid}/messages?offset=0&limit=${FETCH_ALL_LIMIT}`);
         if (!msgRes.ok) throw new Error('Failed to load messages');
         const { data: msgData } = await msgRes.json();
-        allMessages = (msgData || []).reverse().map(normalizeMessage);
+        allMessages = (msgData || []).reverse().map(normalizeAIChatMessage);
       }
       allMessages = await mergePlanOutbox(sessionUid, allMessages);
       messagesCacheMapRef.current.set(sessionUid, allMessages);
@@ -370,6 +361,7 @@ export function useAIChat(
     const isPlanRequest = requestContext?.planMode === true;
     const sessionUid = String(currentSession.uid ?? currentSession.id);
     const clientMessageId = requestContext?.clientMessageId ?? crypto.randomUUID();
+    const assistantMessageId = assistantClientMessageId(clientMessageId);
     const outbox = isPlanRequest
       ? (await listPlanOutbox(sessionUid).catch(() => [])).find(item => item.clientMessageId === clientMessageId)
       : undefined;
@@ -480,7 +472,7 @@ export function useAIChat(
           }),
         });
         if (!res.ok) throw new Error('Failed to save message');
-        const savedMessage = normalizeMessage(await res.json());
+        const savedMessage = normalizeAIChatMessage(await res.json());
         const replaceSaved = (message: AIChatMessage) => message.client_message_id === clientMessageId
           ? {
               ...savedMessage,
@@ -648,6 +640,7 @@ export function useAIChat(
         },
         config.providerCode,
         content => isPlanRequest && Boolean(extractPlanQuestion(content)),
+        !isGuest ? { sessionId: sessionUid, assistantClientMessageId: assistantMessageId } : undefined,
       );
       if (streamingFrame !== null) cancelAnimationFrame(streamingFrame);
       if (isPlanRequest && streamController.signal.aborted) {
@@ -657,11 +650,11 @@ export function useAIChat(
       flushStreamingBuffer();
 
       // Finalize message
-      const assistantMessageId = assistantClientMessageId(clientMessageId);
       const finalAiMsg: AIChatMessage = {
         id: `ai-${Date.now()}`,
         session_id: currentSession.uid ?? currentSession.id,
         role: 'assistant',
+        is_trusted_assistant: true,
         content: accumulatedResponse,
         client_message_id: assistantMessageId,
         delivery_status: isPlanRequest ? 'pending-assistant' : undefined,
@@ -711,7 +704,7 @@ export function useAIChat(
           }),
         });
         if (!saveAIRes.ok) throw new Error('Failed to save AI response');
-        const savedAssistant = normalizeMessage(await saveAIRes.json());
+        const savedAssistant = normalizeAIChatMessage(await saveAIRes.json());
         const replaceAssistant = (message: AIChatMessage) => message.client_message_id === assistantMessageId
           ? { ...savedAssistant, delivery_status: undefined }
           : message;
@@ -795,7 +788,7 @@ export function useAIChat(
               }),
             });
             if (!response.ok) throw new Error('Failed to sync recovered AI response');
-            Object.assign(recovered, normalizeMessage(await response.json()));
+            Object.assign(recovered, normalizeAIChatMessage(await response.json()));
           }
 
           const clearStatus = (message: AIChatMessage) => message.client_message_id === pending.clientMessageId

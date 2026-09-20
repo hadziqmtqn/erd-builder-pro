@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { isLocalPostgres, isSsoAuthMode } from "../../lib/config.js";
 
 const VALID_VIEW_TYPES = ["erd", "notes", "flowchart", "db-client"];
 
@@ -35,6 +36,21 @@ export function isValidViewType(viewType: string): boolean {
 
 export function getValidViewTypes(): string[] {
   return [...VALID_VIEW_TYPES];
+}
+
+export function canEditRules(isSuperAdmin: boolean): boolean {
+  return !isLocalPostgres() || isSsoAuthMode() || isSuperAdmin;
+}
+
+export async function getRulesOwnerId(userId: string): Promise<string | null> {
+  if (!isLocalPostgres() || isSsoAuthMode()) return userId;
+
+  const superAdmin = await prisma?.user.findFirst({
+    where: { isSuperAdmin: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return superAdmin?.id ?? null;
 }
 
 export async function findRule(userId: string, viewType: string) {

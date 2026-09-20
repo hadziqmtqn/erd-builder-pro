@@ -72,6 +72,7 @@ import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from 
 import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
 import { getDbClientCache, setDbClientCache } from '@/hooks/useDataViewerHelpers';
+import { isFileCreator } from '@/lib/fileOwnership';
 
 // ── Inner component that uses AIAction context ──
 
@@ -244,7 +245,7 @@ function AppLayoutInner() {
   const [isGlobalSearchLoading, setIsGlobalSearchLoading] = useState(false);
   const [selectableProjects, setSelectableProjects] = useState<any[]>([]);
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.is_super_admin);
-  const teamState = useTeams(isGuest);
+  const teamState = useTeams(isGuest, Boolean(user?.isSso));
   useEffect(() => {
     if (isGuest) {
       setSelectableProjects([]);
@@ -352,6 +353,7 @@ function AppLayoutInner() {
 
   const activeDiagramIsProductionDb = isActiveDiagramContext
     && (activeDiagram?.source_type ?? activeDiagram?.sourceType) === 'production_db';
+  const canDeleteActiveDocument = isFileCreator(activeDocument, user?.id, isGuest);
   const documentToDelete = tableDeleteDoc ?? activeDocument;
   const deletingDbClient = (documentToDelete?.source_type ?? documentToDelete?.sourceType) === 'production_db';
   const propertiesEntity = useMemo(() => {
@@ -800,6 +802,7 @@ function AppLayoutInner() {
           teams={teamState.teams}
           teamsAvailable={teamState.isAvailable}
           activeTeamId={teamState.activeTeamId}
+          onTeamsRefresh={() => { void teamState.fetchTeams(); }}
           onTeamSelect={handleTeamSelect}
           onTeamManage={handleTeamManage}
           onUserManage={handleUserManage}
@@ -832,7 +835,7 @@ function AppLayoutInner() {
           onSettingsSaved={handleHeaderSettingsSaved}
           isOnline={isOnline}
           updatedAt={activeDocument?.updated_at}
-          onDelete={handleHeaderDelete}
+          onDelete={canDeleteActiveDocument ? handleHeaderDelete : undefined}
           onRename={handleHeaderRename}
           onExportAll={activeDiagramIsProductionDb ? undefined : () => setIsExportAllOpen(true)}
           onExportSQL={handleHeaderExportSQL}
@@ -854,7 +857,7 @@ function AppLayoutInner() {
               <p className="mt-4 text-sm font-medium text-muted-foreground">Loading workspace…</p>
             </div>
           ) : (
-            <Outlet key={teamScopeVersion} />
+            <Outlet key={teamScopeVersion} context={teamState} />
           )}
         </div>
 

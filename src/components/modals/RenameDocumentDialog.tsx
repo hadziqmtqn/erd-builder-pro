@@ -51,10 +51,6 @@ interface RenameDocumentDialogProps {
 const viewLabel = (v: string) =>
   v === 'erd' ? 'diagram' : v === 'notes' ? 'note' : v === 'drawings' ? 'drawing' : 'flowchart';
 
-const projectScopeLabel = (project: any) => project.teamId ?? project.team_id
-  ? `Team${project.team?.name ? ` · ${project.team.name}` : ''}`
-  : 'Personal';
-
 export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
   isOpen,
   onOpenChange,
@@ -176,7 +172,7 @@ export const RenameDocumentDialog: React.FC<RenameDocumentDialogProps> = ({
                   {!requireProject && <SelectItem value="none">No project</SelectItem>}
                   {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id.toString()}>
-                      <span>{project.name}</span><span className="ml-2 text-xs text-muted-foreground">{projectScopeLabel(project)}</span>
+                      {project.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

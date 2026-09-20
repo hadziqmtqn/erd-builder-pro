@@ -33,10 +33,15 @@ export const aiProxySchema = z.object({
   baseUrl: z.string().url().max(512).optional(),
   providerCode: z.string().max(64).optional(),
   request_id: z.string().min(1).max(128).optional(),
+  chat_session_id: z.string().min(1).max(64).optional(),
+  assistant_client_message_id: z.string().min(1).max(64).optional(),
 }).superRefine((value, ctx) => {
   const total = value.messages.reduce((length, message) => length + message.content.length, 0);
   if (total > 2_000_000) {
     ctx.addIssue({ code: z.ZodIssueCode.too_big, maximum: 2_000_000, origin: "string", inclusive: true, message: "AI message payload is too large", path: ["messages"] });
+  }
+  if (Boolean(value.chat_session_id) !== Boolean(value.assistant_client_message_id)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Chat persistence identifiers must be provided together", path: ["chat_session_id"] });
   }
 });
 

@@ -5,6 +5,7 @@ import { resolveOwnedProjectId } from "../../lib/security.js";
 import { buildCatalogConnectionInfo } from "./middleware.js";
 import * as accountsService from "./accounts.service.js";
 import * as catalogsService from "./catalogs.service.js";
+import { logger } from "../../lib/logger.js";
 export { buildRecordDelete, buildRecordInsert, buildRecordUpdate, buildRecordWhere, validateRecordValues } from "./record-helpers.js";
 export { createRecord, deleteRecord, queryRecords, updateRecord } from "./records.controller.js";
 export { getStructureSql, importStructureSql, updateStructure } from "./structure.controller.js";
@@ -17,7 +18,7 @@ export async function listCatalogs(req: ExpressRequest, res: ExpressResponse) {
     const catalogs = await catalogsService.findAllCatalogs(userId, accountId);
     res.json(catalogs || []);
   } catch (err) {
-    console.error("Error listing catalogs:", err);
+    logger.error({ err }, "Error listing catalogs");
     res.status(500).json({ error: "Failed to list catalogs" });
   }
 }
@@ -51,7 +52,7 @@ export async function createCatalog(req: ExpressRequest, res: ExpressResponse) {
 
     res.status(201).json(catalog);
   } catch (err) {
-    console.error("Error creating catalog:", err);
+    logger.error({ err }, "Error creating catalog");
     res.status(500).json({ error: "Failed to create catalog" });
   }
 }
@@ -75,7 +76,7 @@ export async function deleteCatalog(req: ExpressRequest, res: ExpressResponse) {
       clientNames: affectedClients?.map((client: any) => client.name) ?? [],
     });
   } catch (err) {
-    console.error("Error deleting catalog:", err);
+    logger.error({ err }, "Error deleting catalog");
     res.status(500).json({ error: "Failed to delete catalog" });
   }
 }
@@ -103,7 +104,7 @@ export async function fetchCatalogSchema(req: ExpressRequest, res: ExpressRespon
       },
     });
   } catch (err: any) {
-    console.error("Error fetching schema:", err);
+    logger.error({ err }, "Error fetching schema");
     res.status(500).json({ error: `Failed to fetch schema: ${err.message}` });
   }
 }
@@ -164,7 +165,7 @@ export async function importSchema(req: ExpressRequest, res: ExpressResponse) {
       tableCount: tables.length,
     });
   } catch (err: any) {
-    console.error("Error importing schema:", err);
+    logger.error({ err }, "Error importing schema");
     res.status(500).json({ error: `Failed to import schema: ${err.message}` });
   }
 }

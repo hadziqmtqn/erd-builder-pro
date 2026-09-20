@@ -91,6 +91,13 @@ export const authenticate = async (req: ExpressRequest, res: ExpressResponse, ne
   }
 };
 
+export const authenticateIfPresent = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+  if (!extractToken(req)) {
+    return next();
+  }
+  return authenticate(req, res, next);
+};
+
 // Supabase health check middleware — skipped in desktop and local PG mode
 export const checkSupabase = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
   if (!supabase) {

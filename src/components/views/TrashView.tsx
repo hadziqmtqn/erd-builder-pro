@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DbClientTrashSection } from './DbClientTrashSection';
+import { useAuth } from '@/hooks/useAuth';
+import { isFileCreator } from '@/lib/fileOwnership';
 
 interface TrashViewProps {
   trashData: {
@@ -65,6 +67,9 @@ export function TrashView({
   handleDbClientPermanentDelete,
   isLoading = false
 }: TrashViewProps) {
+  const { user, isGuest } = useAuth();
+  const canManageTrashItem = (item: any) => isFileCreator(item, user?.id, isGuest);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 border rounded-xl bg-background overflow-hidden relative">
       {/* Subtle Loading Overlay */}
@@ -127,14 +132,16 @@ export function TrashView({
                           {new Date(project.deleted_at || project.updated_at || project.created_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreProject(project.id); fetchTrash(); }}>
-                              <RefreshCcw size={14} className="mr-1" /> Restore
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project)}>
-                              <TrashIcon size={14} className="mr-1" /> Delete
-                            </Button>
-                          </div>
+                          {canManageTrashItem(project) ? (
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => { await restoreProject(project.id); fetchTrash(); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleProjectPermanentDelete(project)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">Creator only</span>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -180,14 +187,16 @@ export function TrashView({
                           {new Date(file.deleted_at || file.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreDiagram(file); }}>
-                              <RefreshCcw size={14} className="mr-1" /> Restore
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDiagramPermanentDelete(file)}>
-                              <TrashIcon size={14} className="mr-1" /> Delete
-                            </Button>
-                          </div>
+                          {canManageTrashItem(file) ? (
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => { await restoreDiagram(file); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleDiagramPermanentDelete(file)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">Creator only</span>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -241,14 +250,16 @@ export function TrashView({
                           {new Date(note.deleted_at || note.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreNote(note); }}>
-                              <RefreshCcw size={14} className="mr-1" /> Restore
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note)}>
-                              <TrashIcon size={14} className="mr-1" /> Delete
-                            </Button>
-                          </div>
+                          {canManageTrashItem(note) ? (
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => { await restoreNote(note); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleNotePermanentDelete(note)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">Creator only</span>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -294,14 +305,16 @@ export function TrashView({
                           {new Date(drawing.deleted_at || drawing.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreDrawing(drawing); }}>
-                              <RefreshCcw size={14} className="mr-1" /> Restore
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing)}>
-                              <TrashIcon size={14} className="mr-1" /> Delete
-                            </Button>
-                          </div>
+                          {canManageTrashItem(drawing) ? (
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => { await restoreDrawing(drawing); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleDrawingPermanentDelete(drawing)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">Creator only</span>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -346,14 +359,16 @@ export function TrashView({
                           {new Date(flowchart.deleted_at || flowchart.updated_at).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={async () => { await restoreFlowchart(flowchart); }}>
-                              <RefreshCcw size={14} className="mr-1" /> Restore
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart)}>
-                              <TrashIcon size={14} className="mr-1" /> Delete
-                            </Button>
-                          </div>
+                          {canManageTrashItem(flowchart) ? (
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={async () => { await restoreFlowchart(flowchart); }}>
+                                <RefreshCcw size={14} className="mr-1" /> Restore
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleFlowchartPermanentDelete(flowchart)}>
+                                <TrashIcon size={14} className="mr-1" /> Delete
+                              </Button>
+                            </div>
+                          ) : <span className="text-xs text-muted-foreground">Creator only</span>}
                         </TableCell>
                       </TableRow>
                     ))}

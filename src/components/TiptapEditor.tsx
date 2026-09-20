@@ -4,7 +4,7 @@ import { mergeAttributes } from '@tiptap/core';
 import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import { useAIAction } from '@/contexts/AIActionContext';
-import { apiFetch, getAuthToken } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import ImageResize from 'tiptap-extension-resize-image';
@@ -237,15 +237,7 @@ export function TiptapEditor({ content, onChange, isReadOnly = false, disableAIS
 
         if (data.url) {
           // Sanitize URL - remove escaped newlines
-          let cleanUrl = data.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
-          
-          // For proxy/serve URLs (private S3), append auth token for cross-origin image loading
-          if (cleanUrl.includes('/api/serve/') || cleanUrl.includes('/api/storage/proxy')) {
-            const token = getAuthToken();
-            if (token) {
-              cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
-            }
-          }
+          const cleanUrl = data.url.replace(/\\n/g, '').replace(/\\r/g, '').trim();
           
           editor?.chain()
             .focus()

@@ -165,16 +165,19 @@ export const NavActionsMenu = ({
                 </DropdownMenuItem>
               )}
 
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem 
-                disabled={!isOnline} 
-                onClick={onDelete}
-                className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>Move to Trash</span>
-              </DropdownMenuItem>
+              {onDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={!isOnline}
+                    onClick={onDelete}
+                    className="gap-2 text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Move to Trash</span>
+                  </DropdownMenuItem>
+                </>
+              )}
             </>
           )}
 
