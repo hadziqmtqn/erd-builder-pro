@@ -2,9 +2,8 @@ name: Build & Push to Docker Hub
 
 on:
   push:
-    branches: [master]
-    tags: ['v*']
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 jobs:
   build-and-push:
@@ -33,7 +32,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=sha,prefix=,suffix=,format=short
 
       - name: Build and push
