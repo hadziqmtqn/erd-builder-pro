@@ -80,6 +80,17 @@ describe("Cloud live sync WebSocket", () => {
     }));
   });
 
+  it("does not attach a Cloud socket in non-SSO mode", () => {
+    mocks.isSsoAuthMode.mockReturnValue(false);
+    const selfHostServer = createServer();
+
+    const cleanup = attachCloudLiveSync(selfHostServer);
+
+    expect(selfHostServer.listenerCount("upgrade")).toBe(0);
+    cleanup();
+    expect(selfHostServer.listenerCount("upgrade")).toBe(0);
+  });
+
   it("rejects cross-origin and inactive membership handshakes", async () => {
     await expect(connect({ cookie: "token=session-cookie", origin: "https://attacker.test" })).rejects.toThrow();
     expect(mocks.getSession).not.toHaveBeenCalled();

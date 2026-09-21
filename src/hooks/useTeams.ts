@@ -51,7 +51,7 @@ function writeActiveTeamId(teamId: string | null): void {
   }
 }
 
-export function useTeams(isGuest = false, isSso = false) {
+export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable?: () => void) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(readActiveTeamId);
   const [isLoading, setIsLoading] = useState(!isGuest);
@@ -71,9 +71,11 @@ export function useTeams(isGuest = false, isSso = false) {
       const response = await apiFetch("/api/teams");
       if (version !== fetchVersion.current) return [];
       if (response.status === 404 || response.status === 403) {
+        const selected = readActiveTeamId();
         setTeams([]);
         setActiveTeamId(null);
         writeActiveTeamId(null);
+        if (selected) onActiveTeamUnavailable?.();
         setIsAvailable(false);
         return [];
       }
@@ -90,6 +92,7 @@ export function useTeams(isGuest = false, isSso = false) {
       } else if (selected) {
         setActiveTeamId(null);
         writeActiveTeamId(null);
+        onActiveTeamUnavailable?.();
       }
       return nextTeams;
     } catch (error) {
@@ -101,7 +104,7 @@ export function useTeams(isGuest = false, isSso = false) {
     } finally {
       if (showLoading && version === fetchVersion.current) setIsLoading(false);
     }
-  }, [isGuest]);
+  }, [isGuest, onActiveTeamUnavailable]);
 
   useEffect(() => {
     void fetchTeams(true);
