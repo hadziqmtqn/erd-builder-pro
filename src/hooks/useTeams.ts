@@ -147,7 +147,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
     let retries = 0;
     let refreshOnReconnect = false;
     const connect = () => {
-      if (disposed || document.hidden) return;
+      if (disposed || document.hidden || !navigator.onLine) return;
       const apiUrl = new URL(getApiBaseUrl() || window.location.origin, window.location.origin);
       apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
       apiUrl.pathname = "/api/cloud/live-sync";
@@ -174,7 +174,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
         if (!disposed) {
           refreshOnReconnect = true;
         }
-        if (!disposed && !document.hidden) {
+        if (!disposed && !document.hidden && navigator.onLine) {
           reconnectTimer = window.setTimeout(() => {
             reconnectTimer = 0;
             connect();
@@ -184,14 +184,34 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
       current.onerror = () => current.close();
     };
     const reconnectWhenVisible = () => {
-      if (!document.hidden && !socket && !reconnectTimer) connect();
+      if (!document.hidden && navigator.onLine && !socket && !reconnectTimer) connect();
+    };
+    const handleOffline = () => {
+      refreshOnReconnect = true;
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = 0;
+      socket?.close(1000, "Network offline");
+    };
+    const handleOnline = () => {
+      refreshOnReconnect = true;
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = 0;
+      if (socket) {
+        socket.close(1000, "Network restored");
+        return;
+      }
+      reconnectWhenVisible();
     };
     document.addEventListener("visibilitychange", reconnectWhenVisible);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
     connect();
     return () => {
       disposed = true;
       window.clearTimeout(reconnectTimer);
       document.removeEventListener("visibilitychange", reconnectWhenVisible);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
       socket?.close();
     };
   }, [activeTeamId, fetchTeams, isGuest, isSso]);
