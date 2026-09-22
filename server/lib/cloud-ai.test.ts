@@ -53,7 +53,7 @@ vi.mock("./prisma.js", () => ({
 }));
 vi.mock("./team-scope.js", () => ({ currentTeamScope: () => ({ mode: "team", teamId: "team-1" }) }));
 
-import { pruneCloudAiUsage, refreshCloudAiRuntimeConfig, requireCloudAiAccess } from "./cloud-ai.js";
+import { pruneCloudAiUsage, refreshCloudAiRuntimeConfig, requireCloudAiAccess, storeCloudAiEnvelope } from "./cloud-ai.js";
 import { sendCloudTelemetryHeartbeat } from "./cloud-telemetry.js";
 
 const entitlement = (capabilities: Record<string, boolean>) => JSON.stringify({
@@ -147,6 +147,34 @@ describe("Cloud AI access", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("https://account.example.com/api/v1/cloud/ai-config");
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer machine-token");
     expect(mocks.executeRaw).toHaveBeenCalled();
+  });
+
+  it("accepts an already applied configuration revision idempotently", async () => {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", createHash("sha256").update(mocks.encryptionKey).digest(), iv);
+    const plaintext = JSON.stringify({
+      provider_code: "openai",
+      model_identifier: "gpt-4o-mini",
+      base_url: "https://api.openai.com/v1",
+      api_key: "sk-secret",
+      global_system_prompt: "Use DBML.",
+      enabled: true,
+      revision: 2,
+      expires_at: null,
+    });
+    const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+    const envelope = {
+      version: 1,
+      revision: 2,
+      expires_at: null,
+      iv: iv.toString("base64"),
+      tag: cipher.getAuthTag().toString("base64"),
+      ciphertext: ciphertext.toString("base64"),
+    };
+    mocks.queryRaw.mockResolvedValue([{ revision: 2 }]);
+
+    await expect(storeCloudAiEnvelope(envelope)).resolves.toBe(true);
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
   });
 
   it("does not contact SaaS outside Cloud SSO mode", async () => {
