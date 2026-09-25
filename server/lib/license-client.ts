@@ -24,6 +24,7 @@ MCowBQYDK2VwAyEABi1Uek1UFOesLWNtuyL8T7+nZzbWIoBhNeRaQ/6w4Wk=
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_CANONICAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAPABILITY_KEY = /^[a-z][a-z0-9_]*$/;
+const OFFLINE_GRACE_SECONDS = 72 * 60 * 60;
 
 export type LicenseCapabilities = Readonly<Record<string, boolean>>;
 
@@ -298,6 +299,7 @@ export function verifySignedEntitlement(
   signedEntitlement: string,
   expectedInstallationId: string,
   previousGeneration?: number,
+  options: { allowExpired?: boolean; now?: number } = {},
 ): VerifiedEntitlement {
   const parts = signedEntitlement.split(".");
   if (parts.length !== 3) throw new LicenseClientError("LICENSE_SIGNATURE_INVALID", 502);
@@ -337,7 +339,7 @@ export function verifySignedEntitlement(
     throw new LicenseClientError("LICENSE_SIGNATURE_INVALID", 502);
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = options.now ?? Math.floor(Date.now() / 1000);
   const limits = claims?.limits;
   const maxMembers = limits?.max_members;
   const maxTeams = limits?.max_teams;
@@ -358,7 +360,7 @@ export function verifySignedEntitlement(
   ) {
     throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
   }
-  if (claims.exp <= now) throw new LicenseClientError("LICENSE_EXPIRED", 403);
+  if (claims.exp <= now && !options.allowExpired) throw new LicenseClientError("LICENSE_EXPIRED", 403);
   if (!Number.isInteger(claims?.binding_generation) || claims.binding_generation < 1) {
     throw new LicenseClientError("LICENSE_ENTITLEMENT_INVALID", 502);
   }
@@ -459,16 +461,24 @@ export async function checkSelfHostInstanceLicense(data: { teamCount: number; me
   return { entitlement, state };
 }
 
-export function verifyStoredInstanceLicense(): { state: StoredInstanceLicense; entitlement: VerifiedEntitlement } {
+export function verifyStoredInstanceLicense(options: { allowGrace?: boolean; now?: number } = {}): { state: StoredInstanceLicense; entitlement: VerifiedEntitlement } {
   const state = getStoredInstanceLicense();
   if (!state) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409);
   const installationId = getInstallationId();
   if (state.installationId !== installationId) {
     throw new LicenseClientError("LICENSE_STATE_INVALID", 500);
   }
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  const entitlement = verifySignedEntitlement(state.signedEntitlement, installationId, state.bindingGeneration, {
+    allowExpired: options.allowGrace === true,
+    now,
+  });
+  if (entitlement.expiresAt <= now && (!options.allowGrace || now > entitlement.issuedAt + OFFLINE_GRACE_SECONDS)) {
+    throw new LicenseClientError("LICENSE_EXPIRED", 403);
+  }
   return {
     state,
-    entitlement: verifySignedEntitlement(state.signedEntitlement, installationId, state.bindingGeneration),
+    entitlement,
   };
 }
 

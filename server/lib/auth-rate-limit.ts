@@ -4,6 +4,19 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 const AUTH_MESSAGE = { error: "Too many authentication attempts, please try again later" };
 const ONE_MINUTE = 60 * 1000;
 const FIVE_MINUTES = 5 * ONE_MINUTE;
+const FIFTEEN_MINUTES = 15 * ONE_MINUTE;
+
+/**
+ * Persistent per-account backoff complements the IP/credential request limits.
+ * The cap is deliberate: a forgotten password must recover without an
+ * email-only permanent lockout.
+ */
+export function loginLockoutDurationMs(failedAttempts: number): number {
+  if (!Number.isFinite(failedAttempts) || failedAttempts < 5) return 0;
+  if (failedAttempts < 8) return ONE_MINUTE;
+  if (failedAttempts < 12) return FIVE_MINUTES;
+  return FIFTEEN_MINUTES;
+}
 
 export function loginCredentialKey(req: Request): string {
   const email = typeof req.body?.email === "string"

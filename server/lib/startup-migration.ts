@@ -897,6 +897,14 @@ export async function applySchemaMigrations(): Promise<void> {
   await addColumnIfMissing("users", "must_change_password", '"must_change_password" BOOLEAN NOT NULL DEFAULT false');
   await addColumnIfMissing("users", "sso_subject", '"sso_subject" TEXT');
   await addColumnIfMissing("users", "sso_email", '"sso_email" TEXT');
+  if (isDesktopMode() || isLocalPostgres()) {
+    await addColumnIfMissing("users", "login_failed_attempts", '"login_failed_attempts" INTEGER NOT NULL DEFAULT 0');
+    await addColumnIfMissing(
+      "users",
+      "login_locked_until",
+      `"login_locked_until" ${isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME"}`,
+    );
+  }
   try {
     await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "users_sso_subject_key" ON "users"("sso_subject")');
   } catch (err: any) {

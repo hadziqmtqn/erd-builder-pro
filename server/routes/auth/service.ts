@@ -8,7 +8,9 @@ import {
   deleteSession,
 } from "../../lib/desktop-auth.js";
 import { isDbReady } from "../../lib/db-state.js";
+import { loginLockoutDurationMs } from "../../lib/auth-rate-limit.js";
 import { canUserLogin } from "../teams/service.js";
+import { logger } from "../../lib/logger.js";
 
 /** Desktop default credentials — embedded in the bundled app, not a secret. */
 const DESKTOP_DEFAULT_EMAIL = "admin@local.dev";
@@ -82,7 +84,14 @@ export async function setupLocalAdmin(data: {
   const user = bootstrapUser
     ? await prisma.user.update({
         where: { id: users[0].id },
-        data: { email, name, password: hashPassword(data.password), isSuperAdmin: true },
+        data: {
+          email,
+          name,
+          password: hashPassword(data.password),
+          isSuperAdmin: true,
+          loginFailedAttempts: 0,
+          loginLockedUntil: null,
+        },
       })
     : await prisma.user.create({
         data: { email, name, password: hashPassword(data.password), isSuperAdmin: true },
@@ -132,9 +141,44 @@ export async function localLogin(email: string, password: string) {
     }
   }
 
+  const now = new Date();
+  const storedFailedLoginAttempts = Number((user as any).loginFailedAttempts || 0);
+  const failedLoginAttempts = Number.isFinite(storedFailedLoginAttempts)
+    ? Math.max(0, Math.floor(storedFailedLoginAttempts))
+    : 0;
+  const loginLockedUntil = (user as any).loginLockedUntil;
+  const lockedUntilMs = loginLockedUntil ? new Date(loginLockedUntil).getTime() : NaN;
+  if (Number.isFinite(lockedUntilMs) && lockedUntilMs > now.getTime()) {
+    return null;
+  }
+
   const storedPassword = (user as any).password || (user as any).encrypted_password || "";
   if (!verifyPassword(password, storedPassword)) {
+    const nextFailedAttempts = failedLoginAttempts + 1;
+    const lockoutMs = loginLockoutDurationMs(nextFailedAttempts);
+    try {
+      await (prisma.user.update as any)({
+        where: { id: (user as any).id },
+        data: {
+          loginFailedAttempts: nextFailedAttempts,
+          loginLockedUntil: lockoutMs ? new Date(now.getTime() + lockoutMs) : null,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err }, "Failed to persist login lockout state");
+    }
     return null;
+  }
+
+  if (failedLoginAttempts > 0 || Number.isFinite(lockedUntilMs)) {
+    try {
+      await (prisma.user.update as any)({
+        where: { id: (user as any).id },
+        data: { loginFailedAttempts: 0, loginLockedUntil: null },
+      });
+    } catch (err) {
+      logger.warn({ err }, "Failed to clear login lockout state");
+    }
   }
 
   let activeTeamId: string | undefined;
@@ -329,6 +373,8 @@ export async function updateLocalAccount(
   if (typeof data.newPassword === "string" && data.newPassword.length > 0) {
     updateData.password = hashPassword(data.newPassword);
     updateData.mustChangePassword = false;
+    updateData.loginFailedAttempts = 0;
+    updateData.loginLockedUntil = null;
   }
 
   if (Object.keys(updateData).length === 0) {

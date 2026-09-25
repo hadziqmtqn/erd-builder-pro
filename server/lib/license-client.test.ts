@@ -12,6 +12,7 @@ import {
   hasEntitlementCapability,
   LicenseClientError,
   storeInstanceLicense,
+  verifyStoredInstanceLicense,
   verifySignedEntitlement,
 } from "./license-client";
 
@@ -50,13 +51,14 @@ function signedEntitlement(
   installationId: string,
   features: unknown = ["team_files"],
   audience = "erd-self-host",
+  issuedAt = Math.floor(Date.now() / 1000),
+  expiresAt = issuedAt + 3600,
 ): string {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   process.env.ERDBPRO_LICENSE_ISSUER = "https://license.example.test";
   process.env.ERDBPRO_LICENSE_PUBLIC_KEY = publicKey.export({ type: "spki", format: "pem" }).toString();
   process.env.ERDBPRO_LICENSE_PUBLIC_KEY_ID = "key-1";
 
-  const now = Math.floor(Date.now() / 1000);
   const header = { alg: "EdDSA", typ: "JWT", kid: "key-1" };
   const claims = {
     iss: "https://license.example.test",
@@ -66,8 +68,8 @@ function signedEntitlement(
     installation_id: installationId,
     sub: "01a070a2-beb5-705e-9227-9f4c66e98241",
     jti: "01a070a2-beb5-705e-9227-9f4c66e98241",
-    iat: now,
-    exp: now + 3600,
+    iat: issuedAt,
+    exp: expiresAt,
     binding_generation: 2,
     organization_type: "team",
     plan_code: "team-10",
@@ -233,5 +235,35 @@ describe("self-host license entitlement verification", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: "LICENSE_SIGNATURE_INVALID" });
     }
+  });
+
+  it("keeps a signed instance lease available only during offline grace", () => {
+    temporaryDirectory = mkdtempSync(path.join(tmpdir(), "erdbpro-license-test-"));
+    process.env.ERDBPRO_LICENSE_STATE_FILE = path.join(temporaryDirectory, "license-state.json");
+    const installationId = getInstallationId();
+    const now = Math.floor(Date.now() / 1000);
+    const issuedAt = now - 26 * 60 * 60;
+    const token = signedEntitlement(installationId, ["team_files"], "erd-self-host-instance-license", issuedAt, issuedAt + 3600);
+    const state = {
+      installationId,
+      clientToken: "instance-token",
+      signedEntitlement: token,
+      licenseId: "01a070a2-beb5-705e-9227-9f4c66e98241",
+      bindingGeneration: 2,
+      codeLastFour: "ABCD",
+      lastCheckedAt: new Date(issuedAt * 1000).toISOString(),
+    };
+    storeInstanceLicense(state);
+
+    expect(() => verifyStoredInstanceLicense()).toThrowError(expect.objectContaining({ code: "LICENSE_EXPIRED" }));
+    expect(verifyStoredInstanceLicense({ allowGrace: true }).entitlement).toMatchObject({ bindingGeneration: 2 });
+
+    const expiredAt = now - 73 * 60 * 60;
+    storeInstanceLicense({
+      ...state,
+      signedEntitlement: signedEntitlement(installationId, ["team_files"], "erd-self-host-instance-license", expiredAt, expiredAt + 3600),
+      lastCheckedAt: new Date(expiredAt * 1000).toISOString(),
+    });
+    expect(() => verifyStoredInstanceLicense({ allowGrace: true })).toThrowError(expect.objectContaining({ code: "LICENSE_EXPIRED" }));
   });
 });

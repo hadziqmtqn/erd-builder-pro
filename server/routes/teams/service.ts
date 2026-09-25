@@ -25,9 +25,10 @@ const localMutation = () => { if (isSsoAuthMode()) throw new TeamServiceError("C
 export const isTeamRole = (value: unknown): value is TeamRole => typeof value === "string" && (TEAM_ROLES as readonly string[]).includes(value);
 
 const usage = instanceLicenseUsage;
+const temporaryLicenseFailure = (error: unknown) => error instanceof LicenseClientError && error.status >= 500;
 async function entitlement(forceRefresh = false): Promise<VerifiedEntitlement> {
   try { const state = getStoredInstanceLicense(); if (!state) throw new LicenseClientError("LICENSE_NOT_ACTIVATED", 409); if (!forceRefresh && Date.now() - Date.parse(state.lastCheckedAt) < 900_000) return verifyStoredInstanceLicense().entitlement; return (await checkSelfHostInstanceLicense(await usage())).entitlement; }
-  catch (error) { if (error instanceof LicenseClientError && ["LICENSE_SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE"].includes(error.code)) { if (!forceRefresh) return verifyStoredInstanceLicense().entitlement; throw new TeamServiceError("LICENSE_SYNC_REQUIRED", 503); } if (error instanceof LicenseClientError) throw new TeamServiceError(error.code, error.status); throw error; }
+  catch (error) { if (temporaryLicenseFailure(error)) { if (!forceRefresh) return verifyStoredInstanceLicense({ allowGrace: true }).entitlement; throw new TeamServiceError("LICENSE_SYNC_REQUIRED", 503); } if (error instanceof LicenseClientError) throw new TeamServiceError(error.code, error.status); throw error; }
 }
 export async function requireActiveInstanceLicense(options: { refresh?: boolean } = {}): Promise<VerifiedEntitlement> {
   try { return await entitlement(options.refresh === true); }

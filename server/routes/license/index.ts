@@ -19,7 +19,7 @@ function statusPayload(entitlement: ReturnType<typeof verifyStoredInstanceLicens
 
 router.get("/status", async (_req, res) => {
   try {
-    const { entitlement } = verifyStoredInstanceLicense();
+    const { entitlement } = verifyStoredInstanceLicense({ allowGrace: true });
     res.json({ ...statusPayload(entitlement), usage: await instanceLicenseUsage() });
   } catch (error) {
     res.json({ active: false, code: error instanceof LicenseClientError ? error.code : "LICENSE_STATE_INVALID", usage: await instanceLicenseUsage() });

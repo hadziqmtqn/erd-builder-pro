@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { createAuthRateLimiters, loginCredentialKey } from "./auth-rate-limit.js";
+import { createAuthRateLimiters, loginCredentialKey, loginLockoutDurationMs } from "./auth-rate-limit.js";
 
 describe("authentication rate limits", () => {
+  it("uses bounded progressive account backoff with automatic recovery", () => {
+    expect(loginLockoutDurationMs(4)).toBe(0);
+    expect(loginLockoutDurationMs(5)).toBe(60_000);
+    expect(loginLockoutDurationMs(8)).toBe(5 * 60_000);
+    expect(loginLockoutDurationMs(12)).toBe(15 * 60_000);
+    expect(loginLockoutDurationMs(1000)).toBe(15 * 60_000);
+  });
+
   it("keys credentials by normalized email and client IP", () => {
     expect(loginCredentialKey({
       body: { email: "  User@Example.COM " },

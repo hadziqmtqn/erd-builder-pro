@@ -1,7 +1,7 @@
 {
   "name": "erd-builder-pro",
   "private": true,
-  "version": "3.4.6",
+  "version": "3.4.7-rc.1",
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate:pg && cross-env NODE_ENV=development NODE_USE_SYSTEM_CA=1 tsx watch server/dev.ts",

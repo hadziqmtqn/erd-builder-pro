@@ -296,12 +296,12 @@ app.post("/api/log/update", (req, res) => {
 // Version check endpoint — CLI checks npm registry, all others check GitHub releases.
 
 // Runtime version — passed by CLI/Docker via APP_VERSION env var.
-// Falls back to build-time value when not set (web deployments).
+// npm exposes the package version when the server is started through npm.
 let versionCache: { version: string; fetchedAt: number; source: string } | null = null;
 const VERSION_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 app.get("/api/version/current", (_req, res) => {
-  const current = process.env.APP_VERSION || "0.0.0";
+  const current = process.env.APP_VERSION || process.env.npm_package_version || "0.0.0";
   res.json({ current });
 });
 

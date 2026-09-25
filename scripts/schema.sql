@@ -6,6 +6,8 @@ CREATE TABLE "users" (
     "password" TEXT NOT NULL,
     "is_super_admin" BOOLEAN,
     "must_change_password" BOOLEAN NOT NULL DEFAULT false,
+    "login_failed_attempts" INTEGER NOT NULL DEFAULT 0,
+    "login_locked_until" DATETIME,
     "sso_subject" TEXT,
     "sso_email" TEXT,
     "cloud_personal_entitlement" TEXT,

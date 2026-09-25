@@ -165,7 +165,7 @@ export async function storeCloudAiEnvelope(envelope: unknown): Promise<boolean> 
     `SELECT "revision" FROM "cloud_ai_runtime_configs" WHERE "id" = ${isPostgresDatabase() ? "$1" : "?"}`,
     "global",
   );
-  if (existing[0] && Number(existing[0].revision) >= config.revision) return false;
+  if (existing[0] && Number(existing[0].revision) >= config.revision) return true;
 
   const values = [
     "global",
