@@ -25,6 +25,16 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      - name: Resolve image version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=build-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate tags
         id: meta
         uses: docker/metadata-action@v6
@@ -47,5 +57,6 @@ jobs:
             VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
             VITE_API_URL=
             VITE_ENABLE_GUEST_MODE=true
+            APP_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

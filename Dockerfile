@@ -31,6 +31,8 @@ RUN npm run build
 # Production Stage
 FROM node:26-alpine
 
+ARG APP_VERSION=unknown
+
 WORKDIR /app
 
 # Copy package files
@@ -72,6 +74,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
+ENV APP_VERSION=${APP_VERSION}
 
 # Expose port
 EXPOSE 3000
