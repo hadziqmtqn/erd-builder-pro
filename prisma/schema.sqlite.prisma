@@ -32,6 +32,8 @@ model User {
   password     String
   isSuperAdmin Boolean? @map("is_super_admin")
   mustChangePassword Boolean @default(false) @map("must_change_password")
+  loginFailedAttempts Int @default(0) @map("login_failed_attempts")
+  loginLockedUntil DateTime? @map("login_locked_until")
   ssoSubject   String?  @unique @map("sso_subject")
   ssoEmail     String?  @map("sso_email")
   cloudPersonalEntitlement String? @map("cloud_personal_entitlement")

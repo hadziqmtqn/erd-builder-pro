@@ -124,6 +124,17 @@ describe("Team integrity", () => {
     mocks.provisionedTeam = false;
   });
 
+  it("uses the local signed lease during a temporary check outage", async () => {
+    mocks.license.getStored.mockReturnValue({ lastCheckedAt: new Date(Date.now() - 900_001).toISOString() });
+    mocks.license.check.mockRejectedValue(new mocks.license.LicenseClientError("SERVICE_UNAVAILABLE", 503));
+
+    await expect(teams.requireActiveInstanceLicense()).resolves.toMatchObject({ maxTeams: 10, maxMembers: 10 });
+    expect(mocks.license.verifyStored).toHaveBeenCalledWith({ allowGrace: true });
+
+    mocks.license.check.mockResolvedValue({ entitlement: { maxTeams: 10, maxMembers: 10 } });
+    mocks.license.getStored.mockReturnValue({ lastCheckedAt: new Date().toISOString() });
+  });
+
   it("allows an active member to join another Team with a different role without using another seat", async () => {
     mocks.ssoMode.mockReturnValue(false);
     mocks.provisionedTeam = true;

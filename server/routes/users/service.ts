@@ -81,7 +81,15 @@ export async function resetPassword(userId: string, actorId: string) {
   if (!user || user.isSuperAdmin) throw new TeamServiceError("USER_NOT_FOUND", 404);
   const password = temporaryPassword();
   await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { password: hashPassword(password), mustChangePassword: true } }),
+    db.user.update({
+      where: { id: userId },
+      data: {
+        password: hashPassword(password),
+        mustChangePassword: true,
+        loginFailedAttempts: 0,
+        loginLockedUntil: null,
+      },
+    }),
     db.session.deleteMany({ where: { userId } }),
     db.teamAuditEvent.create({ data: { actorId, action: "user_password_reset", targetType: "user", targetId: userId, metadata: "{}" } }),
   ]);
