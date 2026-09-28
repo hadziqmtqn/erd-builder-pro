@@ -546,6 +546,15 @@ function AppLayoutInner() {
     && discussionProjectTeamId && String(discussionProjectTeamId) === String(teamState.activeTeamId)
     ? String(teamState.activeTeamId)
     : undefined;
+  const discussionAnchorContext = useMemo(() => {
+    if (selectedEdgeId && edges.some((edge) => edge.id === selectedEdgeId)) {
+      return { type: 'relationship' as const, id: selectedEdgeId };
+    }
+    if (selectedNodeId && nodes.some((node) => node.id === selectedNodeId)) {
+      return { type: 'table' as const, id: selectedNodeId };
+    }
+    return null;
+  }, [edges, nodes, selectedEdgeId, selectedNodeId]);
   const handleDiscussionAnchorSelected = useCallback((type: 'general' | 'table' | 'relationship', id: string | null) => {
     window.dispatchEvent(new CustomEvent('erd-discussion-anchor-selected', { detail: { type, id } }));
   }, []);
@@ -555,8 +564,7 @@ function AppLayoutInner() {
       diagramId={String(discussionDiagramId)}
       teamId={discussionTeamId}
       userId={user?.id ? String(user.id) : undefined}
-      nodes={nodes}
-      edges={edges}
+      anchorContext={discussionAnchorContext}
       onAnchorSelected={handleDiscussionAnchorSelected}
     />
   ) : null;

@@ -11,16 +11,26 @@ const router = Router({ mergeParams: true });
 const notFound = { error: "Resource not found" };
 const MAX_BODY_LENGTH = 4000;
 
+const discussionContextSchema = z.object({
+  type: z.enum(["general", "table", "relationship"]),
+  id: z.string().trim().min(1).max(128).optional(),
+}).strict();
+const discussionAnchorTypeSchema = z.enum(["general", "table", "relationship"]);
+
 const createThreadSchema = z.object({
   body: z.string().trim().min(1).max(MAX_BODY_LENGTH),
-  anchorType: z.enum(["general", "table", "relationship"]),
+  context: discussionContextSchema.optional(),
+  // Keep accepting the pre-context payload while cached clients roll forward.
+  anchorType: discussionAnchorTypeSchema.optional(),
   anchorId: z.string().trim().min(1).max(128).optional(),
 }).strict().superRefine((value, ctx) => {
-  if (value.anchorType !== "general" && !value.anchorId) {
-    ctx.addIssue({ code: "custom", message: "Choose an ERD anchor", path: ["anchorId"] });
+  const anchorType = value.context?.type ?? value.anchorType ?? "general";
+  const anchorId = value.context?.id ?? value.anchorId;
+  if (anchorType !== "general" && !anchorId) {
+    ctx.addIssue({ code: "custom", message: "Discussion context requires an anchor", path: ["context", "id"] });
   }
-  if (value.anchorType === "general" && value.anchorId) {
-    ctx.addIssue({ code: "custom", message: "General discussions do not have an anchor", path: ["anchorId"] });
+  if (anchorType === "general" && anchorId) {
+    ctx.addIssue({ code: "custom", message: "General discussions do not have an anchor", path: ["context", "id"] });
   }
 });
 
@@ -159,6 +169,8 @@ router.post("/", async (req, res) => {
     const diagram = await scopedDiagramContext(diagramUid(req), actor.teamId);
     if (!diagram || diagram.projectId === null || !prisma) { res.status(404).json(notFound); return; }
     const diagramId = diagram.id;
+    const anchorType = input.data.context?.type ?? input.data.anchorType ?? "general";
+    const anchorId = input.data.context?.id ?? input.data.anchorId;
 
     const fallbackName = String((req as any).user?.email || "");
     const name = await actorName(actor.id, fallbackName);
@@ -167,14 +179,14 @@ router.post("/", async (req, res) => {
     const contextId = randomUUID();
     const created = await prisma.$transaction(async (tx) => {
       let anchorLabel = "General";
-      if (input.data.anchorType === "table") {
+      if (anchorType === "table") {
         const rows = await tx.$queryRawUnsafe<Array<{ label: string }>>(
           'SELECT "name" AS "label" FROM "entities" WHERE "id" = $1 AND "diagram_id" = $2 LIMIT 1',
-          input.data.anchorId, diagramId,
+          anchorId, diagramId,
         );
         if (!rows[0]) return false;
         anchorLabel = rows[0].label;
-      } else if (input.data.anchorType === "relationship") {
+      } else if (anchorType === "relationship") {
         const rows = await tx.$queryRawUnsafe<Array<{ label: string }>>(`
           SELECT COALESCE(NULLIF(r."label", ''),
             NULLIF(concat_ws(' → ', source."name", target."name"), ''), 'Relationship') AS "label"
@@ -183,7 +195,7 @@ router.post("/", async (req, res) => {
           LEFT JOIN "entities" target ON target."id" = r."target_entity_id"
           WHERE r."id" = $1 AND r."diagram_id" = $2
           LIMIT 1
-        `, input.data.anchorId, diagramId);
+        `, anchorId, diagramId);
         if (!rows[0]) return false;
         anchorLabel = rows[0].label;
       }
@@ -197,7 +209,7 @@ router.post("/", async (req, res) => {
         INSERT INTO "discussion_contexts"
           ("id", "thread_id", "feature_type", "file_id", "anchor_type", "anchor_id", "anchor_label")
         VALUES ($1, $2, 'diagram', $3, $4, $5, $6)
-      `, contextId, threadId, String(diagramId), input.data.anchorType, input.data.anchorId ?? null, anchorLabel);
+      `, contextId, threadId, String(diagramId), anchorType, anchorId ?? null, anchorLabel);
       await tx.$executeRawUnsafe(`
         INSERT INTO "discussion_messages" ("id", "thread_id", "author_id", "author_name", "body")
         VALUES ($1, $2, $3, $4, $5)

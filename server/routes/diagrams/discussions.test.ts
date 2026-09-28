@@ -109,7 +109,7 @@ describe("Cloud ERD discussions scope", () => {
       const response = await fetch(`${url}/api/diagrams/diagram-uid/discussions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: "Should sessions expire after 24 hours?", anchorType: "general" }),
+        body: JSON.stringify({ body: "Should sessions expire after 24 hours?" }),
       });
       expect(response.status).toBe(201);
       expect((await response.json()).id).toBeTruthy();
@@ -120,6 +120,37 @@ describe("Cloud ERD discussions scope", () => {
       teamId: "team-a",
       eventType: "cloud.workspace.sync",
     }));
+  });
+
+  it("accepts the legacy anchor payload while clients roll forward", async () => {
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/diagrams/diagram-uid/discussions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Legacy client payload", anchorType: "general" }),
+      });
+      expect(response.status).toBe(201);
+    });
+  });
+
+  it("derives a table anchor from the frontend context trigger", async () => {
+    mocks.queryRaw.mockImplementation(async (query: string, ...values: unknown[]) => {
+      if (query.includes('JOIN "projects"')) return [{ id: 42, projectId: 7 }];
+      if (query.includes('FROM "entities"')) return [{ label: "users" }];
+      if (query.includes('FROM "users"')) return [{ name: "Member A", email: "member@example.test" }];
+      return [];
+    });
+
+    await withServer(async (url) => {
+      const response = await fetch(`${url}/api/diagrams/diagram-uid/discussions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "Should users be soft deleted?", context: { type: "table", id: "entity-1" } }),
+      });
+      expect(response.status).toBe(201);
+    });
+
+    expect(mocks.executeRaw.mock.calls[1]).toEqual(expect.arrayContaining(["table", "entity-1", "users"]));
   });
 
   it("rejects replies to resolved discussions", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, MessageSquareText, Plus, RotateCcw, Send } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
+import { ArrowLeft, Check, CheckCircle2, MessageCircle, MessageSquareText, Plus, RotateCcw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -8,15 +9,15 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Message, MessageAvatar, MessageContent, MessageGroup } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { Entity } from "@/types";
-import type { Edge, Node } from "@xyflow/react";
 
 type AnchorType = "general" | "table" | "relationship";
+type AnchorFilter = "all" | AnchorType;
+type DiscussionAnchor = { type: Exclude<AnchorType, "general">; id: string };
 type Thread = {
   id: string;
   anchorType: AnchorType;
@@ -30,7 +31,6 @@ type Thread = {
   lastMessageAt: string | null;
 };
 type DiscussionMessageData = { id: string; authorId: string; authorName: string; body: string; createdAt: string };
-type AnchorOption = { value: string; label: string };
 
 function DiscussionComposer({
   id,
@@ -204,19 +204,30 @@ function messageTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function relativeMessageTime(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : formatDistanceToNowStrict(date, { addSuffix: true });
+}
+
+const anchorFilters: Array<{ value: AnchorFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "general", label: "General" },
+  { value: "table", label: "Tables" },
+  { value: "relationship", label: "Relationships" },
+];
+
 export function DiscussionsPanel({
   diagramId,
   teamId,
   userId,
-  nodes,
-  edges,
+  anchorContext,
   onAnchorSelected,
 }: {
   diagramId: string;
   teamId: string;
   userId?: string;
-  nodes: Node<Entity>[];
-  edges: Edge[];
+  anchorContext?: DiscussionAnchor | null;
   onAnchorSelected: (type: AnchorType, id: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -230,24 +241,13 @@ export function DiscussionsPanel({
   const [loadError, setLoadError] = useState("");
   const [threadError, setThreadError] = useState("");
   const [draft, setDraft] = useState("");
-  const [anchorChoice, setAnchorChoice] = useState("general");
+  const [composeAnchor, setComposeAnchor] = useState<DiscussionAnchor | null>(null);
+  const [anchorFilter, setAnchorFilter] = useState<AnchorFilter>("all");
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const seenMessages = useRef(new Map<string, string>());
   const hasInitialSnapshot = useRef(false);
   const endpoint = `/api/diagrams/${encodeURIComponent(diagramId)}/discussions`;
-
-  const anchors = useMemo<AnchorOption[]>(() => {
-    const entityNames = new Map(nodes.map((node) => [node.id, node.data.name]));
-    return [
-      { value: "general", label: "General" },
-      ...nodes.map((node) => ({ value: `table:${node.id}`, label: `Table: ${node.data.name}` })),
-      ...edges.map((edge) => ({
-        value: `relationship:${edge.id}`,
-        label: `Relationship: ${entityNames.get(String(edge.source)) || "Table"} → ${entityNames.get(String(edge.target)) || "Table"}`,
-      })),
-    ];
-  }, [edges, nodes]);
 
   const loadThreads = useCallback(async (notify = false) => {
     const requestId = ++listRequest.current;
@@ -345,23 +345,27 @@ export function DiscussionsPanel({
     if (loaded) onAnchorSelected(thread.anchorType, thread.anchorId);
   };
 
+  const startCompose = () => {
+    setComposeAnchor(anchorContext ?? null);
+    setDraft("");
+    setThreadError("");
+    setScreen("compose");
+  };
+
   const submitThread = async (event: FormEvent) => {
     event.preventDefault();
     const body = draft.trim();
     if (!body || sending) return;
-    const separator = anchorChoice.indexOf(":");
-    const anchorType = (separator < 0 ? anchorChoice : anchorChoice.slice(0, separator)) as AnchorType;
-    const anchorId = separator < 0 ? undefined : anchorChoice.slice(separator + 1);
     setSending(true);
     setThreadError("");
     try {
       const created = await requestJson(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body, anchorType, ...(anchorId ? { anchorId } : {}) }),
+        body: JSON.stringify({ body, ...(composeAnchor ? { context: composeAnchor } : {}) }),
       });
       setDraft("");
-      setAnchorChoice("general");
+      setComposeAnchor(null);
       setSelectedThreadId(created.id);
       setScreen("thread");
       await loadThreads();
@@ -414,6 +418,10 @@ export function DiscussionsPanel({
   };
 
   const activeThread = threads.find((thread) => thread.id === selectedThreadId);
+  const filteredThreads = useMemo(
+    () => anchorFilter === "all" ? threads : threads.filter((thread) => thread.anchorType === anchorFilter),
+    [anchorFilter, threads],
+  );
   const messageGroups = useMemo(() => groupMessages(messages), [messages]);
   const title = screen === "compose" ? "New discussion" : screen === "thread" ? activeThread?.anchorLabel || "Discussion" : "Discussions";
 
@@ -466,58 +474,106 @@ export function DiscussionsPanel({
         </div>
 
         {screen === "list" && (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-            <Button className="justify-start" onClick={() => { setScreen("compose"); setThreadError(""); }}>
-              <Plus aria-hidden="true" />
-              Start a discussion
-            </Button>
-            {loadingThreads && <p role="status" className="py-5 text-center text-sm text-muted-foreground">Loading discussions…</p>}
-            {!loadingThreads && loadError && (
-              <div className="rounded-lg border border-destructive/40 p-4 text-sm">
-                <p>{loadError}</p>
-                <Button variant="outline" className="mt-3" onClick={() => void loadThreads()}>Retry</Button>
-              </div>
-            )}
-            {!loadingThreads && !loadError && threads.length === 0 && (
-              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
-                <p className="text-sm font-medium">No discussions on this ERD yet.</p>
-                <p className="mt-1 text-sm text-muted-foreground">Start a thread to capture a question or design decision.</p>
-              </div>
-            )}
-            {!loadError && threads.map((thread) => (
-              <button
-                type="button"
-                key={thread.id}
-                className="flex min-h-16 w-full flex-col items-start gap-1 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => void openThread(thread)}
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 overflow-x-auto border-b border-border/70 px-3 py-2">
+              <Tabs
+                value={anchorFilter}
+                onValueChange={(value) => setAnchorFilter(value as AnchorFilter)}
+                className="w-full"
               >
-                <span className="flex w-full items-center gap-2">
-                  <span className="truncate text-sm font-medium">{thread.anchorLabel || "General"}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">{thread.status === "resolved" ? "Resolved" : "Open"}</span>
-                  {thread.unread && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Unread</span>}
-                </span>
-                <span className="line-clamp-2 text-sm text-muted-foreground">{thread.latestMessage || "No messages"}</span>
-                <span className="text-xs text-muted-foreground">{messageTime(thread.lastMessageAt)}</span>
-              </button>
-            ))}
+                <TabsList variant="line" className="w-full min-w-max justify-start gap-1 overflow-x-auto p-0">
+                  {anchorFilters.map((filter) => (
+                    <TabsTrigger key={filter.value} value={filter.value} className="flex-none px-3">
+                      {filter.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto pb-20">
+              {loadingThreads && <p role="status" className="px-4 py-5 text-center text-sm text-muted-foreground">Loading discussions…</p>}
+              {!loadingThreads && loadError && (
+                <div className="m-4 rounded-lg border border-destructive/40 p-4 text-sm">
+                  <p>{loadError}</p>
+                  <Button variant="outline" className="mt-3" onClick={() => void loadThreads()}>Retry</Button>
+                </div>
+              )}
+              {!loadingThreads && !loadError && filteredThreads.length === 0 && (
+                <div className="mx-4 mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                  <p className="text-sm font-medium">
+                    {threads.length === 0 ? "No discussions on this ERD yet." : "No matching discussions yet."}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">Start a thread to capture a question or design decision.</p>
+                </div>
+              )}
+              {!loadError && filteredThreads.map((thread) => {
+                const StatusIcon = thread.status === "resolved" ? CheckCircle2 : MessageCircle;
+                const statusLabel = thread.status === "resolved" ? "Resolved" : thread.unread ? "New activity" : "Open";
+                return (
+                  <button
+                    type="button"
+                    key={thread.id}
+                    className={cn(
+                      "flex min-h-18 w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      thread.unread && "bg-primary/5",
+                    )}
+                    onClick={() => void openThread(thread)}
+                  >
+                    <span
+                      role="img"
+                      aria-label={statusLabel}
+                      className={cn(
+                        "relative flex size-10 shrink-0 items-center justify-center rounded-full",
+                        thread.status === "resolved"
+                          ? "bg-emerald-500/10 text-emerald-500"
+                          : thread.unread
+                            ? "bg-primary/15 text-primary"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <StatusIcon aria-hidden="true" className="size-5" />
+                      {thread.unread && <span aria-hidden="true" className="absolute right-0.5 top-0.5 size-2 rounded-full bg-primary ring-2 ring-popover" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className={cn("truncate text-sm", thread.unread ? "font-semibold text-foreground" : "font-medium")}>{thread.anchorLabel || "General"}</span>
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{relativeMessageTime(thread.lastMessageAt)}</span>
+                      </span>
+                      <span className={cn("mt-1 block truncate text-sm", thread.unread ? "text-foreground" : "text-muted-foreground")}>
+                        {thread.latestMessage || "No messages yet"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <TooltipProvider delay={250}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-lg"
+                      className="absolute bottom-4 right-4 z-10 rounded-full shadow-lg"
+                      aria-label="Start a discussion"
+                      onClick={startCompose}
+                    >
+                      <Plus aria-hidden="true" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="left">Start a discussion</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         )}
 
         {screen === "compose" && (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <div className="flex flex-1 flex-col gap-4 p-4">
-            <div className="grid gap-2 text-sm font-medium">
-              <label htmlFor="discussion-anchor">Discussing</label>
-              <Select value={anchorChoice} onValueChange={(value) => value && setAnchorChoice(value)}>
-                <SelectTrigger id="discussion-anchor">
-                  <SelectValue>{anchors.find((anchor) => anchor.value === anchorChoice)?.label}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {anchors.map((anchor) => <SelectItem key={anchor.value} value={anchor.value}>{anchor.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {threadError && <p role="alert" className="text-sm text-destructive">{threadError}</p>}
+              {threadError && <p role="alert" className="text-sm text-destructive">{threadError}</p>}
             </div>
             <DiscussionComposer
               id="discussion-message"
