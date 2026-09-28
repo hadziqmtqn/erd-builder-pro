@@ -158,6 +158,7 @@ export function useTeams(isGuest = false, isSso = false, onActiveTeamUnavailable
         if (refreshOnReconnect) {
           refreshOnReconnect = false;
           void fetchTeams();
+          window.dispatchEvent(new CustomEvent("cloud-live-sync-reconnected", { detail: { teamId: activeTeamId } }));
         }
         retries = 0;
       };

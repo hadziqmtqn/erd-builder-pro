@@ -580,9 +580,8 @@ model UserAiRule {
   @@map("user_ai_rules")
 }
 
-// ── Cloud AI runtime (created by the additive startup migration) ──
-// These models declare the raw-SQL-owned tables so `prisma db push` preserves
-// them instead of treating them as unmanaged tables and dropping their data.
+// ── Cloud AI runtime ──
+// Tables are owned by the Prisma schema and versioned database migration.
 model CloudAiRuntimeConfig {
   id           String    @id
   revision     Int
@@ -630,6 +629,58 @@ model CloudAiUsageRequest {
 
   @@index([teamId, createdAt], map: "cloud_ai_usage_requests_team_created")
   @@map("cloud_ai_usage_requests")
+}
+
+// ── Project discussions ──
+model DiscussionThread {
+  id          String    @id
+  projectId   BigInt?   @map("project_id")
+  teamId      String    @map("team_id")
+  status      String    @default("open")
+  createdBy   String    @map("created_by")
+  resolvedBy  String?   @map("resolved_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+
+  @@index([teamId, projectId, updatedAt(sort: Desc)], map: "discussion_threads_project_updated")
+  @@map("discussion_threads")
+}
+
+model DiscussionContext {
+  id          String    @id
+  threadId    String    @map("thread_id")
+  featureType String    @map("feature_type")
+  fileId      String    @map("file_id")
+  anchorType  String    @map("anchor_type")
+  anchorId    String?   @map("anchor_id")
+  anchorLabel String    @map("anchor_label")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([threadId], map: "discussion_contexts_thread")
+  @@index([featureType, fileId], map: "discussion_contexts_file")
+  @@map("discussion_contexts")
+}
+
+model DiscussionMessage {
+  id         String    @id
+  threadId   String    @map("thread_id")
+  authorId   String    @map("author_id")
+  authorName String    @map("author_name")
+  body       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([threadId, createdAt], map: "discussion_messages_thread_created")
+  @@map("discussion_messages")
+}
+
+model DiscussionRead {
+  threadId   String    @map("thread_id")
+  userId     String    @map("user_id")
+  lastReadAt DateTime  @default(now()) @map("last_read_at")
+
+  @@id([threadId, userId])
+  @@index([userId, threadId], map: "discussion_reads_user_thread")
+  @@map("discussion_reads")
 }
 
 // ── User Preferences (desktop app) ──

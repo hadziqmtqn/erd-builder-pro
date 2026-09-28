@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { Project } from '../types';
 
 export interface UseSidebarHandlersParams {
   createDiagram: (n: string, pid?: number | string | null) => Promise<any>;
@@ -89,9 +90,10 @@ export function useSidebarHandlers(params: UseSidebarHandlersParams) {
     return f;
   }, [createFlowchart, fetchProjects, handleFlowchartSelect]);
 
-  const handleSidebarProjectCreate = useCallback(async (n: string) => {
-    await createProject(n);
+  const handleSidebarProjectCreate = useCallback(async (n: string): Promise<Project | null> => {
+    const project = await createProject(n);
     await fetchProjects();
+    return project;
   }, [createProject, fetchProjects]);
 
   const handleSidebarProjectUpdate = useCallback(async (id: number | string, n: string) => {

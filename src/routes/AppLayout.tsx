@@ -68,6 +68,7 @@ import { ERDTableListPanel } from '@/components/diagram/ERDTableListPanel';
 import PropertiesPanel from '@/components/PropertiesPanel';
 import { VersionHistoryPanel, type HistoryEntityType } from '@/components/history/VersionHistoryPanel';
 import { RepositoryPanel } from '@/components/repository/RepositoryPanel';
+import { DiscussionsPanel } from '@/components/diagram/DiscussionsPanel';
 import { applyDBMLMetadata, dbmlToERD, erdToDBML, findMatchingCanvasEdge } from '@/lib/dbml-converter';
 import { closeRepositoryPreview, ERD_REPOSITORY_APPLIED_EVENT } from '@/lib/repository-preview';
 import { AIChatToggle } from '@/components/ai/AIChatToggle';
@@ -536,6 +537,29 @@ function AppLayoutInner() {
     return resolvedTab === 'erd';
   }, [entityContext, isPublicView, isActiveDbClient, searchParams, teamState.activeTeam, user?.isSso]);
   const showDBMLPanel = isActiveDiagramContext && (activeDiagram?.source_type ?? activeDiagram?.sourceType) !== 'production_db';
+  const discussionProjectId = activeDiagram?.project_id ?? activeDiagram?.projectId;
+  const discussionProject = projects.find((project) => String(project.id) === String(discussionProjectId));
+  const discussionProjectTeamId = discussionProject?.team_id ?? discussionProject?.teamId;
+  const discussionDiagramId = activeDiagram?.uid || activeDiagram?.id || activeDiagramId;
+  const discussionTeamId = user?.isSso && !isPublicView && !isGuest
+    && isActiveDiagramContext && !activeDiagramIsProductionDb
+    && discussionProjectTeamId && String(discussionProjectTeamId) === String(teamState.activeTeamId)
+    ? String(teamState.activeTeamId)
+    : undefined;
+  const handleDiscussionAnchorSelected = useCallback((type: 'general' | 'table' | 'relationship', id: string | null) => {
+    window.dispatchEvent(new CustomEvent('erd-discussion-anchor-selected', { detail: { type, id } }));
+  }, []);
+  const discussionPanel = discussionDiagramId && discussionTeamId ? (
+    <DiscussionsPanel
+      key={`${discussionTeamId}:${discussionDiagramId}`}
+      diagramId={String(discussionDiagramId)}
+      teamId={discussionTeamId}
+      userId={user?.id ? String(user.id) : undefined}
+      nodes={nodes}
+      edges={edges}
+      onAnchorSelected={handleDiscussionAnchorSelected}
+    />
+  ) : null;
 
   // Derive project_id from the active entity — used to populate ai_chat_sessions.project_id
   const activeProjectId = useMemo<string | number | null>(() => {
@@ -855,6 +879,7 @@ function AppLayoutInner() {
           breadcrumbLabel={breadcrumbLabel}
           noteContent={activeNote?.content}
           historyAvailable={Boolean(historyEntityType)}
+          discussionPanel={discussionPanel}
         />
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-4 min-h-0 overflow-hidden" style={{ isolation: 'isolate' } as React.CSSProperties}>
@@ -943,6 +968,16 @@ function AppLayoutInner() {
             requireProject={Boolean(teamState.activeTeamId)}
             selectedProjectId={renameProjectId}
             setSelectedProjectId={setRenameProjectId}
+            onProjectCreate={async (name) => {
+              const project = await handleSidebarProjectCreate(name);
+              if (project) {
+                setSelectableProjects((current) => [
+                  project,
+                  ...current.filter((item) => String(item.id) !== String(project.id)),
+                ]);
+              }
+              return project;
+            }}
             onCreate={(title, projectId) => {
               const viewCb = createDialogView;
               if (viewCb === 'notes') handleSidebarNoteCreate(title, projectId);

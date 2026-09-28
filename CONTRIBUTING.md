@@ -90,7 +90,7 @@ For every new system table or column:
 
 1. Update `prisma/schema.sqlite.prisma`.
 2. Add a versioned SQL migration under `prisma/migrations-sqlite/` for development/fresh-schema history.
-3. Add an idempotent operation to `server/lib/startup-migration.ts` so existing Desktop/CLI databases self-heal on the next launch/update.
+3. Do not add `CREATE TABLE` to `server/lib/startup-migration.ts`. Use Prisma's migration runner for table creation; startup code may only perform a data-preserving compatibility step for legacy installed databases when required.
 4. Run `npm run build:cli`; it refreshes `cli/prisma/schema.sqlite.prisma`, `cli/prisma/schema.sql`, and the bundled server.
 5. Verify both a fresh database and an existing database from the previous release. Never rely on `CREATE TABLE` in the fresh schema alone for installed updates.
 

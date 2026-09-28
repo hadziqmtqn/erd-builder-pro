@@ -130,7 +130,7 @@ const ERDViewComponent = ({
 }: ERDViewProps) => {
 
   const { registerContentHandler, setSelectionText, setActionContextData, setRightPanelMode } = useAIAction();
-  const { getViewport, getNodes, getEdges, setViewport } = useReactFlow();
+  const { getViewport, getNodes, getEdges, setViewport, setCenter } = useReactFlow();
   const { resolvedTheme } = useWorkspace();
   const bgColor = resolvedTheme === 'dark' ? '#222' : '#ccc';
   const isProductionDb = isDbClient;
@@ -148,6 +148,41 @@ const ERDViewComponent = ({
     }
     onMove(event, viewport);
   }, [onMove]);
+
+  const handleDiscussionAnchorSelected = useCallback((type: "general" | "table" | "relationship", id: string | null) => {
+    if (!id || type === "general") return;
+    const currentNodes = getNodes() as Node<Entity>[];
+    const centerOf = (node: Node<Entity>) => ({
+      x: node.position.x + (node.measured?.width ?? node.width ?? 180) / 2,
+      y: node.position.y + (node.measured?.height ?? node.height ?? 120) / 2,
+    });
+    if (type === "table") {
+      const node = currentNodes.find((item) => item.id === id);
+      if (node) {
+        const center = centerOf(node);
+        void setCenter(center.x, center.y, { zoom: getViewport().zoom, duration: 0 });
+      }
+      return;
+    }
+    const edge = (getEdges() as Edge[]).find((item) => item.id === id);
+    if (!edge) return;
+    const source = currentNodes.find((node) => node.id === edge.source);
+    const target = currentNodes.find((node) => node.id === edge.target);
+    if (!source || !target) return;
+    const from = centerOf(source);
+    const to = centerOf(target);
+    void setCenter((from.x + to.x) / 2, (from.y + to.y) / 2, { zoom: getViewport().zoom, duration: 0 });
+  }, [getEdges, getNodes, getViewport, setCenter]);
+
+  React.useEffect(() => {
+    const onDiscussionAnchorSelected = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: "general" | "table" | "relationship"; id?: string | null }>).detail;
+      if (!detail?.type) return;
+      handleDiscussionAnchorSelected(detail.type, detail.id ?? null);
+    };
+    window.addEventListener('erd-discussion-anchor-selected', onDiscussionAnchorSelected);
+    return () => window.removeEventListener('erd-discussion-anchor-selected', onDiscussionAnchorSelected);
+  }, [handleDiscussionAnchorSelected]);
 
   const saveCanvasAfterNodeDrag = useCallback(() => {
     if (!saveDiagram) return;
