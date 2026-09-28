@@ -10,6 +10,20 @@ export const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABAS
 export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || "";
 
+function resolveAppTimezone(): string {
+  const candidate = process.env.APP_TIMEZONE?.trim() || process.env.TZ?.trim() || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Deployment timezone used by server-side local formatting and logs. */
+export const APP_TIMEZONE = resolveAppTimezone();
+if (process.env.APP_TIMEZONE?.trim()) process.env.TZ = APP_TIMEZONE;
+
 // R2 Config
 export const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
 export const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";

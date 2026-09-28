@@ -25,7 +25,19 @@ function resolveDatasourceUrl(): string {
   }
   // Gunakan process.env langsung (tidak strict) agar prisma generate tetap jalan
   // meskipun DATABASE_URL belum tersedia (misal saat npm install di Vercel)
-  return process.env.DATABASE_URL || "";
+  const databaseUrl = process.env.DATABASE_URL || "";
+  if (!databaseUrl) return databaseUrl;
+
+  // Prisma CLI must interpret legacy TIMESTAMP values as UTC while changing
+  // them to TIMESTAMPTZ. Runtime formatting uses APP_TIMEZONE; PG adapter
+  // sessions stay in UTC so Date values keep their exact instant.
+  try {
+    const url = new URL(databaseUrl);
+    url.searchParams.set("options", "-c TimeZone=UTC");
+    return url.toString();
+  } catch {
+    return databaseUrl;
+  }
 }
 
 export default defineConfig({

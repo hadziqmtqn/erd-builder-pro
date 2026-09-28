@@ -20,6 +20,9 @@ services:
       # Guest mode & AI Chat for guests (both disabled by default)
       - VITE_ENABLE_GUEST_MODE=${VITE_ENABLE_GUEST_MODE:-false}
       - GUEST_AI_ENABLED=${GUEST_AI_ENABLED:-false}
+      # Keep server/runtime formatting and logs on the deployment timezone.
+      - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Jakarta}
+      - TZ=${APP_TIMEZONE:-Asia/Jakarta}
     # ── Database: uncomment ONE section ──
     #
     # Option 1: Pure PostgreSQL (recommended for production)

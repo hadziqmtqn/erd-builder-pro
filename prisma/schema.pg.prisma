@@ -26,12 +26,12 @@ model User {
   isSuperAdmin  Boolean? @map("is_super_admin")
   mustChangePassword Boolean @default(false) @map("must_change_password")
   loginFailedAttempts Int @default(0) @map("login_failed_attempts")
-  loginLockedUntil DateTime? @map("login_locked_until")
+  loginLockedUntil DateTime? @map("login_locked_until") @db.Timestamptz(3)
   ssoSubject    String?  @unique @map("sso_subject")
   ssoEmail      String?  @map("sso_email")
   cloudPersonalEntitlement String? @map("cloud_personal_entitlement")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   diagrams        Diagram[]
   notes           Note[]
@@ -61,7 +61,7 @@ model Session {
   userId    String   @map("user_id")
   email     String
   name      String?
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([token])
@@ -73,7 +73,7 @@ model Session {
 model McpOAuthClient {
   id             String                  @id
   metadata       Json
-  createdAt      DateTime                @default(now()) @map("created_at")
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   authorizations McpOAuthAuthorization[]
   tokens         McpOAuthToken[]
 
@@ -91,10 +91,10 @@ model McpOAuthAuthorization {
   codeChallenge String         @map("code_challenge")
   codeHash      String?        @unique @map("code_hash")
   status        String         @default("pending")
-  expiresAt     DateTime       @map("expires_at")
-  approvedAt    DateTime?      @map("approved_at")
-  consumedAt    DateTime?      @map("consumed_at")
-  createdAt     DateTime       @default(now()) @map("created_at")
+  expiresAt     DateTime       @map("expires_at") @db.Timestamptz(3)
+  approvedAt    DateTime?      @map("approved_at") @db.Timestamptz(3)
+  consumedAt    DateTime?      @map("consumed_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   client        McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([status, expiresAt])
@@ -110,9 +110,9 @@ model McpOAuthToken {
   userId    String         @map("user_id")
   scopes    String
   resource  String
-  expiresAt DateTime       @map("expires_at")
-  revokedAt DateTime?      @map("revoked_at")
-  createdAt DateTime       @default(now()) @map("created_at")
+  expiresAt DateTime       @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime?      @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   client    McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([grantId, kind])
@@ -130,8 +130,8 @@ model Team {
   status              String       @default("active")
   cloudEntitlement    String?      @map("cloud_entitlement")
   provisioningSignature String?    @map("provisioning_signature")
-  createdAt           DateTime     @default(now()) @map("created_at")
-  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   members             TeamMember[]
   projects            Project[]
   creator             User?        @relation("TeamCreator", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -147,7 +147,7 @@ model TeamMember {
   userId    String   @map("user_id")
   role      String   @default("staff")
   status    String   @default("active")
-  joinedAt  DateTime @default(now()) @map("joined_at")
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
   provisioningSignature String? @map("provisioning_signature")
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -162,9 +162,9 @@ model TeamInvitation {
   teamId      String    @map("team_id")
   email       String
   tokenHash   String    @unique @map("token_hash")
-  expiresAt   DateTime  @map("expires_at")
-  acceptedAt  DateTime? @map("accepted_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([teamId, expiresAt], map: "idx_team_invitations_team_expires")
@@ -180,7 +180,7 @@ model TeamAuditEvent {
   targetType String?   @map("target_type")
   targetId   String?   @map("target_id")
   metadata   String    @default("{}")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   team       Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   actor      User?     @relation("TeamAuditActor", fields: [actorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
@@ -198,9 +198,9 @@ model Project {
   teamId    String?   @map("team_id")
   color     String?   @default("#6366f1")
   isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime? @default(now()) @map("created_at")
-  updatedAt DateTime? @default(now()) @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   version   Int?      @default(0) @map("_version")
   user      User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   team      Team?     @relation(fields: [teamId], references: [id], onUpdate: NoAction)
@@ -224,9 +224,9 @@ model Diagram {
   userId       String?  @map("user_id")
   projectId    Int?     @map("project_id")
   isDeleted    Boolean? @default(false) @map("is_deleted")
-  deletedAt    DateTime? @map("deleted_at")
-  createdAt    DateTime? @default(now()) @map("created_at")
-  updatedAt    DateTime? @default(now()) @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   viewportX    Float?   @default(0) @map("viewport_x")
   viewportY    Float?   @default(0) @map("viewport_y")
   viewportZoom Float?   @default(1.0) @map("viewport_zoom")
@@ -235,9 +235,9 @@ model Diagram {
   publicAccess String   @default("off") @map("public_access")
   shareToken   String?  @map("share_token")
   shareTokenHash String? @map("share_token_hash")
-  expiryDate   DateTime? @map("expiry_date")
-  shareExpiresAt DateTime? @map("share_expires_at")
-  publishedAt  DateTime? @map("published_at")
+  expiryDate   DateTime? @map("expiry_date") @db.Timestamptz(3)
+  shareExpiresAt DateTime? @map("share_expires_at") @db.Timestamptz(3)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
   sourceType        String? @default("blank") @map("source_type")
   sourceConnectionId Int?   @map("source_connection_id")
   data             String?  @map("data")  // JSON positions untuk production DB
@@ -262,17 +262,17 @@ model Note {
   userId     String?   @map("user_id")
   projectId  Int?      @map("project_id")
   isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   version    Int?      @default(0) @map("_version")
   isPublic   Boolean?  @default(false) @map("is_public")
   publicAccess String @default("off") @map("public_access")
   shareToken String?   @map("share_token")
   shareTokenHash String? @map("share_token_hash")
-  expiryDate DateTime? @map("expiry_date")
-  shareExpiresAt DateTime? @map("share_expires_at")
-  publishedAt DateTime? @map("published_at")
+  expiryDate DateTime? @map("expiry_date") @db.Timestamptz(3)
+  shareExpiresAt DateTime? @map("share_expires_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
   user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
@@ -291,17 +291,17 @@ model Drawing {
   userId     String?   @map("user_id")
   projectId  Int?      @map("project_id")
   isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   version    Int?      @default(0) @map("_version")
   isPublic   Boolean?  @default(false) @map("is_public")
   publicAccess String @default("off") @map("public_access")
   shareToken String?   @map("share_token")
   shareTokenHash String? @map("share_token_hash")
-  expiryDate DateTime? @map("expiry_date")
-  shareExpiresAt DateTime? @map("share_expires_at")
-  publishedAt DateTime? @map("published_at")
+  expiryDate DateTime? @map("expiry_date") @db.Timestamptz(3)
+  shareExpiresAt DateTime? @map("share_expires_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
   user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
@@ -320,17 +320,17 @@ model Flowchart {
   userId     String?   @map("user_id")
   projectId  Int?      @map("project_id")
   isDeleted  Boolean?  @default(false) @map("is_deleted")
-  deletedAt  DateTime? @map("deleted_at")
-  createdAt  DateTime? @default(now()) @map("created_at")
-  updatedAt  DateTime? @default(now()) @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   version    Int?      @default(0) @map("_version")
   isPublic   Boolean?  @default(false) @map("is_public")
   publicAccess String @default("off") @map("public_access")
   shareToken String?   @map("share_token")
   shareTokenHash String? @map("share_token_hash")
-  expiryDate DateTime? @map("expiry_date")
-  shareExpiresAt DateTime? @map("share_expires_at")
-  publishedAt DateTime? @map("published_at")
+  expiryDate DateTime? @map("expiry_date") @db.Timestamptz(3)
+  shareExpiresAt DateTime? @map("share_expires_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
   user       User?     @relation(fields: [userId], references: [id], onUpdate: NoAction)
   project    Project?  @relation(fields: [projectId], references: [id], onUpdate: NoAction)
 
@@ -349,7 +349,7 @@ model Entity {
   y         Float
   color     String?        @default("#6366f1")
   comment   String?
-  createdAt DateTime?      @default(now()) @map("created_at")
+  createdAt DateTime?      @default(now()) @map("created_at") @db.Timestamptz(3)
   columns   Column[]
   constraints TableConstraint[]
   indexes   TableIndex[]
@@ -376,7 +376,7 @@ model Column {
   numericPrecision Int? @map("numeric_precision")
   numericScale Int? @map("numeric_scale")
   sortOrder  Int?      @default(0) @map("sort_order")
-  createdAt  DateTime? @default(now()) @map("created_at")
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   entity     Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("columns")
@@ -397,7 +397,7 @@ model Relationship {
   onDelete        String?   @map("on_delete")
   onUpdate        String?   @map("on_update")
   constraintName  String?   @map("constraint_name")
-  createdAt       DateTime? @default(now()) @map("created_at")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   diagram         Diagram?  @relation(fields: [diagramId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   sourceEntity    Entity?   @relation("source_entity", fields: [sourceEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   targetEntity    Entity?   @relation("target_entity", fields: [targetEntityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -412,7 +412,7 @@ model TableConstraint {
   name        String?
   columnIds   String?   @map("column_ids")
   expression  String?
-  createdAt   DateTime? @default(now()) @map("created_at")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([entityId], map: "idx_table_constraints_entity")
@@ -426,7 +426,7 @@ model TableIndex {
   columnIds   String    @map("column_ids")
   isUnique    Boolean?  @default(false) @map("is_unique")
   algorithm   String?
-  createdAt   DateTime? @default(now()) @map("created_at")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   entity      Entity    @relation(fields: [entityId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([entityId], map: "idx_table_indexes_entity")
@@ -442,7 +442,7 @@ model EntityChange {
   userId     String?  @map("user_id")
   changes    String?  @default("{}")
   changeType String?  @default("update") @map("change_type")
-  createdAt  DateTime? @default(now()) @map("created_at")
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   user       User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
 
   @@index([entityType, entityId, version], map: "idx_entity_changes_lookup")
@@ -460,7 +460,7 @@ model Backup {
   filePath  String?   @map("file_path")
   fileSize  Int?      @map("file_size")
   destinations String? @map("destinations")
-  createdAt DateTime? @default(now()) @map("created_at")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
   user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("backups")
@@ -473,8 +473,8 @@ model AiProvider {
   code      String       @unique
   baseUrl   String?      @map("base_url")
   isActive  Boolean?     @default(true) @map("is_active")
-  createdAt DateTime?    @default(now()) @map("created_at")
-  updatedAt DateTime?    @default(now()) @map("updated_at")
+  createdAt DateTime?    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime?    @default(now()) @map("updated_at") @db.Timestamptz(3)
   models    AiModel[]
   userConfigs UserAiConfig[]
 
@@ -489,7 +489,7 @@ model AiModel {
   displayName     String       @map("display_name")
   contextWindow   Int?         @map("context_window")
   isActive        Boolean?     @default(true) @map("is_active")
-  createdAt       DateTime?    @default(now()) @map("created_at")
+  createdAt       DateTime?    @default(now()) @map("created_at") @db.Timestamptz(3)
   provider        AiProvider?  @relation(fields: [providerId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   userConfigs     UserAiConfig[]
 
@@ -504,7 +504,7 @@ model UserAiConfig {
   selectedModelId Int?        @map("selected_model_id")
   apiKey          String?     @map("api_key")
   isEnabled       Boolean?    @default(true) @map("is_enabled")
-  updatedAt       DateTime?   @default(now()) @map("updated_at")
+  updatedAt       DateTime?   @default(now()) @map("updated_at") @db.Timestamptz(3)
   provider        AiProvider? @relation(fields: [providerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   selectedModel   AiModel?    @relation(fields: [selectedModelId], references: [id], onUpdate: NoAction)
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -520,8 +520,8 @@ model AiChatSession {
   userId     String?         @map("user_id")
   projectId  Int?            @map("project_id")
   title      String?         @default("New Conversation")
-  createdAt  DateTime?       @default(now()) @map("created_at")
-  updatedAt  DateTime?       @default(now()) @map("updated_at")
+  createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime?       @default(now()) @map("updated_at") @db.Timestamptz(3)
   entityUid  String?         @map("entity_uid")
   entityType String?         @map("entity_type")
   messages   AiChatMessage[]
@@ -542,7 +542,7 @@ model AiChatMessage {
   selectionText String?       @map("selection_text")
   clientMessageId String?     @map("client_message_id") @db.VarChar(64)
   isTrustedAssistant Boolean  @default(false) @map("is_trusted_assistant")
-  createdAt     DateTime?     @default(now()) @map("created_at")
+  createdAt     DateTime?     @default(now()) @map("created_at") @db.Timestamptz(3)
   session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([sessionId, clientMessageId])
@@ -558,8 +558,8 @@ model AiSystemPrompt {
   isDefault Boolean?  @default(false) @map("is_default")
   isBuiltIn Boolean?  @default(false) @map("is_built_in")
   userId    String?   @map("user_id")
-  createdAt DateTime? @default(now()) @map("created_at")
-  updatedAt DateTime? @default(now()) @map("updated_at")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(3)
   user      User?    @relation(fields: [userId], references: [id], onUpdate: NoAction)
 
   @@map("ai_system_prompts")
@@ -572,8 +572,8 @@ model UserAiRule {
   viewType  String   @map("view_type")
   content   String   @default("")
   isEnabled Boolean  @default(true) @map("is_enabled")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([userId, viewType])
@@ -589,9 +589,9 @@ model CloudAiRuntimeConfig {
   iv           String
   authTag      String    @map("auth_tag")
   enabled      Boolean   @default(true)
-  expiresAt    DateTime? @map("expires_at")
-  receivedAt   DateTime  @map("received_at")
-  updatedAt    DateTime  @map("updated_at")
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(3)
+  receivedAt   DateTime  @map("received_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @map("updated_at") @db.Timestamptz(3)
   lastErrorCode String?  @map("last_error_code")
 
   @@map("cloud_ai_runtime_configs")
@@ -600,14 +600,14 @@ model CloudAiRuntimeConfig {
 model CloudAiUsagePeriod {
   id                  String   @id
   teamId              String   @map("team_id")
-  periodStart         DateTime @map("period_start")
-  periodEnd           DateTime? @map("period_end")
+  periodStart         DateTime @map("period_start") @db.Timestamptz(3)
+  periodEnd           DateTime? @map("period_end") @db.Timestamptz(3)
   limitCredits        Int      @map("limit_credits")
   consumedCredits     Int      @default(0) @map("consumed_credits")
   reservedCredits     Int      @default(0) @map("reserved_credits")
   entitlementRevision String   @map("entitlement_revision")
-  createdAt           DateTime @map("created_at")
-  updatedAt           DateTime @map("updated_at")
+  createdAt           DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @map("updated_at") @db.Timestamptz(3)
 
   @@unique([teamId, periodStart], map: "cloud_ai_usage_period_team_start")
   @@map("cloud_ai_usage_periods")
@@ -624,8 +624,8 @@ model CloudAiUsageRequest {
   providerCode    String?   @map("provider_code")
   modelIdentifier String?   @map("model_identifier")
   errorCode       String?   @map("error_code")
-  createdAt       DateTime  @map("created_at")
-  updatedAt       DateTime  @map("updated_at")
+  createdAt       DateTime  @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz(3)
 
   @@index([teamId, createdAt], map: "cloud_ai_usage_requests_team_created")
   @@map("cloud_ai_usage_requests")
@@ -639,8 +639,8 @@ model DiscussionThread {
   status      String    @default("open")
   createdBy   String    @map("created_by")
   resolvedBy  String?   @map("resolved_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @default(now()) @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@index([teamId, projectId, updatedAt(sort: Desc)], map: "discussion_threads_project_updated")
   @@map("discussion_threads")
@@ -654,7 +654,7 @@ model DiscussionContext {
   anchorType  String    @map("anchor_type")
   anchorId    String?   @map("anchor_id")
   anchorLabel String    @map("anchor_label")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([threadId], map: "discussion_contexts_thread")
   @@index([featureType, fileId], map: "discussion_contexts_file")
@@ -667,7 +667,7 @@ model DiscussionMessage {
   authorId   String    @map("author_id")
   authorName String    @map("author_name")
   body       String
-  createdAt  DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([threadId, createdAt], map: "discussion_messages_thread_created")
   @@map("discussion_messages")
@@ -676,7 +676,7 @@ model DiscussionMessage {
 model DiscussionRead {
   threadId   String    @map("thread_id")
   userId     String    @map("user_id")
-  lastReadAt DateTime  @default(now()) @map("last_read_at")
+  lastReadAt DateTime  @default(now()) @map("last_read_at") @db.Timestamptz(3)
 
   @@id([threadId, userId])
   @@index([userId, threadId], map: "discussion_reads_user_thread")
@@ -692,8 +692,8 @@ model UserPreference {
   autoBackupInterval  Int?     @default(3600) @map("auto_backup_interval")
   autoBackupRetention Int?     @default(10) @map("auto_backup_retention")
   storageConfig       String?  @map("storage_config")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @default(now()) @map("updated_at")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("user_preferences")

@@ -17,7 +17,7 @@ function isPostgresDatabase(): boolean {
 }
 
 function postgresDateType(): string {
-  return SUPABASE_URL ? "TIMESTAMPTZ(6)" : "TIMESTAMP(3)";
+  return SUPABASE_URL ? "TIMESTAMPTZ(6)" : "TIMESTAMPTZ(3)";
 }
 
 async function backfillModelUids<T extends PrismaRecord>(
@@ -246,7 +246,7 @@ async function createTeamTablesIfMissing(): Promise<void> {
   await addColumnIfMissing("projects", "team_id", '"team_id" TEXT');
 
   try {
-    const dateType = isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME";
+    const dateType = isLocalPostgres() ? postgresDateType() : "DATETIME";
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "teams" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -915,7 +915,7 @@ export async function applySchemaMigrations(): Promise<void> {
     await addColumnIfMissing(
       "users",
       "login_locked_until",
-      `"login_locked_until" ${isLocalPostgres() ? "TIMESTAMP(3)" : "DATETIME"}`,
+      `"login_locked_until" ${isLocalPostgres() ? postgresDateType() : "DATETIME"}`,
     );
   }
   try {
