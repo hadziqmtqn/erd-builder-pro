@@ -459,27 +459,22 @@ router.get("/markers", async (req, res) => {
       WHERE t."project_id" = $1 AND t."team_id" = $2 AND t."feature_type" = $3 AND t."file_id" = $4
       GROUP BY t."anchor_type", t."anchor_id"
     `, ...scope, actor.id);
-    const previews = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
-      SELECT "anchorType", "anchorId", "authorName", "body", "createdAt" FROM (
+    const rootMessages = await prisma.$queryRawUnsafe<Array<Record<string, any>>>(`
+      SELECT "anchorType", "anchorId", "authorId", "authorName", "body", "createdAt" FROM (
         SELECT t."anchor_type" AS "anchorType", t."anchor_id" AS "anchorId",
           m."author_id" AS "authorId", COALESCE(NULLIF(m."author_name", ''), 'Team member') AS "authorName", m."body", m."created_at" AS "createdAt",
-          ROW_NUMBER() OVER (PARTITION BY t."anchor_type", t."anchor_id" ORDER BY m."created_at" DESC, m."id" DESC) AS "rank"
+          ROW_NUMBER() OVER (PARTITION BY t."anchor_type", t."anchor_id" ORDER BY m."created_at" ASC, m."id" ASC) AS "rank"
         FROM "comment_threads" t JOIN "comment_messages" m ON m."thread_id" = t."id"
         WHERE t."project_id" = $1 AND t."team_id" = $2 AND t."feature_type" = $3 AND t."file_id" = $4
-      ) recent WHERE "rank" <= 3
-      ORDER BY "anchorType", "anchorId", "createdAt" DESC
+      ) roots WHERE "rank" = 1
+      ORDER BY "anchorType", "anchorId"
     `, ...scope);
-    const previewsByAnchor = new Map<string, Record<string, any>[]>();
-    for (const message of previews) {
-      const key = `${message.anchorType}:${message.anchorId}`;
-      const group = previewsByAnchor.get(key) || [];
-      group.push(message);
-      previewsByAnchor.set(key, group);
-    }
+    const rootsByAnchor = new Map(rootMessages.map((message) => [`${message.anchorType}:${message.anchorId}`, message]));
     res.json({ markers: markers.map(marker => ({
       ...marker,
       messageCount: Number(marker.messageCount), unreadCount: Number(marker.unreadCount),
-      previewMessages: previewsByAnchor.get(`${marker.anchorType}:${marker.anchorId}`) || [],
+      replyCount: Math.max(Number(marker.messageCount) - 1, 0),
+      rootMessage: rootsByAnchor.get(`${marker.anchorType}:${marker.anchorId}`) || null,
     })) });
   } catch (error) {
     handleError(res, error, "Failed to load comment markers");

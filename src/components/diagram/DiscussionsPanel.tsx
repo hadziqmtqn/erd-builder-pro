@@ -48,6 +48,11 @@ type MessageHistoryPage = { hasMore: boolean; nextCursor: MessageCursor | null }
 type MessageHistoryState = MessageHistoryPage & { messages: DiscussionMessageData[] };
 type RawRecord = Record<string, unknown>;
 
+function resizeDiscussionTextarea(element: HTMLTextAreaElement, maxHeight = 144): void {
+  element.style.height = "auto";
+  element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+}
+
 function DiscussionComposer({
   id,
   value,
@@ -65,23 +70,34 @@ function DiscussionComposer({
   disabled: boolean;
   submitLabel: string;
 }) {
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textarea.current) resizeDiscussionTextarea(textarea.current);
+  }, [value]);
+
   return (
     <div className="shrink-0 border-t border-border p-3">
       <form onSubmit={onSubmit} className="relative">
         <label htmlFor={id} className="sr-only">{submitLabel}</label>
         <Textarea
+          ref={textarea}
           id={id}
+          rows={1}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            resizeDiscussionTextarea(event.currentTarget);
+          }}
           maxLength={4000}
           placeholder={placeholder}
-          className="min-h-24 resize-none rounded-2xl bg-muted/40 px-4 pb-12 pr-16 shadow-none"
+          className="!min-h-11 max-h-36 resize-none overflow-y-auto rounded-2xl bg-muted/40 px-3 py-2 pr-12 shadow-none"
           required
         />
         <Button
           type="submit"
           size="icon"
-          className="absolute right-2 bottom-2 size-11 rounded-full"
+          className="absolute right-1 bottom-1 size-9 rounded-full"
           aria-label={submitLabel}
           disabled={!value.trim() || disabled}
         >

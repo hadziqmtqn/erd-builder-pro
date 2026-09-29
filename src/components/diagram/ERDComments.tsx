@@ -15,7 +15,7 @@ import { apiFetch } from '@/lib/api';
 export type CommentAnchor = { type: 'table' | 'relationship'; id: string };
 export type ERDCommentsConfig = { projectId: string; teamId: string; fileId: string; userId: string };
 type Preview = { authorId?: string; authorName: string; body: string; createdAt: string };
-type Marker = { anchorType: CommentAnchor['type']; anchorId: string; status: 'open' | 'resolved'; messageCount: number; unreadCount: number; previewMessages: Preview[] };
+type Marker = { anchorType: CommentAnchor['type']; anchorId: string; status: 'open' | 'resolved'; messageCount: number; unreadCount: number; replyCount: number; rootMessage: Preview | null };
 type Thread = { id: string; status: 'open' | 'resolved'; createdBy: string };
 type Message = Preview & { id: string; threadId: string; authorId: string };
 type MessageCursor = { createdAt: string; id: string };
@@ -101,19 +101,24 @@ export function ERDCommentsProvider({ config, children }: { config: ERDCommentsC
   const loadMarkers = useCallback(async () => {
     try {
       const data = await request(`${base}/markers?${scope}`);
-      const items: Marker[] = (data.markers || []).map((item: any) => ({
-        anchorType: item.anchorType ?? item.anchor_type,
-        anchorId: String(item.anchorId ?? item.anchor_id),
-        status: item.status === 'resolved' ? 'resolved' : 'open',
-        messageCount: Number(item.messageCount ?? item.message_count ?? 0),
-        unreadCount: Number(item.unreadCount ?? item.unread_count ?? 0),
-        previewMessages: (item.previewMessages ?? item.preview_messages ?? []).map((message: any) => ({
-          authorId: message.authorId == null && message.author_id == null ? undefined : String(message.authorId ?? message.author_id),
-          authorName: String(message.authorName ?? message.author_name ?? 'Team member'),
-          body: String(message.body ?? ''),
-          createdAt: String(message.createdAt ?? message.created_at ?? ''),
-        })),
-      }));
+      const items: Marker[] = (data.markers || []).map((item: any) => {
+        const messageCount = Number(item.messageCount ?? item.message_count ?? 0);
+        const rawRoot = item.rootMessage ?? item.root_message;
+        return {
+          anchorType: item.anchorType ?? item.anchor_type,
+          anchorId: String(item.anchorId ?? item.anchor_id),
+          status: item.status === 'resolved' ? 'resolved' : 'open',
+          messageCount,
+          unreadCount: Number(item.unreadCount ?? item.unread_count ?? 0),
+          replyCount: Number(item.replyCount ?? item.reply_count ?? Math.max(messageCount - 1, 0)),
+          rootMessage: rawRoot ? {
+            authorId: rawRoot.authorId == null && rawRoot.author_id == null ? undefined : String(rawRoot.authorId ?? rawRoot.author_id),
+            authorName: String(rawRoot.authorName ?? rawRoot.author_name ?? 'Team member'),
+            body: String(rawRoot.body ?? ''),
+            createdAt: String(rawRoot.createdAt ?? rawRoot.created_at ?? ''),
+          } : null,
+        };
+      });
       setMarkers(new Map(items.map((item) => [keyOf({ type: item.anchorType, id: item.anchorId }), item])));
     } catch { /* The canvas stays usable if comments are unavailable. */ }
   }, [base, scope]);
@@ -435,11 +440,18 @@ export function CommentMarker({ anchor }: { anchor: CommentAnchor }) {
         {resolved ? <Check aria-hidden="true" className="size-2.5 stroke-[3]" /> : count > 0 ? (count > 3 ? '3+' : count) : <span className="sr-only">Comments</span>}
       </button>
     </HoverCardTrigger>
-    {!active && marker && <HoverCardPortal><HoverCardContent side="right" sideOffset={8} className="w-64 space-y-2 p-3" aria-label="Recent comments">
-      {marker.previewMessages.map((message, index) => <div key={`${message.createdAt}:${index}`} className="flex gap-2">
-        <Avatar className="size-6 bg-cyan-600 text-white" aria-hidden="true"><AvatarFallback className="bg-cyan-600 text-[10px] text-white">{avatarInitials(message.authorName)}</AvatarFallback></Avatar>
-        <p className="line-clamp-2 min-w-0 text-xs"><span className="font-medium">{message.authorName}: </span>{message.body}</p>
-      </div>)}
+    {!active && marker?.rootMessage && <HoverCardPortal><HoverCardContent side="right" sideOffset={8} className="w-[min(22rem,calc(100vw-1rem))] p-3" aria-label="Comment preview">
+      <div className="flex gap-2.5">
+        <Avatar className="size-8 shrink-0 bg-cyan-600 text-white" aria-hidden="true"><AvatarFallback className="bg-cyan-600 text-[10px] text-white">{avatarInitials(marker.rootMessage.authorName)}</AvatarFallback></Avatar>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="truncate text-sm font-semibold">{marker.rootMessage.authorName}</span>
+            {marker.rootMessage.createdAt ? <time className="shrink-0 text-xs text-muted-foreground" dateTime={marker.rootMessage.createdAt}>{messageTime(marker.rootMessage.createdAt)}</time> : null}
+          </div>
+          <p className="mt-1 line-clamp-3 break-words text-sm text-foreground/90">{marker.rootMessage.body}</p>
+          {marker.replyCount > 0 ? <p className="mt-2 text-xs text-muted-foreground">{marker.replyCount} {marker.replyCount === 1 ? 'reply' : 'replies'}</p> : null}
+        </div>
+      </div>
     </HoverCardContent></HoverCardPortal>}
   </HoverCard>;
 }

@@ -105,19 +105,21 @@ describe("Cloud ERD discussions scope", () => {
     expect(mocks.queryRaw.mock.calls[0][2]).toBe("team-a");
   });
 
-  it("returns only marker summaries with exact unread message counts", async () => {
+  it("returns the root marker summary with exact unread message counts", async () => {
     mocks.queryRaw.mockImplementation(async (query: string) => {
       if (query.includes('FROM "projects" p') && !query.includes('JOIN "projects"')) return [{ id: 7, name: 'Project' }];
       if (query.includes('JOIN "projects" p')) return [{ id: 42, uid: 'file-a', projectId: 7, label: 'ERD' }];
       if (query.includes('COUNT(m."id")')) return [{ anchorType: 'table', anchorId: 'entity-a', status: 'resolved', messageCount: 5n, unreadCount: 2n }];
-      if (query.includes('ROW_NUMBER()')) return [{ anchorType: 'table', anchorId: 'entity-a', authorName: 'Member A', body: 'Latest', createdAt: '2026-09-29T00:00:00Z' }];
+      if (query.includes('ROW_NUMBER()')) return [{ anchorType: 'table', anchorId: 'entity-a', authorId: 'member-a', authorName: 'Member A', body: 'First', createdAt: '2026-09-28T00:00:00Z' }];
       return [];
     });
     await withServer(async (url) => {
       const response = await fetch(`${url}/api/projects/7/comments/markers?feature_type=diagram&file_id=file-a`);
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ markers: [{ anchorType: 'table', anchorId: 'entity-a', status: 'resolved', messageCount: 5, unreadCount: 2, previewMessages: [{ anchorType: 'table', anchorId: 'entity-a', authorName: 'Member A', body: 'Latest', createdAt: '2026-09-29T00:00:00Z' }] }] });
-      expect(mocks.queryRaw.mock.calls.some(([query]) => String(query).includes('ROW_NUMBER()'))).toBe(true);
+      expect(await response.json()).toEqual({ markers: [{ anchorType: 'table', anchorId: 'entity-a', status: 'resolved', messageCount: 5, unreadCount: 2, replyCount: 4, rootMessage: { anchorType: 'table', anchorId: 'entity-a', authorId: 'member-a', authorName: 'Member A', body: 'First', createdAt: '2026-09-28T00:00:00Z' } }] });
+      const rootQuery = mocks.queryRaw.mock.calls.find(([query]) => String(query).includes('ROW_NUMBER()'))?.[0];
+      expect(String(rootQuery)).toContain('ORDER BY m."created_at" ASC');
+      expect(String(rootQuery)).not.toContain('"rank" <= 3');
     });
   });
 
